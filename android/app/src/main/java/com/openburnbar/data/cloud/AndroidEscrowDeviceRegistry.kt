@@ -68,7 +68,10 @@ class AndroidEscrowDeviceRegistry(
         keypair: AndroidCloudVaultDeviceKeypair = AndroidCloudVaultDeviceKeypair.loadOrCreate(),
     ): AndroidEscrowDeviceRegistration {
         registerSelf(uid = uid, keypair = keypair)
-        securityClient.approveEscrowDeviceTrust(keypair.deviceId)
+        securityClient.approveEscrowDeviceTrust(
+            deviceId = keypair.deviceId,
+            approverDeviceId = keypair.deviceId,
+        )
 
         return AndroidEscrowDeviceRegistration(
             deviceId = keypair.deviceId,

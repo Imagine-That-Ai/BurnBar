@@ -73,7 +73,18 @@ export function PensieveDashboard() {
             <p className="text-sm text-content-mute">{PENSIEVE.summary}</p>
           </div>
         </div>
-        <span className="rounded-pill border border-glass-line bg-mercury-wash px-token-3 py-1 text-xs uppercase tracking-wide text-content-mute">
+        <span className="flex items-center gap-1.5 rounded-pill border border-glass-line bg-mercury-wash px-token-3 py-1 text-xs uppercase tracking-wide text-content-mute">
+          {(tier === "pro" || tier === "ultra") && (
+            <img
+              src={
+                tier === "ultra"
+                  ? "/brand/burnbar_cloud_ultra_crest.jpg"
+                  : "/brand/burnbar_cloud_pro_crest.jpg"
+              }
+              alt=""
+              className="size-5 rounded-sm object-cover overflow-hidden"
+            />
+          )}
           {tier} plan
         </span>
       </header>

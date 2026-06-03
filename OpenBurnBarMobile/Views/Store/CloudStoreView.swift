@@ -1275,7 +1275,7 @@ private struct CloudStoreMemberCard: View {
 
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
-                            Text("PRO")
+                            Text(store.isActiveUltra ? "ULTRA" : "PRO")
                                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                                 .tracking(1.8)
                                 .foregroundStyle(ProTheme.Membership.surface)

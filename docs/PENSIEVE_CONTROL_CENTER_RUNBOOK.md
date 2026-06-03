@@ -363,7 +363,7 @@ Create `apps/console/.env.production` (do **not** commit) with the real values f
 Firebase console → Project settings → Your apps → **Web app** SDK config:
 ```
 NEXT_PUBLIC_FIREBASE_API_KEY=<web api key>
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=burnbar.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=app.burnbar.ai
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=burnbar
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=burnbar.appspot.com
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=<sender id>

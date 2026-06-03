@@ -1,9 +1,11 @@
 /** @type {import('next').NextConfig} */
 
 // Strict CSP for the console. Firebase Auth + callables need their endpoints in
-// connect-src; auth popup/redirect uses frame-src for the IdP. WebAuthn needs no
-// extra CSP (it is a browser API, not a network origin). 'wasm-unsafe-eval' is
-// required by Firebase's internal use of WebAssembly in some SDK paths.
+// connect-src; Firebase Auth's popup bridge loads apis.google.com, and
+// reCAPTCHA Enterprise uses google.com/gstatic runtime calls for App Check.
+// Auth popup/redirect uses frame-src for the IdP. WebAuthn needs no extra CSP
+// (it is a browser API, not a network origin). 'wasm-unsafe-eval' is required
+// by Firebase's internal use of WebAssembly in some SDK paths.
 const csp = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -12,9 +14,9 @@ const csp = [
   // Next.js injects inline runtime styles; styled tokens are static. Tailwind is built to a file.
   "style-src 'self' 'unsafe-inline'",
   // Next.js 15 emits a small inline bootstrap; 'wasm-unsafe-eval' covers Firebase SDK wasm.
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://apis.google.com https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com",
+  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com https://www.gstatic.com",
   "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://appleid.apple.com https://www.google.com/recaptcha/",
   "frame-ancestors 'none'",
   "form-action 'self'",

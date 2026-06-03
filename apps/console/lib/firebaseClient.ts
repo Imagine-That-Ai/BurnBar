@@ -23,7 +23,7 @@ import {
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyFakeKeyPlaceholderForBuild",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "burnbar.firebaseapp.com",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "app.burnbar.ai",
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "burnbar",
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "burnbar.appspot.com",
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "123456789",
@@ -31,6 +31,14 @@ const firebaseConfig = {
 };
 
 const isBrowser = typeof window !== "undefined";
+const productionEnvMissing =
+  !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
+  !process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ||
+  !process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+  !process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
+  !process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ||
+  !process.env.NEXT_PUBLIC_FIREBASE_APP_ID ||
+  !process.env.NEXT_PUBLIC_RECAPTCHA_ENTERPRISE_KEY;
 
 let _app: FirebaseApp | undefined;
 let _auth: Auth | undefined;
@@ -39,6 +47,9 @@ let _appCheck: AppCheck | undefined;
 
 export function firebaseApp(): FirebaseApp {
   if (_app) return _app;
+  if (isBrowser && process.env.NODE_ENV === "production" && productionEnvMissing) {
+    throw new Error("BurnBar console Firebase/App Check production environment is not configured.");
+  }
   _app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
   // App Check — only in the browser, only when a site key is configured.

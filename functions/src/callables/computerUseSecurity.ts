@@ -135,41 +135,57 @@ export const approveEscrowDeviceTrust = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  wrapCallableHandler("approveEscrowDeviceTrust", async (request: CallableRequest<{ deviceId?: unknown }>) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before approving device trust.");
-    enforceHighRiskComputerUseCallable(request, uid);
+  wrapCallableHandler(
+    "approveEscrowDeviceTrust",
+    async (request: CallableRequest<{ deviceId?: unknown; approverDeviceId?: unknown }>) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in before approving device trust.");
+      enforceHighRiskComputerUseCallable(request, uid);
 
-    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-    const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
-    const snapshot = await ref.get();
-    if (!snapshot.exists) {
-      throw new HttpsError("not-found", "Escrow device is not registered.");
-    }
-    const trustState = snapshot.get("trustState");
-    if (trustState === "trusted") {
-      return { ok: true, deviceId, trustState: "trusted", alreadyTrusted: true };
-    }
-    if (trustState === "revoked") {
-      throw new HttpsError("failed-precondition", "Revoked escrow devices must be re-registered before approval.");
-    }
+      const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+      const approverDeviceId = boundedTrimmedString(request.data.approverDeviceId, "approverDeviceId", 160, false);
+      const ref = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
+      const snapshot = await ref.get();
+      if (!snapshot.exists) {
+        throw new HttpsError("not-found", "Escrow device is not registered.");
+      }
+      const platform = snapshot.get("platform");
+      const trustState = snapshot.get("trustState");
+      if (trustState === "trusted") {
+        return { ok: true, deviceId, trustState: "trusted", alreadyTrusted: true };
+      }
+      if (trustState === "revoked") {
+        throw new HttpsError("failed-precondition", "Revoked escrow devices must be re-registered before approval.");
+      }
+      if (platform === "Web") {
+        if (!approverDeviceId || approverDeviceId === deviceId) {
+          throw new HttpsError("failed-precondition", "A trusted native device must approve browser escrow.");
+        }
+        const approver = await db.doc(`users/${uid}/escrow_devices/${approverDeviceId}`).get();
+        const approverPlatform = approver.exists ? approver.get("platform") : undefined;
+        if (!approver.exists || approver.get("trustState") !== "trusted" || approverPlatform === "Web") {
+          throw new HttpsError("permission-denied", "Browser escrow approval requires a trusted native approver.");
+        }
+      }
 
-    await ref.set(
-      {
-        trustState: "trusted",
-        approvedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+      await ref.set(
+        {
+          trustState: "trusted",
+          approvedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          approvedByDeviceId: approverDeviceId ?? deviceId,
+        },
+        { merge: true },
+      );
 
-    logInfo({
-      event: "callable_info",
-      message: "escrow_device_trust_approved",
-      device_id: deviceId,
-    });
-    return { ok: true, deviceId, trustState: "trusted" };
-  }),
+      logInfo({
+        event: "callable_info",
+        message: "escrow_device_trust_approved",
+        device_id: deviceId,
+      });
+      return { ok: true, deviceId, trustState: "trusted" };
+    },
+  ),
 );
 
 export const revokeEscrowDeviceTrust = onCall(

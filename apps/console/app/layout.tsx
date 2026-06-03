@@ -7,6 +7,10 @@ import { AppShell } from "@/components/AppShell";
 export const metadata: Metadata = {
   title: "BurnBar Console",
   description: "Your data, your keys — the BurnBar Data & Privacy Control Center.",
+  icons: {
+    icon: "/brand/burnbar_cloud_crest.jpg",
+    apple: "/brand/burnbar_cloud_crest.jpg",
+  },
   // The console is a private member surface; never index it.
   robots: { index: false, follow: false, nocache: true },
   referrer: "strict-origin-when-cross-origin",

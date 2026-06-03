@@ -187,6 +187,89 @@ test("credential transfers are encrypted, owner-scoped, expiring one-time codes"
   );
 });
 
+test("provider accounts reject plaintext or unknown credential containers", async () => {
+  const ownerDb = authedDb("provider-owner");
+  const basePath = "users/provider-owner/provider_accounts/account-1";
+  const canonical = {
+    id: "account-1",
+    providerID: "codex",
+    label: "Codex",
+    status: "connected",
+    credentialKind: "token",
+    storageScope: "server_private",
+    redactedLabel: "sk_...1234",
+    isDefault: true,
+    sortKey: 0,
+    schemaVersion: 2,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  await assertSucceeds(setDoc(doc(ownerDb, basePath), canonical));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/account-2"), {
+      ...canonical,
+      id: "account-2",
+      credentials: { apiKey: "plaintext" },
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/provider-owner/provider_accounts/account-3"), {
+      ...canonical,
+      id: "account-3",
+      secretVersionName: "projects/x/secrets/y/versions/1",
+    })
+  );
+});
+
+test("escrow public keys and envelopes are schema-constrained encrypted docs", async () => {
+  const ownerDb = authedDb("escrow-owner");
+  const publicKey = {
+    deviceId: "device-1",
+    publicKeyData: "A".repeat(88),
+    publicKeyFingerprint: "F".repeat(44),
+    keyVersion: 1,
+    algorithm: "ECIES-P256-AESGCM",
+    createdAt: Timestamp.fromMillis(Date.now()),
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-1_1"), publicKey));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_public_keys/device-2_1"), {
+      ...publicKey,
+      deviceId: "device-2",
+      publicKeyJwk: { kty: "EC", crv: "P-256", x: "A", y: "B", d: "PRIVATE" },
+    })
+  );
+
+  const envelope = {
+    id: "envelope-1",
+    grantId: "grant-1",
+    sourceDeviceId: "device-1",
+    targetDeviceId: "device-2",
+    providerId: "codex",
+    credentialKind: "api_key",
+    ciphertext: "Q".repeat(64),
+    keyVersion: 1,
+    envelopeVersion: 1,
+    createdAt: Timestamp.fromMillis(Date.now()),
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-1"), envelope));
+  const { targetDeviceId: _targetDeviceId, ...missingTargetEnvelope } = envelope;
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-2"), {
+      ...missingTargetEnvelope,
+      id: "envelope-2",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/escrow_envelopes/envelope-3"), {
+      ...envelope,
+      id: "envelope-3",
+      credentials: { apiKey: "plaintext" },
+    })
+  );
+});
+
 test("owners can publish iroh pairing data and audit events without leaking secrets", async () => {
   const ownerDb = authedDb("iroh-owner");
   const otherDb = authedDb("mallory");

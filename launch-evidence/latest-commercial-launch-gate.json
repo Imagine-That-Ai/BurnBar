@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-02T04:18:16.789Z",
+  "generatedAt": "2026-06-03T01:24:51.055Z",
   "verdict": {
     "status": "NO_GO",
     "reason": "failed checks: mainRequiredGate, mainCodeQL"
@@ -7,14 +7,14 @@
   "checks": {
     "repo": {
       "ok": true,
-      "head": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
-      "originMain": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "head": "45d7071528a000319218f4f9c635fcc09d3d93da",
+      "originMain": "45d7071528a000319218f4f9c635fcc09d3d93da",
       "status": "## HEAD (no branch)",
       "clean": true
     },
     "appStore": {
       "ok": true,
-      "state": "READY_FOR_SALE",
+      "state": "WAITING_FOR_REVIEW",
       "subscriptionState": "APPROVED",
       "manualRelease": true,
       "buildReady": true,
@@ -38,7 +38,9 @@
           "com.openburnbar.pro.monthly",
           "com.openburnbar.proMax.annual",
           "com.openburnbar.proMax.bundle.monthly",
-          "com.openburnbar.proMax.v2.monthly"
+          "com.openburnbar.proMax.v2.monthly",
+          "com.openburnbar.ultra.annual.v2",
+          "com.openburnbar.ultra.monthly"
         ],
         "missing": []
       },
@@ -55,50 +57,50 @@
           {
             "productId": "com.openburnbar.pro.monthly",
             "ok": true,
-            "state": "WAITING_FOR_REVIEW",
+            "state": "APPROVED",
             "id": "6775039081",
             "name": "OpenBurnBar Cloud Monthly"
           },
           {
             "productId": "com.openburnbar.pro.annual",
             "ok": true,
-            "state": "WAITING_FOR_REVIEW",
+            "state": "APPROVED",
             "id": "6775039037",
             "name": "OpenBurnBar Cloud Annual"
           },
           {
             "productId": "com.openburnbar.proMax.v2.monthly",
             "ok": true,
-            "state": "WAITING_FOR_REVIEW",
+            "state": "APPROVED",
             "id": "6775247828",
             "name": "OpenBurnBar Cloud Pro Monthly"
           },
           {
             "productId": "com.openburnbar.proMax.annual",
             "ok": true,
-            "state": "WAITING_FOR_REVIEW",
+            "state": "APPROVED",
             "id": "6775039475",
             "name": "OpenBurnBar Cloud Pro Annual"
           },
           {
             "productId": "com.openburnbar.agentControl.actions100",
             "ok": true,
-            "state": "WAITING_FOR_REVIEW",
+            "state": "IN_REVIEW",
             "id": "6775039582",
             "name": "Agent Control 100 Actions"
           },
           {
             "productId": "com.openburnbar.floo.relay50gb",
             "ok": true,
-            "state": "WAITING_FOR_REVIEW",
+            "state": "IN_REVIEW",
             "id": "6775039480",
             "name": "Floo Relay 50 GB"
           }
         ]
       },
       "legacyGrandfatherPresent": true,
-      "versionString": "1.0",
-      "versionId": "5bd7a32b-29ee-476a-8efa-ec0a9614ff6d"
+      "versionString": "1.0.1",
+      "versionId": "ad7e0215-dbb6-4210-9f66-0601d86d224e"
     },
     "appStoreServerNotifications": {
       "ok": true,
@@ -111,25 +113,16 @@
         "firstSendAttemptResult": "SUCCESS",
         "sendAttempts": [
           {
-            "attemptDate": 1780373851140,
+            "attemptDate": 1780449843945,
             "sendAttemptResult": "SUCCESS"
           }
         ]
       },
-      "productionRequired": true,
+      "productionRequired": false,
       "production": {
         "ok": true,
-        "requestStatus": 200,
-        "requestOk": true,
-        "hasToken": true,
-        "delivered": true,
-        "firstSendAttemptResult": "SUCCESS",
-        "sendAttempts": [
-          {
-            "attemptDate": 1780373856553,
-            "sendAttemptResult": "SUCCESS"
-          }
-        ]
+        "skipped": true,
+        "reason": "Production notification proof is required after App Store release."
       }
     },
     "firebaseAppCheck": {
@@ -171,7 +164,7 @@
     },
     "mainRequiredGate": {
       "ok": false,
-      "sha": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "sha": "45d7071528a000319218f4f9c635fcc09d3d93da",
       "openburnbarPr": {
         "status": "in_progress",
         "conclusion": null,
@@ -180,7 +173,7 @@
     },
     "mainCodeQL": {
       "ok": false,
-      "sha": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "sha": "45d7071528a000319218f4f9c635fcc09d3d93da",
       "checks": [
         {
           "name": "Analyze (swift)",
@@ -192,21 +185,21 @@
           "name": "Analyze (javascript-typescript)",
           "status": "completed",
           "conclusion": "success",
-          "completedAt": "2026-06-02T04:15:15Z"
+          "completedAt": "2026-06-03T00:49:56Z"
         },
         {
           "name": "Analyze (python)",
           "status": "completed",
           "conclusion": "success",
-          "completedAt": "2026-06-02T04:14:22Z"
+          "completedAt": "2026-06-03T00:49:07Z"
         }
       ]
     },
     "latestMergedPrGate": {
       "ok": true,
-      "pr": 193,
-      "headSha": "a969f6128f15d388a4e1a8151046ad6648705449",
-      "supersededByMain": "0ed9ecf1641d9e5880036b83f1d2eec06f1221dc",
+      "pr": 235,
+      "headSha": "14c5d5593fe8b87d62216b4b705c1bcb45d2d26a",
+      "supersededByMain": "45d7071528a000319218f4f9c635fcc09d3d93da",
       "skipped": true,
       "reason": "Latest merged PR head is already contained in a newer origin/main commit; mainRequiredGate is authoritative.",
       "openburnbarPr": null,
@@ -544,7 +537,6 @@
             "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
             "FUNCTION_SIGNATURE_TYPE": "http",
             "FUNCTION_TARGET": "createStripeBurnBarProCheckoutSession",
-            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
             "GCLOUD_PROJECT": "burnbar",
             "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
             "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
@@ -561,6 +553,7 @@
             "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
             "LOG_EXECUTION_ID": "true",
             "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_STAMP_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/stamp",
             "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
             "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
             "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
@@ -603,7 +596,6 @@
             "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
             "FUNCTION_SIGNATURE_TYPE": "http",
             "FUNCTION_TARGET": "verifyGooglePlayBurnBarProSubscription",
-            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
             "GCLOUD_PROJECT": "burnbar",
             "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
             "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
@@ -620,6 +612,7 @@
             "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
             "LOG_EXECUTION_ID": "true",
             "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_STAMP_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/stamp",
             "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
             "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
             "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
@@ -660,7 +653,6 @@
             "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
             "FUNCTION_SIGNATURE_TYPE": "http",
             "FUNCTION_TARGET": "verifyGooglePlayCloudProTopUp",
-            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
             "GCLOUD_PROJECT": "burnbar",
             "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
             "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
@@ -677,6 +669,7 @@
             "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
             "LOG_EXECUTION_ID": "true",
             "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_STAMP_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/stamp",
             "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
             "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
             "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
@@ -717,7 +710,6 @@
             "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
             "FUNCTION_SIGNATURE_TYPE": "http",
             "FUNCTION_TARGET": "verifyCloudProTopUp",
-            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
             "GCLOUD_PROJECT": "burnbar",
             "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
             "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
@@ -734,6 +726,7 @@
             "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
             "LOG_EXECUTION_ID": "true",
             "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_STAMP_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/stamp",
             "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
             "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
             "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
@@ -778,7 +771,6 @@
             "FLOO_RELAY_50GB_PRODUCT_ID": "com.openburnbar.floo.relay50gb",
             "FUNCTION_SIGNATURE_TYPE": "http",
             "FUNCTION_TARGET": "stripeBurnBarProWebhook",
-            "FUNCTION_VERSION": "vdeploy-8568eeb5-googleplay-env",
             "GCLOUD_PROJECT": "burnbar",
             "GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID": "com.openburnbar.agentcontrol.actions100",
             "GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID": "com.openburnbar.pro.annual",
@@ -795,6 +787,7 @@
             "KMS_KEY_NAME": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
             "LOG_EXECUTION_ID": "true",
             "MAX_CREDENTIAL_LENGTH": "8192",
+            "OPENBURNBAR_OTS_STAMP_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/stamp",
             "OPENBURNBAR_OTS_VERIFY_AUDIENCE": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app",
             "OPENBURNBAR_OTS_VERIFY_URL": "https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify",
             "OPENBURNBAR_STORAGE_BUCKET": "burnbar-hosted-mcp-bodies-246956661961",
@@ -1218,7 +1211,7 @@
     },
     "firebaseFunctionsInventory": {
       "ok": true,
-      "count": 90,
+      "count": 115,
       "missing": [],
       "forbiddenPresent": []
     },
