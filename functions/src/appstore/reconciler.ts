@@ -296,7 +296,11 @@ export function appStoreEntitlementTarget(productID: string): AppStoreEntitlemen
       mirrorEntitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
     };
   }
-  if (productID === cfg.burnBarUltraProductID || productID === cfg.burnBarUltraAnnualProductID) {
+  if (
+    productID === cfg.burnBarUltraProductID ||
+    productID === cfg.burnBarUltraAnnualProductID ||
+    productID === "com.openburnbar.ultra.annual"
+  ) {
     // Ultra writes its own source doc AND mirrors proMax, so it inherits every
     // Cloud Pro gate automatically; only the Pensieve LIMIT lookup branches on
     // the burnbar_ultra doc. (source !== mirror triggers the dual-write.)

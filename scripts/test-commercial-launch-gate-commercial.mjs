@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Unit tests for two-tier commercial launch-gate requirement evaluators.
+ * Unit tests for commercial launch-gate requirement evaluators.
  */
 
 import assert from "node:assert/strict";
@@ -37,6 +37,8 @@ assert.equal(
   GOOGLE_PLAY_PRODUCTS.agentControlActions100,
   "com.openburnbar.agentcontrol.actions100",
 );
+assert.equal(COMMERCIAL_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual.v2");
+assert.equal(GOOGLE_PLAY_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual");
 assert.notEqual(
   GOOGLE_PLAY_PRODUCTS.cloudProMonthly,
   COMMERCIAL_PRODUCTS.cloudProMonthly,
@@ -134,6 +136,8 @@ function passingChecks(overrides = {}) {
       COMMERCIAL_PRODUCTS.cloudAnnual,
       COMMERCIAL_PRODUCTS.cloudProMonthly,
       COMMERCIAL_PRODUCTS.cloudProAnnual,
+      COMMERCIAL_PRODUCTS.ultraMonthly,
+      COMMERCIAL_PRODUCTS.ultraAnnual,
       COMMERCIAL_PRODUCTS.agentControlActions100,
       COMMERCIAL_PRODUCTS.flooRelay50GB,
     ],
@@ -142,6 +146,8 @@ function passingChecks(overrides = {}) {
       COMMERCIAL_PRODUCTS.cloudAnnual,
       COMMERCIAL_PRODUCTS.cloudProMonthly,
       COMMERCIAL_PRODUCTS.cloudProAnnual,
+      COMMERCIAL_PRODUCTS.ultraMonthly,
+      COMMERCIAL_PRODUCTS.ultraAnnual,
       COMMERCIAL_PRODUCTS.agentControlActions100,
       COMMERCIAL_PRODUCTS.flooRelay50GB,
     ],
@@ -175,6 +181,12 @@ function passingChecks(overrides = {}) {
           name: "BurnBar Cloud Pro Monthly",
           state: "APPROVED",
         },
+        {
+          id: "sub_ultra_monthly",
+          productId: COMMERCIAL_PRODUCTS.ultraMonthly,
+          name: "BurnBar Ultra Monthly",
+          state: "APPROVED",
+        },
       ],
       inAppPurchases: [
         {
@@ -188,6 +200,7 @@ function passingChecks(overrides = {}) {
     [
       COMMERCIAL_PRODUCTS.cloudMonthly,
       COMMERCIAL_PRODUCTS.cloudProMonthly,
+      COMMERCIAL_PRODUCTS.ultraMonthly,
       COMMERCIAL_PRODUCTS.agentControlActions100,
     ],
   );

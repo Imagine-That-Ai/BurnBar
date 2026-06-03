@@ -108,7 +108,7 @@ function buildConfig(): EnvConfig {
     burnBarUltraAnnualProductID:
       process.env.BURNBAR_ULTRA_ANNUAL_PRODUCT_ID ??
       configString(openburnbar, "burnbar_ultra_annual_product_id") ??
-      "com.openburnbar.ultra.annual",
+      "com.openburnbar.ultra.annual.v2",
     agentControl100ActionsProductID:
       process.env.AGENT_CONTROL_100_ACTIONS_PRODUCT_ID ??
       configString(openburnbar, "agent_control_100_actions_product_id") ??

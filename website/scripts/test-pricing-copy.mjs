@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @fileoverview Regression tests for the public two-tier pricing copy.
+ * @fileoverview Regression tests for the public pricing copy.
  */
 
 import assert from "node:assert/strict";
@@ -36,10 +36,13 @@ for (const expected of [
   "OpenBurnBar Local",
   "BurnBar Cloud",
   "BurnBar Cloud Pro",
+  "BurnBar Ultra",
   "com.openburnbar.pro.monthly",
   "com.openburnbar.pro.annual",
   "com.openburnbar.proMax.v2.monthly",
   "com.openburnbar.proMax.annual",
+  "com.openburnbar.ultra.monthly",
+  "com.openburnbar.ultra.annual.v2",
   "com.openburnbar.agentControl.actions100",
   "com.openburnbar.floo.relay50gb"
 ]) {
@@ -54,6 +57,18 @@ assert.match(publicPricingCopy, /\$7\.99/, "Cloud monthly price must be public")
 assert.match(publicPricingCopy, /\$79\/year|\$79\/yr/, "Cloud annual price must be public");
 assert.match(publicPricingCopy, /\$24\.99/, "Cloud Pro monthly price must be public");
 assert.match(publicPricingCopy, /\$249\/year|\$249\/yr/, "Cloud Pro annual price must be public");
+assert.match(publicPricingCopy, /\$59\.99/, "Ultra monthly price must be public");
+assert.match(publicPricingCopy, /\$599\/year|\$599\/yr/, "Ultra annual price must be public");
+assert.match(
+  publicPricingCopy,
+  /15 Pensieve knowledge sources|15 knowledge sources/,
+  "Ultra source limit must be public"
+);
+assert.match(
+  publicPricingCopy,
+  /50,000 encrypted memory chunks|50,000 memory chunks/,
+  "Ultra chunk limit must be public"
+);
 assert.match(
   publicPricingCopy,
   /500 hosted Agent Control actions/,
@@ -83,4 +98,4 @@ assert.equal(
   "$4.99 may appear only in top-up copy on pricing page"
 );
 
-console.log("pricing-copy: two-tier pricing assertions passed");
+console.log("pricing-copy: cloud pricing assertions passed");
