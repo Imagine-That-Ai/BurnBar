@@ -1,0 +1,111 @@
+name: Deploy Production (Hosting)
+
+# Deploys Firebase Hosting for the marketing site (burnbar.ai) and the console
+# (app.burnbar.ai). Cloud Functions deploy separately in deploy-production.yml;
+# this workflow intentionally only touches `--only hosting`.
+#
+# Auth mirrors deploy-production.yml: prefer GCP_SA_KEY (service account) via
+# google-github-actions/auth, fall back to GOOGLE_PLAY_SERVICE_ACCOUNT_JSON, then
+# to the legacy FIREBASE_TOKEN. At least one must be configured as a repo secret.
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "apps/console/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/deploy-hosting.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build only (no firebase deploy)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-hosting
+  cancel-in-progress: false
+
+jobs:
+  deploy-hosting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      HAS_GCP_SA_KEY: ${{ secrets.GCP_SA_KEY != '' }}
+      HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Node 24: satisfies the website's engines (>=22.12) and Next 15 (console).
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # Install deps for both sites so the firebase.json predeploy hooks
+      # (`npm --prefix website run build`, `npm --prefix apps/console run build`)
+      # can build during `firebase deploy`.
+      - name: Install hosting dependencies
+        run: |
+          npm ci --prefix website
+          npm ci --prefix apps/console
+
+      - name: Authenticate to Google Cloud (service account)
+        if: ${{ github.event.inputs.dry_run != 'true' && env.HAS_GCP_SA_KEY == 'true' }}
+        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Authenticate to Google Cloud (legacy Play service account)
+        if: ${{ github.event.inputs.dry_run != 'true' && env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true' }}
+        uses: google-github-actions/auth@de57a46d487d715e771c04a8c04d7f2e9b4b4fac # v2
+        with:
+          credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+
+      # `--only hosting` deploys every configured hosting target (marketing +
+      # console). The per-target build runs via the firebase.json predeploy hook.
+      - name: Deploy Hosting (marketing + console)
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          firebase_args=(deploy --only hosting --project burnbar --non-interactive)
+          if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
+            echo "Using legacy FIREBASE_TOKEN authentication. Prefer GCP_SA_KEY or workload credentials."
+            firebase_args+=(--token "$FIREBASE_TOKEN")
+          elif [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+            echo "Using Google application credentials from google-github-actions/auth."
+          else
+            echo "::error::No Firebase deploy auth configured. Set GCP_SA_KEY (preferred), GOOGLE_PLAY_SERVICE_ACCOUNT_JSON, or legacy FIREBASE_TOKEN."
+            exit 1
+          fi
+          npx firebase-tools "${firebase_args[@]}"
+
+      - name: Dry-run skip deploy
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          npm run build --prefix website
+          npm run build --prefix apps/console
+          echo "dry_run=true — built hosting bundles, skipped firebase deploy"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Production Hosting deploy"
+            echo "- Targets: marketing (burnbar.ai / burnbar.web.app), console (app.burnbar.ai / burnbar-console.web.app)"
+            echo "- Project: burnbar"
+            echo "- Trigger: ${{ github.event_name }}"
+            echo ""
+            echo "### Rollback"
+            echo "- Firebase Console → Hosting → select the site → Release history → Rollback, or:"
+            echo "  \`firebase hosting:rollback --project burnbar\` (per site)"
+          } >> "$GITHUB_STEP_SUMMARY"
