@@ -109,8 +109,24 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
           ENV_FILE="functions/.env.burnbar"
           touch "$ENV_FILE"
-          { grep -v '^FUNCTION_VERSION=' "$ENV_FILE" || true; echo "FUNCTION_VERSION=${TAG}"; } > "${ENV_FILE}.tmp"
-          mv "${ENV_FILE}.tmp" "$ENV_FILE"
+          for key in FUNCTION_VERSION OPENBURNBAR_OTS_VERIFY_URL OPENBURNBAR_OTS_VERIFY_AUDIENCE OPENBURNBAR_OTS_STAMP_URL APNS_VOIP_TOPIC APNS_HOST APP_STORE_APPLE_APP_ID APP_STORE_BUNDLE_ID APP_STORE_ENV HOSTED_QUOTA_PRODUCT_ID; do
+            grep -v "^${key}=" "$ENV_FILE" > "${ENV_FILE}.tmp" || true
+            mv "${ENV_FILE}.tmp" "$ENV_FILE"
+          done
+          {
+            echo "FUNCTION_VERSION=${TAG}"
+            cat <<'OPENBURNBAR_DEPLOY_ENV'
+OPENBURNBAR_OTS_VERIFY_URL=https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify
+OPENBURNBAR_OTS_VERIFY_AUDIENCE=https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app
+OPENBURNBAR_OTS_STAMP_URL=https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/stamp
+APNS_VOIP_TOPIC=com.openburnbar.mobile.voip
+APNS_HOST=https://api.push.apple.com
+APP_STORE_APPLE_APP_ID=6766366964
+APP_STORE_BUNDLE_ID=com.openburnbar.app
+APP_STORE_ENV=Production
+HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.cloud.monthly
+OPENBURNBAR_DEPLOY_ENV
+          } >> "$ENV_FILE"
           export FUNCTION_VERSION="$TAG"
 
           firebase_args=(--only functions --project burnbar --non-interactive)
