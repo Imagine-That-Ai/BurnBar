@@ -15,22 +15,29 @@
  * ciphertext INLINE (no Cloud Storage coupling), and is idempotent by `dedupHash`
  * (unchanged chunks are skipped).
  *
- * B-SEC-2 — plaintext metadata side channels. Earlier revisions persisted three
- * plaintext side channels per vector: `contentHash` (SHA-256 of the chunk
- * plaintext — lets a curious server confirm a *guessed* plaintext by hashing it),
- * the real `sourcePath` (repo file paths), and the cleartext `sourceSlug`. We no
- * longer store any of them in the clear:
+ * B-SEC-2 — plaintext metadata side channels (now FLAG-DAY ENFORCED, privacy-
+ * leak-remediation-2026-06-02 §3). Earlier revisions persisted three plaintext
+ * side channels per vector: `contentHash` (SHA-256 of the chunk plaintext — lets
+ * a curious server confirm a *guessed* plaintext by hashing it), the real
+ * `sourcePath` (repo file paths), and the cleartext `sourceSlug`. The write path
+ * now REQUIRES the vault-keyed replacements and REJECTS the cleartext ones:
  *   - dedup/idempotency uses `dedupHash`, a VAULT-KEYED HMAC the device computes
  *     (HKDF-derive a per-user dedup key from the vault key, then HMAC the
- *     plaintext). Two members committing the same plaintext therefore produce
- *     DIFFERENT stored hashes, and the server can no longer confirm a guess by
- *     hashing candidate plaintext (it lacks the key). See `dedupHashVersion`.
+ *     plaintext) — REQUIRED. Two members committing the same plaintext therefore
+ *     produce DIFFERENT stored hashes, and the server can no longer confirm a
+ *     guess by hashing candidate plaintext (it lacks the key). The legacy
+ *     cleartext `contentHash` is no longer accepted. See `dedupHashVersion`.
+ *   - the cloaked embedding (`cloakedVector`) is REQUIRED — a raw uncloaked
+ *     `embedding` is rejected.
  *   - `sourcePath` is dropped server-side — it already lives inside the
  *     AES-256-GCM `sealedMetadata` blob (the device seals `source_path` there;
  *     see PensieveKnowledgeChunker.prepareBatch), so the cleartext column was a
  *     pure duplicate leak.
  *   - the filter key is `slugHmac` (a vault-keyed HMAC of the slug the device
- *     sends) instead of the cleartext `sourceSlug`.
+ *     sends), REQUIRED, instead of the cleartext `sourceSlug`.
+ * Existing legacy v0 rows remain readable until the device re-ingests each
+ * source (forced by an `embeddingModelVersion`/`dedupHashVersion` bump). No
+ * server-side backfill exists — the server never holds the vault key.
  * `sourceKind` (one of three coarse buckets) and `byteCount` (a length) remain
  * cleartext as ACCEPTED leakage — they are server-side filter / cap inputs and
  * carry no content; see docs/pensieve-leakage-analysis.md and docs/PENSIEVE.md.

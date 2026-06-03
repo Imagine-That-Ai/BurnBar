@@ -18,6 +18,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
     private var downloadSync: DownloadSyncService!
     private var providerAccountSync: ProviderAccountSyncService!
     private var quotaSnapshotSync: QuotaSnapshotSyncService!
+    private var vaultKeyProvider: TestConversationVaultKeyProvider!
 
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
@@ -30,7 +31,8 @@ final class UsageSyncRoundTripTests: XCTestCase {
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway
         )
-        usageSync = UsageSyncService(context: context)
+        vaultKeyProvider = TestConversationVaultKeyProvider()
+        usageSync = UsageSyncService(context: context, vaultKeyProvider: vaultKeyProvider)
         downloadSync = DownloadSyncService(context: context)
         providerAccountSync = ProviderAccountSyncService(context: context)
         quotaSnapshotSync = QuotaSnapshotSyncService(context: context)

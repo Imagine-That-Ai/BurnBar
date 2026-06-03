@@ -129,10 +129,16 @@ Proven by `tools/openburnbar-mcp-remote/src/cloakLeakage.test.ts`.
 chunk counts, timestamps, `namespace = uid`, the vault-keyed `dedupHash` +
 `slugHmac` (HMACs the server cannot reverse or re-derive without the key), and
 the two cleartext filter/cap inputs `sourceKind` (one of three coarse buckets) +
-`byteCount` (a length). **Never** plaintext, raw query text, a
-public-bge-space embedding, a confirm-the-guess SHA-256 of the plaintext, the
-real `sourcePath` (it is sealed inside `sealedMetadata`), or the cleartext
-`sourceSlug` (B-SEC-2). **Accepted leakage:** because the cloak is
+`byteCount` (a length). For a connected repo it additionally sees an opaque
+server-keyed `repoMatchToken` (used only to route an inbound GitHub webhook) and
+a vault-sealed `sealedRepoFullName` it cannot open. **Never** plaintext, raw
+query text, a public-bge-space embedding, a confirm-the-guess SHA-256 of the
+plaintext (the legacy v0 `contentHash` dedup oracle is removed — commits now
+require a vault-keyed `dedupHash` and reject a raw `embedding`/`contentHash`),
+the real `sourcePath` (it is sealed inside `sealedMetadata`), the cleartext
+`sourceSlug` (B-SEC-2), or the cleartext repo `repoFullName` (now stored only as
+the opaque match token + sealed name; the cleartext name is observed transiently
+server-side only when the GitHub push webhook arrives, never stored). **Accepted leakage:** because the cloak is
 orthonormal, the server can compute the pairwise cosine matrix, k-NN graph,
 clusters, and similarity-dedup over the cloaked vectors **without the key** —
 relative geometry is preserved, not hidden. At the shipped 24-reflection
@@ -220,7 +226,11 @@ gitignored build output):
 **Firestore** — `firestore.rules` (owner-only `cloud_search_knowledge`,
 `knowledge_sync_manifests`, `knowledge_repos`; Ultra SKUs in the premium/media/
 computer-use allowlists), `firestore.indexes.json` (4× 384-dim COSINE vector
-indexes on `cloud_search_knowledge`).
+indexes on `cloud_search_knowledge`). A `knowledge_repos` row stores only an
+opaque server-keyed `repoMatchToken` + a vault-sealed `sealedRepoFullName` (no
+cleartext `repoFullName`); the webhook recomputes the match token from the
+GitHub-signed `full_name` to route, and the rules reject a client-supplied
+cleartext `repoFullName`.
 
 **Security/docs** — `scripts/test-hosted-mcp-security.sh` (+8 cases), this file.
 

@@ -54,7 +54,6 @@ export const searchKnowledge = onCall(
         queryVector?: unknown;
         embeddingModelVersion?: unknown;
         sourceKind?: unknown;
-        sourceSlug?: unknown;
         slugHmac?: unknown;
         limit?: unknown;
       }>,
@@ -75,27 +74,23 @@ export const searchKnowledge = onCall(
       );
       const limit = clampLimit(request.data?.limit);
 
-      // Server filters carry no content (B-SEC-2): `sourceKind` is one of three
-      // coarse buckets (accepted leakage) and the source filter is keyed by the
-      // vault-keyed `slugHmac` the device sends — not the cleartext slug. Older
-      // clients may still pass `sourceSlug`; we honor it so pre-B-SEC-2 rows stay
-      // filterable until they are re-ingested under `slugHmac`.
+      // Server filters carry no content (privacy-leak-remediation-2026-06-02 §3):
+      // `sourceKind` is one of three coarse buckets (accepted leakage) and the
+      // source filter is keyed ONLY by the vault-keyed `slugHmac` the device
+      // sends — the cleartext `sourceSlug` filter has been dropped now that
+      // clients are v1 (v0 rows fall back to a slugHmac-less recall).
       const sourceKindRaw = boundedTrimmedString(request.data?.sourceKind, "sourceKind", 64, false);
       if (sourceKindRaw && !SOURCE_KINDS.has(sourceKindRaw)) {
         throw new HttpsError("invalid-argument", `sourceKind must be one of: ${[...SOURCE_KINDS].join(", ")}.`);
       }
       const slugHmac =
         request.data?.slugHmac !== undefined ? requireHexDigest(request.data?.slugHmac, "slugHmac") : undefined;
-      const sourceSlug = slugHmac
-        ? undefined
-        : boundedTrimmedString(request.data?.sourceSlug, "sourceSlug", 256, false);
 
       let query: Query = db
         .collection(`users/${uid}/cloud_search_knowledge`)
         .where("embeddingModelVersion", "==", embeddingModelVersion);
       if (sourceKindRaw) query = query.where("sourceKind", "==", sourceKindRaw);
       if (slugHmac) query = query.where("slugHmac", "==", slugHmac);
-      else if (sourceSlug) query = query.where("sourceSlug", "==", sourceSlug);
 
       const snap = await query
         .findNearest({
@@ -113,14 +108,15 @@ export const searchKnowledge = onCall(
         // Field names match the hosted-MCP burnbar_search_knowledge hit shape AND
         // the iOS reader (PensieveMemorySearchView): `ciphertext` + `sealedMetadata`.
         // The real source path/slug live inside `sealedMetadata` (decrypted on
-        // device); the server returns only the vault-keyed `slugHmac`/`dedupHash`
-        // so the client can correlate hits without exposing a cleartext hash/path
-        // (B-SEC-2). Legacy rows fall back to their pre-B-SEC-2 fields.
+        // device); the server returns ONLY the vault-keyed `slugHmac`/`dedupHash`
+        // so the client can correlate hits without exposing a cleartext hash/path.
+        // The cleartext `sourceSlug`/`contentHash` fallbacks are dropped now that
+        // clients are v1 (privacy-leak-remediation-2026-06-02 §3).
         ciphertext: doc.get("sealedCiphertext"),
         sealedMetadata: doc.get("sealedMetadata"),
         sourceKind: doc.get("sourceKind"),
-        slugHmac: doc.get("slugHmac") ?? doc.get("sourceSlug"),
-        dedupHash: doc.get("dedupHash") ?? doc.get("contentHash"),
+        slugHmac: doc.get("slugHmac"),
+        dedupHash: doc.get("dedupHash"),
         score: 1 - Number(doc.get("_distance") ?? 1), // COSINE distance -> similarity
         decryptMode: "local_decrypt",
       }));
