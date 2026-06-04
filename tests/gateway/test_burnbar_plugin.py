@@ -163,10 +163,29 @@ def test_env_enablement_none_when_token_missing(monkeypatch):
     assert _env_enablement() is None
 
 
-def test_relay_safety_code_matches_burnbar_mobile_derivation():
-    assert _relay_safety_code("AQIDBAUGBwg=") == "6684 0DDA 154E 8A11"
-    assert _relay_safety_code("not-base64") == "E718 D628 1D61 48C1"
-    assert _relay_safety_code("  ") == ""
+def test_relay_safety_code_is_two_key_signal_style_128_bit():
+    # MP-1: the safety code hashes BOTH paired relay keys, sorted by raw bytes, so
+    # the agent and the phone derive the SAME code without agreeing on roles. A
+    # relay that substitutes the phone key at first pin therefore changes the
+    # human-verified code (the old single-key code would still have matched).
+    agent = "AQIDBAUGBwg="  # raw 01..08
+    phone = "CAcGBQQDAgE="  # raw 08..01
+    other = "AAECAwQFBgc="  # a substituted/different phone key
+    code = _relay_safety_code(agent, phone)
+    # Deterministic value: SHA-256 over sorted(rawAgent, rawPhone), first 16 bytes.
+    assert code == "899D 452A 5DE1 DE34 0622 798E 1BD2 8408"
+    # Role-independent: sorting the raw keys means argument order does not matter.
+    assert _relay_safety_code(phone, agent) == code
+    # >=128 bits == eight 4-hex-digit groups (not the old 64-bit single-key code).
+    assert len(code.split()) == 8
+    # Sensitivity (the MP-1 property): substituting EITHER key changes the code,
+    # so a relay key-substitution at first pin is detectable by the human.
+    assert _relay_safety_code(agent, other) != code
+    assert _relay_safety_code(other, phone) != code
+    # MP-22: a missing/invalid key yields no code, never a plausible-looking one.
+    assert _relay_safety_code(agent, "") == ""
+    assert _relay_safety_code("", phone) == ""
+    assert _relay_safety_code(agent, "not-base64!") == ""
 
 
 def test_apply_yaml_config_preserves_env_precedence(monkeypatch):
@@ -451,15 +470,24 @@ async def test_seal_send_then_phone_opens(monkeypatch, tmp_path):
     assert "text" not in body
     env = body["relayEnvelope"]
     assert env["relayEncryption"] == _burnbar.RELAY_ENCRYPTION
-    assert env["relayKeyVersion"] == _burnbar.RELAY_KEY_VERSION
+    # v2 authenticated wrap: gateway envelopes stamp the gateway wrap version and
+    # carry the agent's OWN relay public key as the authenticated sender.
+    assert env["relayKeyVersion"] == _burnbar.GATEWAY_RELAY_KEY_VERSION
+    assert env["senderPublicKey"] == _agent.public_key_base64()
     assert body["relayEncryption"] == _burnbar.RELAY_ENCRYPTION
+    # MP-2: the agent echoes the AAD-bound messageId at the top level so the server
+    # adopts it byte-for-byte; otherwise the phone rebuilds the AAD from a different
+    # server id and every sealed reply fails AEAD.
+    assert body["messageId"] == env["messageId"]
 
-    # The phone unwraps the key with the Swift-compatible key AAD, then opens
-    # the payload with the payload AAD.
+    # The phone unwraps the key (binding the agent's pinned sender key) with the
+    # Swift-compatible key AAD, then opens the payload with the payload AAD.
     message_id = env["messageId"]
     payload_aad = _burnbar._gateway_message_aad("uid-1", "client-1", message_id)
     key_aad = _burnbar._gateway_message_key_aad("uid-1", "client-1", message_id)
-    sym = relay_e2ee.unwrap_symmetric_key(env["wrappedKey"], phone_priv, key_aad)
+    sym = relay_e2ee.unwrap_symmetric_key(
+        env["wrappedKey"], phone_priv, key_aad, sender_public_base64=env["senderPublicKey"]
+    )
     opened = json.loads(relay_e2ee.open_base64(env["payloadCiphertext"], sym, payload_aad).decode())
     assert opened == {"text": "secret reply"}
 
@@ -467,18 +495,24 @@ async def test_seal_send_then_phone_opens(monkeypatch, tmp_path):
 @requires_relay
 @pytest.mark.asyncio
 async def test_phone_sealed_event_is_opened_by_agent(monkeypatch, tmp_path):
-    """Phone seals an event to the agent pubkey; the adapter opens it."""
-    adapter, agent_priv = _e2e_adapter(monkeypatch, tmp_path)
+    """Phone seals an event to the agent pubkey; the adapter opens it (v2, pinned sender)."""
+    phone_priv = relay_e2ee.generate_private_key()
+    phone_pub = phone_priv.public_key_base64()
+    adapter, agent_priv = _e2e_adapter(monkeypatch, tmp_path, peer_public_key=phone_pub)
     agent_pub = adapter._relay_public_key_base64()
 
-    # Phone-side seal (mirrors iOS HermesService): wrap to the AGENT pubkey.
+    # Phone-side v2 seal (mirrors iOS): wrap to the AGENT pubkey binding the PHONE's
+    # static key as the authenticated sender. Sender identity rides INSIDE the sealed
+    # payload (MP-8), never trusted from relay-controlled top-level metadata.
     event_id = "evt_sealed_1"
     payload_aad = _burnbar._gateway_event_aad("uid-1", "client-1", event_id)
     key_aad = _burnbar._gateway_event_key_aad("uid-1", "client-1", event_id)
     sym = relay_e2ee.generate_symmetric_key()
-    payload = json.dumps({"text": "open me", "senderDisplayName": "Phone", "threadId": "t1"}).encode()
+    payload = json.dumps(
+        {"text": "open me", "senderId": "phone-user", "senderDisplayName": "Phone", "threadId": "t1"}
+    ).encode()
     payload_ct = relay_e2ee.seal_to_base64(payload, sym, payload_aad)
-    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad)
+    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad, sender_private=phone_priv)
 
     received = []
 
@@ -490,20 +524,24 @@ async def test_phone_sealed_event_is_opened_by_agent(monkeypatch, tmp_path):
         {
             "id": event_id,
             "destinationId": "burnbar:home",
-            "senderId": "burnbar-user",
-            "relayEncryption": _burnbar.RELAY_ENCRYPTION,
+            "senderId": "RELAY-SPOOFED",  # MP-8: ignored in favor of the sealed senderId
+            "senderDisplayName": "RELAY-SPOOFED",
+            "senderPublicKey": phone_pub,
+            "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
             "relayEnvelope": {
                 "payloadCiphertext": payload_ct,
                 "wrappedKey": wrapped,
-                "relayEncryption": _burnbar.RELAY_ENCRYPTION,
-                "relayKeyVersion": _burnbar.RELAY_KEY_VERSION,
+                "senderPublicKey": phone_pub,
+                "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
             },
         }
     )
 
     assert len(received) == 1
     assert received[0].text == "open me"
+    # MP-8: identity is taken from the SEALED payload, never the relay-spoofed top level.
     assert received[0].source.user_name == "Phone"
+    assert received[0].source.user_id == "phone-user"
     assert received[0].source.thread_id == "t1"
 
 
@@ -568,19 +606,27 @@ async def test_seal_attachment_round_trip(monkeypatch, tmp_path):
     assert "fileName" not in init_body
     env = init_body["relayEnvelope"]
     attachment_id = env["attachmentId"]
+    # v2 authenticated wrap + MP-2 id round-trip: the agent echoes attachmentId at the
+    # top level so the server adopts it and the phone's AAD matches (else AEAD fails).
+    assert env["relayKeyVersion"] == _burnbar.GATEWAY_RELAY_KEY_VERSION
+    assert env["senderPublicKey"] == _agent.public_key_base64()
+    assert init_body["attachmentId"] == attachment_id
 
     # Uploaded body is ciphertext (not the raw PNG bytes).
     upload_url, uploaded, _hdrs = client.puts[0]
     assert uploaded != b"\x89PNG-binary-body"
 
-    # Phone unwraps the body key with the attachment-KEY AAD, then opens the
-    # manifest (payloadCiphertext) with the MANIFEST AAD and the body with the
-    # BODY AAD — distinct labels so the relay cannot swap one slot for the other.
+    # Phone unwraps the body key (binding the agent's pinned sender key) with the
+    # attachment-KEY AAD, then opens the manifest (payloadCiphertext) with the
+    # MANIFEST AAD and the body with the BODY AAD — distinct labels so the relay
+    # cannot swap one slot for the other.
     key_aad = _burnbar._gateway_attachment_key_aad("uid-1", "client-1", attachment_id)
     manifest_aad = _burnbar._gateway_attachment_manifest_aad("uid-1", "client-1", attachment_id)
     body_aad = _burnbar._gateway_attachment_body_aad("uid-1", "client-1", attachment_id)
     assert manifest_aad != body_aad  # distinct slot binding
-    body_key = relay_e2ee.unwrap_symmetric_key(env["wrappedKey"], phone_priv, key_aad)
+    body_key = relay_e2ee.unwrap_symmetric_key(
+        env["wrappedKey"], phone_priv, key_aad, sender_public_base64=env["senderPublicKey"]
+    )
     manifest = json.loads(relay_e2ee.open_base64(env["payloadCiphertext"], body_key, manifest_aad).decode())
     assert manifest["fileName"] == "diagram.png"
     assert manifest["byteCount"] == len(b"\x89PNG-binary-body")
@@ -785,9 +831,12 @@ async def test_standalone_send_seals_on_paired_link(monkeypatch, tmp_path):
     _, body = next((u, b) for (u, b) in client.posts if u.endswith("/messages"))
     assert "text" not in body  # plaintext GONE
     env = body["relayEnvelope"]
+    # MP-2: the standalone path must also echo the AAD-bound messageId on the wire.
+    assert body["messageId"] == env["messageId"]
     sym = relay_e2ee.unwrap_symmetric_key(
         env["wrappedKey"], phone_priv,
         _burnbar._gateway_message_key_aad("uid-s", "client-s", env["messageId"]),
+        sender_public_base64=env["senderPublicKey"],
     )
     opened = json.loads(
         relay_e2ee.open_base64(
@@ -944,7 +993,9 @@ async def test_duplicate_event_id_is_dropped(monkeypatch, tmp_path):
 async def test_duplicate_sealed_event_id_uses_envelope_id_when_top_level_id_missing(monkeypatch, tmp_path):
     """A relay cannot bypass dedup by stripping top-level id from a sealed event."""
     _no_persist(monkeypatch)
-    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path)
+    phone_priv = relay_e2ee.generate_private_key()
+    phone_pub = phone_priv.public_key_base64()
+    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path, peer_public_key=phone_pub)
     agent_pub = adapter._relay_public_key_base64()
 
     event_id = "evt_dup_envelope_only"
@@ -952,19 +1003,22 @@ async def test_duplicate_sealed_event_id_uses_envelope_id_when_top_level_id_miss
     key_aad = _burnbar._gateway_event_key_aad("uid-1", "client-1", event_id)
     sym = relay_e2ee.generate_symmetric_key()
     payload_ct = relay_e2ee.seal_to_base64(json.dumps({"text": "deliver once"}).encode(), sym, payload_aad)
-    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad)
+    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad, sender_private=phone_priv)
 
     received = []
     adapter.handle_message = lambda e: received.append(e) or _noop()
     payload = {
         "destinationId": "burnbar:home",
         "senderId": "s",
+        "senderPublicKey": phone_pub,
+        "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
         "relayEnvelope": {
             "eventId": event_id,
             "payloadCiphertext": payload_ct,
             "wrappedKey": wrapped,
+            "senderPublicKey": phone_pub,
             "relayEncryption": _burnbar.RELAY_ENCRYPTION,
-            "relayKeyVersion": _burnbar.RELAY_KEY_VERSION,
+            "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
         },
     }
 
@@ -977,11 +1031,14 @@ def test_seen_event_id_cache_is_bounded(monkeypatch, tmp_path):
     """The replay cache never grows past MAX_SEEN_EVENT_IDS."""
     adapter = _legacy_adapter(monkeypatch, tmp_path)
     monkeypatch.setattr(_burnbar, "MAX_SEEN_EVENT_IDS", 8)
+    # MP-3: _is_event_seen is read-only; recording happens in _record_event AFTER a
+    # successful authenticated open, so only authenticated ids consume a slot.
     for i in range(50):
-        assert adapter._event_already_seen(f"id-{i}") is False
+        assert adapter._is_event_seen(f"id-{i}") is False
+        adapter._record_event(f"id-{i}")
     assert len(adapter._seen_event_ids) <= 8
-    # The most recently seen id is still considered a duplicate.
-    assert adapter._event_already_seen("id-49") is True
+    # The most recently recorded id is still considered a duplicate.
+    assert adapter._is_event_seen("id-49") is True
 
 
 # --- Finding 7: model_switch must be sealed on E2E links --------------------
@@ -1007,7 +1064,9 @@ async def test_unsealed_model_switch_rejected_on_e2e_link(monkeypatch, tmp_path)
 async def test_sealed_model_switch_opens_on_e2e_link(monkeypatch, tmp_path):
     """A model_switch sealed to the agent pubkey opens and applies on an E2E link."""
     _no_persist(monkeypatch)
-    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path)
+    phone_priv = relay_e2ee.generate_private_key()
+    phone_pub = phone_priv.public_key_base64()
+    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path, peer_public_key=phone_pub)
     agent_pub = adapter._relay_public_key_base64()
     received = []
 
@@ -1022,13 +1081,20 @@ async def test_sealed_model_switch_opens_on_e2e_link(monkeypatch, tmp_path):
     key_aad = _burnbar._gateway_event_key_aad("uid-1", "client-1", event_id)
     sym = relay_e2ee.generate_symmetric_key()
     payload_ct = relay_e2ee.seal_to_base64(json.dumps({"modelId": "anthropic/claude"}).encode(), sym, payload_aad)
-    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad)
+    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad, sender_private=phone_priv)
     await adapter._handle_burnbar_event(
         {
             "id": event_id,
             "kind": "model_switch",
             "destinationId": "burnbar:home",
-            "relayEnvelope": {"payloadCiphertext": payload_ct, "wrappedKey": wrapped},
+            "senderPublicKey": phone_pub,
+            "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
+            "relayEnvelope": {
+                "payloadCiphertext": payload_ct,
+                "wrappedKey": wrapped,
+                "senderPublicKey": phone_pub,
+                "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
+            },
         }
     )
     assert received and received[0].text == "/model anthropic/claude"
@@ -1042,9 +1108,14 @@ def test_seal_model_switch_round_trip(monkeypatch, tmp_path):
         monkeypatch, tmp_path, peer_public_key=phone_priv.public_key_base64()
     )
     env = adapter._sealer.seal_model_switch(destination_id="burnbar:home", model_id="openai/gpt")
+    # v2 authenticated wrap: stamped gateway version + the agent's own pub as sender.
+    assert env["relayKeyVersion"] == _burnbar.GATEWAY_RELAY_KEY_VERSION
+    assert env["senderPublicKey"] == _agent.public_key_base64()
     payload_aad = _burnbar._gateway_event_aad("uid-1", "client-1", env["eventId"])
     key_aad = _burnbar._gateway_event_key_aad("uid-1", "client-1", env["eventId"])
-    sym = relay_e2ee.unwrap_symmetric_key(env["wrappedKey"], phone_priv, key_aad)
+    sym = relay_e2ee.unwrap_symmetric_key(
+        env["wrappedKey"], phone_priv, key_aad, sender_public_base64=env["senderPublicKey"]
+    )
     opened = json.loads(relay_e2ee.open_base64(env["payloadCiphertext"], sym, payload_aad).decode())
     assert opened == {"modelId": "openai/gpt"}
 
@@ -1061,7 +1132,10 @@ async def test_sealed_redelivery_dropped_by_envelope_event_id(monkeypatch, tmp_p
     command runs exactly once and a redelivery is dropped — not re-triggered on
     every poll. The first delivery opens (proving the id is the AAD-bound one).
     """
-    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path)
+    _no_persist(monkeypatch)
+    phone_priv = relay_e2ee.generate_private_key()
+    phone_pub = phone_priv.public_key_base64()
+    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path, peer_public_key=phone_pub)
     agent_pub = adapter._relay_public_key_base64()
 
     # The AAD-bound id lives in the envelope (top-level id is stripped by the relay).
@@ -1071,7 +1145,7 @@ async def test_sealed_redelivery_dropped_by_envelope_event_id(monkeypatch, tmp_p
     sym = relay_e2ee.generate_symmetric_key()
     payload = json.dumps({"text": "run once"}).encode()
     payload_ct = relay_e2ee.seal_to_base64(payload, sym, payload_aad)
-    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad)
+    wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad, sender_private=phone_priv)
 
     received = []
 
@@ -1083,9 +1157,12 @@ async def test_sealed_redelivery_dropped_by_envelope_event_id(monkeypatch, tmp_p
         # No top-level "id" — the relay stripped it; the id lives in the envelope.
         "destinationId": "burnbar:home",
         "senderId": "burnbar-user",
+        "senderPublicKey": phone_pub,
         "relayEnvelope": {
             "payloadCiphertext": payload_ct,
             "wrappedKey": wrapped,
+            "senderPublicKey": phone_pub,
+            "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
             "eventId": event_id,
         },
     }
@@ -1180,3 +1257,122 @@ def test_absorb_relay_state_confirms_existing_pin_from_runtime(monkeypatch, tmp_
     # Same key re-advertised by the relay: harmless confirm, pin unchanged.
     adapter._absorb_relay_state({"relayPublicKey": pinned, "destinationId": "burnbar:home"})
     assert adapter._peer_public_key == pinned
+
+
+# ---------------------------------------------------------------------------
+# P1 regression tests (added during the re-audit): each fails before the fix and
+# passes after — MP-3 (replay record-after-auth), MP-2 (AAD-bound id round-trip),
+# MP-6 (approval control-plane carries no free text).
+# ---------------------------------------------------------------------------
+@requires_relay
+@pytest.mark.asyncio
+async def test_forged_id_flood_does_not_evict_a_genuine_pending_id(monkeypatch, tmp_path):
+    """MP-3: a relay flooding forged-id events (every one fails AEAD) cannot evict a
+    genuine authenticated id from the bounded replay cache. The id is recorded only
+    AFTER a successful authenticated open, so forged frames never consume a slot."""
+    _no_persist(monkeypatch)
+    monkeypatch.setattr(_burnbar, "MAX_SEEN_EVENT_IDS", 4)
+    phone_priv = relay_e2ee.generate_private_key()
+    phone_pub = phone_priv.public_key_base64()
+    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path, peer_public_key=phone_pub)
+    agent_pub = adapter._relay_public_key_base64()
+
+    received = []
+    adapter.handle_message = lambda e: received.append(e) or _noop()
+
+    def _sealed_event(event_id, text, *, sender_private):
+        payload_aad = _burnbar._gateway_event_aad("uid-1", "client-1", event_id)
+        key_aad = _burnbar._gateway_event_key_aad("uid-1", "client-1", event_id)
+        sym = relay_e2ee.generate_symmetric_key()
+        ct = relay_e2ee.seal_to_base64(json.dumps({"text": text}).encode(), sym, payload_aad)
+        wrapped = relay_e2ee.wrap_symmetric_key(sym, agent_pub, key_aad, sender_private=sender_private)
+        return {
+            "id": event_id,
+            "destinationId": "burnbar:home",
+            "senderPublicKey": phone_pub,
+            "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
+            "relayEnvelope": {
+                "payloadCiphertext": ct,
+                "wrappedKey": wrapped,
+                "senderPublicKey": phone_pub,
+                "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
+            },
+        }
+
+    # A genuine event from the PINNED phone authenticates and is recorded.
+    await adapter._handle_burnbar_event(_sealed_event("genuine-1", "real", sender_private=phone_priv))
+    genuine_key = (adapter._relay_uid, adapter._relay_client_id, "genuine-1")
+    assert genuine_key in adapter._seen_event_ids
+
+    # Flood with forged events: well-formed v2 envelopes sealed by a DIFFERENT sender
+    # key, so the pinned-sender unwrap fails the AEAD tag. None may be recorded.
+    for i in range(50):
+        attacker = relay_e2ee.generate_private_key()
+        await adapter._handle_burnbar_event(_sealed_event(f"forged-{i}", "x", sender_private=attacker))
+
+    # The genuine id survived the flood (forged frames never consumed a cache slot)...
+    assert genuine_key in adapter._seen_event_ids
+    assert len(adapter._seen_event_ids) == 1
+    # ...and a redelivery of the genuine event is still dropped as a replay.
+    before = len(received)
+    await adapter._handle_burnbar_event(_sealed_event("genuine-1", "real", sender_private=phone_priv))
+    assert len(received) == before
+
+
+@requires_relay
+@pytest.mark.asyncio
+async def test_sealed_reply_is_undecryptable_if_messageId_not_echoed(monkeypatch, tmp_path):
+    """MP-2: the message AAD binds the echoed messageId. If the server assigned a
+    DIFFERENT id (i.e. the agent had not echoed it), the phone rebuilds the AAD from
+    that id and AEAD fails — which is why ``body['messageId']`` MUST round-trip."""
+    from cryptography.exceptions import InvalidTag
+
+    phone_priv = relay_e2ee.generate_private_key()
+    adapter, _agent = _e2e_adapter(
+        monkeypatch, tmp_path, peer_public_key=phone_priv.public_key_base64()
+    )
+    client = _RecordingClient(post_responses={"/messages": _FakeResponse({"message": {"id": "m1"}})})
+    adapter._client = client
+    assert (await adapter.send("burnbar:home", "secret reply")).success is True
+
+    _, body = client.posts[-1]
+    env = body["relayEnvelope"]
+    assert body["messageId"] == env["messageId"]  # the round-trip the fix guarantees
+
+    # With the echoed id the phone opens it.
+    sym = relay_e2ee.unwrap_symmetric_key(
+        env["wrappedKey"], phone_priv,
+        _burnbar._gateway_message_key_aad("uid-1", "client-1", body["messageId"]),
+        sender_public_base64=env["senderPublicKey"],
+    )
+    opened = relay_e2ee.open_base64(
+        env["payloadCiphertext"], sym,
+        _burnbar._gateway_message_aad("uid-1", "client-1", body["messageId"]),
+    )
+    assert json.loads(opened.decode()) == {"text": "secret reply"}
+
+    # Had the server minted a different id (no echo), the key-wrap AAD no longer matches.
+    with pytest.raises(InvalidTag):
+        relay_e2ee.unwrap_symmetric_key(
+            env["wrappedKey"], phone_priv,
+            _burnbar._gateway_message_key_aad("uid-1", "client-1", "server_minted_other_id"),
+            sender_public_base64=env["senderPublicKey"],
+        )
+
+
+@requires_relay
+@pytest.mark.asyncio
+async def test_arm_approval_carries_no_free_text(monkeypatch, tmp_path):
+    """MP-6: the /approvals control-plane body carries only opaque ids — never the
+    slash-confirm summary / command text / file paths the untrusted relay would see."""
+    adapter, _agent = _e2e_adapter(monkeypatch, tmp_path)
+    client = _RecordingClient(post_responses={"/approvals": _FakeResponse({})})
+    adapter._client = client
+
+    await adapter._arm_approval(action_id="act-1", tool_name="Bash", destination_id="burnbar:home")
+
+    url, body = next((u, b) for (u, b) in client.posts if u.endswith("/approvals"))
+    assert body.get("actionId") == "act-1"
+    assert "summary" not in body
+    # Only opaque/coarse control fields are allowed on the relay-visible channel.
+    assert set(body).issubset({"actionId", "toolName", "destinationId"})

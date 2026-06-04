@@ -36,11 +36,52 @@ Wire invariants (do not drift — pinned in ``tests/gateway/test_relay_e2ee.py``
 ``gateway/platforms/qqbot/crypto.py`` and ``wecom_crypto.py``) so importing
 this module never pulls the C extension into a CLI invocation that does not
 seal anything.
+
+Security considerations (read before changing the construction)
+---------------------------------------------------------------
+
+**Goals.** (1) *Confidentiality* of every sealed payload against the relay,
+which only ever store-and-forwards ``base64(...)`` ciphertext. (2) *Sender
+authentication* under the v2 2-DH key-wrap: a frame opens only if it was
+sealed by the holder of the **pinned** peer static key, so the relay cannot
+forge agent→phone replies/events or phone→agent events. (3) Forward secrecy
+for the *ephemeral* leg only (``dh1`` against a fresh per-message ephemeral
+key): compromising one ephemeral does not expose other messages.
+
+**Non-goals (explicit).** (1) *No PFS for the static leg.* ``dh2`` is against
+a long-lived pinned static key; compromising a static private key exposes
+every message wrapped to it. (2) *No protection against recipient-key
+compromise (KCI).* If the recipient's static private key leaks, an attacker
+can forge messages that appear to come from any sender — this is an inherent,
+documented property of every 2-DH AuthEncap (HPKE ``AuthEncap`` has the same
+bound). It is NOT exploitable under the relay-only threat model and is the
+deliberate trade for a simple, stateless, cross-language-byte-exact scheme.
+**Do not "fix" this by bolting on a double ratchet / X3DH** — the bound is the
+design, not a bug; mitigate instead by storing the recipient static key in the
+OS keychain. (3) *Replay resistance is not from the crypto alone.* The AAD
+binds the per-message id, but dedup across messages relies on the caller's
+replay cache being recorded only AFTER a successful authenticated open (see
+the adapter's ``_record_event`` ordering); the cache, not this module, is the
+replay boundary.
+
+**Empty-salt rationale.** ``_HKDF_SALT`` is 32 zero bytes, matching Swift
+``salt: Data()`` (CryptoKit treats an empty salt as ``HashLen`` zero bytes per
+RFC 5869). This is a deliberate cross-language interop choice — the
+domain-separated ``info`` (which binds the namespace version and, for v2, all
+three public keys) supplies the separation an explicit salt would otherwise
+provide. It is not a weakness.
+
+**Trust anchor.** The v2 sender-auth property holds ONLY because the caller
+passes the **pinned** peer static key to :func:`unwrap_symmetric_key`
+(``sender_public_base64``) — never a wire-supplied ``senderPublicKey`` field.
+That pin is rooted at pairing time in the two-key safety code the human
+compares; if the pin is wrong, authentication authenticates the wrong party.
 """
 
 from __future__ import annotations
 
 import base64
+import binascii
 import os
 from dataclasses import dataclass
 
@@ -91,6 +132,17 @@ class InvalidSymmetricKeyError(RelayCryptoError):
     """The relay symmetric key is not exactly 32 bytes."""
 
 
+class CorruptIdentityError(RelayCryptoError):
+    """A stored relay private key is present but unparseable.
+
+    Raised instead of silently minting a fresh identity so a corrupt or
+    truncated ``BURNBAR_RELAY_PRIVATE_KEY`` cannot rotate the agent's identity
+    out from under previously-sealed inbound events (which would be
+    indistinguishable from a relay key-substitution attack). Re-pairing — or
+    explicitly clearing the env var — is required to recover.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Namespace (AAD prefixing — serves both Hermes and PiAgent)
 # ---------------------------------------------------------------------------
@@ -116,11 +168,60 @@ class RelayNamespace:
     def key_wrap_info_prefix(self) -> bytes:
         return f"{self.name}-KeyWrap-v1|".encode("utf-8")
 
+    @property
+    def key_wrap_info_prefix_v2(self) -> bytes:
+        """Domain-separated key-wrap prefix for the v2 authenticated 2-DH wrap.
+
+        The ``v2`` suffix is a hard domain separation from ``v1`` so a wrapping
+        key derived under the authenticated (sender-bound) scheme can never
+        collide with the anonymous v1 scheme even given identical ``aad``.
+        """
+        return f"{self.name}-KeyWrap-v2|".encode("utf-8")
+
     def aad(self, parts: list[str]) -> bytes:
+        # Delimiter safety (MP-13): the AAD is a flat "|"-joined string with no
+        # escaping, so a part containing a literal "|" — or a control char — could
+        # forge an equivalent part list (e.g. ["a|b", "c"] vs ["a", "b|c"]) and let
+        # a relay collide two distinct contexts onto the same AAD. Production parts
+        # are all token_hex / Firebase ids (no "|"), so this never fires in practice;
+        # it is a fail-closed guard for any future caller that forwards a less
+        # constrained string. A length-prefixed/CBOR canonical AAD is the v3 path.
+        for part in parts:
+            if "|" in part or any(ord(ch) < 0x20 for ch in part):
+                raise ValueError(
+                    "relay AAD part contains an illegal '|' delimiter or control character"
+                )
         return f"{self.aad_prefix}|{'|'.join(parts)}".encode("utf-8")
 
     def key_wrap_shared_info(self, aad: bytes) -> bytes:
         return self.key_wrap_info_prefix + aad
+
+    def key_wrap_shared_info_v2(
+        self,
+        aad: bytes,
+        enc_x963: bytes,
+        recipient_pub_x963: bytes,
+        sender_pub_x963: bytes,
+    ) -> bytes:
+        """HKDF ``info`` for the v2 authenticated key-wrap.
+
+        Mirrors the Swift source of truth exactly::
+
+            b"<ns>-KeyWrap-v2|" + aad + enc + recipientPubX963 + senderPubX963
+
+        where ``enc`` is the ephemeral public key (X9.63, 65B) and the recipient
+        and sender public keys are also the raw 65-byte X9.63 uncompressed form
+        (``0x04 ‖ X ‖ Y``), NOT DER/SPKI. Binding all three public keys into the
+        KDF info — together with the second ECDH leg against the *pinned* sender
+        key — is what makes a forged sender fail to derive the wrapping key.
+        """
+        return (
+            self.key_wrap_info_prefix_v2
+            + aad
+            + enc_x963
+            + recipient_pub_x963
+            + sender_pub_x963
+        )
 
 
 _HERMES = RelayNamespace(HERMES_NAMESPACE)
@@ -313,9 +414,16 @@ class AgentRelayIdentity:
         if raw_base64:
             try:
                 return cls(RelayPrivateKey.from_base64(raw_base64.strip()))
-            except (ValueError, RelayCryptoError):
-                # Corrupt stored key — fall through and mint a fresh one.
-                pass
+            except (ValueError, RelayCryptoError, binascii.Error) as exc:
+                # MP-14: a present-but-invalid stored key must FAIL CLOSED, not
+                # silently mint a new identity. Silent rotation makes every prior
+                # sealed inbound event undecryptable and is indistinguishable from
+                # a relay key-substitution attack, so the operator must re-pair
+                # (or explicitly clear the env var) to recover.
+                raise CorruptIdentityError(
+                    f"{env_var} is present but invalid — re-pair required; "
+                    "refusing to silently rotate the relay identity"
+                ) from exc
         private_key = generate_private_key()
         minted_base64 = private_key.raw_base64()
         # Keep the minted key visible to in-process reloads regardless of disk
@@ -369,7 +477,7 @@ def open_base64(ciphertext_base64: str, key_data: bytes, aad: bytes) -> bytes:
         raise InvalidSymmetricKeyError("symmetric key must be 32 bytes")
     try:
         raw = base64.b64decode(ciphertext_base64)
-    except (ValueError, base64.binascii.Error) as exc:  # type: ignore[attr-defined]
+    except (ValueError, binascii.Error) as exc:
         raise InvalidCiphertextError("ciphertext is not valid base64") from exc
     if len(raw) <= _NONCE_BYTE_COUNT:
         raise InvalidCiphertextError("ciphertext too short")
@@ -381,9 +489,12 @@ def open_base64(ciphertext_base64: str, key_data: bytes, aad: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-def _hkdf_wrapping_key(
-    shared_secret: bytes, aad: bytes, namespace: RelayNamespace
-) -> bytes:
+def _hkdf_derive(shared_secret: bytes, info: bytes) -> bytes:
+    """HKDF-SHA256 with the RFC-5869 empty salt to a 32-byte key.
+
+    Shared by both the v1 and v2 key-wrap paths so the salt / length / hash are
+    defined in exactly one place. Only the ``info`` differs between schemes.
+    """
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
@@ -391,8 +502,34 @@ def _hkdf_wrapping_key(
         algorithm=hashes.SHA256(),
         length=_SYMMETRIC_KEY_BYTE_COUNT,
         salt=_HKDF_SALT,
-        info=namespace.key_wrap_shared_info(aad),
+        info=info,
     ).derive(shared_secret)
+
+
+def _hkdf_wrapping_key(
+    shared_secret: bytes, aad: bytes, namespace: RelayNamespace
+) -> bytes:
+    """v1 wrapping key: ``info = "<ns>-KeyWrap-v1|" + aad`` (byte-unchanged)."""
+    return _hkdf_derive(shared_secret, namespace.key_wrap_shared_info(aad))
+
+
+def _public_key_x963_from_base64(public_key_base64: str) -> bytes:
+    """Parse a base64 X9.63 P-256 public key and return its raw 65-byte form.
+
+    Uses the SAME ``ec.EllipticCurvePublicKey.from_encoded_point`` parsing the
+    module already applies to the recipient key, so an invalid point raises
+    :class:`InvalidPublicKeyError` consistently, and re-serializes it to the
+    canonical uncompressed X9.63 bytes for use in the v2 HKDF ``info``.
+    """
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+    try:
+        raw = base64.b64decode(public_key_base64)
+        public_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw)
+    except (ValueError, binascii.Error) as exc:
+        raise InvalidPublicKeyError("public key is invalid") from exc
+    return public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
 
 
 def wrap_symmetric_key(
@@ -401,13 +538,31 @@ def wrap_symmetric_key(
     aad: bytes,
     *,
     namespace: RelayNamespace | str | None = None,
+    sender_private: "RelayPrivateKey | bytes | None" = None,
 ) -> str:
     """Wrap the 32-byte ``key_data`` to ``recipient_public_key_base64``.
 
-    Mirrors Swift ``wrapSymmetricKey``: fresh ephemeral P-256 keypair, ECDH to
-    the recipient, HKDF-SHA256 (empty salt, info = key-wrap prefix + ``aad``)
-    to a wrapping key, AES-256-GCM seal of ``key_data`` under it with ``aad``,
-    wire = ``base64(ephPubX963(65) ‖ nonce(12) ‖ ct(32) ‖ tag(16))`` = 125B.
+    **v1 (default, ``sender_private=None``)** mirrors Swift ``wrapSymmetricKey``:
+    fresh ephemeral P-256 keypair, ECDH to the recipient, HKDF-SHA256 (empty
+    salt, info = ``"<ns>-KeyWrap-v1|" + aad``) to a wrapping key, AES-256-GCM
+    seal of ``key_data`` under it with ``aad``. This path is byte-identical to
+    the prior behaviour.
+
+    **v2 (``sender_private`` supplied)** is the HPKE-AuthEncap-shaped
+    authenticated 2-DH key-wrap (the sender-bound forgery defense). It mirrors
+    the Swift v2 source of truth exactly::
+
+        eph = fresh P-256
+        dh1 = ECDH(eph_priv,    recipientPub)      # 32B raw X
+        dh2 = ECDH(senderPriv,  recipientPub)      # 32B raw X
+        ikm = dh1 ‖ dh2                            # 64B CONCAT (dh1 first, never XOR)
+        info = "<ns>-KeyWrap-v2|" + aad + enc + recipientPubX963 + senderPubX963
+        wrappingKey = HKDF-SHA256(ikm, empty-salt, info, 32)
+        sealed      = AES-256-GCM(wrappingKey, random12, key_data, aad)
+
+    In BOTH versions the wire is the SAME layout
+    ``base64(enc(65) ‖ nonce(12) ‖ ct(32) ‖ tag(16))`` = 125B, ``[0] == 0x04``,
+    where ``enc`` is the ephemeral public key (X9.63 uncompressed).
 
     ``aad`` MUST be the ``key_aad`` for the request.
     """
@@ -423,17 +578,39 @@ def wrap_symmetric_key(
         recipient = ec.EllipticCurvePublicKey.from_encoded_point(
             ec.SECP256R1(), recipient_bytes
         )
-    except (ValueError, base64.binascii.Error) as exc:  # type: ignore[attr-defined]
+    except (ValueError, binascii.Error) as exc:
         raise InvalidPublicKeyError("recipient public key is invalid") from exc
 
     ephemeral = ec.generate_private_key(ec.SECP256R1())
-    shared_secret = ephemeral.exchange(ec.ECDH(), recipient)
-    wrapping_key = _hkdf_wrapping_key(shared_secret, aad, ns)
-    nonce = os.urandom(_NONCE_BYTE_COUNT)
-    sealed = AESGCM(wrapping_key).encrypt(nonce, key_data, aad)
     eph_x963 = ephemeral.public_key().public_bytes(
         Encoding.X962, PublicFormat.UncompressedPoint
     )
+
+    if sender_private is None:
+        # v1 anonymous path — byte-unchanged.
+        shared_secret = ephemeral.exchange(ec.ECDH(), recipient)
+        wrapping_key = _hkdf_wrapping_key(shared_secret, aad, ns)
+    else:
+        # v2 authenticated 2-DH path.
+        sender = (
+            sender_private
+            if isinstance(sender_private, RelayPrivateKey)
+            else RelayPrivateKey.from_raw(sender_private)
+        )
+        recipient_pub_x963 = recipient.public_bytes(
+            Encoding.X962, PublicFormat.UncompressedPoint
+        )
+        sender_pub_x963 = sender.public_key_x963()
+        dh1 = ephemeral.exchange(ec.ECDH(), recipient)
+        dh2 = sender._private_key().exchange(ec.ECDH(), recipient)
+        ikm = dh1 + dh2  # CONCAT, dh1 first — never XOR.
+        info = ns.key_wrap_shared_info_v2(
+            aad, eph_x963, recipient_pub_x963, sender_pub_x963
+        )
+        wrapping_key = _hkdf_derive(ikm, info)
+
+    nonce = os.urandom(_NONCE_BYTE_COUNT)
+    sealed = AESGCM(wrapping_key).encrypt(nonce, key_data, aad)
     return base64.b64encode(eph_x963 + nonce + sealed).decode("ascii")
 
 
@@ -443,16 +620,37 @@ def unwrap_symmetric_key(
     aad: bytes,
     *,
     namespace: RelayNamespace | str | None = None,
+    sender_public_base64: str | None = None,
 ) -> bytes:
     """Unwrap a ``wrap_symmetric_key`` envelope. Mirrors Swift ``unwrapSymmetricKey``.
 
     ``private_key`` may be a :class:`RelayPrivateKey` or the raw 32-byte
-    big-endian scalar bytes. Splits ``prefix(65)`` = ephemeral pub,
-    ``suffix(65:)`` = ``nonce(12) ‖ ct ‖ tag(16)``; ECDH -> identical HKDF ->
-    AES-256-GCM open. Raises ``InvalidTag`` on wrong ``aad`` / wrong key.
+    big-endian scalar bytes. Splits ``prefix(65)`` = ephemeral pub (``enc``),
+    ``suffix(65:)`` = ``nonce(12) ‖ ct ‖ tag(16)``.
+
+    **v1 (default, ``sender_public_base64=None``)** does a single ECDH against
+    the embedded ephemeral key, then the v1 HKDF — byte-unchanged.
+
+    **v2 (``sender_public_base64`` supplied)** is the authenticated 2-DH unwrap.
+    It binds the **PINNED** sender public key (passed by the caller, NEVER a
+    wire-supplied field) as the forgery defense::
+
+        dh1 = ECDH(recipientPriv, enc)             # against the wire ephemeral
+        dh2 = ECDH(recipientPriv, senderPubPinned) # against the pinned sender key
+        ikm = dh1 ‖ dh2                            # CONCAT, dh1 first
+        info = "<ns>-KeyWrap-v2|" + aad + enc + recipientOwnPubX963 + senderPubPinnedX963
+        wrappingKey = HKDF-SHA256(ikm, empty-salt, info, 32)
+
+    A wrong/forged sender key changes both ``dh2`` and the ``info``, so the
+    derived wrapping key is wrong and AES-256-GCM ``open`` raises
+    :class:`cryptography.exceptions.InvalidTag`.
+
+    Raises ``InvalidTag`` on wrong ``aad`` / wrong recipient key / wrong sender
+    key.
     """
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
     ns = _resolve_namespace(namespace)
     if isinstance(private_key, RelayPrivateKey):
@@ -462,7 +660,7 @@ def unwrap_symmetric_key(
 
     try:
         envelope = base64.b64decode(wrapped_key_base64)
-    except (ValueError, base64.binascii.Error) as exc:  # type: ignore[attr-defined]
+    except (ValueError, binascii.Error) as exc:
         raise InvalidCiphertextError("wrapped key is not valid base64") from exc
     if len(envelope) <= _X963_PUBLIC_KEY_BYTE_COUNT:
         raise InvalidCiphertextError("wrapped key too short")
@@ -478,6 +676,25 @@ def unwrap_symmetric_key(
     except ValueError as exc:
         raise InvalidPublicKeyError("ephemeral public key is invalid") from exc
 
-    shared_secret = relay_private._private_key().exchange(ec.ECDH(), ephemeral_public)
-    wrapping_key = _hkdf_wrapping_key(shared_secret, aad, ns)
+    if sender_public_base64 is None:
+        # v1 anonymous path — byte-unchanged.
+        shared_secret = relay_private._private_key().exchange(
+            ec.ECDH(), ephemeral_public
+        )
+        wrapping_key = _hkdf_wrapping_key(shared_secret, aad, ns)
+    else:
+        # v2 authenticated 2-DH path — bind the PINNED sender key.
+        sender_pub_x963 = _public_key_x963_from_base64(sender_public_base64)
+        sender_public = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256R1(), sender_pub_x963
+        )
+        recipient_own_pub_x963 = relay_private.public_key_x963()
+        dh1 = relay_private._private_key().exchange(ec.ECDH(), ephemeral_public)
+        dh2 = relay_private._private_key().exchange(ec.ECDH(), sender_public)
+        ikm = dh1 + dh2  # CONCAT, dh1 first — never XOR.
+        info = ns.key_wrap_shared_info_v2(
+            aad, eph_pub_bytes, recipient_own_pub_x963, sender_pub_x963
+        )
+        wrapping_key = _hkdf_derive(ikm, info)
+
     return AESGCM(wrapping_key).decrypt(body[:_NONCE_BYTE_COUNT], body[_NONCE_BYTE_COUNT:], aad)

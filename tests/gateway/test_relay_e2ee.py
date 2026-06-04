@@ -311,11 +311,11 @@ def test_agent_relay_identity_creates_and_persists_when_missing():
     assert reloaded.private_key == identity.private_key
 
 
-def test_agent_relay_identity_mints_fresh_on_corrupt_env():
-    identity = relay_e2ee.AgentRelayIdentity.load_or_create(
-        environ={relay_e2ee.RELAY_PRIVATE_KEY_ENV: "not-base64-!!"}
-    )
-    assert isinstance(identity.private_key, relay_e2ee.RelayPrivateKey)
+def test_agent_relay_identity_fails_closed_on_corrupt_env():
+    with pytest.raises(relay_e2ee.CorruptIdentityError):
+        relay_e2ee.AgentRelayIdentity.load_or_create(
+            environ={relay_e2ee.RELAY_PRIVATE_KEY_ENV: "not-base64-!!"}
+        )
 
 
 def test_minted_key_is_written_back_into_environ_for_stable_reload():
@@ -382,9 +382,9 @@ def _gw_message_key_aad(node: dict) -> bytes:
 
 
 def test_gateway_fixture_revision_is_the_contract_key(gateway_vector):
-    assert gateway_vector["revision"] == "v1"
+    assert gateway_vector["revision"] == "v2"
     assert gateway_vector["algorithm"] == relay_e2ee.ALGORITHM
-    assert gateway_vector["keyVersion"] == relay_e2ee.KEY_VERSION
+    assert gateway_vector["keyVersion"] == 2
 
 
 def test_gateway_aad_helpers_match_fixture_byte_strings(gateway_vector):
@@ -427,7 +427,10 @@ def test_gateway_event_sealed_by_swift_opens_in_python(gateway_vector):
     assert agent_private.public_key_base64() == event["recipientPublicKey"]
 
     sym = relay_e2ee.unwrap_symmetric_key(
-        event["wrappedKey"], agent_private, _gw_event_key_aad(event)
+        event["wrappedKey"],
+        agent_private,
+        _gw_event_key_aad(event),
+        sender_public_base64=event["senderPublicKey"],
     )
     assert sym == base64.b64decode(event["symmetricKey"])
 
@@ -447,7 +450,10 @@ def test_gateway_message_sealed_by_swift_opens_in_python(gateway_vector):
     assert phone_private.public_key_base64() == message["recipientPublicKey"]
 
     sym = relay_e2ee.unwrap_symmetric_key(
-        message["wrappedKey"], phone_private, _gw_message_key_aad(message)
+        message["wrappedKey"],
+        phone_private,
+        _gw_message_key_aad(message),
+        sender_public_base64=message["senderPublicKey"],
     )
     assert sym == base64.b64decode(message["symmetricKey"])
 
@@ -469,7 +475,10 @@ def test_gateway_model_switch_sealed_by_swift_opens_under_event_aads(gateway_vec
     agent_private = relay_e2ee.RelayPrivateKey.from_base64(model_switch["recipientPrivateKey"])
 
     sym = relay_e2ee.unwrap_symmetric_key(
-        model_switch["wrappedKey"], agent_private, _gw_event_key_aad(model_switch)
+        model_switch["wrappedKey"],
+        agent_private,
+        _gw_event_key_aad(model_switch),
+        sender_public_base64=model_switch["senderPublicKey"],
     )
     plaintext = relay_e2ee.open_base64(
         model_switch["payloadCiphertext"], sym, _gw_event_payload_aad(model_switch)
