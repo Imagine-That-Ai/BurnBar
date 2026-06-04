@@ -20,7 +20,10 @@ final class OpenBurnBarErrorIntegrationTests: XCTestCase {
             accountManager: FakeAccountManager.makeSignedIn(),
             settingsManager: settings,
             firestoreGateway: CloudSyncFirestoreFakeGateway(),
-            sessionLogEncryptedCloudClient: FakeSessionLogEncryptedCloudClient()
+            conversationVaultKeyProvider: TestConversationVaultKeyProvider(),
+            sessionLogEncryptedCloudClient: FakeSessionLogEncryptedCloudClient(),
+            sessionLogVaultKeyStore: StaticSessionLogVaultKeyStore(),
+            sessionLogVaultKeyPublisher: NoopSessionLogVaultKeyPublisher()
         )
 
         await coordinator.syncUsage()

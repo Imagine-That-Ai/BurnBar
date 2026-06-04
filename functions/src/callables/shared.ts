@@ -335,7 +335,59 @@ export function requireSearchHashes(raw: unknown, fieldName: string, required: b
   return unique;
 }
 
-export function requireSealedText(raw: unknown, fieldName: string): Record<string, unknown> {
+const CLOUD_VAULT_AAD_CONTEXT_PREFIX = "OpenBurnBar-CloudVault-aad-v2";
+
+function validateCloudVaultAADPart(value: string, fieldName: string): string {
+  const part = boundedTrimmedString(value, fieldName, 512, true);
+  if (!part || /[\u0000-\u001f\u007f|]/u.test(part)) {
+    throw new HttpsError("invalid-argument", `${fieldName} contains an invalid CloudVault AAD component.`);
+  }
+  return part;
+}
+
+export function cloudVaultAADContext(
+  uid: string,
+  collection: string,
+  docID: string,
+  field: string,
+  schemaVersion = 2,
+  purpose = field,
+): string {
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 2) {
+    throw new HttpsError("invalid-argument", "CloudVault AAD schema version must be at least 2.");
+  }
+  return [
+    CLOUD_VAULT_AAD_CONTEXT_PREFIX,
+    validateCloudVaultAADPart(uid, "uid"),
+    validateCloudVaultAADPart(collection, "collection"),
+    validateCloudVaultAADPart(docID, "docID"),
+    validateCloudVaultAADPart(field, "field"),
+    String(schemaVersion),
+    validateCloudVaultAADPart(purpose, "purpose"),
+  ].join("|");
+}
+
+function requireCloudVaultAAD(raw: unknown, fieldName: string, expectedAAD?: string): string {
+  const aad = boundedTrimmedString(raw, fieldName, 2048, true);
+  if (expectedAAD) {
+    if (aad !== expectedAAD) {
+      throw new HttpsError("invalid-argument", `${fieldName} does not match the CloudVault document context.`);
+    }
+    return aad;
+  }
+  if (!aad.startsWith(`${CLOUD_VAULT_AAD_CONTEXT_PREFIX}|`)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must use the CloudVault aad-v2 context.`);
+  }
+  if (!/^OpenBurnBar-CloudVault-aad-v2\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[2-9][0-9]*\|[^|]+$/u.test(aad)) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName} must bind uid, collection, document, field, schema version, and purpose.`,
+    );
+  }
+  return aad;
+}
+
+export function requireSealedText(raw: unknown, fieldName: string, expectedAAD?: string): Record<string, unknown> {
   if (!isRecord(raw)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be an encrypted text envelope.`);
   }
@@ -344,14 +396,30 @@ export function requireSealedText(raw: unknown, fieldName: string): Record<strin
   if (algorithm !== "AES-256-GCM") {
     throw new HttpsError("invalid-argument", `${fieldName}.algorithm must be AES-256-GCM.`);
   }
-  requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
+  const keyVersion = requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
+  const schemaVersion =
+    envelope.schemaVersion == null
+      ? undefined
+      : requireBoundedNumber(envelope.schemaVersion, `${fieldName}.schemaVersion`, 1, 10);
+  const version = schemaVersion ?? 1;
+  const values: Record<string, unknown> = {
+    schemaVersion,
+    algorithm,
+    keyVersion,
+  };
   for (const key of ["nonce", "ciphertext", "tag"]) {
     const value = boundedTrimmedString(envelope[key], `${fieldName}.${key}`, 8192, true);
     if (!/^[A-Za-z0-9+/=]+$/u.test(value)) {
       throw new HttpsError("invalid-argument", `${fieldName}.${key} must be base64.`);
     }
+    values[key] = value;
   }
-  return envelope;
+  if (version >= 2) {
+    values.aad = requireCloudVaultAAD(envelope.aad, `${fieldName}.aad`, expectedAAD);
+  } else if (envelope.aad != null) {
+    throw new HttpsError("invalid-argument", `${fieldName}.aad is only valid on schemaVersion >= 2.`);
+  }
+  return stripUndefinedObject(values);
 }
 
 export function requireISODateString(raw: unknown, fieldName: string): string {
@@ -390,7 +458,11 @@ export function parseProjectMemoryFreshness(raw: unknown): ProjectMemoryFreshnes
   return "fresh";
 }
 
-export function requireCloudVaultBlobEnvelope(raw: unknown, fieldName: string): CloudVaultBlobEnvelopeDoc {
+export function requireCloudVaultBlobEnvelope(
+  raw: unknown,
+  fieldName: string,
+  expectedAAD?: string,
+): CloudVaultBlobEnvelopeDoc {
   if (!isRecord(raw)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be an encrypted blob envelope.`);
   }
@@ -401,7 +473,15 @@ export function requireCloudVaultBlobEnvelope(raw: unknown, fieldName: string): 
   }
   const keyVersion = requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
   const schemaVersion = requireBoundedNumber(envelope.schemaVersion ?? 1, `${fieldName}.schemaVersion`, 1, 10);
-  const plaintextSHA256 = requireHexDigest(envelope.plaintextSHA256, `${fieldName}.plaintextSHA256`);
+  const plaintextSHA256 =
+    schemaVersion === 1 ? requireHexDigest(envelope.plaintextSHA256, `${fieldName}.plaintextSHA256`) : undefined;
+  const plaintextHMAC =
+    schemaVersion >= 2 ? requireHexDigest(envelope.plaintextHMAC, `${fieldName}.plaintextHMAC`) : undefined;
+  const integrityHashVersion =
+    schemaVersion >= 2
+      ? requireBoundedNumber(envelope.integrityHashVersion, `${fieldName}.integrityHashVersion`, 1, 100)
+      : undefined;
+  const aad = schemaVersion >= 2 ? requireCloudVaultAAD(envelope.aad, `${fieldName}.aad`, expectedAAD) : undefined;
   const sealedBoxBase64 = boundedTrimmedString(
     envelope.sealedBoxBase64,
     `${fieldName}.sealedBoxBase64`,
@@ -417,8 +497,11 @@ export function requireCloudVaultBlobEnvelope(raw: unknown, fieldName: string): 
     algorithm,
     keyVersion,
     plaintextSHA256,
+    plaintextHMAC,
+    integrityHashVersion,
     sealedBoxBase64,
     createdAt,
+    aad,
   };
 }
 

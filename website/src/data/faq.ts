@@ -166,7 +166,7 @@ export const FAQ: FAQItem[] = [
     category: "billing",
     question: "What is BurnBar Cloud Ultra?",
     answer:
-      "BurnBar Cloud Ultra is the top paid tier. It includes everything in BurnBar Cloud Pro — Floo, Agent Control, and the same hosted action and relay allowance — plus 10× private agent memory.\n\nAgent memory is the repo docs, notes, and chat-derived memories your agents recall while they work. Cloud Pro gives your agents 3 knowledge sources, 5,000 memory chunks, and 25 MB. Cloud Ultra raises that to 15 sources, 50,000 chunks, and 250 MB. The text is sealed on your device and the vectors are cloaked, so the server runs nearest-neighbor search without reading your content.\n\nIt costs $59.99/month or $599/year. Monthly and annual plans are available on web, App Store, and Google Play. Cloud Ultra unlocks the higher memory limits after server-side purchase verification."
+      "BurnBar Cloud Ultra is the top paid tier. It includes everything in BurnBar Cloud Pro — Floo, Agent Control, and the same hosted action and relay allowance — plus 10× private agent memory.\n\nAgent memory is the repo docs, notes, and chat-derived memories your agents recall while they work. Cloud Pro gives your agents 10 knowledge sources, 50,000 memory chunks, and 1 GB. Cloud Ultra raises that to 100 sources, 500,000 chunks, and 10 GB. The text is sealed on your device and the vectors are cloaked, so the server runs nearest-neighbor search without reading your content.\n\nIt costs $59.99/month or $599/year. Monthly and annual plans are available on web, App Store, and Google Play. Cloud Ultra unlocks the higher memory limits after server-side purchase verification."
   },
   {
     id: "grandfathered-hosted-quota",

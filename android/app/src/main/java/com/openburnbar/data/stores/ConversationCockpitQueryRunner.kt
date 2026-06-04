@@ -1,9 +1,11 @@
 package com.openburnbar.data.stores
 
 import com.google.firebase.FirebaseException
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.BuildConfig
 import com.openburnbar.data.cloud.CloudConversationSearchService
+import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.firebase.ConversationFacetRow
 import com.openburnbar.data.firebase.ConversationQueryResponse
@@ -105,16 +107,45 @@ internal class ConversationCockpitQueryRunner(
         val bodyHash =
             row.bodyHash?.takeIf { it.isNotBlank() }
                 ?: error("This conversation has no encrypted body on file.")
-        return searchService.loadBodyAt(storagePath, bodyHash)
+        return searchService.loadBodyAt(storagePath, bodyHash, row.bodyHashVersion)
     }
 
     private fun decodeRow(store: ConversationCockpitStore, row: ConversationFacetRow): CockpitConversationRow {
         var title: String? = null
         var preview: String? = null
         val key = store.vaultKey
-        if (key != null) {
-            row.sealedTitle?.let { sealed -> title = runCatching { CloudVaultCrypto.openText(sealed, key) }.getOrNull() }
-            row.sealedBodyPreview?.let { sealed -> preview = runCatching { CloudVaultCrypto.openText(sealed, key) }.getOrNull() }
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (key != null && uid != null) {
+            row.sealedTitle?.let { sealed ->
+                title =
+                    runCatching {
+                        CloudVaultCrypto.openText(
+                            sealed,
+                            key,
+                            CloudVaultAADContext(
+                                uid = uid,
+                                collection = "session_logs",
+                                docID = row.id,
+                                field = "sealedTitle",
+                            ),
+                        )
+                    }.getOrNull()
+            }
+            row.sealedBodyPreview?.let { sealed ->
+                preview =
+                    runCatching {
+                        CloudVaultCrypto.openText(
+                            sealed,
+                            key,
+                            CloudVaultAADContext(
+                                uid = uid,
+                                collection = "session_logs",
+                                docID = row.id,
+                                field = "sealedBodyPreview",
+                            ),
+                        )
+                    }.getOrNull()
+            }
         }
         return CockpitConversationRow(
             id = row.id,
@@ -136,6 +167,7 @@ internal class ConversationCockpitQueryRunner(
             preview = preview,
             storagePath = row.storagePath,
             bodyHash = row.bodyHash,
+            bodyHashVersion = row.bodyHashVersion ?: 0,
         )
     }
 

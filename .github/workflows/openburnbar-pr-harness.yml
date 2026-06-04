@@ -451,6 +451,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       hermes_iroh: ${{ steps.filter.outputs.hermes_iroh }}
+      hermes_gateway_e2ee: ${{ steps.filter.outputs.hermes_gateway_e2ee }}
       computer_use: ${{ steps.filter.outputs.computer_use }}
       mercury_media: ${{ steps.filter.outputs.mercury_media }}
     steps:
@@ -474,6 +475,11 @@ jobs:
           else
             echo "hermes_iroh=false" >> "$GITHUB_OUTPUT"
           fi
+          if match '^docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN\.md$|^functions/src/hermesGateway\.ts$|^functions/src/callables/(hermesGateway|dataExport|privacyBackfill)\.ts$|^functions/src/types/generated/hermes-gateway\.ts$|^functions/src/__tests__/hermesGateway.*\.test\.ts$|^functions/src/__tests__/(dataExport|privacyBackfill)\.test\.ts$|^functions/scripts/test-hermes-gateway\.mjs$|^functions/scripts/test-firestore-rules\.mjs$|^firestore\.rules$|^scripts/privacy/scan-chat-cloud-plaintext\.mjs$|^scripts/ci/verify-hermes-gateway-e2ee-remediation\.sh$|^tools/hermes-platform-burnbar/|^tools/schema-sync/|^OpenBurnBarCore/.*Hermes(Relay|Ratchet)|^OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels\.swift$|^OpenBurnBarCore/Tests/OpenBurnBarCoreTests/(BurnBarHpkeV3|HermesRelayHPKEv3)|^OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/BurnBarHpkeV3Vector\.json$|^OpenBurnBarMobile/Services/(FunctionsRepository|HermesService|HermesGatewayRelayKeypair|.*HermesGateway).*\.swift$|^OpenBurnBarMobileTests/.*Hermes.*\.swift$|^OpenBurnBarMobileTests/OpenBurnBarMobileTests\.swift$|^android/app/src/main/java/com/openburnbar/data/firebase/FunctionsRepository\.kt$|^android/app/src/test/java/com/openburnbar/data/firebase/FunctionsRepositoryHermesGatewayTest\.kt$|^android/app/src/main/java/com/openburnbar/data/models/generated/HermesGatewayModels\.kt$|^android/app/src/main/java/com/openburnbar/data/hermes/|^android/app/src/test/java/com/openburnbar/data/hermes/|^android/app/src/test/resources/hermes-relay/'; then
+            echo "hermes_gateway_e2ee=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hermes_gateway_e2ee=false" >> "$GITHUB_OUTPUT"
+          fi
           if match '^OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/|^OpenBurnBarDaemon/.*ComputerUse|^OpenBurnBarDaemon/Resources/PlaywrightBridge/|^scripts/test-computer-use|^scripts/install-playwright'; then
             echo "computer_use=true" >> "$GITHUB_OUTPUT"
           else
@@ -484,6 +490,49 @@ jobs:
           else
             echo "mercury_media=false" >> "$GITHUB_OUTPUT"
           fi
+
+  hermes-gateway-e2ee-proof:
+    needs: [path-filter]
+    if: needs.path-filter.outputs.hermes_gateway_e2ee == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: Ajnunezg/hermes-agent
+          ref: ajnunezg/burnbar-gateway-e2ee
+          path: .ci/hermes-agent
+
+      - name: Install Functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Install Hermes gateway test dependencies
+        run: |
+          set -euo pipefail
+          python3 -m venv .ci/hermes-agent/.venv
+          .ci/hermes-agent/.venv/bin/python -m pip install --upgrade pip
+          .ci/hermes-agent/.venv/bin/python -m pip install -e '.ci/hermes-agent[dev,gateway-e2ee]'
+
+      - name: Hermes Gateway E2EE remediation proof
+        env:
+          HERMES_AGENT_CHECKOUT: ${{ github.workspace }}/.ci/hermes-agent
+          HERMES_PYTHON: ${{ github.workspace }}/.ci/hermes-agent/.venv/bin/python
+          HERMES_GATEWAY_OVERLAY_ADAPTER: "1"
+          HERMES_GATEWAY_EXTERNAL_PYTEST_REQUIRED: "1"
+        run: bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
 
   hermes-iroh-e2e:
     needs: [openburnbar-pr, path-filter]

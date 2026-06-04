@@ -4,8 +4,8 @@
  * (trust-on-first-use). After that it is IMMUTABLE: a /runtime request carrying a
  * bearer token must NOT be able to overwrite the pinned agentRelayPublicKey —
  * otherwise the server (or any token holder) could substitute its own key and
- * MITM the sealed channel. Signed key rotation is a deferred follow-up; until then
- * the server is PIN-ONLY.
+ * MITM the sealed channel. Replacing the pinned key requires explicit re-pairing;
+ * the server remains PIN-ONLY.
  *
  * This drives the real burnBarHermesGateway onRequest handler against an in-memory
  * Firestore double, with only the Pro/entitlement predicates stubbed true.
@@ -34,9 +34,20 @@ vi.mock("../callables/shared.js", async () => {
 
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { delete: () => ({ __delete: true }) },
-  Timestamp: {
-    now: () => ({ __ts: true, toMillis: () => Date.now() }),
-    fromMillis: (ms: number) => ({ __ts: true, toMillis: () => ms }),
+  Timestamp: class FakeTimestamp {
+    private readonly ms: number;
+    constructor(ms: number) {
+      this.ms = ms;
+    }
+    static now(): FakeTimestamp {
+      return new FakeTimestamp(Date.now());
+    }
+    static fromMillis(ms: number): FakeTimestamp {
+      return new FakeTimestamp(ms);
+    }
+    toMillis(): number {
+      return this.ms;
+    }
   },
 }));
 vi.mock("firebase-admin/storage", () => ({ getStorage: () => ({ bucket: () => ({ file: () => ({}) }) }) }));
@@ -120,21 +131,37 @@ function fakeRes(): FakeRes {
   return new FakeRes();
 }
 
-function runtimeRequest(body: Record<string, unknown>) {
+function postRequest(path: string, body: Record<string, unknown>, headers: Record<string, string> = {}) {
   return {
     method: "POST",
-    path: "/runtime",
-    url: "/runtime",
+    path,
+    url: path,
     body,
     query: {},
-    headers: { authorization: `Bearer ${TOKEN}` },
+    headers,
     get(name: string) {
-      return name.toLowerCase() === "authorization" ? `Bearer ${TOKEN}` : undefined;
+      return headers[name.toLowerCase()];
     },
   };
 }
 
-async function runHttpHandler(handler: unknown, req: ReturnType<typeof runtimeRequest>, res: FakeRes): Promise<void> {
+function runtimeRequest(body: Record<string, unknown>) {
+  return postRequest("/runtime", body, { authorization: `Bearer ${TOKEN}` });
+}
+
+function devicePollRequest(body: Record<string, unknown>) {
+  return postRequest("/device/poll", body);
+}
+
+function record(value: unknown, label = "value"): Record<string, unknown> {
+  expect(value, `${label} must be an object`).toEqual(expect.any(Object));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return Object.fromEntries(Object.entries(value));
+}
+
+async function runHttpHandler(handler: unknown, req: ReturnType<typeof postRequest>, res: FakeRes): Promise<void> {
   const run = Reflect.get(Object(handler), "run");
   const callable = typeof run === "function" ? run : handler;
   if (typeof callable !== "function") {
@@ -229,5 +256,67 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     expect(res._status).toBe(200);
     const client = storedClient();
     expect(client.agentRelayPublicKey).toBe(PINNED_AGENT_KEY);
+  });
+
+  it("returns pairing-rooted uid/clientId and phone E2EE material from approved device polls", async () => {
+    const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+    const { Timestamp } = await import("firebase-admin/firestore");
+    const { hashHermesGatewayBearerToken, hashHermesGatewayDeviceSecret } = await import("../hermesGateway.js");
+    const accessToken = `obb_hgw_${"B".repeat(20)}`;
+    const tokenHash = hashHermesGatewayBearerToken(accessToken);
+    const deviceCode = "hgd_poll_identity";
+    const deviceSecret = "poll-secret";
+    const phoneRatchetIdentityPublicKey = Buffer.alloc(32, 13).toString("base64");
+    const phoneRatchetSigningPublicKey = Buffer.alloc(65, 14).toString("base64");
+    const phoneRatchetSignedPreKeyPublicKey = Buffer.alloc(65, 15).toString("base64");
+    const phoneRatchetSignedPreKeySignature = Buffer.alloc(64, 16).toString("base64");
+
+    await seedPairedClient(tokenHash, PINNED_AGENT_KEY);
+    stored.set(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}`, {
+      ...storedClient(),
+      phoneRelayPublicKey: PHONE_KEY,
+      phoneRelayKeyVersion: 1,
+      phoneRelayEncryption: "p256-hkdf-sha256-aesgcm",
+      phoneSupportsRelayEnvelopeVersions: [2, 3],
+      phonePreferredRelayEnvelopeVersion: 3,
+      phoneSupportsHpkeV3: true,
+      phoneRatchetIdentityPublicKey,
+      phoneRatchetSigningPublicKey,
+      phoneRatchetSignedPreKeyPublicKey,
+      phoneRatchetSignedPreKeyId: "phone-spk-1",
+      phoneRatchetSignedPreKeySignature,
+      phoneSupportsRatchetV1: true,
+      supportsRatchetV1: true,
+    });
+    stored.set(`hermes_gateway_device_sessions/${deviceCode}`, {
+      deviceCode,
+      deviceSecretHash: hashHermesGatewayDeviceSecret(deviceSecret),
+      status: "approved",
+      uid: UID,
+      clientId: CLIENT_ID,
+      accessToken,
+      scopes: ["hermes.gateway.read", "hermes.gateway.write"],
+      homeDestinationId: "burnbar:home",
+      expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
+    });
+
+    const res = fakeRes();
+    await dispatchHermesGatewayRequest(devicePollRequest({ deviceCode, deviceSecret }), res);
+
+    expect(res._status).toBe(200);
+    const body = record(res._body, "device poll response body");
+    expect(body.status).toBe("approved");
+    expect(body.uid).toBe(UID);
+    expect(body.userId).toBe(UID);
+    expect(body.clientId).toBe(CLIENT_ID);
+    expect(body.phoneRelayPublicKey).toBe(PHONE_KEY);
+    expect(body.phoneSupportsRelayEnvelopeVersions).toEqual([2, 3]);
+    expect(body.phoneRatchetIdentityPublicKey).toBe(phoneRatchetIdentityPublicKey);
+    expect(body.phoneRatchetSignedPreKeyId).toBe("phone-spk-1");
+    expect(body.supportsRatchetV1).toBe(true);
+    const client = record(body.client, "device poll client");
+    expect(client.id).toBe(CLIENT_ID);
+    expect(client.uid).toBeUndefined();
+    expect(stored.has(`hermes_gateway_device_sessions/${deviceCode}`)).toBe(false);
   });
 });

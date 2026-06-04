@@ -323,8 +323,10 @@ service cloud.firestore {
         "byteCount",
         "encryptedByteCount",
         "bodyHash",
+        "bodyHashVersion",
         "chunkSize",
         "chunkHashes",
+        "chunkHashVersion",
         "chunkMetadataVersion",
         "cloudSearchIndexVersion",
         "cloudSearchIndexedAt",
@@ -349,7 +351,48 @@ service cloud.firestore {
 
     function ownerWritableSessionLogManifest(userId) {
       return ownerWritableHostedCloudBackup(userId)
-        && validSessionLogManifestKeys()
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "deviceId",
+          "provider",
+          "sessionId",
+          "sourceType",
+          "inferredTaskTitle",
+          "bodyStorage",
+          "storagePath",
+          "sealedTitle",
+          "sealedBodyPreview",
+          "encryption",
+          "vaultKeyID",
+          "chunkCount",
+          "searchChunkCount",
+          "byteCount",
+          "encryptedByteCount",
+          "bodyHash",
+          "bodyHashVersion",
+          "chunkSize",
+          "chunkHashes",
+          "chunkHashVersion",
+          "chunkMetadataVersion",
+          "cloudSearchIndexVersion",
+          "cloudSearchIndexedAt",
+          "updatedAt",
+          "startTime",
+          "endTime",
+          "facetSchemaVersion",
+          "model",
+          "messageCount",
+          "userWordCount",
+          "assistantWordCount",
+          "inputTokens",
+          "outputTokens",
+          "cacheCreationTokens",
+          "cacheReadTokens",
+          "totalTokens",
+          "costUSD",
+          "toolTags",
+          "durationSeconds"
+        ])
         && !("body" in request.resource.data)
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)
@@ -398,6 +441,15 @@ service cloud.firestore {
         && value.matches("^[a-f0-9]{32,128}$");
     }
 
+    function cloudVaultAADContext(userId, collection, docID, field) {
+      return "OpenBurnBar-CloudVault-aad-v2|" + userId + "|" + collection + "|" + docID + "|" + field + "|2|" + field;
+    }
+
+    function validCloudVaultAAD(value) {
+      return value is string
+        && value.matches("^OpenBurnBar-CloudVault-aad-v2\\|[^|]+\\|[^|]+\\|[^|]+\\|[^|]+\\|[2-9][0-9]*\\|[^|]+$");
+    }
+
     function validCloudSealedText(value) {
       return value is map
         && value.keys().hasAll([
@@ -408,12 +460,15 @@ service cloud.firestore {
           "tag"
         ])
         && value.keys().hasOnly([
+          "schemaVersion",
           "algorithm",
           "keyVersion",
           "nonce",
           "ciphertext",
-          "tag"
+          "tag",
+          "aad"
         ])
+        && (!("schemaVersion" in value) || (value.schemaVersion is int && value.schemaVersion >= 1 && value.schemaVersion <= 10))
         && value.algorithm == "AES-256-GCM"
         && value.keyVersion is int
         && value.keyVersion >= 1
@@ -426,26 +481,55 @@ service cloud.firestore {
         && value.ciphertext.matches("^[A-Za-z0-9+/=]+$")
         && value.tag is string
         && value.tag.size() <= 128
-        && value.tag.matches("^[A-Za-z0-9+/=]+$");
+        && value.tag.matches("^[A-Za-z0-9+/=]+$")
+        && (
+          (!("schemaVersion" in value) && !("aad" in value))
+          || (value.schemaVersion == 1 && !("aad" in value))
+          || (value.schemaVersion >= 2 && validCloudVaultAAD(value.aad))
+        );
     }
 
     // CloudVaultBlobEnvelopeDoc (sealed binary blob, larger than sealed text).
     // Used by project_memory_snapshots.sealedSnapshot. Mirrors the Swift/TS
     // CloudVaultCrypto blob envelope shape — never invent a new one.
-    function validCloudSealedBlob(value) {
+    function validCloudSealedBlob(value, expectedAAD) {
       return value is map
         && value.keys().hasOnly([
           "schemaVersion",
           "algorithm",
           "keyVersion",
           "plaintextSHA256",
+          "plaintextHMAC",
+          "integrityHashVersion",
           "sealedBoxBase64",
-          "createdAt"
+          "createdAt",
+          "aad"
         ])
+        && value.schemaVersion is int
+        && value.schemaVersion >= 1
+        && value.schemaVersion <= 10
         && value.algorithm == "AES-256-GCM"
         && value.keyVersion is int
         && value.keyVersion >= 1
         && value.keyVersion <= 100
+        && (
+          (
+            value.schemaVersion == 1
+            && validCloudHexDigest(value.plaintextSHA256)
+            && !("plaintextHMAC" in value)
+            && !("integrityHashVersion" in value)
+            && !("aad" in value)
+          )
+          || (
+            value.schemaVersion >= 2
+            && !("plaintextSHA256" in value)
+            && validCloudHexDigest(value.plaintextHMAC)
+            && value.integrityHashVersion is int
+            && value.integrityHashVersion >= 1
+            && value.integrityHashVersion <= 100
+            && value.aad == expectedAAD
+          )
+        )
         && value.sealedBoxBase64 is string
         && value.sealedBoxBase64.size() > 0
         && value.sealedBoxBase64.size() <= 900000
@@ -464,14 +548,19 @@ service cloud.firestore {
           "algorithm",
           "keyVersion",
           "vaultKeyID",
-          "sealedBoxBase64"
+          "sealedBoxBase64",
+          "aad"
         ])
-        && value.schemaVersion == 1
+        && value.schemaVersion == 2
         && value.algorithm == "AES-256-GCM"
         && value.keyVersion is int
         && value.keyVersion >= 1
         && value.keyVersion <= 100
         && validVaultKeyID(value.vaultKeyID)
+        && (
+          value.aad == "OpenBurnBar-CloudVaultSealedPayload-v2"
+          || validCloudVaultAAD(value.aad)
+        )
         && value.sealedBoxBase64 is string
         && value.sealedBoxBase64.size() > 0
         && value.sealedBoxBase64.size() <= 900000
@@ -572,7 +661,7 @@ service cloud.firestore {
         && (!chatThreadIncludesBackedUpContent()
           || (
             request.resource.data.contentSealed == true
-            && request.resource.data.sealedSchemaVersion == 1
+            && request.resource.data.sealedSchemaVersion == 2
             && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
           ));
     }
@@ -1072,7 +1161,7 @@ service cloud.firestore {
         && (!("sourceType" in request.resource.data) || request.resource.data.sourceType is string)
         && (!("version" in request.resource.data) || request.resource.data.version is int)
         && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 1
+        && request.resource.data.sealedSchemaVersion == 2
         && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload);
       }
       allow read: if ownsUserNamespace(userId);
@@ -1120,7 +1209,7 @@ service cloud.firestore {
         && request.resource.data.messageCount >= 0
         && request.resource.data.messageCount <= 5000
         && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 1
+        && request.resource.data.sealedSchemaVersion == 2
         && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
         && (!("labelColorHex" in request.resource.data) || (request.resource.data.labelColorHex is string && request.resource.data.labelColorHex.size() <= 16))
         && (!("isPinned" in request.resource.data) || request.resource.data.isPinned is bool)
@@ -1164,7 +1253,7 @@ service cloud.firestore {
         && (!("sourceKind" in request.resource.data) || request.resource.data.sourceKind in ["live_chat", "archived_log"])
         && request.resource.data.schemaVersion is int
         && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 1
+        && request.resource.data.sealedSchemaVersion == 2
         && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
         && (!("messageCount" in request.resource.data) || (request.resource.data.messageCount is int && request.resource.data.messageCount >= 0 && request.resource.data.messageCount <= 5000))
         && (!("lastMessageRole" in request.resource.data) || request.resource.data.lastMessageRole in ["user", "assistant", "system", "tool"])
@@ -1235,22 +1324,10 @@ service cloud.firestore {
           "sealedStateVaultKeyID",
           "approvedByDeviceId"
         ])
-        && !request.resource.data.keys().hasAny([
-          "title",
-          "prompt",
-          "targetProject",
-          "approvalTitle",
-          "approvalMessage",
-          "liveSummary",
-          "events",
-          "resultPreview",
-          "errorMessage",
-          "personaScopeJSON"
-        ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
         && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 1
+        && request.resource.data.sealedSchemaVersion == 2
         && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
         && (!("sealedStatePayload" in request.resource.data) || (
           request.resource.data.sealedStateSchemaVersion == 1
@@ -1451,7 +1528,7 @@ service cloud.firestore {
             "changedFilePath"
           ])
           && request.resource.data.contentSealed == true
-          && request.resource.data.sealedSchemaVersion == 1
+          && request.resource.data.sealedSchemaVersion == 2
           && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
           && request.resource.data.sequence is int
           && request.resource.data.sequence >= 1
@@ -1552,7 +1629,7 @@ service cloud.firestore {
         ])
         && !request.resource.data.keys().hasAny(["title", "prompt", "targetProject", "synthesisSummary"])
         && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 1
+        && request.resource.data.sealedSchemaVersion == 2
         && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
         && (!("sealedStatePayload" in request.resource.data) || (
           request.resource.data.sealedStateSchemaVersion == 1
@@ -1736,6 +1813,7 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly([
           "docID",
           "contentHash",
+          "contentHashVersion",
           "sourceSessionCount",
           "sourceConversationCount",
           "generatedAt",
@@ -1757,7 +1835,10 @@ service cloud.firestore {
         && (!("freshness" in request.resource.data) || request.resource.data.freshness in ["fresh", "needsRefresh", "stale"])
         && (!("visualKinds" in request.resource.data) || (request.resource.data.visualKinds is list && request.resource.data.visualKinds.size() <= 24))
         && (!("encryption" in request.resource.data) || request.resource.data.encryption is map)
-        && validCloudSealedBlob(request.resource.data.sealedSnapshot)
+        && validCloudSealedBlob(
+          request.resource.data.sealedSnapshot,
+          cloudVaultAADContext(userId, "project_memory_snapshots", docID, "sealedSnapshot")
+        )
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 2;
       allow delete: if ownsUserNamespace(userId);
@@ -1775,6 +1856,7 @@ service cloud.firestore {
           "sourceVersionID",
           "provider",
           "bodyHash",
+          "bodyHashVersion",
           "storagePath",
           "sealedTitle",
           "sealedBodyPreview",
@@ -1995,9 +2077,21 @@ service cloud.firestore {
         && request.resource.data.uid == userId
         && validVaultKeyID(request.resource.data.vaultKeyID)
         && matchesCurrentVaultKey(userId, request.resource.data.vaultKeyID)
+        && request.resource.data.targetDeviceId is string
+        && request.resource.data.targetDeviceId.size() <= 256
+        && request.resource.data.sourceDeviceId is string
+        && request.resource.data.sourceDeviceId.size() <= 256
+        && request.resource.data.publicKeyFingerprint is string
+        && request.resource.data.publicKeyFingerprint.size() <= 128
+        && request.resource.data.keyVersion is int
+        && request.resource.data.keyVersion >= 1
+        && request.resource.data.keyVersion <= 1000
         && request.resource.data.wrappedVaultKey is string
         && request.resource.data.wrappedVaultKey.size() <= 8192
+        && request.resource.data.wrappedVaultKey.matches("^[A-Za-z0-9+/=]+$")
+        && request.resource.data.algorithm == "ECIES-P256-AESGCM"
         && request.resource.data.status in ["active", "revoked"]
+        && request.resource.data.schemaVersion == 2
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
@@ -2049,7 +2143,7 @@ service cloud.firestore {
         && request.resource.data.sourceKind in ["cli_session", "mobile_assistant_chat"]
         && request.resource.data.sourceKind == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.sourceKind
         && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 1
+        && request.resource.data.sealedSchemaVersion == 2
         && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedReplyPayload)
         && (!("deviceId" in request.resource.data) || (request.resource.data.deviceId is string && request.resource.data.deviceId.size() <= 160))
         && request.resource.data.status == "queued"
@@ -3100,12 +3194,11 @@ service cloud.firestore {
       }
 
       function validEscrowDeviceUpdate(deviceId) {
-        // Trust elevation to `trusted` is server-only via `approveEscrowDeviceTrust`
-        // (App Check + attestation-bound Auth claims). Clients may still register
-        // pending devices and revoke trust locally.
+        // Trust-state transitions are server-only via the escrow trust callables.
+        // Client updates may refresh metadata/key fingerprints, but stale clients
+        // must not elevate or downgrade an already trusted/revoked device.
         return validEscrowDeviceDocument(deviceId)
-          && !(request.resource.data.trustState == "trusted"
-            && resource.data.trustState != "trusted");
+          && request.resource.data.trustState == resource.data.trustState;
       }
 
       allow read: if ownsUserNamespace(userId);

@@ -32,8 +32,9 @@ final class OfflineOnlineMergeTests: XCTestCase {
             firestoreGateway: fakeGateway,
             circuitBreaker: circuitBreaker
         )
-        usageSync = UsageSyncService(context: context)
-        downloadSync = DownloadSyncService(context: context)
+        let vaultKeyProvider = TestConversationVaultKeyProvider()
+        usageSync = UsageSyncService(context: context, vaultKeyProvider: vaultKeyProvider)
+        downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider)
     }
 
     // MARK: - Backoff Recovery

@@ -1,14 +1,24 @@
 # HANDOFF — finish the Hermes Gateway 3 features (device-capable agent)
 
-> **Superseded on 2026-06-03:** this was the pre-merge handoff checklist. For
-> current launch status, audit evidence, and remaining hardware readback, use
-> `docs/runbooks/hermes-gateway-3features.md` §7-§8.
+> **Superseded on 2026-06-03 and refreshed on 2026-06-04:** this was the
+> pre-merge handoff checklist. For current launch status, audit evidence, E2EE
+> remediation proof, and the remaining Sentry readback gate, use
+> `docs/runbooks/hermes-gateway-3features.md` §7-§8 and
+> `docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md`. Do not treat the command counts
+> or branch names below as current proof.
 
 You are picking up finished, tested server + adapter work. Your job is the part
 that needs **real hardware, deploy credentials, and a push** — none of which the
 prior agent had. Do NOT re-do the server/adapter work; it is done and green.
 
 Full background: `docs/runbooks/hermes-gateway-3features.md` (read §6a + §7).
+
+2026-06-04 update: the hardware approval gate this handoff called out is now
+closed. The focused live iPad approval test armed approve/reject/expiry cases,
+resolved approve/reject from trusted iPad device
+`6566F689-F2FA-4A57-8A0F-4B38D47A76C0`, proved public expiry and late-response
+fail-closed behavior, and read back allowlisted approval docs with no plaintext
+command detail. Sentry admin readback is still credential-gated.
 
 **Alberto has authorized you to: re-audit (correctness + security), run the real
 on-device E2E, and PUBLISH the Hermes PR once the gates below are green.** Order of
@@ -38,7 +48,7 @@ Branches at handoff: BurnBar repo `release/cut-builds-20260603`; Hermes repo `aj
 
 ---
 
-## JOB 1 — iOS: compile in Xcode + run on a real iPhone
+## JOB 1 — iOS: compile in Xcode + run on a trusted physical iOS device
 The iOS oversight wiring is written but never compiled (no toolchain on the prior agent's box). Files touched:
 `OpenBurnBarMobile/Services/FunctionsRepository.swift`,
 `OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift`,
@@ -48,7 +58,8 @@ The iOS oversight wiring is written but never compiled (no toolchain on the prio
 1. This is an **XcodeGen** project — if you change file membership, edit `project.yml` and run `xcodegen`; never hand-edit the `.pbxproj`.
 2. Build the iOS app target in Xcode (or `xcodebuild -scheme OpenBurnBarMobile`). Fix any compile errors. **The one spot the prior agent flagged**: the `gatewayClientRow` restructure in `HermesSettingsView.swift` (an `HStack` was wrapped in a `VStack`) — confirm the `@ViewBuilder` body compiles; brace/paren balance was checked but a real compile is the proof.
 3. Run the focused iOS unit tests (`OpenBurnBarMobileTests`) — the mock repo gained the two new methods; make sure the target compiles and passes.
-4. Install on a **physical iPhone** (no simulator for E2E).
+4. Install on a **trusted physical iOS device** (iPhone or iPad; no simulator for
+   the approval E2E).
 
 Expected behavior, no code change owed: the approval card shows a server-derived label ("Approve {toolName} action"); the full command text arrives as an end-to-end-encrypted chat message.
 
@@ -85,7 +96,16 @@ Run a fresh, adversarial pass. This is a gate for the PR — do not publish if a
 1. **No self-approve.** A `hermes.gateway.write` bearer token (the agent) cannot resolve its own oversight gate. Resolution requires `respondHermesGatewayApproval` (signed-in owner + App Check) bound to a **trusted native escrow device**; `approvedByDeviceId` is server-stamped. `hermes_gateway_approvals` is `allow write: if false` (owner-read only) — try a direct client write and confirm it's denied.
 2. **Single resolution / idempotent.** A gate resolves once (transaction guard); a second approve/deny → failed-precondition. An expired gate cannot be approved.
 3. **TTL.** Unanswered gates expire (~5 min) and `reapHermesGatewayApprovals` flips stale ones to `expired`; the agent never blocks forever.
-4. **Privacy / E2EE.** The gateway is a blind relay: message/event/attachment bodies, sender names, file names are sealed (`p256-hkdf-sha256-aesgcm`); the server can't read them. The oversight gate is **control-plane only** — it stores a server-derived label, never the agent's command (the detail rides the sealed channel). Re-run `scan-chat-cloud-plaintext.mjs`; spot-check a live `hermes_gateway_approvals` doc in Firestore and confirm there is **no plaintext command**.
+4. **Privacy / E2EE.** On paired links the gateway is an untrusted relay:
+   message/event/attachment bodies, sender names, and file names are sealed with
+   production v2/v3 relay envelopes or ratchet envelopes where both peers support
+   them; the server cannot read those bodies. The oversight gate is
+   **control-plane only** — it stores a server-derived label, never the agent's
+   command (the detail rides the sealed channel). Re-run
+   `scan-chat-cloud-plaintext.mjs`; spot-check a live `hermes_gateway_approvals`
+   doc in Firestore and confirm there is **no plaintext command**. The
+   2026-06-04 deployed iPad run completed this approval readback for
+   approve/reject/expiry.
 5. **Auth/scope.** Every HTTP route validates the bearer token + scope + entitlement; `/state` & `/approvals` GET use `read`, arm uses `write`. Tokens are SHA-256-hashed at rest, expire (90d), and model/oversight callables require Auth + App Check.
 6. **Model switch can't be abused.** Off-catalog model ids are rejected; the switch only affects the target client.
 7. **Input hardening.** actionId/toolName/destination are bounded + sanitized; oversize/CRLF/path-traversal inputs are rejected.
@@ -94,18 +114,18 @@ Record the audit result (pass + any fixed findings) in `docs/runbooks/hermes-gat
 
 ---
 
-## JOB 4 — PHYSICAL-IPHONE E2E (the real acceptance test — needs Jobs 1 & 2 done first)
-1. Install latest OpenBurnBar on the iPhone.
+## JOB 4 — PHYSICAL-IOS E2E (the real acceptance test — needs Jobs 1 & 2 done first)
+1. Install latest OpenBurnBar on the trusted iOS device.
 2. `hermes gateway restart` → `hermes gateway status`.
 3. `hermes gateway setup` → **BurnBar Cloud** → approve the device code in the app.
 4. **State:** app shows gateway **online** + current model + agent version + this client connected.
-5. **Model switch:** pick a different model on the phone → brief "switching…" → settles → next reply uses it. Try an off-catalog id → expect `model_not_available`.
-6. **Oversight ON (supervised, default):** trigger a risky action that routes through Hermes slash-confirm → approval card appears on the phone → **approve** → it runs; repeat and **deny** → cancelled; leave one unanswered past 5 min → it expires.
+5. **Model switch:** pick a different model on the trusted iOS device → brief "switching…" → settles → next reply uses it. Try an off-catalog id → expect `model_not_available`.
+6. **Oversight ON (supervised, default):** trigger a risky action that routes through Hermes slash-confirm → approval card appears on the trusted iOS device → **approve** → it runs; repeat and **deny** → cancelled; leave one unanswered past 5 min → it expires.
 7. **Oversight OFF (autonomous):** same action runs with no prompt.
-8. **Offline truthfulness:** stop the gateway → phone shows **offline** within ~90s.
+8. **Offline truthfulness:** stop the gateway → trusted iOS device shows **offline** within ~90s.
 
 ## Gotchas / guardrails
 - Don't trust a one-off green check — re-run the preflight if you see "file was modified" notices; concurrent agents churn these files.
 - Mirror and `~/.hermes` adapter are byte-identical now; keep them in sync if you touch either.
-- Oversight resolution requires a **trusted native escrow device** — exercise approve/deny from the real attested phone, not a simulator.
+- Oversight resolution requires a **trusted native escrow device** — exercise approve/deny from the real attested iOS device, not a simulator.
 - Report results back to Alberto; hold the Hermes PR push for his explicit go.

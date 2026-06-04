@@ -19,10 +19,13 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
     private static let vectorRevision = "v1"
 
     /// Revision of the *gateway* wire vector (`HermesGatewayWireVector.json`).
-    /// Bump whenever any gateway AAD label / envelope shape changes so the
-    /// vendored Python fixture (`tests/gateway/fixtures/`) must be regenerated
-    /// and the cross-language gateway test re-pins it.
-    private static let gatewayVectorRevision = "v1"
+    /// Bump whenever any gateway AAD label / envelope shape / wrap protocol
+    /// changes so the vendored Python fixture (`tests/gateway/fixtures/`) must be
+    /// regenerated and the cross-language gateway test re-pins it. `v2` = the
+    /// authenticated 2-DH key-wrap (each slot carries a `senderPublicKey`; the
+    /// `wrappedKey` is the HPKE-AuthEncap-shaped wrap binding the sender's static
+    /// key, opened by the recipient with the *pinned* sender key).
+    private static let gatewayVectorRevision = "v2"
 
     private static let fixtureURL: URL = {
         let base = URL(fileURLWithPath: #file)
@@ -160,16 +163,32 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         let phonePriv = try makeDeterministicPrivateKey(tweak: 0x02)
         let phonePub = phonePriv.publicKey
 
+        // v2 authenticated wrap binds the SENDER's static key. Event/model_switch
+        // are phone→agent (sender = phone); message/attachment are agent→phone
+        // (sender = agent). Each side uses its own static private to seal and the
+        // peer's static public as recipient; the recipient opens with the PINNED
+        // sender public key.
+        let agentRelayPriv = try HermesRelayPrivateKey(rawRepresentation: agentPriv.rawRepresentation)
+        let phoneRelayPriv = try HermesRelayPrivateKey(rawRepresentation: phonePriv.rawRepresentation)
+        let agentPubB64 = agentPub.x963Representation.base64EncodedString()
+        let phonePubB64 = phonePub.x963Representation.base64EncodedString()
+
         let uid = "u-gateway"
         let clientId = "c-gateway"
         let eventId = "e-gateway"
         let messageId = "m-gateway"
         let modelSwitchEventId = "e-model-switch"
+        let attachmentId = "a-gateway"
 
-        // --- phone→agent EVENT -------------------------------------------------
+        // --- phone→agent EVENT (sender = phone, recipient = agent) ------------
         let eventSymKey = makeDeterministicSymmetricKey(tweak: 0x11)
+        // Strict E2E event schema (see plugins/platforms/burnbar/SECURITY.md): a sealed
+        // phone→agent event the Python agent will accept MUST carry an authenticated
+        // `destinationId` and a monotonic `replayCounter`/`eventCounter`. Pin that exact
+        // schema in the vector so the cross-language proof matches the enforced open path
+        // (the previous {text,kind}-only payload was rejected by the production adapter).
         let eventPlaintext = Data(
-            #"{"text":"open the BurnBar gateway","kind":"chat"}"#.utf8
+            #"{"text":"open the BurnBar gateway","kind":"chat","destinationId":"burnbar:home","replayCounter":1}"#.utf8
         )
         let gatewayEventAAD = HermesRelayCrypto.gatewayEventAAD(
             uid: uid, clientId: clientId, eventId: eventId
@@ -184,14 +203,19 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         )
         let eventWrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             eventSymKey,
-            recipientPublicKeyBase64: agentPub.x963Representation.base64EncodedString(),
-            aad: gatewayEventKeyAAD
+            recipientPublicKeyBase64: agentPubB64,
+            aad: gatewayEventKeyAAD,
+            senderPrivateKey: phoneRelayPriv
         )
 
-        // --- agent→phone MESSAGE ----------------------------------------------
+        // --- agent→phone MESSAGE (sender = agent, recipient = phone) ----------
         let messageSymKey = makeDeterministicSymmetricKey(tweak: 0x22)
+        // Agent->phone message payloads are production-shaped too: the relay can
+        // route by doc id, but the destination is also authenticated inside the
+        // sealed body so opened transcripts can prove the sender intended this
+        // destination.
         let messagePlaintext = Data(
-            #"{"text":"Hermes replied over the encrypted gateway."}"#.utf8
+            #"{"text":"Hermes replied over the encrypted gateway.","destinationId":"burnbar:home"}"#.utf8
         )
         let gatewayMessageAAD = HermesRelayCrypto.gatewayMessageAAD(
             uid: uid, clientId: clientId, messageId: messageId
@@ -206,13 +230,18 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         )
         let messageWrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             messageSymKey,
-            recipientPublicKeyBase64: phonePub.x963Representation.base64EncodedString(),
-            aad: gatewayMessageKeyAAD
+            recipientPublicKeyBase64: phonePubB64,
+            aad: gatewayMessageKeyAAD,
+            senderPrivateKey: agentRelayPriv
         )
 
-        // --- phone→agent model_switch (reuses the EVENT AADs) -----------------
+        // --- phone→agent model_switch (EVENT AADs, sender = phone) ------------
         let modelSwitchSymKey = makeDeterministicSymmetricKey(tweak: 0x33)
-        let modelSwitchPlaintext = Data(#"{"modelId":"claude-opus-4-8"}"#.utf8)
+        // A sealed model_switch is opened on the SAME enforced event path, so it carries
+        // the strict-schema `destinationId` + `replayCounter` alongside `modelId`.
+        let modelSwitchPlaintext = Data(
+            #"{"modelId":"claude-opus-4-8","destinationId":"burnbar:home","replayCounter":2}"#.utf8
+        )
         let modelSwitchAAD = HermesRelayCrypto.gatewayEventAAD(
             uid: uid, clientId: clientId, eventId: modelSwitchEventId
         )
@@ -226,77 +255,112 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         )
         let modelSwitchWrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             modelSwitchSymKey,
-            recipientPublicKeyBase64: agentPub.x963Representation.base64EncodedString(),
-            aad: modelSwitchKeyAAD
+            recipientPublicKeyBase64: agentPubB64,
+            aad: modelSwitchKeyAAD,
+            senderPrivateKey: phoneRelayPriv
         )
 
-        // Self-consistency: open everything we just sealed under the SAME
-        // payload-vs-key AAD split before pinning the fixture. A future label
-        // drift in HermesRelayCrypto fails right here, never reaching the file.
+        // --- agent→phone ATTACHMENT (sender = agent, recipient = phone) -------
+        // One body key seals BOTH the manifest and the body under DISTINCT AADs;
+        // the body key is v2-wrapped under the attachment-key AAD.
+        let attachmentBodyKey = makeDeterministicSymmetricKey(tweak: 0x44)
+        let attachmentManifestPlaintext = Data(
+            #"{"fileName":"quarterly-report.pdf","contentType":"application/pdf","byteCount":20,"destinationId":"burnbar:home"}"#.utf8
+        )
+        let attachmentBodyPlaintext = Data("PDF-BYTES-1234567890".utf8)
+        let attachmentManifestAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(
+            uid: uid, clientId: clientId, attachmentId: attachmentId
+        )
+        let attachmentBodyAAD = HermesRelayCrypto.gatewayAttachmentBodyAAD(
+            uid: uid, clientId: clientId, attachmentId: attachmentId
+        )
+        let attachmentKeyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(
+            uid: uid, clientId: clientId, attachmentId: attachmentId
+        )
+        let attachmentManifestCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: attachmentManifestPlaintext,
+            keyData: attachmentBodyKey,
+            aad: attachmentManifestAAD
+        )
+        let attachmentBodyCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: attachmentBodyPlaintext,
+            keyData: attachmentBodyKey,
+            aad: attachmentBodyAAD
+        )
+        let attachmentWrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            attachmentBodyKey,
+            recipientPublicKeyBase64: phonePubB64,
+            aad: attachmentKeyAAD,
+            senderPrivateKey: agentRelayPriv
+        )
+
+        // Self-consistency: open everything under the v2 authenticated unwrap
+        // (recipient binds the PINNED sender key) before pinning the fixture.
         let unwrappedEventKey = try HermesRelayCrypto.unwrapSymmetricKey(
-            eventWrappedKey,
-            privateKey: HermesRelayPrivateKey(rawRepresentation: agentPriv.rawRepresentation),
-            aad: gatewayEventKeyAAD
+            eventWrappedKey, privateKey: agentRelayPriv,
+            aad: gatewayEventKeyAAD, senderPublicKeyBase64: phonePubB64
         )
         XCTAssertEqual(unwrappedEventKey, eventSymKey)
         XCTAssertEqual(
-            try HermesRelayCrypto.openBase64(
-                ciphertext: eventPayloadCiphertext,
-                keyData: eventSymKey,
-                aad: gatewayEventAAD
-            ),
+            try HermesRelayCrypto.openBase64(ciphertext: eventPayloadCiphertext, keyData: eventSymKey, aad: gatewayEventAAD),
             eventPlaintext
         )
 
         let unwrappedMessageKey = try HermesRelayCrypto.unwrapSymmetricKey(
-            messageWrappedKey,
-            privateKey: HermesRelayPrivateKey(rawRepresentation: phonePriv.rawRepresentation),
-            aad: gatewayMessageKeyAAD
+            messageWrappedKey, privateKey: phoneRelayPriv,
+            aad: gatewayMessageKeyAAD, senderPublicKeyBase64: agentPubB64
         )
         XCTAssertEqual(unwrappedMessageKey, messageSymKey)
         XCTAssertEqual(
-            try HermesRelayCrypto.openBase64(
-                ciphertext: messagePayloadCiphertext,
-                keyData: messageSymKey,
-                aad: gatewayMessageAAD
-            ),
+            try HermesRelayCrypto.openBase64(ciphertext: messagePayloadCiphertext, keyData: messageSymKey, aad: gatewayMessageAAD),
             messagePlaintext
         )
 
         let unwrappedModelSwitchKey = try HermesRelayCrypto.unwrapSymmetricKey(
-            modelSwitchWrappedKey,
-            privateKey: HermesRelayPrivateKey(rawRepresentation: agentPriv.rawRepresentation),
-            aad: modelSwitchKeyAAD
+            modelSwitchWrappedKey, privateKey: agentRelayPriv,
+            aad: modelSwitchKeyAAD, senderPublicKeyBase64: phonePubB64
         )
         XCTAssertEqual(unwrappedModelSwitchKey, modelSwitchSymKey)
+
+        let unwrappedAttachmentKey = try HermesRelayCrypto.unwrapSymmetricKey(
+            attachmentWrappedKey, privateKey: phoneRelayPriv,
+            aad: attachmentKeyAAD, senderPublicKeyBase64: agentPubB64
+        )
+        XCTAssertEqual(unwrappedAttachmentKey, attachmentBodyKey)
         XCTAssertEqual(
-            try HermesRelayCrypto.openBase64(
-                ciphertext: modelSwitchPayloadCiphertext,
-                keyData: modelSwitchSymKey,
-                aad: modelSwitchAAD
-            ),
-            modelSwitchPlaintext
+            try HermesRelayCrypto.openBase64(ciphertext: attachmentManifestCiphertext, keyData: attachmentBodyKey, aad: attachmentManifestAAD),
+            attachmentManifestPlaintext
+        )
+        XCTAssertEqual(
+            try HermesRelayCrypto.openBase64(ciphertext: attachmentBodyCiphertext, keyData: attachmentBodyKey, aad: attachmentBodyAAD),
+            attachmentBodyPlaintext
         )
 
-        // Guard against the exact bug this gate exists to catch: payload AAD and
-        // key-wrap AAD must be DISTINCT byte-strings, and unwrapping the key with
-        // the payload AAD (the divergence that shipped) must fail.
-        XCTAssertNotEqual(gatewayEventAAD, gatewayEventKeyAAD)
-        XCTAssertNotEqual(gatewayMessageAAD, gatewayMessageKeyAAD)
+        // Forge rejection: opening a v2 envelope while binding a WRONG sender key
+        // must fail the GCM tag (the static-static leg won't match). This is the
+        // cryptographic enforcement of the sender pin — the heart of v2.
         XCTAssertThrowsError(
             try HermesRelayCrypto.unwrapSymmetricKey(
-                eventWrappedKey,
-                privateKey: HermesRelayPrivateKey(rawRepresentation: agentPriv.rawRepresentation),
-                aad: gatewayEventAAD  // WRONG: payload AAD instead of the key AAD
+                eventWrappedKey, privateKey: agentRelayPriv,
+                aad: gatewayEventKeyAAD,
+                senderPublicKeyBase64: agentPubB64  // WRONG: should be the phone's key
             )
         )
+        // And a v2 envelope opened as v1 (no sender key) must also fail — the
+        // gateway never falls back to the unauthenticated leg.
+        XCTAssertThrowsError(
+            try HermesRelayCrypto.unwrapSymmetricKey(
+                eventWrappedKey, privateKey: agentRelayPriv, aad: gatewayEventKeyAAD
+            )
+        )
+        XCTAssertNotEqual(gatewayEventAAD, gatewayEventKeyAAD)
+        XCTAssertNotEqual(gatewayMessageAAD, gatewayMessageKeyAAD)
 
         let event = GatewayEventVector(
-            uid: uid,
-            clientId: clientId,
-            eventId: eventId,
+            uid: uid, clientId: clientId, eventId: eventId,
             recipientPrivateKey: agentPriv.rawRepresentation.base64EncodedString(),
-            recipientPublicKey: agentPub.x963Representation.base64EncodedString(),
+            recipientPublicKey: agentPubB64,
+            senderPublicKey: phonePubB64,
             symmetricKey: eventSymKey.base64EncodedString(),
             payloadAAD: String(data: gatewayEventAAD, encoding: .utf8)!,
             keyAAD: String(data: gatewayEventKeyAAD, encoding: .utf8)!,
@@ -307,11 +371,10 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         )
 
         let message = GatewayMessageVector(
-            uid: uid,
-            clientId: clientId,
-            messageId: messageId,
+            uid: uid, clientId: clientId, messageId: messageId,
             recipientPrivateKey: phonePriv.rawRepresentation.base64EncodedString(),
-            recipientPublicKey: phonePub.x963Representation.base64EncodedString(),
+            recipientPublicKey: phonePubB64,
+            senderPublicKey: agentPubB64,
             symmetricKey: messageSymKey.base64EncodedString(),
             payloadAAD: String(data: gatewayMessageAAD, encoding: .utf8)!,
             keyAAD: String(data: gatewayMessageKeyAAD, encoding: .utf8)!,
@@ -322,11 +385,10 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         )
 
         let modelSwitch = GatewayEventVector(
-            uid: uid,
-            clientId: clientId,
-            eventId: modelSwitchEventId,
+            uid: uid, clientId: clientId, eventId: modelSwitchEventId,
             recipientPrivateKey: agentPriv.rawRepresentation.base64EncodedString(),
-            recipientPublicKey: agentPub.x963Representation.base64EncodedString(),
+            recipientPublicKey: agentPubB64,
+            senderPublicKey: phonePubB64,
             symmetricKey: modelSwitchSymKey.base64EncodedString(),
             payloadAAD: String(data: modelSwitchAAD, encoding: .utf8)!,
             keyAAD: String(data: modelSwitchKeyAAD, encoding: .utf8)!,
@@ -336,13 +398,30 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
             wrappedKey: modelSwitchWrappedKey
         )
 
+        let attachment = GatewayAttachmentVector(
+            uid: uid, clientId: clientId, attachmentId: attachmentId,
+            recipientPrivateKey: phonePriv.rawRepresentation.base64EncodedString(),
+            recipientPublicKey: phonePubB64,
+            senderPublicKey: agentPubB64,
+            bodyKey: attachmentBodyKey.base64EncodedString(),
+            manifestAAD: String(data: attachmentManifestAAD, encoding: .utf8)!,
+            bodyAAD: String(data: attachmentBodyAAD, encoding: .utf8)!,
+            keyAAD: String(data: attachmentKeyAAD, encoding: .utf8)!,
+            manifestPlaintext: String(data: attachmentManifestPlaintext, encoding: .utf8)!,
+            bodyPlaintext: String(data: attachmentBodyPlaintext, encoding: .utf8)!,
+            manifestCiphertext: attachmentManifestCiphertext,
+            bodyCiphertext: attachmentBodyCiphertext,
+            wrappedKey: attachmentWrappedKey
+        )
+
         let vector = GatewayWireVector(
             revision: Self.gatewayVectorRevision,
             algorithm: HermesRelayCrypto.algorithm,
-            keyVersion: HermesRelayCrypto.keyVersion,
+            keyVersion: HermesRelayCrypto.gatewayRelayKeyVersion,
             event: event,
             message: message,
-            modelSwitch: modelSwitch
+            modelSwitch: modelSwitch,
+            attachment: attachment
         )
 
         try updateOrAssertGatewayFixture(vector)
@@ -491,6 +570,16 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         assertGatewayEventStableFields(fixture.event, match: expected.event)
         assertGatewayMessageStableFields(fixture.message, match: expected.message)
         assertGatewayEventStableFields(fixture.modelSwitch, match: expected.modelSwitch)
+        XCTAssertEqual(fixture.attachment.uid, expected.attachment.uid)
+        XCTAssertEqual(fixture.attachment.attachmentId, expected.attachment.attachmentId)
+        XCTAssertEqual(fixture.attachment.recipientPrivateKey, expected.attachment.recipientPrivateKey)
+        XCTAssertEqual(fixture.attachment.senderPublicKey, expected.attachment.senderPublicKey)
+        XCTAssertEqual(fixture.attachment.bodyKey, expected.attachment.bodyKey)
+        XCTAssertEqual(fixture.attachment.manifestAAD, expected.attachment.manifestAAD)
+        XCTAssertEqual(fixture.attachment.bodyAAD, expected.attachment.bodyAAD)
+        XCTAssertEqual(fixture.attachment.keyAAD, expected.attachment.keyAAD)
+        XCTAssertEqual(fixture.attachment.manifestPlaintext, expected.attachment.manifestPlaintext)
+        XCTAssertEqual(fixture.attachment.bodyPlaintext, expected.attachment.bodyPlaintext)
     }
 
     private func assertGatewayEventStableFields(_ fixture: GatewayEventVector, match expected: GatewayEventVector) {
@@ -499,6 +588,7 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         XCTAssertEqual(fixture.eventId, expected.eventId)
         XCTAssertEqual(fixture.recipientPrivateKey, expected.recipientPrivateKey)
         XCTAssertEqual(fixture.recipientPublicKey, expected.recipientPublicKey)
+        XCTAssertEqual(fixture.senderPublicKey, expected.senderPublicKey)
         XCTAssertEqual(fixture.symmetricKey, expected.symmetricKey)
         XCTAssertEqual(fixture.payloadAAD, expected.payloadAAD)
         XCTAssertEqual(fixture.keyAAD, expected.keyAAD)
@@ -512,6 +602,7 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         XCTAssertEqual(fixture.messageId, expected.messageId)
         XCTAssertEqual(fixture.recipientPrivateKey, expected.recipientPrivateKey)
         XCTAssertEqual(fixture.recipientPublicKey, expected.recipientPublicKey)
+        XCTAssertEqual(fixture.senderPublicKey, expected.senderPublicKey)
         XCTAssertEqual(fixture.symmetricKey, expected.symmetricKey)
         XCTAssertEqual(fixture.payloadAAD, expected.payloadAAD)
         XCTAssertEqual(fixture.keyAAD, expected.keyAAD)
@@ -522,65 +613,59 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
     private func assertGatewayVectorRoundTrips(_ vector: GatewayWireVector) throws {
         XCTAssertEqual(vector.revision, Self.gatewayVectorRevision)
         XCTAssertEqual(vector.algorithm, HermesRelayCrypto.algorithm)
-        XCTAssertEqual(vector.keyVersion, HermesRelayCrypto.keyVersion)
+        XCTAssertEqual(vector.keyVersion, HermesRelayCrypto.gatewayRelayKeyVersion)
 
         try assertGatewayEventVectorRoundTrips(
             vector.event,
             expectedPayloadAAD: HermesRelayCrypto.gatewayEventAAD(
-                uid: vector.event.uid,
-                clientId: vector.event.clientId,
-                eventId: vector.event.eventId
+                uid: vector.event.uid, clientId: vector.event.clientId, eventId: vector.event.eventId
             ),
             expectedKeyAAD: HermesRelayCrypto.gatewayEventKeyAAD(
-                uid: vector.event.uid,
-                clientId: vector.event.clientId,
-                eventId: vector.event.eventId
+                uid: vector.event.uid, clientId: vector.event.clientId, eventId: vector.event.eventId
             )
         )
         try assertGatewayMessageVectorRoundTrips(
             vector.message,
             expectedPayloadAAD: HermesRelayCrypto.gatewayMessageAAD(
-                uid: vector.message.uid,
-                clientId: vector.message.clientId,
-                messageId: vector.message.messageId
+                uid: vector.message.uid, clientId: vector.message.clientId, messageId: vector.message.messageId
             ),
             expectedKeyAAD: HermesRelayCrypto.gatewayMessageKeyAAD(
-                uid: vector.message.uid,
-                clientId: vector.message.clientId,
-                messageId: vector.message.messageId
+                uid: vector.message.uid, clientId: vector.message.clientId, messageId: vector.message.messageId
             )
         )
         try assertGatewayEventVectorRoundTrips(
             vector.modelSwitch,
             expectedPayloadAAD: HermesRelayCrypto.gatewayEventAAD(
-                uid: vector.modelSwitch.uid,
-                clientId: vector.modelSwitch.clientId,
-                eventId: vector.modelSwitch.eventId
+                uid: vector.modelSwitch.uid, clientId: vector.modelSwitch.clientId, eventId: vector.modelSwitch.eventId
             ),
             expectedKeyAAD: HermesRelayCrypto.gatewayEventKeyAAD(
-                uid: vector.modelSwitch.uid,
-                clientId: vector.modelSwitch.clientId,
-                eventId: vector.modelSwitch.eventId
+                uid: vector.modelSwitch.uid, clientId: vector.modelSwitch.clientId, eventId: vector.modelSwitch.eventId
             )
         )
+        try assertGatewayAttachmentVectorRoundTrips(vector.attachment)
 
+        // v2 forge enforcement: the recipient binding a WRONG sender key fails;
+        // and opening the v2 envelope with no sender key (v1 fallback) fails.
         let eventPrivateKeyData = try XCTUnwrap(Data(base64Encoded: vector.event.recipientPrivateKey))
         let eventPrivateKey = try HermesRelayPrivateKey(rawRepresentation: eventPrivateKeyData)
         XCTAssertNotEqual(vector.event.payloadAAD, vector.event.keyAAD)
         XCTAssertNotEqual(vector.message.payloadAAD, vector.message.keyAAD)
         XCTAssertThrowsError(
             try HermesRelayCrypto.unwrapSymmetricKey(
-                vector.event.wrappedKey,
-                privateKey: eventPrivateKey,
-                aad: Data(vector.event.payloadAAD.utf8)
+                vector.event.wrappedKey, privateKey: eventPrivateKey,
+                aad: Data(vector.event.keyAAD.utf8),
+                senderPublicKeyBase64: vector.event.recipientPublicKey  // WRONG sender key
+            )
+        )
+        XCTAssertThrowsError(
+            try HermesRelayCrypto.unwrapSymmetricKey(
+                vector.event.wrappedKey, privateKey: eventPrivateKey, aad: Data(vector.event.keyAAD.utf8)
             )
         )
     }
 
     private func assertGatewayEventVectorRoundTrips(
-        _ vector: GatewayEventVector,
-        expectedPayloadAAD: Data,
-        expectedKeyAAD: Data
+        _ vector: GatewayEventVector, expectedPayloadAAD: Data, expectedKeyAAD: Data
     ) throws {
         XCTAssertEqual(vector.payloadAAD, String(data: expectedPayloadAAD, encoding: .utf8))
         XCTAssertEqual(vector.keyAAD, String(data: expectedKeyAAD, encoding: .utf8))
@@ -590,23 +675,20 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
             vector.wrappedKey,
             privateKey: HermesRelayPrivateKey(rawRepresentation: privateKeyData),
-            aad: expectedKeyAAD
+            aad: expectedKeyAAD,
+            senderPublicKeyBase64: vector.senderPublicKey
         )
         XCTAssertEqual(unwrapped, symmetricKey)
 
         let opened = try HermesRelayCrypto.openBase64(
-            ciphertext: vector.payloadCiphertext,
-            keyData: symmetricKey,
-            aad: expectedPayloadAAD
+            ciphertext: vector.payloadCiphertext, keyData: symmetricKey, aad: expectedPayloadAAD
         )
         XCTAssertEqual(opened.base64EncodedString(), vector.encodedPlaintext)
         XCTAssertEqual(String(data: opened, encoding: .utf8), vector.plaintext)
     }
 
     private func assertGatewayMessageVectorRoundTrips(
-        _ vector: GatewayMessageVector,
-        expectedPayloadAAD: Data,
-        expectedKeyAAD: Data
+        _ vector: GatewayMessageVector, expectedPayloadAAD: Data, expectedKeyAAD: Data
     ) throws {
         XCTAssertEqual(vector.payloadAAD, String(data: expectedPayloadAAD, encoding: .utf8))
         XCTAssertEqual(vector.keyAAD, String(data: expectedKeyAAD, encoding: .utf8))
@@ -616,17 +698,70 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
             vector.wrappedKey,
             privateKey: HermesRelayPrivateKey(rawRepresentation: privateKeyData),
-            aad: expectedKeyAAD
+            aad: expectedKeyAAD,
+            senderPublicKeyBase64: vector.senderPublicKey
         )
         XCTAssertEqual(unwrapped, symmetricKey)
 
         let opened = try HermesRelayCrypto.openBase64(
-            ciphertext: vector.payloadCiphertext,
-            keyData: symmetricKey,
-            aad: expectedPayloadAAD
+            ciphertext: vector.payloadCiphertext, keyData: symmetricKey, aad: expectedPayloadAAD
         )
         XCTAssertEqual(opened.base64EncodedString(), vector.encodedPlaintext)
         XCTAssertEqual(String(data: opened, encoding: .utf8), vector.plaintext)
+    }
+
+    private func assertGatewayAttachmentVectorRoundTrips(_ vector: GatewayAttachmentVector) throws {
+        let expectedManifestAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(
+            uid: vector.uid, clientId: vector.clientId, attachmentId: vector.attachmentId
+        )
+        let expectedBodyAAD = HermesRelayCrypto.gatewayAttachmentBodyAAD(
+            uid: vector.uid, clientId: vector.clientId, attachmentId: vector.attachmentId
+        )
+        let expectedKeyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(
+            uid: vector.uid, clientId: vector.clientId, attachmentId: vector.attachmentId
+        )
+        XCTAssertEqual(vector.manifestAAD, String(data: expectedManifestAAD, encoding: .utf8))
+        XCTAssertEqual(vector.bodyAAD, String(data: expectedBodyAAD, encoding: .utf8))
+        XCTAssertEqual(vector.keyAAD, String(data: expectedKeyAAD, encoding: .utf8))
+
+        let privateKeyData = try XCTUnwrap(Data(base64Encoded: vector.recipientPrivateKey))
+        let bodyKey = try XCTUnwrap(Data(base64Encoded: vector.bodyKey))
+        let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
+            vector.wrappedKey,
+            privateKey: HermesRelayPrivateKey(rawRepresentation: privateKeyData),
+            aad: expectedKeyAAD,
+            senderPublicKeyBase64: vector.senderPublicKey
+        )
+        XCTAssertEqual(unwrapped, bodyKey)
+
+        let manifest = try HermesRelayCrypto.openBase64(
+            ciphertext: vector.manifestCiphertext, keyData: bodyKey, aad: expectedManifestAAD
+        )
+        XCTAssertEqual(String(data: manifest, encoding: .utf8), vector.manifestPlaintext)
+        // MP-18: decode the opened manifest through the PRODUCTION schema field names
+        // (fileName/contentType/byteCount) so a future drift back to `name` — which the
+        // iOS/Android decoders never read — fails this test instead of silently passing
+        // a byte-compare. Mirrors HermesGatewayAttachmentManifest on the app side.
+        struct DecodedManifest: Decodable {
+            let fileName: String
+            let contentType: String
+            let byteCount: Int
+            let destinationId: String
+        }
+        let decodedManifest = try JSONDecoder().decode(DecodedManifest.self, from: manifest)
+        XCTAssertEqual(decodedManifest.fileName, "quarterly-report.pdf")
+        XCTAssertEqual(decodedManifest.contentType, "application/pdf")
+        XCTAssertEqual(decodedManifest.byteCount, 20)
+        XCTAssertEqual(decodedManifest.destinationId, "burnbar:home")
+        let body = try HermesRelayCrypto.openBase64(
+            ciphertext: vector.bodyCiphertext, keyData: bodyKey, aad: expectedBodyAAD
+        )
+        XCTAssertEqual(String(data: body, encoding: .utf8), vector.bodyPlaintext)
+        // Cross-slot swap defense: the body ciphertext must NOT open under the
+        // manifest AAD (distinct AADs under the same body key).
+        XCTAssertThrowsError(
+            try HermesRelayCrypto.openBase64(ciphertext: vector.bodyCiphertext, keyData: bodyKey, aad: expectedManifestAAD)
+        )
     }
 
     // MARK: - Deterministic key generation
@@ -684,6 +819,10 @@ private struct GatewayEventVector: Codable {
     var eventId: String
     var recipientPrivateKey: String
     var recipientPublicKey: String
+    /// v2 authenticated wrap: the seal-side **sender's** static public key
+    /// (X9.63). The recipient binds the *pinned* copy of this when unwrapping —
+    /// the wire field is a lookup hint only, never the trust authority.
+    var senderPublicKey: String
     var symmetricKey: String
     var payloadAAD: String
     var keyAAD: String
@@ -702,6 +841,7 @@ private struct GatewayMessageVector: Codable {
     var messageId: String
     var recipientPrivateKey: String
     var recipientPublicKey: String
+    var senderPublicKey: String
     var symmetricKey: String
     var payloadAAD: String
     var keyAAD: String
@@ -711,11 +851,37 @@ private struct GatewayMessageVector: Codable {
     var wrappedKey: String
 }
 
+/// One sealed agent→phone gateway attachment. A single random body key seals
+/// BOTH the manifest (under `gatewayAttachmentManifest`) and the body (under
+/// `gatewayAttachmentBody`); the body key is v2-wrapped (sender = agent,
+/// recipient = phone) under `gatewayAttachmentKey`. ``recipientPrivateKey`` is
+/// the PHONE relay key. This is the slot whose absence let attachment interop
+/// ship unproven.
+private struct GatewayAttachmentVector: Codable {
+    var uid: String
+    var clientId: String
+    var attachmentId: String
+    var recipientPrivateKey: String
+    var recipientPublicKey: String
+    var senderPublicKey: String
+    var bodyKey: String
+    var manifestAAD: String
+    var bodyAAD: String
+    var keyAAD: String
+    var manifestPlaintext: String
+    var bodyPlaintext: String
+    var manifestCiphertext: String
+    var bodyCiphertext: String
+    var wrappedKey: String
+}
+
 private struct GatewayWireVector: Codable {
     var revision: String
     var algorithm: String
+    /// The gateway wrap-protocol version (= `HermesRelayCrypto.gatewayRelayKeyVersion`, 2).
     var keyVersion: Int
     var event: GatewayEventVector
     var message: GatewayMessageVector
     var modelSwitch: GatewayEventVector
+    var attachment: GatewayAttachmentVector
 }

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 @preconcurrency import FirebaseAppCheck
 @preconcurrency import FirebaseAuth
@@ -25,6 +26,7 @@ struct CloudConversationSearchHit: Identifiable, Decodable, Hashable, Sendable {
     let sealedBodyPreview: CloudVaultSealedText?
     let storagePath: String
     let bodyHash: String
+    let bodyHashVersion: Int?
     let score: Double
     let tokenScore: Double?
     let semanticScore: Double?
@@ -71,6 +73,7 @@ struct ConversationFacetRow: Decodable, Identifiable, Hashable, Sendable {
     let sealedBodyPreview: CloudVaultSealedText?
     let storagePath: String?
     let bodyHash: String?
+    let bodyHashVersion: Int?
     let startTime: Date?
     let endTime: Date?
     let updatedAt: Date?
@@ -109,6 +112,25 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
     let relayPublicKey: String?
     let relayKeyVersion: Int?
     let relayEncryption: String?
+    let phoneRelayPublicKey: String?
+    let phoneRelayKeyVersion: Int?
+    let phoneRelayEncryption: String?
+    let supportsRelayEnvelopeVersions: [Int]
+    let preferredRelayEnvelopeVersion: Int
+    let supportsHpkeV3: Bool
+    let agentRatchetIdentityPublicKey: String?
+    let agentRatchetSigningPublicKey: String?
+    let agentRatchetSignedPreKeyPublicKey: String?
+    let agentRatchetSignedPreKeyId: String?
+    let agentRatchetSignedPreKeySignature: String?
+    let agentSupportsRatchetV1: Bool?
+    let phoneRatchetIdentityPublicKey: String?
+    let phoneRatchetSigningPublicKey: String?
+    let phoneRatchetSignedPreKeyPublicKey: String?
+    let phoneRatchetSignedPreKeyId: String?
+    let phoneRatchetSignedPreKeySignature: String?
+    let phoneSupportsRatchetV1: Bool?
+    let supportsRatchetV1: Bool
     let revokedAt: String?
     let createdAt: String
     let updatedAt: String
@@ -121,6 +143,39 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
     /// realtime-relay `canSealToHost` guard in `HermesService`.
     var canSealToAgent: Bool {
         relayEncryption == HermesRelayCrypto.algorithm && (relayPublicKey?.isEmpty == false)
+    }
+
+    func isPairedWithThisDevice(relayPublicKeyBase64 localRelayPublicKey: String) -> Bool {
+        guard
+            let phoneRelayPublicKey = phoneRelayPublicKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !phoneRelayPublicKey.isEmpty
+        else { return false }
+        return phoneRelayPublicKey == localRelayPublicKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var preferredRelayEnvelopeVersionForSeal: Int {
+        supportsRelayEnvelopeVersions.contains(preferredRelayEnvelopeVersion)
+            ? preferredRelayEnvelopeVersion
+            : HermesRelayCrypto.gatewayRelayKeyVersion
+    }
+
+    /// True only when both peers have published complete, echoed Phase 6 ratchet
+    /// public material. The UI may show this as ratchet-capable, but transport
+    /// still binds the identities through the safety-code path before trust.
+    var canRatchetToAgent: Bool {
+        supportsRatchetV1
+            && agentSupportsRatchetV1 != false
+            && phoneSupportsRatchetV1 != false
+            && Self.nonEmpty(agentRatchetIdentityPublicKey)
+            && Self.nonEmpty(agentRatchetSigningPublicKey)
+            && Self.nonEmpty(agentRatchetSignedPreKeyPublicKey)
+            && Self.nonEmpty(agentRatchetSignedPreKeyId)
+            && Self.nonEmpty(agentRatchetSignedPreKeySignature)
+            && Self.nonEmpty(phoneRatchetIdentityPublicKey)
+            && Self.nonEmpty(phoneRatchetSigningPublicKey)
+            && Self.nonEmpty(phoneRatchetSignedPreKeyPublicKey)
+            && Self.nonEmpty(phoneRatchetSignedPreKeyId)
+            && Self.nonEmpty(phoneRatchetSignedPreKeySignature)
     }
 
     /// Treat an unset `oversightMode` as the safe `supervised` default so the
@@ -154,9 +209,28 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         case relayPublicKey
         case relayKeyVersion
         case relayEncryption
+        case supportsRelayEnvelopeVersions
+        case preferredRelayEnvelopeVersion
+        case supportsHpkeV3
         case agentRelayPublicKey
         case agentRelayKeyVersion
         case agentRelayEncryption
+        case phoneRelayPublicKey
+        case phoneRelayKeyVersion
+        case phoneRelayEncryption
+        case agentRatchetIdentityPublicKey
+        case agentRatchetSigningPublicKey
+        case agentRatchetSignedPreKeyPublicKey
+        case agentRatchetSignedPreKeyId
+        case agentRatchetSignedPreKeySignature
+        case agentSupportsRatchetV1
+        case phoneRatchetIdentityPublicKey
+        case phoneRatchetSigningPublicKey
+        case phoneRatchetSignedPreKeyPublicKey
+        case phoneRatchetSignedPreKeyId
+        case phoneRatchetSignedPreKeySignature
+        case phoneSupportsRatchetV1
+        case supportsRatchetV1
         case revokedAt
         case createdAt
         case updatedAt
@@ -190,7 +264,26 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
             relayKeyVersion: try container.decodeIfPresent(Int.self, forKey: .relayKeyVersion)
                 ?? container.decodeIfPresent(Int.self, forKey: .agentRelayKeyVersion),
             relayEncryption: try container.decodeIfPresent(String.self, forKey: .relayEncryption)
-                ?? container.decodeIfPresent(String.self, forKey: .agentRelayEncryption)
+                ?? container.decodeIfPresent(String.self, forKey: .agentRelayEncryption),
+            phoneRelayPublicKey: try container.decodeIfPresent(String.self, forKey: .phoneRelayPublicKey),
+            phoneRelayKeyVersion: try container.decodeIfPresent(Int.self, forKey: .phoneRelayKeyVersion),
+            phoneRelayEncryption: try container.decodeIfPresent(String.self, forKey: .phoneRelayEncryption),
+            supportsRelayEnvelopeVersions: try container.decodeIfPresent([Int].self, forKey: .supportsRelayEnvelopeVersions) ?? [HermesRelayCrypto.gatewayRelayKeyVersion],
+            preferredRelayEnvelopeVersion: try container.decodeIfPresent(Int.self, forKey: .preferredRelayEnvelopeVersion) ?? HermesRelayCrypto.gatewayRelayKeyVersion,
+            supportsHpkeV3: try container.decodeIfPresent(Bool.self, forKey: .supportsHpkeV3) ?? false,
+            agentRatchetIdentityPublicKey: try container.decodeIfPresent(String.self, forKey: .agentRatchetIdentityPublicKey),
+            agentRatchetSigningPublicKey: try container.decodeIfPresent(String.self, forKey: .agentRatchetSigningPublicKey),
+            agentRatchetSignedPreKeyPublicKey: try container.decodeIfPresent(String.self, forKey: .agentRatchetSignedPreKeyPublicKey),
+            agentRatchetSignedPreKeyId: try container.decodeIfPresent(String.self, forKey: .agentRatchetSignedPreKeyId),
+            agentRatchetSignedPreKeySignature: try container.decodeIfPresent(String.self, forKey: .agentRatchetSignedPreKeySignature),
+            agentSupportsRatchetV1: try container.decodeIfPresent(Bool.self, forKey: .agentSupportsRatchetV1),
+            phoneRatchetIdentityPublicKey: try container.decodeIfPresent(String.self, forKey: .phoneRatchetIdentityPublicKey),
+            phoneRatchetSigningPublicKey: try container.decodeIfPresent(String.self, forKey: .phoneRatchetSigningPublicKey),
+            phoneRatchetSignedPreKeyPublicKey: try container.decodeIfPresent(String.self, forKey: .phoneRatchetSignedPreKeyPublicKey),
+            phoneRatchetSignedPreKeyId: try container.decodeIfPresent(String.self, forKey: .phoneRatchetSignedPreKeyId),
+            phoneRatchetSignedPreKeySignature: try container.decodeIfPresent(String.self, forKey: .phoneRatchetSignedPreKeySignature),
+            phoneSupportsRatchetV1: try container.decodeIfPresent(Bool.self, forKey: .phoneSupportsRatchetV1),
+            supportsRatchetV1: try container.decodeIfPresent(Bool.self, forKey: .supportsRatchetV1) ?? false
         )
     }
 
@@ -216,7 +309,26 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         oversightMode: String? = nil,
         relayPublicKey: String? = nil,
         relayKeyVersion: Int? = nil,
-        relayEncryption: String? = nil
+        relayEncryption: String? = nil,
+        phoneRelayPublicKey: String? = nil,
+        phoneRelayKeyVersion: Int? = nil,
+        phoneRelayEncryption: String? = nil,
+        supportsRelayEnvelopeVersions: [Int] = [HermesRelayCrypto.gatewayRelayKeyVersion],
+        preferredRelayEnvelopeVersion: Int = HermesRelayCrypto.gatewayRelayKeyVersion,
+        supportsHpkeV3: Bool = false,
+        agentRatchetIdentityPublicKey: String? = nil,
+        agentRatchetSigningPublicKey: String? = nil,
+        agentRatchetSignedPreKeyPublicKey: String? = nil,
+        agentRatchetSignedPreKeyId: String? = nil,
+        agentRatchetSignedPreKeySignature: String? = nil,
+        agentSupportsRatchetV1: Bool? = nil,
+        phoneRatchetIdentityPublicKey: String? = nil,
+        phoneRatchetSigningPublicKey: String? = nil,
+        phoneRatchetSignedPreKeyPublicKey: String? = nil,
+        phoneRatchetSignedPreKeyId: String? = nil,
+        phoneRatchetSignedPreKeySignature: String? = nil,
+        phoneSupportsRatchetV1: Bool? = nil,
+        supportsRatchetV1: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -236,10 +348,34 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         self.relayPublicKey = relayPublicKey
         self.relayKeyVersion = relayKeyVersion
         self.relayEncryption = relayEncryption
+        self.phoneRelayPublicKey = phoneRelayPublicKey
+        self.phoneRelayKeyVersion = phoneRelayKeyVersion
+        self.phoneRelayEncryption = phoneRelayEncryption
+        self.supportsRelayEnvelopeVersions = supportsRelayEnvelopeVersions
+        self.preferredRelayEnvelopeVersion = preferredRelayEnvelopeVersion
+        self.supportsHpkeV3 = supportsHpkeV3
+        self.agentRatchetIdentityPublicKey = agentRatchetIdentityPublicKey
+        self.agentRatchetSigningPublicKey = agentRatchetSigningPublicKey
+        self.agentRatchetSignedPreKeyPublicKey = agentRatchetSignedPreKeyPublicKey
+        self.agentRatchetSignedPreKeyId = agentRatchetSignedPreKeyId
+        self.agentRatchetSignedPreKeySignature = agentRatchetSignedPreKeySignature
+        self.agentSupportsRatchetV1 = agentSupportsRatchetV1
+        self.phoneRatchetIdentityPublicKey = phoneRatchetIdentityPublicKey
+        self.phoneRatchetSigningPublicKey = phoneRatchetSigningPublicKey
+        self.phoneRatchetSignedPreKeyPublicKey = phoneRatchetSignedPreKeyPublicKey
+        self.phoneRatchetSignedPreKeyId = phoneRatchetSignedPreKeyId
+        self.phoneRatchetSignedPreKeySignature = phoneRatchetSignedPreKeySignature
+        self.phoneSupportsRatchetV1 = phoneSupportsRatchetV1
+        self.supportsRatchetV1 = supportsRatchetV1
         self.revokedAt = revokedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.schemaVersion = schemaVersion
+    }
+
+    private static func nonEmpty(_ value: String?) -> Bool {
+        guard let value else { return false }
+        return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 
@@ -279,7 +415,29 @@ extension HermesGatewayClientRecord {
                 ?? (data["relayKeyVersion"] as? Int)
                 ?? (data["agentRelayKeyVersion"] as? NSNumber)?.intValue
                 ?? (data["agentRelayKeyVersion"] as? Int),
-            relayEncryption: Self.string(data["relayEncryption"]) ?? Self.string(data["agentRelayEncryption"])
+            relayEncryption: Self.string(data["relayEncryption"]) ?? Self.string(data["agentRelayEncryption"]),
+            phoneRelayPublicKey: Self.string(data["phoneRelayPublicKey"]),
+            phoneRelayKeyVersion: (data["phoneRelayKeyVersion"] as? NSNumber)?.intValue
+                ?? (data["phoneRelayKeyVersion"] as? Int),
+            phoneRelayEncryption: Self.string(data["phoneRelayEncryption"]),
+            supportsRelayEnvelopeVersions: Self.intArray(data["supportsRelayEnvelopeVersions"], fallback: [HermesRelayCrypto.gatewayRelayKeyVersion]),
+            preferredRelayEnvelopeVersion: (data["preferredRelayEnvelopeVersion"] as? NSNumber)?.intValue
+                ?? (data["preferredRelayEnvelopeVersion"] as? Int)
+                ?? HermesRelayCrypto.gatewayRelayKeyVersion,
+            supportsHpkeV3: (data["supportsHpkeV3"] as? Bool) ?? false,
+            agentRatchetIdentityPublicKey: Self.string(data["agentRatchetIdentityPublicKey"]),
+            agentRatchetSigningPublicKey: Self.string(data["agentRatchetSigningPublicKey"]),
+            agentRatchetSignedPreKeyPublicKey: Self.string(data["agentRatchetSignedPreKeyPublicKey"]),
+            agentRatchetSignedPreKeyId: Self.string(data["agentRatchetSignedPreKeyId"]),
+            agentRatchetSignedPreKeySignature: Self.string(data["agentRatchetSignedPreKeySignature"]),
+            agentSupportsRatchetV1: data["agentSupportsRatchetV1"] as? Bool,
+            phoneRatchetIdentityPublicKey: Self.string(data["phoneRatchetIdentityPublicKey"]),
+            phoneRatchetSigningPublicKey: Self.string(data["phoneRatchetSigningPublicKey"]),
+            phoneRatchetSignedPreKeyPublicKey: Self.string(data["phoneRatchetSignedPreKeyPublicKey"]),
+            phoneRatchetSignedPreKeyId: Self.string(data["phoneRatchetSignedPreKeyId"]),
+            phoneRatchetSignedPreKeySignature: Self.string(data["phoneRatchetSignedPreKeySignature"]),
+            phoneSupportsRatchetV1: data["phoneSupportsRatchetV1"] as? Bool,
+            supportsRatchetV1: (data["supportsRatchetV1"] as? Bool) ?? false
         )
     }
 
@@ -311,6 +469,17 @@ extension HermesGatewayClientRecord {
         default:
             return nil
         }
+    }
+
+    private static func intArray(_ raw: Any?, fallback: [Int]) -> [Int] {
+        guard let values = raw as? [Any] else { return fallback }
+        let parsed = values.compactMap { item -> Int? in
+            if let number = item as? NSNumber { return number.intValue }
+            if let int = item as? Int { return int }
+            if let string = item as? String { return Int(string) }
+            return nil
+        }
+        return parsed.isEmpty ? fallback : parsed
     }
 
     private static func modelOptions(_ raw: Any?) -> [HermesGatewayModelOptionRecord] {
@@ -540,6 +709,17 @@ extension HermesGatewayApprovalRecord {
     }
 }
 
+/// The sealed gateway message payload schema (MP-27): the agent seals JSON
+/// `{text, actionId?, kind?}`; the phone decodes it (never renders the raw bytes)
+/// and uses `actionId` to bind an approval detail to the right oversight gate
+/// (MP-6). A payload missing `text` is rejected (decode throws → treated as
+/// unopenable) so a malformed sealed body never surfaces as a reply.
+private struct SealedGatewayPayload: Decodable {
+    let text: String
+    let actionId: String?
+    let kind: String?
+}
+
 struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     let id: String
     let clientId: String
@@ -558,11 +738,22 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// this phone's relay pubkey; only this device can open it.
     let payloadCiphertext: String?
     let wrappedKey: String?
+    let enc: String?
     let relayEncryption: String?
     let relayKeyVersion: Int?
+    let ratchetEnvelope: HermesRatchetEnvelope?
+    let ratchetEnvelopeCiphertextBase64: String?
+    let ratchetEnvelopeAlgorithm: String?
     /// Plaintext recovered by opening `payloadCiphertext` in the snapshot handler.
     /// Held in-memory only; never persisted. `nil` until opened.
     var resolvedText: String?
+    /// The `actionId` carried inside a sealed approval-detail payload (MP-27), used
+    /// to bind the decrypted detail to the matching server approval gate (MP-6).
+    /// `nil` for ordinary replies. In-memory only; never persisted.
+    var resolvedActionId: String?
+    /// The optional `kind` discriminator carried inside the sealed payload (e.g.
+    /// "approval"). In-memory only; never persisted.
+    var resolvedKind: String?
     /// Files recovered from `hermes_gateway_attachments`, downloaded from
     /// Storage, opened on this device, and written into the normal chat
     /// attachment workspace. Held in-memory until the chat service persists the
@@ -603,13 +794,21 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         let relayEnvelope = Self.dictionary(data["relayEnvelope"])
         self.payloadCiphertext = Self.string(relayEnvelope?["payloadCiphertext"]) ?? Self.string(data["payloadCiphertext"])
         self.wrappedKey = Self.string(relayEnvelope?["wrappedKey"]) ?? Self.string(data["wrappedKey"])
+        self.enc = Self.string(relayEnvelope?["enc"]) ?? Self.string(data["enc"])
         self.relayEncryption = Self.string(relayEnvelope?["relayEncryption"]) ?? Self.string(data["relayEncryption"])
         self.relayKeyVersion =
             (relayEnvelope?["relayKeyVersion"] as? NSNumber)?.intValue
             ?? (relayEnvelope?["relayKeyVersion"] as? Int)
             ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
             ?? (data["relayKeyVersion"] as? Int)
+        let ratchetEnvelope = Self.dictionary(data["ratchetEnvelope"])
+        let ratchetHeader = Self.dictionary(ratchetEnvelope?["header"])
+        self.ratchetEnvelope = Self.decodeRatchetEnvelope(ratchetEnvelope)
+        self.ratchetEnvelopeCiphertextBase64 = Self.string(ratchetEnvelope?["ciphertextBase64"])
+        self.ratchetEnvelopeAlgorithm = Self.string(ratchetHeader?["algorithm"])
         self.resolvedText = nil
+        self.resolvedActionId = nil
+        self.resolvedKind = nil
         self.openedAttachments = []
         self.failedAttachmentIds = []
         self.requiresSealedReply = false
@@ -618,9 +817,18 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// True when the reply carries a sealed body that must be opened with the
     /// phone's relay key (vs. a legacy plaintext doc).
     var isSealed: Bool {
-        relayEncryption == HermesRelayCrypto.algorithm
+        isRelaySealed || isRatchetSealed
+    }
+
+    private var isRelaySealed: Bool {
+        (relayEncryption == HermesRelayCrypto.algorithm || relayEncryption == HermesRelayCrypto.relayEncryptionV3)
             && (payloadCiphertext?.isEmpty == false)
             && (wrappedKey?.isEmpty == false)
+    }
+
+    private var isRatchetSealed: Bool {
+        ratchetEnvelopeAlgorithm == HermesRatchetCrypto.algorithm
+            && (ratchetEnvelopeCiphertextBase64?.isEmpty == false)
     }
 
     /// The body to render: the opened plaintext for sealed docs, otherwise the
@@ -730,6 +938,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     func decodedText(
         using keypair: HermesGatewayRelayKeypair,
         uid: String,
+        targetClient: HermesGatewayClientRecord? = nil,
         pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
     ) -> HermesGatewayMessageRecord {
         var resolved = self
@@ -740,30 +949,145 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         // from the device Keychain, so a hostile server cannot suppress this gate;
         // `requiresSealedReplies` is fail-CLOSED on a Keychain read error (it treats
         // an unreadable pin as "must seal") so a transient Keychain failure can never
-        // re-open the plaintext path. NOTE: this defeats the cheap UNSEALED forgery
-        // (the server dropping the envelope). It does NOT by itself prove sender
-        // identity for a SEALED reply — the relay wrap is anonymous-sender ECIES, so
-        // a fully-compromised server that seals to this phone's public key is a
-        // separate residual, mitigated by the supervised-oversight gate for risky
-        // actions (see evidence/E2EE-AUDIT-all-platforms-2026-06-03.md).
+        // re-open the plaintext path.
+        //
+        // v2 closes the anonymous-sender residual: the wrap is now an authenticated
+        // 2-DH KEM, and the open below binds the AGENT's PINNED relay key as the
+        // sender. A swapped/forged sender key fails the GCM tag, so a compromised
+        // relay can no longer seal a forged reply to this phone's public key.
         resolved.requiresSealedReply = pinStore.requiresSealedReplies(uid: uid, clientId: clientId)
-        guard isSealed,
+        if isRatchetSealed {
+            return decodedRatchetText(uid: uid, targetClient: targetClient, resolved: resolved)
+        }
+        guard isRelaySealed,
               let payloadCiphertext,
               let wrappedKey else {
             return resolved
         }
+        guard let pinnedAgentKey = pinStore.pinnedKey(uid: uid, clientId: clientId) else {
+            resolved.resolvedText = nil
+            return resolved
+        }
         do {
-            let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
-                wrappedKey,
-                privateKey: keypair.privateKey,
-                aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: id)
-            )
+            let keyAAD = HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: id)
+            let keyData: Data
+            if relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersion {
+                guard relayEncryption == HermesRelayCrypto.algorithm else { return resolved }
+                keyData = try HermesRelayCrypto.unwrapSymmetricKey(
+                    wrappedKey,
+                    privateKey: keypair.privateKey,
+                    aad: keyAAD,
+                    senderPublicKeyBase64: pinnedAgentKey
+                )
+            } else if relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersionV3 {
+                guard relayEncryption == HermesRelayCrypto.relayEncryptionV3,
+                      let enc,
+                      !enc.isEmpty else { return resolved }
+                keyData = try HermesRelayCrypto.openKeyV3(
+                    encBase64: enc,
+                    wrappedKeyBase64: wrappedKey,
+                    privateKey: keypair.privateKey,
+                    pinnedSenderPublicKeyBase64: pinnedAgentKey,
+                    aad: keyAAD
+                )
+            } else {
+                return resolved
+            }
             let plaintext = try HermesRelayCrypto.openBase64(
                 ciphertext: payloadCiphertext,
                 keyData: keyData,
                 aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: id)
             )
-            resolved.resolvedText = String(data: plaintext, encoding: .utf8)
+            // MP-27: the agent seals JSON {text, actionId?, kind?}; decode it (never
+            // render the raw bytes, which would show literal `{"text":...}`). A
+            // payload without `text` fails to decode and is treated as unopenable.
+            if let payload = try? JSONDecoder().decode(SealedGatewayPayload.self, from: plaintext) {
+                resolved.resolvedText = payload.text
+                resolved.resolvedActionId = payload.actionId
+                resolved.resolvedKind = payload.kind
+            } else {
+                resolved.resolvedText = nil
+            }
+        } catch {
+            resolved.resolvedText = nil
+        }
+        return resolved
+    }
+
+    private func decodedRatchetText(
+        uid: String,
+        targetClient: HermesGatewayClientRecord?,
+        resolved initial: HermesGatewayMessageRecord
+    ) -> HermesGatewayMessageRecord {
+        var resolved = initial
+        guard let envelope = ratchetEnvelope,
+              let targetClient,
+              targetClient.canRatchetToAgent,
+              let agentIdentity = targetClient.agentRatchetIdentityPublicKey,
+              let agentSigning = targetClient.agentRatchetSigningPublicKey,
+              let agentSignedPreKey = targetClient.agentRatchetSignedPreKeyPublicKey,
+              let agentSignedPreKeyID = targetClient.agentRatchetSignedPreKeyId,
+              let agentSignature = targetClient.agentRatchetSignedPreKeySignature,
+              HermesGatewayRatchetChatLane.verifySignedPreKey(
+                signingPublicKeyBase64: agentSigning,
+                identityPublicKeyBase64: agentIdentity,
+                signedPreKeyPublicKeyBase64: agentSignedPreKey,
+                signedPreKeyID: agentSignedPreKeyID,
+                signatureBase64: agentSignature
+              )
+        else {
+            resolved.resolvedText = nil
+            return resolved
+        }
+        do {
+            let local = try HermesGatewayRatchetPrekeyStore.loadOrCreatePrivateBundle()
+            guard local.identityPublicKeyBase64 == targetClient.phoneRatchetIdentityPublicKey,
+                  local.signedPreKeyPublicKeyBase64 == targetClient.phoneRatchetSignedPreKeyPublicKey else {
+                resolved.resolvedText = nil
+                return resolved
+            }
+            var state: HermesRatchetSessionState
+            if let existing = try HermesGatewayRatchetSessionStore.load(sessionID: envelope.header.sessionID) {
+                state = existing
+            } else {
+                guard envelope.header.senderDeviceID.hasPrefix("agent:") else {
+                    resolved.resolvedText = nil
+                    return resolved
+                }
+                let sharedSecret = try HermesGatewayRatchetChatLane.responderSharedSecret(
+                    uid: uid,
+                    clientId: clientId,
+                    initiatorRole: .agent,
+                    localIdentityPrivateKeyBase64: local.identityPrivateKeyBase64,
+                    localSignedPreKeyPrivateKeyBase64: local.signedPreKeyPrivateKeyBase64,
+                    localIdentityPublicKeyBase64: local.identityPublicKeyBase64,
+                    localSignedPreKeyPublicKeyBase64: local.signedPreKeyPublicKeyBase64,
+                    remoteIdentityPublicKeyBase64: agentIdentity,
+                    remoteSignedPreKeyPublicKeyBase64: agentSignedPreKey,
+                    remoteInitialRatchetPublicKeyBase64: envelope.header.ratchetPublicKeyBase64
+                )
+                state = try HermesRatchetCrypto.responderState(
+                    sessionID: envelope.header.sessionID,
+                    localDeviceID: envelope.header.receiverDeviceID,
+                    remoteDeviceID: envelope.header.senderDeviceID,
+                    sharedSecret: sharedSecret,
+                    localInitialRatchetKeyPair: local.signedPreKeyPair
+                )
+            }
+            let plaintext = try HermesRatchetCrypto.decrypt(
+                envelope,
+                state: &state,
+                associatedData: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: id)
+            )
+            try HermesGatewayRatchetSessionStore.save(state)
+            try HermesGatewayRatchetSessionStore.saveCurrentChatSessionID(state.sessionID, uid: uid, clientId: clientId)
+            if let payload = try? JSONDecoder().decode(SealedGatewayPayload.self, from: plaintext) {
+                resolved.resolvedText = payload.text
+                resolved.resolvedActionId = payload.actionId
+                resolved.resolvedKind = payload.kind
+            } else {
+                resolved.resolvedText = nil
+            }
         } catch {
             resolved.resolvedText = nil
         }
@@ -807,6 +1131,14 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             return nil
         }
     }
+
+    static func decodeRatchetEnvelope(_ raw: [String: Any]?) -> HermesRatchetEnvelope? {
+        guard let raw,
+              JSONSerialization.isValidJSONObject(raw),
+              let data = try? JSONSerialization.data(withJSONObject: raw)
+        else { return nil }
+        return try? JSONDecoder().decode(HermesRatchetEnvelope.self, from: data)
+    }
 }
 
 /// The opened content of an agent→phone sealed gateway attachment: the manifest
@@ -822,7 +1154,7 @@ struct HermesGatewayOpenedAttachment: Hashable, Sendable {
 /// An agent→phone sealed gateway attachment as stored in
 /// `hermes_gateway_attachments`. The agent seals the file with a per-attachment
 /// symmetric key wrapped to this phone's relay pubkey, stores the sealed
-/// *manifest* (`{fileName, byteCount, contentType}`) in `payloadCiphertext`, and
+/// *manifest* (`{fileName, byteCount, contentType, destinationId}`) in `payloadCiphertext`, and
 /// uploads the sealed *body* bytes to Cloud Storage at `bodyStoragePath`. The
 /// phone unwraps the body key once and opens both the manifest and the body,
 /// each bound to a distinct AAD label so a relay cannot swap one slot for the
@@ -839,8 +1171,11 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
     let bodyStoragePath: String?
     let payloadCiphertext: String?
     let wrappedKey: String?
+    let enc: String?
     let relayEncryption: String?
     let relayKeyVersion: Int?
+    let ratchetEnvelopeCiphertextBase64: String?
+    let ratchetEnvelopeAlgorithm: String?
     let createdAt: String?
 
     init?(documentID: String, data: [String: Any]) {
@@ -861,6 +1196,9 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
         self.wrappedKey =
             HermesGatewayMessageRecord.string(relayEnvelope?["wrappedKey"])
             ?? HermesGatewayMessageRecord.string(data["wrappedKey"])
+        self.enc =
+            HermesGatewayMessageRecord.string(relayEnvelope?["enc"])
+            ?? HermesGatewayMessageRecord.string(data["enc"])
         self.relayEncryption =
             HermesGatewayMessageRecord.string(relayEnvelope?["relayEncryption"])
             ?? HermesGatewayMessageRecord.string(data["relayEncryption"])
@@ -869,31 +1207,62 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
             ?? (relayEnvelope?["relayKeyVersion"] as? Int)
             ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
             ?? (data["relayKeyVersion"] as? Int)
+        let ratchetEnvelope = HermesGatewayMessageRecord.dictionary(data["ratchetEnvelope"])
+        let ratchetHeader = HermesGatewayMessageRecord.dictionary(ratchetEnvelope?["header"])
+        self.ratchetEnvelopeCiphertextBase64 = HermesGatewayMessageRecord.string(ratchetEnvelope?["ciphertextBase64"])
+        self.ratchetEnvelopeAlgorithm = HermesGatewayMessageRecord.string(ratchetHeader?["algorithm"])
         self.createdAt = HermesGatewayMessageRecord.string(data["createdAt"])
     }
 
     /// True when this attachment carries a sealed body the phone must open with
     /// its relay key (vs. a legacy plaintext attachment).
     var isSealed: Bool {
-        relayEncryption == HermesRelayCrypto.algorithm
+        isRelaySealed || isRatchetSealed
+    }
+
+    private var isRelaySealed: Bool {
+        (relayEncryption == HermesRelayCrypto.algorithm || relayEncryption == HermesRelayCrypto.relayEncryptionV3)
             && (payloadCiphertext?.isEmpty == false)
             && (wrappedKey?.isEmpty == false)
+    }
+
+    private var isRatchetSealed: Bool {
+        ratchetEnvelopeAlgorithm == HermesRatchetCrypto.algorithm
+            && (ratchetEnvelopeCiphertextBase64?.isEmpty == false)
     }
 
     /// Unwrap the per-attachment body key with this phone's relay key, binding
     /// the *key* AAD (`gatewayAttachmentKey`). Returns `nil` when the attachment
     /// is unsealed or the wrap was sealed for another device. This is the open
     /// primitive shared by the manifest-only and full-body paths.
-    func unwrapBodyKey(using keypair: HermesGatewayRelayKeypair, uid: String) -> Data? {
-        guard isSealed, let wrappedKey else { return nil }
-        return try? HermesRelayCrypto.unwrapSymmetricKey(
-            wrappedKey,
-            privateKey: keypair.privateKey,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: id)
-        )
+    func unwrapBodyKey(using keypair: HermesGatewayRelayKeypair, uid: String, pinnedSenderKey: String?) -> Data? {
+        guard isRelaySealed, let wrappedKey, let pinnedSenderKey else { return nil }
+        let keyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: id)
+        if relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersion {
+            guard relayEncryption == HermesRelayCrypto.algorithm else { return nil }
+            return try? HermesRelayCrypto.unwrapSymmetricKey(
+                wrappedKey,
+                privateKey: keypair.privateKey,
+                aad: keyAAD,
+                senderPublicKeyBase64: pinnedSenderKey
+            )
+        }
+        if relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersionV3 {
+            guard relayEncryption == HermesRelayCrypto.relayEncryptionV3,
+                  let enc,
+                  !enc.isEmpty else { return nil }
+            return try? HermesRelayCrypto.openKeyV3(
+                encBase64: enc,
+                wrappedKeyBase64: wrappedKey,
+                privateKey: keypair.privateKey,
+                pinnedSenderPublicKeyBase64: pinnedSenderKey,
+                aad: keyAAD
+            )
+        }
+        return nil
     }
 
-    /// Open the sealed manifest (`{fileName, byteCount, contentType}`) with the
+    /// Open the sealed manifest (`{fileName, byteCount, contentType, destinationId}`) with the
     /// already-unwrapped body key, binding the *manifest* AAD. Throws on a
     /// cross-slot swap (the body ciphertext fails the manifest tag) or malformed
     /// manifest JSON.
@@ -907,6 +1276,9 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
             aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: id)
         )
         guard let manifest = HermesGatewayAttachmentManifest(jsonData: manifestData) else {
+            throw FunctionsError.gatewayAttachmentUnreadable
+        }
+        if let destinationId, !destinationId.isEmpty, manifest.destinationId != destinationId {
             throw FunctionsError.gatewayAttachmentUnreadable
         }
         return manifest
@@ -939,9 +1311,10 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
     func opened(
         downloadedBody: Data,
         using keypair: HermesGatewayRelayKeypair,
-        uid: String
+        uid: String,
+        pinnedSenderKey: String?
     ) -> HermesGatewayOpenedAttachment? {
-        guard let bodyKey = unwrapBodyKey(using: keypair, uid: uid) else { return nil }
+        guard let bodyKey = unwrapBodyKey(using: keypair, uid: uid, pinnedSenderKey: pinnedSenderKey) else { return nil }
         do {
             let manifest = try openManifest(bodyKey: bodyKey, uid: uid)
             let body = try openBody(downloadedBody: downloadedBody, bodyKey: bodyKey, uid: uid)
@@ -959,16 +1332,18 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
 }
 
 /// Decoded gateway-attachment manifest. The agent seals exactly
-/// `{fileName, byteCount, contentType}` so the phone can name and size the file
-/// without ever exposing it to the server.
+/// `{fileName, byteCount, contentType, destinationId}` so the phone can name,
+/// size, and route the file without ever exposing that to the server.
 struct HermesGatewayAttachmentManifest: Hashable, Sendable {
     let fileName: String
     let byteCount: Int
     let contentType: String?
+    let destinationId: String
 
     init?(jsonData: Data) {
         guard let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let fileName = HermesGatewayMessageRecord.string(object["fileName"])
+              let fileName = HermesGatewayMessageRecord.string(object["fileName"]),
+              let destinationId = HermesGatewayMessageRecord.string(object["destinationId"])
         else { return nil }
         self.fileName = fileName
         self.byteCount =
@@ -976,6 +1351,7 @@ struct HermesGatewayAttachmentManifest: Hashable, Sendable {
             ?? (object["byteCount"] as? Int)
             ?? 0
         self.contentType = HermesGatewayMessageRecord.string(object["contentType"])
+        self.destinationId = destinationId
     }
 }
 
@@ -1073,7 +1449,47 @@ private struct FirebaseCallablePayload: @unchecked Sendable {
     let rawValue: NSDictionary
 
     init(_ payload: [String: Any]) {
-        self.rawValue = NSDictionary(dictionary: payload)
+        self.rawValue = Self.bridgeDictionary(payload)
+    }
+
+    private static func bridgeDictionary(_ dictionary: [String: Any]) -> NSDictionary {
+        var bridged: [String: Any] = [:]
+        for (key, value) in dictionary {
+            bridged[key] = bridgeValue(value)
+        }
+        return NSDictionary(dictionary: bridged)
+    }
+
+    private static func bridgeArray(_ array: [Any]) -> NSArray {
+        NSArray(array: array.map(bridgeValue))
+    }
+
+    private static func bridgeValue(_ value: Any) -> Any {
+        if let dictionary = value as? [String: Any] {
+            return bridgeDictionary(dictionary)
+        }
+        if let array = value as? [Any] {
+            return bridgeArray(array)
+        }
+        if let string = value as? String {
+            return string as NSString
+        }
+        if let number = value as? NSNumber {
+            return number
+        }
+        if let bool = value as? Bool {
+            return NSNumber(value: bool)
+        }
+        if let int = value as? Int {
+            return NSNumber(value: int)
+        }
+        if let double = value as? Double {
+            return NSNumber(value: double)
+        }
+        if let float = value as? Float {
+            return NSNumber(value: float)
+        }
+        return value
     }
 }
 
@@ -1100,7 +1516,8 @@ protocol HermesGatewayRepository: AnyObject {
         scopes: [String],
         phoneRelayPublicKey: String?,
         phoneRelayKeyVersion: Int?,
-        phoneRelayEncryption: String?
+        phoneRelayEncryption: String?,
+        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
     ) async throws -> HermesGatewayClientRecord
 
     func listHermesGatewayClients(includeRevoked: Bool) async throws -> [HermesGatewayClientRecord]
@@ -1127,6 +1544,16 @@ protocol HermesGatewayRepository: AnyObject {
     func setHermesGatewayOversightMode(clientId: String, mode: String) async throws
 
     func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws
+
+    /// After a native approval callable succeeds, enqueue a sealed
+    /// ``approval_decision`` event so the Hermes agent applies the choice without
+    /// trusting relay-visible ``/approvals`` poll state.
+    func enqueueHermesGatewayApprovalDecision(
+        approvalId: String,
+        approve: Bool,
+        targetClient: HermesGatewayClientRecord?,
+        targetClientId: String?
+    ) async throws
 }
 
 extension HermesGatewayRepository {
@@ -1136,7 +1563,8 @@ extension HermesGatewayRepository {
     ) async throws -> HermesGatewayClientRecord {
         // Publish this phone's persistent relay pubkey at pairing so the agent can
         // seal `hermes_gateway_messages` replies back to this device.
-        let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let keypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        let ratchetBundle = try HermesGatewayRatchetPrekeyStore.loadOrCreateBundle()
         return try await approveHermesGatewayDeviceGrant(
             userCode: userCode,
             displayName: displayName,
@@ -1148,7 +1576,8 @@ extension HermesGatewayRepository {
             ],
             phoneRelayPublicKey: keypair.relayPublicKeyBase64,
             phoneRelayKeyVersion: keypair.keyVersion,
-            phoneRelayEncryption: keypair.relayEncryption
+            phoneRelayEncryption: keypair.relayEncryption,
+            phoneRatchetPrekeyBundle: ratchetBundle
         )
     }
 
@@ -1613,7 +2042,8 @@ final class FunctionsRepository: HermesGatewayRepository {
         ],
         phoneRelayPublicKey: String? = nil,
         phoneRelayKeyVersion: Int? = nil,
-        phoneRelayEncryption: String? = nil
+        phoneRelayEncryption: String? = nil,
+        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle? = nil
     ) async throws -> HermesGatewayClientRecord {
         let callable = functions.httpsCallable("approveHermesGatewayDeviceGrant")
         var payload: [String: Any] = [
@@ -1627,12 +2057,31 @@ final class FunctionsRepository: HermesGatewayRepository {
         // Publish the phone's relay pubkey so the agent can seal replies to it.
         if let phoneRelayPublicKey, !phoneRelayPublicKey.isEmpty {
             payload["phoneRelayPublicKey"] = phoneRelayPublicKey
+            payload["supportsRelayEnvelopeVersions"] = [
+                HermesRelayCrypto.gatewayRelayKeyVersion,
+                HermesRelayCrypto.gatewayRelayKeyVersionV3
+            ]
+            payload["preferredRelayEnvelopeVersion"] = HermesRelayCrypto.gatewayRelayKeyVersionV3
+            payload["supportsHpkeV3"] = true
+            payload["clientPlatform"] = "ios"
+            payload["clientAppBuild"] =
+                (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
+                ?? (Bundle.main.infoDictionary?["CFBundleVersion"] as? String)
+                ?? "unknown"
         }
         if let phoneRelayKeyVersion {
             payload["phoneRelayKeyVersion"] = phoneRelayKeyVersion
         }
         if let phoneRelayEncryption, !phoneRelayEncryption.isEmpty {
             payload["phoneRelayEncryption"] = phoneRelayEncryption
+        }
+        if let phoneRatchetPrekeyBundle {
+            payload["phoneRatchetIdentityPublicKey"] = phoneRatchetPrekeyBundle.identityPublicKeyBase64
+            payload["phoneRatchetSigningPublicKey"] = phoneRatchetPrekeyBundle.signingPublicKeyBase64
+            payload["phoneRatchetSignedPreKeyPublicKey"] = phoneRatchetPrekeyBundle.signedPreKeyPublicKeyBase64
+            payload["phoneRatchetSignedPreKeyId"] = phoneRatchetPrekeyBundle.signedPreKeyID
+            payload["phoneRatchetSignedPreKeySignature"] = phoneRatchetPrekeyBundle.signedPreKeySignatureBase64
+            payload["phoneSupportsRatchetV1"] = true
         }
 
         try await prepareHermesGatewayApprovalContext()
@@ -1732,7 +2181,7 @@ final class FunctionsRepository: HermesGatewayRepository {
             modelId: nil,
             targetClient: targetClient
         )
-        let result = try await callable.call(payload)
+        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }
 
@@ -1756,8 +2205,8 @@ final class FunctionsRepository: HermesGatewayRepository {
         if targetClient?.canSealToAgent == true {
             // E2E link: seal the model id into `relayEnvelope.payloadCiphertext`
             // (alongside text/senderDisplayName/threadId) like every other event,
-            // so the routing model id never leaves the device in cleartext. The
-            // server reads `modelId` from inside the sealed payload after opening.
+            // so the model command never leaves the device in cleartext. The
+            // agent opens `modelId` from inside the sealed payload after polling.
             try Self.applyGatewayEventSeal(
                 into: &payload,
                 text: "",
@@ -1773,7 +2222,7 @@ final class FunctionsRepository: HermesGatewayRepository {
             // Wire stays identical to the pre-seal model_switch (no threadId).
             payload["modelId"] = modelId
         }
-        let result = try await callable.call(payload)
+        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         return try Self.decodeHermesGatewayValue(HermesGatewayQueuedEvent.self, from: result.data)
     }
 
@@ -1784,14 +2233,71 @@ final class FunctionsRepository: HermesGatewayRepository {
         return trimmed
     }
 
+    private nonisolated static func gatewayDestinationID(in payload: [String: Any]) -> String {
+        if let value = payload["destinationId"] as? String {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        if let value = payload["destinationId"] as? NSString, value.length > 0 {
+            return value as String
+        }
+        return "burnbar:home"
+    }
+
+    private nonisolated static let gatewayEventCounterLock = NSLock()
+    private nonisolated static let gatewayEventCounterKeyPrefix = "openburnbar.hermesGateway.eventReplayCounter.v1"
+
+    private nonisolated static func gatewayEventCounterStorageKey(
+        uid: String,
+        clientId: String,
+        phoneRelayPublicKey: String
+    ) -> String {
+        let material = [uid, clientId, phoneRelayPublicKey].joined(separator: "\u{1F}")
+        let digest = SHA256.hash(data: Data(material.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "\(gatewayEventCounterKeyPrefix).\(digest)"
+    }
+
+    private nonisolated static func nextGatewayEventReplayCounter(
+        uid: String,
+        clientId: String,
+        phoneRelayPublicKey: String,
+        defaults: UserDefaults = .standard
+    ) throws -> Int {
+        let storageKey = gatewayEventCounterStorageKey(
+            uid: uid,
+            clientId: clientId,
+            phoneRelayPublicKey: phoneRelayPublicKey
+        )
+        gatewayEventCounterLock.lock()
+        defer { gatewayEventCounterLock.unlock() }
+
+        let raw = defaults.object(forKey: storageKey)
+        let current: Int
+        if let value = raw as? Int {
+            current = max(0, value)
+        } else if let value = raw as? NSNumber {
+            current = max(0, value.intValue)
+        } else {
+            current = 0
+        }
+        guard current < Int.max else {
+            throw FunctionsError.gatewayReplayCounterExhausted
+        }
+        let next = current + 1
+        defaults.set(next, forKey: storageKey)
+        return next
+    }
+
     /// Seal the phone→agent event payload into `payload`, reusing the existing
     /// `HermesRelayCrypto` envelope. When the target agent has published a usable
     /// relay pubkey (`canSealToAgent`), the cleartext body never leaves the
-    /// device: a per-event symmetric key seals `{text, senderDisplayName,
-    /// threadId[, modelId]}` and is wrapped to the agent's pubkey. The phone
-    /// generates the `eventId` so it binds the AAD; the server honors it as the
-    /// doc id. If the target cannot seal, the call fails before constructing any
-    /// plaintext cloud payload.
+    /// device: a per-event symmetric key seals `{text, destinationId,
+    /// replayCounter, senderDisplayName, threadId[, modelId]}` and is wrapped to
+    /// the agent's pubkey. The phone generates the `eventId` so it binds the AAD;
+    /// the server honors it as the doc id. If the target cannot seal, the call
+    /// fails before constructing any plaintext cloud payload.
     private static func applyGatewayEventSeal(
         into payload: inout [String: Any],
         text: String,
@@ -1829,11 +2335,31 @@ final class FunctionsRepository: HermesGatewayRepository {
         uid: String,
         pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
     ) throws {
-        guard
-            let targetClient,
-            targetClient.canSealToAgent,
-            let relayPublicKey = targetClient.relayPublicKey,
-            !uid.isEmpty
+        guard let targetClient, !uid.isEmpty else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        if targetClient.canRatchetToAgent {
+            try sealGatewayEventRatchetPayload(
+                into: &payload,
+                text: text,
+                senderDisplayName: senderDisplayName,
+                threadId: threadId,
+                modelId: modelId,
+                targetClient: targetClient,
+                uid: uid,
+                pinStore: pinStore
+            )
+            return
+        }
+
+        let keypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        guard targetClient.isPairedWithThisDevice(relayPublicKeyBase64: keypair.relayPublicKeyBase64) else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        guard targetClient.canSealToAgent,
+              let relayPublicKey = targetClient.relayPublicKey
         else {
             throw FunctionsError.gatewayTargetMissingRelayKey
         }
@@ -1850,9 +2376,21 @@ final class FunctionsRepository: HermesGatewayRepository {
             throw FunctionsError.gatewayRelayKeyChanged
         }
 
+        // v2 authenticated seal: the phone's own persistent gateway relay key is
+        // the SENDER. The agent opens the event binding this phone key (which it
+        // pinned at pairing), so a relay that cannot produce the phone's private
+        // key cannot forge an event to the agent.
+        let destinationId = gatewayDestinationID(in: payload)
         let eventId = "evt_\(UUID().uuidString.lowercased())"
+        let replayCounter = try nextGatewayEventReplayCounter(
+            uid: uid,
+            clientId: targetClient.id,
+            phoneRelayPublicKey: keypair.relayPublicKeyBase64
+        )
         var sealedPayload: [String: Any] = [
             "text": text,
+            "destinationId": destinationId,
+            "replayCounter": replayCounter,
             "senderDisplayName": senderDisplayName,
             "threadId": threadId
         ]
@@ -1866,20 +2404,150 @@ final class FunctionsRepository: HermesGatewayRepository {
             keyData: key,
             aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
         )
-        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
-            key,
-            recipientPublicKeyBase64: relayPublicKey,
-            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
-        )
-        // Drop plaintext text/senderDisplayName/threadId from the top level — they
-        // now live only inside `payloadCiphertext`. Keep routing fields.
-        payload["eventId"] = eventId
-        payload["relayEnvelope"] = [
+        let keyAAD = HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+        var relayEnvelope: [String: Any] = [
             "payloadCiphertext": payloadCiphertext,
-            "wrappedKey": wrappedKey,
-            "relayEncryption": HermesRelayCrypto.algorithm,
-            "relayKeyVersion": targetClient.relayKeyVersion ?? HermesRelayCrypto.keyVersion
+            "senderPublicKey": keypair.relayPublicKeyBase64
         ]
+        if targetClient.preferredRelayEnvelopeVersionForSeal == HermesRelayCrypto.gatewayRelayKeyVersionV3 {
+            let wrap = try HermesRelayCrypto.sealKeyV3(
+                key,
+                recipientPublicKeyBase64: relayPublicKey,
+                senderPrivateKey: keypair.privateKey,
+                aad: keyAAD
+            )
+            relayEnvelope["wrappedKey"] = wrap.wrappedKey.base64EncodedString()
+            relayEnvelope["enc"] = wrap.enc.base64EncodedString()
+            relayEnvelope["relayEncryption"] = HermesRelayCrypto.relayEncryptionV3
+            relayEnvelope["relayKeyVersion"] = HermesRelayCrypto.gatewayRelayKeyVersionV3
+        } else {
+            relayEnvelope["wrappedKey"] = try HermesRelayCrypto.wrapSymmetricKey(
+                key,
+                recipientPublicKeyBase64: relayPublicKey,
+                aad: keyAAD,
+                senderPrivateKey: keypair.privateKey
+            )
+            relayEnvelope["relayEncryption"] = HermesRelayCrypto.algorithm
+            relayEnvelope["relayKeyVersion"] = HermesRelayCrypto.gatewayRelayKeyVersion
+        }
+        // Drop plaintext text/senderDisplayName/threadId from the top level — they
+        // now live only inside `payloadCiphertext`. Keep routing fields. The
+        // `relayKeyVersion` is the gateway wrap-protocol version the phone
+        // authoritatively stamped for what it actually sealed. `senderPublicKey` is
+        // a lookup hint; the agent authenticates against its pinned copy, never
+        // this wire field.
+        payload["eventId"] = eventId
+        payload["relayEnvelope"] = relayEnvelope
+    }
+
+    private nonisolated static func sealGatewayEventRatchetPayload(
+        into payload: inout [String: Any],
+        text: String,
+        senderDisplayName: String,
+        threadId: String,
+        modelId: String?,
+        targetClient: HermesGatewayClientRecord,
+        uid: String,
+        pinStore: HermesGatewayAgentKeyPinStore
+    ) throws {
+        let localRelayKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        guard targetClient.isPairedWithThisDevice(relayPublicKeyBase64: localRelayKeypair.relayPublicKeyBase64) else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        guard targetClient.canSealToAgent,
+              let relayPublicKey = targetClient.relayPublicKey,
+              pinStore.verifyOrPin(agentPublicKeyBase64: relayPublicKey, uid: uid, clientId: targetClient.id).allowsSeal,
+              let agentIdentity = targetClient.agentRatchetIdentityPublicKey,
+              let agentSigning = targetClient.agentRatchetSigningPublicKey,
+              let agentSignedPreKey = targetClient.agentRatchetSignedPreKeyPublicKey,
+              let agentSignedPreKeyID = targetClient.agentRatchetSignedPreKeyId,
+              let agentSignature = targetClient.agentRatchetSignedPreKeySignature,
+              HermesGatewayRatchetChatLane.verifySignedPreKey(
+                signingPublicKeyBase64: agentSigning,
+                identityPublicKeyBase64: agentIdentity,
+                signedPreKeyPublicKeyBase64: agentSignedPreKey,
+                signedPreKeyID: agentSignedPreKeyID,
+                signatureBase64: agentSignature
+              )
+        else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        let local = try HermesGatewayRatchetPrekeyStore.loadOrCreatePrivateBundle()
+        guard local.identityPublicKeyBase64 == targetClient.phoneRatchetIdentityPublicKey,
+              local.signedPreKeyPublicKeyBase64 == targetClient.phoneRatchetSignedPreKeyPublicKey else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        let destinationId = gatewayDestinationID(in: payload)
+        let eventId = "evt_\(UUID().uuidString.lowercased())"
+        let replayCounter = try nextGatewayEventReplayCounter(
+            uid: uid,
+            clientId: targetClient.id,
+            phoneRelayPublicKey: localRelayKeypair.relayPublicKeyBase64
+        )
+        var sealedPayload: [String: Any] = [
+            "text": text,
+            "destinationId": destinationId,
+            "replayCounter": replayCounter,
+            "senderDisplayName": senderDisplayName,
+            "threadId": threadId
+        ]
+        if let modelId, !modelId.isEmpty {
+            sealedPayload["modelId"] = modelId
+        }
+        let plaintext = try JSONSerialization.data(withJSONObject: sealedPayload)
+        let phoneDeviceID = try HermesGatewayRatchetChatLane.deviceID(prefix: "phone", identityPublicKeyBase64: local.identityPublicKeyBase64)
+        let agentDeviceID = try HermesGatewayRatchetChatLane.deviceID(prefix: "agent", identityPublicKeyBase64: agentIdentity)
+        var state: HermesRatchetSessionState
+        if let sessionID = try HermesGatewayRatchetSessionStore.loadCurrentChatSessionID(uid: uid, clientId: targetClient.id),
+           let existing = try HermesGatewayRatchetSessionStore.load(sessionID: sessionID) {
+            state = existing
+        } else {
+            let initialRatchet = HermesRatchetCrypto.generateKeyPair()
+            let sessionID = try HermesGatewayRatchetChatLane.sessionID(
+                uid: uid,
+                clientId: targetClient.id,
+                initiatorRole: .phone,
+                initiatorIdentityPublicKeyBase64: local.identityPublicKeyBase64,
+                responderIdentityPublicKeyBase64: agentIdentity,
+                initiatorSignedPreKeyPublicKeyBase64: local.signedPreKeyPublicKeyBase64,
+                responderSignedPreKeyPublicKeyBase64: agentSignedPreKey,
+                initiatorInitialRatchetPublicKeyBase64: initialRatchet.publicKeyBase64
+            )
+            let sharedSecret = try HermesGatewayRatchetChatLane.initiatorSharedSecret(
+                uid: uid,
+                clientId: targetClient.id,
+                initiatorRole: .phone,
+                localIdentityPrivateKeyBase64: local.identityPrivateKeyBase64,
+                localSignedPreKeyPublicKeyBase64: local.signedPreKeyPublicKeyBase64,
+                localInitialRatchetKeyPair: initialRatchet,
+                remoteIdentityPublicKeyBase64: agentIdentity,
+                remoteSignedPreKeyPublicKeyBase64: agentSignedPreKey
+            )
+            state = try HermesRatchetCrypto.initiatorState(
+                sessionID: sessionID,
+                localDeviceID: phoneDeviceID,
+                remoteDeviceID: agentDeviceID,
+                sharedSecret: sharedSecret,
+                remoteInitialRatchetPublicKeyBase64: agentSignedPreKey,
+                localInitialRatchetKeyPair: initialRatchet
+            )
+        }
+        let envelope = try HermesRatchetCrypto.encrypt(
+            plaintext: plaintext,
+            state: &state,
+            associatedData: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+        )
+        try HermesGatewayRatchetSessionStore.save(state)
+        try HermesGatewayRatchetSessionStore.saveCurrentChatSessionID(state.sessionID, uid: uid, clientId: targetClient.id)
+        let envelopeData = try JSONEncoder().encode(envelope)
+        guard let envelopeJSON = try JSONSerialization.jsonObject(with: envelopeData) as? [String: Any] else {
+            throw HermesRatchetError.invalidEnvelope
+        }
+        payload["eventId"] = eventId
+        payload["ratchetEnvelope"] = envelopeJSON
     }
 
     func setHermesGatewayOversightMode(clientId: String, mode: String) async throws {
@@ -1898,6 +2566,30 @@ final class FunctionsRepository: HermesGatewayRepository {
             approvalId: approvalId,
             approve: approve,
             deviceId: deviceId
+        )
+    }
+
+    func enqueueHermesGatewayApprovalDecision(
+        approvalId: String,
+        approve: Bool,
+        targetClient: HermesGatewayClientRecord? = nil,
+        targetClientId: String? = nil
+    ) async throws {
+        let choice = approve ? "approve" : "reject"
+        let sealedText = try JSONSerialization.data(withJSONObject: [
+            "kind": "approval_decision",
+            "actionId": approvalId,
+            "choice": choice,
+            "senderId": "burnbar-ios",
+        ])
+        let text = String(data: sealedText, encoding: .utf8) ?? ""
+        _ = try await enqueueHermesGatewayEvent(
+            text: text,
+            destinationId: "burnbar:home",
+            threadId: "burnbar-ios-approval",
+            targetClient: targetClient,
+            targetClientId: targetClientId,
+            senderDisplayName: "OpenBurnBar iPhone"
         )
     }
 
@@ -2249,6 +2941,7 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     case gatewayAttachmentUnreadable
     case gatewayApprovalNotAuthenticated
     case gatewayApprovalAppCheckBlocked
+    case gatewayReplayCounterExhausted
 
     var errorDescription: String? {
         switch self {
@@ -2267,6 +2960,8 @@ enum FunctionsError: Error, LocalizedError, Equatable {
             return "Sign in to BurnBar Cloud, then reopen Hermes Gateway and tap Connect Hermes again."
         case .gatewayApprovalAppCheckBlocked:
             return "App Check rejected this build. Reinstall from the official channel, or register and stamp the local debug token before trying Connect Hermes."
+        case .gatewayReplayCounterExhausted:
+            return "Reconnect Hermes on your Mac before sending more private gateway messages."
         }
     }
 }

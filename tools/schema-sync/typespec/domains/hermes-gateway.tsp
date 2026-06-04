@@ -8,6 +8,32 @@ model HermesGatewayModelOptionDoc {
   displayName: string;
 }
 
+model GatewayRelayEnvelopeDoc {
+  payloadCiphertext: string;
+  wrappedKey: string;
+  relayEncryption: string;
+  relayKeyVersion: int32;
+  enc?: string;
+  senderPublicKey?: string;
+}
+
+model GatewayRatchetHeaderDoc {
+  version: int32;
+  algorithm: string;
+  sessionID: string;
+  senderDeviceID: string;
+  receiverDeviceID: string;
+  ratchetPublicKeyBase64: string;
+  previousChainLength: int32;
+  messageNumber: int32;
+  epoch: int32;
+}
+
+model GatewayRatchetEnvelopeDoc {
+  header: GatewayRatchetHeaderDoc;
+  ciphertextBase64: string;
+}
+
 model HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -26,6 +52,42 @@ model HermesGatewayClientDoc {
   pendingModelId?: string;
   pendingModelRequestedAt?: string;
   oversightMode?: string;
+  relayPublicKey?: string;
+  relayKeyVersion?: int32;
+  relayEncryption?: string;
+  agentRelayPublicKey?: string;
+  agentRelayKeyVersion?: int32;
+  agentRelayEncryption?: string;
+  agentSupportsRelayEnvelopeVersions?: int32[];
+  agentPreferredRelayEnvelopeVersion?: int32;
+  agentSupportsHpkeV3?: boolean;
+  agentPlatform?: string;
+  agentAppBuild?: string;
+  phoneRelayPublicKey?: string;
+  phoneRelayKeyVersion?: int32;
+  phoneRelayEncryption?: string;
+  phoneSupportsRelayEnvelopeVersions?: int32[];
+  phonePreferredRelayEnvelopeVersion?: int32;
+  phoneSupportsHpkeV3?: boolean;
+  phonePlatform?: string;
+  phoneAppBuild?: string;
+  agentRatchetIdentityPublicKey?: string;
+  agentRatchetSigningPublicKey?: string;
+  agentRatchetSignedPreKeyPublicKey?: string;
+  agentRatchetSignedPreKeyId?: string;
+  agentRatchetSignedPreKeySignature?: string;
+  agentSupportsRatchetV1?: boolean;
+  phoneRatchetIdentityPublicKey?: string;
+  phoneRatchetSigningPublicKey?: string;
+  phoneRatchetSignedPreKeyPublicKey?: string;
+  phoneRatchetSignedPreKeyId?: string;
+  phoneRatchetSignedPreKeySignature?: string;
+  phoneSupportsRatchetV1?: boolean;
+  supportsRatchetV1?: boolean;
+  supportsRelayEnvelopeVersions?: int32[];
+  preferredRelayEnvelopeVersion?: int32;
+  supportsHpkeV3?: boolean;
+  relayCapable?: boolean;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -67,9 +129,11 @@ model HermesGatewayEventDoc {
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;
-  text: string;
+  text?: string;
   modelId?: string;
   attachmentIds: string[];
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   createdAt: string;
   schemaVersion: int32;
 }
@@ -83,6 +147,8 @@ model HermesGatewayMessageDoc {
   replyToEventId?: string;
   text?: string;
   attachmentIds: string[];
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   createdAt: string;
   schemaVersion: int32;
 }
@@ -91,11 +157,14 @@ model HermesGatewayAttachmentManifestDoc {
   id: string;
   clientId: string;
   destinationId?: string;
-  fileName: string;
-  contentType: string;
-  byteCount: int32;
-  storagePath: string;
-  status: string;
+  fileName?: string;
+  contentType?: string;
+  byteCount?: int32;
+  storagePath?: string;
+  bodyStoragePath?: string;
+  status?: string;
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   createdAt: string;
   expiresAt: string;
   schemaVersion: int32;

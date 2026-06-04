@@ -193,6 +193,7 @@ final class ActivityStore {
     }
 
     private func searchEncryptedCloudIndex(query: String) async throws -> [CloudConversationSearchRow] {
+        guard let uid = Auth.auth().currentUser?.uid else { return [] }
         guard let vaultKey = try await unlockCloudVaultKeyIfAvailable() else { return [] }
         let tokenHashes = try CloudVaultCrypto.searchQueryTokenHashes(for: query, keyData: vaultKey, limit: 10)
         let semanticHashes = try CloudVaultCrypto.semanticHashes(for: query, keyData: vaultKey, limit: 12)
@@ -203,17 +204,37 @@ final class ActivityStore {
             limit: Self.serverSearchLimit
         )
         let rows: [CloudConversationSearchRow] = hits.compactMap { (hit: CloudConversationSearchHit) -> CloudConversationSearchRow? in
-            guard let title = try? CloudVaultCrypto.openText(hit.sealedTitle, keyData: vaultKey),
-                  let snippet = try? CloudVaultCrypto.openText(hit.sealedSnippet, keyData: vaultKey) else {
+            guard let title = try? CloudVaultCrypto.openText(
+                hit.sealedTitle,
+                keyData: vaultKey,
+                aadContext: CloudVaultAADContext(
+                    uid: uid,
+                    collection: "cloud_search_documents",
+                    docID: hit.documentID,
+                    field: "sealedTitle"
+                )
+            ),
+            let snippet = try? CloudVaultCrypto.openText(
+                hit.sealedSnippet,
+                keyData: vaultKey,
+                aadContext: CloudVaultAADContext(
+                    uid: uid,
+                    collection: "cloud_search_chunks",
+                    docID: hit.chunkID,
+                    field: "sealedSnippet"
+                )
+            ) else {
                 return nil
             }
             return CloudConversationSearchRow(
                 id: hit.id,
+                documentID: hit.documentID,
                 title: title,
                 snippet: snippet,
                 provider: hit.provider,
                 storagePath: hit.storagePath,
                 bodyHash: hit.bodyHash,
+                bodyHashVersion: hit.bodyHashVersion ?? 0,
                 score: hit.score,
                 tokenScore: hit.tokenScore,
                 semanticScore: hit.semanticScore,
@@ -227,7 +248,12 @@ final class ActivityStore {
         guard let vaultKey = try await vault.unlockKey() else {
             throw CloudConversationSearchError.vaultKeyUnavailable
         }
-        return try await vault.downloadBody(storagePath: row.storagePath, bodyHash: row.bodyHash, vaultKey: vaultKey)
+        return try await vault.downloadBody(
+            storagePath: row.storagePath,
+            bodyHash: row.bodyHash,
+            bodyHashVersion: row.bodyHashVersion,
+            vaultKey: vaultKey
+        )
     }
 
     private func unlockCloudVaultKeyIfAvailable() async throws -> Data? {
@@ -411,11 +437,13 @@ final class ActivityStore {
 
 struct CloudConversationSearchRow: Identifiable, Hashable, Sendable {
     let id: String
+    let documentID: String
     let title: String
     let snippet: String
     let provider: String?
     let storagePath: String
     let bodyHash: String
+    let bodyHashVersion: Int
     let score: Double
     let tokenScore: Double?
     let semanticScore: Double?
@@ -675,6 +703,7 @@ actor CloudTranscriptCache {
         let key: String
         let storagePath: String
         let bodyHash: String
+        let bodyHashVersion: Int?
         var byteCount: Int64
         let cachedAt: Date
         var lastAccessedAt: Date
@@ -692,20 +721,31 @@ actor CloudTranscriptCache {
         self.settings = settings
     }
 
-    func cachedTranscript(storagePath: String, bodyHash: String, vaultKey: Data) -> String? {
+    func cachedTranscript(
+        storagePath: String,
+        bodyHash: String,
+        bodyHashVersion: Int,
+        vaultKey: Data,
+        aadContext: CloudVaultAADContext
+    ) -> String? {
         guard settings.maxBytes > 0 else { return nil }
-        let key = Self.cacheKey(storagePath: storagePath, bodyHash: bodyHash)
+        let key = Self.cacheKey(storagePath: storagePath, bodyHash: bodyHash, bodyHashVersion: bodyHashVersion)
         do {
             var index = try loadIndex()
             guard var entry = index.entries[key],
                   entry.storagePath == storagePath,
-                  entry.bodyHash == bodyHash else {
+                  entry.bodyHash == bodyHash,
+                  (entry.bodyHashVersion ?? 0) == bodyHashVersion else {
                 return nil
             }
             let data = try Data(contentsOf: blobURL(for: key))
             let envelope = try JSONDecoder().decode(CloudVaultBlobEnvelope.self, from: data)
-            let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
-            guard CloudVaultCrypto.sha256Hex(plaintext) == bodyHash,
+            let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey, aadContext: aadContext)
+            guard try CloudVaultCrypto.expectedSessionBodyHash(
+                plaintext,
+                keyData: vaultKey,
+                bodyHashVersion: bodyHashVersion
+            ) == bodyHash,
                   let transcript = String(data: plaintext, encoding: .utf8) else {
                 try removeEntry(key, from: &index)
                 try writeIndex(index)
@@ -722,7 +762,14 @@ actor CloudTranscriptCache {
         }
     }
 
-    func storeTranscript(_ transcript: String, storagePath: String, bodyHash: String, vaultKey: Data) throws {
+    func storeTranscript(
+        _ transcript: String,
+        storagePath: String,
+        bodyHash: String,
+        bodyHashVersion: Int,
+        vaultKey: Data,
+        aadContext: CloudVaultAADContext
+    ) throws {
         let maxBytes = settings.maxBytes
         guard maxBytes > 0 else {
             try? clear()
@@ -730,15 +777,19 @@ actor CloudTranscriptCache {
         }
 
         let plaintext = Data(transcript.utf8)
-        guard CloudVaultCrypto.sha256Hex(plaintext) == bodyHash else {
+        let envelope = try CloudVaultCrypto.sealBlob(plaintext, keyData: vaultKey, aadContext: aadContext)
+        guard try CloudVaultCrypto.expectedSessionBodyHash(
+            plaintext,
+            keyData: vaultKey,
+            bodyHashVersion: bodyHashVersion
+        ) == bodyHash else {
             throw CloudConversationSearchError.bodyHashMismatch
         }
-        let envelope = try CloudVaultCrypto.sealBlob(plaintext, keyData: vaultKey)
         let encoded = try JSONEncoder().encode(envelope)
         guard Int64(encoded.count) <= maxBytes else { return }
 
         try ensureDirectory()
-        let key = Self.cacheKey(storagePath: storagePath, bodyHash: bodyHash)
+        let key = Self.cacheKey(storagePath: storagePath, bodyHash: bodyHash, bodyHashVersion: bodyHashVersion)
         try encoded.write(to: blobURL(for: key), options: .atomic)
 
         var index = try loadIndex()
@@ -747,6 +798,7 @@ actor CloudTranscriptCache {
             key: key,
             storagePath: storagePath,
             bodyHash: bodyHash,
+            bodyHashVersion: bodyHashVersion,
             byteCount: Int64(encoded.count),
             cachedAt: now,
             lastAccessedAt: now
@@ -779,8 +831,8 @@ actor CloudTranscriptCache {
         try writeIndex(CacheIndex())
     }
 
-    private static func cacheKey(storagePath: String, bodyHash: String) -> String {
-        CloudVaultCrypto.sha256Hex("\(storagePath)\n\(bodyHash)")
+    private static func cacheKey(storagePath: String, bodyHash: String, bodyHashVersion: Int) -> String {
+        CloudVaultCrypto.sha256Hex("\(storagePath)\n\(bodyHash)\n\(bodyHashVersion)")
     }
 
     private var indexURL: URL {
@@ -923,14 +975,26 @@ struct CloudVaultGateway {
         return nil
     }
 
-    /// Downloads the encrypted session body at `storagePath`, opens it with `vaultKey`, and
-    /// verifies the plaintext SHA-256 matches the indexed `bodyHash` before returning the UTF-8
-    /// transcript.
-    func downloadBody(storagePath: String, bodyHash: String, vaultKey: Data) async throws -> String {
+    /// Downloads the encrypted session body at `storagePath`, opens it with `vaultKey`, and verifies
+    /// the versioned external session body hash before returning the UTF-8 transcript. The blob's
+    /// own HMAC is verified inside `CloudVaultCrypto.openBlob`.
+    func downloadBody(storagePath: String, bodyHash: String, bodyHashVersion: Int, vaultKey: Data) async throws -> String {
+        guard let uid = Auth.auth().currentUser?.uid,
+              let documentID = Self.sessionLogDocumentID(from: storagePath) else {
+            throw CloudConversationSearchError.transcriptUnavailable
+        }
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "session_logs",
+            docID: documentID,
+            field: "sealedBody"
+        )
         if let cached = await CloudTranscriptCache.shared.cachedTranscript(
             storagePath: storagePath,
             bodyHash: bodyHash,
-            vaultKey: vaultKey
+            bodyHashVersion: bodyHashVersion,
+            vaultKey: vaultKey,
+            aadContext: aadContext
         ) {
             return cached
         }
@@ -944,8 +1008,12 @@ struct CloudVaultGateway {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let envelope = try decoder.decode(CloudVaultBlobEnvelope.self, from: data)
-            let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
-            guard CloudVaultCrypto.sha256Hex(plaintext) == bodyHash,
+            let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey, aadContext: aadContext)
+            guard try CloudVaultCrypto.expectedSessionBodyHash(
+                plaintext,
+                keyData: vaultKey,
+                bodyHashVersion: bodyHashVersion
+            ) == bodyHash,
                   let body = String(data: plaintext, encoding: .utf8) else {
                 throw CloudConversationSearchError.bodyHashMismatch
             }
@@ -953,7 +1021,9 @@ struct CloudVaultGateway {
                 body,
                 storagePath: storagePath,
                 bodyHash: bodyHash,
-                vaultKey: vaultKey
+                bodyHashVersion: bodyHashVersion,
+                vaultKey: vaultKey,
+                aadContext: aadContext
             )
             return body
         } catch let error as CloudConversationSearchError {
@@ -988,6 +1058,17 @@ struct CloudVaultGateway {
         let nsError = error as NSError
         return nsError.domain == FunctionsErrorDomain
             && nsError.code == FunctionsErrorCode.notFound.rawValue
+    }
+
+    nonisolated private static func sessionLogDocumentID(from storagePath: String) -> String? {
+        let parts = storagePath.split(separator: "/").map(String.init)
+        guard let index = parts.firstIndex(of: "session_logs"),
+              parts.indices.contains(index + 1),
+              parts.indices.contains(index + 2),
+              parts[index + 2] == "bodies" else {
+            return nil
+        }
+        return parts[index + 1]
     }
 }
 
@@ -1069,6 +1150,7 @@ struct CockpitConversationRow: Identifiable, Hashable, Sendable {
     let preview: String?
     let storagePath: String?
     let bodyHash: String?
+    let bodyHashVersion: Int
 
     var providerEnum: AgentProvider? {
         provider.flatMap { AgentProvider.fromPersistedToken($0) }
@@ -1337,7 +1419,12 @@ final class ConversationCockpitStore {
         } else {
             throw CloudConversationSearchError.vaultKeyUnavailable
         }
-        return try await vault.downloadBody(storagePath: storagePath, bodyHash: bodyHash, vaultKey: key)
+        return try await vault.downloadBody(
+            storagePath: storagePath,
+            bodyHash: bodyHash,
+            bodyHashVersion: row.bodyHashVersion,
+            vaultKey: key
+        )
     }
 
     func cacheLoadedTranscripts() async -> CloudTranscriptCacheWarmupResult {
@@ -1368,7 +1455,12 @@ final class ConversationCockpitStore {
                 break
             }
             do {
-                _ = try await vault.downloadBody(storagePath: storagePath, bodyHash: bodyHash, vaultKey: key)
+                _ = try await vault.downloadBody(
+                    storagePath: storagePath,
+                    bodyHash: bodyHash,
+                    bodyHashVersion: row.bodyHashVersion,
+                    vaultKey: key
+                )
                 result.available += 1
             } catch {
                 result.failed += 1
@@ -1455,12 +1547,30 @@ final class ConversationCockpitStore {
     private func decodeRow(_ row: ConversationFacetRow) -> CockpitConversationRow {
         var title: String?
         var preview: String?
-        if let key = vaultKey {
+        if let key = vaultKey, let uid = authGate.currentUID() {
             if let sealed = row.sealedTitle {
-                title = try? CloudVaultCrypto.openText(sealed, keyData: key)
+                title = try? CloudVaultCrypto.openText(
+                    sealed,
+                    keyData: key,
+                    aadContext: CloudVaultAADContext(
+                        uid: uid,
+                        collection: "session_logs",
+                        docID: row.id,
+                        field: "sealedTitle"
+                    )
+                )
             }
             if let sealed = row.sealedBodyPreview {
-                preview = try? CloudVaultCrypto.openText(sealed, keyData: key)
+                preview = try? CloudVaultCrypto.openText(
+                    sealed,
+                    keyData: key,
+                    aadContext: CloudVaultAADContext(
+                        uid: uid,
+                        collection: "session_logs",
+                        docID: row.id,
+                        field: "sealedBodyPreview"
+                    )
+                )
             }
         }
         return CockpitConversationRow(
@@ -1482,7 +1592,8 @@ final class ConversationCockpitStore {
             title: title,
             preview: preview,
             storagePath: row.storagePath,
-            bodyHash: row.bodyHash
+            bodyHash: row.bodyHash,
+            bodyHashVersion: row.bodyHashVersion ?? 0
         )
     }
 

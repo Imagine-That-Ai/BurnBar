@@ -1,3 +1,4 @@
+import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
@@ -8,18 +9,34 @@ protocol ConversationCloudVaultKeyProviding: Sendable {
 }
 
 struct MacConversationCloudVaultKeyProvider: ConversationCloudVaultKeyProviding {
-    private let firestore: Firestore
+    private let firestoreOverride: Firestore?
 
-    init(firestore: Firestore = Firestore.firestore()) {
-        self.firestore = firestore
+    init(firestore: Firestore? = nil) {
+        self.firestoreOverride = firestore
     }
 
     func keyForWriting(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey {
-        try await MacCloudVaultKeyAccess.keyForWriting(uid: uid, deviceId: deviceId, firestore: firestore)
+        guard let firestore else {
+            throw CloudVaultAccessError.vaultKeyUnavailable
+        }
+        return try await MacCloudVaultKeyAccess.keyForWriting(uid: uid, deviceId: deviceId, firestore: firestore)
     }
 
     func keyForReading(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey? {
-        try await MacCloudVaultKeyAccess.keyForReading(uid: uid, deviceId: deviceId, firestore: firestore)
+        guard let firestore else {
+            return nil
+        }
+        return try await MacCloudVaultKeyAccess.keyForReading(uid: uid, deviceId: deviceId, firestore: firestore)
+    }
+
+    private var firestore: Firestore? {
+        if let firestoreOverride {
+            return firestoreOverride
+        }
+        guard FirebaseApp.app() != nil else {
+            return nil
+        }
+        return Firestore.firestore()
     }
 }
 
@@ -80,7 +97,7 @@ struct ConversationCloudPrivatePayload: Codable, Equatable, Sendable {
 }
 
 enum ConversationCloudSealer {
-    static let sealedSchemaVersion = 1
+    static let sealedSchemaVersion = 2
 
     private static var encoder: JSONEncoder {
         let encoder = JSONEncoder()

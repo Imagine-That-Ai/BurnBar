@@ -33,6 +33,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private const val MILLIS = 256
 private const val VAL_32 = 32
+private const val RELAY_ERROR_REQUEST_FAILED = "request_failed"
+private const val RELAY_ERROR_TRANSPORT_FAILED = "transport_failed"
+
+private fun publicRelayErrorMessage(errorCode: String?): String =
+    when (errorCode) {
+        RELAY_ERROR_TRANSPORT_FAILED -> "The remote Hermes relay connection failed."
+        RELAY_ERROR_REQUEST_FAILED, null, "" -> "The remote Hermes relay could not complete the request."
+        else -> "The remote Hermes relay could not complete the request."
+    }
 
 /**
  * Android iroh transport. Conforms to `HermesRelayTransporting` so it
@@ -359,7 +368,7 @@ class HermesIrohRelayTransport(
             HermesRealtimeRelayFrameType.RESPONSE_COMPLETE -> RelayFrameAction.Complete
             HermesRealtimeRelayFrameType.RESPONSE_ERROR ->
                 RelayFrameAction.Fail(
-                    HermesRelayException(frame.payload?.error ?: "Hermes iroh relay failed."),
+                    HermesRelayException(publicRelayErrorMessage(frame.payload?.errorCode)),
                 )
             else -> RelayFrameAction.Continue
         }

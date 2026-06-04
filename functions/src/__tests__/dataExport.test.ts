@@ -88,12 +88,14 @@ const sealedText = {
   tag: "dGFn",
 };
 const sealedBlob = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   algorithm: "AES-256-GCM",
   keyVersion: 1,
-  plaintextSHA256: "abc123",
+  plaintextHMAC: "a".repeat(64),
+  integrityHashVersion: 1,
   sealedBoxBase64: "Ym94",
   createdAt: "2026-06-02T00:00:00.000Z",
+  aad: "OpenBurnBar-CloudVault-aad-v2|userA|project_memory_snapshots|pm_fixture|sealedSnapshot|2|sealedSnapshot",
 };
 
 // gateway-e2e Wave 4: the sealed Hermes gateway relay envelope (HermesRelayCrypto
@@ -105,18 +107,56 @@ const relayEnvelope = {
   relayKeyVersion: 1,
 };
 
+const relayEnvelopeV3 = {
+  payloadCiphertext: "Y2lwaGVydGV4dA==",
+  wrappedKey: "d3JhcHBlZA==",
+  enc: "ZW5j",
+  relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm",
+  relayKeyVersion: 3,
+  senderPublicKey: "c2VuZGVy",
+};
+
+const ratchetEnvelope = {
+  header: {
+    version: 1,
+    algorithm: "OpenBurnBar-HermesRatchet-v1-P256-HKDFSHA256-AESGCM",
+    sessionID: "session-alpha",
+    senderDeviceID: "agent-device",
+    receiverDeviceID: "phone-device",
+    ratchetPublicKeyBase64: "BAQEd3JhcHBlZA==",
+    previousChainLength: 0,
+    messageNumber: 0,
+    epoch: 0,
+  },
+  ciphertextBase64: "Y2lwaGVydGV4dA==",
+};
+
 describe("isSealedEnvelope structural detection", () => {
   it("detects AES-256-GCM text + blob envelopes regardless of key name", () => {
     expect(isSealedEnvelope(sealedText)).toBe(true);
     expect(isSealedEnvelope(sealedBlob)).toBe(true);
   });
 
-  it("detects the Hermes gateway relay envelope (p256-hkdf-sha256-aesgcm)", () => {
+  it("detects the Hermes gateway relay envelope (v2 and HPKE v3)", () => {
     expect(isSealedEnvelope(relayEnvelope)).toBe(true);
+    expect(isSealedEnvelope(relayEnvelopeV3)).toBe(true);
     // missing wrappedKey → not a complete envelope
     expect(isSealedEnvelope({ relayEncryption: "p256-hkdf-sha256-aesgcm", payloadCiphertext: "x" })).toBe(false);
+    expect(
+      isSealedEnvelope({
+        relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm",
+        payloadCiphertext: "x",
+        wrappedKey: "y",
+      }),
+    ).toBe(false);
     // wrong algorithm constant → not recognized
     expect(isSealedEnvelope({ relayEncryption: "rot13", payloadCiphertext: "x", wrappedKey: "y" })).toBe(false);
+  });
+
+  it("detects the Hermes gateway ratchet envelope", () => {
+    expect(isSealedEnvelope(ratchetEnvelope)).toBe(true);
+    expect(isSealedEnvelope({ ...ratchetEnvelope, ciphertextBase64: undefined })).toBe(false);
+    expect(isSealedEnvelope({ ...ratchetEnvelope, header: { ...ratchetEnvelope.header, version: 2 } })).toBe(false);
   });
 
   it("rejects plaintext, partial envelopes, arrays, and scalars", () => {
@@ -149,6 +189,48 @@ describe("sealAwareSerializeDoc seals gateway / media / subscription content", (
     expect(out.kind).toBe("user_message");
     expect(out.schemaVersion).toBe(2);
     for (const leaked of ["text", "senderDisplayName", "threadId", "destinationId"]) {
+      expect(out, `${leaked} must be dropped`).not.toHaveProperty(leaked);
+      expect(dropped, `${leaked} must be reported`).toContain(leaked);
+    }
+  });
+
+  it("sanitizes nested legacy hash-oracle fields before exporting sealed envelopes", () => {
+    const { out, dropped } = sealAwareSerializeDoc({
+      sealedSnapshot: {
+        ...sealedBlob,
+        plaintextSHA256: "e".repeat(64),
+        plaintext: "secret transcript",
+      },
+      relayEnvelope: {
+        ...relayEnvelopeV3,
+        plaintext: "secret prompt",
+      },
+    });
+
+    expect(out.sealedSnapshot).not.toHaveProperty("plaintextSHA256");
+    expect(out.sealedSnapshot).not.toHaveProperty("plaintext");
+    expect(out.sealedSnapshot).toHaveProperty("plaintextHMAC", "a".repeat(64));
+    expect(out.relayEnvelope).toEqual(relayEnvelopeV3);
+    expect(dropped).toContain("sealedSnapshot.plaintextSHA256");
+    expect(dropped).toContain("sealedSnapshot.plaintext");
+    expect(dropped).toContain("relayEnvelope.plaintext");
+  });
+
+  it("emits a ratchet-sealed gateway event doc as routing metadata + ratchetEnvelope", () => {
+    const { out, dropped } = sealAwareSerializeDoc({
+      ratchetEnvelope,
+      sequence: 8,
+      kind: "user_message",
+      schemaVersion: 2,
+      text: "the secret prompt",
+      senderDisplayName: "Alberto",
+      threadId: "thread-99",
+    });
+    expect(out.ratchetEnvelope).toEqual(ratchetEnvelope);
+    expect(out.sequence).toBe(8);
+    expect(out.kind).toBe("user_message");
+    expect(out.schemaVersion).toBe(2);
+    for (const leaked of ["text", "senderDisplayName", "threadId"]) {
       expect(out, `${leaked} must be dropped`).not.toHaveProperty(leaked);
       expect(dropped, `${leaked} must be reported`).toContain(leaked);
     }
@@ -231,6 +313,41 @@ describe("sealAwareSerializeDoc default-deny allowlist", () => {
     expect(out.byteCount).toBe(128);
     expect(out.schemaVersion).toBe(2);
     expect(out.isEnabled).toBe(true);
+  });
+
+  it("redacts legacy raw body/content hashes unless sibling versions mark them keyed", () => {
+    const legacy = sealAwareSerializeDoc({
+      bodyHash: "a".repeat(64),
+      bodyHashVersion: 1,
+      contentHash: "b".repeat(64),
+      contentHashVersion: 0,
+      storagePath: `users/u/session_logs/doc-1/bodies/${"a".repeat(64)}.json.aesgcm`,
+      sealedTitle: sealedText,
+    });
+
+    expect(legacy.out).not.toHaveProperty("bodyHash");
+    expect(legacy.out).not.toHaveProperty("contentHash");
+    expect(legacy.out).not.toHaveProperty("storagePath");
+    expect(legacy.out.bodyHashVersion).toBe(1);
+    expect(legacy.out.contentHashVersion).toBe(0);
+    expect(legacy.dropped).toContain("bodyHash");
+    expect(legacy.dropped).toContain("contentHash");
+    expect(legacy.dropped).toContain("storagePath");
+
+    const keyed = sealAwareSerializeDoc({
+      bodyHash: "c".repeat(64),
+      bodyHashVersion: 2,
+      contentHash: "d".repeat(64),
+      contentHashVersion: 2,
+      storagePath: `users/u/session_logs/doc-2/bodies/${"c".repeat(64)}.json.aesgcm`,
+    });
+
+    expect(keyed.out.bodyHash).toBe("c".repeat(64));
+    expect(keyed.out.contentHash).toBe("d".repeat(64));
+    expect(keyed.out.storagePath).toBe(`users/u/session_logs/doc-2/bodies/${"c".repeat(64)}.json.aesgcm`);
+    expect(keyed.dropped).not.toContain("bodyHash");
+    expect(keyed.dropped).not.toContain("contentHash");
+    expect(keyed.dropped).not.toContain("storagePath");
   });
 
   it("serializes Firestore Timestamps to ISO and keeps them", () => {

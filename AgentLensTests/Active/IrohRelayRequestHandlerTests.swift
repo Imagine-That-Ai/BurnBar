@@ -324,6 +324,9 @@ final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
             directory: directory,
             publicKeyPublisher: keyPublisher,
             auditLogger: auditLogger,
+            inboundPeerPolicyLoader: { _, _ in
+                IrohInboundPeerPolicy(allowedPeerNodeIds: [])
+            },
             pairingPublishInterval: 3_600,
             transportFactory: { _ in
                 transports.removeFirst()
@@ -372,6 +375,9 @@ final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
             directory: directory,
             publicKeyPublisher: keyPublisher,
             auditLogger: auditLogger,
+            inboundPeerPolicyLoader: { _, _ in
+                IrohInboundPeerPolicy(allowedPeerNodeIds: [])
+            },
             pairingPublishInterval: 3_600,
             transportFactory: { _ in
                 transports.removeFirst()

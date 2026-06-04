@@ -123,7 +123,9 @@ public struct HermesIrohEchoClient: Sendable {
                 chunkCount = frame.payload?.chunkCount ?? fragments.count
                 break loop
             case .responseError:
-                throw IrohRelayTransportError.streamRejected(frame.payload?.error ?? "relay echo failed")
+                throw IrohRelayTransportError.streamRejected(
+                    HermesRealtimeRelayErrorCode.publicMessage(for: frame.payload?.errorCode)
+                )
             default:
                 continue
             }

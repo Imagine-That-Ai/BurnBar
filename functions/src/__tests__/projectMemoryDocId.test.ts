@@ -84,12 +84,14 @@ const PLAINTEXT_NAME = "BurnBar Mac App";
 
 function sealedBlob() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     algorithm: "AES-256-GCM",
     keyVersion: 1,
-    plaintextSHA256: "a".repeat(64),
+    plaintextHMAC: "a".repeat(64),
+    integrityHashVersion: 1,
     sealedBoxBase64: Buffer.from("sealed-snapshot-with-name-and-slug-inside").toString("base64"),
     createdAt: "2026-06-02T00:00:00.000Z",
+    aad: `OpenBurnBar-CloudVault-aad-v2|userA|project_memory_snapshots|${DOC_ID}|sealedSnapshot|2|sealedSnapshot`,
   };
 }
 
@@ -101,6 +103,7 @@ function commitRequest() {
     data: {
       docID: DOC_ID,
       contentHash: "b".repeat(64),
+      contentHashVersion: 2,
       sourceSessionCount: 3,
       sourceConversationCount: 5,
       generatedAt: "2026-06-02T00:00:00.000Z",

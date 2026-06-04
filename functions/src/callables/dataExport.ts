@@ -15,7 +15,7 @@
  *     see SEAL_AWARE_CONTENT_COLLECTIONS): a DEFAULT-DENY field allowlist
  *     (`sealAwareSerializeDoc`) emits ONLY the doc `id`, structurally-detected
  *     sealed envelopes (`isSealedEnvelope` — AES-256-GCM text/blob AND the
- *     Hermes gateway `relayEnvelope`, p256-hkdf-sha256-aesgcm), opaque
+ *     Hermes gateway `relayEnvelope`, v2/v3 relay wraps), opaque
  *     cryptographic columns (slugHmac, dedupHash, vectorId, embedding,
  *     repoMatchToken, docID, projectKeyHash, relayEncryption/relayKeyVersion,
  *     sealedFilename/sealedAgentURI/sealedTopicID, gateway routing metadata, …),
@@ -38,7 +38,7 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
-import { stripUndefinedObject } from "../guards.js";
+import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import { nowISO, requireBoundedStringArray, sha256Hex } from "./shared.js";
 import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -243,7 +243,7 @@ interface DomainExport {
    * seal-aware allowlist withheld, so the export is honest about what it dropped.
    */
   redactedFields?: string[];
-  sealedRefs?: Array<{ path: string; bodyHash: string; signedUrl: string }>;
+  sealedRefs?: Array<{ pathDigest: string; signedUrl: string }>;
 }
 
 /**
@@ -271,23 +271,17 @@ const OPAQUE_EXPORT_COLUMNS = new Set<string>([
   "repoMatchToken",
   "docID",
   "projectKeyHash",
-  "bodyHash",
+  "bodyHashVersion",
   "storagePath",
   "tokenHashes",
   "semanticHashes",
-  "contentHash",
-  // ── Sealed gateway / media / subscription envelopes & their opaque routing
-  //    columns (gateway-e2e Wave 4). `relayEnvelope` is a structurally-detected
-  //    sealed sub-object (see isSealedEnvelope); the *Sealed* keys are
-  //    CloudVaultSealedText envelopes that isSealedEnvelope also detects — they
-  //    are listed here too so the allowlist is explicit, and the routing-only
-  //    gateway columns (sequence/kind/blobHash/…) emit as opaque metadata.
-  "relayEnvelope",
+  "contentHashVersion",
+  // ── Sealed gateway / media / subscription routing columns (gateway-e2e Wave 4).
+  //    The actual sealed sub-objects (`relayEnvelope`, `ratchetEnvelope`, and
+  //    `sealed*` CloudVault fields) are emitted only when isSealedEnvelope detects
+  //    their full structure; malformed objects with those names are redacted.
   "relayEncryption",
   "relayKeyVersion",
-  "sealedFilename",
-  "sealedAgentURI",
-  "sealedTopicID",
   "sequence",
   "kind",
   "blobHash",
@@ -296,6 +290,31 @@ const OPAQUE_EXPORT_COLUMNS = new Set<string>([
   "peerDeviceIdHash",
   "direction",
 ]);
+
+const VERSION_GATED_HASH_COLUMNS: Record<string, string> = {
+  bodyHash: "bodyHashVersion",
+  contentHash: "contentHashVersion",
+};
+
+function opaqueHashVersion(data: FirebaseFirestore.DocumentData, versionKey: string): number {
+  const raw = data[versionKey];
+  return typeof raw === "number" ? raw : raw instanceof Number ? raw.valueOf() : 0;
+}
+
+function shouldExportOpaqueColumn(key: string, data: FirebaseFirestore.DocumentData): boolean {
+  if (key === "storagePath" && storagePathEmbedsBodyHash(data[key])) {
+    return opaqueHashVersion(data, "bodyHashVersion") >= 2;
+  }
+  const versionKey = VERSION_GATED_HASH_COLUMNS[key];
+  if (versionKey) {
+    return opaqueHashVersion(data, versionKey) >= 2;
+  }
+  return OPAQUE_EXPORT_COLUMNS.has(key);
+}
+
+function storagePathEmbedsBodyHash(value: unknown): boolean {
+  return typeof value === "string" && /\/bodies\/[a-f0-9]{32,128}\.json\.aesgcm$/u.test(value);
+}
 
 /** A sealed envelope is opaque regardless of its key name, so it is detected structurally. */
 export function isSealedEnvelope(value: unknown): boolean {
@@ -314,14 +333,34 @@ export function isSealedEnvelope(value: unknown): boolean {
   if (v.algorithm === "AES-256-GCM" && typeof v.sealedBoxBase64 === "string") {
     return true;
   }
-  // … or a Hermes gateway relay envelope (HermesRelayCrypto p256-hkdf-sha256-aesgcm).
+  // … or a Hermes gateway relay envelope. v2 uses the authenticated 2-DH
+  // p256-hkdf-sha256-aesgcm wrap; v3 uses RFC 9180 HPKE Auth and carries `enc`.
   // The sealed gateway sub-object carries only opaque base64 ciphertext +
   // wrapped key + the algorithm/version constants — no plaintext — so it is safe
   // to round-trip through the export verbatim (gateway-e2e Wave 4).
   if (
-    v.relayEncryption === "p256-hkdf-sha256-aesgcm" &&
+    (v.relayEncryption === "p256-hkdf-sha256-aesgcm" || v.relayEncryption === "hpke-auth-p256-hkdfsha256-aes256gcm") &&
     typeof v.payloadCiphertext === "string" &&
-    typeof v.wrappedKey === "string"
+    typeof v.wrappedKey === "string" &&
+    (v.relayEncryption !== "hpke-auth-p256-hkdfsha256-aes256gcm" || typeof v.enc === "string")
+  ) {
+    return true;
+  }
+  // … or a Hermes gateway ratchet envelope. The header is routing/session
+  // metadata; ciphertextBase64 carries the AES-GCM nonce+ciphertext+tag. The
+  // plaintext body never appears as a sibling once the gateway serializer sees
+  // this shape.
+  const header = recordOrUndefined(v.header);
+  if (
+    header &&
+    typeof header === "object" &&
+    header.algorithm === "OpenBurnBar-HermesRatchet-v1-P256-HKDFSHA256-AESGCM" &&
+    header.version === 1 &&
+    typeof header.sessionID === "string" &&
+    typeof header.senderDeviceID === "string" &&
+    typeof header.receiverDeviceID === "string" &&
+    typeof header.ratchetPublicKeyBase64 === "string" &&
+    typeof v.ciphertextBase64 === "string"
   ) {
     return true;
   }
@@ -403,14 +442,112 @@ export function sealAwareSerializeDoc(data: FirebaseFirestore.DocumentData): {
   const dropped: string[] = [];
   for (const [key, value] of Object.entries(data)) {
     if (isSealedEnvelope(value)) {
-      out[key] = value; // opaque ciphertext — safe to emit
-    } else if (OPAQUE_EXPORT_COLUMNS.has(key)) {
+      const sanitized = sanitizeSealedEnvelope(key, value);
+      out[key] = sanitized.out; // opaque ciphertext — safe to emit after nested default-deny.
+      dropped.push(...sanitized.dropped);
+    } else if (shouldExportOpaqueColumn(key, data)) {
       out[key] = serializeValue(value); // opaque crypto column — safe to emit
     } else if (isExportablePrimitive(value)) {
       out[key] = serializeValue(value); // content-free scalar/timestamp
     } else {
       dropped.push(key); // candidate plaintext leak — withhold
     }
+  }
+  return { out, dropped };
+}
+
+const CLOUD_VAULT_SEALED_FIELDS = new Set([
+  "schemaVersion",
+  "algorithm",
+  "keyVersion",
+  "nonce",
+  "ciphertext",
+  "tag",
+  "aad",
+  "sealedBoxBase64",
+  "plaintextHMAC",
+  "integrityHashVersion",
+  "createdAt",
+]);
+
+const HERMES_RELAY_ENVELOPE_FIELDS = new Set([
+  "payloadCiphertext",
+  "wrappedKey",
+  "relayEncryption",
+  "relayKeyVersion",
+  "senderPublicKey",
+  "enc",
+]);
+
+const HERMES_RATCHET_HEADER_FIELDS = new Set([
+  "version",
+  "sessionID",
+  "senderDeviceID",
+  "receiverDeviceID",
+  "algorithm",
+  "ratchetPublicKeyBase64",
+  "previousChainLength",
+  "messageNumber",
+  "epoch",
+]);
+
+function sanitizeSealedEnvelope(
+  key: string,
+  value: unknown,
+): {
+  out: unknown;
+  dropped: string[];
+} {
+  const serialized = serializeValue(value);
+  if (!serialized || typeof serialized !== "object" || Array.isArray(serialized)) {
+    return { out: serialized, dropped: [] };
+  }
+  const envelope = recordOrUndefined(serialized);
+  if (!envelope) {
+    return { out: serialized, dropped: [] };
+  }
+  if (envelope.algorithm === "AES-256-GCM") {
+    return sanitizeAllowedObject(key, envelope, CLOUD_VAULT_SEALED_FIELDS);
+  }
+  if (typeof envelope.relayEncryption === "string") {
+    return sanitizeAllowedObject(key, envelope, HERMES_RELAY_ENVELOPE_FIELDS);
+  }
+  const header = recordOrUndefined(envelope.header);
+  if (header) {
+    const outer = sanitizeAllowedObject(key, envelope, new Set(["header", "ciphertextBase64"]));
+    const sanitizedHeader = sanitizeAllowedObject(`${key}.header`, header, HERMES_RATCHET_HEADER_FIELDS);
+    return {
+      out: { ...outer.out, header: sanitizedHeader.out },
+      dropped: [...outer.dropped, ...sanitizedHeader.dropped],
+    };
+  }
+  return { out: serialized, dropped: [] };
+}
+
+function sanitizeAllowedObject(
+  path: string,
+  data: Record<string, unknown>,
+  allowed: Set<string>,
+): {
+  out: Record<string, unknown>;
+  dropped: string[];
+} {
+  const out: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(data)) {
+    if (key === "plaintextSHA256") {
+      dropped.push(`${path}.${key}`);
+      continue;
+    }
+    if ((key === "bodyHash" || key === "contentHash") && !shouldExportOpaqueColumn(key, data)) {
+      dropped.push(`${path}.${key}`);
+      continue;
+    }
+    if (!allowed.has(key)) {
+      dropped.push(`${path}.${key}`);
+      continue;
+    }
+    out[key] = serializeValue(value);
   }
   return { out, dropped };
 }
@@ -446,10 +583,10 @@ async function collectSealedRefs(
   uid: string,
   paths: DomainPaths,
   budget: { remaining: number },
-): Promise<Array<{ path: string; bodyHash: string; signedUrl: string }>> {
+): Promise<Array<{ pathDigest: string; signedUrl: string }>> {
   if (paths.storagePrefixes.length === 0 || budget.remaining <= 0) return [];
   const bucket = getStorage().bucket();
-  const refs: Array<{ path: string; bodyHash: string; signedUrl: string }> = [];
+  const refs: Array<{ pathDigest: string; signedUrl: string }> = [];
   const expires = new Date(Date.now() + SIGNED_URL_TTL_MS);
   for (const prefix of paths.storagePrefixes) {
     if (budget.remaining <= 0) break;
@@ -458,21 +595,13 @@ async function collectSealedRefs(
       if (budget.remaining <= 0) break;
       const [signedUrl] = await file.getSignedUrl({ version: "v4", action: "read", expires });
       refs.push({
-        path: file.name,
-        bodyHash: deriveBodyHashFromPath(file.name),
+        pathDigest: sha256Hex(file.name),
         signedUrl,
       });
       budget.remaining -= 1;
     }
   }
   return refs;
-}
-
-/** The bodyHash is the object's basename sans the .json.aesgcm suffix, when present. */
-function deriveBodyHashFromPath(path: string): string {
-  const basename = path.split("/").pop() ?? path;
-  const stripped = basename.endsWith(".json.aesgcm") ? basename.slice(0, -".json.aesgcm".length) : basename;
-  return /^[a-f0-9]{32,128}$/u.test(stripped) ? stripped : sha256Hex(path);
 }
 
 export const exportUserData = onCall(
@@ -527,6 +656,6 @@ export const exportUserData = onCall(
       domain: ids.length === Object.keys(DATA_DOMAIN_PATHS).length ? "all" : ids.join(","),
     });
 
-    return { ok: true, generatedAt: nowISO(), domains, schemaVersion: 1 };
+    return { ok: true, generatedAt: nowISO(), domains, schemaVersion: 2 };
   }),
 );

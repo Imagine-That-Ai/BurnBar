@@ -4,6 +4,9 @@ import Foundation
 
 /// WS4 iOS client for App Check attestation binding and escrow device trust callables.
 enum ComputerUseSecurityCallableClient {
+    private static let appCheckBindMaxAttempts = 3
+    private static let appCheckBindRetryDelayNanoseconds: UInt64 = 1_500_000_000
+
     enum ClientError: LocalizedError {
         case notAuthenticated
         case invalidResponse(String)
@@ -23,10 +26,29 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func bindAppCheckAttestation() async throws {
+        try await AppCheckAttestationBindingCoordinator.shared.run {
+            try await bindAppCheckAttestationWithRetry()
+        }
+    }
+
+    private static func bindAppCheckAttestationWithRetry() async throws {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
-        _ = try await functions.httpsCallable("bindAppCheckAttestation").call([:])
+
+        for attempt in 1...appCheckBindMaxAttempts {
+            do {
+                _ = try await functions.httpsCallable("bindAppCheckAttestation").call([:])
+                try await refreshAuthClaimsAfterBind()
+                return
+            } catch {
+                guard attempt < appCheckBindMaxAttempts, isRetryableAppCheckBindError(error) else {
+                    throw error
+                }
+                try await Task.sleep(nanoseconds: UInt64(attempt) * appCheckBindRetryDelayNanoseconds)
+            }
+        }
+
         try await refreshAuthClaimsAfterBind()
     }
 
@@ -143,5 +165,56 @@ enum ComputerUseSecurityCallableClient {
             throw ClientError.notAuthenticated
         }
         _ = try await user.getIDTokenResult(forcingRefresh: true)
+    }
+
+    private static func isRetryableAppCheckBindError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == FunctionsErrorDomain,
+           let code = FunctionsErrorCode(rawValue: nsError.code) {
+            switch code {
+            case .deadlineExceeded, .unavailable, .internal, .resourceExhausted, .aborted:
+                return true
+            default:
+                return false
+            }
+        }
+
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorTimedOut,
+                 NSURLErrorNetworkConnectionLost,
+                 NSURLErrorCannotConnectToHost,
+                 NSURLErrorNotConnectedToInternet:
+                return true
+            default:
+                return false
+            }
+        }
+
+        let normalizedDescription = nsError.localizedDescription
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .lowercased()
+        return normalizedDescription.contains("deadlineexceeded")
+            || normalizedDescription.contains("timedout")
+    }
+}
+
+private actor AppCheckAttestationBindingCoordinator {
+    static let shared = AppCheckAttestationBindingCoordinator()
+
+    private var inFlight: Task<Void, Error>?
+
+    func run(_ operation: @escaping @Sendable () async throws -> Void) async throws {
+        if let inFlight {
+            return try await inFlight.value
+        }
+
+        let task = Task {
+            try await operation()
+        }
+        inFlight = task
+        defer { inFlight = nil }
+        return try await task.value
     }
 }

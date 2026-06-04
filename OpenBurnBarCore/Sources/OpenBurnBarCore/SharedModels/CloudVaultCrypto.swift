@@ -28,19 +28,84 @@ public enum CloudVaultCryptoError: LocalizedError, Sendable {
     }
 }
 
+public struct CloudVaultAADContext: Codable, Hashable, Sendable {
+    public let uid: String
+    public let collection: String
+    public let docID: String
+    public let field: String
+    public let schemaVersion: Int
+    public let purpose: String
+
+    public init(
+        uid: String,
+        collection: String,
+        docID: String,
+        field: String,
+        schemaVersion: Int = 2,
+        purpose: String? = nil
+    ) throws {
+        self.uid = try Self.validatedPart(uid)
+        self.collection = try Self.validatedPart(collection)
+        self.docID = try Self.validatedPart(docID)
+        let validatedField = try Self.validatedPart(field)
+        self.field = validatedField
+        guard schemaVersion >= 2 else { throw CloudVaultCryptoError.invalidEnvelope }
+        self.schemaVersion = schemaVersion
+        self.purpose = try Self.validatedPart(purpose ?? validatedField)
+    }
+
+    public var stringValue: String {
+        "\(CloudVaultCrypto.aadContextPrefix)|\(uid)|\(collection)|\(docID)|\(field)|\(schemaVersion)|\(purpose)"
+    }
+
+    public var legacyV1StringValue: String {
+        "\(CloudVaultCrypto.legacyAADContextPrefix)|\(uid)|\(collection)|\(docID)|\(field)"
+    }
+
+    public var data: Data {
+        Data(stringValue.utf8)
+    }
+
+    public var legacyV1Data: Data {
+        Data(legacyV1StringValue.utf8)
+    }
+
+    private static func validatedPart(_ value: String) throws -> String {
+        guard !value.isEmpty,
+              value.unicodeScalars.allSatisfy({ scalar in
+                  scalar.value >= 0x20 && scalar.value != 0x7f && scalar != "|"
+              }) else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        return value
+    }
+}
+
 public struct CloudVaultSealedText: Codable, Hashable, Sendable {
+    public let schemaVersion: Int?
     public let algorithm: String
     public let keyVersion: Int
     public let nonce: String
     public let ciphertext: String
     public let tag: String
+    public let aad: String?
 
-    public init(algorithm: String, keyVersion: Int, nonce: String, ciphertext: String, tag: String) {
+    public init(
+        schemaVersion: Int? = nil,
+        algorithm: String,
+        keyVersion: Int,
+        nonce: String,
+        ciphertext: String,
+        tag: String,
+        aad: String? = nil
+    ) {
+        self.schemaVersion = schemaVersion
         self.algorithm = algorithm
         self.keyVersion = keyVersion
         self.nonce = nonce
         self.ciphertext = ciphertext
         self.tag = tag
+        self.aad = aad
     }
 }
 
@@ -48,24 +113,33 @@ public struct CloudVaultBlobEnvelope: Codable, Hashable, Sendable {
     public let schemaVersion: Int
     public let algorithm: String
     public let keyVersion: Int
-    public let plaintextSHA256: String
+    public let plaintextSHA256: String?
+    public let plaintextHMAC: String?
+    public let integrityHashVersion: Int?
     public let sealedBoxBase64: String
     public let createdAt: Date
+    public let aad: String?
 
     public init(
-        schemaVersion: Int = 1,
+        schemaVersion: Int = CloudVaultCrypto.currentBlobEnvelopeSchemaVersion,
         algorithm: String = CloudVaultCrypto.aesGCMAlgorithm,
         keyVersion: Int,
-        plaintextSHA256: String,
+        plaintextSHA256: String? = nil,
+        plaintextHMAC: String? = nil,
+        integrityHashVersion: Int? = CloudVaultCrypto.blobIntegrityHashVersion,
         sealedBoxBase64: String,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        aad: String? = CloudVaultCrypto.blobEnvelopeAADContext
     ) {
         self.schemaVersion = schemaVersion
         self.algorithm = algorithm
         self.keyVersion = keyVersion
         self.plaintextSHA256 = plaintextSHA256
+        self.plaintextHMAC = plaintextHMAC
+        self.integrityHashVersion = integrityHashVersion
         self.sealedBoxBase64 = sealedBoxBase64
         self.createdAt = createdAt
+        self.aad = aad
     }
 }
 
@@ -75,24 +149,38 @@ public struct CloudVaultSealedPayload: Codable, Hashable, Sendable {
     public let keyVersion: Int
     public let vaultKeyID: String
     public let sealedBoxBase64: String
+    public let aad: String?
 
     public init(
-        schemaVersion: Int = 1,
+        schemaVersion: Int = CloudVaultCrypto.currentSealedPayloadSchemaVersion,
         algorithm: String = CloudVaultCrypto.aesGCMAlgorithm,
         keyVersion: Int,
         vaultKeyID: String,
-        sealedBoxBase64: String
+        sealedBoxBase64: String,
+        aad: String? = CloudVaultCrypto.sealedPayloadAADContext
     ) {
         self.schemaVersion = schemaVersion
         self.algorithm = algorithm
         self.keyVersion = keyVersion
         self.vaultKeyID = vaultKeyID
         self.sealedBoxBase64 = sealedBoxBase64
+        self.aad = aad
     }
 }
 
 public enum CloudVaultCrypto {
     public static let aesGCMAlgorithm = "AES-256-GCM"
+    public static let aadContextPrefix = "OpenBurnBar-CloudVault-aad-v2"
+    public static let legacyAADContextPrefix = "OpenBurnBar-CloudVault-aad-v1"
+    public static let currentSealedTextSchemaVersion = 2
+    public static let currentBlobEnvelopeSchemaVersion = 2
+    public static let blobEnvelopeAADContext = "OpenBurnBar-CloudVaultBlob-v2"
+    public static let blobIntegrityHashVersion = 1
+    public static let sessionBodyHashVersion = 2
+    public static let sessionChunkHashVersion = 2
+    public static let projectMemoryContentHashVersion = 2
+    public static let currentSealedPayloadSchemaVersion = 2
+    public static let sealedPayloadAADContext = "OpenBurnBar-CloudVaultSealedPayload-v2"
     public static let tokenHashVersion = 1
     public static let semanticHashVersion = 1
     public static let currentKeyVersion = 1
@@ -121,79 +209,218 @@ public enum CloudVaultCrypto {
             .joined(separator: "-")
     }
 
-    public static func sealText(_ text: String, keyData: Data, keyVersion: Int = currentKeyVersion) throws -> CloudVaultSealedText {
-        let sealed = try AES.GCM.seal(Data(text.utf8), using: try symmetricKey(from: keyData))
-        return try sealedText(from: sealed, keyVersion: keyVersion)
+    public static func sealText(
+        _ text: String,
+        keyData: Data,
+        keyVersion: Int = currentKeyVersion,
+        aadContext: CloudVaultAADContext? = nil
+    ) throws -> CloudVaultSealedText {
+        let plaintext = Data(text.utf8)
+        let sealed: AES.GCM.SealedBox
+        if let aadContext {
+            sealed = try AES.GCM.seal(plaintext, using: try symmetricKey(from: keyData), authenticating: aadContext.data)
+        } else {
+            sealed = try AES.GCM.seal(plaintext, using: try symmetricKey(from: keyData))
+        }
+        return try sealedText(from: sealed, keyVersion: keyVersion, aadContext: aadContext)
     }
 
-    public static func openText(_ envelope: CloudVaultSealedText, keyData: Data) throws -> String {
-        let data = try open(envelope, keyData: keyData)
+    public static func openText(
+        _ envelope: CloudVaultSealedText,
+        keyData: Data,
+        aadContext: CloudVaultAADContext? = nil
+    ) throws -> String {
+        let data = try open(envelope, keyData: keyData, aadContext: aadContext)
         guard let text = String(data: data, encoding: .utf8) else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
         return text
     }
 
-    public static func sealBlob(_ data: Data, keyData: Data, keyVersion: Int = currentKeyVersion) throws -> CloudVaultBlobEnvelope {
-        let sealed = try AES.GCM.seal(data, using: try symmetricKey(from: keyData))
+    public static func sealBlob(
+        _ data: Data,
+        keyData: Data,
+        keyVersion: Int = currentKeyVersion,
+        aadContext: CloudVaultAADContext? = nil
+    ) throws -> CloudVaultBlobEnvelope {
+        let sealed: AES.GCM.SealedBox
+        if let aadContext {
+            sealed = try AES.GCM.seal(data, using: try symmetricKey(from: keyData), authenticating: aadContext.data)
+        } else {
+            sealed = try AES.GCM.seal(data, using: try symmetricKey(from: keyData))
+        }
         guard let combined = sealed.combined else {
             throw CloudVaultCryptoError.sealedBoxUnavailable
         }
         return CloudVaultBlobEnvelope(
+            schemaVersion: currentBlobEnvelopeSchemaVersion,
             keyVersion: keyVersion,
-            plaintextSHA256: sha256Hex(data),
-            sealedBoxBase64: combined.base64EncodedString()
+            plaintextHMAC: try blobPlaintextHMAC(data, keyData: keyData),
+            integrityHashVersion: blobIntegrityHashVersion,
+            sealedBoxBase64: combined.base64EncodedString(),
+            aad: aadContext?.stringValue ?? blobEnvelopeAADContext
         )
     }
 
-    public static func openBlob(_ envelope: CloudVaultBlobEnvelope, keyData: Data) throws -> Data {
+    public static func openBlob(
+        _ envelope: CloudVaultBlobEnvelope,
+        keyData: Data,
+        aadContext: CloudVaultAADContext? = nil
+    ) throws -> Data {
+        guard envelope.algorithm == aesGCMAlgorithm else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
         guard let combined = Data(base64Encoded: envelope.sealedBoxBase64) else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
         let box = try AES.GCM.SealedBox(combined: combined)
-        let plaintext = try AES.GCM.open(box, using: try symmetricKey(from: keyData))
-        guard sha256Hex(plaintext) == envelope.plaintextSHA256 else {
+        let plaintext: Data
+        switch envelope.schemaVersion {
+        case 1:
+            plaintext = try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+            guard let plaintextSHA256 = envelope.plaintextSHA256,
+                  sha256Hex(plaintext) == plaintextSHA256 else {
+                throw CloudVaultCryptoError.invalidEnvelope
+            }
+        case currentBlobEnvelopeSchemaVersion:
+            if envelope.aad == blobEnvelopeAADContext {
+                plaintext = try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+            } else {
+                guard let aadContext else {
+                    throw CloudVaultCryptoError.invalidEnvelope
+                }
+                plaintext = try AES.GCM.open(
+                    box,
+                    using: try symmetricKey(from: keyData),
+                    authenticating: try aadData(matching: envelope.aad, context: aadContext)
+                )
+            }
+            guard envelope.integrityHashVersion == blobIntegrityHashVersion,
+                  let plaintextHMAC = envelope.plaintextHMAC,
+                  try blobPlaintextHMAC(plaintext, keyData: keyData) == plaintextHMAC else {
+                throw CloudVaultCryptoError.invalidEnvelope
+            }
+        default:
             throw CloudVaultCryptoError.invalidEnvelope
         }
         return plaintext
+    }
+
+    public static func blobPlaintextHMAC(_ data: Data, keyData: Data) throws -> String {
+        try keyedHMACHex(data, keyData: keyData, purpose: "blob-integrity")
+    }
+
+    public static func sessionBodyHash(_ data: Data, keyData: Data) throws -> String {
+        try keyedHMACHex(data, keyData: keyData, purpose: "session-body")
+    }
+
+    public static func sessionBodyHash(_ text: String, keyData: Data) throws -> String {
+        try sessionBodyHash(Data(text.utf8), keyData: keyData)
+    }
+
+    public static func expectedSessionBodyHash(_ data: Data, keyData: Data, bodyHashVersion: Int) throws -> String {
+        switch bodyHashVersion {
+        case sessionBodyHashVersion:
+            return try sessionBodyHash(data, keyData: keyData)
+        case 0, 1:
+            return sha256Hex(data)
+        default:
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+    }
+
+    public static func sessionChunkHash(_ chunk: String, keyData: Data) throws -> String {
+        try keyedHMACHex(Data(chunk.utf8), keyData: keyData, purpose: "session-chunk")
+    }
+
+    public static func projectMemoryContentHash(_ data: Data, keyData: Data) throws -> String {
+        try keyedHMACHex(data, keyData: keyData, purpose: "project-memory-content")
+    }
+
+    public static func expectedBlobIntegrityHash(_ data: Data, envelope: CloudVaultBlobEnvelope, keyData: Data) throws -> String {
+        if envelope.schemaVersion >= currentBlobEnvelopeSchemaVersion {
+            return try blobPlaintextHMAC(data, keyData: keyData)
+        }
+        return sha256Hex(data)
     }
 
     public static func sealPayload(
         _ data: Data,
         keyData: Data,
         vaultKeyID: String,
-        keyVersion: Int = currentKeyVersion
+        keyVersion: Int = currentKeyVersion,
+        aadContext: CloudVaultAADContext? = nil
     ) throws -> CloudVaultSealedPayload {
-        let sealed = try AES.GCM.seal(data, using: try symmetricKey(from: keyData))
+        let draft = CloudVaultSealedPayload(
+            keyVersion: keyVersion,
+            vaultKeyID: vaultKeyID,
+            sealedBoxBase64: "",
+            aad: aadContext?.stringValue ?? sealedPayloadAADContext
+        )
+        let sealed = try AES.GCM.seal(
+            data,
+            using: try symmetricKey(from: keyData),
+            authenticating: sealedPayloadAAD(for: draft, aadContext: aadContext)
+        )
         guard let combined = sealed.combined else {
             throw CloudVaultCryptoError.sealedBoxUnavailable
         }
         return CloudVaultSealedPayload(
+            schemaVersion: currentSealedPayloadSchemaVersion,
             keyVersion: keyVersion,
             vaultKeyID: vaultKeyID,
-            sealedBoxBase64: combined.base64EncodedString()
+            sealedBoxBase64: combined.base64EncodedString(),
+            aad: draft.aad
         )
     }
 
-    public static func openPayload(_ envelope: CloudVaultSealedPayload, keyData: Data) throws -> Data {
+    public static func openPayload(
+        _ envelope: CloudVaultSealedPayload,
+        keyData: Data,
+        aadContext: CloudVaultAADContext? = nil
+    ) throws -> Data {
         guard envelope.algorithm == aesGCMAlgorithm,
-              envelope.schemaVersion == 1,
               envelope.vaultKeyID == (try vaultKeyID(for: keyData)),
               let combined = Data(base64Encoded: envelope.sealedBoxBase64) else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
         let box = try AES.GCM.SealedBox(combined: combined)
-        return try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+        switch envelope.schemaVersion {
+        case 1:
+            return try AES.GCM.open(box, using: try symmetricKey(from: keyData))
+        case currentSealedPayloadSchemaVersion:
+            if envelope.aad == sealedPayloadAADContext {
+                return try AES.GCM.open(
+                    box,
+                    using: try symmetricKey(from: keyData),
+                    authenticating: sealedPayloadAAD(for: envelope, aadContext: nil)
+                )
+            }
+            guard let aadContext else {
+                throw CloudVaultCryptoError.invalidEnvelope
+            }
+            return try AES.GCM.open(
+                box,
+                using: try symmetricKey(from: keyData),
+                authenticating: try aadData(matching: envelope.aad, context: aadContext)
+            )
+        default:
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
     }
 
     public static func sealedPayloadDictionary(_ envelope: CloudVaultSealedPayload) -> [String: Any] {
-        [
+        var dict: [String: Any] = [
             "schemaVersion": envelope.schemaVersion,
             "algorithm": envelope.algorithm,
             "keyVersion": envelope.keyVersion,
             "vaultKeyID": envelope.vaultKeyID,
             "sealedBoxBase64": envelope.sealedBoxBase64
         ]
+        if let aad = envelope.aad {
+            dict["aad"] = aad
+        }
+        return dict
     }
 
     public static func sealedPayload(from raw: Any?) -> CloudVaultSealedPayload? {
@@ -210,7 +437,8 @@ public enum CloudVaultCrypto {
             algorithm: algorithm,
             keyVersion: keyVersion,
             vaultKeyID: vaultKeyID,
-            sealedBoxBase64: sealedBoxBase64
+            sealedBoxBase64: sealedBoxBase64,
+            aad: dict["aad"] as? String
         )
     }
 
@@ -519,6 +747,35 @@ public enum CloudVaultCrypto {
         return SymmetricKey(data: data)
     }
 
+    private static func keyedHMACHex(_ data: Data, keyData: Data, purpose: String) throws -> String {
+        guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        let key = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: keyData),
+            salt: Data("OpenBurnBar-CloudVault-HMAC-Salt-v1".utf8),
+            info: Data("OpenBurnBar-CloudVault-HMAC-v1|\(purpose)".utf8),
+            outputByteCount: 32
+        )
+        let mac = HMAC<SHA256>.authenticationCode(for: data, using: key)
+        return Data(mac).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func sealedPayloadAAD(for envelope: CloudVaultSealedPayload, aadContext: CloudVaultAADContext?) -> Data {
+        if let aadContext {
+            return aadContext.data
+        }
+        return Data("\(sealedPayloadAADContext)|\(envelope.algorithm)|keyVersion=\(envelope.keyVersion)|vaultKeyID=\(envelope.vaultKeyID)".utf8)
+    }
+
+    private static func aadData(matching envelopeAAD: String?, context: CloudVaultAADContext) throws -> Data {
+        if envelopeAAD == context.stringValue {
+            return context.data
+        }
+        if envelopeAAD == context.legacyV1StringValue {
+            return context.legacyV1Data
+        }
+        throw CloudVaultCryptoError.invalidEnvelope
+    }
+
     private static func searchKey(from data: Data) throws -> SymmetricKey {
         guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         return HKDF<SHA256>.deriveKey(
@@ -682,17 +939,27 @@ public enum CloudVaultCrypto {
         return token
     }
 
-    private static func sealedText(from sealed: AES.GCM.SealedBox, keyVersion: Int) throws -> CloudVaultSealedText {
+    private static func sealedText(
+        from sealed: AES.GCM.SealedBox,
+        keyVersion: Int,
+        aadContext: CloudVaultAADContext?
+    ) throws -> CloudVaultSealedText {
         CloudVaultSealedText(
+            schemaVersion: aadContext == nil ? nil : currentSealedTextSchemaVersion,
             algorithm: aesGCMAlgorithm,
             keyVersion: keyVersion,
             nonce: sealed.nonce.withUnsafeBytes { Data($0).base64EncodedString() },
             ciphertext: sealed.ciphertext.base64EncodedString(),
-            tag: sealed.tag.base64EncodedString()
+            tag: sealed.tag.base64EncodedString(),
+            aad: aadContext?.stringValue
         )
     }
 
-    private static func open(_ envelope: CloudVaultSealedText, keyData: Data) throws -> Data {
+    private static func open(
+        _ envelope: CloudVaultSealedText,
+        keyData: Data,
+        aadContext: CloudVaultAADContext?
+    ) throws -> Data {
         guard envelope.algorithm == aesGCMAlgorithm,
               let nonceData = Data(base64Encoded: envelope.nonce),
               let ciphertext = Data(base64Encoded: envelope.ciphertext),
@@ -701,6 +968,17 @@ public enum CloudVaultCrypto {
         }
         let nonce = try AES.GCM.Nonce(data: nonceData)
         let box = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag)
+        let schemaVersion = envelope.schemaVersion ?? 1
+        if schemaVersion >= currentSealedTextSchemaVersion {
+            guard let aadContext else {
+                throw CloudVaultCryptoError.invalidEnvelope
+            }
+            return try AES.GCM.open(
+                box,
+                using: try symmetricKey(from: keyData),
+                authenticating: try aadData(matching: envelope.aad, context: aadContext)
+            )
+        }
         return try AES.GCM.open(box, using: try symmetricKey(from: keyData))
     }
 }

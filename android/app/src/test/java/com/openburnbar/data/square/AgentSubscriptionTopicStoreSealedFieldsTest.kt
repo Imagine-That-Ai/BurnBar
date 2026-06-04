@@ -303,7 +303,8 @@ class AgentSubscriptionTopicStoreSealedFieldsTest {
         assertTrue("consentGivenAt must be a Firestore Timestamp, was $consent", consent is Timestamp)
         assertFalse("consentGivenAt must not be written as a Long", consent is Long)
         // The Timestamp preserves the exact epoch millis (round-trips losslessly).
-        assertEquals(createdAt, (consent as Timestamp).toDate().time)
+        val consentTimestamp = consent as? Timestamp ?: error("consent timestamp must be a Firestore Timestamp")
+        assertEquals(createdAt, consentTimestamp.toDate().time)
     }
 
     /**

@@ -477,7 +477,7 @@ internal class AssistantChatFirestoreMirror(
                 "updatedAt" to Timestamp(Date(thread.updatedAtMillis)),
                 "messageCount" to thread.messageCount,
                 "contentSealed" to true,
-                "sealedSchemaVersion" to 1,
+                "sealedSchemaVersion" to 2,
                 "vaultKeyID" to resolvedKey.vaultKeyID,
                 "sealedPayload" to CloudVaultCrypto.sealedPayloadMap(sealedPayload),
             )

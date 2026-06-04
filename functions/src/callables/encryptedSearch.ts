@@ -25,6 +25,7 @@ import {
   requireBoundedStringArray,
   parseProjectMemoryFreshness,
   requireCloudVaultBlobEnvelope,
+  cloudVaultAADContext,
   assertUserStoragePath,
   assertEncryptedSessionBlobObject,
   assertActiveBurnBarProEntitlement,
@@ -197,9 +198,18 @@ export const commitEncryptedSearchIndexBatch = onCall(
           sourceVersionID: boundedTrimmedString(raw.sourceVersionID, "document.sourceVersionID", 512, false),
           provider: boundedTrimmedString(raw.provider, "document.provider", 80, false),
           bodyHash: requireHexDigest(raw.bodyHash, "document.bodyHash"),
+          bodyHashVersion: requireBoundedNumber(raw.bodyHashVersion ?? 0, "document.bodyHashVersion", 0, 100),
           storagePath,
-          sealedTitle: requireSealedText(raw.sealedTitle, "document.sealedTitle"),
-          sealedBodyPreview: requireSealedText(raw.sealedBodyPreview, "document.sealedBodyPreview"),
+          sealedTitle: requireSealedText(
+            raw.sealedTitle,
+            "document.sealedTitle",
+            cloudVaultAADContext(uid, "cloud_search_documents", documentID, "sealedTitle"),
+          ),
+          sealedBodyPreview: requireSealedText(
+            raw.sealedBodyPreview,
+            "document.sealedBodyPreview",
+            cloudVaultAADContext(uid, "cloud_search_documents", documentID, "sealedBodyPreview"),
+          ),
           byteCount: requireBoundedNumber(
             raw.byteCount,
             "document.byteCount",
@@ -252,9 +262,15 @@ export const commitEncryptedSearchIndexBatch = onCall(
           startOffset: requireBoundedNumber(raw.startOffset, "chunk.startOffset", 0, 50_000_000),
           endOffset: requireBoundedNumber(raw.endOffset, "chunk.endOffset", 0, 50_000_000),
           contentHash: requireHexDigest(raw.contentHash, "chunk.contentHash"),
+          contentHashVersion: requireBoundedNumber(raw.contentHashVersion ?? 0, "chunk.contentHashVersion", 0, 100),
           bodyHash: requireHexDigest(raw.bodyHash, "chunk.bodyHash"),
+          bodyHashVersion: requireBoundedNumber(raw.bodyHashVersion ?? 0, "chunk.bodyHashVersion", 0, 100),
           storagePath,
-          sealedSnippet: requireSealedText(raw.sealedSnippet, "chunk.sealedSnippet"),
+          sealedSnippet: requireSealedText(
+            raw.sealedSnippet,
+            "chunk.sealedSnippet",
+            cloudVaultAADContext(uid, "cloud_search_chunks", chunkID, "sealedSnippet"),
+          ),
           tokenHashes,
           semanticHashes,
           indexVersion,
@@ -277,6 +293,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
             provider: chunk.provider,
             ordinal: chunk.ordinal,
             bodyHash: chunk.bodyHash,
+            bodyHashVersion: chunk.bodyHashVersion,
             storagePath: chunk.storagePath,
             sealedSnippet: chunk.sealedSnippet,
             indexVersion,
@@ -337,6 +354,7 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
         freshness?: unknown;
         visualKinds?: unknown;
         sealedSnapshot?: unknown;
+        contentHashVersion?: unknown;
       }>,
     ) => {
       const uid = request.auth?.uid;
@@ -351,6 +369,12 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       // inside the sealed `sealedSnapshot` blob.
       const docID = requiredIdentifier(request.data.docID, "docID");
       const contentHash = requireHexDigest(request.data.contentHash, "contentHash");
+      const contentHashVersion = requireBoundedNumber(
+        request.data.contentHashVersion ?? 0,
+        "contentHashVersion",
+        0,
+        100,
+      );
       const sourceSessionCount = requireBoundedNumber(
         request.data.sourceSessionCount ?? 0,
         "sourceSessionCount",
@@ -369,12 +393,17 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
         request.data.visualKinds == null
           ? []
           : requireBoundedStringArray(request.data.visualKinds, "visualKinds", 24, 80);
-      const sealedSnapshot = requireCloudVaultBlobEnvelope(request.data.sealedSnapshot, "sealedSnapshot");
+      const sealedSnapshot = requireCloudVaultBlobEnvelope(
+        request.data.sealedSnapshot,
+        "sealedSnapshot",
+        cloudVaultAADContext(uid, "project_memory_snapshots", docID, "sealedSnapshot"),
+      );
       const updatedAt = nowISO();
 
       const doc: ProjectMemorySnapshotDoc = {
         docID,
         contentHash,
+        contentHashVersion,
         sourceSessionCount,
         sourceConversationCount,
         generatedAt,
@@ -678,6 +707,7 @@ export const searchEncryptedConversationIndex = onCall(
         seenDocuments.add(documentID);
         hits.push({
           id: item.id,
+          uid,
           chunkID: item.id,
           documentID,
           sourceKind: item.data.sourceKind,
@@ -688,6 +718,7 @@ export const searchEncryptedConversationIndex = onCall(
           sealedBodyPreview: docData.sealedBodyPreview,
           storagePath: item.data.storagePath,
           bodyHash: item.data.bodyHash,
+          bodyHashVersion: item.data.bodyHashVersion ?? docData.bodyHashVersion ?? 0,
           score: Math.min(
             1,
             (item.tokenMatches * 2 + item.semanticMatches) /

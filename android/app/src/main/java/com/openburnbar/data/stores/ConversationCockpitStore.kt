@@ -73,6 +73,7 @@ data class CockpitConversationRow(
     val preview: String?,
     val storagePath: String?,
     val bodyHash: String?,
+    val bodyHashVersion: Int,
 ) {
     val providerEnum: AgentProvider? get() = AgentProvider.fromKey(provider)
 

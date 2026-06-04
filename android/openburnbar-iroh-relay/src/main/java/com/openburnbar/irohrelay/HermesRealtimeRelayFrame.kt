@@ -171,6 +171,8 @@ data class HermesRealtimeRelayPayload(
     val sequence: Int? = null,
     val kind: HermesRelayChunkKind? = null,
     val ciphertext: String? = null,
+    val errorCode: String? = null,
+    /** Legacy plaintext terminal error. New senders use [errorCode] only. */
     val error: String? = null,
     val chunkCount: Int? = null,
     val capabilities: List<String>? = null,

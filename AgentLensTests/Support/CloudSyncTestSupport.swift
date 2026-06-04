@@ -108,3 +108,24 @@ final class FakeSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
         deletedBodies.append((documentID: documentID, storagePath: storagePath))
     }
 }
+
+struct StaticSessionLogVaultKeyStore: SessionLogVaultKeyProviding {
+    let keyData: Data
+
+    init(keyData: Data = Data(repeating: 0x43, count: 32)) {
+        self.keyData = keyData
+    }
+
+    func loadKey(uid: String) throws -> Data? {
+        keyData
+    }
+
+    func getOrCreateKey(uid: String) throws -> Data {
+        keyData
+    }
+}
+
+@MainActor
+struct NoopSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
+    func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws {}
+}

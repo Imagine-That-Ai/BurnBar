@@ -60,7 +60,10 @@ final class CloudSyncCoordinator {
         settingsManager: any SettingsManagerProtocol,
         firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
         circuitBreaker: CloudSyncCircuitBreaker = CloudSyncCircuitBreaker(),
-        sessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient? = nil
+        conversationVaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider(),
+        sessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient? = nil,
+        sessionLogVaultKeyStore: SessionLogVaultKeyProviding = CloudVaultKeyStore(),
+        sessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing = FirebaseSessionLogVaultKeyPublisher()
     ) {
         self.context = CloudSyncContext(
             dataStore: dataStore,
@@ -69,18 +72,20 @@ final class CloudSyncCoordinator {
             firestoreGateway: firestoreGateway,
             circuitBreaker: circuitBreaker
         )
-        self.usageSync = UsageSyncService(context: context)
-        self.conversationSync = ConversationSyncService(context: context)
-        self.chatThreadSync = ChatThreadSyncService(context: context)
+        self.usageSync = UsageSyncService(context: context, vaultKeyProvider: conversationVaultKeyProvider)
+        self.conversationSync = ConversationSyncService(context: context, vaultKeyProvider: conversationVaultKeyProvider)
+        self.chatThreadSync = ChatThreadSyncService(context: context, vaultKeyProvider: conversationVaultKeyProvider)
         self.sessionLogSync = SessionLogSyncService(
             context: context,
-            encryptedCloudClient: sessionLogEncryptedCloudClient ?? FirebaseSessionLogEncryptedCloudClient()
+            encryptedCloudClient: sessionLogEncryptedCloudClient ?? FirebaseSessionLogEncryptedCloudClient(),
+            vaultKeyStore: sessionLogVaultKeyStore,
+            vaultKeyPublisher: sessionLogVaultKeyPublisher
         )
         self.providerAccountSync = ProviderAccountSyncService(context: context)
         self.quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
         self.textExpansionSync = TextExpansionSyncService(context: context)
         self.collaborationSync = CollaborationSyncService(context: context)
-        self.downloadSync = DownloadSyncService(context: context)
+        self.downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: conversationVaultKeyProvider)
     }
 
     // MARK: - Public API: Upload (Local → Cloud)

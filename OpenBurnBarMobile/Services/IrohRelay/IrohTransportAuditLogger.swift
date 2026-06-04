@@ -63,7 +63,7 @@ final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, @unchecked Send
                 .setData(payload, merge: false)
         } catch {
             #if DEBUG
-            NSLog("hermes_iroh_audit_write_failed: \(error.localizedDescription)")
+            NSLog("hermes_iroh_audit_write_failed: \(String(describing: type(of: error)))")
             #endif
         }
     }

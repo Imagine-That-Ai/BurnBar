@@ -6,6 +6,7 @@
 import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { functions } from "./firebaseClient";
 import type { EncryptionTier } from "./domains";
+import type { CloudVaultSealedText } from "./escrow";
 import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialRequestOptionsJSON,
@@ -43,9 +44,10 @@ export interface ConsoleAccountSummary {
   totalCount: number;
   totalBytes: number;
 }
+export type DataTier = "ultra" | "pro" | "free";
 export interface DataDomainUsageResponse {
   ok: boolean;
-  tier: "ultra" | "pro" | "free";
+  tier: DataTier;
   account?: ConsoleAccountSummary;
   limits: { pensieve: PensieveLimits };
   domains: DomainUsage[];
@@ -54,10 +56,46 @@ export interface DataDomainUsageResponse {
 export const getDataDomainUsage = () =>
   call<void, DataDomainUsageResponse>("getDataDomainUsage");
 
+// ── Pensieve connected repos ────────────────────────────────────────────────
+// A connected repo stores only an opaque keyed match token + a vault-sealed
+// `sealedRepoFullName`; the cleartext name is observed transiently server-side
+// to compute the webhook match token and is NEVER stored. The console decrypts
+// `sealedRepoFullName` locally for display.
+export interface KnowledgeRepoSummary {
+  repoId: string;
+  sealedRepoFullName: CloudVaultSealedText | null;
+  sourceSlug: string | null;
+  installId: string | null;
+  connectedAt: string | null;
+  chunkCount: number;
+  byteCount: number;
+  lastSyncAt: string | null;
+  lastDirtyAt: string | null;
+  needsResync: boolean;
+}
+export const listKnowledgeRepos = () =>
+  call<void, { ok: boolean; repos: KnowledgeRepoSummary[] }>("listKnowledgeRepos");
+
+export interface ConnectKnowledgeRepoRequest {
+  /** Cleartext `owner/name` — sent transiently for the webhook match token, never stored. */
+  repoFullName: string;
+  /** Vault-sealed display name; the only repo-name form the server persists. */
+  sealedRepoFullName: CloudVaultSealedText;
+  sourceSlug: string;
+}
+export const connectKnowledgeRepo = (payload: ConnectKnowledgeRepoRequest) =>
+  call<ConnectKnowledgeRepoRequest, { ok: boolean; repoId: string }>("connectKnowledgeRepo", payload);
+
+export const disconnectKnowledgeRepo = (repoId: string) =>
+  call<{ repoId: string }, { ok: boolean }>("disconnectKnowledgeRepo", { repoId });
+
+/** Queue a re-sync of every connected repo (flags manifests for the Mac daemon). */
+export const requestKnowledgeResync = () =>
+  call<void, { ok: boolean; flagged: number }>("requestKnowledgeResync");
+
 // ── exportUserData ──────────────────────────────────────────────────────────
 export interface SealedRef {
-  path: string;
-  bodyHash: string;
+  pathDigest: string;
   signedUrl: string;
 }
 export interface ExportedDomain {
@@ -70,7 +108,7 @@ export interface ExportUserDataResponse {
   ok: boolean;
   generatedAt: string;
   domains: ExportedDomain[];
-  schemaVersion: 1;
+  schemaVersion: 2;
 }
 export const exportUserData = (domains?: string[]) =>
   call<{ domains?: string[] }, ExportUserDataResponse>("exportUserData", { domains });

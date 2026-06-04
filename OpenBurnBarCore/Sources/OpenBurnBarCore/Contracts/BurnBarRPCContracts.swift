@@ -25,6 +25,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case providerModelDisplayNameClear = "daemon.provider.model_display_name.clear"
     case usageRecord = "daemon.usage.record"
     case usageRecent = "daemon.usage.recent"
+    case proxyRouteLogRecent = "daemon.proxy.route_log.recent"
+    case proxyRouteLogClear = "daemon.proxy.route_log.clear"
     case connectorPlaneGet = "daemon.connector.plane.get"
     case connectorConfigUpdate = "daemon.connector.config.update"
     case connectorAction = "daemon.connector.action"

@@ -7,6 +7,13 @@ import Network
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
+private func irohPublicErrorClass(_ error: Error) -> String {
+    let nsError = error as NSError
+    let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-").inverted
+    let domain = nsError.domain.components(separatedBy: allowed).joined(separator: "_")
+    return "\(domain)#\(nsError.code)"
+}
+
 /// iOS-side iroh transport. Conforms to `HermesRelayTransporting` so it
 /// slots into `HermesCompositeRelayTransport` next to the existing
 /// `HermesRealtimeRelayTransport` (WSS) and `FirestoreHermesRelayTransport`
@@ -378,9 +385,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 connectionId: payload.connectionID,
                 transport: nil,
                 rttMillis: nil,
-                detail: ["error": String(error.localizedDescription.prefix(256))]
+                detail: ["errorClass": irohPublicErrorClass(error)]
             )
-            throw HermesServiceError.relayUnavailable("Could not verify iroh pairing record: \(error.localizedDescription)")
+            throw HermesServiceError.relayUnavailable("Could not verify iroh pairing record.")
         }
 
         // 2. Bring up the iroh endpoint (idempotent, race-safe) and dial.
@@ -465,7 +472,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 rttMillis: nil,
                 detail: [
                     "stage": stage,
-                    "error": String(error.localizedDescription.prefix(256))
+                    "errorClass": irohPublicErrorClass(error)
                 ]
             )
             throw error
@@ -644,7 +651,10 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 )
                 return
             case .responseError:
-                throw HermesServiceError.relayFailure(frame.payload?.error, fallback: "Hermes iroh relay failed.")
+                throw HermesServiceError.relayFailure(
+                    HermesRealtimeRelayErrorCode.publicMessage(for: frame.payload?.errorCode),
+                    fallback: "Hermes iroh relay failed."
+                )
             case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister,
                  .controlClassify, .controlActionLogEntry, .controlInputIntent,
                  .controlApprovalRequest, .controlApprovalResponse,
@@ -955,7 +965,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 )
         } catch {
             #if DEBUG
-            print("HermesIrohRelayTransport irohPeerNodeId persist failed: \(error.localizedDescription)")
+            print("HermesIrohRelayTransport irohPeerNodeId persist failed: \(irohPublicErrorClass(error))")
             #endif
         }
     }

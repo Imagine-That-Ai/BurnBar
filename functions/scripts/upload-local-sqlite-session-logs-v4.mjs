@@ -25,6 +25,9 @@ const INDEX_VERSION = 4;
 const CHUNK_MAX_BYTES = 16_000;
 const CHUNK_TOKEN_HASH_LIMIT = 1_024;
 const COMMIT_ID = crypto.randomBytes(16).toString("hex");
+const CLOUD_VAULT_AAD_PREFIX = "OpenBurnBar-CloudVault-aad-v2";
+const CLOUD_VAULT_HMAC_SALT = Buffer.from("OpenBurnBar-CloudVault-HMAC-Salt-v1", "utf8");
+const CLOUD_VAULT_HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1";
 
 const stopwords = new Set([
   "the", "and", "for", "with", "that", "this", "from", "how", "what", "where",
@@ -148,31 +151,85 @@ function aesGcmOpenCombined(combined, key) {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 }
 
-function sealText(text, key) {
+function cloudVaultAADPart(value, name) {
+  if (!value || /[\u0000-\u001f\u007f|]/u.test(value)) {
+    throw new Error(`Invalid CloudVault AAD ${name}.`);
+  }
+  return value;
+}
+
+function cloudVaultAADContext(uid, collection, docID, field, schemaVersion = 2, purpose = field) {
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 2) {
+    throw new Error("Invalid CloudVault AAD schema version.");
+  }
+  return [
+    CLOUD_VAULT_AAD_PREFIX,
+    cloudVaultAADPart(uid, "uid"),
+    cloudVaultAADPart(collection, "collection"),
+    cloudVaultAADPart(docID, "docID"),
+    cloudVaultAADPart(field, "field"),
+    String(schemaVersion),
+    cloudVaultAADPart(purpose, "purpose"),
+  ].join("|");
+}
+
+function keyedHmacHex(value, key, purpose) {
+  const hmacKey = Buffer.from(crypto.hkdfSync(
+    "sha256",
+    key,
+    CLOUD_VAULT_HMAC_SALT,
+    Buffer.from(`${CLOUD_VAULT_HMAC_INFO_PREFIX}|${purpose}`, "utf8"),
+    32
+  ));
+  return crypto.createHmac("sha256", hmacKey).update(value).digest("hex");
+}
+
+function blobPlaintextHMAC(data, key) {
+  return keyedHmacHex(data, key, "blob-integrity");
+}
+
+function sessionBodyHash(data, key) {
+  return keyedHmacHex(data, key, "session-body");
+}
+
+function sessionChunkHash(text, key) {
+  return keyedHmacHex(Buffer.from(text, "utf8"), key, "session-chunk");
+}
+
+function sealText(text, key, aadContext) {
   const nonce = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, nonce);
+  if (aadContext) cipher.setAAD(Buffer.from(aadContext, "utf8"));
   const ciphertext = Buffer.concat([cipher.update(Buffer.from(text, "utf8")), cipher.final()]);
-  return {
+  const envelope = {
     algorithm: "AES-256-GCM",
     keyVersion: 1,
     nonce: nonce.toString("base64"),
     ciphertext: ciphertext.toString("base64"),
     tag: cipher.getAuthTag().toString("base64"),
   };
+  if (aadContext) {
+    envelope.schemaVersion = 2;
+    envelope.aad = aadContext;
+  }
+  return envelope;
 }
 
-function sealBlob(data, key) {
+function sealBlob(data, key, aadContext) {
   const nonce = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, nonce);
+  if (aadContext) cipher.setAAD(Buffer.from(aadContext, "utf8"));
   const ciphertext = Buffer.concat([cipher.update(data), cipher.final()]);
   const combined = Buffer.concat([nonce, ciphertext, cipher.getAuthTag()]);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     algorithm: "AES-256-GCM",
     keyVersion: 1,
-    plaintextSHA256: sha256Hex(data),
+    plaintextHMAC: blobPlaintextHMAC(data, key),
+    integrityHashVersion: 1,
     sealedBoxBase64: combined.toString("base64"),
     createdAt: new Date().toISOString(),
+    aad: aadContext,
   };
 }
 
@@ -541,8 +598,12 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
   const docId = safeDocID(deviceId, row.id);
   const markdown = markdownFor(row);
   const bodyData = Buffer.from(markdown, "utf8");
-  const bodyHash = sha256Hex(bodyData);
-  const sealedBody = sealBlob(bodyData, vaultKey);
+  const bodyHash = sessionBodyHash(bodyData, vaultKey);
+  const sealedBody = sealBlob(
+    bodyData,
+    vaultKey,
+    cloudVaultAADContext(uid, "session_logs", docId, "sealedBody")
+  );
   const sealedBodyData = Buffer.from(JSON.stringify(sealedBody), "utf8");
   const storagePath = `users/${uid}/session_logs/${docId}/bodies/${bodyHash}.json.aesgcm`;
   const title = displayTitle(row);
@@ -550,9 +611,27 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
   const projectName = row.projectName || "";
   const model = "unknown";
   const chunks = chunkUTF8String(markdown, CHUNK_MAX_BYTES);
-  const sealedTitle = sealText(title, vaultKey);
-  const sealedPreview = sealText(markdown.slice(0, 500), vaultKey);
-  const chunkHashes = chunks.map((chunk) => sha256Hex(Buffer.from(chunk, "utf8")));
+  const sealedTitle = sealText(
+    title,
+    vaultKey,
+    cloudVaultAADContext(uid, "session_logs", docId, "sealedTitle")
+  );
+  const sealedPreview = sealText(
+    markdown.slice(0, 500),
+    vaultKey,
+    cloudVaultAADContext(uid, "session_logs", docId, "sealedBodyPreview")
+  );
+  const sealedSearchTitle = sealText(
+    title,
+    vaultKey,
+    cloudVaultAADContext(uid, "cloud_search_documents", docId, "sealedTitle")
+  );
+  const sealedSearchPreview = sealText(
+    markdown.slice(0, 500),
+    vaultKey,
+    cloudVaultAADContext(uid, "cloud_search_documents", docId, "sealedBodyPreview")
+  );
+  const chunkHashes = chunks.map((chunk) => sessionChunkHash(chunk, vaultKey));
   const manifestRef = db.doc(`users/${uid}/session_logs/${docId}`);
   const writes = [];
 
@@ -579,8 +658,10 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
     byteCount: bodyData.length,
     encryptedByteCount: sealedBodyData.length,
     bodyHash,
+    bodyHashVersion: 2,
     chunkSize: 0,
     chunkHashes,
+    chunkHashVersion: 2,
     chunkMetadataVersion: 1,
     cloudSearchIndexVersion: INDEX_VERSION,
     cloudSearchIndexedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -608,9 +689,10 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
       provider,
       projectName,
       bodyHash,
+      bodyHashVersion: 2,
       storagePath,
-      sealedTitle,
-      sealedBodyPreview: sealedPreview,
+      sealedTitle: sealedSearchTitle,
+      sealedBodyPreview: sealedSearchPreview,
       byteCount: bodyData.length,
       encryptedByteCount: sealedBodyData.length,
       indexVersion: INDEX_VERSION,
@@ -626,10 +708,14 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
   for (const [index, chunk] of chunks.entries()) {
     const indexedText = `${chunk} ${title} ${projectName} ${model}`;
     const chunkHash = chunkHashes[index];
-    const sealedSnippet = sealText(chunk.replace(/\n/gu, " ").trim().slice(0, 500), vaultKey);
     const tokenHashList = tokenHashes(indexedText, vaultKey, CHUNK_TOKEN_HASH_LIMIT);
     const semanticHashList = semanticHashes(indexedText, vaultKey, 24);
     const chunkID = `${docId}_${index}`;
+    const sealedSnippet = sealText(
+      chunk.replace(/\n/gu, " ").trim().slice(0, 500),
+      vaultKey,
+      cloudVaultAADContext(uid, "cloud_search_chunks", chunkID, "sealedSnippet")
+    );
     const chunkData = {
       uid,
       chunkID,
@@ -643,7 +729,9 @@ async function uploadRow({ db, bucket, uid, deviceId, vaultKey, row, apply }) {
       startOffset: offset,
       endOffset: offset + Buffer.byteLength(chunk, "utf8"),
       contentHash: chunkHash,
+      contentHashVersion: 2,
       bodyHash,
+      bodyHashVersion: 2,
       storagePath,
       sealedSnippet,
       tokenHashes: tokenHashList,

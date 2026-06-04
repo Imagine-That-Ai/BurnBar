@@ -92,10 +92,16 @@ learns nothing" — it is false for this index.
   vector path) is a large redesign, gated behind a threat-model upgrade. Not
   shipped; not implied by any current copy.
 
-## Related raw-hash oracle (tracked separately)
+## Related hash-oracle status
 
-The session-log `bodyHash` / per-chunk `contentHash` and the blob envelope
-`plaintextSHA256` are currently **raw** SHA-256 of plaintext (not keyed), so a
-server reader can confirm a *guessed* body/chunk by hashing it and comparing.
-Re-keying those to vault-keyed HMACs is tracked as privacy-leak-remediation **F3**
-and is not part of this index's disclosure.
+Current session-log writes use vault-keyed HMACs for `bodyHash` and per-chunk
+`contentHash` and stamp `bodyHashVersion >= 2` / `contentHashVersion >= 2`; current
+blob envelopes store `plaintextHMAC` with `integrityHashVersion`, not
+`plaintextSHA256`. Those values are still deterministic equality tokens inside one
+user's vault, but a server reader cannot confirm a guessed body/chunk without the
+vault key.
+
+Legacy v1 rows and schema-1 blob envelopes can still carry raw SHA-256
+`bodyHash`/`contentHash`/`plaintextSHA256` for migration readback. Export and
+scanner gates treat those legacy raw hashes as non-opaque leakage unless a sibling
+version field proves the value is keyed.

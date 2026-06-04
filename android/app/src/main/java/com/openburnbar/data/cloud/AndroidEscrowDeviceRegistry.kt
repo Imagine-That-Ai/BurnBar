@@ -1,7 +1,6 @@
 package com.openburnbar.data.cloud
 
 import android.os.Build
-import android.util.Base64
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -42,20 +41,7 @@ class AndroidEscrowDeviceRegistry(
             )
         }
 
-        userRef.collection("escrow_public_keys")
-            .document("${keypair.deviceId}_${keypair.keyVersion}")
-            .set(
-                mapOf(
-                    "deviceId" to keypair.deviceId,
-                    "publicKeyData" to Base64.encodeToString(keypair.publicKeyData, Base64.NO_WRAP),
-                    "publicKeyFingerprint" to keypair.publicKeyFingerprint,
-                    "keyVersion" to keypair.keyVersion,
-                    "algorithm" to "ECIES-P256-AESGCM",
-                    "createdAt" to FieldValue.serverTimestamp(),
-                ),
-                SetOptions.merge(),
-            )
-            .await()
+        publishPublicKeyIfNeeded(keypair = keypair, userRef = userRef)
 
         return AndroidEscrowDeviceRegistration(
             deviceId = keypair.deviceId,
@@ -82,5 +68,66 @@ class AndroidEscrowDeviceRegistry(
     companion object {
         const val PENDING = "pending"
         const val TRUSTED = "trusted"
+
+        internal const val ESCROW_PUBLIC_KEY_ALGORITHM = "ECIES-P256-AESGCM"
+
+        internal fun publicKeyDocumentMatches(
+            data: Map<String, Any?>,
+            keypair: AndroidCloudVaultDeviceKeypair,
+            publicKeyDataBase64: String = CloudVaultCryptoSupport.encodeBase64(keypair.publicKeyData),
+        ): Boolean = publicKeyDocumentMatches(
+            data = data,
+            deviceId = keypair.deviceId,
+            publicKeyDataBase64 = publicKeyDataBase64,
+            publicKeyFingerprint = keypair.publicKeyFingerprint,
+            keyVersion = keypair.keyVersion,
+        )
+
+        internal fun publicKeyDocumentMatches(
+            data: Map<String, Any?>,
+            deviceId: String,
+            publicKeyDataBase64: String,
+            publicKeyFingerprint: String,
+            keyVersion: Int,
+        ): Boolean {
+            if (data["deviceId"] != deviceId) return false
+            if (data["publicKeyData"] != publicKeyDataBase64) return false
+            if ((data["keyVersion"] as? Number)?.toInt() != keyVersion) return false
+            if (data["algorithm"] != ESCROW_PUBLIC_KEY_ALGORITHM) return false
+
+            val existingFingerprint = data["publicKeyFingerprint"] as? String
+            return existingFingerprint == null || existingFingerprint == publicKeyFingerprint
+        }
+    }
+
+    private suspend fun publishPublicKeyIfNeeded(
+        keypair: AndroidCloudVaultDeviceKeypair,
+        userRef: com.google.firebase.firestore.DocumentReference,
+    ) {
+        val publicKeyDataBase64 = CloudVaultCryptoSupport.encodeBase64(keypair.publicKeyData)
+        val publicKeyRef = userRef.collection("escrow_public_keys")
+            .document("${keypair.deviceId}_${keypair.keyVersion}")
+        val existing = publicKeyRef.get().await()
+        if (existing.exists()) {
+            val data = existing.data ?: emptyMap()
+            require(publicKeyDocumentMatches(data, keypair, publicKeyDataBase64)) {
+                "Escrow public key conflict for ${keypair.deviceId}_${keypair.keyVersion}."
+            }
+            return
+        }
+
+        publicKeyRef
+            .set(
+                mapOf(
+                    "deviceId" to keypair.deviceId,
+                    "publicKeyData" to publicKeyDataBase64,
+                    "publicKeyFingerprint" to keypair.publicKeyFingerprint,
+                    "keyVersion" to keypair.keyVersion,
+                    "algorithm" to ESCROW_PUBLIC_KEY_ALGORITHM,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                ),
+                SetOptions.merge(),
+            )
+            .await()
     }
 }
