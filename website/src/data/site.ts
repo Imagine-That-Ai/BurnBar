@@ -74,9 +74,9 @@ export const SITE = {
           relayGBMonthly: 50,
           hostedAgentActionMonthlyCap: 2000,
           relayGBMonthlyCap: 300,
-          knowledgeSources: 15,
-          memoryChunks: 50000,
-          encryptedStorageMB: 250
+          knowledgeSources: 100,
+          memoryChunks: 500000,
+          encryptedStorageMB: 10240
         }
       }
     ],
