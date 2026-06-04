@@ -10,6 +10,32 @@ public struct FirestoreHermesGatewayModelOptionDoc: Codable, Sendable, Equatable
     public var displayName: String
 }
 
+public struct FirestoreGatewayRelayEnvelopeDoc: Codable, Sendable, Equatable {
+    public var payloadCiphertext: String
+    public var wrappedKey: String
+    public var relayEncryption: String
+    public var relayKeyVersion: Int
+    public var enc: String?
+    public var senderPublicKey: String?
+}
+
+public struct FirestoreGatewayRatchetHeaderDoc: Codable, Sendable, Equatable {
+    public var version: Int
+    public var algorithm: String
+    public var sessionID: String
+    public var senderDeviceID: String
+    public var receiverDeviceID: String
+    public var ratchetPublicKeyBase64: String
+    public var previousChainLength: Int
+    public var messageNumber: Int
+    public var epoch: Int
+}
+
+public struct FirestoreGatewayRatchetEnvelopeDoc: Codable, Sendable, Equatable {
+    public var header: FirestoreGatewayRatchetHeaderDoc
+    public var ciphertextBase64: String
+}
+
 public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
     public var id: String
     public var uid: String
@@ -28,6 +54,42 @@ public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
     public var pendingModelId: String?
     public var pendingModelRequestedAt: String?
     public var oversightMode: String?
+    public var relayPublicKey: String?
+    public var relayKeyVersion: Int?
+    public var relayEncryption: String?
+    public var agentRelayPublicKey: String?
+    public var agentRelayKeyVersion: Int?
+    public var agentRelayEncryption: String?
+    public var agentSupportsRelayEnvelopeVersions: [Int]?
+    public var agentPreferredRelayEnvelopeVersion: Int?
+    public var agentSupportsHpkeV3: Bool?
+    public var agentPlatform: String?
+    public var agentAppBuild: String?
+    public var phoneRelayPublicKey: String?
+    public var phoneRelayKeyVersion: Int?
+    public var phoneRelayEncryption: String?
+    public var phoneSupportsRelayEnvelopeVersions: [Int]?
+    public var phonePreferredRelayEnvelopeVersion: Int?
+    public var phoneSupportsHpkeV3: Bool?
+    public var phonePlatform: String?
+    public var phoneAppBuild: String?
+    public var agentRatchetIdentityPublicKey: String?
+    public var agentRatchetSigningPublicKey: String?
+    public var agentRatchetSignedPreKeyPublicKey: String?
+    public var agentRatchetSignedPreKeyId: String?
+    public var agentRatchetSignedPreKeySignature: String?
+    public var agentSupportsRatchetV1: Bool?
+    public var phoneRatchetIdentityPublicKey: String?
+    public var phoneRatchetSigningPublicKey: String?
+    public var phoneRatchetSignedPreKeyPublicKey: String?
+    public var phoneRatchetSignedPreKeyId: String?
+    public var phoneRatchetSignedPreKeySignature: String?
+    public var phoneSupportsRatchetV1: Bool?
+    public var supportsRatchetV1: Bool?
+    public var supportsRelayEnvelopeVersions: [Int]?
+    public var preferredRelayEnvelopeVersion: Int?
+    public var supportsHpkeV3: Bool?
+    public var relayCapable: Bool?
     public var revokedAt: String?
     public var createdAt: String
     public var updatedAt: String
@@ -69,9 +131,11 @@ public struct FirestoreHermesGatewayEventDoc: Codable, Sendable, Equatable {
     public var threadId: String?
     public var senderId: String
     public var senderDisplayName: String?
-    public var text: String
+    public var text: String?
     public var modelId: String?
     public var attachmentIds: [String]
+    public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
+    public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
     public var createdAt: String
     public var schemaVersion: Int
 }
@@ -85,6 +149,8 @@ public struct FirestoreHermesGatewayMessageDoc: Codable, Sendable, Equatable {
     public var replyToEventId: String?
     public var text: String?
     public var attachmentIds: [String]
+    public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
+    public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
     public var createdAt: String
     public var schemaVersion: Int
 }
@@ -93,11 +159,14 @@ public struct FirestoreHermesGatewayAttachmentManifestDoc: Codable, Sendable, Eq
     public var id: String
     public var clientId: String
     public var destinationId: String?
-    public var fileName: String
-    public var contentType: String
-    public var byteCount: Int
-    public var storagePath: String
-    public var status: String
+    public var fileName: String?
+    public var contentType: String?
+    public var byteCount: Int?
+    public var storagePath: String?
+    public var bodyStoragePath: String?
+    public var status: String?
+    public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
+    public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
     public var createdAt: String
     public var expiresAt: String
     public var schemaVersion: Int

@@ -364,16 +364,13 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
                     "keyVersion": keypair.keyVersion,
                     "updatedAt": FieldValue.serverTimestamp()
                 ], merge: true)
-            try? await db.collection("users").document(uid)
-                .collection("escrow_public_keys").document("\(deviceId)_\(keypair.keyVersion)")
-                .setData([
-                    "deviceId": deviceId,
-                    "publicKeyData": keypair.publicKeyData.base64EncodedString(),
-                    "publicKeyFingerprint": keypair.publicKeyFingerprint,
-                    "keyVersion": keypair.keyVersion,
-                    "algorithm": "ECIES-P256-AESGCM",
-                    "createdAt": FieldValue.serverTimestamp()
-                ], merge: true)
+            try? await MobileEscrowPublicKeyPublisher.publishIfNeeded(
+                userRef: db.collection("users").document(uid),
+                deviceId: deviceId,
+                publicKeyData: keypair.publicKeyData,
+                publicKeyFingerprint: keypair.publicKeyFingerprint,
+                keyVersion: keypair.keyVersion
+            )
         }
     }
 

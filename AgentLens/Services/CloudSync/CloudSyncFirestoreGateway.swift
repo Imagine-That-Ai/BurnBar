@@ -54,10 +54,10 @@ protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
 
 /// Thin wrapper around real Firebase Firestore SDK.
 final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
-    private let firestore: Firestore
+    private let firestoreOverride: Firestore?
 
-    init(firestore: Firestore = Firestore.firestore()) {
-        self.firestore = firestore
+    init(firestore: Firestore? = nil) {
+        self.firestoreOverride = firestore
     }
 
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway {
@@ -66,6 +66,10 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
 
     func batch() -> CloudSyncWriteBatchGateway {
         CloudSyncWriteBatchLiveGateway(batch: firestore.batch())
+    }
+
+    private var firestore: Firestore {
+        firestoreOverride ?? Firestore.firestore()
     }
 }
 

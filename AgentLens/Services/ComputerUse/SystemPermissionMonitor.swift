@@ -395,4 +395,16 @@ public final class SystemPermissionMonitor {
         }
     }
 }
+
+@MainActor
+protocol SystemPermissionMonitoring: AnyObject {
+    var snapshots: [String: SystemPermissionMonitor.Snapshot] { get }
+
+    func start(pollInterval: TimeInterval)
+    func stop()
+    func trackAutomation(bundleId: String)
+    func refreshNow(emitting: Bool) async
+}
+
+extension SystemPermissionMonitor: SystemPermissionMonitoring {}
 #endif

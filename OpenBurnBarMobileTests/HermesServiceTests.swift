@@ -2,6 +2,7 @@ import XCTest
 import Foundation
 import FirebaseAuth
 import FirebaseCore
+import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 @testable import OpenBurnBarMobile
@@ -2084,6 +2085,12 @@ final class HermesServiceTests: XCTestCase {
         }
         let connectionID = try XCTUnwrap(environment["OPENBURNBAR_LIVE_RELAY_CONNECTION_ID"])
         let relayPublicKey = try XCTUnwrap(environment["OPENBURNBAR_LIVE_RELAY_PUBLIC_KEY"])
+        guard !connectionID.hasPrefix("hgw_") else {
+            throw liveE2EError(
+                "OPENBURNBAR_LIVE_RELAY_CONNECTION_ID is a Hermes Gateway client id (\(connectionID)). Firestore relay E2E requires a users/{uid}/hermes_connections relay id; use testLiveHermesGatewayClientMessageE2E with OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E=1 for hgw_* clients.",
+                code: 4
+            )
+        }
 
         try configureFirebaseForLiveE2EIfNeeded()
         let user = try await ensureLiveE2EUser()
@@ -2113,6 +2120,209 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertFalse(assistant.isError, assistant.text)
         XCTAssertFalse(assistant.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         print("OPENBURNBAR_LIVE_E2E_ASSISTANT_PREFIX=\(assistant.text.prefix(120))")
+    }
+
+    func testLiveHermesGatewayClientMessageE2E() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E"] == "1" else {
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E=1 with a live Hermes Gateway client to run this physical-device test.")
+        }
+
+        try configureFirebaseForLiveE2EIfNeeded()
+        let user = try await ensureLiveE2EUser()
+        let repository: HermesGatewayRepository = FunctionsRepository.shared
+        let client = try await liveHermesGatewayClient(
+            uid: user.uid,
+            repository: repository,
+            environment: environment
+        )
+
+        let threadID = "burnbar-ios-live-gateway-e2e-\(UUID().uuidString.lowercased())"
+        let prompt = "Reply with exactly this phrase and no punctuation: burnbar gateway ok"
+        let sentAt = Date()
+        let event = try await repository.enqueueHermesGatewayEvent(
+            text: prompt,
+            threadId: threadID,
+            targetClient: client,
+            targetClientId: client.id,
+            senderDisplayName: "OpenBurnBar iPad Live E2E"
+        )
+
+        let reply = try await waitForHermesGatewayReply(
+            uid: user.uid,
+            event: event,
+            client: client,
+            threadID: threadID,
+            sentAt: sentAt,
+            timeout: 240
+        )
+        let text = reply.chatRenderText(emptyFallback: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        XCTAssertFalse(reply.isRefusedUnsealedReply, text)
+        XCTAssertFalse(reply.isUndecryptableHere, text)
+        XCTAssertFalse(text.isEmpty)
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("burnbar gateway ok"), text)
+        print("OPENBURNBAR_LIVE_GATEWAY_E2E_UID=\(user.uid)")
+        print("OPENBURNBAR_LIVE_GATEWAY_E2E_CLIENT_ID=\(client.id)")
+        print("OPENBURNBAR_LIVE_GATEWAY_E2E_EVENT_ID=\(event.id)")
+        print("OPENBURNBAR_LIVE_GATEWAY_E2E_MESSAGE_ID=\(reply.id)")
+        print("OPENBURNBAR_LIVE_GATEWAY_E2E_REPLY_PREFIX=\(text.prefix(120))")
+    }
+
+    func testLiveHermesGatewayClientModelSwitchE2E() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E"] == "1" else {
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E=1 with a live Hermes Gateway client to run this physical-device test.")
+        }
+
+        try configureFirebaseForLiveE2EIfNeeded()
+        let user = try await ensureLiveE2EUser()
+        let repository: HermesGatewayRepository = FunctionsRepository.shared
+        let client = try await liveHermesGatewayClient(
+            uid: user.uid,
+            repository: repository,
+            environment: environment
+        )
+        let modelId = firstNonEmpty(
+            environment["OPENBURNBAR_LIVE_GATEWAY_MODEL_SWITCH_ID"],
+            environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_MODEL_ID"],
+            "minimax-m2.7-highspeed"
+        )!
+        let event = try await repository.enqueueHermesGatewayModelSwitch(
+            modelId: modelId,
+            threadId: "burnbar-ios-live-model-switch-\(UUID().uuidString.lowercased())",
+            targetClient: client,
+            targetClientId: client.id,
+            senderDisplayName: "OpenBurnBar iPad Live E2E"
+        )
+        let db = Firestore.firestore()
+        let snapshot = try await db.collection("users")
+            .document(user.uid)
+            .collection("hermes_gateway_events")
+            .document(event.id)
+            .getDocument()
+        let data = try XCTUnwrap(snapshot.data())
+
+        XCTAssertEqual(data["kind"] as? String, "model_switch")
+        XCTAssertNotNil(data["relayEnvelope"] ?? data["ratchetEnvelope"])
+        XCTAssertNil(data["modelId"], "Sealed live model_switch must not store cleartext modelId.")
+        XCTAssertNil(data["text"], "Sealed live model_switch must not store a plaintext /model command.")
+        XCTAssertNil(data["senderDisplayName"], "Sealed live model_switch must not store senderDisplayName.")
+        XCTAssertNil(data["threadId"], "Sealed live model_switch must not store threadId.")
+        print("OPENBURNBAR_LIVE_GATEWAY_MODEL_SWITCH_UID=\(user.uid)")
+        print("OPENBURNBAR_LIVE_GATEWAY_MODEL_SWITCH_CLIENT_ID=\(client.id)")
+        print("OPENBURNBAR_LIVE_GATEWAY_MODEL_SWITCH_EVENT_ID=\(event.id)")
+        print("OPENBURNBAR_LIVE_GATEWAY_MODEL_SWITCH_MODEL_ID=\(modelId)")
+    }
+
+    func testLiveHermesGatewayApprovalResponseE2E() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_RESPONSE_E2E"] == "1" else {
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_RESPONSE_E2E=1 to arm, approve, reject, and expire live gateway approvals from this iPad.")
+        }
+        let apiBase = try XCTUnwrap(
+            firstNonEmpty(
+                environment["OPENBURNBAR_LIVE_GATEWAY_API_BASE_URL"],
+                environment["BURNBAR_API_BASE_URL"]
+            ),
+            "Live approval response proof requires BURNBAR_API_BASE_URL or OPENBURNBAR_LIVE_GATEWAY_API_BASE_URL."
+        )
+        let accessToken = try XCTUnwrap(
+            firstNonEmpty(
+                environment["OPENBURNBAR_LIVE_GATEWAY_ACCESS_TOKEN"],
+                environment["BURNBAR_ACCESS_TOKEN"]
+            ),
+            "Live approval response proof requires BURNBAR_ACCESS_TOKEN or OPENBURNBAR_LIVE_GATEWAY_ACCESS_TOKEN."
+        )
+
+        try configureFirebaseForLiveE2EIfNeeded()
+        let user = try await ensureLiveE2EUser()
+        try await bindLiveE2EAppCheckAttestation()
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let db = Firestore.firestore()
+        try await ensureLiveHermesGatewayApprovalDeviceTrusted(
+            uid: user.uid,
+            deviceId: deviceId,
+            environment: environment,
+            db: db
+        )
+
+        let approvedId = try await runLiveHermesGatewayApprovalDecisionCase(
+            apiBase: apiBase,
+            accessToken: accessToken,
+            uid: user.uid,
+            db: db,
+            deviceId: deviceId,
+            approve: true,
+            label: "APPROVE"
+        )
+        let rejectedId = try await runLiveHermesGatewayApprovalDecisionCase(
+            apiBase: apiBase,
+            accessToken: accessToken,
+            uid: user.uid,
+            db: db,
+            deviceId: deviceId,
+            approve: false,
+            label: "REJECT"
+        )
+        let expiredId = try await runLiveHermesGatewayApprovalExpiryCase(
+            apiBase: apiBase,
+            accessToken: accessToken,
+            uid: user.uid,
+            db: db,
+            deviceId: deviceId,
+            environment: environment
+        )
+
+        print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_UID=\(user.uid)")
+        print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_DEVICE_ID=\(deviceId)")
+        print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_APPROVED_ID=\(approvedId)")
+        print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_REJECTED_ID=\(rejectedId)")
+        print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_EXPIRED_ID=\(expiredId)")
+    }
+
+    func testLiveHermesGatewayDeviceGrantApproval() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let userCode = firstNonEmpty(environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_CODE"]) else {
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_CODE to approve a live Hermes Gateway device-code grant.")
+        }
+
+        try configureFirebaseForLiveE2EIfNeeded()
+        let user = try await ensureLiveE2EUser()
+        let repository: HermesGatewayRepository = FunctionsRepository.shared
+        let client = try await repository.approveHermesGatewayDeviceGrant(
+            userCode: userCode,
+            displayName: firstNonEmpty(
+                environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_DISPLAY_NAME"],
+                "OpenBurnBar Live E2E"
+            )
+        )
+
+        XCTAssertTrue(client.isActive)
+        XCTAssertTrue(client.canSealToAgent, "Live gateway approval must publish the agent relay key for sealed phone-to-agent events.")
+        XCTAssertEqual(client.relayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(client.relayKeyVersion, HermesRelayCrypto.keyVersion)
+
+        var safetyKeys = [String]()
+        if let agentRelayPublicKey = client.relayPublicKey {
+            safetyKeys.append(agentRelayPublicKey)
+        }
+        safetyKeys.append(try HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64)
+        if client.canRatchetToAgent,
+           let agentRatchetIdentityPublicKey = client.agentRatchetIdentityPublicKey,
+           let phoneRatchetIdentityPublicKey = client.phoneRatchetIdentityPublicKey {
+            safetyKeys.append(agentRatchetIdentityPublicKey)
+            safetyKeys.append(phoneRatchetIdentityPublicKey)
+        }
+
+        let safetyCode = try XCTUnwrap(
+            HermesGatewayAgentKeyPinStore.safetyCode(publicKeysBase64: safetyKeys),
+            "Live gateway approval must produce a comparable phone-side safety code."
+        )
+        print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_UID=\(user.uid)")
+        print("OPENBURNBAR_LIVE_GATEWAY_CLIENT_ID=\(client.id)")
+        print("OPENBURNBAR_LIVE_GATEWAY_SAFETY_CODE=\(safetyCode)")
     }
 
     func testDirectHTTP401ShowsAPIKeyErrorAndSendsAuthorizationHeader() async {
@@ -2182,6 +2392,149 @@ final class HermesServiceTests: XCTestCase {
         }
     }
 
+    private func waitForHermesGatewayReply(
+        uid: String,
+        event: HermesGatewayQueuedEvent,
+        client: HermesGatewayClientRecord,
+        threadID: String,
+        sentAt: Date,
+        timeout: TimeInterval
+    ) async throws -> HermesGatewayMessageRecord {
+        let db = Firestore.firestore()
+        let keypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        let pinStore = HermesGatewayAgentKeyPinStore()
+        let deadline = Date().addingTimeInterval(timeout)
+        var latestMatchedMessageID: String?
+        var latestMatchedCreatedAt: String?
+
+        while Date() < deadline {
+            let snapshot = try await db.collection("users")
+                .document(uid)
+                .collection("hermes_gateway_messages")
+                .order(by: "createdAt", descending: true)
+                .limit(to: 75)
+                .getDocuments()
+            let messages = snapshot.documents.compactMap { document in
+                HermesGatewayMessageRecord(documentID: document.documentID, data: document.data())
+            }.filter { message in
+                message.clientId == client.id
+            }.map { message in
+                message.decodedText(
+                    using: keypair,
+                    uid: uid,
+                    targetClient: client,
+                    pinStore: pinStore
+                )
+            }
+
+            if let reply = HermesGatewayMessageResolver.newestReply(
+                for: event,
+                in: messages,
+                threadID: threadID,
+                targetClientId: client.id,
+                pendingEventSentAt: sentAt
+            ) {
+                latestMatchedMessageID = reply.id
+                latestMatchedCreatedAt = reply.createdAt
+                if reply.isRefusedUnsealedReply {
+                    throw liveE2EError(
+                        "Hermes Gateway replied with unsealed plaintext for pinned client \(client.id); message=\(reply.id).",
+                        code: 11
+                    )
+                }
+                if reply.isUndecryptableHere {
+                    throw liveE2EError(
+                        "Hermes Gateway replied, but this iPad could not open the sealed reply for client \(client.id); message=\(reply.id). Approve/re-pair Hermes Gateway on this iPad before running this live test.",
+                        code: 12
+                    )
+                }
+                let text = reply.chatRenderText(emptyFallback: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    return reply
+                }
+            }
+
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+
+        let matched = latestMatchedMessageID.map { " latestMatchedMessage=\($0) createdAt=\(latestMatchedCreatedAt ?? "nil")." } ?? ""
+        throw liveE2EError(
+            "Timed out after \(Int(timeout))s waiting for Hermes Gateway reply to event \(event.id) on client \(client.id).\(matched)",
+            code: 13
+        )
+    }
+
+    private func liveHermesGatewayClient(
+        uid: String,
+        repository: HermesGatewayRepository,
+        environment: [String: String]
+    ) async throws -> HermesGatewayClientRecord {
+        let clients = try await repository.listHermesGatewayClients()
+        let localRelayPublicKey = try HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64
+        let preferredID = firstNonEmpty(
+            environment["OPENBURNBAR_LIVE_GATEWAY_CLIENT_ID"],
+            environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_ID"],
+            environment["OPENBURNBAR_LIVE_RELAY_CONNECTION_ID"]?.hasPrefix("hgw_") == true
+                ? environment["OPENBURNBAR_LIVE_RELAY_CONNECTION_ID"]
+                : nil
+        )
+
+        let client: HermesGatewayClientRecord
+        if let preferredID {
+            guard preferredID.hasPrefix("hgw_") else {
+                throw liveE2EError(
+                    "OPENBURNBAR_LIVE_GATEWAY_CLIENT_ID must be a Hermes Gateway hgw_* client id; got \(preferredID).",
+                    code: 5
+                )
+            }
+            guard let selected = clients.first(where: { $0.id == preferredID }) else {
+                throw liveE2EError(
+                    "Hermes Gateway client \(preferredID) was not returned by listHermesGatewayClients for uid \(uid).",
+                    code: 6
+                )
+            }
+            client = selected
+        } else {
+            guard let selected = clients.first(where: {
+                $0.isActive
+                    && $0.isOnline()
+                    && $0.canSealToAgent
+                    && $0.isPairedWithThisDevice(relayPublicKeyBase64: localRelayPublicKey)
+            }) else {
+                throw liveE2EError(
+                    "No active, online, relay-sealable Hermes Gateway client is paired with this physical device for uid \(uid). Approve a live gateway on this iPad first.",
+                    code: 7
+                )
+            }
+            client = selected
+        }
+
+        guard client.isActive else {
+            throw liveE2EError("Hermes Gateway client \(client.id) is not active.", code: 8)
+        }
+        guard client.isOnline() else {
+            throw liveE2EError(
+                "Hermes Gateway client \(client.id) is not online; lastSeenAt=\(client.lastSeenAt ?? "nil").",
+                code: 9
+            )
+        }
+        guard client.canSealToAgent else {
+            throw liveE2EError(
+                "Hermes Gateway client \(client.id) is not relay-sealable; approve/re-pair it so the agent relay key is published.",
+                code: 10
+            )
+        }
+        guard client.isPairedWithThisDevice(relayPublicKeyBase64: localRelayPublicKey) else {
+            throw liveE2EError(
+                "Hermes Gateway client \(client.id) is paired with a different phone relay key. Approve/re-pair Hermes Gateway on this iPad before running this live E2E.",
+                code: 14
+            )
+        }
+
+        return client
+    }
+
     private func configureFirebaseForLiveE2EIfNeeded() throws {
         guard FirebaseApp.app() == nil else { return }
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
@@ -2189,14 +2542,411 @@ final class HermesServiceTests: XCTestCase {
             XCTFail("GoogleService-Info.plist is missing from the live test host.")
             return
         }
+        AppDelegate.installAppCheckProviderFactory(firebasePlistPath: path)
         FirebaseApp.configure(options: options)
     }
 
     private func ensureLiveE2EUser() async throws -> User {
-        if let current = Auth.auth().currentUser {
-            return current
+        let environment = ProcessInfo.processInfo.environment
+        let expectedUID = firstNonEmpty(
+            environment["OPENBURNBAR_LIVE_E2E_FIREBASE_UID"],
+            environment["OPENBURNBAR_E2E_FIREBASE_UID"]
+        )
+        let user: User
+        if let customToken = firstNonEmpty(
+            environment["OPENBURNBAR_LIVE_E2E_FIREBASE_CUSTOM_TOKEN"],
+            environment["OPENBURNBAR_E2E_FIREBASE_CUSTOM_TOKEN"]
+        ) {
+            user = try await Auth.auth().signIn(withCustomToken: customToken).user
+        } else if let email = firstNonEmpty(
+            environment["OPENBURNBAR_LIVE_E2E_FIREBASE_EMAIL"],
+            environment["OPENBURNBAR_E2E_FIREBASE_EMAIL"]
+        ),
+                  let password = firstNonEmpty(
+                    environment["OPENBURNBAR_LIVE_E2E_FIREBASE_PASSWORD"],
+                    environment["OPENBURNBAR_E2E_FIREBASE_PASSWORD"]
+                  ) {
+            user = try await Auth.auth().signIn(withEmail: email, password: password).user
+        } else if let current = Auth.auth().currentUser {
+            user = current
+        } else {
+            throw NSError(
+                domain: "OpenBurnBarLiveE2E",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Live Hermes relay proof requires an existing signed-in Firebase user or OPENBURNBAR_LIVE_E2E_FIREBASE_CUSTOM_TOKEN / OPENBURNBAR_LIVE_E2E_FIREBASE_EMAIL credentials."
+                ]
+            )
         }
-        return try await Auth.auth().signInAnonymously().user
+
+        if let expectedUID, user.uid != expectedUID {
+            throw NSError(
+                domain: "OpenBurnBarLiveE2E",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Live Hermes relay proof signed in as \(user.uid), expected \(expectedUID)."
+                ]
+            )
+        }
+        if user.isAnonymous && environment["OPENBURNBAR_LIVE_E2E_ALLOW_ANONYMOUS"] != "1" {
+            throw NSError(
+                domain: "OpenBurnBarLiveE2E",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Live Hermes relay proof refuses anonymous Firebase auth unless OPENBURNBAR_LIVE_E2E_ALLOW_ANONYMOUS=1 is set."
+                ]
+            )
+        }
+        return user
+    }
+
+    private func liveE2EError(_ message: String, code: Int) -> NSError {
+        NSError(
+            domain: "OpenBurnBarLiveE2E",
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+    }
+
+    private func bindLiveE2EAppCheckAttestation() async throws {
+        try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
+    }
+
+    private func ensureLiveHermesGatewayApprovalDeviceTrusted(
+        uid: String,
+        deviceId: String,
+        environment: [String: String],
+        db: Firestore
+    ) async throws {
+        let approvalRef = db.collection("users")
+            .document(uid)
+            .collection("escrow_devices")
+            .document(deviceId)
+
+        await LiveDeviceTrustGateway().registerSelfIfNeeded()
+        var snapshot = try await approvalRef.getDocument()
+        if snapshot.data()?["trustState"] as? String == EscrowDeviceTrustState.trusted.rawValue {
+            print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_DEVICE_TRUST=already_trusted")
+            return
+        }
+
+        let approverDeviceId = firstNonEmpty(
+            environment["OPENBURNBAR_LIVE_GATEWAY_APPROVAL_APPROVER_DEVICE_ID"],
+            environment["OPENBURNBAR_LIVE_GATEWAY_TRUSTED_APPROVER_DEVICE_ID"]
+        )
+        guard let approverDeviceId else {
+            throw liveE2EError(
+                "Live approval response proof requires this iPad to be trusted. Set OPENBURNBAR_LIVE_GATEWAY_APPROVAL_APPROVER_DEVICE_ID to an existing trusted native device id, then rerun.",
+                code: 15
+            )
+        }
+
+        try await bindLiveE2EAppCheckAttestation()
+        try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(
+            deviceId: deviceId,
+            approverDeviceId: approverDeviceId
+        )
+        snapshot = try await approvalRef.getDocument()
+        let data = try XCTUnwrap(snapshot.data(), "Escrow device record should exist after trust approval.")
+        XCTAssertEqual(data["trustState"] as? String, EscrowDeviceTrustState.trusted.rawValue)
+        XCTAssertEqual(data["approvedByDeviceId"] as? String, approverDeviceId)
+        print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_DEVICE_TRUST=approved")
+        print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_APPROVER_DEVICE_ID=\(approverDeviceId)")
+    }
+
+    private func runLiveHermesGatewayApprovalDecisionCase(
+        apiBase: String,
+        accessToken: String,
+        uid: String,
+        db: Firestore,
+        deviceId: String,
+        approve: Bool,
+        label: String
+    ) async throws -> String {
+        let actionId = "burnbar-ios-live-approval-\(label.lowercased())-\(UUID().uuidString.lowercased())"
+        let injectedPlaintext = "SHOULD_NOT_STORE_OPENBURNBAR_APPROVAL_\(label)_\(UUID().uuidString.lowercased())"
+        let approvalId = try await armLiveHermesGatewayApproval(
+            apiBase: apiBase,
+            accessToken: accessToken,
+            actionId: actionId,
+            injectedPlaintext: injectedPlaintext
+        )
+        let approvalRef = db.collection("users")
+            .document(uid)
+            .collection("hermes_gateway_approvals")
+            .document(approvalId)
+        do {
+            let armedSnapshot = try await approvalRef.getDocument()
+            let armed = try XCTUnwrap(armedSnapshot.data(), "Live approval record should exist after arming.")
+            assertLiveHermesGatewayApprovalWaitingRecord(
+                armed,
+                actionId: actionId,
+                injectedPlaintext: injectedPlaintext,
+                context: "\(label) armed"
+            )
+
+            print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_\(label)_ID=\(approvalId)")
+            print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_\(label)_ACTION_ID=\(actionId)")
+
+            try await ComputerUseSecurityCallableClient.respondHermesGatewayApproval(
+                approvalId: approvalId,
+                approve: approve,
+                deviceId: deviceId
+            )
+
+            let resolvedSnapshot = try await approvalRef.getDocument()
+            let resolved = try XCTUnwrap(resolvedSnapshot.data(), "Live approval record should remain readable after resolution.")
+            XCTAssertEqual(resolved["status"] as? String, approve ? "approved" : "rejected")
+            XCTAssertEqual(resolved["approvedByDeviceId"] as? String, deviceId)
+            XCTAssertNotNil(resolved["respondedAt"])
+            assertLiveHermesGatewayApprovalHasNoPlaintext(
+                resolved,
+                injectedPlaintext: injectedPlaintext,
+                context: "\(label) resolved"
+            )
+            return approvalId
+        } catch {
+            print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_CLEANUP_REQUIRED_ID=\(approvalId)")
+            throw error
+        }
+    }
+
+    private func runLiveHermesGatewayApprovalExpiryCase(
+        apiBase: String,
+        accessToken: String,
+        uid: String,
+        db: Firestore,
+        deviceId: String,
+        environment: [String: String]
+    ) async throws -> String {
+        let actionId = "burnbar-ios-live-approval-expiry-\(UUID().uuidString.lowercased())"
+        let injectedPlaintext = "SHOULD_NOT_STORE_OPENBURNBAR_APPROVAL_EXPIRY_\(UUID().uuidString.lowercased())"
+        let expiresInSeconds = liveE2EDouble(
+            environment,
+            key: "OPENBURNBAR_LIVE_GATEWAY_APPROVAL_EXPIRY_SECONDS",
+            defaultValue: 5
+        )
+        let approvalId = try await armLiveHermesGatewayApproval(
+            apiBase: apiBase,
+            accessToken: accessToken,
+            actionId: actionId,
+            injectedPlaintext: injectedPlaintext,
+            expiresInSeconds: expiresInSeconds
+        )
+        let approvalRef = db.collection("users")
+            .document(uid)
+            .collection("hermes_gateway_approvals")
+            .document(approvalId)
+        do {
+            let armedSnapshot = try await approvalRef.getDocument()
+            let armed = try XCTUnwrap(armedSnapshot.data(), "Live expiry approval record should exist after arming.")
+            assertLiveHermesGatewayApprovalWaitingRecord(
+                armed,
+                actionId: actionId,
+                injectedPlaintext: injectedPlaintext,
+                context: "EXPIRY armed"
+            )
+
+            print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_EXPIRY_ID=\(approvalId)")
+            print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_EXPIRY_ACTION_ID=\(actionId)")
+
+            let publicExpired = try await waitForLiveHermesGatewayApprovalPublicStatus(
+                apiBase: apiBase,
+                accessToken: accessToken,
+                actionId: actionId,
+                expectedStatus: "expired",
+                timeout: liveE2EDouble(
+                    environment,
+                    key: "OPENBURNBAR_LIVE_GATEWAY_APPROVAL_EXPIRY_TIMEOUT_SECONDS",
+                    defaultValue: 45
+                ),
+                pollInterval: liveE2EDouble(
+                    environment,
+                    key: "OPENBURNBAR_LIVE_GATEWAY_APPROVAL_EXPIRY_POLL_SECONDS",
+                    defaultValue: 2
+                )
+            )
+            assertLiveHermesGatewayApprovalHasNoPlaintext(
+                publicExpired,
+                injectedPlaintext: injectedPlaintext,
+                context: "EXPIRY public view"
+            )
+
+            do {
+                try await ComputerUseSecurityCallableClient.respondHermesGatewayApproval(
+                    approvalId: approvalId,
+                    approve: false,
+                    deviceId: deviceId
+                )
+                XCTFail("Expired live approval must reject late device decisions.")
+            } catch {
+                XCTAssertTrue(
+                    error.localizedDescription.localizedCaseInsensitiveContains("expired"),
+                    "Expired approval should fail closed with an expiry error, got: \(error.localizedDescription)"
+                )
+            }
+
+            let staleSnapshot = try await approvalRef.getDocument()
+            let stale = try XCTUnwrap(staleSnapshot.data(), "Live expiry approval record should remain readable.")
+            assertLiveHermesGatewayApprovalHasNoPlaintext(
+                stale,
+                injectedPlaintext: injectedPlaintext,
+                context: "EXPIRY stored record"
+            )
+            return approvalId
+        } catch {
+            print("OPENBURNBAR_LIVE_GATEWAY_APPROVAL_RESPONSE_CLEANUP_REQUIRED_ID=\(approvalId)")
+            throw error
+        }
+    }
+
+    private func assertLiveHermesGatewayApprovalWaitingRecord(
+        _ record: [String: Any],
+        actionId: String,
+        injectedPlaintext: String,
+        context: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(record["status"] as? String, "waiting_for_approval", file: file, line: line)
+        XCTAssertEqual(record["actionId"] as? String, actionId, file: file, line: line)
+        XCTAssertEqual(record["summary"] as? String, "Approve codex-live-proof action", file: file, line: line)
+        assertLiveHermesGatewayApprovalHasNoPlaintext(
+            record,
+            injectedPlaintext: injectedPlaintext,
+            context: context,
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertLiveHermesGatewayApprovalHasNoPlaintext(
+        _ record: [String: Any],
+        injectedPlaintext: String,
+        context: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertFalse(
+            String(describing: record).contains(injectedPlaintext),
+            "Gateway approval \(context) must not store client-supplied private text.",
+            file: file,
+            line: line
+        )
+        for forbiddenKey in ["text", "message", "prompt", "detail", "body", "content", "plaintext", "approvalTitle", "approvalMessage"] {
+            XCTAssertNil(record[forbiddenKey], "Gateway approval \(context) must not store \(forbiddenKey).", file: file, line: line)
+        }
+    }
+
+    private func armLiveHermesGatewayApproval(
+        apiBase: String,
+        accessToken: String,
+        actionId: String,
+        injectedPlaintext: String,
+        expiresInSeconds: Double? = nil
+    ) async throws -> String {
+        let trimmedBase = apiBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let url = try XCTUnwrap(URL(string: "\(trimmedBase)/approvals"))
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "actionId": actionId,
+            "toolName": "codex-live-proof",
+            "destinationId": "burnbar:home",
+            "summary": injectedPlaintext,
+            "text": injectedPlaintext,
+            "message": injectedPlaintext,
+            "prompt": injectedPlaintext,
+            "detail": injectedPlaintext
+        ]
+        if let expiresInSeconds {
+            body["expiresInSeconds"] = expiresInSeconds
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "<non-utf8>"
+            throw liveE2EError("Live gateway approval arm failed with HTTP \(statusCode): \(body)", code: 6)
+        }
+        let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let approval = decoded?["approval"] as? [String: Any]
+        let approvalId = approval?["id"] as? String
+        return try XCTUnwrap(approvalId, "Live gateway approval arm response did not include approval.id.")
+    }
+
+    private func fetchLiveHermesGatewayApproval(
+        apiBase: String,
+        accessToken: String,
+        actionId: String
+    ) async throws -> [String: Any] {
+        let trimmedBase = apiBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var components = try XCTUnwrap(URLComponents(string: "\(trimmedBase)/approvals"))
+        components.queryItems = [URLQueryItem(name: "actionId", value: actionId)]
+        let url = try XCTUnwrap(components.url)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "<non-utf8>"
+            throw liveE2EError("Live gateway approval fetch failed with HTTP \(statusCode): \(body)", code: 16)
+        }
+        let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return try XCTUnwrap(decoded?["approval"] as? [String: Any], "Live gateway approval fetch did not include approval.")
+    }
+
+    private func waitForLiveHermesGatewayApprovalPublicStatus(
+        apiBase: String,
+        accessToken: String,
+        actionId: String,
+        expectedStatus: String,
+        timeout: Double,
+        pollInterval: Double
+    ) async throws -> [String: Any] {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastStatus = "<missing>"
+        repeat {
+            let approval = try await fetchLiveHermesGatewayApproval(
+                apiBase: apiBase,
+                accessToken: accessToken,
+                actionId: actionId
+            )
+            if let status = approval["status"] as? String {
+                lastStatus = status
+                if status == expectedStatus {
+                    return approval
+                }
+            }
+            let nanos = UInt64(max(0.25, pollInterval) * 1_000_000_000)
+            try await Task.sleep(nanoseconds: nanos)
+        } while Date() < deadline
+        throw liveE2EError(
+            "Timed out waiting for live gateway approval \(actionId) to become \(expectedStatus); last status was \(lastStatus).",
+            code: 17
+        )
+    }
+
+    private func liveE2EDouble(_ environment: [String: String], key: String, defaultValue: Double) -> Double {
+        guard let raw = firstNonEmpty(environment[key]), let value = Double(raw), value > 0 else {
+            return defaultValue
+        }
+        return value
+    }
+
+    private func firstNonEmpty(_ values: String?...) -> String? {
+        for value in values {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let trimmed, !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return nil
     }
 
     nonisolated private static func mockSession(

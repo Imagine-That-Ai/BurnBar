@@ -95,8 +95,7 @@ export const requestKnowledgeResync = () =>
 
 // ── exportUserData ──────────────────────────────────────────────────────────
 export interface SealedRef {
-  path: string;
-  bodyHash: string;
+  pathDigest: string;
   signedUrl: string;
 }
 export interface ExportedDomain {
@@ -109,7 +108,7 @@ export interface ExportUserDataResponse {
   ok: boolean;
   generatedAt: string;
   domains: ExportedDomain[];
-  schemaVersion: 1;
+  schemaVersion: 2;
 }
 export const exportUserData = (domains?: string[]) =>
   call<{ domains?: string[] }, ExportUserDataResponse>("exportUserData", { domains });

@@ -16,7 +16,8 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
     private var collaborationSync: CollaborationSyncService!
     private var coordinator: CloudSyncCoordinator!
 
-    override func setUp() async throws {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         dataStore = try makeDiscoveryInMemoryStore()
         accountManager = FakeAccountManager.makeSignedIn()
         settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
@@ -34,8 +35,23 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
             accountManager: accountManager,
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway,
-            sessionLogEncryptedCloudClient: FakeSessionLogEncryptedCloudClient()
+            conversationVaultKeyProvider: TestConversationVaultKeyProvider(),
+            sessionLogEncryptedCloudClient: FakeSessionLogEncryptedCloudClient(),
+            sessionLogVaultKeyStore: StaticSessionLogVaultKeyStore(),
+            sessionLogVaultKeyPublisher: NoopSessionLogVaultKeyPublisher()
         )
+    }
+
+    override func tearDownWithError() throws {
+        coordinator = nil
+        collaborationSync = nil
+        context = nil
+        fakeGateway = nil
+        settingsManager = nil
+        accountManager = nil
+        dataStore = nil
+
+        try super.tearDownWithError()
     }
 
     // MARK: - Collaboration push

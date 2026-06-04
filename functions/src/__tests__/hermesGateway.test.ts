@@ -12,18 +12,31 @@ import {
   publicApprovalView,
   publicClientView,
   requireGatewayRelayEnvelope,
-  requireV2GatewayRelayEnvelope,
+  requireGatewayRatchetEnvelope,
+  requireProductionGatewayRelayEnvelope,
   sanitizeGatewayRelayEnvelope,
+  sanitizeGatewayRatchetEnvelope,
+  sanitizeGatewayRelayEnvelopeCapabilities,
+  sanitizeHermesGatewayApprovalTTL,
   sanitizeHermesGatewayScopes,
+  negotiateGatewayRelayEnvelopeCapabilities,
   serializeHermesGatewayTypingDoc,
   serializeHermesGatewayEvent,
+  HERMES_GATEWAY_APPROVAL_TTL_MS,
+  HERMES_GATEWAY_MAX_APPROVAL_TTL_MS,
+  HERMES_GATEWAY_MIN_APPROVAL_TTL_MS,
   HERMES_GATEWAY_PRESENCE_WINDOW_MS,
   HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_RELAY_ENCRYPTION,
+  HERMES_GATEWAY_RELAY_ENCRYPTION_V3,
   HERMES_GATEWAY_RELAY_KEY_VERSION,
+  HERMES_GATEWAY_RATCHET_ALGORITHM,
+  HERMES_GATEWAY_RATCHET_PROTOCOL_VERSION,
+  HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS,
   HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS,
   HERMES_GATEWAY_SCHEMA_VERSION,
   type GatewayRelayEnvelopeDoc,
+  type GatewayRatchetEnvelopeDoc,
   type HermesGatewayClientDoc,
 } from "../hermesGateway.js";
 
@@ -54,6 +67,34 @@ function relayEnvelopeV1(): GatewayRelayEnvelopeDoc {
     wrappedKey: Buffer.from("wrappedkey").toString("base64"),
     relayEncryption: HERMES_GATEWAY_RELAY_ENCRYPTION,
     relayKeyVersion: 1,
+  };
+}
+
+function relayEnvelopeV3(): GatewayRelayEnvelopeDoc {
+  return {
+    payloadCiphertext: Buffer.from("ciphertext").toString("base64"),
+    wrappedKey: Buffer.from("hpke-wrapped-key").toString("base64"),
+    enc: Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 3)]).toString("base64"),
+    relayEncryption: HERMES_GATEWAY_RELAY_ENCRYPTION_V3,
+    relayKeyVersion: 3,
+    senderPublicKey: SENDER_PUBKEY_B64,
+  };
+}
+
+function ratchetEnvelope(): GatewayRatchetEnvelopeDoc {
+  return {
+    header: {
+      version: HERMES_GATEWAY_RATCHET_PROTOCOL_VERSION,
+      algorithm: HERMES_GATEWAY_RATCHET_ALGORITHM,
+      sessionID: "hgr_session-1",
+      senderDeviceID: "agent-device",
+      receiverDeviceID: "phone-device",
+      ratchetPublicKeyBase64: RELAY_PUBKEY_B64,
+      previousChainLength: 0,
+      messageNumber: 0,
+      epoch: 1,
+    },
+    ciphertextBase64: Buffer.from("ratchet-ciphertext").toString("base64"),
   };
 }
 
@@ -133,6 +174,13 @@ describe("Hermes Gateway oversight (feature 3)", () => {
     };
     expect(publicApprovalView(gate).status).toBe("expired");
   });
+  it("bounds optional short live-proof TTLs without changing the production default", () => {
+    expect(sanitizeHermesGatewayApprovalTTL(undefined)).toBe(HERMES_GATEWAY_APPROVAL_TTL_MS);
+    expect(sanitizeHermesGatewayApprovalTTL("bad")).toBe(HERMES_GATEWAY_APPROVAL_TTL_MS);
+    expect(sanitizeHermesGatewayApprovalTTL(1)).toBe(HERMES_GATEWAY_MIN_APPROVAL_TTL_MS);
+    expect(sanitizeHermesGatewayApprovalTTL(30)).toBe(30_000);
+    expect(sanitizeHermesGatewayApprovalTTL(60 * 60)).toBe(HERMES_GATEWAY_MAX_APPROVAL_TTL_MS);
+  });
 });
 
 describe("Hermes Gateway E2EE — schema/protocol bump (gateway-wire)", () => {
@@ -188,6 +236,16 @@ describe("requireGatewayRelayEnvelope", () => {
     expect(out.senderPublicKey).toBe(SENDER_PUBKEY_B64);
     expect(out.relayKeyVersion).toBe(2);
   });
+  it("accepts a well-formed v3 HPKE envelope and requires the enc field", () => {
+    const out = requireGatewayRelayEnvelope(relayEnvelopeV3(), "relayEnvelope");
+    expect(out).toEqual(relayEnvelopeV3());
+    expect(out.enc).toBe(relayEnvelopeV3().enc);
+    expect(out.relayEncryption).toBe(HERMES_GATEWAY_RELAY_ENCRYPTION_V3);
+
+    const { enc: _enc, ...withoutEnc } = relayEnvelopeV3();
+    void _enc;
+    expect(() => requireGatewayRelayEnvelope(withoutEnc, "relayEnvelope")).toThrow(/enc/);
+  });
   it("keeps accepting a legacy v1 envelope (no senderPublicKey) — v1 is not bricked", () => {
     const out = requireGatewayRelayEnvelope(relayEnvelopeV1(), "relayEnvelope");
     expect(out).toEqual(relayEnvelopeV1());
@@ -198,13 +256,14 @@ describe("requireGatewayRelayEnvelope", () => {
       requireGatewayRelayEnvelope({ ...relayEnvelope(), relayEncryption: "AES-256-GCM" }, "relayEnvelope"),
     ).toThrow(/relayEncryption/);
   });
-  it("accepts the supported key-version set (1 AND 2) and rejects every other (0, 101)", () => {
-    // KEY-VERSION ACCEPT-SET: v1 and v2 are both live wire shapes; the clamp is an
+  it("accepts the supported key-version set (1, 2, AND 3) and rejects every other (0, 101)", () => {
+    // KEY-VERSION ACCEPT-SET: v1, v2, and v3 are all understood wire shapes; the clamp is an
     // accept-set membership test, so a forged/future version (0, 101) is rejected.
     expect(HERMES_GATEWAY_RELAY_KEY_VERSION).toBe(2);
-    expect([...HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS].sort()).toEqual([1, 2]);
+    expect([...HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS].sort()).toEqual([1, 2, 3]);
     expect(requireGatewayRelayEnvelope(relayEnvelopeV1(), "x").relayKeyVersion).toBe(1);
     expect(requireGatewayRelayEnvelope(relayEnvelope(), "x").relayKeyVersion).toBe(2);
+    expect(requireGatewayRelayEnvelope(relayEnvelopeV3(), "x").relayKeyVersion).toBe(3);
     expect(() => requireGatewayRelayEnvelope({ ...relayEnvelopeV1(), relayKeyVersion: 0 }, "relayEnvelope")).toThrow(
       /relayKeyVersion/,
     );
@@ -237,19 +296,119 @@ describe("requireGatewayRelayEnvelope", () => {
   });
 });
 
-describe("requireV2GatewayRelayEnvelope (MP-28 — new writes must be v2)", () => {
-  it("accepts a v2 envelope and round-trips it verbatim", () => {
-    expect(requireV2GatewayRelayEnvelope(relayEnvelope(), "relayEnvelope")).toEqual(relayEnvelope());
+describe("requireProductionGatewayRelayEnvelope (new writes must be authenticated v2/v3)", () => {
+  it("accepts v2 and v3 production envelopes and round-trips them verbatim", () => {
+    expect([...HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS].sort()).toEqual([2, 3]);
+    expect(requireProductionGatewayRelayEnvelope(relayEnvelope(), "relayEnvelope")).toEqual(relayEnvelope());
+    expect(requireProductionGatewayRelayEnvelope(relayEnvelopeV3(), "relayEnvelope")).toEqual(relayEnvelopeV3());
   });
   it("REJECTS a legacy v1 envelope on a new write (downgrade surface) while the v1-tolerant read path still accepts it", () => {
     // The write guard fails closed on v1...
-    expect(() => requireV2GatewayRelayEnvelope(relayEnvelopeV1(), "relayEnvelope")).toThrow(/relayKeyVersion must be 2/);
+    expect(() => requireProductionGatewayRelayEnvelope(relayEnvelopeV1(), "relayEnvelope")).toThrow(/relayKeyVersion/);
     // ...but the read/legacy sanitizer keeps v1 readable so stored docs are not bricked.
     expect(requireGatewayRelayEnvelope(relayEnvelopeV1(), "relayEnvelope").relayKeyVersion).toBe(1);
   });
-  it("still enforces the v2 senderPublicKey requirement (delegates to requireGatewayRelayEnvelope)", () => {
+  it("still enforces the authenticated senderPublicKey requirement (delegates to requireGatewayRelayEnvelope)", () => {
     const { senderPublicKey: _omit, ...v2NoSender } = relayEnvelope();
-    expect(() => requireV2GatewayRelayEnvelope(v2NoSender, "relayEnvelope")).toThrow(/senderPublicKey/);
+    expect(() => requireProductionGatewayRelayEnvelope(v2NoSender, "relayEnvelope")).toThrow(/senderPublicKey/);
+    const { senderPublicKey: _omitV3, ...v3NoSender } = relayEnvelopeV3();
+    void _omitV3;
+    expect(() => requireProductionGatewayRelayEnvelope(v3NoSender, "relayEnvelope")).toThrow(/senderPublicKey/);
+  });
+});
+
+describe("Hermes Gateway ratchet envelope contract", () => {
+  it("accepts and sanitizes a well-formed v1 ratchet envelope", () => {
+    expect(requireGatewayRatchetEnvelope(ratchetEnvelope(), "ratchetEnvelope")).toEqual(ratchetEnvelope());
+    expect(sanitizeGatewayRatchetEnvelope(ratchetEnvelope())).toEqual(ratchetEnvelope());
+  });
+
+  it("rejects malformed ratchet protocol headers", () => {
+    expect(() =>
+      requireGatewayRatchetEnvelope(
+        { ...ratchetEnvelope(), header: { ...ratchetEnvelope().header, algorithm: "wrong" } },
+        "ratchetEnvelope",
+      ),
+    ).toThrow(/ratchet/);
+    expect(sanitizeGatewayRatchetEnvelope({ ...ratchetEnvelope(), header: { ...ratchetEnvelope().header, version: 2 } }))
+      .toBeUndefined();
+    expect(
+      sanitizeGatewayRatchetEnvelope({
+        ...ratchetEnvelope(),
+        header: { ...ratchetEnvelope().header, sessionID: "bad/session" },
+      }),
+    ).toBeUndefined();
+    expect(
+      sanitizeGatewayRatchetEnvelope({
+        ...ratchetEnvelope(),
+        header: { ...ratchetEnvelope().header, ratchetPublicKeyBase64: "not base64 !!" },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("rejects malformed ratchet ciphertext and counters", () => {
+    expect(sanitizeGatewayRatchetEnvelope({ ...ratchetEnvelope(), ciphertextBase64: "not base64 !!" })).toBeUndefined();
+    expect(
+      sanitizeGatewayRatchetEnvelope({
+        ...ratchetEnvelope(),
+        header: { ...ratchetEnvelope().header, messageNumber: -1 },
+      }),
+    ).toBeUndefined();
+    expect(
+      sanitizeGatewayRatchetEnvelope({
+        ...ratchetEnvelope(),
+        header: { ...ratchetEnvelope().header, epoch: 1_000_000_001 },
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("Hermes Gateway relay envelope capability matrix", () => {
+  it("accepts explicit v2/v3 support and negotiates the highest shared production version", () => {
+    const agent = sanitizeGatewayRelayEnvelopeCapabilities({
+      supportsRelayEnvelopeVersions: [2, 3],
+      preferredRelayEnvelopeVersion: 3,
+      supportsHpkeV3: true,
+      clientPlatform: "python",
+      clientAppBuild: "hermes-agent",
+    });
+    const phone = sanitizeGatewayRelayEnvelopeCapabilities({
+      supportsRelayEnvelopeVersions: [2, 3],
+      preferredRelayEnvelopeVersion: 3,
+      supportsHpkeV3: true,
+      clientPlatform: "ios",
+      clientAppBuild: "openburnbar",
+    });
+    expect(agent.platform).toBe("python");
+    expect(phone.platform).toBe("ios");
+    expect(negotiateGatewayRelayEnvelopeCapabilities(agent, phone)).toEqual({
+      supportsRelayEnvelopeVersions: [2, 3],
+      preferredRelayEnvelopeVersion: 3,
+      supportsHpkeV3: true,
+    });
+  });
+
+  it("rejects inconsistent v3 capability claims", () => {
+    expect(() =>
+      sanitizeGatewayRelayEnvelopeCapabilities({
+        supportsRelayEnvelopeVersions: [2],
+        preferredRelayEnvelopeVersion: 2,
+        supportsHpkeV3: true,
+      }),
+    ).toThrow(/supportsHpkeV3/);
+    expect(() =>
+      sanitizeGatewayRelayEnvelopeCapabilities({
+        supportsRelayEnvelopeVersions: [2, 3],
+        preferredRelayEnvelopeVersion: 2,
+        supportsHpkeV3: false,
+      }),
+    ).toThrow(/supportsHpkeV3/);
+    expect(() =>
+      sanitizeGatewayRelayEnvelopeCapabilities({
+        supportsRelayEnvelopeVersions: [2],
+        preferredRelayEnvelopeVersion: 3,
+      }),
+    ).toThrow(/preferredRelayEnvelopeVersion/);
   });
 });
 
@@ -305,6 +464,20 @@ describe("serializeHermesGatewayEvent — sealed pass-through + legacy fallback"
     expect(out?.senderDisplayName).toBeUndefined();
     expect(out?.threadId).toBeUndefined();
   });
+  it("passes a ratchet-sealed schema-2 event through with NO plaintext siblings", () => {
+    const out = serializeHermesGatewayEvent({
+      ...base,
+      ratchetEnvelope: ratchetEnvelope(),
+      text: "leaked ratchet body",
+      senderDisplayName: "Alberto",
+      threadId: "thread-secret",
+    });
+    expect(out?.ratchetEnvelope).toEqual(ratchetEnvelope());
+    expect(out?.relayEnvelope).toBeUndefined();
+    expect(out?.text).toBeUndefined();
+    expect(out?.senderDisplayName).toBeUndefined();
+    expect(out?.threadId).toBeUndefined();
+  });
   it("drops plaintext siblings on a schema-2 doc even without an envelope (no legacy leak)", () => {
     // schemaVersion>=2 marks a sealed-doc generation: never echo plaintext.
     const out = serializeHermesGatewayEvent({
@@ -326,10 +499,20 @@ describe("sanitizeGatewayRelayEnvelope — strict read-side validation (Codex SA
   it("accepts a well-formed stored v1 envelope (no senderPublicKey) — symmetric with require", () => {
     expect(sanitizeGatewayRelayEnvelope(relayEnvelopeV1())).toEqual(relayEnvelopeV1());
   });
+  it("accepts a well-formed stored v3 HPKE envelope and rejects stripped/tampered v3 fields", () => {
+    expect(sanitizeGatewayRelayEnvelope(relayEnvelopeV3())).toEqual(relayEnvelopeV3());
+    const { enc: _enc, ...withoutEnc } = relayEnvelopeV3();
+    void _enc;
+    expect(sanitizeGatewayRelayEnvelope(withoutEnc)).toBeUndefined();
+    expect(
+      sanitizeGatewayRelayEnvelope({ ...relayEnvelopeV3(), relayEncryption: HERMES_GATEWAY_RELAY_ENCRYPTION }),
+    ).toBeUndefined();
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelopeV3(), enc: "not base64 !!" })).toBeUndefined();
+  });
   it("rejects a malformed stored envelope the write side would never have accepted", () => {
     // Wrong algorithm constant.
     expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayEncryption: "AES-256-GCM" })).toBeUndefined();
-    // Unsupported key version (outside the v1/v2 accept-set).
+    // Unsupported key version (outside the v1/v2/v3 accept-set).
     expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 0 })).toBeUndefined();
     expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), relayKeyVersion: 101 })).toBeUndefined();
     // Non-base64 ciphertext / wrapped key.
@@ -389,9 +572,31 @@ describe("publicClientView — surfaces relay public keys", () => {
       agentRelayPublicKey: RELAY_PUBKEY_B64,
       agentRelayKeyVersion: 1,
       agentRelayEncryption: HERMES_GATEWAY_RELAY_ENCRYPTION,
+      agentSupportsRelayEnvelopeVersions: [2, 3],
+      agentPreferredRelayEnvelopeVersion: 3,
+      agentSupportsHpkeV3: true,
       phoneRelayPublicKey: RELAY_PUBKEY_B64,
       phoneRelayKeyVersion: 1,
       phoneRelayEncryption: HERMES_GATEWAY_RELAY_ENCRYPTION,
+      phoneSupportsRelayEnvelopeVersions: [2, 3],
+      phonePreferredRelayEnvelopeVersion: 3,
+      phoneSupportsHpkeV3: true,
+      agentRatchetIdentityPublicKey: RELAY_PUBKEY_B64,
+      agentRatchetSigningPublicKey: RELAY_PUBKEY_B64,
+      agentRatchetSignedPreKeyPublicKey: SENDER_PUBKEY_B64,
+      agentRatchetSignedPreKeyId: "spk_agent_1",
+      agentRatchetSignedPreKeySignature: Buffer.from("agent-signature").toString("base64"),
+      agentSupportsRatchetV1: true,
+      phoneRatchetIdentityPublicKey: RELAY_PUBKEY_B64,
+      phoneRatchetSigningPublicKey: RELAY_PUBKEY_B64,
+      phoneRatchetSignedPreKeyPublicKey: SENDER_PUBKEY_B64,
+      phoneRatchetSignedPreKeyId: "spk_phone_1",
+      phoneRatchetSignedPreKeySignature: Buffer.from("phone-signature").toString("base64"),
+      phoneSupportsRatchetV1: true,
+      supportsRatchetV1: true,
+      supportsRelayEnvelopeVersions: [2, 3],
+      preferredRelayEnvelopeVersion: 3,
+      supportsHpkeV3: true,
       relayCapable: true,
       createdAt: "2026-06-01T00:00:00.000Z",
       updatedAt: "2026-06-01T00:00:00.000Z",
@@ -403,6 +608,14 @@ describe("publicClientView — surfaces relay public keys", () => {
     expect(view.relayEncryption).toBe(HERMES_GATEWAY_RELAY_ENCRYPTION);
     expect(view.agentRelayPublicKey).toBe(RELAY_PUBKEY_B64);
     expect(view.phoneRelayPublicKey).toBe(RELAY_PUBKEY_B64);
+    expect(view.supportsRelayEnvelopeVersions).toEqual([2, 3]);
+    expect(view.preferredRelayEnvelopeVersion).toBe(3);
+    expect(view.supportsHpkeV3).toBe(true);
+    expect(view.agentSupportsRelayEnvelopeVersions).toEqual([2, 3]);
+    expect(view.phoneSupportsRelayEnvelopeVersions).toEqual([2, 3]);
+    expect(view.agentRatchetIdentityPublicKey).toBe(RELAY_PUBKEY_B64);
+    expect(view.phoneRatchetSignedPreKeyId).toBe("spk_phone_1");
+    expect(view.supportsRatchetV1).toBe(true);
     expect(view.relayCapable).toBe(true);
     // Never leak the server-only secret material.
     expect(view).not.toHaveProperty("tokenHash");

@@ -13,6 +13,8 @@ import {
   hashHermesGatewayBearerToken,
   hashHermesGatewayDeviceSecret,
   HERMES_GATEWAY_APPROVAL_TTL_MS,
+  HERMES_GATEWAY_MAX_APPROVAL_TTL_MS,
+  HERMES_GATEWAY_MIN_APPROVAL_TTL_MS,
   HERMES_GATEWAY_DEFAULT_DESTINATION_ID,
   HERMES_GATEWAY_PENDING_MODEL_TTL_MS,
   HERMES_GATEWAY_PRESENCE_WINDOW_MS,
@@ -33,6 +35,7 @@ import {
   parseHermesGatewayCursor,
   randomHermesGatewayUserCode,
   safeEqualHex,
+  sanitizeHermesGatewayApprovalTTL,
   sanitizeHermesGatewayApprovalSummary,
   sanitizeHermesGatewayDestinationId,
   sanitizeHermesGatewayModelId,
@@ -303,6 +306,12 @@ assert.equal(effectiveOversightMode("bogus"), "supervised");
 assert.equal(HERMES_GATEWAY_APPROVAL_TTL_MS, 5 * 60 * 1000);
 const gateFrom = 1_700_000_000_000;
 assert.equal(gatewayApprovalExpiryISO(gateFrom), new Date(gateFrom + HERMES_GATEWAY_APPROVAL_TTL_MS).toISOString());
+assert.equal(sanitizeHermesGatewayApprovalTTL(undefined), HERMES_GATEWAY_APPROVAL_TTL_MS);
+assert.equal(sanitizeHermesGatewayApprovalTTL("bad"), HERMES_GATEWAY_APPROVAL_TTL_MS);
+assert.equal(sanitizeHermesGatewayApprovalTTL(1), HERMES_GATEWAY_MIN_APPROVAL_TTL_MS);
+assert.equal(sanitizeHermesGatewayApprovalTTL(30), 30_000);
+assert.equal(sanitizeHermesGatewayApprovalTTL(60 * 60), HERMES_GATEWAY_MAX_APPROVAL_TTL_MS);
+assert.equal(gatewayApprovalExpiryISO(gateFrom, 30_000), new Date(gateFrom + 30_000).toISOString());
 assert.equal(isHermesGatewayApprovalExpired("2000-01-01T00:00:00.000Z"), true);
 assert.equal(isHermesGatewayApprovalExpired(new Date(Date.now() + 60_000).toISOString()), false);
 assert.equal(isHermesGatewayApprovalExpired(undefined), true); // fail-closed: no expiry never blocks an agent
@@ -377,10 +386,12 @@ assert.ok(
   "handleGatewayState must never increment the event cursor",
 );
 
-// Feature 2 — model_switch validates against the advertised catalog and marks the switch pending.
+// Feature 2 — legacy model_switch validates against the advertised catalog; sealed
+// model_switch forwards the opaque command without requiring cleartext modelId.
 assert.match(source, /clientAdvertisesModel\(targetClient, requestedModelId\)/);
 assert.match(source, /model_not_available/);
-assert.match(source, /pendingModelId: requestedModelId, pendingModelRequestedAt: now/);
+assert.match(source, /modelId: targetIsRelayCapable \? undefined : requestedModelId/);
+assert.match(source, /!targetIsRelayCapable/);
 // Reconciliation clears the pending marker once the runtime reports the applied model.
 assert.match(source, /pendingModelId: settled \? FieldValue\.delete\(\)/);
 

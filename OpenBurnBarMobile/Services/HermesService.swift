@@ -3910,7 +3910,10 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
             case .responseComplete:
                 return
             case .responseError:
-                throw HermesServiceError.relayFailure(frame.payload?.error, fallback: "Hermes realtime relay failed.")
+                throw HermesServiceError.relayFailure(
+                    HermesRealtimeRelayErrorCode.publicMessage(for: frame.payload?.errorCode),
+                    fallback: "Hermes realtime relay failed."
+                )
             case .ping:
                 try await task.send(.data(encoder.encode(HermesRealtimeRelayFrame(
                     type: .pong,
@@ -3971,16 +3974,6 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
               let requestID = frame.requestId else {
             return nil
         }
-        if kind == .error {
-            return HermesRelayChunkRecord(
-                id: String(format: "%08d", sequence),
-                requestId: requestID,
-                sequence: sequence,
-                kind: kind,
-                error: payload.error ?? "Hermes realtime relay failed.",
-                schemaVersion: 2
-            )
-        }
         guard let ciphertext = payload.ciphertext else {
             throw HermesServiceError.relayUnavailable("Realtime relay returned a chunk without ciphertext.")
         }
@@ -3995,12 +3988,15 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                 kind: kind.rawValue
             )
         )
+        let text = String(data: plaintext, encoding: .utf8) ?? ""
         return HermesRelayChunkRecord(
             id: String(format: "%08d", sequence),
             requestId: requestID,
             sequence: sequence,
             kind: kind,
-            data: String(data: plaintext, encoding: .utf8) ?? "",
+            data: kind == .error ? nil : text,
+            text: text,
+            error: kind == .error ? text : nil,
             schemaVersion: 2
         )
     }

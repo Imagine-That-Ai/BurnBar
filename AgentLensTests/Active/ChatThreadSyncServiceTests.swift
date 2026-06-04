@@ -56,7 +56,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         let docData = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/chat_threads/test-device-1_thread-1"))
         XCTAssertEqual(docData["contentIncluded"] as? Bool, true)
         XCTAssertEqual(docData["contentSealed"] as? Bool, true)
-        XCTAssertEqual(docData["sealedSchemaVersion"] as? Int, 1)
+        XCTAssertEqual(docData["sealedSchemaVersion"] as? Int, CloudVaultCrypto.currentSealedPayloadSchemaVersion)
         XCTAssertEqual(docData["vaultKeyID"] as? String, try vaultKeyProvider.resolvedKey().vaultKeyID)
         XCTAssertNil(docData["title"])
         XCTAssertNil(docData["preview"])
@@ -64,6 +64,7 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         assertNoPlaintextSecrets(in: docData)
 
         let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: docData["sealedPayload"]))
+        XCTAssertEqual(envelope.aad, CloudVaultCrypto.sealedPayloadAADContext)
         let opened = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKeyProvider.keyData)
         let payload = try Self.sealedPayloadDecoder.decode(DecodedChatThreadPayload.self, from: opened)
         XCTAssertEqual(payload.threadId, "thread-1")

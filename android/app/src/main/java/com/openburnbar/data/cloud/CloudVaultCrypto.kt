@@ -2,7 +2,6 @@ package com.openburnbar.data.cloud
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Base64
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -26,27 +25,56 @@ import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.tasks.await
 
 data class CloudVaultSealedText(
+    val schemaVersion: Int? = null,
     val algorithm: String = "AES-256-GCM",
     val keyVersion: Int = 1,
     val nonce: String = "",
     val ciphertext: String = "",
     val tag: String = "",
+    val aad: String? = null,
 )
 
+data class CloudVaultAADContext(
+    val uid: String,
+    val collection: String,
+    val docID: String,
+    val field: String,
+    val schemaVersion: Int = 2,
+    val purpose: String = field,
+) {
+    val stringValue: String = "${CloudVaultCrypto.aadContextPrefix}|$uid|$collection|$docID|$field|$schemaVersion|$purpose"
+    val legacyV1StringValue: String = "${CloudVaultCrypto.legacyAADContextPrefix}|$uid|$collection|$docID|$field"
+    val bytes: ByteArray get() = stringValue.toByteArray(Charsets.UTF_8)
+    val legacyV1Bytes: ByteArray get() = legacyV1StringValue.toByteArray(Charsets.UTF_8)
+
+    init {
+        require(schemaVersion >= 2 && listOf(uid, collection, docID, field, purpose).all { isValidPart(it) }) {
+            "Invalid CloudVault AAD context"
+        }
+    }
+
+    private fun isValidPart(value: String): Boolean =
+        value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }
+}
+
 data class CloudVaultBlobEnvelope(
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = 2,
     val algorithm: String = "AES-256-GCM",
     val keyVersion: Int = 1,
-    val plaintextSHA256: String = "",
+    val plaintextSHA256: String? = null,
+    val plaintextHMAC: String? = null,
+    val integrityHashVersion: Int? = 1,
     val sealedBoxBase64: String = "",
+    val aad: String? = "OpenBurnBar-CloudVaultBlob-v2",
 )
 
 data class CloudVaultSealedPayload(
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = 2,
     val algorithm: String = "AES-256-GCM",
     val keyVersion: Int = 1,
     val vaultKeyID: String = "",
     val sealedBoxBase64: String = "",
+    val aad: String? = "OpenBurnBar-CloudVaultSealedPayload-v2",
 )
 
 object CloudVaultCrypto {
@@ -61,10 +89,21 @@ object CloudVaultCrypto {
     private const val P256_COORDINATE_BYTES = 32
     private const val P256_Y_COORDINATE_OFFSET = 33
     private const val WRAP_INFO = "OpenBurnBar-Escrow-v1"
+    private const val BLOB_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
+    private const val SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"
+    const val aadContextPrefix: String = "OpenBurnBar-CloudVault-aad-v2"
+    const val legacyAADContextPrefix: String = "OpenBurnBar-CloudVault-aad-v1"
+    const val currentSealedTextSchemaVersion: Int = 2
+    const val currentBlobEnvelopeSchemaVersion: Int = 2
+    const val blobIntegrityHashVersion: Int = 1
+    const val sessionBodyHashVersion: Int = 2
+    const val sessionChunkHashVersion: Int = 2
+    const val projectMemoryContentHashVersion: Int = 2
+    const val currentSealedPayloadSchemaVersion: Int = 2
     const val tokenHashVersion: Int = 1
     const val semanticHashVersion: Int = 1
 
-    fun sealText(text: String, vaultKey: ByteArray): CloudVaultSealedText {
+    fun sealText(text: String, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultSealedText {
         val plaintext = text.toByteArray(Charsets.UTF_8)
         val nonce =
             ByteArray(GCM_NONCE_BYTES).apply {
@@ -72,25 +111,35 @@ object CloudVaultCrypto {
             }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE.let { Cipher.ENCRYPT_MODE }, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        aadContext?.let { cipher.updateAAD(it.bytes) }
         val ciphertextAndTag = cipher.doFinal(plaintext)
         val tagSize = GCM_TAG_BYTES
         val ciphertext = ciphertextAndTag.copyOfRange(0, ciphertextAndTag.size - tagSize)
         val tag = ciphertextAndTag.copyOfRange(ciphertextAndTag.size - tagSize, ciphertextAndTag.size)
         return CloudVaultSealedText(
+            schemaVersion = aadContext?.let { currentSealedTextSchemaVersion },
             algorithm = "AES-256-GCM",
             keyVersion = 1,
-            nonce = Base64.encodeToString(nonce, Base64.NO_WRAP),
-            ciphertext = Base64.encodeToString(ciphertext, Base64.NO_WRAP),
-            tag = Base64.encodeToString(tag, Base64.NO_WRAP),
+            nonce = CloudVaultCryptoSupport.encodeBase64(nonce),
+            ciphertext = CloudVaultCryptoSupport.encodeBase64(ciphertext),
+            tag = CloudVaultCryptoSupport.encodeBase64(tag),
+            aad = aadContext?.stringValue,
         )
     }
 
-    fun openText(envelope: CloudVaultSealedText, vaultKey: ByteArray): String {
+    fun openText(envelope: CloudVaultSealedText, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): String {
         require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
-        val nonce = Base64.decode(envelope.nonce, Base64.DEFAULT)
-        val ciphertext = Base64.decode(envelope.ciphertext, Base64.DEFAULT)
-        val tag = Base64.decode(envelope.tag, Base64.DEFAULT)
-        val plaintext = CloudVaultCryptoSupport.openAesGcm(vaultKey, nonce, ciphertext + tag)
+        val nonce = CloudVaultCryptoSupport.decodeBase64(envelope.nonce)
+        val ciphertext = CloudVaultCryptoSupport.decodeBase64(envelope.ciphertext)
+        val tag = CloudVaultCryptoSupport.decodeBase64(envelope.tag)
+        val aad =
+            if ((envelope.schemaVersion ?: 1) >= currentSealedTextSchemaVersion) {
+                require(aadContext != null) { "Invalid sealed text AAD context" }
+                aadBytesFor(envelope.aad, aadContext)
+            } else {
+                null
+            }
+        val plaintext = CloudVaultCryptoSupport.openAesGcm(vaultKey, nonce, ciphertext + tag, aad)
         return plaintext.toString(Charsets.UTF_8)
     }
 
@@ -100,53 +149,134 @@ object CloudVaultCrypto {
     fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = 24): List<String> =
         CloudVaultCryptoSearch.semanticHashes(text, vaultKey, limit)
 
-    fun openBlob(envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray): ByteArray {
+    fun openBlob(envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): ByteArray {
         require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
-        val combined = Base64.decode(envelope.sealedBoxBase64, Base64.DEFAULT)
+        val combined = CloudVaultCryptoSupport.decodeBase64(envelope.sealedBoxBase64)
         require(combined.size > MIN_BLOB_ENVELOPE_BYTES) { "Invalid encrypted blob envelope" }
         val plaintext =
-            CloudVaultCryptoSupport.openAesGcm(
-                vaultKey,
-                combined.copyOfRange(0, GCM_NONCE_BYTES),
-                combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
-            )
-        require(sha256Hex(plaintext) == envelope.plaintextSHA256) { "Encrypted blob hash mismatch" }
+            when (envelope.schemaVersion) {
+                1 ->
+                    CloudVaultCryptoSupport.openAesGcm(
+                        vaultKey,
+                        combined.copyOfRange(0, GCM_NONCE_BYTES),
+                        combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
+                    )
+                currentBlobEnvelopeSchemaVersion -> {
+                    val aad =
+                        if (envelope.aad == BLOB_AAD_CONTEXT) {
+                            null
+                        } else {
+                            require(aadContext != null) { "Invalid blob AAD context" }
+                            aadBytesFor(envelope.aad, aadContext)
+                        }
+                    CloudVaultCryptoSupport.openAesGcm(
+                        vaultKey,
+                        combined.copyOfRange(0, GCM_NONCE_BYTES),
+                        combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
+                        aad,
+                    )
+                }
+                else -> error("Unsupported encrypted blob schema")
+            }
+        when (envelope.schemaVersion) {
+            1 -> require(sha256Hex(plaintext) == envelope.plaintextSHA256) { "Encrypted blob hash mismatch" }
+            currentBlobEnvelopeSchemaVersion -> {
+                require(envelope.integrityHashVersion == blobIntegrityHashVersion) { "Invalid blob integrity hash version" }
+                require(blobPlaintextHmac(plaintext, vaultKey) == envelope.plaintextHMAC) { "Encrypted blob HMAC mismatch" }
+            }
+            else -> error("Unsupported encrypted blob schema")
+        }
         return plaintext
     }
 
+    fun blobPlaintextHmac(data: ByteArray, vaultKey: ByteArray): String =
+        keyedHmacHex(data, vaultKey, "blob-integrity")
+
+    fun sessionBodyHash(data: ByteArray, vaultKey: ByteArray): String =
+        keyedHmacHex(data, vaultKey, "session-body")
+
+    fun expectedSessionBodyHash(data: ByteArray, vaultKey: ByteArray, bodyHashVersion: Int): String =
+        when (bodyHashVersion) {
+            sessionBodyHashVersion -> sessionBodyHash(data, vaultKey)
+            0, 1 -> sha256Hex(data)
+            else -> error("Unsupported session body hash version")
+        }
+
+    fun sessionChunkHash(text: String, vaultKey: ByteArray): String =
+        keyedHmacHex(text.toByteArray(Charsets.UTF_8), vaultKey, "session-chunk")
+
+    fun projectMemoryContentHash(data: ByteArray, vaultKey: ByteArray): String =
+        keyedHmacHex(data, vaultKey, "project-memory-content")
+
+    fun expectedBlobIntegrityHash(data: ByteArray, envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray): String =
+        if (envelope.schemaVersion >= currentBlobEnvelopeSchemaVersion) {
+            blobPlaintextHmac(data, vaultKey)
+        } else {
+            sha256Hex(data)
+        }
+
     fun vaultKeyID(vaultKey: ByteArray): String = "v1_${sha256Hex(vaultKey).take(32)}"
 
-    fun sealPayload(plaintext: ByteArray, vaultKey: ByteArray, vaultKeyID: String = vaultKeyID(vaultKey)): CloudVaultSealedPayload {
+    fun sealPayload(
+        plaintext: ByteArray,
+        vaultKey: ByteArray,
+        vaultKeyID: String = vaultKeyID(vaultKey),
+        aadContext: CloudVaultAADContext? = null,
+    ): CloudVaultSealedPayload {
         val nonce =
             ByteArray(GCM_NONCE_BYTES).apply {
                 java.security.SecureRandom().nextBytes(this)
             }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        cipher.updateAAD(sealedPayloadAAD(vaultKeyID = vaultKeyID, keyVersion = 1, aadContext = aadContext))
         return CloudVaultSealedPayload(
-            schemaVersion = 1,
+            schemaVersion = currentSealedPayloadSchemaVersion,
             algorithm = "AES-256-GCM",
             keyVersion = 1,
             vaultKeyID = vaultKeyID,
-            sealedBoxBase64 = Base64.encodeToString(nonce + cipher.doFinal(plaintext), Base64.NO_WRAP),
+            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(nonce + cipher.doFinal(plaintext)),
+            aad = aadContext?.stringValue ?: SEALED_PAYLOAD_AAD_CONTEXT,
         )
     }
 
-    fun openPayload(envelope: CloudVaultSealedPayload, vaultKey: ByteArray): ByteArray {
-        require(envelope.schemaVersion == 1) { "Unsupported sealed payload schema" }
+    fun openPayload(envelope: CloudVaultSealedPayload, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): ByteArray {
+        require(envelope.schemaVersion == 1 || envelope.schemaVersion == currentSealedPayloadSchemaVersion) { "Unsupported sealed payload schema" }
         require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
         val actualVaultKeyID = vaultKeyID(vaultKey)
         require(envelope.vaultKeyID == actualVaultKeyID) { "Vault key mismatch" }
-        val combined = Base64.decode(envelope.sealedBoxBase64, Base64.DEFAULT)
+        val combined = CloudVaultCryptoSupport.decodeBase64(envelope.sealedBoxBase64)
         require(combined.size > MIN_BLOB_ENVELOPE_BYTES) { "Invalid encrypted payload envelope" }
+        val aad =
+            if (envelope.schemaVersion == currentSealedPayloadSchemaVersion) {
+                if (envelope.aad == SEALED_PAYLOAD_AAD_CONTEXT) {
+                    sealedPayloadAAD(vaultKeyID = envelope.vaultKeyID, keyVersion = envelope.keyVersion, aadContext = null)
+                } else {
+                    require(aadContext != null) { "Invalid sealed payload AAD context" }
+                    aadBytesFor(envelope.aad, aadContext)
+                }
+            } else {
+                null
+            }
         return CloudVaultCryptoSupport.openAesGcm(
             vaultKey,
             combined.copyOfRange(0, GCM_NONCE_BYTES),
             combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
+            aad,
         )
     }
 
     fun sealedPayloadMap(envelope: CloudVaultSealedPayload): Map<String, Any> =
+        buildMap {
+            put("schemaVersion", envelope.schemaVersion)
+            put("algorithm", envelope.algorithm)
+            put("keyVersion", envelope.keyVersion)
+            put("vaultKeyID", envelope.vaultKeyID)
+            put("sealedBoxBase64", envelope.sealedBoxBase64)
+            envelope.aad?.let { put("aad", it) }
+        }
+
+    fun sealedPayloadMapV1ForTest(envelope: CloudVaultSealedPayload): Map<String, Any> =
         mapOf(
             "schemaVersion" to envelope.schemaVersion,
             "algorithm" to envelope.algorithm,
@@ -163,7 +293,34 @@ object CloudVaultCrypto {
             keyVersion = (raw["keyVersion"] as? Number)?.toInt() ?: 1,
             vaultKeyID = raw["vaultKeyID"] as? String ?: return null,
             sealedBoxBase64 = raw["sealedBoxBase64"] as? String ?: return null,
+            aad = raw["aad"] as? String,
         )
+    }
+
+    private fun sealedPayloadAAD(vaultKeyID: String, keyVersion: Int, aadContext: CloudVaultAADContext?): ByteArray =
+        aadContext?.bytes
+            ?: "$SEALED_PAYLOAD_AAD_CONTEXT|AES-256-GCM|keyVersion=$keyVersion|vaultKeyID=$vaultKeyID"
+                .toByteArray(Charsets.UTF_8)
+
+    private fun aadBytesFor(envelopeAAD: String?, aadContext: CloudVaultAADContext): ByteArray =
+        when (envelopeAAD) {
+            aadContext.stringValue -> aadContext.bytes
+            aadContext.legacyV1StringValue -> aadContext.legacyV1Bytes
+            else -> error("Invalid CloudVault AAD context")
+        }
+
+    private fun keyedHmacHex(data: ByteArray, vaultKey: ByteArray, purpose: String): String {
+        require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
+        val key =
+            CloudVaultCryptoSearch.hkdfSha256(
+                vaultKey,
+                "OpenBurnBar-CloudVault-HMAC-Salt-v1".toByteArray(Charsets.UTF_8),
+                "OpenBurnBar-CloudVault-HMAC-v1|$purpose".toByteArray(Charsets.UTF_8),
+                SHA256_DIGEST_BYTES,
+            )
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(key, "HmacSHA256"))
+        return mac.doFinal(data).joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
     }
 
     fun unwrapVaultKey(ciphertext: ByteArray, privateKey: PrivateKey): ByteArray {
@@ -200,7 +357,7 @@ object CloudVaultCrypto {
 
     fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
 
-    fun sha256Base64(data: ByteArray): String = Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(data), Base64.NO_WRAP)
+    fun sha256Base64(data: ByteArray): String = CloudVaultCryptoSupport.encodeBase64(MessageDigest.getInstance("SHA-256").digest(data))
 }
 
 class AndroidCloudVaultDeviceKeypair private constructor(
@@ -211,7 +368,7 @@ class AndroidCloudVaultDeviceKeypair private constructor(
     val publicKeyFingerprint: String = CloudVaultCrypto.sha256Base64(publicKeyData)
     val deviceId: String = "android-${CloudVaultCrypto.sha256Hex(publicKeyData).take(32)}"
 
-    fun decryptWrappedVaultKey(base64: String): ByteArray = CloudVaultCrypto.unwrapVaultKey(Base64.decode(base64, Base64.DEFAULT), privateKey)
+    fun decryptWrappedVaultKey(base64: String): ByteArray = CloudVaultCrypto.unwrapVaultKey(CloudVaultCryptoSupport.decodeBase64(base64), privateKey)
 
     companion object {
         private const val PREFS = "openburnbar_cloud_vault_device"
@@ -223,9 +380,9 @@ class AndroidCloudVaultDeviceKeypair private constructor(
             val storedPrivate = prefs.getString(PRIVATE_KEY, null)
             val storedPublic = prefs.getString(PUBLIC_KEY, null)
             if (!storedPrivate.isNullOrBlank() && !storedPublic.isNullOrBlank()) {
-                val privateBytes = AndroidLocalSecretBox.decrypt(Base64.decode(storedPrivate, Base64.DEFAULT))
+                val privateBytes = AndroidLocalSecretBox.decrypt(CloudVaultCryptoSupport.decodeBase64(storedPrivate))
                 val privateKey = KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(privateBytes))
-                return AndroidCloudVaultDeviceKeypair(privateKey, Base64.decode(storedPublic, Base64.DEFAULT))
+                return AndroidCloudVaultDeviceKeypair(privateKey, CloudVaultCryptoSupport.decodeBase64(storedPublic))
             }
 
             val generator = KeyPairGenerator.getInstance("EC")
@@ -233,8 +390,8 @@ class AndroidCloudVaultDeviceKeypair private constructor(
             val pair = generator.generateKeyPair()
             val publicX963 = CloudVaultCrypto.publicKeyX963(pair.public)
             prefs.edit()
-                .putString(PRIVATE_KEY, Base64.encodeToString(AndroidLocalSecretBox.encrypt(pair.private.encoded), Base64.NO_WRAP))
-                .putString(PUBLIC_KEY, Base64.encodeToString(publicX963, Base64.NO_WRAP))
+                .putString(PRIVATE_KEY, CloudVaultCryptoSupport.encodeBase64(AndroidLocalSecretBox.encrypt(pair.private.encoded)))
+                .putString(PUBLIC_KEY, CloudVaultCryptoSupport.encodeBase64(publicX963))
                 .apply()
             return AndroidCloudVaultDeviceKeypair(pair.private, publicX963)
         }
@@ -331,7 +488,7 @@ object AndroidCloudVaultKeyAccess {
     private fun loadLocalKey(uid: String): ByteArray? {
         val prefs = BurnBarApplication.appContext.getSharedPreferences(PREFS, 0)
         val stored = prefs.getString("vault_key_$uid", null) ?: return null
-        return runCatching { AndroidLocalSecretBox.decrypt(Base64.decode(stored, Base64.DEFAULT)) }
+        return runCatching { AndroidLocalSecretBox.decrypt(CloudVaultCryptoSupport.decodeBase64(stored)) }
             .getOrNull()
             ?.takeIf { it.size == 32 }
     }
@@ -340,7 +497,7 @@ object AndroidCloudVaultKeyAccess {
         require(key.size == 32) { "Invalid vault key length" }
         val prefs = BurnBarApplication.appContext.getSharedPreferences(PREFS, 0)
         prefs.edit()
-            .putString("vault_key_$uid", Base64.encodeToString(AndroidLocalSecretBox.encrypt(key), Base64.NO_WRAP))
+            .putString("vault_key_$uid", CloudVaultCryptoSupport.encodeBase64(AndroidLocalSecretBox.encrypt(key)))
             .apply()
     }
 }

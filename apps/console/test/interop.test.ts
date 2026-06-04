@@ -57,20 +57,34 @@ describe.skipIf(!hasFixture)("Swift <-> JS escrow wire compatibility", () => {
   it("unwraps a Swift-wrapped vault key and opens Swift-sealed blob + text", async () => {
     const recipientPriv = await importPkcs8Private(base64ToBytes(fx.recipientPrivatePKCS8B64));
     const vaultKey = await unwrapVaultKey(base64ToBytes(fx.wrappedVaultKeyB64), recipientPriv);
+    const rawVaultKey = base64ToBytes(fx.vaultKeyB64);
 
     // The unwrapped (Swift-wrapped) key must open Swift-sealed blob + text.
-    const blob = await openBlob(fx.blob, vaultKey);
+    const blob = await openBlob(fx.blob, vaultKey, {
+      aadContext: fx.blob.aad,
+      rawVaultKey,
+    });
     expect(new TextDecoder().decode(blob)).toBe(fx.blob.expectedPlaintext);
 
-    const text = await openText(fx.text, vaultKey);
+    const text = await openText(fx.text, vaultKey, { aadContext: fx.text.aad });
     expect(text).toBe(fx.text.expectedPlaintext);
   });
 
   it("opens Swift-sealed content with the raw vault key directly", async () => {
-    const vaultKey = await importVaultKey(base64ToBytes(fx.vaultKeyB64));
-    expect(new TextDecoder().decode(await openBlob(fx.blob, vaultKey))).toBe(
+    const rawVaultKey = base64ToBytes(fx.vaultKeyB64);
+    const vaultKey = await importVaultKey(rawVaultKey);
+    expect(
+      new TextDecoder().decode(
+        await openBlob(fx.blob, vaultKey, {
+          aadContext: fx.blob.aad,
+          rawVaultKey,
+        }),
+      ),
+    ).toBe(
       fx.blob.expectedPlaintext,
     );
-    expect(await openText(fx.text, vaultKey)).toBe(fx.text.expectedPlaintext);
+    expect(await openText(fx.text, vaultKey, { aadContext: fx.text.aad })).toBe(
+      fx.text.expectedPlaintext,
+    );
   });
 });

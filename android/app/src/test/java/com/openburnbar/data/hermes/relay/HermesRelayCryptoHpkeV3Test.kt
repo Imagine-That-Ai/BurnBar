@@ -288,6 +288,7 @@ class HermesRelayCryptoHpkeV3Test {
                     aad = slot.getString("payloadAAD").toByteArray(Charsets.UTF_8),
                 )
             assertEquals(slot.getString("payloadPlaintext"), String(plain, Charsets.UTF_8))
+            assertProductionDestinationIfJsonPayload(slot, String(plain, Charsets.UTF_8))
             opened += 1
         }
         assertTrue("shared v3 vector should contain positive payload cases", opened >= 3)
@@ -326,6 +327,22 @@ class HermesRelayCryptoHpkeV3Test {
     private fun decode(base64: String): ByteArray = Base64.getDecoder().decode(base64)
 
     private fun encode(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
+
+    private fun assertProductionDestinationIfJsonPayload(slot: JSONObject, payload: String) {
+        if (!payload.startsWith("{")) return
+        val decoded = JSONObject(payload)
+        assertEquals(
+            "${slot.getString("name")} must authenticate the intended destination",
+            "burnbar:home",
+            decoded.getString("destinationId"),
+        )
+        if (slot.getString("name").startsWith("phone_event")) {
+            assertTrue(
+                "${slot.getString("name")} must authenticate a replay counter",
+                decoded.has("replayCounter") || decoded.has("eventCounter"),
+            )
+        }
+    }
 
     private fun encodeFlippedLastByte(base64: String): String {
         val bytes = decode(base64)

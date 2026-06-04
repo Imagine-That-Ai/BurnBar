@@ -73,6 +73,7 @@ final class BurnBarHpkeV3CrossPlatformVectorTests: XCTestCase {
                 vector.payloadPlaintext,
                 "\(vector.name): sealed payload mismatch"
             )
+            try assertProductionDestinationIfJSONPayload(vector)
             opened += 1
         }
         XCTAssertEqual(opened, 5, "expected all five positive v3 vectors to open")
@@ -198,6 +199,29 @@ final class BurnBarHpkeV3CrossPlatformVectorTests: XCTestCase {
             try decodeBase64(try XCTUnwrap(vector.wrappedKey)),
             authenticating: Data(try XCTUnwrap(vector.keyAAD).utf8)
         )
+    }
+
+    private func assertProductionDestinationIfJSONPayload(_ vector: V3Case) throws {
+        guard let payloadPlaintext = vector.payloadPlaintext,
+              payloadPlaintext.first == "{" else {
+            return
+        }
+        let data = Data(payloadPlaintext.utf8)
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any],
+            "\(vector.name): JSON payload must be an object"
+        )
+        XCTAssertEqual(
+            json["destinationId"] as? String,
+            "burnbar:home",
+            "\(vector.name): JSON v3 payload must authenticate the destination"
+        )
+        if vector.name.hasPrefix("phone_event") {
+            XCTAssertNotNil(
+                json["replayCounter"] ?? json["eventCounter"],
+                "\(vector.name): inbound v3 event payload must authenticate a replay counter"
+            )
+        }
     }
 }
 

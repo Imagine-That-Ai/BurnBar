@@ -37,6 +37,8 @@ export const HERMES_GATEWAY_PENDING_MODEL_TTL_MS = 2 * 60 * 1000;
 // A supervised oversight gate left unanswered past this window is reaped to
 // "expired" so a risky action never blocks the agent forever.
 export const HERMES_GATEWAY_APPROVAL_TTL_MS = 5 * 60 * 1000;
+export const HERMES_GATEWAY_MIN_APPROVAL_TTL_MS = 5 * 1000;
+export const HERMES_GATEWAY_MAX_APPROVAL_TTL_MS = HERMES_GATEWAY_APPROVAL_TTL_MS;
 export const HERMES_GATEWAY_MAX_APPROVAL_SUMMARY = 2_000;
 
 // ---------------------------------------------------------------------------
@@ -47,10 +49,12 @@ export const HERMES_GATEWAY_MAX_APPROVAL_SUMMARY = 2_000;
 // store-and-forward: it validates the envelope SHAPE only and never decrypts.
 // ---------------------------------------------------------------------------
 
-// Wire-format constant mirrored verbatim from HermesRelayCrypto.algorithm. Every
-// relay envelope and every published relay public key advertises this exact
-// string; any other value is rejected at validation time.
+// Wire-format constants mirrored verbatim from HermesRelayCrypto. v2 uses the
+// authenticated 2-DH wrap; v3 uses RFC 9180 HPKE Auth mode for the content-key
+// wrap while keeping payload/attachment AES-GCM unchanged. The server validates
+// shape only and never decrypts either version.
 export const HERMES_GATEWAY_RELAY_ENCRYPTION = "p256-hkdf-sha256-aesgcm";
+export const HERMES_GATEWAY_RELAY_ENCRYPTION_V3 = "hpke-auth-p256-hkdfsha256-aes256gcm";
 // X9.63 uncompressed P-256 public key: 65 bytes (0x04 ‖ X(32) ‖ Y(32)), base64.
 export const HERMES_GATEWAY_RELAY_PUBLIC_KEY_BYTES = 65;
 // payloadCiphertext base64 cap (matches the relay-request precedent in
@@ -60,19 +64,29 @@ export const HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64 = 900_000;
 // wrappedKey base64 cap. The wrapped symmetric key is a fixed ~125 bytes
 // (ephPubX963(65) ‖ nonce(12) ‖ ct(32) ‖ tag(16)); 4096 leaves ample headroom.
 export const HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 = 4_096;
+// HPKE v3 `enc` is a 65-byte P-256 public key; this leaves base64 padding room
+// while still rejecting unbounded relay-controlled strings.
+export const HERMES_GATEWAY_MAX_RELAY_ENC_B64 = 256;
 // The DEFAULT relay key version a freshly published key / envelope advertises
 // when none is supplied. v2 adds an optional senderPublicKey wire HINT (the
 // sealing peer's ephemeral/identity X9.63 key); clients bind the PINNED key, not
 // this hint, so the server still treats the envelope as opaque ciphertext.
+export const HERMES_GATEWAY_RELAY_PUBLIC_KEY_VERSION = 1;
 export const HERMES_GATEWAY_RELAY_KEY_VERSION = 2;
+export const HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION = 3;
+export const HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS = new Set([2, 3]);
 // Every relay key version whose wire shape the BLIND relay accepts on both the
 // write (requireGatewayRelayEnvelope / parseRelayPublicKey) and the read
 // (sanitizeGatewayRelayEnvelope) side. v1 is the original
-// "p256-hkdf-sha256-aesgcm" contract; v2 is the same crypto plus an optional
-// senderPublicKey hint. A version outside this set is a forged/future value and
-// is rejected at every gate so it can never slip past a permissive range check.
-// Rotation to a NEW crypto contract remains a future SIGNED protocol.
-export const HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS = new Set([1, 2]);
+// "p256-hkdf-sha256-aesgcm" contract; v2 adds sender-authenticated 2-DH; v3 is
+// RFC 9180 HPKE Auth. A version outside this set is a forged/future value and is
+// rejected at every gate so it can never slip past a permissive range check.
+export const HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS = new Set([1, 2, 3]);
+export const HERMES_GATEWAY_RATCHET_PROTOCOL_VERSION = 1;
+export const HERMES_GATEWAY_RATCHET_ALGORITHM = "OpenBurnBar-HermesRatchet-v1-P256-HKDFSHA256-AESGCM";
+export const HERMES_GATEWAY_MAX_RATCHET_CIPHERTEXT_B64 = HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64;
+export const HERMES_GATEWAY_MAX_RATCHET_ID = 160;
+export const HERMES_GATEWAY_MAX_RATCHET_COUNTER = 1_000_000_000;
 // Historical cutoff for the now-closed schema-1 plaintext migration. New writes
 // are sealed-only; reads keep a legacy plaintext fallback so old queued docs can
 // still render while backfills/scrubbers drain them.
@@ -133,11 +147,32 @@ export interface GatewayRelayEnvelopeDoc {
   wrappedKey: string;
   relayEncryption: string;
   relayKeyVersion: number;
+  // HPKE v3 only: encapsulated key (DHKEM(P-256) X9.63, base64). v1/v2 keep the
+  // historical layout where the ephemeral public key is carried inside
+  // wrappedKey.
+  enc?: string;
   // OPTIONAL wire HINT (relay key v2+): the sealing peer's X9.63 uncompressed
   // P-256 public key (65B, base64). The BLIND relay round-trips it verbatim and
   // never uses it for crypto — clients bind the PINNED relay key, not this hint.
   // Required for a v2 envelope, absent on a v1 envelope (legacy/back-compat).
   senderPublicKey?: string;
+}
+
+export interface GatewayRatchetHeaderDoc {
+  version: number;
+  algorithm: string;
+  sessionID: string;
+  senderDeviceID: string;
+  receiverDeviceID: string;
+  ratchetPublicKeyBase64: string;
+  previousChainLength: number;
+  messageNumber: number;
+  epoch: number;
+}
+
+export interface GatewayRatchetEnvelopeDoc {
+  header: GatewayRatchetHeaderDoc;
+  ciphertextBase64: string;
 }
 
 export interface HermesGatewayClientDoc {
@@ -160,9 +195,42 @@ export interface HermesGatewayClientDoc {
   agentRelayPublicKey?: string;
   agentRelayKeyVersion?: number;
   agentRelayEncryption?: string;
+  agentSupportsRelayEnvelopeVersions?: number[];
+  agentPreferredRelayEnvelopeVersion?: number;
+  agentSupportsHpkeV3?: boolean;
+  agentPlatform?: string;
+  agentAppBuild?: string;
   phoneRelayPublicKey?: string;
   phoneRelayKeyVersion?: number;
   phoneRelayEncryption?: string;
+  phoneSupportsRelayEnvelopeVersions?: number[];
+  phonePreferredRelayEnvelopeVersion?: number;
+  phoneSupportsHpkeV3?: boolean;
+  phonePlatform?: string;
+  phoneAppBuild?: string;
+  // Ratcheted E2EE pairing material (Phase 6). These public prekey fields let
+  // endpoints negotiate a reviewed Double-Ratchet-style v1 session without the
+  // blind relay seeing session secrets. The server stores and echoes public
+  // material only; private identity, signing, prekey, and session state live in
+  // device Keychain/Keystore storage.
+  agentRatchetIdentityPublicKey?: string;
+  agentRatchetSigningPublicKey?: string;
+  agentRatchetSignedPreKeyPublicKey?: string;
+  agentRatchetSignedPreKeyId?: string;
+  agentRatchetSignedPreKeySignature?: string;
+  agentSupportsRatchetV1?: boolean;
+  phoneRatchetIdentityPublicKey?: string;
+  phoneRatchetSigningPublicKey?: string;
+  phoneRatchetSignedPreKeyPublicKey?: string;
+  phoneRatchetSignedPreKeyId?: string;
+  phoneRatchetSignedPreKeySignature?: string;
+  phoneSupportsRatchetV1?: boolean;
+  supportsRatchetV1?: boolean;
+  // Negotiated intersection of the agent and phone gateway envelope versions.
+  // New senders choose preferredRelayEnvelopeVersion when sealing to this client.
+  supportsRelayEnvelopeVersions?: number[];
+  preferredRelayEnvelopeVersion?: number;
+  supportsHpkeV3?: boolean;
   // True once BOTH endpoints have published a relay public key. New gateway
   // writes require this sealed path; legacy schema-1 plaintext is read-only.
   relayCapable?: boolean;
@@ -233,6 +301,9 @@ export interface HermesGatewayEventDoc {
   attachmentIds: string[];
   // Sealed body for schema 2+ events. Absent on legacy schema-1 docs.
   relayEnvelope?: GatewayRelayEnvelopeDoc;
+  // Ratcheted body for Phase 6 v1 sessions. Mutually exclusive with
+  // relayEnvelope on new writes; the blind relay validates shape only.
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }
@@ -249,6 +320,9 @@ export interface HermesGatewayMessageDoc {
   text?: string;
   // Sealed reply body for schema 2+ messages. Absent on legacy schema-1 docs.
   relayEnvelope?: GatewayRelayEnvelopeDoc;
+  // Ratcheted reply body for Phase 6 v1 sessions. Mutually exclusive with
+  // relayEnvelope on new writes; the blind relay validates shape only.
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
@@ -270,6 +344,10 @@ export interface HermesGatewayAttachmentManifestDoc {
   // bytes with a per-attachment key before the signed-URL upload, so Storage
   // holds ciphertext and the server's sha256 is a ciphertext integrity check.
   relayEnvelope?: GatewayRelayEnvelopeDoc;
+  // Ratcheted manifest body for Phase 6 v1 sessions. The uploaded attachment
+  // bytes remain opaque ciphertext; the relay validates this manifest envelope
+  // shape only and never decrypts.
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   createdAt: string;
   updatedAt?: string;
   expiresAt: string;
@@ -387,8 +465,17 @@ export function pendingModelSwitchInFlight(
   return now - requestedAt <= HERMES_GATEWAY_PENDING_MODEL_TTL_MS;
 }
 
-export function gatewayApprovalExpiryISO(fromMillis = Date.now()): string {
-  return new Date(fromMillis + HERMES_GATEWAY_APPROVAL_TTL_MS).toISOString();
+export function sanitizeHermesGatewayApprovalTTL(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === "") return HERMES_GATEWAY_APPROVAL_TTL_MS;
+  const seconds = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw.trim()) : NaN;
+  if (!Number.isFinite(seconds) || seconds <= 0) return HERMES_GATEWAY_APPROVAL_TTL_MS;
+  const millis = Math.floor(seconds * 1000);
+  return Math.min(HERMES_GATEWAY_MAX_APPROVAL_TTL_MS, Math.max(HERMES_GATEWAY_MIN_APPROVAL_TTL_MS, millis));
+}
+
+export function gatewayApprovalExpiryISO(fromMillis = Date.now(), ttlMillis = HERMES_GATEWAY_APPROVAL_TTL_MS): string {
+  const boundedTTL = sanitizeHermesGatewayApprovalTTL(ttlMillis / 1000);
+  return new Date(fromMillis + boundedTTL).toISOString();
 }
 
 /**
@@ -467,6 +554,89 @@ export function isGatewayRelayPublicKeyB64(raw: unknown): string | undefined {
   return value;
 }
 
+function gatewayBase64Within(raw: unknown, maxLength: number): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (!value || value.length > maxLength || !/^[A-Za-z0-9+/=]+$/u.test(value)) return undefined;
+  try {
+    Buffer.from(value, "base64");
+  } catch {
+    return undefined;
+  }
+  return value;
+}
+
+function gatewayRatchetID(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (!value || value.length > HERMES_GATEWAY_MAX_RATCHET_ID || /[\r\n/]/u.test(value)) return undefined;
+  return value;
+}
+
+function gatewayRatchetCounter(raw: unknown): number | undefined {
+  const value = typeof raw === "number" ? Math.floor(raw) : Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0 || value > HERMES_GATEWAY_MAX_RATCHET_COUNTER) return undefined;
+  return value;
+}
+
+function sanitizeGatewayRatchetHeader(raw: unknown): GatewayRatchetHeaderDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  const version = gatewayRatchetCounter(record.version);
+  const algorithm = typeof record.algorithm === "string" ? record.algorithm.trim() : "";
+  const sessionID = gatewayRatchetID(record.sessionID);
+  const senderDeviceID = gatewayRatchetID(record.senderDeviceID);
+  const receiverDeviceID = gatewayRatchetID(record.receiverDeviceID);
+  const ratchetPublicKeyBase64 = isGatewayRelayPublicKeyB64(record.ratchetPublicKeyBase64);
+  const previousChainLength = gatewayRatchetCounter(record.previousChainLength);
+  const messageNumber = gatewayRatchetCounter(record.messageNumber);
+  const epoch = gatewayRatchetCounter(record.epoch);
+  if (
+    version !== HERMES_GATEWAY_RATCHET_PROTOCOL_VERSION ||
+    algorithm !== HERMES_GATEWAY_RATCHET_ALGORITHM ||
+    !sessionID ||
+    !senderDeviceID ||
+    !receiverDeviceID ||
+    !ratchetPublicKeyBase64 ||
+    previousChainLength === undefined ||
+    messageNumber === undefined ||
+    epoch === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    version,
+    algorithm,
+    sessionID,
+    senderDeviceID,
+    receiverDeviceID,
+    ratchetPublicKeyBase64,
+    previousChainLength,
+    messageNumber,
+    epoch,
+  };
+}
+
+export function sanitizeGatewayRatchetEnvelope(raw: unknown): GatewayRatchetEnvelopeDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  const header = sanitizeGatewayRatchetHeader(record.header);
+  const ciphertextBase64 = gatewayBase64Within(record.ciphertextBase64, HERMES_GATEWAY_MAX_RATCHET_CIPHERTEXT_B64);
+  if (!header || !ciphertextBase64) return undefined;
+  return { header, ciphertextBase64 };
+}
+
+export function requireGatewayRatchetEnvelope(raw: unknown, fieldName: string): GatewayRatchetEnvelopeDoc {
+  const envelope = sanitizeGatewayRatchetEnvelope(raw);
+  if (!envelope) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName} must be a Hermes ratchet v${HERMES_GATEWAY_RATCHET_PROTOCOL_VERSION} envelope.`,
+    );
+  }
+  return envelope;
+}
+
 /**
  * Validate a per-document relay envelope (schema 2+). Mirrors requireSealedText:
  * checks the algorithm constant, the key version range, and the base64 shape +
@@ -480,21 +650,25 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
   if (!record) {
     throw new HttpsError("invalid-argument", `${fieldName} must be a relay envelope.`);
   }
-  const relayEncryption = typeof record.relayEncryption === "string" ? record.relayEncryption.trim() : "";
-  if (relayEncryption !== HERMES_GATEWAY_RELAY_ENCRYPTION) {
-    throw new HttpsError(
-      "invalid-argument",
-      `${fieldName}.relayEncryption must be ${HERMES_GATEWAY_RELAY_ENCRYPTION}.`,
-    );
-  }
   const relayKeyVersion =
     typeof record.relayKeyVersion === "number" ? Math.floor(record.relayKeyVersion) : Number(record.relayKeyVersion);
-  // Accept only a version whose wire shape exists (v1 or v2); reject every other
+  // Accept only a version whose wire shape exists (v1, v2, or v3); reject every other
   // value so a forged/future version can never be accepted as sealed.
   if (!HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS.has(relayKeyVersion)) {
     throw new HttpsError(
       "invalid-argument",
       `${fieldName}.relayKeyVersion must be one of ${[...HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS].join(", ")}.`,
+    );
+  }
+  const relayEncryption = typeof record.relayEncryption === "string" ? record.relayEncryption.trim() : "";
+  const expectedRelayEncryption =
+    relayKeyVersion === HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION
+      ? HERMES_GATEWAY_RELAY_ENCRYPTION_V3
+      : HERMES_GATEWAY_RELAY_ENCRYPTION;
+  if (relayEncryption !== expectedRelayEncryption) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName}.relayEncryption must be ${expectedRelayEncryption} for relayKeyVersion ${relayKeyVersion}.`,
     );
   }
   const payloadCiphertext = typeof record.payloadCiphertext === "string" ? record.payloadCiphertext.trim() : "";
@@ -512,6 +686,17 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
     !/^[A-Za-z0-9+/=]+$/u.test(wrappedKey)
   ) {
     throw new HttpsError("invalid-argument", `${fieldName}.wrappedKey must be base64 within the size cap.`);
+  }
+  const enc = typeof record.enc === "string" ? record.enc.trim() : "";
+  if (relayKeyVersion === HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION) {
+    if (!enc || enc.length > HERMES_GATEWAY_MAX_RELAY_ENC_B64 || !/^[A-Za-z0-9+/=]+$/u.test(enc)) {
+      throw new HttpsError(
+        "invalid-argument",
+        `${fieldName}.enc must be base64 within the size cap for relayKeyVersion ${relayKeyVersion}.`,
+      );
+    }
+  } else if (record.enc != null) {
+    throw new HttpsError("invalid-argument", `${fieldName}.enc is only valid for relayKeyVersion 3.`);
   }
   // senderPublicKey is the v2 wire HINT (a base64 X9.63 P-256 key). REQUIRE it for
   // a v2 envelope and reject a malformed value; tolerate its absence for v1.
@@ -536,29 +721,30 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
     wrappedKey,
     relayEncryption,
     relayKeyVersion,
+    enc: enc || undefined,
     senderPublicKey,
   }) as GatewayRelayEnvelopeDoc;
 }
 
 /**
- * MP-28: WRITE-path guard. Every NEW gateway write (a sealed message, an
- * attachment init, or a sealed model_switch event) MUST be v2 — the authenticated
- * 2-DH wrap. {@link requireGatewayRelayEnvelope} deliberately stays v1|v2 tolerant
- * for the READ / legacy-sanitizer path so already-stored v1 docs are not bricked;
- * but once the agent and phone are v2-only, the server must never accept a NEW,
- * unreadable schema-1 gateway doc (which would silently brick the channel and is a
- * downgrade surface). Rejecting at the trust boundary keeps v1 a read-only legacy.
+ * WRITE-path guard. Every NEW gateway write (a sealed message, attachment init,
+ * or sealed control event) MUST use an authenticated production envelope: v2
+ * 2-DH or v3 HPKE Auth. {@link requireGatewayRelayEnvelope} deliberately stays
+ * v1-tolerant for the READ / legacy-sanitizer path so already-stored v1 docs are
+ * not bricked; the trust boundary rejects new legacy envelopes.
  */
-export function requireV2GatewayRelayEnvelope(raw: unknown, fieldName: string): GatewayRelayEnvelopeDoc {
+export function requireProductionGatewayRelayEnvelope(raw: unknown, fieldName: string): GatewayRelayEnvelopeDoc {
   const envelope = requireGatewayRelayEnvelope(raw, fieldName);
-  if (envelope.relayKeyVersion !== 2) {
+  if (!HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS.has(envelope.relayKeyVersion)) {
     throw new HttpsError(
       "invalid-argument",
-      `${fieldName}.relayKeyVersion must be 2 (the authenticated gateway wrap) for new gateway writes.`,
+      `${fieldName}.relayKeyVersion must be one of ${[...HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS].join(", ")} for new gateway writes.`,
     );
   }
   return envelope;
 }
+
+export const requireV2GatewayRelayEnvelope = requireProductionGatewayRelayEnvelope;
 
 /**
  * Non-throwing shape check used by read-side serializers (serializeHermesGateway-
@@ -572,11 +758,15 @@ export function requireV2GatewayRelayEnvelope(raw: unknown, fieldName: string): 
 export function sanitizeGatewayRelayEnvelope(raw: unknown): GatewayRelayEnvelopeDoc | undefined {
   const record = recordOrUndefined(raw);
   if (!record) return undefined;
-  const relayEncryption = typeof record.relayEncryption === "string" ? record.relayEncryption.trim() : "";
-  if (relayEncryption !== HERMES_GATEWAY_RELAY_ENCRYPTION) return undefined;
   const relayKeyVersion =
     typeof record.relayKeyVersion === "number" ? Math.floor(record.relayKeyVersion) : Number(record.relayKeyVersion);
   if (!HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS.has(relayKeyVersion)) return undefined;
+  const relayEncryption = typeof record.relayEncryption === "string" ? record.relayEncryption.trim() : "";
+  const expectedRelayEncryption =
+    relayKeyVersion === HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION
+      ? HERMES_GATEWAY_RELAY_ENCRYPTION_V3
+      : HERMES_GATEWAY_RELAY_ENCRYPTION;
+  if (relayEncryption !== expectedRelayEncryption) return undefined;
   const payloadCiphertext = typeof record.payloadCiphertext === "string" ? record.payloadCiphertext.trim() : "";
   if (
     !payloadCiphertext ||
@@ -591,6 +781,12 @@ export function sanitizeGatewayRelayEnvelope(raw: unknown): GatewayRelayEnvelope
     wrappedKey.length > HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 ||
     !/^[A-Za-z0-9+/=]+$/u.test(wrappedKey)
   ) {
+    return undefined;
+  }
+  const enc = typeof record.enc === "string" ? record.enc.trim() : "";
+  if (relayKeyVersion === HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION) {
+    if (!enc || enc.length > HERMES_GATEWAY_MAX_RELAY_ENC_B64 || !/^[A-Za-z0-9+/=]+$/u.test(enc)) return undefined;
+  } else if (record.enc != null) {
     return undefined;
   }
   // Mirror requireGatewayRelayEnvelope's senderPublicKey contract exactly so the
@@ -608,6 +804,7 @@ export function sanitizeGatewayRelayEnvelope(raw: unknown): GatewayRelayEnvelope
     wrappedKey,
     relayEncryption,
     relayKeyVersion,
+    enc: enc || undefined,
     senderPublicKey,
   }) as GatewayRelayEnvelopeDoc;
 }
@@ -643,6 +840,100 @@ export function sanitizeHermesGatewayModelId(raw: unknown): string | undefined {
   return value;
 }
 
+export interface HermesGatewayRelayEnvelopeCapabilities {
+  supportsRelayEnvelopeVersions: number[];
+  preferredRelayEnvelopeVersion: number;
+  supportsHpkeV3: boolean;
+  platform?: string;
+  appBuild?: string;
+}
+
+function sanitizeGatewayCapabilityText(raw: unknown, max: number): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  return value ? value.slice(0, max) : undefined;
+}
+
+export function sanitizeGatewayRelayEnvelopeCapabilities(
+  raw: Record<string, unknown> | undefined,
+  throwError: (message: string) => never = (message) => {
+    throw new HttpsError("invalid-argument", message);
+  },
+): HermesGatewayRelayEnvelopeCapabilities {
+  const versionField = raw?.supportsRelayEnvelopeVersions;
+  let supportsRelayEnvelopeVersions: number[];
+  if (versionField == null) {
+    supportsRelayEnvelopeVersions = [HERMES_GATEWAY_RELAY_KEY_VERSION];
+  } else if (Array.isArray(versionField)) {
+    const versions: number[] = [];
+    for (const item of versionField) {
+      const version = typeof item === "number" ? Math.floor(item) : Number(item);
+      if (!HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS.has(version)) {
+        throwError(
+          `supportsRelayEnvelopeVersions must contain only ${[...HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS].join(", ")}.`,
+        );
+      }
+      if (!versions.includes(version)) versions.push(version);
+    }
+    if (!versions.length) {
+      throwError("supportsRelayEnvelopeVersions must include at least one production relay envelope version.");
+    }
+    supportsRelayEnvelopeVersions = versions.sort((a, b) => a - b);
+  } else {
+    throwError("supportsRelayEnvelopeVersions must be an array.");
+  }
+
+  const rawSupportsHpkeV3 = raw?.supportsHpkeV3;
+  if (rawSupportsHpkeV3 != null && typeof rawSupportsHpkeV3 !== "boolean") {
+    throwError("supportsHpkeV3 must be a boolean.");
+  }
+  const versionListIncludesV3 = supportsRelayEnvelopeVersions.includes(HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION);
+  if (rawSupportsHpkeV3 === true && !versionListIncludesV3) {
+    throwError("supportsHpkeV3=true requires supportsRelayEnvelopeVersions to include 3.");
+  }
+  if (rawSupportsHpkeV3 === false && versionListIncludesV3) {
+    throwError("supportsHpkeV3=false is inconsistent with supportsRelayEnvelopeVersions including 3.");
+  }
+  const supportsHpkeV3 = rawSupportsHpkeV3 ?? versionListIncludesV3;
+
+  const rawPreferred = raw?.preferredRelayEnvelopeVersion;
+  const preferredRelayEnvelopeVersion =
+    rawPreferred == null
+      ? Math.max(...supportsRelayEnvelopeVersions)
+      : typeof rawPreferred === "number"
+        ? Math.floor(rawPreferred)
+        : Number(rawPreferred);
+  if (!supportsRelayEnvelopeVersions.includes(preferredRelayEnvelopeVersion)) {
+    throwError("preferredRelayEnvelopeVersion must be included in supportsRelayEnvelopeVersions.");
+  }
+
+  return stripUndefinedObject({
+    supportsRelayEnvelopeVersions,
+    preferredRelayEnvelopeVersion,
+    supportsHpkeV3,
+    platform: sanitizeGatewayCapabilityText(raw?.clientPlatform ?? raw?.platform, 80),
+    appBuild: sanitizeGatewayCapabilityText(raw?.clientAppBuild ?? raw?.appBuild, 80),
+  }) as HermesGatewayRelayEnvelopeCapabilities;
+}
+
+export function negotiateGatewayRelayEnvelopeCapabilities(
+  agent: HermesGatewayRelayEnvelopeCapabilities,
+  phone: HermesGatewayRelayEnvelopeCapabilities,
+): HermesGatewayRelayEnvelopeCapabilities {
+  const shared = agent.supportsRelayEnvelopeVersions
+    .filter((version) => phone.supportsRelayEnvelopeVersions.includes(version))
+    .sort((a, b) => a - b);
+  if (!shared.length) {
+    throw new HttpsError("invalid-argument", "No shared Hermes Gateway relay envelope version exists for this pairing.");
+  }
+  const preferredRelayEnvelopeVersion = Math.max(...shared);
+  return {
+    supportsRelayEnvelopeVersions: shared,
+    preferredRelayEnvelopeVersion,
+    supportsHpkeV3: shared.includes(HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION),
+  };
+}
+
 export function destinationDocId(destinationId: string): string {
   if (destinationId === HERMES_GATEWAY_DEFAULT_DESTINATION_ID) return HERMES_GATEWAY_DEFAULT_DESTINATION_DOC_ID;
   const safe = destinationId
@@ -672,13 +963,42 @@ export function clampHermesGatewayLimit(raw: unknown, fallback = 50): number {
 function hasValidOptionalRelayFields(record: Record<string, unknown>): boolean {
   const optionalString = (value: unknown) => typeof value === "string" || value === undefined;
   const optionalNumber = (value: unknown) => typeof value === "number" || value === undefined;
+  const optionalBoolean = (value: unknown) => typeof value === "boolean" || value === undefined;
+  const optionalNumberArray = (value: unknown) =>
+    value === undefined || (Array.isArray(value) && value.every((item) => typeof item === "number"));
   return (
     optionalString(record.agentRelayPublicKey) &&
     optionalNumber(record.agentRelayKeyVersion) &&
     optionalString(record.agentRelayEncryption) &&
+    optionalNumberArray(record.agentSupportsRelayEnvelopeVersions) &&
+    optionalNumber(record.agentPreferredRelayEnvelopeVersion) &&
+    optionalBoolean(record.agentSupportsHpkeV3) &&
+    optionalString(record.agentPlatform) &&
+    optionalString(record.agentAppBuild) &&
     optionalString(record.phoneRelayPublicKey) &&
     optionalNumber(record.phoneRelayKeyVersion) &&
     optionalString(record.phoneRelayEncryption) &&
+    optionalNumberArray(record.phoneSupportsRelayEnvelopeVersions) &&
+    optionalNumber(record.phonePreferredRelayEnvelopeVersion) &&
+    optionalBoolean(record.phoneSupportsHpkeV3) &&
+    optionalString(record.phonePlatform) &&
+    optionalString(record.phoneAppBuild) &&
+    optionalString(record.agentRatchetIdentityPublicKey) &&
+    optionalString(record.agentRatchetSigningPublicKey) &&
+    optionalString(record.agentRatchetSignedPreKeyPublicKey) &&
+    optionalString(record.agentRatchetSignedPreKeyId) &&
+    optionalString(record.agentRatchetSignedPreKeySignature) &&
+    optionalBoolean(record.agentSupportsRatchetV1) &&
+    optionalString(record.phoneRatchetIdentityPublicKey) &&
+    optionalString(record.phoneRatchetSigningPublicKey) &&
+    optionalString(record.phoneRatchetSignedPreKeyPublicKey) &&
+    optionalString(record.phoneRatchetSignedPreKeyId) &&
+    optionalString(record.phoneRatchetSignedPreKeySignature) &&
+    optionalBoolean(record.phoneSupportsRatchetV1) &&
+    optionalBoolean(record.supportsRatchetV1) &&
+    optionalNumberArray(record.supportsRelayEnvelopeVersions) &&
+    optionalNumber(record.preferredRelayEnvelopeVersion) &&
+    optionalBoolean(record.supportsHpkeV3) &&
     (typeof record.relayCapable === "boolean" || record.relayCapable === undefined)
   );
 }
@@ -730,10 +1050,11 @@ export function isHermesGatewayAttachmentManifestDoc(raw: unknown): raw is Herme
     typeof record.clientId === "string" &&
     (typeof record.destinationId === "string" || record.destinationId === undefined) &&
     // fileName is sealed (schema 2+) so it is optional now; a legacy schema-1
-    // manifest still carries a plaintext fileName. relayEnvelope is present on
-    // sealed manifests and validated by sanitizeGatewayRelayEnvelope when read.
+    // manifest still carries a plaintext fileName. relayEnvelope/ratchetEnvelope
+    // are present on sealed manifests and validated when read.
     (typeof record.fileName === "string" || record.fileName === undefined) &&
     (record.relayEnvelope === undefined || sanitizeGatewayRelayEnvelope(record.relayEnvelope) !== undefined) &&
+    (record.ratchetEnvelope === undefined || sanitizeGatewayRatchetEnvelope(record.ratchetEnvelope) !== undefined) &&
     typeof record.contentType === "string" &&
     typeof record.byteCount === "number" &&
     Number.isFinite(record.byteCount) &&
@@ -772,14 +1093,15 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
   const record = recordOrUndefined(raw);
   if (!record) return undefined;
   const relayEnvelope = sanitizeGatewayRelayEnvelope(record.relayEnvelope);
-  // A doc is "sealed" once it carries a valid relayEnvelope OR advertises
-  // schemaVersion >= 2. For ANY sealed doc the private fields (text /
+  const ratchetEnvelope = sanitizeGatewayRatchetEnvelope(record.ratchetEnvelope);
+  // A doc is "sealed" once it carries a valid relayEnvelope/ratchetEnvelope OR
+  // advertises schemaVersion >= 2. For ANY sealed doc the private fields (text /
   // senderDisplayName / threadId) MUST be dropped, even if a backfilled, admin-
   // written, or corrupt doc still has them as siblings of the envelope — keeping
   // them would re-expose plaintext the sealed-doc invariant promises is gone.
   // Legacy plaintext is surfaced ONLY for an unsealed schema-1 doc.
   const schemaVersion = typeof record.schemaVersion === "number" ? record.schemaVersion : NaN;
-  const isSealedDoc = relayEnvelope !== undefined || schemaVersion >= 2;
+  const isSealedDoc = relayEnvelope !== undefined || ratchetEnvelope !== undefined || schemaVersion >= 2;
   const hasLegacyText = !isSealedDoc && typeof record.text === "string";
   const isModelSwitch = record.kind === "model_switch";
   const hasModelSwitchRoute = isModelSwitch && typeof record.modelId === "string";
@@ -789,7 +1111,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     (record.kind !== "message" && record.kind !== "model_switch") ||
     typeof record.destinationId !== "string" ||
     typeof record.senderId !== "string" ||
-    (!hasModelSwitchRoute && !relayEnvelope && !hasLegacyText) ||
+    (!hasModelSwitchRoute && !relayEnvelope && !ratchetEnvelope && !hasLegacyText) ||
     !Array.isArray(record.attachmentIds) ||
     typeof record.createdAt !== "string" ||
     typeof record.schemaVersion !== "number"
@@ -813,6 +1135,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     text: hasLegacyText ? (record.text as string) : undefined,
     modelId: typeof record.modelId === "string" ? record.modelId : undefined,
     relayEnvelope,
+    ratchetEnvelope,
     attachmentIds: record.attachmentIds.filter((item): item is string => typeof item === "string"),
     createdAt: record.createdAt,
     schemaVersion: record.schemaVersion,
@@ -896,9 +1219,35 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     agentRelayPublicKey: client.agentRelayPublicKey,
     agentRelayKeyVersion: client.agentRelayKeyVersion,
     agentRelayEncryption: client.agentRelayEncryption,
+    agentSupportsRelayEnvelopeVersions: client.agentSupportsRelayEnvelopeVersions,
+    agentPreferredRelayEnvelopeVersion: client.agentPreferredRelayEnvelopeVersion,
+    agentSupportsHpkeV3: client.agentSupportsHpkeV3,
+    agentPlatform: client.agentPlatform,
+    agentAppBuild: client.agentAppBuild,
     phoneRelayPublicKey: client.phoneRelayPublicKey,
     phoneRelayKeyVersion: client.phoneRelayKeyVersion,
     phoneRelayEncryption: client.phoneRelayEncryption,
+    phoneSupportsRelayEnvelopeVersions: client.phoneSupportsRelayEnvelopeVersions,
+    phonePreferredRelayEnvelopeVersion: client.phonePreferredRelayEnvelopeVersion,
+    phoneSupportsHpkeV3: client.phoneSupportsHpkeV3,
+    phonePlatform: client.phonePlatform,
+    phoneAppBuild: client.phoneAppBuild,
+    agentRatchetIdentityPublicKey: client.agentRatchetIdentityPublicKey,
+    agentRatchetSigningPublicKey: client.agentRatchetSigningPublicKey,
+    agentRatchetSignedPreKeyPublicKey: client.agentRatchetSignedPreKeyPublicKey,
+    agentRatchetSignedPreKeyId: client.agentRatchetSignedPreKeyId,
+    agentRatchetSignedPreKeySignature: client.agentRatchetSignedPreKeySignature,
+    agentSupportsRatchetV1: client.agentSupportsRatchetV1,
+    phoneRatchetIdentityPublicKey: client.phoneRatchetIdentityPublicKey,
+    phoneRatchetSigningPublicKey: client.phoneRatchetSigningPublicKey,
+    phoneRatchetSignedPreKeyPublicKey: client.phoneRatchetSignedPreKeyPublicKey,
+    phoneRatchetSignedPreKeyId: client.phoneRatchetSignedPreKeyId,
+    phoneRatchetSignedPreKeySignature: client.phoneRatchetSignedPreKeySignature,
+    phoneSupportsRatchetV1: client.phoneSupportsRatchetV1,
+    supportsRatchetV1: client.supportsRatchetV1,
+    supportsRelayEnvelopeVersions: client.supportsRelayEnvelopeVersions,
+    preferredRelayEnvelopeVersion: client.preferredRelayEnvelopeVersion,
+    supportsHpkeV3: client.supportsHpkeV3,
     relayCapable: client.relayCapable === true,
     runtimeModelId: client.runtimeModelId,
     runtimeProviderId: client.runtimeProviderId,

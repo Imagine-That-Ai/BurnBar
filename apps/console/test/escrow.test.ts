@@ -26,6 +26,10 @@ import {
   base64ToBytes,
   EscrowError,
   AESGCM_ALGORITHM,
+  BLOB_INTEGRITY_HASH_VERSION,
+  CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION,
+  CURRENT_SEALED_TEXT_SCHEMA_VERSION,
+  cloudVaultAADContext,
 } from "../lib/escrow";
 
 const subtle = globalThis.crypto.subtle;
@@ -51,17 +55,50 @@ describe("escrow base64 helpers", () => {
 });
 
 describe("AES-256-GCM blob envelope", () => {
-  it("seals and opens, preserving plaintext and hash", async () => {
+  it("seals and opens legacy v1 blobs when only a non-extractable CryptoKey is available", async () => {
     const key = await importVaultKey(randomBytes(32));
     const plaintext = new TextEncoder().encode("the basin holds your mercury");
     const env = await sealBlob(plaintext, key);
 
+    expect(env.schemaVersion).toBe(1);
     expect(env.algorithm).toBe(AESGCM_ALGORITHM);
     expect(env.keyVersion).toBe(1);
     expect(env.plaintextSHA256).toHaveLength(64);
 
     const opened = await openBlob(env, key);
     expect(new TextDecoder().decode(opened)).toBe("the basin holds your mercury");
+  });
+
+  it("seals v2 blobs with destination AAD and keyed integrity when raw vault bytes are present", async () => {
+    const raw = randomBytes(32);
+    const key = await importVaultKey(raw);
+    const context = {
+      uid: "userA",
+      collection: "project_memory_snapshots",
+      docID: "pm_console_fixture",
+      field: "sealedSnapshot",
+    };
+    const env = await sealBlob(new TextEncoder().encode("vaulted snapshot"), key, {
+      aadContext: context,
+      rawVaultKey: raw,
+    });
+
+    expect(env.schemaVersion).toBe(CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION);
+    expect(env.integrityHashVersion).toBe(BLOB_INTEGRITY_HASH_VERSION);
+    expect(env.plaintextSHA256).toBeUndefined();
+    expect(env.plaintextHMAC).toHaveLength(64);
+    expect(env.aad).toBe(cloudVaultAADContext(context));
+
+    await expect(openBlob(env, key)).rejects.toBeInstanceOf(EscrowError);
+    await expect(
+      openBlob(env, key, {
+        aadContext: { ...context, docID: "pm_elsewhere" },
+        rawVaultKey: raw,
+      }),
+    ).rejects.toBeInstanceOf(EscrowError);
+
+    const opened = await openBlob(env, key, { aadContext: context, rawVaultKey: raw });
+    expect(new TextDecoder().decode(opened)).toBe("vaulted snapshot");
   });
 
   it("rejects a tampered ciphertext", async () => {
@@ -78,6 +115,16 @@ describe("AES-256-GCM blob envelope", () => {
     const env = await sealBlob(new TextEncoder().encode("seal me"), key);
     env.plaintextSHA256 = "0".repeat(64);
     await expect(openBlob(env, key)).rejects.toMatchObject({ code: "hash_mismatch" });
+  });
+
+  it("rejects a v2 HMAC mismatch even with a valid tag", async () => {
+    const raw = randomBytes(32);
+    const key = await importVaultKey(raw);
+    const env = await sealBlob(new TextEncoder().encode("seal me"), key, { rawVaultKey: raw });
+    env.plaintextHMAC = "0".repeat(64);
+    await expect(openBlob(env, key, { rawVaultKey: raw })).rejects.toMatchObject({
+      code: "hash_mismatch",
+    });
   });
 
   it("fails to open with the wrong key", async () => {
@@ -99,6 +146,25 @@ describe("AES-256-GCM sealed text (Swift facet layout)", () => {
     expect(base64ToBytes(env.tag)).toHaveLength(16);
 
     expect(await openText(env, key)).toBe("conversation body");
+  });
+
+  it("binds v2 sealed text to the Firestore destination AAD", async () => {
+    const key = await importVaultKey(randomBytes(32));
+    const context = {
+      uid: "userA",
+      collection: "cloud_search_documents",
+      docID: "doc123",
+      field: "sealedTitle",
+    };
+    const env = await sealText("context-bound title", key, { aadContext: context });
+
+    expect(env.schemaVersion).toBe(CURRENT_SEALED_TEXT_SCHEMA_VERSION);
+    expect(env.aad).toBe(cloudVaultAADContext(context));
+    expect(await openText(env, key, { aadContext: context })).toBe("context-bound title");
+    await expect(openText(env, key)).rejects.toBeInstanceOf(EscrowError);
+    await expect(
+      openText(env, key, { aadContext: { ...context, field: "sealedBodyPreview" } }),
+    ).rejects.toBeInstanceOf(EscrowError);
   });
 
   it("rejects a tampered tag", async () => {

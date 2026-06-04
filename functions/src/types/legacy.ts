@@ -947,17 +947,22 @@ export interface CloudVaultBlobEnvelopeDoc {
   schemaVersion: number;
   algorithm: "AES-256-GCM";
   keyVersion: number;
-  plaintextSHA256: string;
+  plaintextSHA256?: string;
+  plaintextHMAC?: string;
+  integrityHashVersion?: number;
   sealedBoxBase64: string;
   createdAt: string;
+  aad?: string;
 }
 
 export interface CloudVaultSealedTextDoc {
+  schemaVersion?: number;
   algorithm: "AES-256-GCM";
   keyVersion: number;
   nonce: string;
   ciphertext: string;
   tag: string;
+  aad?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1070,6 +1075,7 @@ export interface ProjectMemorySnapshotDoc {
   /** Opaque, vault-key-derived deterministic doc id (mirrors the Firestore key). */
   docID?: string;
   contentHash: string;
+  contentHashVersion?: number;
   sourceSessionCount: number;
   sourceConversationCount: number;
   generatedAt: string;

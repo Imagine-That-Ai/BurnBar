@@ -2284,16 +2284,40 @@ final class HermesGatewaySettingsStore {
     /// on a freshly paired Mac. Returns `nil` only when there is genuinely no key
     /// to show.
     func agentSafetyCode(for client: HermesGatewayClientRecord) -> String? {
+        guard let ratchetIdentityKeys = ratchetSafetyCodeKeys(for: client) else {
+            return nil
+        }
         if let uid = listenedUID, !uid.isEmpty,
-           let pinned = agentKeyPinStore.pinnedSafetyCode(uid: uid, clientId: client.id) {
+           let pinned = agentKeyPinStore.pinnedSafetyCode(
+            uid: uid,
+            clientId: client.id,
+            additionalPublicKeysBase64: ratchetIdentityKeys
+           ) {
             return pinned
         }
         guard let advertised = client.relayPublicKey else { return nil }
         // MP-1: two-key code — the advertised agent key + this device's own relay key.
-        let phoneKey = HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64
+        guard let phoneKey = try? HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64 else {
+            return nil
+        }
         return HermesGatewayAgentKeyPinStore.safetyCode(
-            agentPublicKeyBase64: advertised, phonePublicKeyBase64: phoneKey
+            publicKeysBase64: [advertised, phoneKey] + ratchetIdentityKeys
         )
+    }
+
+    private func ratchetSafetyCodeKeys(for client: HermesGatewayClientRecord) -> [String]? {
+        guard client.canRatchetToAgent else { return [] }
+        guard
+            let agentRatchetIdentity = nonEmpty(client.agentRatchetIdentityPublicKey),
+            let localRatchetIdentity = try? HermesGatewayRatchetPrekeyStore.loadOrCreateBundle().identityPublicKeyBase64
+        else {
+            return nil
+        }
+        if let echoedPhoneIdentity = nonEmpty(client.phoneRatchetIdentityPublicKey),
+           echoedPhoneIdentity != localRatchetIdentity.trimmingCharacters(in: .whitespacesAndNewlines) {
+            return nil
+        }
+        return [agentRatchetIdentity, localRatchetIdentity]
     }
 
     /// Explicit, user-confirmed re-pair for a client whose private connection now
@@ -2726,15 +2750,22 @@ final class HermesGatewaySettingsStore {
         // Legacy plaintext docs pass through unchanged; a doc this device cannot
         // open keeps `resolvedText == nil` and renders the sealed-for-another-device
         // state instead of empty.
-        let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let keypair: HermesGatewayRelayKeypair
+        do {
+            keypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        } catch {
+            setNotice("Could not open Hermes replies: \(error.localizedDescription)", style: .error)
+            return
+        }
         let messages = (snapshot?.documents.compactMap { document in
             HermesGatewayMessageRecord(documentID: document.documentID, data: document.data())
         } ?? []).map { record -> HermesGatewayMessageRecord in
             guard let uid = listenedUID, !uid.isEmpty else { return record }
+            let targetClient = clients.first { $0.id == record.clientId }
             // Pass the shared pin store so an unsealed reply on a client whose agent
             // key this device pinned is treated as a downgrade (never rendered as a
             // genuine reply) — closes the server-injected-plaintext impersonation gap.
-            return record.decodedText(using: keypair, uid: uid, pinStore: agentKeyPinStore)
+            return record.decodedText(using: keypair, uid: uid, targetClient: targetClient, pinStore: agentKeyPinStore)
         }
 
         // MP-6: index the decrypted approval-detail cards by their sealed actionId so
@@ -2832,7 +2863,7 @@ final class HermesGatewaySettingsStore {
             else { return nil }
 
             let sealedBody = try await downloadGatewayAttachmentBody(storagePath: storagePath)
-            let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+            let keypair = try HermesGatewayRelayKeypair.loadOrCreate()
             // v2: bind the AGENT's pinned relay key so a forged attachment fails
             // the authenticated unwrap. Fail closed if unpinned.
             guard let opened = record.opened(

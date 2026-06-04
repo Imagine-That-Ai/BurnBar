@@ -27,7 +27,8 @@ private struct CLIAgentMissionEventPrivatePayload: Codable {
 }
 
 private enum CLIAgentMissionCloudSealer {
-    static let sealedSchemaVersion = 1
+    static let sealedSchemaVersion = 2
+    static let sealedStateSchemaVersion = 1
 
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -799,7 +800,7 @@ final class CLIAgentMissionRequestListener {
         )
         let key = try await missionVaultKey(uid: uid)
         payload["sealedStatePayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: key.keyData, vaultKeyID: key.vaultKeyID)
-        payload["sealedStateSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
+        payload["sealedStateSchemaVersion"] = CLIAgentMissionCloudSealer.sealedStateSchemaVersion
         payload["sealedStateVaultKeyID"] = key.vaultKeyID
         return payload
     }

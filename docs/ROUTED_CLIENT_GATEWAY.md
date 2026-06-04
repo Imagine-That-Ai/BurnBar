@@ -104,9 +104,9 @@ up the change.
 Anthropic live discovery also protects the zero-touch path. If `/v1/models`
 returns a new Claude model before `catalog.json` has a curated family row,
 the gateway can resolve that exact live ID dynamically as a hidden routeable
-model. Add the static catalog row later for better pricing, capability class,
-and display metadata; users should not need a catalog edit just to call the
-new model through the proxy.
+model. Curated catalog metadata can then follow for better pricing,
+capability class, and display metadata; users should not need a catalog edit
+just to call the new model through the proxy.
 
 A request whose route cannot prove an exact canonical model identity returns `503` before contacting upstream. Within a compatible pool,
 in-flight failover only retries routes whose `canonicalModelID` matches the
@@ -229,7 +229,7 @@ provider entries from the clients it switches.
 
 | Client | File | OpenBurnBar-owned keys |
 |---|---|---|
-| Droid/Factory | `~/.factory/settings.local.json` | Deduped `customModels` entries with `provider = openai` for models served by OpenAI-owned upstream accounts and `generic-chat-completion-api` for other gateway-served chat models, including bridged Claude models; one entry per provider/model, `id = custom:OpenBurnBar-<model>-<index>`; display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/settings.local.json` | Deduped `customModels` entries with `provider = openai` for models served by OpenAI-owned upstream accounts, `provider = anthropic` for Claude models routed through `/v1/messages` (Droid sends the gateway token as `x-api-key`), and `generic-chat-completion-api` for other gateway-served chat models; one entry per provider/model, `id = custom:OpenBurnBar-<model>-<index>`; display names prefixed `OpenBurnBar` |
 | Droid/Factory | `~/.factory/settings.json` | Same `customModels` entries as `settings.local.json`, kept in sync because Factory/Droid has used both files across versions |
 | Droid/Factory | `~/.factory/config.json` | `custom_models` entries with the same provider adapter choice and display names prefixed `OpenBurnBar` |
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |

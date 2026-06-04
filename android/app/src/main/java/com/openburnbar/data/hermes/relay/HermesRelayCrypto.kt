@@ -24,6 +24,7 @@ object HermesRelayCrypto {
 
     const val ALGORITHM = "p256-hkdf-sha256-aesgcm"
     const val KEY_VERSION = 1
+    const val GATEWAY_KEY_VERSION = 2
 
     fun requestAAD(uid: String, connectionId: String, requestId: String): ByteArray =
         HermesRelayCryptoSupport.aad(listOf("request", uid, connectionId, requestId))
@@ -33,6 +34,27 @@ object HermesRelayCrypto {
 
     fun chunkAAD(uid: String, connectionId: String, requestId: String, sequence: Int, kind: String): ByteArray =
         HermesRelayCryptoSupport.aad(listOf("chunk", uid, connectionId, requestId, sequence.toString(), kind))
+
+    fun gatewayEventAAD(uid: String, clientId: String, eventId: String): ByteArray =
+        HermesRelayCryptoSupport.aad(listOf("gatewayEvent", uid, clientId, eventId))
+
+    fun gatewayEventKeyAAD(uid: String, clientId: String, eventId: String): ByteArray =
+        HermesRelayCryptoSupport.aad(listOf("gatewayEventKey", uid, clientId, eventId))
+
+    fun gatewayMessageAAD(uid: String, clientId: String, messageId: String): ByteArray =
+        HermesRelayCryptoSupport.aad(listOf("gatewayMessage", uid, clientId, messageId))
+
+    fun gatewayMessageKeyAAD(uid: String, clientId: String, messageId: String): ByteArray =
+        HermesRelayCryptoSupport.aad(listOf("gatewayMessageKey", uid, clientId, messageId))
+
+    fun gatewayAttachmentKeyAAD(uid: String, clientId: String, attachmentId: String): ByteArray =
+        HermesRelayCryptoSupport.aad(listOf("gatewayAttachmentKey", uid, clientId, attachmentId))
+
+    fun gatewayAttachmentManifestAAD(uid: String, clientId: String, attachmentId: String): ByteArray =
+        HermesRelayCryptoSupport.aad(listOf("gatewayAttachmentManifest", uid, clientId, attachmentId))
+
+    fun gatewayAttachmentBodyAAD(uid: String, clientId: String, attachmentId: String): ByteArray =
+        HermesRelayCryptoSupport.aad(listOf("gatewayAttachmentBody", uid, clientId, attachmentId))
 
     fun generateSymmetricKey(): ByteArray = ByteArray(AES_KEY_BYTES).also(secureRandom::nextBytes)
 

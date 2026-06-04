@@ -9,6 +9,32 @@ export interface HermesGatewayModelOptionDoc {
   displayName: string;
 }
 
+export interface GatewayRelayEnvelopeDoc {
+  payloadCiphertext: string;
+  wrappedKey: string;
+  relayEncryption: string;
+  relayKeyVersion: number;
+  enc?: string;
+  senderPublicKey?: string;
+}
+
+export interface GatewayRatchetHeaderDoc {
+  version: number;
+  algorithm: string;
+  sessionID: string;
+  senderDeviceID: string;
+  receiverDeviceID: string;
+  ratchetPublicKeyBase64: string;
+  previousChainLength: number;
+  messageNumber: number;
+  epoch: number;
+}
+
+export interface GatewayRatchetEnvelopeDoc {
+  header: GatewayRatchetHeaderDoc;
+  ciphertextBase64: string;
+}
+
 export interface HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -27,6 +53,42 @@ export interface HermesGatewayClientDoc {
   pendingModelId?: string;
   pendingModelRequestedAt?: string;
   oversightMode?: string;
+  relayPublicKey?: string;
+  relayKeyVersion?: number;
+  relayEncryption?: string;
+  agentRelayPublicKey?: string;
+  agentRelayKeyVersion?: number;
+  agentRelayEncryption?: string;
+  agentSupportsRelayEnvelopeVersions?: number[];
+  agentPreferredRelayEnvelopeVersion?: number;
+  agentSupportsHpkeV3?: boolean;
+  agentPlatform?: string;
+  agentAppBuild?: string;
+  phoneRelayPublicKey?: string;
+  phoneRelayKeyVersion?: number;
+  phoneRelayEncryption?: string;
+  phoneSupportsRelayEnvelopeVersions?: number[];
+  phonePreferredRelayEnvelopeVersion?: number;
+  phoneSupportsHpkeV3?: boolean;
+  phonePlatform?: string;
+  phoneAppBuild?: string;
+  agentRatchetIdentityPublicKey?: string;
+  agentRatchetSigningPublicKey?: string;
+  agentRatchetSignedPreKeyPublicKey?: string;
+  agentRatchetSignedPreKeyId?: string;
+  agentRatchetSignedPreKeySignature?: string;
+  agentSupportsRatchetV1?: boolean;
+  phoneRatchetIdentityPublicKey?: string;
+  phoneRatchetSigningPublicKey?: string;
+  phoneRatchetSignedPreKeyPublicKey?: string;
+  phoneRatchetSignedPreKeyId?: string;
+  phoneRatchetSignedPreKeySignature?: string;
+  phoneSupportsRatchetV1?: boolean;
+  supportsRatchetV1?: boolean;
+  supportsRelayEnvelopeVersions?: number[];
+  preferredRelayEnvelopeVersion?: number;
+  supportsHpkeV3?: boolean;
+  relayCapable?: boolean;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -68,9 +130,11 @@ export interface HermesGatewayEventDoc {
   threadId?: string;
   senderId: string;
   senderDisplayName?: string;
-  text: string;
+  text?: string;
   modelId?: string;
   attachmentIds: string[];
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }
@@ -84,6 +148,8 @@ export interface HermesGatewayMessageDoc {
   replyToEventId?: string;
   text?: string;
   attachmentIds: string[];
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }
@@ -92,11 +158,14 @@ export interface HermesGatewayAttachmentManifestDoc {
   id: string;
   clientId: string;
   destinationId?: string;
-  fileName: string;
-  contentType: string;
-  byteCount: number;
-  storagePath: string;
-  status: string;
+  fileName?: string;
+  contentType?: string;
+  byteCount?: number;
+  storagePath?: string;
+  bodyStoragePath?: string;
+  status?: string;
+  relayEnvelope?: GatewayRelayEnvelopeDoc;
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   createdAt: string;
   expiresAt: string;
   schemaVersion: number;

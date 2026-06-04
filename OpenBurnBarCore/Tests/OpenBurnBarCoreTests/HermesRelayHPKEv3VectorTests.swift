@@ -255,7 +255,7 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
 
         // --- message / reply: agent → phone -------------------------------
         let messageSymKey = deterministicSymmetricKey(tweak: 0x22)
-        let messagePlaintext = #"{"text":"Hermes replied over the encrypted gateway."}"#
+        let messagePlaintext = #"{"text":"Hermes replied over the encrypted gateway.","destinationId":"burnbar:home"}"#
         positives.append(try makePositive(
             name: "message", direction: "agent->phone",
             uid: uid, clientId: clientId, id: messageId,
@@ -269,7 +269,7 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
 
         // --- model switch: phone → agent (reuses the EVENT AADs) ----------
         let modelSwitchSymKey = deterministicSymmetricKey(tweak: 0x33)
-        let modelSwitchPlaintext = #"{"modelId":"claude-opus-4-8","destinationId":"burnbar:home","replayCounter":2}"#
+        let modelSwitchPlaintext = #"{"kind":"model_switch","modelId":"claude-opus-4-8","destinationId":"burnbar:home","replayCounter":2}"#
         positives.append(try makePositive(
             name: "modelSwitch", direction: "phone->agent",
             uid: uid, clientId: clientId, id: modelSwitchEventId,
@@ -294,7 +294,7 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
             senderPrivateKey: agentRelayPriv,
             aad: attachmentKeyAAD
         )
-        let manifestPlaintext = #"{"fileName":"quarterly-report.pdf","contentType":"application/pdf","byteCount":20}"#
+        let manifestPlaintext = #"{"fileName":"quarterly-report.pdf","contentType":"application/pdf","byteCount":20,"destinationId":"burnbar:home"}"#
         let manifestAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         positives.append(try makePositive(
             name: "attachmentManifest", direction: "agent->phone",

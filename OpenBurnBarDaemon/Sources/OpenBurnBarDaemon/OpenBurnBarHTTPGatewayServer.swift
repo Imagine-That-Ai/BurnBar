@@ -307,7 +307,7 @@ public actor BurnBarHTTPGatewayServer {
         }
 
         if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
-            guard bearerToken(from: request.headers["authorization"]) == requiredToken else {
+            guard clientAuthToken(from: request) == requiredToken else {
                 await writeResponse(on: connection, status: 401, headers: ["Content-Type": "application/json"], body: errorBody("unauthorized"))
                 connection.cancel()
                 return
@@ -2898,8 +2898,20 @@ public actor BurnBarHTTPGatewayServer {
         return token.isEmpty ? nil : token
     }
 
+    /// Gateway auth token presented by routed CLI clients. Droid's Anthropic BYOK
+    /// adapter sends `x-api-key`; OpenAI-style clients use `Authorization: Bearer`.
+    private func clientAuthToken(from request: HTTPRequest) -> String? {
+        if let bearer = bearerToken(from: request.headers["authorization"]) {
+            return bearer
+        }
+        if let apiKey = request.headers["x-api-key"]?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return apiKey
+        }
+        return nil
+    }
+
     private func rateLimitClientKey(for request: HTTPRequest) -> String {
-        if let token = bearerToken(from: request.headers["authorization"]) {
+        if let token = clientAuthToken(from: request) {
             return "token:\(Self.stableDigest(token))"
         }
         return "anonymous"
@@ -2917,7 +2929,7 @@ public actor BurnBarHTTPGatewayServer {
         return [
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key",
             "Vary": "Origin"
         ]
     }

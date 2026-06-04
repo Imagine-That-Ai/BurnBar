@@ -41,8 +41,10 @@ P-256 ECDH + HKDF-SHA256 (`info="OpenBurnBar-Escrow-v1"`) + AES-256-GCM, **wire-
 compatible** with `OpenBurnBarCore/.../CloudVaultCrypto.swift`:
 
 - Wrapped vault key = `ephemeralPub.x963 (65) ‖ nonce (12) ‖ ciphertext ‖ tag (16)`.
-- Blob envelope = `{ schemaVersion, algorithm, keyVersion, plaintextSHA256, sealedBoxBase64 }`.
-- Sealed text = `{ algorithm, keyVersion, nonce, ciphertext, tag }` (base64 facets).
+- Blob envelope v2 = `{ schemaVersion: 2, algorithm, keyVersion, plaintextHMAC, integrityHashVersion, sealedBoxBase64, aad }`.
+- Sealed text v2 = `{ schemaVersion: 2, algorithm, keyVersion, nonce, ciphertext, tag, aad }` (base64 facets).
+- Legacy v1 SHA blob/text envelopes remain readable for migration, but new context-bound writes use canonical CloudVault AAD:
+  `OpenBurnBar-CloudVault-aad-v2|{uid}|{collection}|{docID}|{field}|2|{purpose}`.
 
 The browser device key is a **non-extractable** P-256 `CryptoKey` in IndexedDB; the
 unwrapped vault key lives only in memory. WebAuthn PRF can additionally gate it.
