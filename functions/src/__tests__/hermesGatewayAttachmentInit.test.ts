@@ -307,7 +307,10 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
       byteCount: 3072,
     });
     expect(initRes.status).toBe(200);
-    const attachmentId = stringField(record(record(initRes.body, "init response body").attachment, "attachment manifest"), "id");
+    const attachmentId = stringField(
+      record(record(initRes.body, "init response body").attachment, "attachment manifest"),
+      "id",
+    );
     expect(attachmentId).toBe("att_finalize_0003");
 
     // Simulate the upload having completed: flip the manifest to uploaded so

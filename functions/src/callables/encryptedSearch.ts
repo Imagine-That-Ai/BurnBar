@@ -369,7 +369,12 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
       // inside the sealed `sealedSnapshot` blob.
       const docID = requiredIdentifier(request.data.docID, "docID");
       const contentHash = requireHexDigest(request.data.contentHash, "contentHash");
-      const contentHashVersion = requireBoundedNumber(request.data.contentHashVersion ?? 0, "contentHashVersion", 0, 100);
+      const contentHashVersion = requireBoundedNumber(
+        request.data.contentHashVersion ?? 0,
+        "contentHashVersion",
+        0,
+        100,
+      );
       const sourceSessionCount = requireBoundedNumber(
         request.data.sourceSessionCount ?? 0,
         "sourceSessionCount",

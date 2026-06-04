@@ -339,8 +339,7 @@ export function isSealedEnvelope(value: unknown): boolean {
   // wrapped key + the algorithm/version constants — no plaintext — so it is safe
   // to round-trip through the export verbatim (gateway-e2e Wave 4).
   if (
-    (v.relayEncryption === "p256-hkdf-sha256-aesgcm" ||
-      v.relayEncryption === "hpke-auth-p256-hkdfsha256-aes256gcm") &&
+    (v.relayEncryption === "p256-hkdf-sha256-aesgcm" || v.relayEncryption === "hpke-auth-p256-hkdfsha256-aes256gcm") &&
     typeof v.payloadCiphertext === "string" &&
     typeof v.wrappedKey === "string" &&
     (v.relayEncryption !== "hpke-auth-p256-hkdfsha256-aes256gcm" || typeof v.enc === "string")
@@ -516,11 +515,7 @@ function sanitizeSealedEnvelope(
   const header = recordOrUndefined(envelope.header);
   if (header) {
     const outer = sanitizeAllowedObject(key, envelope, new Set(["header", "ciphertextBase64"]));
-    const sanitizedHeader = sanitizeAllowedObject(
-      `${key}.header`,
-      header,
-      HERMES_RATCHET_HEADER_FIELDS,
-    );
+    const sanitizedHeader = sanitizeAllowedObject(`${key}.header`, header, HERMES_RATCHET_HEADER_FIELDS);
     return {
       out: { ...outer.out, header: sanitizedHeader.out },
       dropped: [...outer.dropped, ...sanitizedHeader.dropped],

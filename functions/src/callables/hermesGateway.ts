@@ -273,11 +273,7 @@ function parseRelayPublicKey(
   return { publicKey, keyVersion, encryption };
 }
 
-function ratchetBundleField(
-  body: Record<string, unknown>,
-  prefix: "agent" | "phone",
-  suffix: string,
-): unknown {
+function ratchetBundleField(body: Record<string, unknown>, prefix: "agent" | "phone", suffix: string): unknown {
   const prefixed = `${prefix}Ratchet${suffix}`;
   const generic = `ratchet${suffix}`;
   return body[prefixed] ?? body[generic];
@@ -1484,13 +1480,9 @@ export const approveHermesGatewayDeviceGrant = onCall(
       const phoneCapabilities = phoneRelay
         ? sanitizeGatewayRelayEnvelopeCapabilities(request.data as Record<string, unknown>)
         : undefined;
-      const phoneRatchet = parseRatchetPrekeyBundle(
-        request.data as Record<string, unknown>,
-        "phone",
-        (message) => {
-          throw new HttpsError("invalid-argument", message);
-        },
-      );
+      const phoneRatchet = parseRatchetPrekeyBundle(request.data as Record<string, unknown>, "phone", (message) => {
+        throw new HttpsError("invalid-argument", message);
+      });
 
       const sessions = await db
         .collection("hermes_gateway_device_sessions")
