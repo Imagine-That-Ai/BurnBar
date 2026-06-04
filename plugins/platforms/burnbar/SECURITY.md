@@ -32,7 +32,12 @@ byte-stable.
   confirm these AAD-binding values but cannot establish the first value.
 - E2E open requires `relayKeyVersion == 2` and unwraps only with the pinned phone
   sender key. The relay-visible `senderPublicKey` field is advisory.
-- Plaintext is refused once `BURNBAR_RELAY_E2E=1`.
+- Plaintext is refused in BOTH directions whenever it is forbidden on the link:
+  once `BURNBAR_RELAY_E2E=1` (paired), and also when this agent holds a relay
+  identity but the link is not yet E2E-paired (unless `BURNBAR_ALLOW_PLAINTEXT=1`).
+  The inbound open path uses the same `must_seal` predicate as the send path, so a
+  relay cannot drive the agent with an injected plaintext event/control by
+  advertising an E2E-capable link as "legacy".
 - Every inbound sealed E2E event must carry an authenticated
   `replayCounter` or `eventCounter`. The adapter persists a high-water mark plus
   a bounded id ledger and drops old counters before side effects.
