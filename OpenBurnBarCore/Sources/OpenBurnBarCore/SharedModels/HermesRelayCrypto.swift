@@ -2,6 +2,29 @@ import CryptoKit
 import Foundation
 import Security
 
+// MARK: - Security considerations (MP-16; mirror of relay_e2ee.py — keep in sync)
+//
+// Goals: (1) confidentiality of every sealed payload against the relay, which only
+// store-and-forwards ciphertext; (2) sender authentication under the v2 2-DH
+// key-wrap — a frame opens only if sealed by the holder of the PINNED peer static
+// key, so the relay cannot forge agent↔phone replies/events; (3) forward secrecy for
+// the ephemeral leg only (dh1 against a fresh per-message ephemeral key).
+//
+// Non-goals (explicit): no PFS for the static leg; NO protection against
+// recipient-key compromise (KCI) — an inherent, documented property of every 2-DH
+// AuthEncap (HPKE AuthEncap shares the bound), and NOT exploitable under the
+// relay-only threat model. Do NOT "fix" KCI by bolting on a double ratchet / X3DH;
+// mitigate instead by storing the recipient static key in the Keychain. Replay
+// resistance comes from the AAD-bound id + the caller's record-after-auth cache, not
+// the crypto alone.
+//
+// Empty-salt rationale: the key-wrap HKDF salt is empty (CryptoKit `Data()`) — a
+// deliberate cross-language interop choice; the domain-separated `info` (binding the
+// namespace version and, for v2, all three public keys) supplies the separation an
+// explicit salt would otherwise provide. The v2 sender-auth property holds ONLY
+// because the caller passes the PINNED peer key to `unwrapSymmetricKey` (never a wire
+// `senderPublicKey` field), rooted at pairing time in the two-key safety code.
+
 public struct HermesRelayPrivateKey: Sendable, Equatable {
     fileprivate let key: P256.KeyAgreement.PrivateKey
 
