@@ -2,6 +2,29 @@ import CryptoKit
 import Foundation
 import Security
 
+// MARK: - Security considerations (MP-16; mirror of relay_e2ee.py — keep in sync)
+//
+// Goals: (1) confidentiality of every sealed payload against the relay, which only
+// store-and-forwards ciphertext; (2) sender authentication under the v2 2-DH
+// key-wrap — a frame opens only if sealed by the holder of the PINNED peer static
+// key, so the relay cannot forge agent↔phone replies/events; (3) forward secrecy for
+// the ephemeral leg only (dh1 against a fresh per-message ephemeral key).
+//
+// Non-goals (explicit): no PFS for the static leg; NO protection against
+// recipient-key compromise (KCI) — an inherent, documented property of every 2-DH
+// AuthEncap (HPKE AuthEncap shares the bound), and NOT exploitable under the
+// relay-only threat model. Do NOT "fix" KCI by bolting on a double ratchet / X3DH;
+// mitigate instead by storing the recipient static key in the Keychain. Replay
+// resistance comes from the AAD-bound id + the caller's record-after-auth cache, not
+// the crypto alone.
+//
+// Empty-salt rationale: the key-wrap HKDF salt is empty (CryptoKit `Data()`) — a
+// deliberate cross-language interop choice; the domain-separated `info` (binding the
+// namespace version and, for v2, all three public keys) supplies the separation an
+// explicit salt would otherwise provide. The v2 sender-auth property holds ONLY
+// because the caller passes the PINNED peer key to `unwrapSymmetricKey` (never a wire
+// `senderPublicKey` field), rooted at pairing time in the two-key safety code.
+
 public struct HermesRelayPrivateKey: Sendable, Equatable {
     fileprivate let key: P256.KeyAgreement.PrivateKey
 
@@ -38,6 +61,34 @@ public struct HermesRelayEncryptedRequestPayload: Codable, Sendable, Equatable {
     }
 }
 
+
+/// RFC 9180 HPKE Auth-mode v3 key-wrap output (mirrors the Python
+/// `RelayKeyWrapV3` dataclass in `gateway/crypto/relay_e2ee.py`).
+///
+/// `enc` is the HPKE encapsulated key — for DHKEM(P-256, HKDF-SHA256) this is the
+/// 65-byte X9.63 uncompressed ephemeral public key. `wrappedKey` is the HPKE
+/// Auth-mode ciphertext+tag over the 32-byte content key. Unlike the bespoke v2
+/// wrap (which concatenated `enc ‖ AES-GCM-combined` into a single `wrappedKey`
+/// field), v3 keeps `enc` and `wrappedKey` as the two distinct envelope fields
+/// RFC 9180 defines, so the wire envelope gains an `enc` field at v3.
+public struct HermesRelayKeyWrapV3: Codable, Sendable, Equatable {
+    /// HPKE encapsulated key (P-256 X9.63 uncompressed, 65 bytes).
+    public let enc: Data
+    /// HPKE Auth-mode ciphertext+tag over the 32-byte content key (48 bytes:
+    /// 32-byte ciphertext ‖ 16-byte GCM tag).
+    public let wrappedKey: Data
+
+    public init(enc: Data, wrappedKey: Data) {
+        self.enc = enc
+        self.wrappedKey = wrappedKey
+    }
+
+    /// Base64 of `enc`, for the envelope's `enc` field.
+    public var encBase64: String { enc.base64EncodedString() }
+    /// Base64 of `wrappedKey`, for the envelope's `wrappedKey` field.
+    public var wrappedKeyBase64: String { wrappedKey.base64EncodedString() }
+}
+
 public enum HermesRelayCryptoError: LocalizedError, Sendable, Equatable {
     case invalidPublicKey
     case invalidCiphertext
@@ -68,6 +119,17 @@ public enum HermesRelayCrypto {
     /// hard-requires on gateway opens. Distinct from `keyVersion` (realtime) and
     /// from the keypair's key-format version (the keypair is unchanged P-256).
     public static let gatewayRelayKeyVersion = 2
+    /// Wrap-protocol version for the **gateway** RFC 9180 HPKE Auth migration
+    /// (v3). This is the envelope `relayKeyVersion` the phone stamps on a v3
+    /// gateway seal and hard-requires on a v3 gateway open. v2 stays supported
+    /// for existing paired peers; v3 is emitted only when the peer advertises v3
+    /// capability, so the migration never downgrades a v2 link or breaks pairing.
+    public static let gatewayRelayKeyVersionV3 = 3
+    /// Envelope `relayEncryption` marker for the v3 suite — DHKEM(P-256,
+    /// HKDF-SHA256) / HKDF-SHA256 / AES-256-GCM in HPKE Auth mode. Mirrors the
+    /// Python `HPKE_ALGORITHM` constant (`gateway/crypto/relay_e2ee.py`) byte
+    /// for byte.
+    public static let relayEncryptionV3 = "hpke-auth-p256-hkdfsha256-aes256gcm"
     public static let symmetricKeyByteCount = 32
 
     public static func generatePrivateKey() -> HermesRelayPrivateKey {
@@ -318,6 +380,133 @@ public enum HermesRelayCrypto {
             info: info,
             outputByteCount: symmetricKeyByteCount
         )
+    }
+
+    // MARK: - RFC 9180 HPKE Auth mode v3 key wrap
+    //
+    // v3 replaces the bespoke v2 2-DH key wrap with standards-shaped RFC 9180
+    // HPKE Auth mode, implemented with Apple CryptoKit's `HPKE.Sender` /
+    // `HPKE.Recipient` (the same API the Remote Unlock credential envelope
+    // already uses). The content-key wrap is the ONLY layer that changes: the
+    // payload and attachment AES-GCM sealing (`sealToBase64` / `openBase64`)
+    // are untouched, so a v3 frame is a v2 frame whose `wrappedKey` is produced
+    // by HPKE and whose encapsulated key `enc` is carried as a distinct envelope
+    // field instead of being prepended to `wrappedKey`.
+    //
+    // Byte contract — must stay identical to `gateway/crypto/relay_e2ee.py`:
+    //   suite = DHKEM(P-256, HKDF-SHA256) / HKDF-SHA256 / AES-256-GCM
+    //         = HPKE.Ciphersuite.P256_SHA256_AES_GCM_256
+    //   mode  = Auth (the sender authenticates with its static relay key)
+    //   info  = "OpenBurnBar-HermesRelay-HPKE-v3|" ‖ key_aad   (RFC 9180 `info`)
+    //   aad   = key_aad   (the RFC 9180 per-encryption AEAD associated data)
+    //   pt    = the 32-byte content key
+    //   enc   = HPKE encapsulated key (P-256 X9.63, 65 bytes)
+    //   wrappedKey = HPKE Auth seal(pt, aad)  (48 bytes: 32 ct ‖ 16 tag)
+    //
+    // The recipient binds the PINNED sender static key (the pairing-rooted trust
+    // anchor in the two-key safety code), never a wire-asserted `senderPublicKey`
+    // field — exactly as v2. KCI and static-leg-PFS limits are identical to v2
+    // (RFC 9180 AuthEncap shares the same bound); see the file-top note.
+
+    /// Seal a 32-byte content key to `recipientPublicKeyBase64` under RFC 9180
+    /// HPKE Auth mode, authenticated by `senderPrivateKey` (the seal-side
+    /// sender's own static relay key). Returns the distinct `enc` and
+    /// `wrappedKey` envelope fields. `aad` MUST be the `key_aad` for the frame.
+    public static func sealKeyV3(
+        _ keyData: Data,
+        recipientPublicKeyBase64: String,
+        senderPrivateKey: HermesRelayPrivateKey,
+        aad: Data
+    ) throws -> HermesRelayKeyWrapV3 {
+        guard keyData.count == symmetricKeyByteCount else {
+            throw HermesRelayCryptoError.invalidSymmetricKey
+        }
+        guard let publicKeyData = Data(base64Encoded: recipientPublicKeyBase64),
+              let recipientKey = try? P256.KeyAgreement.PublicKey(x963Representation: publicKeyData) else {
+            throw HermesRelayCryptoError.invalidPublicKey
+        }
+        var sender = try HPKE.Sender(
+            recipientKey: recipientKey,
+            ciphersuite: .P256_SHA256_AES_GCM_256,
+            info: hpkeV3Info(aad: aad),
+            authenticatedBy: senderPrivateKey.key
+        )
+        let wrappedKey = try sender.seal(keyData, authenticating: aad)
+        return HermesRelayKeyWrapV3(enc: sender.encapsulatedKey, wrappedKey: wrappedKey)
+    }
+
+    /// Open a v3 HPKE Auth key wrap, binding the PINNED sender static key.
+    /// Opening throws `HermesRelayCryptoError.invalidCiphertext` on every
+    /// tampered input: a forged/swapped sender key, a wrong recipient key, a
+    /// mutated `wrappedKey`, or a wrong `aad` fail the authenticated KEM/AEAD
+    /// tag. A malformed `enc` (not a valid P-256 point) fails point validation
+    /// up front, while a valid-but-wrong `enc` fails the AEAD tag because `enc`
+    /// is bound into the HPKE `kem_context` — either way the open is refused.
+    /// `aad` MUST be the same `key_aad` used to seal.
+    public static func openKeyV3(
+        enc: Data,
+        wrappedKey: Data,
+        privateKey: HermesRelayPrivateKey,
+        pinnedSenderPublicKeyBase64: String,
+        aad: Data
+    ) throws -> Data {
+        guard let senderPublicKeyData = Data(base64Encoded: pinnedSenderPublicKeyBase64),
+              let senderKey = try? P256.KeyAgreement.PublicKey(x963Representation: senderPublicKeyData) else {
+            throw HermesRelayCryptoError.invalidPublicKey
+        }
+        do {
+            var recipient = try HPKE.Recipient(
+                privateKey: privateKey.key,
+                ciphersuite: .P256_SHA256_AES_GCM_256,
+                info: hpkeV3Info(aad: aad),
+                encapsulatedKey: enc,
+                authenticatedBy: senderKey
+            )
+            let opened = try recipient.open(wrappedKey, authenticating: aad)
+            guard opened.count == symmetricKeyByteCount else {
+                throw HermesRelayCryptoError.invalidSymmetricKey
+            }
+            return opened
+        } catch let error as HermesRelayCryptoError {
+            throw error
+        } catch {
+            // Normalize every HPKE failure (bad encapsulated point, KEM/KDF
+            // mismatch, AEAD tag failure on a forged sender / mutated input) to
+            // the existing typed error so callers keep a stable error surface,
+            // matching the v2 unwrap taxonomy.
+            throw HermesRelayCryptoError.invalidCiphertext
+        }
+    }
+
+    /// Base64 convenience wrapper around
+    /// ``openKeyV3(enc:wrappedKey:privateKey:pinnedSenderPublicKeyBase64:aad:)``
+    /// for callers reading the `enc` / `wrappedKey` envelope fields directly.
+    public static func openKeyV3(
+        encBase64: String,
+        wrappedKeyBase64: String,
+        privateKey: HermesRelayPrivateKey,
+        pinnedSenderPublicKeyBase64: String,
+        aad: Data
+    ) throws -> Data {
+        guard let enc = Data(base64Encoded: encBase64),
+              let wrappedKey = Data(base64Encoded: wrappedKeyBase64) else {
+            throw HermesRelayCryptoError.invalidCiphertext
+        }
+        return try openKeyV3(
+            enc: enc,
+            wrappedKey: wrappedKey,
+            privateKey: privateKey,
+            pinnedSenderPublicKeyBase64: pinnedSenderPublicKeyBase64,
+            aad: aad
+        )
+    }
+
+    /// HPKE `info` for v3 = `"OpenBurnBar-HermesRelay-HPKE-v3|" ‖ key_aad`.
+    /// Mirrors Python `_hpke_info` / `_HPKE_INFO_PREFIX`.
+    private static func hpkeV3Info(aad: Data) -> Data {
+        var info = Data("OpenBurnBar-HermesRelay-HPKE-v3|".utf8)
+        info.append(aad)
+        return info
     }
 
     private static func aad(_ parts: [String]) -> Data {

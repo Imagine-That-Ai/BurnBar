@@ -3,34 +3,34 @@
   "attachment" : {
     "attachmentId" : "a-gateway",
     "bodyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayAttachmentBody|u-gateway|c-gateway|a-gateway",
-    "bodyCiphertext" : "U63yo4CSMpsWRsBeakf0K2U9aqlIXJqgpaQjuHt4lojNqtK9VyouIHSDVa95JMkF",
+    "bodyCiphertext" : "rubVZCh+fgknY82svopCMr\/XfujMEDRzgGZHhxyrk9X6zLoiyGQzZWncRMBs0X2I",
     "bodyKey" : "REtSWWBnbnV8g4qRmJ+mrbS7wsnQ197l7PP6Bg0UGyI=",
     "bodyPlaintext" : "PDF-BYTES-1234567890",
     "clientId" : "c-gateway",
     "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayAttachmentKey|u-gateway|c-gateway|a-gateway",
     "manifestAAD" : "OpenBurnBar-HermesRelay-v1|gatewayAttachmentManifest|u-gateway|c-gateway|a-gateway",
-    "manifestCiphertext" : "YhRAWv9zGC4RTfSfxRU81cDAxRM30RmeAd2CIxPDT4QMx3wManHMBjKj2vOGEbC5DvZ645mocQRFEcCkMFxznurmCoOIHTgQBNT1Kdk+7UHq514VESKf3R+jCMlAgP51iHeJ+pBe1P3Rng==",
-    "manifestPlaintext" : "{\"name\":\"quarterly-report.pdf\",\"contentType\":\"application\/pdf\",\"byteCount\":20}",
+    "manifestCiphertext" : "vwL+9vjXPiv6MbyP8kvNIjlBTnQq45jhhsMKbTuGckYqGWA8qxbuKloQ3slKuIyAkowacPPn4JUV0GCGFQ0cx\/9DpfmVHZ4kj\/bQUina2iLuBVBisvv+mAuSCTGyhBC0FETBokZFtALBU6wUfI8=",
+    "manifestPlaintext" : "{\"fileName\":\"quarterly-report.pdf\",\"contentType\":\"application\/pdf\",\"byteCount\":20}",
     "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgI=",
     "recipientPublicKey" : "BEKv7RhS+Y6na81bmkM5tzyhuY2lqIAoclDXgUMlOxYGgIa3AgfJHKxRBUYttVjR\/+p9mm94EPDWHQpMU175cwE=",
     "senderPublicKey" : "BLkhK4\/QR3AL2Xa\/LM65Ox1o5E1le\/O7st0\/KJkqmhtdA58IexfvD4hHg9m187+V1VB7agV3bVQsT7YjM97ZuDE=",
     "uid" : "u-gateway",
-    "wrappedKey" : "BAcr8TaGH+xDlbivA8tGpnbXghul46gpPyjxDTUlRc2VdlJwbWJ\/L9hg6iqLyxfrfwSoJpwChhJ6YDHSBmxOKdZIWkn+m2tKYZxvUZaFBhKzJVlOdm9pGZg0Wq1e1E4Q0cv6Gd\/CVJlx2cpJ6J7PjAM6YPFmGjOxrOCDZvA="
+    "wrappedKey" : "BFeFH852QpnK2RK1ZLoVZ+wIZNheyasb08hlCif2IfHKtl3A4dX9wQ\/JpGcu57nAtLyZ8hJecm4TMr2hyL1eqhIe3MTigszhYWBJL5OehHFKtQbqG\/p6jq3kQDNL4w\/mdCx1\/8JxD15BypKYb7DKntF4w\/cidMb\/0dTtZtc="
   },
   "event" : {
     "clientId" : "c-gateway",
-    "encodedPlaintext" : "eyJ0ZXh0Ijoib3BlbiB0aGUgQnVybkJhciBnYXRld2F5Iiwia2luZCI6ImNoYXQifQ==",
+    "encodedPlaintext" : "eyJ0ZXh0Ijoib3BlbiB0aGUgQnVybkJhciBnYXRld2F5Iiwia2luZCI6ImNoYXQiLCJkZXN0aW5hdGlvbklkIjoiYnVybmJhcjpob21lIiwicmVwbGF5Q291bnRlciI6MX0=",
     "eventId" : "e-gateway",
     "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEventKey|u-gateway|c-gateway|e-gateway",
     "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEvent|u-gateway|c-gateway|e-gateway",
-    "payloadCiphertext" : "BYVyxSQcS\/QBHg8Zbuzf61j7BQAgnkfcTDEZe1K+p322gcY2HUGZIqt6cD\/5Ees1pjyUof1lxaVVsLsIJTnpx7biJbqngPKz1Lu5gdg=",
-    "plaintext" : "{\"text\":\"open the BurnBar gateway\",\"kind\":\"chat\"}",
+    "payloadCiphertext" : "JzbwW7pu4N34uVOUNm0BHBjkMIZFNEOYNvq0Jx1p7J4DJbcDB5ff4h2nhTU7KOKfij3Qe7C3\/8V1OBi0Y80d5SNmtqAd5k7A2PfkuOcDBmnircG6kgV3XT34wrpUTp2SqFGyOY+3n+nhOCpwxBGv0a164JaxR1QF1huHl7pJ",
+    "plaintext" : "{\"text\":\"open the BurnBar gateway\",\"kind\":\"chat\",\"destinationId\":\"burnbar:home\",\"replayCounter\":1}",
     "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgE=",
     "recipientPublicKey" : "BLkhK4\/QR3AL2Xa\/LM65Ox1o5E1le\/O7st0\/KJkqmhtdA58IexfvD4hHg9m187+V1VB7agV3bVQsT7YjM97ZuDE=",
     "senderPublicKey" : "BEKv7RhS+Y6na81bmkM5tzyhuY2lqIAoclDXgUMlOxYGgIa3AgfJHKxRBUYttVjR\/+p9mm94EPDWHQpMU175cwE=",
     "symmetricKey" : "ERgfJi00O0JJUFdeZWxzeoGIj5adpKuyucDHztXc4+o=",
     "uid" : "u-gateway",
-    "wrappedKey" : "BJyH2l7iNSJzti1AE9dr\/UVGk3ZfhFODUMYq4KKAhbFlwQNzzlkEpudOdNpdmqnzQWrWzaD13olJZkGfH\/kaQySohjrtz5XmAltUFYjft3X+ThkFc0gkB5k6b++Z72t0VvoMzr76K0qAFgCN7kOtJE3CXq+61f0bcg+Z4qc="
+    "wrappedKey" : "BCcmK64qRYR17FtAJ1yFkPmB1Ztj31g48efyTvka1G70OenQx6pEtbTkXjr7Zb0laLVKXCRbeNZjt2rfULP2rmHrgawn2DJWUkB9Q\/anlHjG++49kuOM6GtRK4yNpCEUQkg7avzRoVhxWUZlaFvpxHLCIFeTdaWZ1BzDwqY="
   },
   "keyVersion" : 2,
   "message" : {
@@ -39,29 +39,29 @@
     "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayMessageKey|u-gateway|c-gateway|m-gateway",
     "messageId" : "m-gateway",
     "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayMessage|u-gateway|c-gateway|m-gateway",
-    "payloadCiphertext" : "GQc3h2kU81WJvYDKOdXNf93u6mn7vxdWJMOC\/QOzf26qwjWx6i59tz19u59UEXq+jtrerZ1oEbyuTGCG+W3JovheQlJ8vf3hMHOsO0OLEbcb",
+    "payloadCiphertext" : "eE\/c94XCf7bNqHeLEgX\/rgvmHcrFljsw0kSHfkR3930fu0nuXbFCnm0IZsFMlWvad8wFSEjlJp0wIpcORYnxdiVGWwzBaff\/Vl23yXr1hOy3",
     "plaintext" : "{\"text\":\"Hermes replied over the encrypted gateway.\"}",
     "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgI=",
     "recipientPublicKey" : "BEKv7RhS+Y6na81bmkM5tzyhuY2lqIAoclDXgUMlOxYGgIa3AgfJHKxRBUYttVjR\/+p9mm94EPDWHQpMU175cwE=",
     "senderPublicKey" : "BLkhK4\/QR3AL2Xa\/LM65Ox1o5E1le\/O7st0\/KJkqmhtdA58IexfvD4hHg9m187+V1VB7agV3bVQsT7YjM97ZuDE=",
     "symmetricKey" : "IikwNz5FTFNaYWhvdn2Ei5KZoKeutbzDytHY3+bt9AA=",
     "uid" : "u-gateway",
-    "wrappedKey" : "BLQqsi4JJEm1o+zDXbWGhZha6oH8hHB1osscUEqahNjyOr3EjVJ9NcVxXt7xlHhfAQoTrF6W2b9Rl5cyMrAXfexgYD0kk2Ps7Q2KovOvcHp1EeY7hfK7pbBkwHuGxiW+MUCveUIzTC+\/i\/bNiYMKt6dRvjWah3955x5Bo0s="
+    "wrappedKey" : "BOrSXg\/Po1fcPwwMA16uJcyn2ri7L+cV91RDDByXCaVjAAJrZEBLI1qDuxS3BcCCL5qwbC4guYB41lAVeTm2+TqibJDtt3yZFmFPcw8P6l2\/11uAkVsk2QwBFlxnrrdTMijxZrf9FGUJSifM1sOdWXrx1szDJtv9P3whkvM="
   },
   "modelSwitch" : {
     "clientId" : "c-gateway",
-    "encodedPlaintext" : "eyJtb2RlbElkIjoiY2xhdWRlLW9wdXMtNC04In0=",
+    "encodedPlaintext" : "eyJtb2RlbElkIjoiY2xhdWRlLW9wdXMtNC04IiwiZGVzdGluYXRpb25JZCI6ImJ1cm5iYXI6aG9tZSIsInJlcGxheUNvdW50ZXIiOjJ9",
     "eventId" : "e-model-switch",
     "keyAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEventKey|u-gateway|c-gateway|e-model-switch",
     "payloadAAD" : "OpenBurnBar-HermesRelay-v1|gatewayEvent|u-gateway|c-gateway|e-model-switch",
-    "payloadCiphertext" : "AmKLZGPQCsWLqBbh1UA7CkCFmqSLzQ\/jeNn2PEnQPbawz8fd7hhSPxum204eJ249fICXJDwx5qwZ",
-    "plaintext" : "{\"modelId\":\"claude-opus-4-8\"}",
+    "payloadCiphertext" : "pbBmOI7F0Nczu9m0JmCxTROogKuZ6RBR5ku5xqgadgNH2GJNgQYI3z+6XJOcdSLGEubzI6MoHCKIoQ\/ZC5eLwor9\/vbSMmjNgGJX2wyua+yYwvqVS6ObrvjP8pSaagZKVLqGJIv6OEsJpA==",
+    "plaintext" : "{\"modelId\":\"claude-opus-4-8\",\"destinationId\":\"burnbar:home\",\"replayCounter\":2}",
     "recipientPrivateKey" : "EEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQgE=",
     "recipientPublicKey" : "BLkhK4\/QR3AL2Xa\/LM65Ox1o5E1le\/O7st0\/KJkqmhtdA58IexfvD4hHg9m187+V1VB7agV3bVQsT7YjM97ZuDE=",
     "senderPublicKey" : "BEKv7RhS+Y6na81bmkM5tzyhuY2lqIAoclDXgUMlOxYGgIa3AgfJHKxRBUYttVjR\/+p9mm94EPDWHQpMU175cwE=",
     "symmetricKey" : "MzpBSE9WXWRrcnmAh46VnKOqsbi\/xs3U2+Lp8PcDChE=",
     "uid" : "u-gateway",
-    "wrappedKey" : "BFdxCc\/FTrVEmV45EnJcxyEdH6Ssjep5vCSZvi6R38e0PJSbOK\/v10++dx3iBZ05r5KsTWXLZzmOG1f5GBygrMTbfU7Xp3LdOgNQrDnSFaJiSFZZ8AG2gsK4XytupDrEph80EuUyVrjX9ZpH4GbSuwP+c48gP9CpyVORM7k="
+    "wrappedKey" : "BEmY52CEpaSeoO1E3GjZC2dJxFKErSRIKYUnAfQXq+DPQcNPKJw7s36KmneMnW0SjOnSFrmugMpVvJrLcNKeMM3ezOmLy9gmMCoqLnzxtO30zaXRLmB8JJxezmL4tb6vD2OVLPlARO3VKgnH\/ofQv\/B5RFx0o7+BmwPFx4U="
   },
   "revision" : "v2"
 }

@@ -301,12 +301,27 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
     /// space-separated uppercase hex groups (e.g. `A1B2 C3D4 E5F6 0789`). This is
     /// purely a *display* transform of the real pinned key — it never fabricates a
     /// match and changes the instant the underlying key changes.
-    static func safetyCode(forPublicKeyBase64 publicKey: String) -> String? {
-        let trimmed = publicKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let keyBytes = Data(base64Encoded: trimmed) ?? Data(trimmed.utf8)
-        let digestBytes = Array(SHA256.hash(data: keyBytes))
-        let groups = stride(from: 0, to: 8, by: 2).map { offset -> String in
+    /// Signal-style two-key safety code (MP-1). Hashes BOTH paired relay public
+    /// keys — SHA-256 over the raw key bytes sorted lexicographically so the Mac
+    /// and this device derive the IDENTICAL code without agreeing on roles — and
+    /// displays the first 16 digest bytes (>=128 bits) as eight uppercase hex
+    /// groups.
+    ///
+    /// Hashing both keys closes the single-key MITM (a relay substituting the
+    /// phone key at first pin would otherwise still match an agent-only code); the
+    /// 128-bit width closes the ~2^64 grind on the displayed code. Returns `nil`
+    /// if EITHER key is missing or not valid base64 (MP-22) — never a
+    /// plausible-looking code derived from raw string bytes.
+    static func safetyCode(agentPublicKeyBase64: String, phonePublicKeyBase64: String) -> String? {
+        let agentTrimmed = agentPublicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+        let phoneTrimmed = phonePublicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !agentTrimmed.isEmpty, !phoneTrimmed.isEmpty,
+              let agentBytes = Data(base64Encoded: agentTrimmed),
+              let phoneBytes = Data(base64Encoded: phoneTrimmed),
+              !agentBytes.isEmpty, !phoneBytes.isEmpty else { return nil }
+        let ordered = [agentBytes, phoneBytes].sorted { $0.lexicographicallyPrecedes($1) }
+        let digestBytes = Array(SHA256.hash(data: ordered[0] + ordered[1]))
+        let groups = stride(from: 0, to: 16, by: 2).map { offset -> String in
             let bytes = digestBytes[offset..<min(offset + 2, digestBytes.count)]
             return bytes.map { String(format: "%02X", $0) }.joined()
         }
@@ -319,7 +334,10 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
     /// own.
     func pinnedSafetyCode(uid: String, clientId: String) -> String? {
         guard let pinned = pinnedKey(uid: uid, clientId: clientId) else { return nil }
-        return Self.safetyCode(forPublicKeyBase64: pinned)
+        // MP-1: the code binds BOTH the pinned agent key AND this device's own relay
+        // public key, so a relay substituting either key changes the displayed code.
+        let phoneKey = HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64
+        return Self.safetyCode(agentPublicKeyBase64: pinned, phonePublicKeyBase64: phoneKey)
     }
 
     /// Clear the pin for a client so the next observed key is trusted afresh.

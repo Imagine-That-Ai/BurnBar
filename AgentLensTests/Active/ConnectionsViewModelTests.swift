@@ -201,6 +201,87 @@ final class ConnectionsViewModelTests: XCTestCase {
         }
     }
 
+    func test_refreshProxyRouteLogLoadsEntriesFromDaemonSocket() async throws {
+        let socketURL = URL(fileURLWithPath: "/tmp/openburnbar-test.sock")
+        let sample = makeRouteLogEntry(
+            clientModelSlug: "claude-3-opus",
+            upstreamModelSlug: "claude-3-opus",
+            providerID: "anthropic",
+            providerName: "Anthropic",
+            providerLogoKey: "AnthropicLogo",
+            finalStatus: .exact
+        )
+        var capturedSocketURL: URL?
+        var capturedLimit: Int?
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyRouteLogFetcher: { socketURL, limit in
+                capturedSocketURL = socketURL
+                capturedLimit = limit
+                return [sample]
+            }
+        )
+
+        await viewModel.refreshProxyRouteLog(socketURL: socketURL, limit: 25)
+
+        XCTAssertEqual(capturedSocketURL, socketURL)
+        XCTAssertEqual(capturedLimit, 25)
+        XCTAssertEqual(viewModel.proxyRouteLogEntries, [sample])
+        if case .loaded = viewModel.proxyRouteLogState {
+            // expected
+        } else {
+            XCTFail("Expected loaded route-log state, got \(viewModel.proxyRouteLogState)")
+        }
+    }
+
+    func test_clearProxyRouteLogClearsEntriesThroughDaemonSocket() async {
+        let socketURL = URL(fileURLWithPath: "/tmp/openburnbar-test.sock")
+        var capturedSocketURL: URL?
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyRouteLogClearer: { socketURL in
+                capturedSocketURL = socketURL
+                return true
+            }
+        )
+        viewModel.proxyRouteLogEntries = [
+            makeRouteLogEntry(
+                clientModelSlug: "claude-3-opus",
+                upstreamModelSlug: "deepseek-chat",
+                providerID: "deepseek",
+                providerName: "DeepSeek",
+                providerLogoKey: "DeepSeekProviderLogo",
+                finalStatus: .crossVendorFallback
+            )
+        ]
+
+        await viewModel.clearProxyRouteLog(socketURL: socketURL)
+
+        XCTAssertEqual(capturedSocketURL, socketURL)
+        XCTAssertTrue(viewModel.proxyRouteLogEntries.isEmpty)
+        if case .loaded = viewModel.proxyRouteLogState {
+            // expected
+        } else {
+            XCTFail("Expected loaded route-log state after clear, got \(viewModel.proxyRouteLogState)")
+        }
+    }
+
+    func test_refreshProxyRouteLogSurfacesDaemonFailure() async {
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyRouteLogFetcher: { _, _ in throw ProxyRouteLogTestError.offline }
+        )
+
+        await viewModel.refreshProxyRouteLog(socketURL: URL(fileURLWithPath: "/tmp/openburnbar-test.sock"))
+
+        XCTAssertTrue(viewModel.proxyRouteLogEntries.isEmpty)
+        if case .error(let message, _) = viewModel.proxyRouteLogState {
+            XCTAssertEqual(message, "Route log offline")
+        } else {
+            XCTFail("Expected error route-log state, got \(viewModel.proxyRouteLogState)")
+        }
+    }
+
     func test_refreshProxyModelCatalog_collapsesSameProviderModelAcrossAccounts() async throws {
         viewModel = ConnectionsViewModel(
             wiringFactory: { RoutingClientWiring(home: self.tempHome) },
@@ -539,6 +620,74 @@ final class ConnectionsViewModelTests: XCTestCase {
         )
     }
 
+    private func makeRouteLogEntry(
+        clientModelSlug: String,
+        upstreamModelSlug: String,
+        providerID: String,
+        providerName: String,
+        providerLogoKey: String,
+        finalStatus: BurnBarProxyRouteFinalStatus
+    ) -> BurnBarProxyRouteLogEntry {
+        let occurredAt = Date(timeIntervalSince1970: 1_773_710_000)
+        return BurnBarProxyRouteLogEntry(
+            id: "\(clientModelSlug)-\(upstreamModelSlug)-\(finalStatus.rawValue)",
+            occurredAt: occurredAt,
+            completedAt: occurredAt.addingTimeInterval(0.2),
+            durationMilliseconds: 200,
+            requestPath: "/v1/chat/completions",
+            endpoint: "Chat Completions",
+            clientModelSlug: clientModelSlug,
+            advertisedModelSlug: clientModelSlug,
+            routingModelSlug: clientModelSlug,
+            upstreamModelSlug: upstreamModelSlug,
+            providerReportedModelSlug: upstreamModelSlug,
+            clientModelDisplayName: clientModelSlug,
+            routingModelDisplayName: clientModelSlug,
+            upstreamModelDisplayName: upstreamModelSlug,
+            providerID: providerID,
+            providerName: providerName,
+            providerLogoKey: providerLogoKey,
+            accountID: "default",
+            accountLabel: "Default",
+            requestedCanonicalModelID: clientModelSlug,
+            servedCanonicalModelID: upstreamModelSlug,
+            formatFamily: "openai_compat",
+            endpointProfileID: nil,
+            transportKind: .http,
+            rewriteKind: finalStatus == .crossVendorFallback ? .crossVendorFallback : .none,
+            exactModelInvariant: finalStatus == .crossVendorFallback ? .notApplicable : .passed,
+            finalStatus: finalStatus,
+            streamed: false,
+            streamInterrupted: false,
+            httpStatus: 200,
+            attempts: [
+                BurnBarProxyRouteAttempt(
+                    id: "\(providerID)-attempt",
+                    sequence: 1,
+                    startedAt: occurredAt,
+                    completedAt: occurredAt.addingTimeInterval(0.2),
+                    durationMilliseconds: 200,
+                    providerID: providerID,
+                    providerName: providerName,
+                    providerLogoKey: providerLogoKey,
+                    accountID: "default",
+                    accountLabel: "Default",
+                    routingModelSlug: clientModelSlug,
+                    upstreamModelSlug: upstreamModelSlug,
+                    canonicalModelID: upstreamModelSlug,
+                    formatFamily: "openai_compat",
+                    endpointProfileID: nil,
+                    transportKind: .http,
+                    status: finalStatus,
+                    httpStatus: 200,
+                    failureMessage: nil
+                )
+            ],
+            usage: nil,
+            failureMessage: nil
+        )
+    }
+
     func test_refreshProxyModelCatalog_decodesUserModelAliasMetadata() async {
         viewModel = ConnectionsViewModel(
             wiringFactory: { RoutingClientWiring(home: self.tempHome) },
@@ -579,4 +728,10 @@ private enum ProxyCatalogTestError: LocalizedError {
     case offline
 
     var errorDescription: String? { "Gateway offline" }
+}
+
+private enum ProxyRouteLogTestError: LocalizedError {
+    case offline
+
+    var errorDescription: String? { "Route log offline" }
 }

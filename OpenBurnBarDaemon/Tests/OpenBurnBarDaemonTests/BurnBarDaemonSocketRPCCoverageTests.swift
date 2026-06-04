@@ -30,6 +30,7 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             BurnBarDaemonSocketRPCCoverage.lifecycle,
             BurnBarDaemonSocketRPCCoverage.config,
             BurnBarDaemonSocketRPCCoverage.usage,
+            BurnBarDaemonSocketRPCCoverage.observability,
             BurnBarDaemonSocketRPCCoverage.tooling,
             BurnBarDaemonSocketRPCCoverage.computerUse,
             BurnBarDaemonSocketRPCCoverage.missionControl,

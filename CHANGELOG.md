@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a daemon-backed Route log in Settings -> Agents -> CLIs for the local proxy, showing the requested model slug/name, the upstream model/provider/logo identity actually used, provider-reported model slug, exact-route invariant status, attempts, and usage metadata without logging prompt or response bodies.
+
 ### Security
 
 - Sealed the remaining same-pattern cloud privacy surfaces: approval-policy labels/paths/globs, CLI session snapshot file/path labels, rollback request scopes/errors, agent identity persona text, subscription topic labels, and Hermes Gateway typing/private routing metadata. Mac, iOS/iPadOS, Android, functions, Firestore rules, privacy scans, and registry tests cover the sealed-only contract.

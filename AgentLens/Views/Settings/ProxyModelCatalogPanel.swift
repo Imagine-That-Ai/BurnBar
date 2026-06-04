@@ -21,6 +21,10 @@ struct ProxyModelCatalogPanel: View {
     let endpoint: String
     let onRefresh: () -> Void
     let onStartGateway: () -> Void
+    var routeLogEntries: [BurnBarProxyRouteLogEntry] = []
+    var routeLogState: ProxyRouteLogState = .idle
+    var onRefreshRouteLog: (() -> Void)? = nil
+    var onClearRouteLog: (() -> Void)? = nil
     let droidSyncState: AppConnectState?
     let onSyncDroid: (() -> Void)?
     let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
@@ -35,6 +39,7 @@ struct ProxyModelCatalogPanel: View {
 
     @State private var copiedEndpoint = false
     @State private var expandedProviderIDs: Set<String> = []
+    @State private var isRouteLogPresented = false
 
     private var groups: [ProxyModelProviderGroup] {
         Dictionary(grouping: models, by: \.providerID)
@@ -165,6 +170,18 @@ struct ProxyModelCatalogPanel: View {
             Spacer(minLength: DesignSystem.Spacing.md)
 
             HStack(spacing: DesignSystem.Spacing.xs) {
+                if let onRefreshRouteLog {
+                    Button {
+                        isRouteLogPresented = true
+                        onRefreshRouteLog()
+                    } label: {
+                        Label("Route log", systemImage: "list.bullet.rectangle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Show recent OpenBurnBar proxy routes with requested and proxy-sent model slugs.")
+                }
+
                 if let onSyncDroid {
                     Button(action: onSyncDroid) {
                         Label(droidSyncButtonTitle, systemImage: "arrow.down.circle")
@@ -192,6 +209,14 @@ struct ProxyModelCatalogPanel: View {
             .fixedSize()
         }
         .padding(DesignSystem.Spacing.md)
+        .sheet(isPresented: $isRouteLogPresented) {
+            ProxyRouteLogSheet(
+                entries: routeLogEntries,
+                state: routeLogState,
+                onRefresh: onRefreshRouteLog,
+                onClear: onClearRouteLog
+            )
+        }
     }
 
     private var statusPill: some View {
@@ -373,6 +398,309 @@ struct ProxyModelProviderGroup: Identifiable {
     let models: [ProxyAdvertisedModel]
 
     var id: String { providerID }
+}
+
+private struct ProxyRouteLogSheet: View {
+    let entries: [BurnBarProxyRouteLogEntry]
+    let state: ProxyRouteLogState
+    let onRefresh: (() -> Void)?
+    let onClear: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                    .frame(width: 34, height: 34)
+                    .background(DesignSystem.Colors.ember.opacity(0.12))
+                    .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Recent proxy routes")
+                        .font(DesignSystem.Typography.headline)
+                        .fontWeight(.semibold)
+                    Text(statusText)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                Spacer()
+                if let onClear {
+                    Button(role: .destructive, action: onClear) {
+                        Label("Clear", systemImage: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(state.isBusy || entries.isEmpty)
+                }
+                if let onRefresh {
+                    Button(action: onRefresh) {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(state.isBusy)
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+
+            Divider()
+
+            Group {
+                switch state {
+                case .loading, .clearing:
+                    VStack(spacing: DesignSystem.Spacing.sm) {
+                        ProgressView()
+                        Text(state == .clearing ? "Clearing route log" : "Loading route log")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .error(let message, _):
+                    ProxyRouteLogEmptyState(
+                        systemImage: "exclamationmark.triangle.fill",
+                        title: "Route log unavailable",
+                        message: message,
+                        tint: DesignSystem.Colors.error
+                    )
+                case .idle where entries.isEmpty,
+                     .loaded where entries.isEmpty:
+                    ProxyRouteLogEmptyState(
+                        systemImage: "point.3.connected.trianglepath.dotted",
+                        title: "No proxy routes recorded yet",
+                        message: "Send a request through the local gateway, then refresh.",
+                        tint: DesignSystem.Colors.textMuted
+                    )
+                default:
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            ForEach(entries) { entry in
+                                ProxyRouteLogRow(entry: entry)
+                            }
+                        }
+                        .padding(DesignSystem.Spacing.lg)
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 760, idealWidth: 900, minHeight: 520, idealHeight: 640)
+        .background(DesignSystem.Colors.background)
+    }
+
+    private var statusText: String {
+        switch state {
+        case .idle:
+            return "Shows exactly what OpenBurnBar selected and sent upstream."
+        case .loading:
+            return "Loading from the local daemon socket."
+        case .clearing:
+            return "Clearing local route metadata."
+        case .loaded(let lastRefresh):
+            return "\(entries.count) route\(entries.count == 1 ? "" : "s") loaded. Last refresh \(lastRefresh.formatted(date: .omitted, time: .shortened))."
+        case .error(_, let lastAttempt):
+            return "Last attempt \(lastAttempt.formatted(date: .omitted, time: .shortened))."
+        }
+    }
+}
+
+private struct ProxyRouteLogEmptyState: View {
+    let systemImage: String
+    let title: String
+    let message: String
+    let tint: Color
+
+    var body: some View {
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: systemImage)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(tint)
+            Text(title)
+                .font(DesignSystem.Typography.body)
+                .fontWeight(.semibold)
+            Text(message)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct ProxyRouteLogRow: View {
+    let entry: BurnBarProxyRouteLogEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                modelBlock(title: "Requested", slug: entry.clientModelSlug, name: entry.clientModelDisplayName)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .frame(width: 22, height: 34)
+                modelBlock(
+                    title: "Proxy sent",
+                    slug: entry.upstreamModelSlug ?? entry.routingModelSlug ?? "no-route",
+                    name: entry.upstreamModelDisplayName ?? entry.routingModelDisplayName,
+                    providerID: entry.providerID,
+                    providerName: entry.providerName
+                )
+                Spacer()
+                VStack(alignment: .trailing, spacing: 6) {
+                    statusChip
+                    Text(entry.occurredAt.formatted(date: .omitted, time: .standard))
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+
+            if let reported = entry.providerReportedModelSlug {
+                Text(reported == entry.upstreamModelSlug ? "Provider reported \(reported)" : "Provider reported \(reported) - differs from proxy sent")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(reported == entry.upstreamModelSlug ? DesignSystem.Colors.textMuted : DesignSystem.Colors.warning)
+            }
+
+            Text(metadataText)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineLimit(2)
+
+            if entry.attempts.count > 1 {
+                ForEach(entry.attempts) { attempt in
+                    Text("#\(attempt.sequence) \(attempt.providerName) -> \(attempt.upstreamModelSlug) (\(attempt.status.rawValue.replacingOccurrences(of: "_", with: " ")))")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(attempt.status == .failed ? DesignSystem.Colors.error : DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            if let failure = entry.failureMessage {
+                Text(failure)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.5))
+        .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(statusTint.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private func modelBlock(
+        title: String,
+        slug: String,
+        name: String?,
+        providerID: String? = nil,
+        providerName: String? = nil
+    ) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+            ZStack(alignment: .bottomTrailing) {
+                ModelProviderLogoView(modelKey: slug, size: 30)
+                if let providerID, let providerName {
+                    ProxyProviderLogoView(catalogProviderID: providerID, providerName: providerName, size: 16)
+                        .background(Circle().fill(DesignSystem.Colors.surface))
+                        .offset(x: 4, y: 4)
+                }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text(name ?? slug)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                Text(slug)
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                if let providerName {
+                    Text(providerName)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .frame(minWidth: 240, alignment: .leading)
+    }
+
+    private var statusChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: statusImage)
+                .font(.system(size: 9, weight: .bold))
+            Text(statusLabel)
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .foregroundStyle(statusTint)
+        .background(statusTint.opacity(0.12))
+        .clipShape(Capsule())
+    }
+
+    private var metadataText: String {
+        let usage = entry.usage.map {
+            "\($0.inputTokens) in / \($0.outputTokens) out / $\($0.cost.formatted(.number.precision(.fractionLength(4))))"
+        }
+        return [
+            entry.requestPath,
+            exactIdentityText,
+            entry.streamed ? (entry.streamInterrupted ? "stream interrupted" : "streamed") : "buffered",
+            entry.accountLabel.map { "account \($0)" },
+            entry.httpStatus.map { "HTTP \($0)" },
+            usage
+        ].compactMap { $0 }.joined(separator: "  ")
+    }
+
+    private var statusLabel: String {
+        switch entry.finalStatus {
+        case .exact: return "Exact"
+        case .sameModelFailover: return "Same model failover"
+        case .crossVendorFallback: return "Cross-vendor fallback"
+        case .failed: return "Failed"
+        case .rejected: return "No route"
+        case .interrupted: return "Interrupted"
+        }
+    }
+
+    private var exactIdentityText: String {
+        switch entry.exactModelInvariant {
+        case .passed: return "identity passed"
+        case .failed: return "identity failed"
+        case .unavailable: return "identity unavailable"
+        case .notApplicable: return "identity n/a"
+        }
+    }
+
+    private var statusImage: String {
+        switch entry.finalStatus {
+        case .exact: return "checkmark.seal.fill"
+        case .sameModelFailover: return "arrow.triangle.branch"
+        case .crossVendorFallback: return "exclamationmark.triangle.fill"
+        case .failed: return "xmark.octagon.fill"
+        case .rejected: return "minus.circle.fill"
+        case .interrupted: return "waveform.path.ecg"
+        }
+    }
+
+    private var statusTint: Color {
+        switch entry.finalStatus {
+        case .exact: return DesignSystem.Colors.success
+        case .sameModelFailover, .crossVendorFallback: return DesignSystem.Colors.warning
+        case .failed, .interrupted: return DesignSystem.Colors.error
+        case .rejected: return DesignSystem.Colors.textMuted
+        }
+    }
 }
 
 /// Logo resolver for the proxy catalog. The advertised provider IDs come

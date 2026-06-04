@@ -111,6 +111,10 @@ class HermesGatewayV2VectorTest {
                 aad = slot.getString("manifestAAD").toByteArray(Charsets.UTF_8),
             )
         assertEquals(slot.getString("manifestPlaintext"), String(manifest, Charsets.UTF_8))
+        // MP-18: the manifest is JSON; assert the PRODUCTION field name `fileName`
+        // (iOS/Android decoders never read `name`) so a drift back to `name` fails
+        // here instead of silently passing the byte-compare above.
+        assertEquals("quarterly-report.pdf", JSONObject(String(manifest, Charsets.UTF_8)).getString("fileName"))
 
         val body =
             HermesRelayCrypto.openBase64(
@@ -185,6 +189,27 @@ class HermesGatewayV2VectorTest {
         assertArrayEquals(keyData, unwrapped)
     }
 
+    @Test
+    fun gatewayRelaySafetyCode_is_two_key_role_independent_and_128_bit() {
+        // The same two base64 keys + locked code as the Swift + Python tests, so this
+        // asserts byte-for-byte cross-language agreement of the safety-code transform.
+        val agent = java.util.Base64.getDecoder().decode(
+            "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4/QEE="
+        )
+        val phone = java.util.Base64.getDecoder().decode(
+            "QkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYI="
+        )
+        val code = HermesRelayCrypto.gatewayRelaySafetyCode(agent, phone)
+        assertEquals("595F D4F3 50B3 70FA 2D8B 6F15 8004 3F80", code)
+        assertEquals(8, code.split(" ").size)
+        // Role-independent: swapping the argument order does not change the code.
+        assertEquals(code, HermesRelayCrypto.gatewayRelaySafetyCode(phone, agent))
+        // Swapping EITHER key changes the code (the single-key MITM MP-1 closes).
+        val mutated = agent.copyOf().also { it[0] = (it[0].toInt() xor 0xFF).toByte() }
+        org.junit.Assert.assertNotEquals(code, HermesRelayCrypto.gatewayRelaySafetyCode(mutated, phone))
+        org.junit.Assert.assertNotEquals(code, HermesRelayCrypto.gatewayRelaySafetyCode(agent, mutated))
+    }
+
     private fun assertSlotUnwrapsAndOpens(slot: JSONObject, wrappedKeyField: String, expectedKeyField: String) {
         val recipientPriv = recipientPrivateKey(slot)
         val senderPubX963 = decodeX963(slot.getString("senderPublicKey"))
@@ -209,6 +234,18 @@ class HermesGatewayV2VectorTest {
                 aad = slot.getString("payloadAAD").toByteArray(Charsets.UTF_8),
             )
         assertEquals(slot.getString("plaintext"), String(plain, Charsets.UTF_8))
+        // MP-27: when the sealed payload is a TEXT message ({text, actionId?, kind?}),
+        // decode it through the production schema instead of as a raw string. A
+        // model_switch seals {modelId} (no `text`), so skip the text decode there.
+        val plaintextJson = JSONObject(slot.getString("plaintext"))
+        if (plaintextJson.has("text")) {
+            val parsed = HermesRelayCrypto.openGatewaySealedPayload(
+                ciphertext = slot.getString("payloadCiphertext"),
+                keyData = symKey,
+                aad = slot.getString("payloadAAD").toByteArray(Charsets.UTF_8),
+            )
+            assertEquals(plaintextJson.getString("text"), parsed.text)
+        }
     }
 
     private fun decodeX963(base64: String): ByteArray {

@@ -223,7 +223,9 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "delete": "deleteKnowledgeSource",
       "purge": "purgeKnowledgeMemory",
       "connectRepo": "connectKnowledgeRepo",
-      "disconnectRepo": "disconnectKnowledgeRepo"
+      "disconnectRepo": "disconnectKnowledgeRepo",
+      "listRepos": "listKnowledgeRepos",
+      "resync": "requestKnowledgeResync"
     },
     "entitlementGate": "burnbar_pro_max",
     "tieredLimits": "PENSIEVE_LIMITS",

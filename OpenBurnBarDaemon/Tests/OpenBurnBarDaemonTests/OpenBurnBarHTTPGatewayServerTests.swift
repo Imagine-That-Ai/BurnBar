@@ -656,6 +656,31 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-key")
         XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"glm-5-turbo""#) == true)
         XCTAssertFalse(upstreamRequests.last?.body.contains("zai/primary/glm-5-turbo") == true)
+
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 5)
+        let entry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(entry.finalStatus, .exact)
+        XCTAssertEqual(entry.exactModelInvariant, .passed)
+        XCTAssertEqual(entry.requestPath, "/v1/chat/completions")
+        XCTAssertEqual(entry.endpoint, "Chat Completions")
+        XCTAssertEqual(entry.clientModelSlug, "zai/primary/glm-5-turbo")
+        XCTAssertEqual(entry.advertisedModelSlug, "zai/primary/glm-5-turbo")
+        XCTAssertEqual(entry.routingModelSlug, "glm-5-turbo")
+        XCTAssertEqual(entry.upstreamModelSlug, "glm-5-turbo")
+        XCTAssertEqual(entry.providerReportedModelSlug, "glm-5-turbo")
+        XCTAssertEqual(entry.providerID, "zai")
+        XCTAssertEqual(entry.providerName, "Z.ai")
+        XCTAssertEqual(entry.providerLogoKey, "ZaiProviderLogo")
+        XCTAssertEqual(entry.accountID, "primary")
+        XCTAssertEqual(entry.accountLabel, "Primary")
+        XCTAssertEqual(entry.transportKind, .http)
+        XCTAssertEqual(entry.rewriteKind, .none)
+        XCTAssertEqual(entry.httpStatus, 200)
+        XCTAssertEqual(entry.usage?.inputTokens, 3)
+        XCTAssertEqual(entry.usage?.outputTokens, 2)
+        XCTAssertEqual(entry.attempts.count, 1)
+        XCTAssertEqual(entry.attempts.first?.upstreamModelSlug, "glm-5-turbo")
+        XCTAssertEqual(entry.attempts.first?.providerLogoKey, "ZaiProviderLogo")
     }
 
     func testGatewayCrossVendorDegradeOffByDefaultReturnsNoEligibleRoute() async throws {
@@ -755,6 +780,25 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let chatRequests = GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/chat/completions" }
         XCTAssertEqual(chatRequests.count, 1)
         XCTAssertTrue(chatRequests.first?.body.contains(#""model":"deepseek-chat""#) == true)
+
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 5)
+        let entry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(entry.finalStatus, .crossVendorFallback)
+        XCTAssertEqual(entry.exactModelInvariant, .notApplicable)
+        XCTAssertEqual(entry.clientModelSlug, "claude-3-opus")
+        XCTAssertEqual(entry.routingModelSlug, "claude-3-opus")
+        XCTAssertEqual(entry.upstreamModelSlug, "deepseek-chat")
+        XCTAssertEqual(entry.providerReportedModelSlug, "deepseek-chat")
+        XCTAssertEqual(entry.providerID, "deepseek")
+        XCTAssertEqual(entry.providerName, "DeepSeek")
+        XCTAssertEqual(entry.providerLogoKey, "DeepSeekProviderLogo")
+        XCTAssertEqual(entry.rewriteKind, .crossVendorFallback)
+        XCTAssertEqual(entry.httpStatus, 200)
+        XCTAssertEqual(entry.usage?.inputTokens, 3)
+        XCTAssertEqual(entry.usage?.outputTokens, 2)
+        XCTAssertEqual(entry.attempts.map(\.providerID), ["deepseek"])
+        XCTAssertEqual(entry.attempts.map(\.upstreamModelSlug), ["deepseek-chat"])
+        XCTAssertEqual(entry.attempts.map(\.providerLogoKey), ["DeepSeekProviderLogo"])
     }
 
     func testGatewayPreservesLiveDynamicModelIDInsteadOfCatalogFamilyDowngrade() async throws {
@@ -4527,6 +4571,7 @@ private final class GatewayHarness: @unchecked Sendable {
     private(set) var port: Int
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
+    let proxyRouteLogStore: BurnBarProxyRouteLogStore
     private var server: BurnBarHTTPGatewayServer
     private let authToken: String?
     private let rateLimit: BurnBarRateLimitConfiguration?
@@ -4574,6 +4619,10 @@ private final class GatewayHarness: @unchecked Sendable {
             fileURL: tempDirectory.appendingPathComponent("usage-ledger.jsonl"),
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
+        self.proxyRouteLogStore = BurnBarProxyRouteLogStore(
+            fileURL: tempDirectory.appendingPathComponent("proxy-route-events.jsonl"),
+            logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
         self.modelHealthStore = BurnBarGatewayModelHealthStore(
             fileURL: tempDirectory.appendingPathComponent("gateway-model-health.json")
         )
@@ -4592,6 +4641,7 @@ private final class GatewayHarness: @unchecked Sendable {
             ),
             configStore: configStore,
             usageRecorder: usageRecorder,
+            proxyRouteLogStore: proxyRouteLogStore,
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
             factoryExecutor: factoryExecutor,
@@ -4618,6 +4668,7 @@ private final class GatewayHarness: @unchecked Sendable {
             ),
             configStore: configStore,
             usageRecorder: usageRecorder,
+            proxyRouteLogStore: proxyRouteLogStore,
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
             factoryExecutor: factoryExecutor,

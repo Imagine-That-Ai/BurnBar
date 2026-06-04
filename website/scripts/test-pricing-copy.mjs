@@ -64,12 +64,12 @@ assert.match(publicPricingCopy, /\$59\.99/, "Ultra monthly price must be public"
 assert.match(publicPricingCopy, /\$599\/year|\$599\/yr/, "Ultra annual price must be public");
 assert.match(
   publicPricingCopy,
-  /15 Pensieve knowledge sources|15 knowledge sources/,
+  /100 Pensieve knowledge sources|100 knowledge sources/,
   "Ultra source limit must be public"
 );
 assert.match(
   publicPricingCopy,
-  /50,000 encrypted memory chunks|50,000 memory chunks/,
+  /500,000 encrypted memory chunks|500,000 memory chunks/,
   "Ultra chunk limit must be public"
 );
 assert.match(
