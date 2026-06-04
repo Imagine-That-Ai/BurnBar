@@ -101,15 +101,15 @@ honesty guardrails. This is the data for the shared `GatedFeature` catalog.
 - Every chunk of text is sealed on your device before it leaves — the server searches it without ever reading it
 - Nearest-neighbor recall finds the right memory by meaning, not by exposing a single word of your content
 - Sources, chunks, and storage you control, with one tap to delete any source or purge it all
-- **Honesty:** "sealed on-device; server searches without reading it." Cloak is NOT inversion-proof/fully-unlinkable. Vault key is device-only; loss = unrecoverable. Pro tier = 3 sources / 5,000 chunks / 25 MB.
+- **Honesty:** "sealed on-device; server searches without reading it." Cloak is NOT inversion-proof/fully-unlinkable. Vault key is device-only; loss = unrecoverable. Pro tier = 10 sources / 50,000 chunks / 1 GB.
 
 ### `tenXMemory` — 10× agent memory — **cloud_ultra**
 - **One-liner:** Give your agents a whole second brain — 10× the private memory they can recall while they work.
-- Jump from 3 sources to 15, from 5,000 memory chunks to 50,000, from 25 MB to 250 MB of recallable knowledge
+- Jump from 10 sources to 100, from 50,000 memory chunks to 500,000, from 1 GB to 10 GB of recallable knowledge
 - Feed in far more repo docs, notes, and chat memories so your agents stay deeply in context across big projects
 - Same on-device seal and cloaked vectors — the server still searches without reading a word
 - Everything in Cloud Pro stays included: Floo, Agent Control, and the same hosted action and relay allowance
-- **Honesty:** The 10× is the PENSIEVE_LIMITS jump pro{3,5000,25MB}→ultra{15,50000,250MB}. Same sealing/cloak honesty. No intro trial on Ultra.
+- **Honesty:** The 10× is the PENSIEVE_LIMITS jump pro{10,50000,1GB}→ultra{100,500000,10GB}. Same sealing/cloak honesty. No intro trial on Ultra.
 
 ---
 
