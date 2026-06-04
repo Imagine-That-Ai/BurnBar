@@ -169,7 +169,10 @@ internal object HermesRelayCryptoHpkeV3 {
         HermesRelayCryptoHkdf.leftPadTo(HermesRelayCryptoEc.ecdh(privateKey, peer), DH_LEN)
 
     private fun serializePublicKey(publicKey: java.security.PublicKey): ByteArray =
-        HermesRelayCryptoEc.encodeUncompressedPublicKey(publicKey as java.security.interfaces.ECPublicKey)
+        HermesRelayCryptoEc.encodeUncompressedPublicKey(
+            publicKey as? java.security.interfaces.ECPublicKey
+                ?: error("Hermes relay HPKE v3 requires an EC public key"),
+        )
 
     private fun extractAndExpand(dh: ByteArray, kemContext: ByteArray): ByteArray {
         val eaePrk = labeledExtract(KEM_SUITE_ID, ByteArray(0), "eae_prk", dh)

@@ -153,6 +153,14 @@ function devicePollRequest(body: Record<string, unknown>) {
   return postRequest("/device/poll", body);
 }
 
+function record(value: unknown, label = "value"): Record<string, unknown> {
+  expect(value, `${label} must be an object`).toEqual(expect.any(Object));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return Object.fromEntries(Object.entries(value));
+}
+
 async function runHttpHandler(handler: unknown, req: ReturnType<typeof postRequest>, res: FakeRes): Promise<void> {
   const run = Reflect.get(Object(handler), "run");
   const callable = typeof run === "function" ? run : handler;
@@ -293,10 +301,10 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     });
 
     const res = fakeRes();
-    await dispatchHermesGatewayRequest(devicePollRequest({ deviceCode, deviceSecret }) as never, res as never);
+    await dispatchHermesGatewayRequest(devicePollRequest({ deviceCode, deviceSecret }), res);
 
     expect(res._status).toBe(200);
-    const body = res._body as Record<string, unknown>;
+    const body = record(res._body, "device poll response body");
     expect(body.status).toBe("approved");
     expect(body.uid).toBe(UID);
     expect(body.userId).toBe(UID);
@@ -306,8 +314,9 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     expect(body.phoneRatchetIdentityPublicKey).toBe(phoneRatchetIdentityPublicKey);
     expect(body.phoneRatchetSignedPreKeyId).toBe("phone-spk-1");
     expect(body.supportsRatchetV1).toBe(true);
-    expect((body.client as Record<string, unknown>).id).toBe(CLIENT_ID);
-    expect((body.client as Record<string, unknown>).uid).toBeUndefined();
+    const client = record(body.client, "device poll client");
+    expect(client.id).toBe(CLIENT_ID);
+    expect(client.uid).toBeUndefined();
     expect(stored.has(`hermes_gateway_device_sessions/${deviceCode}`)).toBe(false);
   });
 });

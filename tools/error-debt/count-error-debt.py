@@ -10,6 +10,24 @@ import re
 import sys
 
 
+EXCLUDED_PATH_SEGMENTS = {
+    ".build",
+    ".build-codex",
+    ".derived-data",
+    ".git",
+    ".swiftpm",
+    "Carthage",
+    "DerivedData",
+    "Pods",
+    "build",
+    "checkouts",
+}
+
+
+def is_excluded_path(path: pathlib.Path) -> bool:
+    return any(part in EXCLUDED_PATH_SEGMENTS for part in path.parts)
+
+
 def count_empty_catches(repo_root: pathlib.Path) -> dict[str, int]:
     """Count empty catch blocks in AgentLens and OpenBurnBarDaemon."""
     count = 0
@@ -22,6 +40,8 @@ def count_empty_catches(repo_root: pathlib.Path) -> dict[str, int]:
         if not base.exists():
             continue
         for path in base.rglob("*.swift"):
+            if is_excluded_path(path.relative_to(repo_root)):
+                continue
             try:
                 text = path.read_text(encoding="utf-8")
             except OSError:
@@ -48,6 +68,8 @@ def count_try_optional_services(repo_root: pathlib.Path) -> dict[str, int]:
         return {"total": 0}
 
     for path in services.rglob("*.swift"):
+        if is_excluded_path(path.relative_to(repo_root)):
+            continue
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:

@@ -5,7 +5,6 @@ package com.openburnbar.data.hermes.relay
 import io.mockk.every
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
-import java.security.interfaces.ECPublicKey
 import java.util.Base64
 import org.json.JSONObject
 import org.junit.After
@@ -45,7 +44,7 @@ class HermesGatewayRelayEnvelopeCodecTest {
                 uid = "uid-1",
                 clientId = "client-1",
                 messageId = "m-1",
-                recipientPublicKeyX963 = publicX963(phone.public as ECPublicKey),
+                recipientPublicKeyX963 = publicX963(phone.public),
                 senderPrivateKey = agent.private,
                 preferredRelayKeyVersion = HermesRelayCrypto.KEY_VERSION_V3,
             )
@@ -54,7 +53,7 @@ class HermesGatewayRelayEnvelopeCodecTest {
         assertEquals(HermesRelayCrypto.ALGORITHM_V3, envelope.relayEncryption)
         assertFalse(envelope.enc.isNullOrBlank())
         assertEquals(
-            Base64.getEncoder().encodeToString(publicX963(agent.public as ECPublicKey)),
+            Base64.getEncoder().encodeToString(publicX963(agent.public)),
             envelope.senderPublicKey,
         )
 
@@ -65,7 +64,7 @@ class HermesGatewayRelayEnvelopeCodecTest {
                 clientId = "client-1",
                 messageId = "m-1",
                 recipientPrivateKey = phone.private,
-                pinnedSenderPublicKeyX963 = publicX963(agent.public as ECPublicKey),
+                pinnedSenderPublicKeyX963 = publicX963(agent.public),
             )
         val json = JSONObject(String(opened, Charsets.UTF_8))
         assertEquals("Hermes replied.", json.getString("text"))
@@ -84,7 +83,7 @@ class HermesGatewayRelayEnvelopeCodecTest {
                 uid = "uid-1",
                 clientId = "client-1",
                 eventId = "e-1",
-                recipientPublicKeyX963 = publicX963(agent.public as ECPublicKey),
+                recipientPublicKeyX963 = publicX963(agent.public),
                 senderPrivateKey = phone.private,
                 preferredRelayKeyVersion = HermesRelayCrypto.GATEWAY_KEY_VERSION,
             )
@@ -100,7 +99,7 @@ class HermesGatewayRelayEnvelopeCodecTest {
                 clientId = "client-1",
                 eventId = "e-1",
                 recipientPrivateKey = agent.private,
-                pinnedSenderPublicKeyX963 = publicX963(phone.public as ECPublicKey),
+                pinnedSenderPublicKeyX963 = publicX963(phone.public),
             )
         assertEquals(plaintext, String(opened, Charsets.UTF_8))
     }
@@ -116,7 +115,7 @@ class HermesGatewayRelayEnvelopeCodecTest {
                 uid = "uid-1",
                 clientId = "client-1",
                 messageId = "m-2",
-                recipientPublicKeyX963 = publicX963(phone.public as ECPublicKey),
+                recipientPublicKeyX963 = publicX963(phone.public),
                 senderPrivateKey = agent.private,
                 preferredRelayKeyVersion = HermesRelayCrypto.KEY_VERSION_V3,
             )
@@ -126,13 +125,13 @@ class HermesGatewayRelayEnvelopeCodecTest {
                 envelope =
                     envelope.copy(
                         senderPublicKey =
-                            Base64.getEncoder().encodeToString(publicX963(attacker.public as ECPublicKey)),
+                            Base64.getEncoder().encodeToString(publicX963(attacker.public)),
                     ),
                 uid = "uid-1",
                 clientId = "client-1",
                 messageId = "m-2",
                 recipientPrivateKey = phone.private,
-                pinnedSenderPublicKeyX963 = publicX963(attacker.public as ECPublicKey),
+                pinnedSenderPublicKeyX963 = publicX963(attacker.public),
             )
         }
     }
@@ -147,7 +146,7 @@ class HermesGatewayRelayEnvelopeCodecTest {
                 uid = "uid-1",
                 clientId = "client-1",
                 messageId = "m-3",
-                recipientPublicKeyX963 = publicX963(phone.public as ECPublicKey),
+                recipientPublicKeyX963 = publicX963(phone.public),
                 senderPrivateKey = agent.private,
             )
 
@@ -158,12 +157,15 @@ class HermesGatewayRelayEnvelopeCodecTest {
                 clientId = "client-1",
                 messageId = "m-3",
                 recipientPrivateKey = phone.private,
-                pinnedSenderPublicKeyX963 = publicX963(agent.public as ECPublicKey),
+                pinnedSenderPublicKeyX963 = publicX963(agent.public),
             )
         }
     }
 
-    private fun publicX963(key: ECPublicKey): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(key)
+    private fun publicX963(key: java.security.PublicKey): ByteArray {
+        val ecPublic = key as? java.security.interfaces.ECPublicKey ?: error("test expected a P-256 public key")
+        return HermesRelayCryptoEc.encodeUncompressedPublicKey(ecPublic)
+    }
 
     private inline fun assertRejected(block: () -> Unit) {
         try {
