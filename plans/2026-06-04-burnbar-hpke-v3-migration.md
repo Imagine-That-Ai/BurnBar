@@ -39,6 +39,12 @@ tmux new-window -t burnbar-hpke-v3 -n python
 tmux new-window -t burnbar-hpke-v3 -n swift
 tmux new-window -t burnbar-hpke-v3 -n kotlin
 tmux new-window -t burnbar-hpke-v3 -n vectors
+tmux new-window -t burnbar-hpke-v3 -n recon
+tmux new-window -t burnbar-hpke-v3 -n architecture
+tmux new-window -t burnbar-hpke-v3 -n tests
+tmux new-window -t burnbar-hpke-v3 -n docs
+tmux new-window -t burnbar-hpke-v3 -n integration
+tmux new-window -t burnbar-hpke-v3 -n regression
 tmux new-window -t burnbar-hpke-v3 -n security
 tmux new-window -t burnbar-hpke-v3 -n release
 ```
@@ -107,6 +113,23 @@ The recipient binds `pinned_sender_public`. The relay-visible
 the open path uses the pinned value as the authenticated sender key.
 
 ## Implementation Workstreams
+
+### 0. Reconnaissance Agent
+
+Launch through Claude from the tmux `recon` window with the `ultracode`
+keyword and `plans/agents/burnbar-hpke-v3-recon-agent.md`.
+
+Map current Python, Swift, Kotlin, fixture, and docs seams before implementation
+edits start. Return exact file ownership boundaries and any discovered
+dependency or API constraints.
+
+### 0.5. Architecture Guard Agent
+
+Launch through Claude from the tmux `architecture` window with the `ultracode`
+keyword and `plans/agents/burnbar-hpke-v3-architecture-agent.md`.
+
+Freeze the v3 wire contract, capability negotiation, compatibility policy, and
+security invariants so implementation workers converge on one design.
 
 ### 1. Python Hermes Agent
 
@@ -188,6 +211,15 @@ Each negative vector mutates one authenticated input and must fail:
 - `relayKeyVersion`
 - `relayEncryption`
 
+### 4.5. Dedicated Test Agent
+
+Launch through Claude from the tmux `tests` window with the `ultracode` keyword
+and `plans/agents/burnbar-hpke-v3-test-agent.md`.
+
+Build or harden tests around the final implementation without owning core
+crypto code. Coordinate with implementation workers before editing the same test
+files.
+
 ### 5. Security Review
 
 Launch through Claude from the tmux `security` window with the `ultracode`
@@ -223,6 +255,30 @@ Keep the stacked PR shape:
 
 - PR 1: BurnBar platform plugin, crypto-free.
 - PR 2: relay E2EE, v2 compatibility, v3 HPKE Auth migration, fixtures, docs.
+
+### 7. Documentation Agent
+
+Launch through Claude from the tmux `docs` window with the `ultracode` keyword
+and `plans/agents/burnbar-hpke-v3-docs-agent.md`.
+
+Update user-facing and maintainer-facing documentation after implementation
+lands. Keep docs scoped to behavior that actually ships.
+
+### 8. Integration Agent
+
+Launch through Claude from the tmux `integration` window with the `ultracode`
+keyword and `plans/agents/burnbar-hpke-v3-integration-agent.md`.
+
+Review worker output, reconcile overlaps, remove duplication, and keep naming,
+errors, docs, and tests consistent.
+
+### 9. Regression QA Agent
+
+Launch through Claude from the tmux `regression` window with the `ultracode`
+keyword and `plans/agents/burnbar-hpke-v3-regression-agent.md`.
+
+Run the final targeted regression matrix across BurnBar and Hermes surfaces and
+return a concise pass/fail evidence report.
 
 ## Acceptance Commands
 
