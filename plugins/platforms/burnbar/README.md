@@ -12,14 +12,17 @@ message the agent — and supervise it — from the BurnBar iOS/macOS apps.
 - **Replies** via `/messages` and **typing** state via `/typing`.
 - **Attachments** via `/attachments/init` + signed upload + `/attachments/finalize`.
 - **End-to-end relay encryption** (`p256-hkdf-sha256-aesgcm`, via
-  `gateway.crypto.relay_e2ee`): once the paired phone publishes a relay public
-  key, the adapter seals every outgoing reply body / attachment to the phone's key
-  and opens phone-sealed inbound events with its own key; on an E2E-paired link it
-  refuses to send plaintext. The BurnBar Cloud gateway is a blind relay — it never
-  sees message/event/attachment bodies, sender names, or file names.
+  `gateway.crypto.relay_e2ee`): once pairing enables E2E, the adapter uses the v2
+  authenticated key-wrap, seals every outgoing reply body / attachment to the
+  phone's pinned relay key, and opens phone-sealed inbound events only when the
+  AES-GCM tag verifies against that pinned sender key. On an E2E-paired link it
+  refuses plaintext. The BurnBar Cloud gateway is a blind relay — it never sees
+  message/event/attachment bodies, sender names, file names, or approval details.
 - **Safety-code comparison** after setup: when E2E is enabled, the CLI prints the
-  same short code BurnBar shows in the Private messages sheet. Matching codes
-  prove the phone pinned this agent key at first pairing.
+  same short code BurnBar shows in the Private messages sheet. The prompt defaults
+  to **no** and only accepts valid X9.63 P-256 public keys. Matching codes prove
+  the phone pinned this agent key at first pairing. If the user approves without
+  comparing the code, there is no first-pairing MITM defense.
 - **Runtime status** to `/runtime` (on connect and every 30s): the agent's model
   catalog, current model/provider, and agent version. The gateway exposes this on
   `/state`, which is how BurnBar clients show whether the gateway is online and
@@ -27,16 +30,28 @@ message the agent — and supervise it — from the BurnBar iOS/macOS apps.
 - **Remote model switch**: a `model_switch` event is applied as `/model <id>`,
   after which runtime status is republished so the new model is reflected in
   `/state` within ~1s instead of waiting for the next heartbeat.
-- **Human-in-the-loop oversight**: when oversight is *supervised* (set per client
-  from the BurnBar app), Hermes' slash-confirm prompts are routed through a BurnBar
-  approval gate (`/approvals`). The gate is **control-plane only** — it carries the
-  action id and a coarse tool category, never the agent's free-text command; the
-  human-readable detail is delivered over the end-to-end encrypted message channel,
-  so the server never reads it. The action waits until the user approves it on a
-  trusted BurnBar device; an unanswered gate expires. In *autonomous* mode the
-  agent runs without prompting. Decisions are applied through Hermes' own
-  `tools.slash_confirm`, so this only gates actions Hermes already routes through
-  the slash-confirm primitive.
+- **Human-in-the-loop oversight**: on an E2E-paired link, oversight mode is pinned at
+  pairing (`BURNBAR_OVERSIGHT_MODE`); the relay-visible `/state` toggle is **not**
+  authoritative. When oversight is *supervised*, Hermes' slash-confirm prompts arm a
+  BurnBar approval gate (`/approvals`, control-plane only) and deliver the readable
+  detail over the sealed message channel. On E2E links the agent **does not** trust
+  `/approvals` poll status (a malicious relay could forge `approved`); it applies
+  decisions only from phone-authenticated sealed `approval_decision` events (the
+  BurnBar app enqueues one after the native callable succeeds). Authenticated
+  `oversight_mode` events are the E2E path for changing the mode after pairing.
+  Legacy plaintext links still mirror oversight from `/state` and poll `/approvals`
+  as before.
+- **Replay defense**: authenticated event ids are deduped in memory and persisted to
+  `burnbar_replay_ledger.json` (beside the event cursor), keyed by `uid`,
+  `clientId`, and the pinned phone key fingerprint. Every E2E sealed inbound event
+  must carry an authenticated `replayCounter`/`eventCounter`; the adapter persists a
+  high-water mark and drops counters at or below it before dispatch, so an old valid
+  frame is still dropped after restart or bounded-cache saturation.
+- **AAD routing identity**: E2E setup requires the authenticated device grant to
+  include both `uid` and `clientId`. The adapter refuses to enable or process E2E
+  without them, because learning the first AAD-routing ids from `/events` or
+  `/state` would let an untrusted relay pin wrong values and cause persistent
+  decrypt failure.
 
 ## Configuration
 
@@ -51,6 +66,7 @@ Optional:
 
 - `HERMES_BURNBAR_AGENT_VERSION` — overrides the reported agent version.
 - `HERMES_BURNBAR_CURSOR_FILE` — overrides the event-cursor cache path.
+- `HERMES_BURNBAR_REPLAY_FILE` — overrides the durable replay-ledger path.
 
 ## Setup
 
@@ -64,6 +80,33 @@ After approval, compare the printed safety code with BurnBar's **Private
 messages** screen before sending sensitive prompts. If the codes do not match,
 revoke the gateway in BurnBar and pair again from a trusted network.
 
+## Security notes
+
+See [`SECURITY.md`](SECURITY.md) for the maintainer-facing threat model and
+merge checklist.
+
+This is a relay-only E2E design, not Signal-grade metadata privacy. The relay
+cannot read sealed message text, sender names, approval detail, attachment names,
+or file bytes, and cannot forge post-pairing v2 events without the sender's
+static private key. It still sees routing ids, event/message ids, timing, and
+approximate ciphertext sizes.
+
+The v2 key wrap is HPKE-AuthEncap-shaped (`ECDH(ephemeral, recipient) ||
+ECDH(senderStatic, recipient)` with domain-separated HKDF info), but it is not
+RFC 9180 HPKE framing. The reason is cross-language wire compatibility with the
+existing Swift/Kotlin `HermesRelayCrypto` vectors. A future standard-HPKE
+migration should use a new `relayKeyVersion`; v2 must remain byte-stable.
+
+KCI and static-key compromise are explicit non-goals. If the recipient static
+private key is stolen, past messages wrapped to that key can be decrypted and an
+attacker can forge as any sender. The static leg has no post-compromise forward
+secrecy; key protection belongs in the OS keychain and re-pairing/key rotation
+policy. Replay rejection is enforced by the adapter's persisted id ledger plus
+sealed replay-counter high-water mark, not by AES-GCM alone.
+
+Maintainer note: compare the safety code during setup; clicking through without
+checking it gives the relay a first-pairing MITM opportunity.
+
 ## Tests
 
 From the Hermes repo root:
@@ -72,34 +115,4 @@ From the Hermes repo root:
 # Plugin registration, event mapping, send/typing/attachments, oversight,
 # runtime status + model switch, and the relay seal -> open round-trip.
 scripts/run_tests.sh tests/gateway/test_burnbar_plugin.py tests/gateway/test_relay_e2ee.py tests/gateway/test_relay_e2ee_v2.py
-
-# Deterministic smoke against a fake gateway (copies the plugin into a checkout).
-python plugins/platforms/burnbar/smoke_local.py smoke --hermes-repo .
-```
-
-## Manual full-gateway local test
-
-Terminal 1 — fake gateway:
-
-```bash
-python plugins/platforms/burnbar/smoke_local.py serve --port 8765
-```
-
-Terminal 2 — Hermes against the fake gateway:
-
-```bash
-export BURNBAR_API_BASE_URL="http://127.0.0.1:8765/v1/hermes-gateway"
-export BURNBAR_ACCESS_TOKEN="test-token"
-export BURNBAR_HOME_CHANNEL="dest-home"
-hermes gateway
-```
-
-Terminal 3 — enqueue a message and read the reply:
-
-```bash
-curl -s -X POST http://127.0.0.1:8765/__test/enqueue \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"Reply with exactly: PONG"}'
-
-curl -s http://127.0.0.1:8765/__test/messages | python3 -m json.tool
 ```

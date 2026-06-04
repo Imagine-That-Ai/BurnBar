@@ -1,4 +1,4 @@
-"""End-to-end relay crypto for the BurnBar / PiAgent gateway.
+"""End-to-end relay crypto for the BurnBar Hermes gateway.
 
 This package is the Python mirror of the canonical Swift
 ``HermesRelayCrypto`` (``OpenBurnBarCore/.../HermesRelayCrypto.swift``) and
@@ -17,7 +17,6 @@ from .relay_e2ee import (
     ALGORITHM,
     KEY_VERSION,
     HERMES_NAMESPACE,
-    PIAGENT_NAMESPACE,
     RelayNamespace,
     RelayPrivateKey,
     AgentRelayIdentity,
@@ -27,6 +26,7 @@ from .relay_e2ee import (
     InvalidSymmetricKeyError,
     generate_private_key,
     generate_symmetric_key,
+    public_key_x963_from_base64,
     seal_to_base64,
     open_base64,
     wrap_symmetric_key,
@@ -40,7 +40,6 @@ __all__ = [
     "ALGORITHM",
     "KEY_VERSION",
     "HERMES_NAMESPACE",
-    "PIAGENT_NAMESPACE",
     "RelayNamespace",
     "RelayPrivateKey",
     "AgentRelayIdentity",
@@ -50,6 +49,7 @@ __all__ = [
     "InvalidSymmetricKeyError",
     "generate_private_key",
     "generate_symmetric_key",
+    "public_key_x963_from_base64",
     "seal_to_base64",
     "open_base64",
     "wrap_symmetric_key",

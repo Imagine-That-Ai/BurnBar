@@ -115,14 +115,15 @@ def test_aad_prefixes_are_namespaced():
     )
 
 
-def test_piagent_namespace_swaps_prefix():
+def test_custom_namespace_swaps_prefix():
+    namespace = relay_e2ee.RelayNamespace("ExampleRelay")
     assert (
-        relay_e2ee.request_aad("u", "c", "r", namespace=relay_e2ee.PIAGENT_NAMESPACE)
-        == b"OpenBurnBar-PiAgentRelay-v1|request|u|c|r"
+        relay_e2ee.request_aad("u", "c", "r", namespace=namespace)
+        == b"ExampleRelay-v1|request|u|c|r"
     )
     assert (
-        relay_e2ee.key_aad("u", "c", "r", namespace=relay_e2ee.PIAGENT_NAMESPACE)
-        == b"OpenBurnBar-PiAgentRelay-v1|key|u|c|r"
+        relay_e2ee.key_aad("u", "c", "r", namespace=namespace)
+        == b"ExampleRelay-v1|key|u|c|r"
     )
 
 
@@ -279,6 +280,39 @@ def test_wrap_with_invalid_public_key_raises():
     symmetric_key = relay_e2ee.generate_symmetric_key()
     with pytest.raises(relay_e2ee.InvalidPublicKeyError):
         relay_e2ee.wrap_symmetric_key(symmetric_key, "not-a-key!!!", b"aad")
+
+
+def test_public_key_parser_requires_valid_base64_and_p256_point():
+    private_key = relay_e2ee.generate_private_key()
+    public_key = private_key.public_key_base64()
+    raw = relay_e2ee.public_key_x963_from_base64(public_key)
+    assert raw == base64.b64decode(public_key)
+    assert len(raw) == 65 and raw[0] == 0x04
+
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.public_key_x963_from_base64(public_key + "!!")
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.public_key_x963_from_base64(
+            base64.b64encode(b"\x04" + b"\x00" * 64).decode("ascii")
+        )
+
+
+def test_base64_inputs_are_canonical():
+    private_key = relay_e2ee.generate_private_key()
+    symmetric_key = relay_e2ee.generate_symmetric_key()
+    aad = b"aad"
+    wrapped = relay_e2ee.wrap_symmetric_key(
+        symmetric_key, private_key.public_key_base64(), aad
+    )
+
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.RelayPrivateKey.from_base64(private_key.raw_base64() + "!!")
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.wrap_symmetric_key(
+            symmetric_key, private_key.public_key_base64() + "!!", aad
+        )
+    with pytest.raises(relay_e2ee.InvalidCiphertextError):
+        relay_e2ee.unwrap_symmetric_key(wrapped + "!!", private_key, aad)
 
 
 # ---------------------------------------------------------------------------

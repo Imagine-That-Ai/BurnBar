@@ -90,6 +90,33 @@ def test_v2_unwrap_with_wrong_sender_key_raises_invalid_tag(gateway_vector, slot
         )
 
 
+@pytest.mark.parametrize("slot", ["event", "message", "modelSwitch", "attachment"])
+def test_v2_unwrap_with_wrong_recipient_key_raises_invalid_tag(gateway_vector, slot):
+    from cryptography.exceptions import InvalidTag
+
+    node = gateway_vector[slot]
+    wrong_recipient = relay_e2ee.generate_private_key()
+    with pytest.raises(InvalidTag):
+        relay_e2ee.unwrap_symmetric_key(
+            node["wrappedKey"],
+            wrong_recipient,
+            _aad(node["keyAAD"]),
+            sender_public_base64=node["senderPublicKey"],
+        )
+
+
+def test_v2_unwrap_rejects_malformed_sender_public_key(gateway_vector):
+    node = gateway_vector["event"]
+    recipient = relay_e2ee.RelayPrivateKey.from_base64(node["recipientPrivateKey"])
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.unwrap_symmetric_key(
+            node["wrappedKey"],
+            recipient,
+            _aad(node["keyAAD"]),
+            sender_public_base64=node["senderPublicKey"] + "!!",
+        )
+
+
 def test_v2_wrap_is_domain_separated_from_v1_unwrap():
     from cryptography.exceptions import InvalidTag
 

@@ -1,9 +1,9 @@
 """Byte-exact Python mirror of the canonical ``HermesRelayCrypto`` (Swift).
 
-The relay end-to-end-encryption scheme used by the BurnBar Hermes Gateway
-(and the PiAgent relay) seals every private payload to the peer's P-256
-public key so the relay server only ever store-and-forwards ciphertext. The
-single source of truth is the Swift implementation at
+The relay end-to-end-encryption scheme used by the BurnBar Hermes Gateway seals
+every private payload to the peer's P-256 public key so the relay server only
+ever store-and-forwards ciphertext. The single source of truth is the Swift
+implementation at
 ``OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift``;
 the Android Kotlin port and this Python port are byte-for-byte
 wire-compatible with it. The shared interop gate is the wire vector at
@@ -21,7 +21,7 @@ Wire invariants (do not drift — pinned in ``tests/gateway/test_relay_e2ee.py``
   (``private_key.exchange(ec.ECDH(), peer)``), never re-hashed before HKDF.
 * **HKDF-SHA256** (key-wrap only): ``salt`` = 32 zero bytes (RFC 5869 empty
   salt), ``info`` = ``b"OpenBurnBar-HermesRelay-KeyWrap-v1|" + key_aad``,
-  output 32 bytes. (PiAgent: ``OpenBurnBar-PiAgentRelay-KeyWrap-v1|``.)
+  output 32 bytes.
 * **AES-256-GCM**: 12-byte random nonce, 16-byte tag.
   ``cryptography``'s ``AESGCM.encrypt`` returns ``ciphertext ‖ tag(16)``.
 * Payload seal (``seal_to_base64``) = ``base64(nonce(12) ‖ ct ‖ tag(16))``
@@ -71,6 +71,12 @@ domain-separated ``info`` (which binds the namespace version and, for v2, all
 three public keys) supplies the separation an explicit salt would otherwise
 provide. It is not a weakness.
 
+**Why not RFC 9180 HPKE?** v2 is HPKE-AuthEncap-shaped, but it is not HPKE
+wire framing. The project keeps this bespoke frame only because the Swift,
+Kotlin, and Python clients already share byte-exact CryptoKit-compatible vectors
+and gateway envelopes. A future standard-HPKE migration must be a new
+``relayKeyVersion`` with new vectors; do not silently mutate the v2 layout.
+
 **Trust anchor.** The v2 sender-auth property holds ONLY because the caller
 passes the **pinned** peer static key to :func:`unwrap_symmetric_key`
 (``sender_public_base64``) — never a wire-supplied ``senderPublicKey`` field.
@@ -92,12 +98,10 @@ from dataclasses import dataclass
 ALGORITHM = "p256-hkdf-sha256-aesgcm"
 KEY_VERSION = 1
 
-# Default namespaces. ``HERMES_NAMESPACE`` mirrors Swift ``HermesRelayCrypto``
+# Default namespace. ``HERMES_NAMESPACE`` mirrors Swift ``HermesRelayCrypto``
 # (AAD prefix ``OpenBurnBar-HermesRelay-v1`` / key-wrap info prefix
-# ``OpenBurnBar-HermesRelay-KeyWrap-v1|``). ``PIAGENT_NAMESPACE`` mirrors
-# Swift ``PiAgentRelayCrypto`` so the same module serves the PiAgent relay.
+# ``OpenBurnBar-HermesRelay-KeyWrap-v1|``).
 HERMES_NAMESPACE = "OpenBurnBar-HermesRelay"
-PIAGENT_NAMESPACE = "OpenBurnBar-PiAgentRelay"
 
 # Environment variable that stores the agent's persistent relay private key
 # (base64 of the raw 32-byte scalar) for ``AgentRelayIdentity.load_or_create``.
@@ -144,7 +148,7 @@ class CorruptIdentityError(RelayCryptoError):
 
 
 # ---------------------------------------------------------------------------
-# Namespace (AAD prefixing — serves both Hermes and PiAgent)
+# Namespace (AAD prefixing)
 # ---------------------------------------------------------------------------
 
 
@@ -153,9 +157,9 @@ class RelayNamespace:
     """Carries the AAD / key-wrap prefixes for one relay scheme.
 
     ``HERMES_NAMESPACE`` -> AAD ``OpenBurnBar-HermesRelay-v1|...`` and key-wrap
-    info ``OpenBurnBar-HermesRelay-KeyWrap-v1|...``. ``PIAGENT_NAMESPACE``
-    swaps in the PiAgent strings. Pass ``namespace=`` to every AAD/seal call to
-    pick the scheme; it defaults to Hermes.
+    info ``OpenBurnBar-HermesRelay-KeyWrap-v1|...``. Pass ``namespace=`` to
+    every AAD/seal call to pick a different explicit scheme; it defaults to
+    Hermes.
     """
 
     name: str = HERMES_NAMESPACE
@@ -225,7 +229,6 @@ class RelayNamespace:
 
 
 _HERMES = RelayNamespace(HERMES_NAMESPACE)
-_PIAGENT = RelayNamespace(PIAGENT_NAMESPACE)
 
 
 def _resolve_namespace(namespace: RelayNamespace | str | None) -> RelayNamespace:
@@ -235,8 +238,6 @@ def _resolve_namespace(namespace: RelayNamespace | str | None) -> RelayNamespace
         return namespace
     if namespace == HERMES_NAMESPACE:
         return _HERMES
-    if namespace == PIAGENT_NAMESPACE:
-        return _PIAGENT
     return RelayNamespace(namespace)
 
 
@@ -315,7 +316,10 @@ class RelayPrivateKey:
     @classmethod
     def from_base64(cls, raw_base64: str) -> "RelayPrivateKey":
         """Import from base64 of the raw 32-byte scalar."""
-        return cls(base64.b64decode(raw_base64))
+        try:
+            return cls(base64.b64decode(raw_base64, validate=True))
+        except (ValueError, binascii.Error) as exc:
+            raise InvalidPublicKeyError("relay private key is invalid") from exc
 
     def _private_key(self):
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -525,11 +529,22 @@ def _public_key_x963_from_base64(public_key_base64: str) -> bytes:
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
     try:
-        raw = base64.b64decode(public_key_base64)
+        raw = base64.b64decode(public_key_base64, validate=True)
         public_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw)
     except (ValueError, binascii.Error) as exc:
         raise InvalidPublicKeyError("public key is invalid") from exc
     return public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+
+
+def public_key_x963_from_base64(public_key_base64: str) -> bytes:
+    """Return canonical X9.63 P-256 public bytes from base64, or raise.
+
+    This public wrapper is for callers that need to validate user-visible
+    pairing material before pinning or displaying a safety code. It deliberately
+    shares the same parser as the key-wrap path, so invalid-curve / malformed
+    points fail identically everywhere.
+    """
+    return _public_key_x963_from_base64(public_key_base64)
 
 
 def wrap_symmetric_key(
@@ -574,7 +589,7 @@ def wrap_symmetric_key(
     if len(key_data) != _SYMMETRIC_KEY_BYTE_COUNT:
         raise InvalidSymmetricKeyError("symmetric key must be 32 bytes")
     try:
-        recipient_bytes = base64.b64decode(recipient_public_key_base64)
+        recipient_bytes = base64.b64decode(recipient_public_key_base64, validate=True)
         recipient = ec.EllipticCurvePublicKey.from_encoded_point(
             ec.SECP256R1(), recipient_bytes
         )
@@ -659,7 +674,7 @@ def unwrap_symmetric_key(
         relay_private = RelayPrivateKey.from_raw(private_key)
 
     try:
-        envelope = base64.b64decode(wrapped_key_base64)
+        envelope = base64.b64decode(wrapped_key_base64, validate=True)
     except (ValueError, binascii.Error) as exc:
         raise InvalidCiphertextError("wrapped key is not valid base64") from exc
     if len(envelope) <= _X963_PUBLIC_KEY_BYTE_COUNT:
