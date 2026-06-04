@@ -265,7 +265,7 @@ class ThreadInboxStore private constructor(
         val payload =
             mapOf(
                 "contentSealed" to true,
-                "sealedSchemaVersion" to 1,
+                "sealedSchemaVersion" to 2,
                 "vaultKeyID" to resolvedKey.vaultKeyID,
                 "updatedAt" to FieldValue.serverTimestamp(),
                 "sealedPayload" to CloudVaultCrypto.sealedPayloadMap(sealed),

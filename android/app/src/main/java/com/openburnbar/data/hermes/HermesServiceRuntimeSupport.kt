@@ -1,7 +1,7 @@
 package com.openburnbar.data.hermes
 
 import com.openburnbar.data.hermes.relay.HermesRelayCrypto
-import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -44,10 +44,7 @@ internal class HermesServiceRuntimeSupport(
         val endpoint = endpointOverride ?: HermesServiceEndpointSupport.selectedEndpointURL(selected)
         if (endpoint == null) {
             val error = "Android does not have an HTTP Hermes endpoint for ${selected.displayName}."
-            probeState.runtimeErrorText.value = error
-            probeState.isReachable.value = false
-            probeState.isConnected.value = false
-            updateConnectionStatus(selected, HermesConnectionStatus.OFFLINE, error = error)
+            applyOfflineRuntimeState(selected, error)
             return
         }
 
@@ -85,12 +82,9 @@ internal class HermesServiceRuntimeSupport(
                 advertisedModel = modelIDs.firstOrNull(),
                 capabilities = listOf("health", "models", "chat_completions"),
             )
-        } catch (e: IOException) {
-            val error = e.message ?: e.javaClass.simpleName
-            probeState.runtimeErrorText.value = error
-            probeState.isReachable.value = false
-            probeState.isConnected.value = false
-            updateConnectionStatus(selected, HermesConnectionStatus.OFFLINE, error = error)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            applyOfflineRuntimeState(selected, runtimeProbeError(e), endpoint = endpoint)
         } finally {
             probeState.isLoadingRuntime.value = false
         }
@@ -139,6 +133,23 @@ internal class HermesServiceRuntimeSupport(
             capabilities = selected.capabilities.ifEmpty { listOf("relay", "chat_completions") },
         )
     }
+
+    private fun applyOfflineRuntimeState(
+        selected: HermesConnectionRecord,
+        error: String,
+        endpoint: String? = null,
+    ) {
+        probeState.runtimeErrorText.value = error
+        probeState.isReachable.value = false
+        probeState.isConnected.value = false
+        if (endpoint != null) {
+            probeState.runtimeInfo.value = probeState.runtimeInfo.value + ("endpoint" to endpoint)
+        }
+        updateConnectionStatus(selected, HermesConnectionStatus.OFFLINE, error = error)
+    }
+
+    private fun runtimeProbeError(error: Throwable): String =
+        error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
 
     private fun fetchHealth(endpoint: String): Map<String, String> {
         val request = Request.Builder().url("$endpoint/health").get().build()

@@ -76,6 +76,12 @@ OPENBURNBAR_TOKEN_SEARCH_SALT = b"OpenBurnBar-CloudSearch-Salt-v1"
 OPENBURNBAR_TOKEN_SEARCH_INFO = b"OpenBurnBar-CloudSearch-TokenHash-v1"
 OPENBURNBAR_SEMANTIC_SEARCH_SALT = b"OpenBurnBar-CloudSearch-Semantic-Salt-v1"
 OPENBURNBAR_SEMANTIC_SEARCH_INFO = b"OpenBurnBar-CloudSearch-SemanticHash-v1"
+OPENBURNBAR_DOC_ID_SALT = b"OpenBurnBar-DocID-Salt-v1"
+OPENBURNBAR_PROJECT_MEMORY_DOC_ID_INFO = b"OpenBurnBar-ProjectMemory-DocID-v1"
+OPENBURNBAR_CLOUD_VAULT_AAD_PREFIX = "OpenBurnBar-CloudVault-aad-v2"
+OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
+OPENBURNBAR_CLOUD_VAULT_HMAC_SALT = b"OpenBurnBar-CloudVault-HMAC-Salt-v1"
+OPENBURNBAR_CLOUD_VAULT_HMAC_INFO_PREFIX = b"OpenBurnBar-CloudVault-HMAC-v1"
 OPENBURNBAR_STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "how", "what", "where",
     "when", "why", "are", "was", "were", "you", "your", "have", "has", "had",
@@ -237,6 +243,94 @@ def _hkdf_sha256(input_key: bytes, salt: bytes, info: bytes, length: int) -> byt
     return output[:length]
 
 
+def _cloud_vault_aad_part(value: str, name: str) -> str:
+    if not value or "|" in value or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value):
+        raise ValueError(f"invalid CloudVault AAD {name}")
+    return value
+
+
+def _cloud_vault_aad_context(
+    uid: str,
+    collection: str,
+    doc_id: str,
+    field: str,
+    schema_version: int = 2,
+    purpose: str | None = None,
+) -> str:
+    if schema_version < 2:
+        raise ValueError("invalid CloudVault AAD schema version")
+    purpose_value = purpose or field
+    return "|".join(
+        [
+            OPENBURNBAR_CLOUD_VAULT_AAD_PREFIX,
+            _cloud_vault_aad_part(uid, "uid"),
+            _cloud_vault_aad_part(collection, "collection"),
+            _cloud_vault_aad_part(doc_id, "docID"),
+            _cloud_vault_aad_part(field, "field"),
+            str(schema_version),
+            _cloud_vault_aad_part(purpose_value, "purpose"),
+        ]
+    )
+
+
+def _validate_cloud_vault_aad(value: str) -> str:
+    parts = value.split("|")
+    if len(parts) != 7 or parts[0] != OPENBURNBAR_CLOUD_VAULT_AAD_PREFIX:
+        raise ValueError("invalid CloudVault AAD context")
+    _cloud_vault_aad_part(parts[1], "uid")
+    _cloud_vault_aad_part(parts[2], "collection")
+    _cloud_vault_aad_part(parts[3], "docID")
+    _cloud_vault_aad_part(parts[4], "field")
+    if not parts[5].isdigit() or int(parts[5]) < 2:
+        raise ValueError("invalid CloudVault AAD schema version")
+    _cloud_vault_aad_part(parts[6], "purpose")
+    return value
+
+
+def _cloud_vault_hmac_hex(data: bytes, vault_key: bytes, purpose: str) -> str:
+    hmac_key = _hkdf_sha256(
+        vault_key,
+        OPENBURNBAR_CLOUD_VAULT_HMAC_SALT,
+        OPENBURNBAR_CLOUD_VAULT_HMAC_INFO_PREFIX + b"|" + purpose.encode("utf-8"),
+        32,
+    )
+    return hmac.new(hmac_key, data, hashlib.sha256).hexdigest()
+
+
+def _cloud_vault_project_memory_doc_id(project_slug: str, vault_key: bytes) -> str:
+    doc_id_key = _hkdf_sha256(
+        vault_key,
+        OPENBURNBAR_DOC_ID_SALT,
+        OPENBURNBAR_PROJECT_MEMORY_DOC_ID_INFO,
+        32,
+    )
+    return "pm_" + hmac.new(doc_id_key, project_slug.encode("utf-8"), hashlib.sha256).digest()[:16].hex()
+
+
+def _uid_from_firebase_id_token(id_token: str) -> str | None:
+    try:
+        _header, payload, _signature = id_token.split(".", 2)
+        padded = payload + "=" * (-len(payload) % 4)
+        decoded = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    uid = decoded.get("user_id") or decoded.get("sub")
+    return uid if isinstance(uid, str) and uid else None
+
+
+def _session_log_document_id(storage_path: str, uid: str) -> str | None:
+    prefix = f"users/{uid}/session_logs/"
+    if not storage_path.startswith(prefix):
+        return None
+    remainder = storage_path[len(prefix):]
+    parts = remainder.split("/")
+    if len(parts) >= 3 and parts[1] == "bodies":
+        return parts[0]
+    return None
+
+
 def _cloud_normalized_tokens(text: str) -> list[str]:
     tokens = re.split(r"[^a-z0-9]+", text.lower())
     return [token for token in tokens if len(token) >= 2 and token not in OPENBURNBAR_STOPWORDS]
@@ -365,6 +459,7 @@ def _cloud_config() -> dict[str, Any]:
         "projectID": project_id,
         "region": region,
         "idToken": id_token,
+        "uid": _uid_from_firebase_id_token(id_token),
         "vaultKey": vault_key,
     }
 
@@ -400,52 +495,84 @@ def _call_firebase_callable(function_name: str, payload: dict[str, Any], config:
     raise RuntimeError(f"{function_name} returned an unsupported payload")
 
 
-def _aesgcm_open(nonce: bytes, ciphertext_and_tag: bytes, key: bytes) -> bytes:
+def _aesgcm_open(nonce: bytes, ciphertext_and_tag: bytes, key: bytes, aad: bytes | None = None) -> bytes:
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError as exc:
         raise RuntimeError("install cryptography to decrypt OpenBurnBar cloud search hits") from exc
-    return AESGCM(key).decrypt(nonce, ciphertext_and_tag, None)
+    return AESGCM(key).decrypt(nonce, ciphertext_and_tag, aad)
 
 
-def _open_cloud_sealed_text(envelope: dict[str, Any], vault_key: bytes) -> str:
+def _open_cloud_sealed_text(envelope: dict[str, Any], vault_key: bytes, expected_aad: str | None = None) -> str:
     if envelope.get("algorithm") != "AES-256-GCM":
         raise ValueError("unsupported sealed text algorithm")
     nonce = base64.b64decode(str(envelope["nonce"]))
     ciphertext = base64.b64decode(str(envelope["ciphertext"]))
     tag = base64.b64decode(str(envelope["tag"]))
-    return _aesgcm_open(nonce, ciphertext + tag, vault_key).decode("utf-8")
+    schema_version = int(envelope.get("schemaVersion") or 1)
+    aad_bytes: bytes | None = None
+    if schema_version >= 2:
+        if not expected_aad or envelope.get("aad") != expected_aad:
+            raise ValueError("sealed text AAD context mismatch")
+        aad_bytes = expected_aad.encode("utf-8")
+    return _aesgcm_open(nonce, ciphertext + tag, vault_key, aad_bytes).decode("utf-8")
 
 
-def _open_cloud_blob_envelope(envelope: dict[str, Any], vault_key: bytes) -> bytes:
+def _open_cloud_blob_envelope(envelope: dict[str, Any], vault_key: bytes, expected_aad: str | None = None) -> bytes:
     if envelope.get("algorithm") != "AES-256-GCM":
         raise ValueError("unsupported blob algorithm")
     combined = base64.b64decode(str(envelope["sealedBoxBase64"]))
     if len(combined) <= 28:
         raise ValueError("encrypted blob envelope is too short")
-    plaintext = _aesgcm_open(combined[:12], combined[12:], vault_key)
-    expected = str(envelope.get("plaintextSHA256", ""))
-    actual = hashlib.sha256(plaintext).hexdigest()
-    if actual != expected:
-        raise ValueError("encrypted blob SHA-256 mismatch")
+    schema_version = int(envelope.get("schemaVersion") or 1)
+    aad_bytes: bytes | None = None
+    if schema_version >= 2:
+        envelope_aad = str(envelope.get("aad", ""))
+        if envelope_aad == OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT:
+            aad_bytes = None
+        else:
+            if not expected_aad or envelope_aad != expected_aad:
+                raise ValueError("encrypted blob AAD context mismatch")
+            aad_bytes = _validate_cloud_vault_aad(expected_aad).encode("utf-8")
+    plaintext = _aesgcm_open(combined[:12], combined[12:], vault_key, aad_bytes)
+    if schema_version >= 2:
+        if int(envelope.get("integrityHashVersion") or 0) != 1:
+            raise ValueError("encrypted blob integrity version mismatch")
+        expected = str(envelope.get("plaintextHMAC", ""))
+        actual = _cloud_vault_hmac_hex(plaintext, vault_key, "blob-integrity")
+        if actual != expected:
+            raise ValueError("encrypted blob HMAC mismatch")
+    else:
+        expected = str(envelope.get("plaintextSHA256", ""))
+        actual = hashlib.sha256(plaintext).hexdigest()
+        if actual != expected:
+            raise ValueError("encrypted blob SHA-256 mismatch")
     return plaintext
 
 
-def _seal_cloud_blob_envelope(plaintext: bytes, vault_key: bytes, key_version: int = 1) -> dict[str, Any]:
+def _seal_cloud_blob_envelope(
+    plaintext: bytes,
+    vault_key: bytes,
+    key_version: int = 1,
+    aad_context: str | None = None,
+) -> dict[str, Any]:
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError as exc:
         raise RuntimeError("install cryptography to seal OpenBurnBar cloud payloads") from exc
     nonce = os.urandom(12)
-    ciphertext_and_tag = AESGCM(vault_key).encrypt(nonce, plaintext, None)
+    aad = _validate_cloud_vault_aad(aad_context).encode("utf-8") if aad_context else None
+    ciphertext_and_tag = AESGCM(vault_key).encrypt(nonce, plaintext, aad)
     combined = nonce + ciphertext_and_tag
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "algorithm": "AES-256-GCM",
         "keyVersion": int(key_version),
-        "plaintextSHA256": hashlib.sha256(plaintext).hexdigest(),
+        "plaintextHMAC": _cloud_vault_hmac_hex(plaintext, vault_key, "blob-integrity"),
+        "integrityHashVersion": 1,
         "sealedBoxBase64": base64.b64encode(combined).decode("utf-8"),
         "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "aad": aad_context or OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT,
     }
 
 
@@ -963,8 +1090,19 @@ def burnbar_cloud_semantic_search_conversations(
             if not isinstance(hit, dict):
                 continue
             try:
-                title = _open_cloud_sealed_text(hit["sealedTitle"], vault_key)
-                snippet = _open_cloud_sealed_text(hit["sealedSnippet"], vault_key)
+                hit_uid = str(hit.get("uid") or config.get("uid") or "")
+                document_id = str(hit.get("documentID") or "")
+                chunk_id = str(hit.get("chunkID") or hit.get("id") or "")
+                title = _open_cloud_sealed_text(
+                    hit["sealedTitle"],
+                    vault_key,
+                    _cloud_vault_aad_context(hit_uid, "cloud_search_documents", document_id, "sealedTitle"),
+                )
+                snippet = _open_cloud_sealed_text(
+                    hit["sealedSnippet"],
+                    vault_key,
+                    _cloud_vault_aad_context(hit_uid, "cloud_search_chunks", chunk_id, "sealedSnippet"),
+                )
             except (KeyError, TypeError, ValueError, RuntimeError):
                 continue
             hits.append({
@@ -981,6 +1119,7 @@ def burnbar_cloud_semantic_search_conversations(
                 "matchKind": hit.get("matchKind"),
                 "storagePath": hit.get("storagePath"),
                 "bodyHash": hit.get("bodyHash"),
+                "bodyHashVersion": hit.get("bodyHashVersion"),
                 "indexVersion": hit.get("indexVersion"),
                 "semanticHashVersion": hit.get("semanticHashVersion"),
             })
@@ -999,6 +1138,7 @@ def burnbar_cloud_semantic_search_conversations(
 def burnbar_cloud_get_conversation_body(
     storage_path: str,
     body_hash: str,
+    body_hash_version: int | None = None,
     max_full_text_chars: int = 120_000,
 ) -> str:
     """
@@ -1020,8 +1160,24 @@ def burnbar_cloud_get_conversation_body(
             raise RuntimeError("downloadURL missing from function response")
         with urllib.request.urlopen(download_url, timeout=30) as response:
             envelope = json.loads(response.read().decode("utf-8"))
-        plaintext = _open_cloud_blob_envelope(envelope, config["vaultKey"])
-        actual_hash = hashlib.sha256(plaintext).hexdigest()
+        uid = str(config.get("uid") or "")
+        document_id = _session_log_document_id(storage_path, uid)
+        expected_aad = (
+            _cloud_vault_aad_context(uid, "session_logs", document_id, "sealedBody")
+            if document_id
+            else None
+        )
+        plaintext = _open_cloud_blob_envelope(envelope, config["vaultKey"], expected_aad)
+        effective_hash_version = int(
+            body_hash_version
+            if body_hash_version is not None
+            else (2 if int(envelope.get("schemaVersion") or 1) >= 2 else 1)
+        )
+        actual_hash = (
+            _cloud_vault_hmac_hex(plaintext, config["vaultKey"], "session-body")
+            if effective_hash_version >= 2
+            else hashlib.sha256(plaintext).hexdigest()
+        )
         if actual_hash != body_hash:
             raise RuntimeError("decrypted body hash did not match the search hit")
         full_text = plaintext.decode("utf-8")
@@ -1037,6 +1193,7 @@ def burnbar_cloud_get_conversation_body(
         "status": "ok",
         "storagePath": storage_path,
         "bodyHash": body_hash,
+        "bodyHashVersion": effective_hash_version,
         "fullText": full_text,
         "fullTextTruncated": truncated,
     }, indent=2)
@@ -1137,9 +1294,10 @@ def burnbar_get_project_memory(project_slug: str, source: str = "auto") -> str:
     if config.get("status") != "ok":
         return json.dumps(config, indent=2)
     try:
+        doc_id = _cloud_vault_project_memory_doc_id(_normalize_project_slug(slug) or slug, config["vaultKey"])
         result = _call_firebase_callable(
             "getEncryptedProjectMemorySnapshot",
-            {"projectSlug": _normalize_project_slug(slug) or slug},
+            {"docID": doc_id},
             config,
         )
         cloud_snapshot = result.get("snapshot") if isinstance(result, dict) else None
@@ -1156,7 +1314,12 @@ def burnbar_get_project_memory(project_slug: str, source: str = "auto") -> str:
                 "cloud snapshot is missing sealedSnapshot envelope",
                 projectSlug=slug,
             )
-        plaintext = _open_cloud_blob_envelope(sealed, config["vaultKey"])
+        uid = str(config.get("uid") or "")
+        plaintext = _open_cloud_blob_envelope(
+            sealed,
+            config["vaultKey"],
+            _cloud_vault_aad_context(uid, "project_memory_snapshots", doc_id, "sealedSnapshot"),
+        )
         snapshot = json.loads(plaintext.decode("utf-8"))
         if not isinstance(snapshot, dict):
             return _json_unavailable(
@@ -1186,9 +1349,11 @@ def burnbar_get_project_memory(project_slug: str, source: str = "auto") -> str:
     return json.dumps({
         "status": "ok",
         "source": "cloud",
+        "docID": cloud_snapshot.get("docID") or doc_id,
         "projectSlug": cloud_snapshot.get("projectSlug") or snapshot.get("projectSlug") or slug,
         "projectDisplayName": cloud_snapshot.get("projectDisplayName") or snapshot.get("projectDisplayName"),
         "contentHash": cloud_snapshot.get("contentHash") or snapshot.get("contentHash"),
+        "contentHashVersion": cloud_snapshot.get("contentHashVersion"),
         "sourceSessionCount": cloud_snapshot.get("sourceSessionCount") or snapshot.get("sourceSessionCount"),
         "sourceConversationCount": cloud_snapshot.get("sourceConversationCount") or snapshot.get("sourceConversationCount"),
         "generatedAt": cloud_snapshot.get("generatedAt") or snapshot.get("generatedAt"),
@@ -1243,7 +1408,15 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
 
     try:
         plaintext = json.dumps(snapshot, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        sealed_snapshot = _seal_cloud_blob_envelope(plaintext, config["vaultKey"], key_version=1)
+        project_slug = str(parsed.get("projectSlug") or slug)
+        doc_id = _cloud_vault_project_memory_doc_id(project_slug, config["vaultKey"])
+        uid = str(config.get("uid") or "")
+        sealed_snapshot = _seal_cloud_blob_envelope(
+            plaintext,
+            config["vaultKey"],
+            key_version=1,
+            aad_context=_cloud_vault_aad_context(uid, "project_memory_snapshots", doc_id, "sealedSnapshot"),
+        )
         visuals = snapshot.get("visuals")
         visual_kinds = sorted(
             {
@@ -1252,10 +1425,12 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
                 if isinstance(item, dict) and isinstance(item.get("kind"), str) and item.get("kind")
             }
         ) if isinstance(visuals, list) else []
+        legacy_doc_id = _normalize_project_slug(project_slug)
         payload = {
-            "projectSlug": parsed.get("projectSlug"),
-            "projectDisplayName": parsed.get("projectDisplayName"),
-            "contentHash": parsed.get("contentHash"),
+            "docID": doc_id,
+            "legacyDocID": legacy_doc_id if legacy_doc_id and legacy_doc_id != doc_id else None,
+            "contentHash": _cloud_vault_hmac_hex(plaintext, config["vaultKey"], "project-memory-content"),
+            "contentHashVersion": 2,
             "sourceSessionCount": int(parsed.get("sourceSessionCount") or 0),
             "sourceConversationCount": int(parsed.get("sourceConversationCount") or 0),
             "generatedAt": parsed.get("generatedAt"),
@@ -1263,6 +1438,8 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
             "visualKinds": visual_kinds,
             "sealedSnapshot": sealed_snapshot,
         }
+        if payload["legacyDocID"] is None:
+            payload.pop("legacyDocID")
         result = _call_firebase_callable("commitEncryptedProjectMemorySnapshot", payload, config)
     except (RuntimeError, ValueError, TypeError) as exc:
         return _json_unavailable(
@@ -1275,9 +1452,11 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
     return json.dumps({
         "status": "ok",
         "source": "cloud-sync",
+        "docID": doc_id,
         "projectSlug": parsed.get("projectSlug"),
         "projectDisplayName": parsed.get("projectDisplayName"),
-        "contentHash": parsed.get("contentHash"),
+        "contentHash": payload.get("contentHash"),
+        "contentHashVersion": payload.get("contentHashVersion"),
         "result": result,
     }, indent=2, default=str)
 

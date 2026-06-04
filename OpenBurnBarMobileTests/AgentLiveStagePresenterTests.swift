@@ -12,25 +12,15 @@ import OpenBurnBarComputerUseCore
 @MainActor
 final class AgentLiveStagePresenterTests: XCTestCase {
 
-    private var originalGrace: TimeInterval = 6
-
-    override func setUp() async throws {
-        try await super.setUp()
-        originalGrace = AgentLiveStagePresenter.sessionEndGrace
-        // Shrink grace to 0.05s so collapse-after-grace tests stay sub-second.
-        AgentLiveStagePresenter.sessionEndGrace = 0.05
-    }
-
-    override func tearDown() async throws {
-        AgentLiveStagePresenter.sessionEndGrace = originalGrace
-        try await super.tearDown()
+    private func makePresenter(sessionEndGrace: TimeInterval = 0.05) -> AgentLiveStagePresenter {
+        AgentLiveStagePresenter(sessionEndGrace: sessionEndGrace)
     }
 
     // MARK: - Auto-open
 
     func test_autoOpens_to_dock_on_session_start() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
         XCTAssertEqual(presenter.mode, .hidden)
 
@@ -43,7 +33,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_autoOpen_doesnt_clobber_user_promotion_to_split() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
 
         // First open
@@ -65,7 +55,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_session_end_collapses_to_hidden_after_grace() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
 
         state.setSession(id: ComputerUseSessionID("grace-1"), startedAt: .now)
@@ -85,7 +75,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_session_resuming_during_grace_cancels_collapse() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
 
         state.setSession(id: ComputerUseSessionID("resume-1"), startedAt: .now)
@@ -107,7 +97,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
     // MARK: - User intents
 
     func test_requestExpand_walks_dock_to_split_to_maximize() {
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.enterDock()
         XCTAssertEqual(presenter.mode, .dock)
         presenter.requestExpand()
@@ -120,7 +110,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
     }
 
     func test_requestCollapse_walks_back_down_and_keeps_dock_while_active() {
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.enterDock()
         presenter.requestExpand()
         presenter.requestExpand()
@@ -139,7 +129,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
     }
 
     func test_dismiss_marks_dismissed_and_hides() {
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.enterDock()
         presenter.requestExpand()
         presenter.dismiss()
@@ -148,7 +138,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
     }
 
     func test_panicCollapse_records_panic_reason() {
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.enterDock()
         presenter.requestExpand()
         presenter.requestExpand()
@@ -161,7 +151,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
     }
 
     func test_toggleChatPuck_only_meaningful_in_maximize() {
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.enterDock()
         presenter.toggleChatPuck()
         XCTAssertFalse(presenter.chatPuckExpanded)
@@ -180,7 +170,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
     // MARK: - PiP lifecycle
 
     func test_enterMaximizeFromPiP_flips_to_maximize_and_clears_pip_state() {
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.enterDock()
         presenter.setPiPActive(true)
         XCTAssertTrue(presenter.pipActive)
@@ -195,7 +185,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_session_end_clears_pip_active() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
         state.setSession(id: ComputerUseSessionID("pip-end-1"), startedAt: .now)
         try await Task.sleep(nanoseconds: 30_000_000)
@@ -231,7 +221,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
     }
 
     func test_snapDock_and_snapPuck_update_corners_independently() {
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.snapDock(to: .topTrailing)
         presenter.snapPuck(to: .topLeading)
         XCTAssertEqual(presenter.dockCorner, .topTrailing)
@@ -242,7 +232,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_observe_is_idempotent_on_same_state() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
         presenter.observe(state) // second call must be a no-op
         state.setSession(id: ComputerUseSessionID("idem-1"), startedAt: .now)
@@ -253,7 +243,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
     func test_observe_swaps_state_subscription() async throws {
         let stateA = AgentWatchState()
         let stateB = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(stateA)
         presenter.observe(stateB)
 
@@ -272,7 +262,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_manualCollapse_during_grace_does_not_overwrite_reason() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
 
         state.setSession(id: ComputerUseSessionID("manual-col-1"), startedAt: .now)
@@ -299,7 +289,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_session_end_when_already_hidden_is_noop() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
         // Never opened — mode stays hidden.
         state.setSession(id: ComputerUseSessionID("noop-1"), startedAt: .now)
@@ -359,7 +349,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_enterDock_cancels_pending_grace() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
 
         state.setSession(id: ComputerUseSessionID("enterdock-1"), startedAt: .now)
@@ -378,7 +368,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
 
     func test_dismiss_cancels_grace() async throws {
         let state = AgentWatchState()
-        let presenter = AgentLiveStagePresenter()
+        let presenter = makePresenter()
         presenter.observe(state)
 
         state.setSession(id: ComputerUseSessionID("disgrace-1"), startedAt: .now)

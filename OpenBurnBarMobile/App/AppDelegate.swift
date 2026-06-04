@@ -142,21 +142,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return
         }
 
-        let useDebugProvider = Self.useDebugAppCheckProvider()
-            || AppCheckDebugTokenEnvironment.token(inPlistAt: path) != nil
-        let factory: AppCheckProviderFactory
+        let appCheckProvider = Self.installAppCheckProviderFactory(firebasePlistPath: path)
         #if DEBUG
-        _ = AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
-        factory = AppCheckDebugProviderFactory()
-        #else
-        if useDebugProvider {
-            _ = AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
-            factory = AppCheckDebugProviderFactory()
-        } else {
-            factory = OpenBurnBarAppCheckProviderFactory()
-        }
+        print("OpenBurnBarMobile App Check provider: \(appCheckProvider)")
         #endif
-        AppCheck.setAppCheckProviderFactory(factory)
 
         FirebaseApp.configure()
         Self.configureGoogleSignIn()
@@ -238,6 +227,78 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return nil
         }
         return plist[key] as? String
+    }
+
+    @discardableResult
+    static func installAppCheckProviderFactory(
+        firebasePlistPath path: String,
+        infoDictionary: [String: Any]? = Bundle.main.infoDictionary,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String {
+        let strategy = appCheckProviderStrategy(
+            firebasePlistPath: path,
+            infoDictionary: infoDictionary,
+            environment: environment
+        )
+        switch strategy {
+        case .debug:
+            _ = AppCheckDebugTokenEnvironment.configureIfAvailable(
+                firebasePlistPath: path,
+                infoDictionary: infoDictionary,
+                environment: environment
+            )
+            AppCheck.setAppCheckProviderFactory(AppCheckDebugProviderFactory())
+        case .appAttest:
+            AppCheck.setAppCheckProviderFactory(OpenBurnBarAppCheckProviderFactory())
+        case .deviceCheck:
+            AppCheck.setAppCheckProviderFactory(DeviceCheckOnlyAppCheckProviderFactory())
+        }
+        return strategy.rawValue
+    }
+
+    private enum AppCheckProviderStrategy: String {
+        case debug
+        case appAttest = "appattest"
+        case deviceCheck = "devicecheck"
+    }
+
+    private static func appCheckProviderStrategy(
+        firebasePlistPath path: String,
+        infoDictionary: [String: Any]?,
+        environment: [String: String]
+    ) -> AppCheckProviderStrategy {
+        if let override = normalizedAppCheckProviderOverride(environment["OPENBURNBAR_APP_CHECK_PROVIDER"]) {
+            return override
+        }
+
+        let debugRequested = useDebugAppCheckProvider(infoDictionary: infoDictionary, environment: environment)
+            || AppCheckDebugTokenEnvironment.token(inPlistAt: path) != nil
+        #if DEBUG
+        _ = debugRequested
+        return .debug
+        #else
+        return debugRequested ? .debug : .appAttest
+        #endif
+    }
+
+    private static func normalizedAppCheckProviderOverride(_ raw: String?) -> AppCheckProviderStrategy? {
+        guard let raw else { return nil }
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+        switch normalized {
+        case "debug":
+            return .debug
+        case "appattest", "appattestprovider", "production", "release":
+            return .appAttest
+        case "devicecheck", "devicecheckprovider":
+            return .deviceCheck
+        default:
+            print("warning: Unknown OPENBURNBAR_APP_CHECK_PROVIDER '\(raw)'; falling back to the build default.")
+            return nil
+        }
     }
 
     private static func useDebugAppCheckProvider(
@@ -335,5 +396,11 @@ final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactor
             return AppAttestProvider(app: app)
         }
         return DeviceCheckProvider(app: app)
+    }
+}
+
+final class DeviceCheckOnlyAppCheckProviderFactory: NSObject, AppCheckProviderFactory {
+    func createProvider(with app: FirebaseApp) -> AppCheckProvider? {
+        DeviceCheckProvider(app: app)
     }
 }

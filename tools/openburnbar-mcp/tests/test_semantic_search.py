@@ -305,6 +305,7 @@ def test_project_memory_cloud_get_decrypts_snapshot(monkeypatch):
         "projectID": "burnbar",
         "region": "us-central1",
         "idToken": "token",
+        "uid": "userA",
         "vaultKey": b"\x00" * 32,
     })
 
@@ -331,7 +332,7 @@ def test_project_memory_cloud_get_decrypts_snapshot(monkeypatch):
     monkeypatch.setattr(
         server,
         "_open_cloud_blob_envelope",
-        lambda _envelope, _vault_key: json.dumps({
+        lambda _envelope, _vault_key, _aad_context=None: json.dumps({
             "projectSlug": "burnbar",
             "projectDisplayName": "BurnBar",
             "freshness": "fresh",
@@ -343,9 +344,11 @@ def test_project_memory_cloud_get_decrypts_snapshot(monkeypatch):
     payload = json.loads(server.burnbar_get_project_memory("burnbar", source="cloud"))
 
     assert called["name"] == "getEncryptedProjectMemorySnapshot"
-    assert called["payload"] == {"projectSlug": "burnbar"}
+    expected_doc_id = server._cloud_vault_project_memory_doc_id("burnbar", b"\x00" * 32)
+    assert called["payload"] == {"docID": expected_doc_id}
     assert payload["status"] == "ok"
     assert payload["source"] == "cloud"
+    assert payload["docID"] == expected_doc_id
     assert payload["projectSlug"] == "burnbar"
     assert payload["snapshot"]["projectDisplayName"] == "BurnBar"
     assert payload["sectionCount"] == 1
@@ -401,15 +404,18 @@ def test_project_memory_cloud_sync_encrypts_and_commits(tmp_path, monkeypatch):
         "projectID": "burnbar",
         "region": "us-central1",
         "idToken": "token",
+        "uid": "userA",
         "vaultKey": b"\x00" * 32,
     })
-    monkeypatch.setattr(server, "_seal_cloud_blob_envelope", lambda _plaintext, _vault_key, key_version=1: {
-        "schemaVersion": 1,
+    monkeypatch.setattr(server, "_seal_cloud_blob_envelope", lambda _plaintext, _vault_key, key_version=1, aad_context=None: {
+        "schemaVersion": 2,
         "algorithm": "AES-256-GCM",
         "keyVersion": key_version,
-        "plaintextSHA256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "plaintextHMAC": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "integrityHashVersion": 1,
         "sealedBoxBase64": "AA==",
         "createdAt": "2026-05-15T12:06:00Z",
+        "aad": aad_context,
     })
 
     captured: dict[str, object] = {}
@@ -426,7 +432,13 @@ def test_project_memory_cloud_sync_encrypts_and_commits(tmp_path, monkeypatch):
     assert captured["name"] == "commitEncryptedProjectMemorySnapshot"
     payload = captured["payload"]
     assert isinstance(payload, dict)
-    assert payload["projectSlug"] == "burnbar"
-    assert payload["projectDisplayName"] == "BurnBar"
+    assert "projectSlug" not in payload
+    assert "projectDisplayName" not in payload
+    assert payload["docID"] == server._cloud_vault_project_memory_doc_id("burnbar", b"\x00" * 32)
+    assert payload["contentHashVersion"] == 2
+    assert payload["contentHash"] != "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     assert payload["freshness"] == "needsRefresh"
     assert payload["visualKinds"] == ["timeline"]
+    assert payload["sealedSnapshot"]["aad"] == (
+        f"OpenBurnBar-CloudVault-aad-v2|userA|project_memory_snapshots|{payload['docID']}|sealedSnapshot|2|sealedSnapshot"
+    )

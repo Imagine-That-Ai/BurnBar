@@ -12,6 +12,7 @@ final class UsageConflictResolutionTests: XCTestCase {
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
     private var downloadSync: DownloadSyncService!
+    private var vaultKeyProvider: TestConversationVaultKeyProvider!
 
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
@@ -24,7 +25,8 @@ final class UsageConflictResolutionTests: XCTestCase {
             settingsManager: settingsManager,
             firestoreGateway: fakeGateway
         )
-        downloadSync = DownloadSyncService(context: context)
+        vaultKeyProvider = TestConversationVaultKeyProvider()
+        downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider)
     }
 
     // MARK: - Confidence-Gated Upsert

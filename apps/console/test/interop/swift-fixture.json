@@ -1,23 +1,27 @@
 {
-  "recipientPublicX963B64" : "BBn7M6w4IBr\/iUaIbUD7Ev9xJ9r71g84DX5OLTpw01MSUHYuvPU0oXA80sEqkwW+b922zem6sOpEkS6GTXIf0sg=",
-  "wrappedVaultKeyB64" : "BGN1Hgthx8wwh\/MFejs1eQgkiKpdyqE+hxfuwDdka+qS+phjvC7wuPp+YH1pk7gc0DUWFekmYD83NkrhWc0Lw0rWu2g6tLFa+HsqYojPZ9wiJV9fOkbVt\/k70MaNr0Y6O++PNNVEo3nkQBdk6fZoTelIfDpIvluRlXtORmc=",
-  "vaultKeyB64" : "hE7fDHVLxguqZHfu5oA8EFjA7fFMdoCrjPzxDtsAwbE=",
   "blob" : {
-    "createdAt" : "2026-06-02T15:52:09Z",
-    "plaintextSHA256" : "d3c8312b0f62beb87c05159a17d62e889079e67eab9f83f1538b82daa7a2ecf9",
-    "keyVersion" : 1,
     "algorithm" : "AES-256-GCM",
-    "expectedPlaintext" : "Swift sealed this for the browser",
-    "schemaVersion" : 1,
-    "sealedBoxBase64" : "XlQmL429dWoTe\/SzoXlsVMKeCDsZKt+ha9UXT3BQjalVIN2EokLR8CHEN+qwZP2gG3FT8GLPskBjPmzC\/w=="
+    "integrityHashVersion" : 1,
+    "createdAt" : "2026-06-04T14:28:03Z",
+    "schemaVersion" : 2,
+    "keyVersion" : 1,
+    "plaintextHMAC" : "f020febc72940b7172ca978925a7ecc9d0b69e4e0f8ecad1e36a93a37c4fb8da",
+    "sealedBoxBase64" : "eJBADi7segk59Kj6sEkLqtiq1zoGdoPtDAFxVXSyuXwi\/H0KppUMnyqiyJ7qGg+K8SmAXP4xEv3piYD8AQ==",
+    "aad" : "OpenBurnBar-CloudVault-aad-v2|console-user|project_memory_snapshots|pm_console_fixture|sealedSnapshot|2|sealedSnapshot",
+    "expectedPlaintext" : "Swift sealed this for the browser"
   },
   "text" : {
+    "expectedPlaintext" : "conversation body from swift",
     "keyVersion" : 1,
-    "nonce" : "ajzWZ9T038tJtTdc",
-    "tag" : "oafoXdVQiSFz29NxA9EXZA==",
-    "ciphertext" : "vzVy2I6LaLQDImuiyFyjCKfy2qvnOGZfmfsDFw==",
+    "ciphertext" : "nPbmkWOhKvTaqYvyUtzyq5AZYtXNRoCwjDiJjA==",
     "algorithm" : "AES-256-GCM",
-    "expectedPlaintext" : "conversation body from swift"
+    "schemaVersion" : 2,
+    "nonce" : "y4q3GsOTNU3NwAhS",
+    "tag" : "SvoMk0CMfwuXjhXaKAzYEg==",
+    "aad" : "OpenBurnBar-CloudVault-aad-v2|console-user|cloud_search_documents|console_fixture_doc|sealedTitle|2|sealedTitle"
   },
-  "recipientPrivatePKCS8B64" : "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgG8aZUbUU3G60CK5n7VK0hxftuBAsyee5vpErnbLl3myhRANCAAQZ+zOsOCAa\/4lGiG1A+xL\/cSfa+9YPOA1+Ti06cNNTElB2Lrz1NKFwPNLBKpMFvm\/dts3purDqRJEuhk1yH9LI"
+  "recipientPublicX963B64" : "BGD8ysUBj9\/KPijFuSV5zgOWKZbbepV8D5a\/fNbodi\/Sfj5O\/TJIGscjyRAxLI0tjyU1EampGyBsrqrGpmNCCFo=",
+  "wrappedVaultKeyB64" : "BBcO4VeqoH7eWl9WbvptAOz0azce4G7Wq\/yttT1VfYLotKEwYsDdb0Woe6t\/wE8qSFETyqjZ5F26iSN+Pc4q9NAwMRuEYPdZuKN6D3bMcKJlXlAcbLNd4Uz8DOylycWJHwU7TdRhMtfWllUJISwwSRUXKie4MM\/JjjJM5Q8=",
+  "recipientPrivatePKCS8B64" : "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg0il\/nwB5mEF8\/t7WZzgZ5CGHZDk\/ok9XpFVMc5NgWkqhRANCAARg\/MrFAY\/fyj4oxbklec4DlimW23qVfA+Wv3zW6HYv0n4+Tv0ySBrHI8kQMSyNLY8lNRGpqRsgbK6qxqZjQgha",
+  "vaultKeyB64" : "O7lq7YV\/HV1fN3chDbxycKzt2Ju1tIHVF3RjvmN0Aw8="
 }

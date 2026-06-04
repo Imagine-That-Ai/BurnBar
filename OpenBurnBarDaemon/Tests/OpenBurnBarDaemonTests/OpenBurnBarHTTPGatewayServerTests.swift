@@ -275,6 +275,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             headers: ["Authorization": "Bearer gateway-secret"]
         )
         XCTAssertEqual(authorizedResponse.statusCode, 200)
+
+        let (apiKeyAuthResponse, _) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/health",
+            headers: ["x-api-key": "gateway-secret"]
+        )
+        XCTAssertEqual(apiKeyAuthResponse.statusCode, 200)
     }
 
     func testGatewayRateLimitingReturns429() async throws {

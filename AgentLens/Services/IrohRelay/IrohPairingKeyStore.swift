@@ -49,7 +49,7 @@ final class IrohPairingKeyStore: @unchecked Sendable {
                     metadata: [
                         "service": service,
                         "account": account,
-                        "error": error.localizedDescription
+                        "errorClass": "\(String(describing: type(of: error)))"
                     ]
                 )
             }

@@ -114,7 +114,9 @@ class HermesGatewayV2VectorTest {
         // MP-18: the manifest is JSON; assert the PRODUCTION field name `fileName`
         // (iOS/Android decoders never read `name`) so a drift back to `name` fails
         // here instead of silently passing the byte-compare above.
-        assertEquals("quarterly-report.pdf", JSONObject(String(manifest, Charsets.UTF_8)).getString("fileName"))
+        val manifestJson = JSONObject(String(manifest, Charsets.UTF_8))
+        assertEquals("quarterly-report.pdf", manifestJson.getString("fileName"))
+        assertEquals("burnbar:home", manifestJson.getString("destinationId"))
 
         val body =
             HermesRelayCrypto.openBase64(
@@ -245,6 +247,9 @@ class HermesGatewayV2VectorTest {
                 aad = slot.getString("payloadAAD").toByteArray(Charsets.UTF_8),
             )
             assertEquals(plaintextJson.getString("text"), parsed.text)
+        }
+        if (plaintextJson.has("destinationId")) {
+            assertEquals("burnbar:home", plaintextJson.getString("destinationId"))
         }
     }
 

@@ -163,7 +163,10 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                     let privateProjectSearchText = Self.clampedPrivateSearchText(record.projectName)
                     let docId = Self.cloudDocumentID(deviceId: deviceId, record: record)
                     let manifestRef = logsRef.document(docId)
-                    let bodyHash = Self.sha256Hex(markdown)
+                    let resolvedVaultKey = try await writableVaultKey(uid: uid)
+                    let vaultKey = resolvedVaultKey.keyData
+                    let vaultKeyID = resolvedVaultKey.vaultKeyID
+                    let bodyHash = try CloudVaultCrypto.sessionBodyHash(markdown, keyData: vaultKey)
                     let facetKey = Self.rootSessionKey(provider: record.provider, sessionId: record.sessionId)
                     let facets = sessionFacetsMap[facetKey]
                     let model = sessionModelMap["\(record.provider.rawValue):\(record.sessionId)"]
@@ -196,7 +199,6 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                                 label: label,
                                 operation: "Scrubbing legacy search chunks"
                             )
-                            let resolvedVaultKey = try await writableVaultKey(uid: uid)
                             let chunks = Self.chunkUTF8String(markdown, maxBytes: Self.cloudSearchChunkMaxBytes)
                             try Self.appendLegacySessionLogChunkScrubWrites(
                                 to: &writes,
@@ -211,7 +213,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                                 chunks: chunks,
                                 bodyHash: bodyHash,
                                 storagePath: existingStoragePath,
-                                keyData: resolvedVaultKey.keyData
+                                keyData: vaultKey
                             )
                         }
                         let firestoreBatchCommits = try await commitFirestoreWrites(
@@ -241,10 +243,16 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         operation: "Encrypting session body"
                     )
 
-                    let resolvedVaultKey = try await writableVaultKey(uid: uid)
-                    let vaultKey = resolvedVaultKey.keyData
-                    let vaultKeyID = resolvedVaultKey.vaultKeyID
-                    let sealedBody = try CloudVaultCrypto.sealBlob(Data(markdown.utf8), keyData: vaultKey)
+                    let sealedBody = try CloudVaultCrypto.sealBlob(
+                        Data(markdown.utf8),
+                        keyData: vaultKey,
+                        aadContext: CloudVaultAADContext(
+                            uid: uid,
+                            collection: "session_logs",
+                            docID: docId,
+                            field: "sealedBody"
+                        )
+                    )
                     let sealedBodyData = try Self.jsonData(sealedBody)
                     let uploadTicket = try await encryptedCloudClient.beginEncryptedSessionBlobUpload(
                         documentID: docId,
@@ -258,9 +266,48 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                     )
                     try await encryptedCloudClient.uploadEncryptedBody(data: sealedBodyData, ticket: uploadTicket)
                     let chunks = Self.chunkUTF8String(markdown, maxBytes: Self.cloudSearchChunkMaxBytes)
-                    let sealedTitle = try CloudVaultCrypto.sealText(record.summaryTitle ?? record.inferredTaskTitle, keyData: vaultKey)
+                    let titleText = record.summaryTitle ?? record.inferredTaskTitle
+                    let sealedManifestTitle = try CloudVaultCrypto.sealText(
+                        titleText,
+                        keyData: vaultKey,
+                        aadContext: CloudVaultAADContext(
+                            uid: uid,
+                            collection: "session_logs",
+                            docID: docId,
+                            field: "sealedTitle"
+                        )
+                    )
                     let previewText = String(markdown.prefix(500))
-                    let sealedPreview = try CloudVaultCrypto.sealText(previewText, keyData: vaultKey)
+                    let sealedManifestPreview = try CloudVaultCrypto.sealText(
+                        previewText,
+                        keyData: vaultKey,
+                        aadContext: CloudVaultAADContext(
+                            uid: uid,
+                            collection: "session_logs",
+                            docID: docId,
+                            field: "sealedBodyPreview"
+                        )
+                    )
+                    let sealedSearchTitle = try CloudVaultCrypto.sealText(
+                        titleText,
+                        keyData: vaultKey,
+                        aadContext: CloudVaultAADContext(
+                            uid: uid,
+                            collection: "cloud_search_documents",
+                            docID: docId,
+                            field: "sealedTitle"
+                        )
+                    )
+                    let sealedSearchPreview = try CloudVaultCrypto.sealText(
+                        previewText,
+                        keyData: vaultKey,
+                        aadContext: CloudVaultAADContext(
+                            uid: uid,
+                            collection: "cloud_search_documents",
+                            docID: docId,
+                            field: "sealedBodyPreview"
+                        )
+                    )
 
                     var manifest: [String: Any] = [
                         "id": record.id,
@@ -271,8 +318,8 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         "inferredTaskTitle": "Encrypted session",
                         "bodyStorage": "firebase_storage_encrypted",
                         "storagePath": uploadTicket.storagePath,
-                        "sealedTitle": try Self.dictionary(sealedTitle),
-                        "sealedBodyPreview": try Self.dictionary(sealedPreview),
+                        "sealedTitle": try Self.dictionary(sealedManifestTitle),
+                        "sealedBodyPreview": try Self.dictionary(sealedManifestPreview),
                         "encryption": [
                             "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
                             "keyVersion": CloudVaultCrypto.currentKeyVersion,
@@ -286,8 +333,10 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         "byteCount": markdown.utf8.count,
                         "encryptedByteCount": sealedBodyData.count,
                         "bodyHash": bodyHash,
+                        "bodyHashVersion": CloudVaultCrypto.sessionBodyHashVersion,
                         "chunkSize": 0,
-                        "chunkHashes": chunks.map(Self.sha256Hex),
+                        "chunkHashes": try chunks.map { try CloudVaultCrypto.sessionChunkHash($0, keyData: vaultKey) },
+                        "chunkHashVersion": CloudVaultCrypto.sessionChunkHashVersion,
                         "chunkMetadataVersion": Self.chunkMetadataVersion,
                         "cloudSearchIndexVersion": Self.cloudSearchIndexVersion,
                         "cloudSearchIndexedAt": FieldValue.serverTimestamp(),
@@ -306,8 +355,18 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                         let snippet = chunk
                             .replacingOccurrences(of: "\n", with: " ")
                             .trimmingCharacters(in: .whitespacesAndNewlines)
-                        let chunkHash = Self.sha256Hex(chunk)
-                        let sealedSnippet = try CloudVaultCrypto.sealText(String(snippet.prefix(500)), keyData: vaultKey)
+                        let chunkHash = try CloudVaultCrypto.sessionChunkHash(chunk, keyData: vaultKey)
+                        let chunkID = "\(docId)_\(idx)"
+                        let sealedSnippet = try CloudVaultCrypto.sealText(
+                            String(snippet.prefix(500)),
+                            keyData: vaultKey,
+                            aadContext: CloudVaultAADContext(
+                                uid: uid,
+                                collection: "cloud_search_chunks",
+                                docID: chunkID,
+                                field: "sealedSnippet"
+                            )
+                        )
                         let tokenHashes = try CloudVaultCrypto.searchIndexTokenHashes(
                             for: chunk + " " + record.inferredTaskTitle + " " + privateProjectSearchText + " " + model,
                             keyData: vaultKey,
@@ -318,7 +377,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             keyData: vaultKey
                         )
                         cloudSearchChunks.append([
-                            "chunkID": "\(docId)_\(idx)",
+                            "chunkID": chunkID,
                             "documentID": docId,
                             "sourceKind": "conversation",
                             "sourceID": record.id,
@@ -326,7 +385,9 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             "startOffset": 0,
                             "endOffset": chunk.utf8.count,
                             "contentHash": chunkHash,
+                            "contentHashVersion": CloudVaultCrypto.sessionChunkHashVersion,
                             "bodyHash": bodyHash,
+                            "bodyHashVersion": CloudVaultCrypto.sessionBodyHashVersion,
                             "storagePath": uploadTicket.storagePath,
                             "sealedSnippet": try Self.dictionary(sealedSnippet),
                             "tokenHashes": tokenHashes,
@@ -349,9 +410,10 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                             "sourceVersionID": bodyHash,
                             "provider": record.provider.rawValue,
                             "bodyHash": bodyHash,
+                            "bodyHashVersion": CloudVaultCrypto.sessionBodyHashVersion,
                             "storagePath": uploadTicket.storagePath,
-                            "sealedTitle": try Self.dictionary(sealedTitle),
-                            "sealedBodyPreview": try Self.dictionary(sealedPreview),
+                            "sealedTitle": try Self.dictionary(sealedSearchTitle),
+                            "sealedBodyPreview": try Self.dictionary(sealedSearchPreview),
                             "byteCount": markdown.utf8.count,
                             "encryptedByteCount": sealedBodyData.count
                         ],
@@ -566,7 +628,16 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
             let snippet = chunk
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let sealedSnippet = try CloudVaultCrypto.sealText(String(snippet.prefix(500)), keyData: keyData)
+            let sealedSnippet = try CloudVaultCrypto.sealText(
+                String(snippet.prefix(500)),
+                keyData: keyData,
+                aadContext: CloudVaultAADContext(
+                    uid: uid,
+                    collection: "session_log_chunks",
+                    docID: "\(docId)_\(idx)",
+                    field: "sealedSnippet"
+                )
+            )
             let tokenHashes = try CloudVaultCrypto.searchIndexTokenHashes(
                 for: chunk + " " + record.inferredTaskTitle + " " + privateProjectSearchText + " " + model,
                 keyData: keyData,
@@ -576,7 +647,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                 for: chunk + " " + record.inferredTaskTitle + " " + privateProjectSearchText + " " + model,
                 keyData: keyData
             )
-            var data = encryptedLegacyChunkData(
+            var data = try encryptedLegacyChunkData(
                 uid: uid,
                 deviceId: deviceId,
                 docId: docId,
@@ -587,7 +658,8 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                 storagePath: storagePath,
                 sealedSnippet: try dictionary(sealedSnippet),
                 tokenHashes: tokenHashes,
-                semanticHashes: semanticHashes
+                semanticHashes: semanticHashes,
+                keyData: keyData
             )
             data.merge(legacyPlaintextFieldDeletes()) { _, new in new }
 
@@ -621,8 +693,9 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         storagePath: String,
         sealedSnippet: [String: Any],
         tokenHashes: [String],
-        semanticHashes: [String]
-    ) -> [String: Any] {
+        semanticHashes: [String],
+        keyData: Data
+    ) throws -> [String: Any] {
         [
             "uid": uid,
             "sessionId": record.sessionId,
@@ -637,8 +710,10 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
             "index": ordinal,
             "startOffset": 0,
             "endOffset": chunk.utf8.count,
-            "contentHash": sha256Hex(chunk),
+            "contentHash": try CloudVaultCrypto.sessionChunkHash(chunk, keyData: keyData),
+            "contentHashVersion": CloudVaultCrypto.sessionChunkHashVersion,
             "bodyHash": bodyHash,
+            "bodyHashVersion": CloudVaultCrypto.sessionBodyHashVersion,
             "bodyStorage": "firebase_storage_encrypted",
             "storagePath": storagePath,
             "sealedSnippet": sealedSnippet,
@@ -756,7 +831,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         let vaultKey = resolvedVaultKey.keyData
 
         let payload = try Self.jsonData(snapshot)
-        let sealedSnapshot = try CloudVaultCrypto.sealBlob(payload, keyData: vaultKey)
+        let cloudContentHash = try CloudVaultCrypto.projectMemoryContentHash(payload, keyData: vaultKey)
         let visualKinds = Array(Set(snapshot.visuals.map(\.kind.rawValue))).sorted()
 
         // Opaque, deterministic, vault-key-keyed doc id so the server (and anyone
@@ -765,10 +840,21 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         // idempotent. The plaintext `projectSlug`/`projectDisplayName` callable
         // fields are dropped (they were pure denormalization of the ciphertext).
         let docID = try CloudVaultCrypto.projectMemoryDocID(forSlug: snapshot.projectSlug, keyData: vaultKey)
+        let sealedSnapshot = try CloudVaultCrypto.sealBlob(
+            payload,
+            keyData: vaultKey,
+            aadContext: CloudVaultAADContext(
+                uid: uid,
+                collection: "project_memory_snapshots",
+                docID: docID,
+                field: "sealedSnapshot"
+            )
+        )
 
         var commitPayload: [String: Any] = [
             "docID": docID,
-            "contentHash": snapshot.contentHash,
+            "contentHash": cloudContentHash,
+            "contentHashVersion": CloudVaultCrypto.projectMemoryContentHashVersion,
             "sourceSessionCount": snapshot.sourceSessionCount,
             "sourceConversationCount": snapshot.sourceConversationCount,
             "generatedAt": Self.iso8601.string(from: snapshot.generatedAt),
@@ -838,7 +924,17 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         }
         let sealedData = try JSONSerialization.data(withJSONObject: sealedSnapshot)
         let envelope = try JSONDecoder().decode(CloudVaultBlobEnvelope.self, from: sealedData)
-        let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
+        let snapshotDocID = snapshotPayload["docID"] as? String ?? docID
+        let plaintext = try CloudVaultCrypto.openBlob(
+            envelope,
+            keyData: vaultKey,
+            aadContext: CloudVaultAADContext(
+                uid: uid,
+                collection: "project_memory_snapshots",
+                docID: snapshotDocID,
+                field: "sealedSnapshot"
+            )
+        )
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(ProjectMemorySnapshot.self, from: plaintext)
@@ -877,7 +973,16 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
             let decryptedTitle: String? = vaultKey.flatMap { key in
                 guard let envelope = Self.decodeSealedText(data["sealedTitle"]) else { return nil }
                 do {
-                    return try CloudVaultCrypto.openText(envelope, keyData: key)
+                    return try CloudVaultCrypto.openText(
+                        envelope,
+                        keyData: key,
+                        aadContext: CloudVaultAADContext(
+                            uid: uid,
+                            collection: "session_logs",
+                            docID: doc.documentID,
+                            field: "sealedTitle"
+                        )
+                    )
                 } catch {
                     return nil
                 }
@@ -934,7 +1039,16 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let envelope = try decoder.decode(CloudVaultBlobEnvelope.self, from: data)
-        let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
+        let plaintext = try CloudVaultCrypto.openBlob(
+            envelope,
+            keyData: vaultKey,
+            aadContext: CloudVaultAADContext(
+                uid: uid,
+                collection: "session_logs",
+                docID: docId,
+                field: "sealedBody"
+            )
+        )
         return String(data: plaintext, encoding: .utf8) ?? ""
     }
 
@@ -958,6 +1072,44 @@ protocol SessionLogVaultKeyPublishing {
     func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws
 }
 
+enum CloudSyncEscrowPublicKeyPublisher {
+    static func publishIfNeeded(
+        userRef: CloudSyncDocumentGateway,
+        deviceId: String,
+        publicKeyData: Data,
+        publicKeyFingerprint: String,
+        keyVersion: Int
+    ) async throws {
+        let publicKeyBase64 = publicKeyData.base64EncodedString()
+        let documentRef = userRef.collection("escrow_public_keys").document("\(deviceId)_\(keyVersion)")
+
+        if let data = try await documentRef.getData() {
+            guard EscrowPublicKeyPublisher.matchesExistingPublicKey(
+                data,
+                deviceId: deviceId,
+                publicKeyBase64: publicKeyBase64,
+                publicKeyFingerprint: publicKeyFingerprint,
+                keyVersion: keyVersion
+            ) else {
+                throw EscrowPublicKeyPublishError.immutablePublicKeyConflict(
+                    deviceId: deviceId,
+                    keyVersion: keyVersion
+                )
+            }
+            return
+        }
+
+        try await documentRef.setData([
+            "deviceId": deviceId,
+            "publicKeyData": publicKeyBase64,
+            "publicKeyFingerprint": publicKeyFingerprint,
+            "keyVersion": keyVersion,
+            "algorithm": "ECIES-P256-AESGCM",
+            "createdAt": FieldValue.serverTimestamp()
+        ], merge: false)
+    }
+}
+
 @MainActor
 struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
     func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws {
@@ -972,26 +1124,29 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
             existingDevice = nil
         }
         let existingTrustState = existingDevice?["trustState"] as? String
-        let trustState = existingTrustState == EscrowDeviceTrustState.trusted.rawValue
-            ? EscrowDeviceTrustState.trusted.rawValue
-            : EscrowDeviceTrustState.pending.rawValue
-        try await deviceRef.setData([
+        let sourceIsTrusted = existingTrustState == EscrowDeviceTrustState.trusted.rawValue
+        var devicePayload: [String: Any] = [
             "deviceId": context.deviceId,
             "deviceName": Host.current().localizedName ?? "Mac",
             "platform": "macOS",
-            "trustState": trustState,
             "publicKeyFingerprint": keypair.publicKeyFingerprint,
             "keyVersion": keypair.keyVersion,
             "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
-        try await userRef.collection("escrow_public_keys").document("\(context.deviceId)_\(keypair.keyVersion)").setData([
-            "deviceId": context.deviceId,
-            "publicKeyData": keypair.publicKeyData.base64EncodedString(),
-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
-            "keyVersion": keypair.keyVersion,
-            "algorithm": "ECIES-P256-AESGCM",
-            "createdAt": FieldValue.serverTimestamp()
-        ], merge: true)
+        ]
+        if existingDevice == nil {
+            devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+        }
+        try await deviceRef.setData(devicePayload, merge: true)
+        try await CloudSyncEscrowPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: context.deviceId,
+            publicKeyData: keypair.publicKeyData,
+            publicKeyFingerprint: keypair.publicKeyFingerprint,
+            keyVersion: keypair.keyVersion
+        )
+        guard sourceIsTrusted else {
+            return
+        }
 
         let trusted = try await userRef.collection("escrow_devices")
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
@@ -1013,12 +1168,12 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
             }
             let wrapped = try CloudVaultCrypto.wrapVaultKey(vaultKey, recipientPublicKey: publicKeyData)
             try await userRef.collection("cloud_vault_key_wrappers")
-	                .document("\(targetDeviceId)_\(keyVersion)")
-	                .setData([
-	                    "uid": uid,
-	                    "vaultKeyID": vaultKeyID,
-	                    "targetDeviceId": targetDeviceId,
-	                    "sourceDeviceId": context.deviceId,
+                .document("\(targetDeviceId)_\(keyVersion)")
+                .setData([
+                    "uid": uid,
+                    "vaultKeyID": vaultKeyID,
+                    "targetDeviceId": targetDeviceId,
+                    "sourceDeviceId": context.deviceId,
                     "publicKeyFingerprint": fingerprint,
                     "keyVersion": keyVersion,
                     "wrappedVaultKey": wrapped.base64EncodedString(),
@@ -1026,10 +1181,10 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
                     "status": "active",
                     "createdAt": FieldValue.serverTimestamp(),
                     "updatedAt": FieldValue.serverTimestamp(),
-	                    "schemaVersion": 2
-	                ], merge: true)
-	        }
-	    }
+                    "schemaVersion": 2
+                ], merge: true)
+        }
+    }
 }
 
 extension SessionLogSyncService {

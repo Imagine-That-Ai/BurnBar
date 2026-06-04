@@ -54,6 +54,13 @@ final class IrohRelayRequestHandler: Sendable {
     private static let unaryForwardTimeout: TimeInterval = 20
     private static let streamSendTimeoutNanoseconds: UInt64 = 120_000_000_000
 
+    private static func publicErrorClass(_ error: Error) -> String {
+        let nsError = error as NSError
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-").inverted
+        let domain = nsError.domain.components(separatedBy: allowed).joined(separator: "_")
+        return "\(domain)#\(nsError.code)"
+    }
+
     private let relayKeyStore: HermesRelayKeyStore
     private let urlSession: URLSession
     private let settingsManager: any SettingsManagerProtocol
@@ -159,7 +166,6 @@ final class IrohRelayRequestHandler: Sendable {
                         extra: ["reason": "missing_request_id"]
                     )
                     try await sendError(
-                        message: "Malformed realtime relay request.",
                         frame: frame,
                         stream: stream
                     )
@@ -187,10 +193,9 @@ final class IrohRelayRequestHandler: Sendable {
                         uid: uid,
                         connectionID: connectionID,
                         requestID: requestID,
-                        extra: ["error": String(error.localizedDescription.prefix(256))]
+                        extra: ["errorClass": Self.publicErrorClass(error)]
                     )
                     try await sendError(
-                        message: error.localizedDescription,
                         frame: frame,
                         stream: stream
                     )
@@ -287,7 +292,6 @@ final class IrohRelayRequestHandler: Sendable {
                 extra: ["reason": "invalid_payload"]
             )
             try await sendError(
-                message: "Malformed realtime relay request.",
                 frame: frame,
                 stream: stream
             )
@@ -949,7 +953,7 @@ final class IrohRelayRequestHandler: Sendable {
             }
             return HermesRelayHostService.mergedModelsResponseBodies(primaryBody, secondaryBody) ?? primaryBody
         } catch {
-            AppLogger.network.error("iroh_relay_body_merge_failed", metadata: ["error": error.localizedDescription])
+            AppLogger.network.error("iroh_relay_body_merge_failed", metadata: ["errorClass": Self.publicErrorClass(error)])
             return primaryBody
         }
     }
@@ -1023,17 +1027,13 @@ final class IrohRelayRequestHandler: Sendable {
         )
     }
 
-    private func sendError(
-        message: String,
-        frame: HermesRealtimeRelayFrame,
-        stream: any IrohRelayStream
-    ) async throws {
+    private func sendError(frame: HermesRealtimeRelayFrame, stream: any IrohRelayStream) async throws {
         let response = HermesRealtimeRelayFrame(
             type: .responseError,
             uid: frame.uid,
             connectionId: frame.connectionId,
             requestId: frame.requestId,
-            payload: HermesRealtimeRelayPayload(error: String(message.prefix(2_000)))
+            payload: HermesRealtimeRelayPayload(errorCode: HermesRealtimeRelayErrorCode.requestFailed.rawValue)
         )
         try await sendFrameWithTimeout(
             response,
@@ -1072,7 +1072,7 @@ final class IrohRelayRequestHandler: Sendable {
                 uid: uid,
                 connectionID: connectionID,
                 requestID: requestID,
-                extra: extra.merging(["error": String(error.localizedDescription.prefix(256))]) { current, _ in current }
+                extra: extra.merging(["errorClass": Self.publicErrorClass(error)]) { current, _ in current }
             )
             throw error
         }

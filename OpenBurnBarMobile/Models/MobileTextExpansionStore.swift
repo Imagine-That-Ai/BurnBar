@@ -211,11 +211,10 @@ final class MobileTextExpansionStore {
         let deviceName = UIDevice.current.name
 
         let deviceRef = userRef.collection("escrow_devices").document(deviceId)
-        let existing = try? await deviceRef.getDocument().data()
+        let existingSnapshot = try? await deviceRef.getDocument()
+        let existing = existingSnapshot?.data()
         let existingTrust = existing?["trustState"] as? String
-        let trustState = existingTrust == EscrowDeviceTrustState.trusted.rawValue
-            ? EscrowDeviceTrustState.trusted.rawValue
-            : EscrowDeviceTrustState.pending.rawValue
+        let sourceIsTrusted = existingTrust == EscrowDeviceTrustState.trusted.rawValue
 
         try await userRef.collection("devices").document(deviceId).setData([
             "deviceId": deviceId,
@@ -223,23 +222,28 @@ final class MobileTextExpansionStore {
             "platform": UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS",
             "lastActiveAt": FieldValue.serverTimestamp()
         ], merge: true)
-        try await deviceRef.setData([
+        var devicePayload: [String: Any] = [
             "deviceId": deviceId,
             "deviceName": deviceName,
             "platform": UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS",
-            "trustState": trustState,
             "publicKeyFingerprint": keypair.publicKeyFingerprint,
             "keyVersion": keypair.keyVersion,
             "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
-        try await userRef.collection("escrow_public_keys").document("\(deviceId)_\(keypair.keyVersion)").setData([
-            "deviceId": deviceId,
-            "publicKeyData": keypair.publicKeyData.base64EncodedString(),
-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
-            "keyVersion": keypair.keyVersion,
-            "algorithm": "ECIES-P256-AESGCM",
-            "createdAt": FieldValue.serverTimestamp()
-        ], merge: true)
+        ]
+        if existingSnapshot?.exists == false {
+            devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+        }
+        try await deviceRef.setData(devicePayload, merge: true)
+        try await MobileEscrowPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: deviceId,
+            publicKeyData: keypair.publicKeyData,
+            publicKeyFingerprint: keypair.publicKeyFingerprint,
+            keyVersion: keypair.keyVersion
+        )
+        guard sourceIsTrusted else {
+            return
+        }
 
         let trusted = try await userRef.collection("escrow_devices")
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
@@ -260,11 +264,11 @@ final class MobileTextExpansionStore {
             }
             let wrapped = try CloudVaultCrypto.wrapVaultKey(vaultKey, recipientPublicKey: publicKeyData)
             try await userRef.collection("cloud_vault_key_wrappers")
-	                .document("\(targetDeviceId)_\(keyVersion)")
-	                .setData([
-	                    "uid": uid,
-	                    "vaultKeyID": vaultKeyID,
-	                    "targetDeviceId": targetDeviceId,
+                .document("\(targetDeviceId)_\(keyVersion)")
+                .setData([
+                    "uid": uid,
+                    "vaultKeyID": vaultKeyID,
+                    "targetDeviceId": targetDeviceId,
                     "sourceDeviceId": deviceId,
                     "publicKeyFingerprint": fingerprint,
                     "keyVersion": keyVersion,
@@ -273,10 +277,10 @@ final class MobileTextExpansionStore {
                     "status": "active",
                     "createdAt": FieldValue.serverTimestamp(),
                     "updatedAt": FieldValue.serverTimestamp(),
-	                    "schemaVersion": 2
-	                ], merge: true)
-	        }
-	    }
+                    "schemaVersion": 2
+                ], merge: true)
+        }
+    }
 
     private static func sorted(_ snippets: [TextExpansionSnippet]) -> [TextExpansionSnippet] {
         snippets.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }

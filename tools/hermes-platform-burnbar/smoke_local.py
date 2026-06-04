@@ -20,6 +20,7 @@ import hashlib
 import importlib
 import os
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -220,13 +221,14 @@ def install_plugin(hermes_repo: Path) -> None:
     source_dir = Path(__file__).resolve().parent
     target_dir = hermes_repo / "plugins" / "platforms" / "burnbar"
     target_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("adapter.py", "__init__.py", "plugin.yaml", "README.md"):
+    for name in ("adapter.py", "__init__.py", "plugin.yaml", "README.md", "smoke_local.py"):
         shutil.copy2(source_dir / name, target_dir / name)
 
 
 def load_hermes_plugin(hermes_repo: Path):
     install_plugin(hermes_repo)
-    sys.path.insert(0, str(hermes_repo))
+    if str(hermes_repo) not in sys.path:
+        sys.path.insert(0, str(hermes_repo))
     module = importlib.import_module("plugins.platforms.burnbar.adapter")
 
     class Context:
@@ -240,10 +242,6 @@ def load_hermes_plugin(hermes_repo: Path):
 
 
 async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
-    module = load_hermes_plugin(hermes_repo)
-    from gateway.config import Platform, PlatformConfig
-    from tools.send_message_tool import _send_to_platform
-
     # Test isolation: the legacy-path smoke must not read or write the developer's
     # REAL BurnBar pairing. ~/.hermes/.env carries BURNBAR_RELAY_E2E=1 + a pinned
     # peer key, so without this the routed standalone-send path correctly SEALS the
@@ -267,6 +265,8 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
     _saved_relay_env = {k: os.environ.get(k) for k in _relay_env_keys}
     for _k in _relay_env_keys:
         os.environ.pop(_k, None)
+    if str(hermes_repo) not in sys.path:
+        sys.path.insert(0, str(hermes_repo))
     try:
         import hermes_cli.config as _hcfg
 
@@ -275,18 +275,34 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
     except Exception:
         _orig_save_env = None
 
-    # MP-1: two-key (agent + phone) >=128-bit safety code; MP-22: "" on bad input.
-    assert module._relay_safety_code("AQIDBAUGBwg=", "BQYHCAkKCww=") == "87A1 72BA 2694 7DB0 47AB ADB7 E7EE FD69"
-    assert module._relay_safety_code("not-base64", "AQIDBAUGBwg=") == ""
-
-    server, thread, state = start_fake_server()
-    base_url = f"http://127.0.0.1:{server.server_port}/v1/hermes-gateway"
-    state.enqueue("hello hermes")
-    state.enqueue("/model minimax-m2.7-highspeed", kind="model_switch", model_id="minimax-m2.7-highspeed")
-    cursor_dir = tempfile.TemporaryDirectory()
-    module.CURSOR_FILE = Path(cursor_dir.name) / "burnbar_cursor.json"
+    server = None
+    thread = None
+    cursor_dir = None
 
     try:
+        module = load_hermes_plugin(hermes_repo)
+        from gateway.config import Platform, PlatformConfig
+        from tools.send_message_tool import _send_to_platform
+
+        # MP-1: two-key (agent + phone) >=128-bit safety code; MP-22: "" on bad input.
+        agent_key = module.relay_e2ee.generate_private_key().public_key_base64()
+        phone_key = module.relay_e2ee.generate_private_key().public_key_base64()
+        other_key = module.relay_e2ee.generate_private_key().public_key_base64()
+        safety_code = module._relay_safety_code(agent_key, phone_key)
+        assert re.fullmatch(r"(?:[0-9A-F]{4} ){7}[0-9A-F]{4}", safety_code)
+        assert module._relay_safety_code(phone_key, agent_key) == safety_code
+        assert module._relay_safety_code(agent_key, other_key) != safety_code
+        assert module._relay_safety_code(other_key, phone_key) != safety_code
+        assert module._relay_safety_code("not-base64", phone_key) == ""
+        assert module._relay_safety_code(agent_key, "AQIDBAUGBwg=") == ""
+
+        server, thread, state = start_fake_server()
+        base_url = f"http://127.0.0.1:{server.server_port}/v1/hermes-gateway"
+        state.enqueue("hello hermes")
+        state.enqueue("/model minimax-m2.7-highspeed", kind="model_switch", model_id="minimax-m2.7-highspeed")
+        cursor_dir = tempfile.TemporaryDirectory()
+        module.CURSOR_FILE = Path(cursor_dir.name) / "burnbar_cursor.json"
+
         config = PlatformConfig(
             enabled=True,
             extra={
@@ -305,7 +321,10 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
         connected = await adapter.connect()
         assert connected is True
         await asyncio.sleep(1.2)
-        assert received and received[0].text == "hello hermes"
+        assert received and received[0].text == "hello hermes", [
+            {"text": getattr(event, "text", None), "chat_id": getattr(event.source, "chat_id", None)}
+            for event in received
+        ]
         assert received[0].source.chat_id == DEFAULT_HOME
         assert any(event.text == "/model minimax-m2.7-highspeed" for event in received)
 
@@ -365,9 +384,12 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
             "typingEvents": len(state.typing),
         }
     finally:
-        server.shutdown()
-        thread.join(timeout=2)
-        cursor_dir.cleanup()
+        if server is not None:
+            server.shutdown()
+        if thread is not None:
+            thread.join(timeout=2)
+        if cursor_dir is not None:
+            cursor_dir.cleanup()
         # Restore the sandboxed HOME + relay env + the real env writer.
         if _saved_home is None:
             os.environ.pop("HOME", None)

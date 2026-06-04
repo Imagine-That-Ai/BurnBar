@@ -399,7 +399,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             "updatedAt": Timestamp(date: thread.updatedAt),
             "messageCount": thread.messageCount,
             "contentSealed": true,
-            "sealedSchemaVersion": 1,
+            "sealedSchemaVersion": 2,
             "vaultKeyID": resolvedKey.vaultKeyID,
             "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
         ]
@@ -432,7 +432,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             "updatedAt": Timestamp(date: thread.updatedAt),
             "messageCount": thread.messageCount,
             "contentSealed": true,
-            "sealedSchemaVersion": 1,
+            "sealedSchemaVersion": 2,
             "vaultKeyID": vaultKeyID,
             "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
         ]

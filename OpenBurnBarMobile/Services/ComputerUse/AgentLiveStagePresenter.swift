@@ -74,8 +74,11 @@ final class AgentLiveStagePresenter: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var observedState: AgentWatchState?
     private var manualDockAfterSessionEnd = false
+    private let sessionEndGraceOverride: TimeInterval?
 
-    init() {}
+    init(sessionEndGrace: TimeInterval? = nil) {
+        self.sessionEndGraceOverride = sessionEndGrace
+    }
 
     // MARK: - Observation
 
@@ -225,7 +228,7 @@ final class AgentLiveStagePresenter: ObservableObject {
 
     private func scheduleGraceCollapse(reason: CollapseReason) {
         cancelGrace()
-        let grace = Self.sessionEndGrace
+        let grace = sessionEndGraceOverride ?? Self.sessionEndGrace
         graceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(grace * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }

@@ -962,3 +962,58 @@ private final class StubRealtimeRelayHost: HermesRealtimeRelayHosting {
         isReady = false
     }
 }
+
+final class EscrowPublicKeyPublisherTests: XCTestCase {
+    func testExistingPublicKeyMatcherAcceptsExactDocument() {
+        let data: [String: Any] = [
+            "deviceId": "device-1",
+            "publicKeyData": String(repeating: "A", count: 88),
+            "publicKeyFingerprint": String(repeating: "F", count: 44),
+            "keyVersion": 1,
+            "algorithm": "ECIES-P256-AESGCM"
+        ]
+
+        XCTAssertTrue(EscrowPublicKeyPublisher.matchesExistingPublicKey(
+            data,
+            deviceId: "device-1",
+            publicKeyBase64: String(repeating: "A", count: 88),
+            publicKeyFingerprint: String(repeating: "F", count: 44),
+            keyVersion: 1
+        ))
+    }
+
+    func testExistingPublicKeyMatcherAcceptsLegacyDocumentWithoutFingerprint() {
+        let data: [String: Any] = [
+            "deviceId": "device-1",
+            "publicKeyData": String(repeating: "A", count: 88),
+            "keyVersion": 1,
+            "algorithm": "ECIES-P256-AESGCM"
+        ]
+
+        XCTAssertTrue(EscrowPublicKeyPublisher.matchesExistingPublicKey(
+            data,
+            deviceId: "device-1",
+            publicKeyBase64: String(repeating: "A", count: 88),
+            publicKeyFingerprint: String(repeating: "F", count: 44),
+            keyVersion: 1
+        ))
+    }
+
+    func testExistingPublicKeyMatcherRejectsImmutableKeyDrift() {
+        let data: [String: Any] = [
+            "deviceId": "device-1",
+            "publicKeyData": String(repeating: "B", count: 88),
+            "publicKeyFingerprint": String(repeating: "F", count: 44),
+            "keyVersion": 1,
+            "algorithm": "ECIES-P256-AESGCM"
+        ]
+
+        XCTAssertFalse(EscrowPublicKeyPublisher.matchesExistingPublicKey(
+            data,
+            deviceId: "device-1",
+            publicKeyBase64: String(repeating: "A", count: 88),
+            publicKeyFingerprint: String(repeating: "F", count: 44),
+            keyVersion: 1
+        ))
+    }
+}

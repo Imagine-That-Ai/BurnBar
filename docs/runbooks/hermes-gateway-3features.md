@@ -1,16 +1,23 @@
 # Hermes Gateway: runtime state, model switching, oversight
 
-Status as of 2026-06-03. Three features shipped end-to-end through the BurnBar
+Status as of 2026-06-04. Three features shipped end-to-end through the BurnBar
 Cloud ↔ Hermes gateway: **(1) runtime state**, **(2) model switching**, and
 **(3) human-in-the-loop oversight**. This runbook records exactly what shipped,
-what was already there vs newly built, the tests run, the physical-iPhone E2E
+what was already there vs newly built, the tests run, the physical-device E2E
 procedure, and the readiness verdict for the Hermes plugin PR.
 
 > **Post-merge status:** BurnBar PR #264 was merged to `main` on 2026-06-03.
 > Production backfill/cleanup has been run and was idempotent on the second pass.
-> The physical-iPhone pairing/connection loop was proven earlier in the release
-> pass, but the full approve/deny/expiry hardware scenario was not rerun during
-> the final formatting/security audit because the iPhone was offline to Xcode.
+> The 2026-06-04 E2EE remediation proof is green from a fresh clone of the Hermes
+> fork branch (`78b1c7244`, `ajnunezg/burnbar-gateway-e2ee`; code proof commit
+> `f79947b9b` plus security-note update). The focused mobile gateway/security
+> suite now also passes on Alberto's connected physical iPad
+> (`00008132-001158191E9A401C`, iPad Air 11-inch M4, iPadOS 26.5): 95 executed,
+> 3 source-inspection checks skipped because the Mac workspace is not mounted in
+> the app-host process, 0 failures. Live deployed readback also confirms sealed
+> chat, model-switch, attachment, approval, Firestore, Storage, and Cloud
+> Logging surfaces. The only unresolved external proof gate is Sentry issue/event
+> readback, because this machine has no `sentry-cli` or Sentry API token.
 
 ---
 
@@ -116,17 +123,20 @@ procedure, and the readiness verdict for the Hermes plugin PR.
 - `README.md` — rewritten: terse + factual, oversight/state/model-switch documented,
   stale `tools/hermes-platform-burnbar/smoke_local.py` path fixed to the Hermes-repo
   path, marketing tone removed.
-- `test_oversight_local.py` — **new** runnable behavioral test (no network/runtime).
+- `smoke_local.py` — local gateway smoke harness used by the remediation verifier.
 
 ### BurnBar repo — clients
-- iOS (`OpenBurnBarMobile/`) — oversight wiring (see §5; compile-pending).
+- iOS (`OpenBurnBarMobile/`) — oversight wiring and gateway E2EE open/seal
+  hardening (see §5).
 - Mac (`AgentLens/`) — **not modified** in this pass (see §5).
 
-### Hermes repo (`~/.hermes/hermes-agent`) — NOT modified by the agent
-The live adapter `plugins/platforms/burnbar/adapter.py` and `gateway/platforms/
-api_server.py` are dirty WIP and must not be clobbered. **Sync the mirror →
-`plugins/platforms/burnbar/` is your step, after committing that WIP.** Author the
-Hermes commit as Ajnunezg.
+### Hermes repo (`~/.hermes/hermes-agent`)
+The Hermes fork branch `ajnunezg/burnbar-gateway-e2ee` now contains the BurnBar
+gateway remediation code commit `f79947b9b` plus security-note commit `78b1c7244`,
+and has been pushed to the `ajnunezg` remote. The BurnBar mirror adapter and the Hermes plugin adapter are
+byte-identical (`sha256 971fac6de05952ee74aad6078205fc43050f9a4ff349ba0d96b9346218b5a442`).
+Keep Hermes commits separate from BurnBar commits and stage only plugin/security/
+test/vector material.
 
 ---
 
@@ -142,43 +152,41 @@ added its own cases to the shared files):
 | `npm run test:hermes-gateway` | ✓ pass — behavioral coverage of all 3 features' pure logic + route/guard/index/rules source assertions |
 | `npm run test:firestore-rules` | ✓ **45/45** — includes oversight gate owner-read + **self-approve denied** |
 | `npx vitest run src/__tests__/hermesGateway.test.ts` | ✓ **25/25** (3 feature blocks + the E2EE agent's relay/grace-window cases) |
-| `test_oversight_local.py` (adapter, Hermes venv) | ✓ 7 cases |
-
 Adapter (Hermes venv):
 
 | Command | Result |
 | --- | --- |
 | `python3 -m py_compile tools/hermes-platform-burnbar/adapter.py` | ✓ |
-| `HERMES_REPO=~/.hermes/hermes-agent .venv/bin/python tools/hermes-platform-burnbar/test_oversight_local.py` | ✓ 7 cases (autonomous auto-approve, supervised arm+wait, approve/deny/expire → slash_confirm, still-waiting stays pending, oversight mirrors /state, unreachable→safe text fallback) |
-| `scripts/run_tests.sh tests/gateway/test_burnbar_plugin.py` (baseline, in `~/.hermes`) | ✓ 9/9 |
+| `python tools/hermes-platform-burnbar/smoke_local.py smoke --hermes-repo ~/.hermes/hermes-agent` | ✓ local gateway smoke |
+| External Hermes gateway pytest (`test_relay_e2ee*`, `test_hermes_ratchet.py`, `test_burnbar_plugin*`, `test_burnbar_hpke_v3_vectors.py`) | ✓ 211/211 |
 
-Swift: regenerated `HermesGatewayModels.swift` type-checks standalone (`swiftc -typecheck`). App-target Swift requires Xcode (compile-pending; SourceKit cannot resolve Firebase modules in this environment).
+Swift/iOS: `swift test --package-path OpenBurnBarCore --filter 'BurnBarHpkeV3CrossPlatformVectorTests|HermesRelayHPKEv3VectorTests'` passed 9 tests. Focused `OpenBurnBarMobileTests/OpenBurnBarMobileTests` passed 95 tests on simulator and on Alberto's physical iPad. Live deployed readback confirms sealed event/message/attachment storage, approve/reject/expiry approval decisions, Firestore/Storage allowlists, and Cloud Logging traffic.
 
 ---
 
-## 4. Physical-iPhone E2E (run on a real connected device — Alberto)
+## 4. Physical iOS E2E (run on a real connected device — Alberto)
 
 Pre-reqs: deploy the new functions (`burnBarHermesGateway` with `/state` +
 `/approvals`, `setHermesGatewayOversightMode`, `respondHermesGatewayApproval`,
 `reapHermesGatewayApprovals`) and `firestore.rules`; sync the adapter mirror into
 `~/.hermes/hermes-agent/plugins/platforms/burnbar/` (after committing the WIP) and
-install the latest BurnBar build on the iPhone.
+install the latest BurnBar build on the trusted iOS device.
 
-1. Install latest OpenBurnBar on the iPhone.
+1. Install latest OpenBurnBar on the trusted iOS device.
 2. `hermes gateway restart` → `hermes gateway status`.
 3. `hermes gateway setup` → **BurnBar Cloud** → approve the device code in the app.
 4. **Runtime state:** confirm the app shows the gateway **online**, the **current
    model**, the **agent version**, and **this client connected**.
-5. **Model switch:** pick a different model on the phone; confirm it shows
+5. **Model switch:** pick a different model on the device; confirm it shows
    "switching…" briefly, then settles to the new model, and the gateway's next
    reply uses it. Try an off-catalog id → expect `model_not_available`.
 6. **Oversight ON:** confirm oversight is **supervised** (default). Trigger a risky
    agent action that routes through Hermes' slash-confirm; confirm an approval card
-   appears on the phone; **approve** it → the action runs. Repeat and **deny** → the
-   action is cancelled. Leave one unanswered past the TTL → it expires.
+   appears on the device; **approve** it → the action runs. Repeat and **deny** →
+   the action is cancelled. Leave one unanswered past the TTL → it expires.
 7. **Oversight OFF:** set **autonomous**; confirm the same action runs without a
    prompt.
-8. **Offline truthfulness:** stop the gateway; confirm the phone shows **offline**
+8. **Offline truthfulness:** stop the gateway; confirm the device shows **offline**
    within ~90s (no faking).
 
 ---
@@ -205,15 +213,19 @@ install the latest BurnBar build on the iPhone.
     spinner on the gateway client row, and a focused approve/deny approval list
     (intentionally NOT the CLI-mission `ApprovalInboxStrip`, which is a different
     requestID namespace). Test mock updated so the test target compiles.
-  - **Compile-pending:** Xcode build + device run required (cannot build here).
-    Brace/paren balance verified across all four files; the agent flagged the
-    `gatewayClientRow` VStack restructure as the one spot to confirm in a real
-    compile.
+  - **Current proof:** focused `OpenBurnBarMobileTests/OpenBurnBarMobileTests`
+    passed 95 executed tests on the iOS Simulator and Alberto's physical iPad
+    after adding a test-only key-storage seam for unsigned CI/simulator Keychain
+    behavior. Production relay, ratchet, and pin private material still uses
+    `WhenUnlockedThisDeviceOnly` Keychain storage and fails closed on Keychain
+    errors. The 2026-06-04 focused live approval run completed deployed
+    approve/reject/expiry readback against the unlocked trusted iPad.
 - **Mac (`AgentLens/`):** intentionally **not** changed in this pass. The audit
   flagged that wiring a remote gateway switch onto the Mac's local model picker is a
   footgun (the local `HermesModelID` override ≠ the gateway switch catalog), and the
-  E2E surface is the iPhone. Mac freshness-TTL + gateway-version display remain a
-  scoped, documented follow-up.
+  remote approval E2E surface is the trusted iOS device. Mac freshness-TTL +
+  gateway-version display are Mac-local visibility polish outside this gateway
+  E2EE acceptance surface.
 - **Web console:** has no Hermes gateway surface (nothing to wire).
 
 ---
@@ -250,10 +262,11 @@ returns false). The two changesets coexist; the three features survived and all
 server suites are green. Review-pass findings + fixes:
 
 All review findings below are now **RESOLVED** (remediation pass, authorized by
-Alberto). Final state: build green; `test:hermes-gateway`, `test:firestore-rules`
-(45/45), vitest (30/30), the privacy scanner, and the Hermes harness
-(`test_burnbar_plugin.py` + `test_relay_e2ee.py`, 62 tests) all pass; the adapter
-mirror is byte-identical to the verified-green `~/.hermes` deployment copy.
+Alberto). Final state at that checkpoint: build green; `test:hermes-gateway`,
+`test:firestore-rules` (45/45), vitest (30/30), the privacy scanner, and the
+then-current Hermes harness (`test_burnbar_plugin.py` + `test_relay_e2ee.py`, 62
+tests) all passed; the adapter mirror was byte-identical to the verified-green
+`~/.hermes` deployment copy. Superseding 2026-06-04 proof is in §9.
 
 - **[FIXED] Build break (merge artifact):** the E2EE rewrite of
   `enqueueHermesGatewayEvent` referenced `request.data.eventId` without declaring
@@ -271,9 +284,9 @@ mirror is byte-identical to the verified-green `~/.hermes` deployment copy.
   `scan-chat-cloud-plaintext.mjs` (collection is server-only-writer + the
   control-plane invariant). The non-empty derived label means **no iOS change is
   needed** — the approval card still renders meaningfully.
-- **[RESOLVED] P1a — sealed confirm follow-up.** The E2EE integration already routed
+- **[RESOLVED] P1a — sealed confirm detail.** The E2EE integration already routed
   `_post_confirm_followup` through the sealed `_post_message(sealer=self._sealer)`
-  path (verified); no plaintext follow-up remains.
+  path (verified); no plaintext command detail remains.
 - **[RESOLVED] P0 — adapter mirror divergence / "cp destroys E2EE" footgun.** The
   `~/.hermes` adapter already fully integrated this work's oversight + features ON
   TOP of the E2EE sealing (every oversight method present; 62 Hermes tests green).
@@ -283,32 +296,40 @@ mirror is byte-identical to the verified-green `~/.hermes` deployment copy.
 - **[RESOLVED] Redundant stopgap retired.** `test_oversight_local.py` (a standalone
   test written when the Hermes harness couldn't run against the mirror) is removed —
   the canonical `test_burnbar_plugin.py` now covers oversight, runtime-status,
-  model-switch, and the relay round-trip (62 tests). README repointed to the harness.
+  model-switch, and the relay round-trip. The current external harness has grown
+  to 211 tests; see §9.
 - **[OK] `/state`, model-switch validation, `pendingModelId`, the oversight gate
   collection + callable, and the TTL reaper are all unaffected by the seal** (they
   operate on metadata, not sealed bodies) and remain green.
 
 ## 7. Readiness verdict
 
-Updated after the gateway E2EE re-architecture landed in the same files AND the
-remediation pass closed every review finding (see §6a).
+Updated after the gateway E2EE re-architecture landed in the same files and the
+2026-06-04 remediation proof closed the code/verifier findings (see §6a and §9).
 
 - **Server (functions) — all three features, control- AND data-plane:** **ready**.
   Build, gateway contract tests, focused unit tests, privacy scanner, and the
   post-merge format gates pass. The oversight gate is sealed-consistent
   (control-plane; no server-readable command text).
 - **Hermes plugin (adapter):** **ready**. The BurnBar mirror remains covered by the
-  canonical Hermes gateway tests (`test_burnbar_plugin.py` + `test_relay_e2ee.py`,
-  79 tests in the current harness), including relay E2EE.
+  canonical Hermes gateway tests (`test_relay_e2ee.py`,
+  `test_relay_e2ee_v2.py`, `test_relay_e2ee_v3.py`,
+  `test_hermes_ratchet.py`, `test_burnbar_plugin.py`,
+  `test_burnbar_plugin_v3.py`, `test_burnbar_hpke_v3_vectors.py`) with 211 tests
+  in the current external harness, including v2/v3 relay E2EE and ratchet proof.
 - **Hermes plugin PR:** **ready for Nous submission from the verified branch/copy**.
   Keep Hermes commits separate from BurnBar commits and stage only adapter,
   crypto, tests, fixtures, and README material.
-- **iOS client:** **unit/compile ready; physical full-flow still needs a fresh
-  hardware readback when the iPhone is online.** Simulator `OpenBurnBarMobileTests`
-  passed 88/88 during the final audit, including E2EE pinning, sealed replies,
-  sealed attachments, sealed model-switch envelopes, and gateway store behavior.
-  Xcode listed Alberto's iPhone as offline during this pass, so simulator success
-  must not be misrepresented as physical approve/deny/expiry proof.
+- **iOS client:** **unit/compile ready on simulator and physical iPad; deployed
+  approval decisions now have live trusted-device readback.** `OpenBurnBarMobileTests/
+  OpenBurnBarMobileTests` passed 95 executed tests on simulator and on Alberto's
+  physical iPad (`00008132-001158191E9A401C`), including E2EE pinning, sealed
+  replies, destination-bound sealed attachments, sealed model-switch envelopes,
+  gateway store behavior, and the app-host ratchet phone-event/agent-reply
+  round trip. The focused live approval test separately armed approve/reject/
+  expiry cases on the deployed gateway and proved trusted-device resolution,
+  public expiry, late-response fail-closed behavior, and no plaintext command
+  detail in approval docs.
 - **Deploy/backfill:** production cleanup/backfill ran once and the idempotence
   pass reported no remaining updates. Treat future production cleanup as an
   operator readback, not a unit-test substitute.
@@ -338,3 +359,68 @@ Final local evidence:
 | Android `:app:testDebugUnitTest` | pass |
 | iOS simulator `OpenBurnBarMobileTests/OpenBurnBarMobileTests` | 88 passed |
 | `bash scripts/security/scan-publishable-tree.sh` | pass (`gitleaks` no leaks, `trufflehog` 0 verified secrets) |
+
+## 9. E2EE remediation proof — 2026-06-04
+
+Fresh-clone verifier:
+
+```bash
+HERMES_AGENT_CHECKOUT=/tmp/.../hermes-agent \
+HERMES_PYTHON=/Users/albertonunez/.hermes/hermes-agent/venv/bin/python \
+bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
+```
+
+| Surface | Result |
+| --- | --- |
+| Privacy plaintext scanner | pass |
+| Functions Hermes Gateway contract | pass |
+| Focused Functions Hermes/privacy vitest | 6 files, 96 tests passed |
+| Firestore rules emulator suite | 45/45 passed |
+| Schema sync drift, hand mirror, and budget gate | pass |
+| Gateway vector mirror diff | pass; v2 hash `e48f1b6accd295988fcd2397cf762fab7354c884ecf5eea192dc3099decc8020`, v3 hash `04ebb743b0f6df75cfa5602c18f311fe289aa6186a6e3fa86ddc39021aae936f` |
+| BurnBar adapter mirror diff | pass; adapter hash `971fac6de05952ee74aad6078205fc43050f9a4ff349ba0d96b9346218b5a442` |
+| BurnBar adapter local gateway smoke | pass (`eventsReceived=2`, `messagesSent=4`, `attachmentUploads=3`, `attachmentFinalizes=3`, `typingEvents=1`) |
+| External Hermes gateway pytest | 211 passed |
+| iOS simulator `OpenBurnBarMobileTests/OpenBurnBarMobileTests` | 95 passed |
+| Physical iPad `OpenBurnBarMobileTests/OpenBurnBarMobileTests` | pass; 95 executed, 3 source-inspection checks skipped, 0 failures; UDID `00008132-001158191E9A401C`; telemetry `.derived-data/test-openburnbar-mobile-attempts.jsonl`; xcresult `/var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/openburnbar-mobile-tests/openburnbar-mobile-tests.2gQdGa/OpenBurnBarMobileTests-attempt-1.xcresult` |
+| Physical iPad live approval E2E | pass; `OpenBurnBarMobileTests/HermesServiceTests/testLiveHermesGatewayApprovalResponseE2E` on `00008132-001158191E9A401C` armed approve/reject/expiry cases, trusted the iPad through native device escrow, resolved approve/reject from the trusted device, observed public expiry, and proved late expired responses fail closed |
+| Live Firestore gateway clients | pass; active client `hgw_e16e63911798c721125ada4c` has relay, HPKE v3, and ratchet public capability fields and fresh `lastSeenAt`/runtime metadata |
+| Live Firestore gateway events/messages | pass; recent message, model-switch, and agent-message docs for `hgw_e16e63911798c721125ada4c` carry `relayEnvelope` v2 / `payloadCiphertext` and no top-level plaintext `text`, `body`, or `message` fields |
+| Live Firestore/Storage attachments | pass; 2 uploaded attachment manifests in `hermes_gateway_attachments` store `application/octet-stream`, no plaintext `fileName`, destination-bound sealed `relayEnvelope` v2, and matching opaque Storage objects in the deployed bucket |
+| Cloud Logging | pass; Cloud Run revision `burnbarhermesgateway-00014-yoc` shows successful `/approvals` traffic, and callable logs show `hermes_gateway.approval_resolved` for approved and rejected decisions; the expiry late-response callable error is expected fail-closed proof |
+| Live approvals | pass; docs `hga_95470e7cb6a48a8660b1b0f29d185cb384f4e04a`, `hga_df8499df712293a6d6dfd636f0d8550ebd4f1ed4`, and `hga_4c1cc9b55a69444616eb3b975bb85784bb7fb4ed` have only server-derived labels and allowlisted routing/status fields, no plaintext prompt/body/message/detail fields; trusted iPad device `6566F689-F2FA-4A57-8A0F-4B38D47A76C0`, Mac approver `23AA015D-B6C5-434C-8EBA-E33B8B8E4AAA` |
+| Sentry readback | not yet proven; no local `sentry-cli` or `SENTRY_AUTH_TOKEN` was available for issue/event readback |
+
+Remaining non-code proof gate: run Sentry issue/event readback with a Sentry API
+token. The broader deployed proof is now complete for live chat, model-switch,
+attachments, approvals, Firestore, Storage, and Cloud Logging.
+
+## 10. Final adversarial audit — 2026-06-04
+
+Verdict: **code and deployed live proof are green; hold only on Sentry admin
+readback.** The code, contract, cross-language vector, external Hermes fork,
+physical iPad unit surface, live approval decisions, and live cloud ciphertext
+readback are green. Do not claim Sentry observability proof until issue/event
+readback is performed with valid Sentry credentials.
+
+Final verifier rerun from the current BurnBar worktree and clean Hermes fork
+checkout:
+
+```bash
+HERMES_AGENT_CHECKOUT=/Users/albertonunez/.hermes/hermes-agent \
+HERMES_PYTHON=/Users/albertonunez/.hermes/hermes-agent/venv/bin/python \
+bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
+```
+
+| Surface | Result |
+| --- | --- |
+| `git diff --check` | pass |
+| Stale status-language search | pass; no remaining stale old-device, approval-open, or cloud-log-open wording in the gateway proof docs |
+| External Hermes checkout | clean at `78b1c7244` on `ajnunezg/burnbar-gateway-e2ee` |
+| Full E2EE remediation verifier | pass; scanner, Functions contract, 96 focused Functions tests, 45 Firestore rule tests, schema drift, vector/mirror diffs, local smoke, and 211 external Hermes tests |
+| SOTA source check | pass for current claim boundary; HPKE is a good sealed-envelope primitive, while broad SOTA claims still require externally reviewed attachment/PQXDH/MLS-grade coverage documented in `docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md` |
+
+Open gate remains an external admin-readback gate, not hidden implementation
+work:
+
+- Run Sentry issue/event readback with `sentry-cli` or a valid Sentry API token.

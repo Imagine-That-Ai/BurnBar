@@ -148,7 +148,8 @@ final class CloudVaultGatewayErrorTests: XCTestCase {
             title: "Conversation",
             preview: "You are an elite swarm…",
             storagePath: storagePath,
-            bodyHash: bodyHash
+            bodyHash: bodyHash,
+            bodyHashVersion: 0
         )
     }
 }

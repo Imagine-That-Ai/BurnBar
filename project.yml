@@ -49,6 +49,20 @@ packages:
     url: https://github.com/pointfreeco/swift-snapshot-testing
     from: "1.18.0"
 
+schemes:
+  OpenBurnBarMobileUnitTests:
+    build:
+      targets:
+        OpenBurnBarMobile: all
+    run:
+      config: Debug
+      executable: OpenBurnBarMobile
+    test:
+      config: Debug
+      targets:
+        - OpenBurnBarMobileTests
+      storeKitConfiguration: OpenBurnBarMobileTests/Resources/OpenBurnBarPaidTiers.storekit
+
 targets:
   OpenBurnBar:
     type: application
@@ -318,6 +332,14 @@ targets:
       - path: AgentLens/Resources/OpenBurnBarMAS.entitlements
         buildPhase: resources
       - path: tools/app-store-connect/asc-api.js
+        buildPhase: resources
+      - path: tools/openburnbar-mcp/eligible_providers.json
+        buildPhase: resources
+      - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/summary.json
+        buildPhase: resources
+      - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/signals.json
+        buildPhase: resources
+      - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/chat_history.jsonl
         buildPhase: resources
     postBuildScripts:
       - name: Bundle App Store Compliance Source Fixtures

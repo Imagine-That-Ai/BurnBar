@@ -40,7 +40,7 @@ the blob's context, mirroring the convention `HermesRelayCrypto` already uses
 ### 1.1 Canonical AAD string (byte-identical on all four surfaces)
 
 ```
-OpenBurnBar-CloudVault-aad-v1|<uid>|<collection>|<docId>|<field>
+OpenBurnBar-CloudVault-aad-v2|<uid>|<collection>|<docId>|<field>|<schemaVersion>|<purpose>
 ```
 
 - `<uid>` — Firebase uid that owns the doc.
@@ -54,12 +54,16 @@ OpenBurnBar-CloudVault-aad-v1|<uid>|<collection>|<docId>|<field>
 - `<field>` — the sealed field name, e.g. `sealedProjectName`, `sealedLabel`,
   `sealedFilename`, `sealedDisplayName`, `sealedScope`, `sealedBody`,
   `sealedRootPath`, `sealedRepoFullName`.
+- `<schemaVersion>` — `2` for the current CloudVault AAD-bound envelope family.
+- `<purpose>` — the semantic purpose of the sealed value. When no narrower
+  purpose is required, it defaults to the sealed field name.
 
 UTF-8 bytes, `|`-joined, parts must not contain `|` (uid/docId/field never do;
 collection is a constant). The blob's `vaultKeyID`/`keyVersion` are already
 authenticated by the key itself; the load-bearing additions are
-uid+collection+docId+field. `schemaVersion: 2` on the envelope signals "AAD-bound
-with aad-v1".
+uid+collection+docId+field+schemaVersion+purpose. `schemaVersion: 2` on the
+envelope signals "AAD-bound with aad-v2"; five-part `aad-v1` is historical
+read-only compatibility.
 
 ### 1.2 Per-surface API change
 

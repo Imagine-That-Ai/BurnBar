@@ -447,7 +447,7 @@ public enum CLIAgentSessionCodec {
             "createdAt": record.createdAt,
             "updatedAt": record.updatedAt,
             "schemaVersion": record.schemaVersion,
-            "sealedSchemaVersion": 1,
+            "sealedSchemaVersion": 2,
             "vaultKeyID": vaultKeyID,
             "contentSealed": true,
             "messageCount": record.messages.count,

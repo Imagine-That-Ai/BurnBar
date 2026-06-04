@@ -14,8 +14,135 @@ final class CloudVaultCryptoTests: XCTestCase {
 
         let body = Data("full encrypted session markdown".utf8)
         let sealedBlob = try CloudVaultCrypto.sealBlob(body, keyData: key)
+        XCTAssertEqual(sealedBlob.schemaVersion, CloudVaultCrypto.currentBlobEnvelopeSchemaVersion)
+        XCTAssertNil(sealedBlob.plaintextSHA256)
+        XCTAssertEqual(sealedBlob.aad, CloudVaultCrypto.blobEnvelopeAADContext)
+        XCTAssertEqual(sealedBlob.integrityHashVersion, CloudVaultCrypto.blobIntegrityHashVersion)
+        XCTAssertEqual(sealedBlob.plaintextHMAC, try CloudVaultCrypto.blobPlaintextHMAC(body, keyData: key))
         XCTAssertEqual(try CloudVaultCrypto.openBlob(sealedBlob, keyData: key), body)
         XCTAssertThrowsError(try CloudVaultCrypto.openBlob(sealedBlob, keyData: otherKey))
+
+        let legacyBox = try AES.GCM.seal(body, using: SymmetricKey(data: key))
+        let legacyBlob = CloudVaultBlobEnvelope(
+            schemaVersion: 1,
+            keyVersion: 1,
+            plaintextSHA256: CloudVaultCrypto.sha256Hex(body),
+            integrityHashVersion: nil,
+            sealedBoxBase64: try XCTUnwrap(legacyBox.combined).base64EncodedString(),
+            aad: nil
+        )
+        XCTAssertEqual(try CloudVaultCrypto.openBlob(legacyBlob, keyData: key), body)
+    }
+
+    func test_cloudVaultBodyAndChunkHashesAreVaultKeyedHMACs() throws {
+        let key = Data(repeating: 0x62, count: 32)
+        let otherKey = Data(repeating: 0x63, count: 32)
+        let body = Data("secret transcript body".utf8)
+        let chunk = "secret transcript chunk"
+
+        let bodyHash = try CloudVaultCrypto.sessionBodyHash(body, keyData: key)
+        let sameBodyHash = try CloudVaultCrypto.sessionBodyHash(body, keyData: key)
+        let otherBodyHash = try CloudVaultCrypto.sessionBodyHash(body, keyData: otherKey)
+        let chunkHash = try CloudVaultCrypto.sessionChunkHash(chunk, keyData: key)
+
+        XCTAssertEqual(bodyHash, sameBodyHash)
+        XCTAssertNotEqual(bodyHash, otherBodyHash)
+        XCTAssertTrue(bodyHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertTrue(chunkHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertNotEqual(bodyHash, CloudVaultCrypto.sha256Hex(body))
+        XCTAssertNotEqual(chunkHash, CloudVaultCrypto.sha256Hex(chunk))
+        XCTAssertEqual(CloudVaultCrypto.sessionBodyHashVersion, 2)
+        XCTAssertEqual(CloudVaultCrypto.sessionChunkHashVersion, 2)
+        XCTAssertEqual(CloudVaultCrypto.projectMemoryContentHashVersion, 2)
+        XCTAssertEqual(
+            try CloudVaultCrypto.expectedSessionBodyHash(
+                body,
+                keyData: key,
+                bodyHashVersion: CloudVaultCrypto.sessionBodyHashVersion
+            ),
+            bodyHash
+        )
+        XCTAssertEqual(
+            try CloudVaultCrypto.expectedSessionBodyHash(body, keyData: key, bodyHashVersion: 0),
+            CloudVaultCrypto.sha256Hex(body)
+        )
+    }
+
+    func test_cloudVaultAADContextBindingRejectsRelocatedEnvelopes() throws {
+        let key = Data(repeating: 0x51, count: 32)
+        let context = try CloudVaultAADContext(
+            uid: "userA",
+            collection: "session_logs",
+            docID: "docA",
+            field: "sealedBody"
+        )
+        let wrongField = try CloudVaultAADContext(
+            uid: "userA",
+            collection: "session_logs",
+            docID: "docA",
+            field: "sealedTitle"
+        )
+        let wrongDoc = try CloudVaultAADContext(
+            uid: "userA",
+            collection: "session_logs",
+            docID: "docB",
+            field: "sealedBody"
+        )
+
+        let sealedText = try CloudVaultCrypto.sealText("context-bound title", keyData: key, aadContext: context)
+        XCTAssertEqual(sealedText.schemaVersion, CloudVaultCrypto.currentSealedTextSchemaVersion)
+        XCTAssertEqual(sealedText.aad, context.stringValue)
+        XCTAssertEqual(try CloudVaultCrypto.openText(sealedText, keyData: key, aadContext: context), "context-bound title")
+        XCTAssertThrowsError(try CloudVaultCrypto.openText(sealedText, keyData: key))
+        XCTAssertThrowsError(try CloudVaultCrypto.openText(sealedText, keyData: key, aadContext: wrongField))
+
+        let body = Data("context-bound body".utf8)
+        let sealedBlob = try CloudVaultCrypto.sealBlob(body, keyData: key, aadContext: context)
+        XCTAssertEqual(sealedBlob.aad, context.stringValue)
+        XCTAssertEqual(try CloudVaultCrypto.openBlob(sealedBlob, keyData: key, aadContext: context), body)
+        XCTAssertThrowsError(try CloudVaultCrypto.openBlob(sealedBlob, keyData: key))
+        XCTAssertThrowsError(try CloudVaultCrypto.openBlob(sealedBlob, keyData: key, aadContext: wrongDoc))
+
+        let payload = Data("{\"private\":true}".utf8)
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let sealedPayload = try CloudVaultCrypto.sealPayload(payload, keyData: key, vaultKeyID: vaultKeyID, aadContext: context)
+        XCTAssertEqual(sealedPayload.aad, context.stringValue)
+        XCTAssertEqual(try CloudVaultCrypto.openPayload(sealedPayload, keyData: key, aadContext: context), payload)
+        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(sealedPayload, keyData: key))
+        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(sealedPayload, keyData: key, aadContext: wrongField))
+    }
+
+    func test_sealedPayloadV2BindsEnvelopeMetadataWithAADAndReadsLegacyV1() throws {
+        let key = Data(repeating: 0x5A, count: 32)
+        let payload = Data("{\"private\":\"gateway notes\"}".utf8)
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+
+        let sealed = try CloudVaultCrypto.sealPayload(payload, keyData: key, vaultKeyID: vaultKeyID)
+
+        XCTAssertEqual(sealed.schemaVersion, CloudVaultCrypto.currentSealedPayloadSchemaVersion)
+        XCTAssertEqual(sealed.aad, CloudVaultCrypto.sealedPayloadAADContext)
+        XCTAssertEqual(try CloudVaultCrypto.openPayload(sealed, keyData: key), payload)
+
+        let tamperedKeyVersion = CloudVaultSealedPayload(
+            schemaVersion: sealed.schemaVersion,
+            algorithm: sealed.algorithm,
+            keyVersion: sealed.keyVersion + 1,
+            vaultKeyID: sealed.vaultKeyID,
+            sealedBoxBase64: sealed.sealedBoxBase64,
+            aad: sealed.aad
+        )
+        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(tamperedKeyVersion, keyData: key))
+
+        let legacyBox = try AES.GCM.seal(payload, using: SymmetricKey(data: key))
+        let legacy = CloudVaultSealedPayload(
+            schemaVersion: 1,
+            algorithm: CloudVaultCrypto.aesGCMAlgorithm,
+            keyVersion: 1,
+            vaultKeyID: vaultKeyID,
+            sealedBoxBase64: try XCTUnwrap(legacyBox.combined).base64EncodedString(),
+            aad: nil
+        )
+        XCTAssertEqual(try CloudVaultCrypto.openPayload(legacy, keyData: key), payload)
     }
 
     func test_tokenHashes_areKeyedStableDeduplicatedAndNotPlaintext() throws {

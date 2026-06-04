@@ -694,7 +694,7 @@ object CLIAgentMissionRequestPayloadFactory {
             )
         listOf("title", "message", "fullMessage", "toolName", "artifactPath", "changedFilePath").forEach { sealed.remove(it) }
         sealed["contentSealed"] = true
-        sealed["sealedSchemaVersion"] = 1
+        sealed["sealedSchemaVersion"] = 2
         sealed["vaultKeyID"] = key.vaultKeyID
         sealed["sealedPayload"] = sealedMissionEventPayloadMap(privatePayload, key)
         return sealed
@@ -719,7 +719,7 @@ object CLIAgentMissionRequestPayloadFactory {
             "synthesisSummary",
         ).forEach { sealed.remove(it) }
         sealed["contentSealed"] = true
-        sealed["sealedSchemaVersion"] = 1
+        sealed["sealedSchemaVersion"] = 2
         sealed["vaultKeyID"] = key.vaultKeyID
         sealed["sealedPayload"] = sealedMissionPayloadMap(privatePayload, key)
         return sealed

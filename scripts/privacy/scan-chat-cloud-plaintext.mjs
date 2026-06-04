@@ -30,6 +30,13 @@ function assertNotIncludes(relativePath, needle, note) {
   }
 }
 
+function assertNotMatches(relativePath, pattern, note) {
+  const text = readRel(relativePath);
+  if (pattern.test(text)) {
+    fail(`${relativePath}: matches forbidden ${note ?? pattern.toString()}`);
+  }
+}
+
 function assertSectionIncludes(relativePath, startNeedle, endNeedle, needle, note) {
   const section = sectionBetween(relativePath, startNeedle, endNeedle);
   if (!section.includes(needle)) {
@@ -207,7 +214,7 @@ assertRulesAllowlistExcludes("function validCliSessionMirror()", [
   "customTitle",
 ]);
 
-assertRulesRejectFields("function validCliAgentMissionRequest()", [
+for (const field of [
   "title",
   "prompt",
   "targetProject",
@@ -218,7 +225,15 @@ assertRulesRejectFields("function validCliAgentMissionRequest()", [
   "resultPreview",
   "errorMessage",
   "personaScopeJSON",
-]);
+]) {
+  assertSectionNotIncludes(
+    "firestore.rules",
+    "function validCliAgentMissionRequest()",
+    "&& request.resource.data.id is string",
+    `"${field}"`,
+    `validCliAgentMissionRequest allowlist must exclude plaintext field ${field}`,
+  );
+}
 
 assertRulesRejectFields("match /events/{eventId}", [
   "title",
@@ -648,6 +663,90 @@ for (const [section, note] of [
   assertRulesSectionHasOnly(section, note);
 }
 
+// ── CloudVault sealed payload v2: AAD-bound, v1 read-only compatibility ─────
+// New client writes must emit the schema-2 payload envelope with an explicit AAD
+// context. Readers may still open old schema-1 payloads locally, but Firestore
+// rules must no longer accept v1 sealed-content writes.
+assertIncludes(
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
+  "public static let currentSealedPayloadSchemaVersion = 2",
+  "Swift CloudVault must write sealedPayload schemaVersion 2",
+);
+assertIncludes(
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
+  'public static let aadContextPrefix = "OpenBurnBar-CloudVault-aad-v2"',
+  "Swift CloudVault must use the six-part aad-v2 context",
+);
+assertIncludes(
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
+  "\\(field)|\\(schemaVersion)|\\(purpose)",
+  "Swift CloudVault AAD must bind field, schemaVersion, and purpose",
+);
+assertIncludes(
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
+  "public static let sealedPayloadAADContext = \"OpenBurnBar-CloudVaultSealedPayload-v2\"",
+  "Swift CloudVault must publish the sealedPayload v2 AAD context",
+);
+assertIncludes(
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
+  "authenticating: sealedPayloadAAD(for:",
+  "Swift CloudVault sealedPayload v2 must authenticate envelope metadata as AAD",
+);
+assertIncludes(
+  "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
+  "const val currentSealedPayloadSchemaVersion: Int = 2",
+  "Android CloudVault must write sealedPayload schemaVersion 2",
+);
+assertIncludes(
+  "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
+  'const val aadContextPrefix: String = "OpenBurnBar-CloudVault-aad-v2"',
+  "Android CloudVault must use the six-part aad-v2 context",
+);
+assertIncludes(
+  "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
+  "|$schemaVersion|$purpose",
+  "Android CloudVault AAD must bind field, schemaVersion, and purpose",
+);
+assertIncludes(
+  "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
+  "private const val SEALED_PAYLOAD_AAD_CONTEXT = \"OpenBurnBar-CloudVaultSealedPayload-v2\"",
+  "Android CloudVault must publish the sealedPayload v2 AAD context",
+);
+assertIncludes(
+  "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
+  "cipher.updateAAD(sealedPayloadAAD(",
+  "Android CloudVault sealedPayload v2 must authenticate envelope metadata as AAD",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "function validCloudSealedPayload(value)",
+  "function matchesCurrentVaultKey",
+  "value.schemaVersion == 2",
+  "Firestore rules must require CloudVault sealedPayload schemaVersion 2 for new writes",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "function validCloudSealedPayload(value)",
+  "function matchesCurrentVaultKey",
+  'value.aad == "OpenBurnBar-CloudVaultSealedPayload-v2"',
+  "Firestore rules must require the CloudVault sealedPayload v2 AAD context",
+);
+assertIncludes(
+  "functions/src/callables/shared.ts",
+  'const CLOUD_VAULT_AAD_CONTEXT_PREFIX = "OpenBurnBar-CloudVault-aad-v2"',
+  "Functions validators must use the six-part aad-v2 context",
+);
+assertIncludes(
+  "firestore.rules",
+  "OpenBurnBar-CloudVault-aad-v2\\\\|[^|]+\\\\|[^|]+\\\\|[^|]+\\\\|[^|]+\\\\|[2-9][0-9]*\\\\|[^|]+",
+  "Firestore rules must validate six-part CloudVault aad-v2 contexts",
+);
+assertNotIncludes(
+  "firestore.rules",
+  "sealedSchemaVersion == 1",
+  "Firestore rules must not accept v1 sealed-content write gates",
+);
+
 // ── project_memory_snapshots: opaque doc id, no project-identity plaintext ───
 // The project name lives only inside the sealed snapshot; the doc id is an
 // opaque vault-keyed HMAC. The rules must reject the old plaintext duplicates
@@ -758,8 +857,18 @@ assertRulesBlockDeniesClientWrite(
 const HERMES_GATEWAY_CALLABLE = "functions/src/callables/hermesGateway.ts";
 assertIncludes(
   HERMES_GATEWAY_CALLABLE,
-  "requireGatewayRelayEnvelope(",
-  "gateway callable must require a sealed relayEnvelope for relay-capable clients",
+  "requireProductionGatewayRelayEnvelope(",
+  "gateway callable must require a production v2/v3 sealed relayEnvelope for relay-capable clients",
+);
+assertIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "requireGatewayRatchetEnvelope(",
+  "gateway callable must validate ratchetEnvelope before storing or forwarding it",
+);
+assertIncludes(
+  HERMES_GATEWAY_CALLABLE,
+  "ambiguous_ciphertext",
+  "gateway callable must reject writes that supply both relayEnvelope and ratchetEnvelope",
 );
 assertIncludes(
   HERMES_GATEWAY_CALLABLE,
@@ -825,17 +934,39 @@ assertIncludes(
 
 // ── Sealed-content export coverage (dataExport seal-aware serializer) ────────
 // The export of the sealed gateway/media/subscription content must round-trip
-// ONLY the opaque sealed envelopes — never plaintext text / senderDisplayName /
-// fileName / agentURI / topicID. These assertions pin the dataExport allowlist
-// so a regression that re-adds a plaintext key (or stops sealing) fails red.
+// ONLY structurally valid opaque sealed envelopes — never plaintext text /
+// senderDisplayName / fileName / agentURI / topicID. These assertions pin the
+// shape-aware export path so a regression that trusts a key name instead of the
+// sealed envelope shape fails red.
 const DATA_EXPORT = "functions/src/callables/dataExport.ts";
-// 1. The Hermes gateway relay envelope is recognized as a sealed (opaque) envelope.
+// 1. CloudVault and Hermes envelopes are recognized by sealed shape, not key name.
+assertSectionIncludes(
+  DATA_EXPORT,
+  "export function isSealedEnvelope(",
+  "function isExportablePrimitive(",
+  'v.algorithm === "AES-256-GCM"',
+  "dataExport must detect CloudVault sealed text/blob envelopes structurally",
+);
 assertSectionIncludes(
   DATA_EXPORT,
   "export function isSealedEnvelope(",
   "function isExportablePrimitive(",
   'v.relayEncryption === "p256-hkdf-sha256-aesgcm"',
   "dataExport must detect the gateway relayEnvelope as a sealed envelope",
+);
+assertSectionIncludes(
+  DATA_EXPORT,
+  "export function isSealedEnvelope(",
+  "function isExportablePrimitive(",
+  'v.relayEncryption === "hpke-auth-p256-hkdfsha256-aes256gcm"',
+  "dataExport must detect the HPKE v3 gateway relayEnvelope as a sealed envelope",
+);
+assertSectionIncludes(
+  DATA_EXPORT,
+  "export function isSealedEnvelope(",
+  "function isExportablePrimitive(",
+  'header.algorithm === "OpenBurnBar-HermesRatchet-v1-P256-HKDFSHA256-AESGCM"',
+  "dataExport must detect the gateway ratchetEnvelope as a sealed envelope",
 );
 // 2. The sealed gateway content collections ride the default-deny seal-aware path
 //    even though their parent connected_devices domain is server_readable.
@@ -867,6 +998,225 @@ assertIncludes(
   "return false;",
   "gateway plaintext write gate must be permanently closed",
 );
+assertIncludes(
+  "functions/src/hermesGateway.ts",
+  "HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS",
+  "gateway validation must have an explicit production relay-envelope version set",
+);
+assertIncludes(
+  "functions/src/hermesGateway.ts",
+  "HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION = 3",
+  "gateway negotiation must prefer the HPKE-auth v3 relay envelope",
+);
+assertIncludes(
+  "functions/src/hermesGateway.ts",
+  'HERMES_GATEWAY_RELAY_ENCRYPTION_V3 = "hpke-auth-p256-hkdfsha256-aes256gcm"',
+  "gateway validation must know the HPKE-auth v3 encryption marker",
+);
+assertIncludes(
+  "functions/src/hermesGateway.ts",
+  "negotiateGatewayRelayEnvelopeCapabilities",
+  "gateway clients must negotiate v2/v3 relay-envelope capabilities",
+);
+assertIncludes(
+  "functions/src/hermesGateway.ts",
+  "preferredRelayEnvelopeVersion: client.preferredRelayEnvelopeVersion",
+  "gateway /state public client view must advertise the negotiated preferred relay envelope",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "GATEWAY_HPKE_V3_DISABLED_ENV",
+  "Hermes BurnBar adapter must expose an explicit break-glass switch for v3 only",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "versions.append(GATEWAY_RELAY_KEY_VERSION_V3)",
+  "Hermes BurnBar adapter must advertise production v2/v3 relay-envelope support by default",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "return versions[-1]",
+  "Hermes BurnBar adapter must prefer the HPKE-auth v3 relay envelope by default",
+);
+assertNotIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "BURNBAR_EXPERIMENTAL_GATEWAY_HPKE_V3",
+  "Hermes BurnBar adapter must not keep v3 behind the old experimental flag",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "RELAY_PRIVATE_KEY_KEYCHAIN_SERVICE",
+  "Hermes BurnBar adapter must persist the agent relay private key in Keychain",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "_load_relay_private_key_base64_from_keychain",
+  "Hermes BurnBar adapter must load the agent relay private key from Keychain",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "_store_relay_private_key_base64_to_keychain",
+  "Hermes BurnBar adapter must store the agent relay private key in Keychain",
+);
+assertIncludes(
+  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
+  "sealGatewayEventRatchetPayload(",
+  "iOS gateway must prefer ratchetEnvelope for capable phone events",
+);
+assertIncludes(
+  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
+  "decodedRatchetText(",
+  "iOS gateway must open ratchetEnvelope agent replies",
+);
+assertIncludes(
+  "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift",
+  "HermesGatewayRatchetSessionStore",
+  "iOS gateway must persist chat ratchet session state",
+);
+assertIncludes(
+  "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift",
+  "loadCurrentChatSessionID(",
+  "iOS gateway must remember the current chat ratchet session",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "def _seal_ratchet_message(",
+  "Hermes BurnBar adapter must prefer ratchetEnvelope for capable agent replies",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "def _open_ratchet_event(",
+  "Hermes BurnBar adapter must open ratchetEnvelope phone events",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "RATCHET_SESSION_KEYCHAIN_SERVICE",
+  "Hermes BurnBar adapter must persist chat ratchet sessions in Keychain",
+);
+assertIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "BURNBAR_RATCHET_CHAT_SESSION_ID",
+  "Hermes BurnBar adapter must persist the non-secret current chat ratchet session id",
+);
+assertIncludes(
+  "OpenBurnBarMobileTests/OpenBurnBarMobileTests.swift",
+  "testHermesGatewayRatchetChatLaneRoundTripsPhoneEventAndAgentReply",
+  "mobile tests must prove the live chat ratchet event/reply round trip",
+);
+assertNotIncludes(
+  "docs/HERMES_GATEWAY_RATCHET_PROTOCOL.md",
+  "default gateway transport still uses `relayEnvelope`",
+  "ratchet protocol docs must not claim live text transport is relay-only",
+);
+assertNotIncludes(
+  "docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md",
+  "Transport still emits/opens `relayEnvelope`",
+  "remediation docs must not claim live text transport is relay-only",
+);
+assertNotIncludes(
+  "tools/hermes-platform-burnbar/adapter.py",
+  "persist=save_env_value",
+  "Hermes BurnBar adapter must not persist relay private keys through ~/.hermes/.env",
+);
+assertNotMatches(
+  "tools/hermes-platform-burnbar/adapter.py",
+  /save_env_value\([^)\n]*RELAY_PRIVATE_KEY_ENV/,
+  "Hermes BurnBar adapter must not write BURNBAR_RELAY_PRIVATE_KEY with save_env_value",
+);
+for (const rotationFile of [
+  "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift",
+  "tools/hermes-platform-burnbar/adapter.py",
+  "functions/src/callables/hermesGateway.ts",
+]) {
+  assertNotIncludes(
+    rotationFile,
+    "Signed key rotation is a deferred follow-up",
+    `${rotationFile} must state the implemented re-pair-only rotation contract`,
+  );
+}
+
+// ── Iroh direct relay terminal errors: public fixed codes, no plaintext ─────
+// The direct iroh relay runs outside Firestore, so rules/backfill cannot save
+// us if a Mac starts serializing a peer-visible exception string into
+// response.error. Pin both directions: senders emit only errorCode, receivers
+// ignore the legacy plaintext field and map known codes to fixed public text.
+assertIncludes(
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift",
+  "public enum HermesRealtimeRelayErrorCode",
+  "Swift iroh relay frame model must carry fixed public error codes",
+);
+assertIncludes(
+  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayTypes.swift",
+  "public var errorCode: String?",
+  "Swift iroh relay payload must expose errorCode",
+);
+assertIncludes(
+  "android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/HermesRealtimeRelayFrame.kt",
+  "val errorCode: String? = null",
+  "Android iroh relay payload must expose errorCode",
+);
+for (const sender of [
+  "AgentLens/Services/IrohRelay/IrohRelayRequestHandler.swift",
+  "AgentLens/Services/HermesRealtimeRelayHostClient.swift",
+]) {
+  assertIncludes(
+    sender,
+    "HermesRealtimeRelayErrorCode.requestFailed.rawValue",
+    `${sender} must emit a fixed request_failed terminal error code`,
+  );
+  assertNotIncludes(
+    sender,
+    "HermesRealtimeRelayPayload(error:",
+    `${sender} must not serialize plaintext terminal errors`,
+  );
+}
+for (const receiver of [
+  "OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift",
+  "OpenBurnBarMobile/Services/HermesService.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/HermesIrohEcho.swift",
+]) {
+  assertIncludes(
+    receiver,
+    "HermesRealtimeRelayErrorCode.publicMessage(for: frame.payload?.errorCode)",
+    `${receiver} must map response.error from fixed public errorCode`,
+  );
+  assertNotMatches(
+    receiver,
+    /frame\.payload\?\.error(?!Code)\b/u,
+    `${receiver} must ignore legacy plaintext terminal errors`,
+  );
+}
+for (const relayLogSurface of [
+  "AgentLens/Services/IrohRelay/IrohRelayRequestHandler.swift",
+  "AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift",
+  "AgentLens/Services/IrohRelay/IrohRelayKeyStore.swift",
+  "AgentLens/Services/IrohRelay/IrohPairingKeyStore.swift",
+  "OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift",
+  "OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift",
+]) {
+  assertNotIncludes(
+    relayLogSurface,
+    "localizedDescription",
+    `${relayLogSurface} must log fixed error classes/codes instead of plaintext exception descriptions`,
+  );
+}
+assertIncludes(
+  "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesIrohRelayTransport.kt",
+  "publicRelayErrorMessage(frame.payload?.errorCode)",
+  "Android iroh relay client must map response.error from fixed public errorCode",
+);
+assertNotMatches(
+  "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesIrohRelayTransport.kt",
+  /frame\.payload\?\.error(?!Code)\b/u,
+  "Android iroh relay client must ignore legacy plaintext terminal errors",
+);
+assertSectionIncludes(
+  "OpenBurnBarMobile/Services/HermesService.swift",
+  "private func chunkRecord(",
+  "private func receiveFrame",
+  "guard let ciphertext = payload.ciphertext",
+  "hosted realtime chunks, including terminal errors, must require ciphertext before decode",
+);
 // Gateway relayed content is scrubbed UNCONDITIONALLY (sealed AND legacy docs),
 // via the `gatewayRelayed` gate — NOT `requires:"relayEnvelope"`, which was a
 // structural no-op for legacy schema<2 server docs and is the audit BLOCKER
@@ -893,15 +1243,17 @@ assertSectionNotIncludes(
   'requires: "relayEnvelope"',
   "gateway plaintext must NOT be gated on relayEnvelope (no-op for legacy docs — the BLOCKER)",
 );
-// 3. The sealed envelope keys for media filename + subscription graph are
-//    recognized opaque columns (so they pass) and the bare plaintext keys are not.
-for (const sealedKey of ["sealedFilename", "sealedAgentURI", "sealedTopicID", "relayEnvelope"]) {
-  assertSectionIncludes(
+// 3. Sealed envelope keys for media filename + subscription graph must NOT be
+//    key-only opaque columns. They pass only when the value is structurally
+//    recognized by isSealedEnvelope(), so a bad cleartext value under a trusted
+//    key name is still dropped.
+for (const sealedKey of ["sealedFilename", "sealedAgentURI", "sealedTopicID", "relayEnvelope", "ratchetEnvelope"]) {
+  assertSectionNotIncludes(
     DATA_EXPORT,
     "const OPAQUE_EXPORT_COLUMNS",
     "export function isSealedEnvelope(",
     `"${sealedKey}"`,
-    `dataExport OPAQUE_EXPORT_COLUMNS must list the sealed key ${sealedKey}`,
+    `dataExport OPAQUE_EXPORT_COLUMNS must not key-allowlist sealed envelope key ${sealedKey}`,
   );
 }
 for (const plaintextKey of ["text", "senderDisplayName", "fileName", "filename"]) {

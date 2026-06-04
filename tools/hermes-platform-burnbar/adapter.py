@@ -17,6 +17,7 @@ server reports the link is relay-capable.
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import hashlib
 import json
@@ -25,9 +26,11 @@ import mimetypes
 import os
 import re
 import secrets
+import subprocess
+import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 try:
     import httpx
@@ -48,6 +51,27 @@ except ImportError:  # pragma: no cover - exercised only when cryptography is ab
     RELAY_CRYPTO_AVAILABLE = False
     relay_e2ee = None  # type: ignore[assignment]
 
+try:
+    from gateway.crypto import hermes_ratchet
+
+    HERMES_RATCHET_AVAILABLE = True
+except ImportError:  # pragma: no cover - older Hermes checkouts do not yet ship the module.
+    HERMES_RATCHET_AVAILABLE = False
+    hermes_ratchet = None  # type: ignore[assignment]
+
+try:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    CRYPTOGRAPHY_PRIMITIVES_AVAILABLE = True
+except ImportError:  # pragma: no cover - same environment that disables relay crypto.
+    CRYPTOGRAPHY_PRIMITIVES_AVAILABLE = False
+    hashes = None  # type: ignore[assignment]
+    serialization = None  # type: ignore[assignment]
+    ec = None  # type: ignore[assignment]
+    HKDF = None  # type: ignore[assignment]
+
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType, SendResult
 
@@ -64,10 +88,15 @@ RUNTIME_STATUS_INTERVAL_SECONDS = 30.0
 OVERSIGHT_REFRESH_SECONDS = 15.0
 # Bound on the replay-defense seen-event-id cache (oldest ids evicted first).
 MAX_SEEN_EVENT_IDS = 4096
+MAX_MALFORMED_SEALED_EVENT_FINGERPRINTS = 512
+MAX_MALFORMED_SEALED_EVENT_FAILURES_PER_WINDOW = 64
+MALFORMED_SEALED_EVENT_THROTTLE_SECONDS = 60.0
 # Persisted replay ledger (survives gateway restart). Buckets are bound to
 # uid/clientId plus the pinned peer-key fingerprint; entries store opaque
 # replay-key digests for authenticated event ids plus the highest authenticated
-# sender counter seen for that bucket.
+# sender counter seen for that bucket. The counter contract is intentionally
+# global for one paired client/peer bucket: senders must emit one monotonic
+# replayCounter across all event kinds and destinations for that paired link.
 REPLAY_LEDGER_FILE = Path(
     os.getenv("HERMES_BURNBAR_REPLAY_FILE", str(CURSOR_FILE.with_name("burnbar_replay_ledger.json")))
 ).expanduser()
@@ -108,6 +137,7 @@ _SUPPORTED_GATEWAY_RELAY_VERSIONS = (GATEWAY_RELAY_KEY_VERSION, GATEWAY_RELAY_KE
 # support RFC 9180 HPKE v3; absent/unknown stays v2. Never read from the
 # untrusted relay runtime path (mirrors the _absorb_relay_state policy).
 RELAY_PEER_KEY_VERSION_ENV = "BURNBAR_RELAY_PEER_KEY_VERSION"
+GATEWAY_HPKE_V3_DISABLED_ENV = "BURNBAR_DISABLE_GATEWAY_HPKE_V3"
 # Single-source the AAD namespace from relay_e2ee. RelayNamespace.aad(parts)
 # yields the locked wire bytes "OpenBurnBar-HermesRelay-v1|" + "|".join(parts);
 # we reuse it with the gateway-flavoured parts so the prefix/version is never
@@ -115,12 +145,545 @@ RELAY_PEER_KEY_VERSION_ENV = "BURNBAR_RELAY_PEER_KEY_VERSION"
 _RELAY_NAMESPACE = relay_e2ee.RelayNamespace(relay_e2ee.HERMES_NAMESPACE) if RELAY_CRYPTO_AVAILABLE else None
 # Locked literal AAD prefix (CONTRACT §CRYPTO) for the crypto-unavailable path.
 _RELAY_AAD_PREFIX_LITERAL = "OpenBurnBar-HermesRelay-v1"
-# Env var holding the agent's persisted relay private key (managed by relay_e2ee).
+# Legacy env var for the agent relay private key. New writes go to macOS
+# Keychain; this remains a read/import source so existing installs migrate
+# without silently rotating their relay identity.
 RELAY_PRIVATE_KEY_ENV = "BURNBAR_RELAY_PRIVATE_KEY"
+RELAY_PRIVATE_KEY_KEYCHAIN_SERVICE = "com.openburnbar.hermes-gateway-relay"
+RELAY_PRIVATE_KEY_KEYCHAIN_ACCOUNT = "agent-relay-private-key"
+RATCHET_PRIVATE_KEY_KEYCHAIN_SERVICE = "com.openburnbar.hermes-gateway-ratchet"
+RATCHET_IDENTITY_KEYCHAIN_ACCOUNT = "agent-ratchet-identity-private-key"
+RATCHET_SIGNING_KEYCHAIN_ACCOUNT = "agent-ratchet-signing-private-key"
+RATCHET_SIGNED_PREKEY_KEYCHAIN_ACCOUNT = "agent-ratchet-signed-prekey-private-key"
+RATCHET_SIGNED_PREKEY_DOMAIN = b"OpenBurnBar-HermesRatchet-v1-signed-prekey"
+RATCHET_IDENTITY_PRIVATE_KEY_ENV = "BURNBAR_RATCHET_IDENTITY_PRIVATE_KEY"
+RATCHET_SIGNING_PRIVATE_KEY_ENV = "BURNBAR_RATCHET_SIGNING_PRIVATE_KEY"
+RATCHET_SIGNED_PREKEY_PRIVATE_KEY_ENV = "BURNBAR_RATCHET_SIGNED_PREKEY_PRIVATE_KEY"
+RATCHET_PEER_IDENTITY_PUBLIC_KEY_ENV = "BURNBAR_RATCHET_PEER_IDENTITY_PUBLIC_KEY"
+RATCHET_PEER_SIGNING_PUBLIC_KEY_ENV = "BURNBAR_RATCHET_PEER_SIGNING_PUBLIC_KEY"
+RATCHET_PEER_SIGNED_PREKEY_PUBLIC_KEY_ENV = "BURNBAR_RATCHET_PEER_SIGNED_PREKEY_PUBLIC_KEY"
+RATCHET_PEER_SIGNED_PREKEY_ID_ENV = "BURNBAR_RATCHET_PEER_SIGNED_PREKEY_ID"
+RATCHET_PEER_SIGNED_PREKEY_SIGNATURE_ENV = "BURNBAR_RATCHET_PEER_SIGNED_PREKEY_SIGNATURE"
+RATCHET_SESSION_KEYCHAIN_SERVICE = "com.openburnbar.hermes-gateway-ratchet-session"
+RATCHET_PREKEY_KDF_DOMAIN = b"OpenBurnBar-HermesRatchet-v1-prekey-x3dh-p256"
+RATCHET_SESSION_ID_DOMAIN = b"OpenBurnBar-HermesRatchet-v1-session"
+RATCHET_CHAT_LANE = "chat"
 # Env var recording that this link negotiated E2E at pairing time.
 RELAY_E2E_ENV = "BURNBAR_RELAY_E2E"
 APPROVAL_DECISION_KIND = "approval_decision"
 OVERSIGHT_MODE_KIND = "oversight_mode"
+
+
+RelayKeyPersister = Callable[[str, str], None]
+
+
+def _relay_keychain_command() -> Optional[str]:
+    if sys.platform != "darwin":
+        return None
+    command = Path("/usr/bin/security")
+    return str(command) if command.exists() else None
+
+
+def _load_relay_private_key_base64_from_keychain() -> Optional[str]:
+    """Read the agent relay private key from macOS Keychain, if present."""
+    command = _relay_keychain_command()
+    if command is None:
+        return None
+    completed = subprocess.run(
+        [
+            command,
+            "find-generic-password",
+            "-s",
+            RELAY_PRIVATE_KEY_KEYCHAIN_SERVICE,
+            "-a",
+            RELAY_PRIVATE_KEY_KEYCHAIN_ACCOUNT,
+            "-w",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        value = completed.stdout.strip()
+        return value or None
+    stderr = (completed.stderr or "").lower()
+    if completed.returncode == 44 or "could not be found" in stderr:
+        return None
+    raise RuntimeError(
+        "could not read BurnBar relay private key from Keychain: "
+        f"{(completed.stderr or completed.stdout or '').strip()}"
+    )
+
+
+def _store_relay_private_key_base64_to_keychain(_env_var: str, value: str) -> None:
+    """Persist the agent relay private key to macOS Keychain."""
+    _store_private_key_base64_to_keychain(
+        RELAY_PRIVATE_KEY_KEYCHAIN_SERVICE,
+        RELAY_PRIVATE_KEY_KEYCHAIN_ACCOUNT,
+        value,
+        "BurnBar relay private key",
+    )
+
+
+def _load_private_key_base64_from_keychain(service: str, account: str, label: str) -> Optional[str]:
+    """Read a base64 private key from macOS Keychain, if present."""
+    command = _relay_keychain_command()
+    if command is None:
+        return None
+    completed = subprocess.run(
+        [
+            command,
+            "find-generic-password",
+            "-s",
+            service,
+            "-a",
+            account,
+            "-w",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        value = completed.stdout.strip()
+        return value or None
+    stderr = (completed.stderr or "").lower()
+    if completed.returncode == 44 or "could not be found" in stderr:
+        return None
+    raise RuntimeError(
+        f"could not read {label} from Keychain: "
+        f"{(completed.stderr or completed.stdout or '').strip()}"
+    )
+
+
+def _store_private_key_base64_to_keychain(service: str, account: str, value: str, label: str) -> None:
+    """Persist a base64 private key to macOS Keychain."""
+    command = _relay_keychain_command()
+    if command is None:
+        raise RuntimeError(f"macOS Keychain is unavailable for {label} persistence")
+    completed = subprocess.run(
+        [
+            command,
+            "add-generic-password",
+            "-U",
+            "-s",
+            service,
+            "-a",
+            account,
+            "-w",
+            value,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"could not store {label} in Keychain: "
+            f"{(completed.stderr or completed.stdout or '').strip()}"
+        )
+
+
+def _relay_key_persister() -> Optional[RelayKeyPersister]:
+    """Return the durable relay-private-key persister.
+
+    macOS Keychain is the production store. Non-macOS/test environments return
+    ``None`` so crypto unit tests can run without touching a host secret store.
+    """
+    if _relay_keychain_command() is None:
+        return None
+    return _store_relay_private_key_base64_to_keychain
+
+
+def _agent_identity_from_private_key_base64(raw_base64: str):
+    """Validate and wrap a stored relay private key, failing closed on corruption."""
+    try:
+        return relay_e2ee.AgentRelayIdentity(
+            relay_e2ee.RelayPrivateKey.from_base64(raw_base64.strip())
+        )
+    except (ValueError, relay_e2ee.RelayCryptoError) as exc:
+        raise relay_e2ee.CorruptIdentityError(
+            f"{RELAY_PRIVATE_KEY_ENV} is present but invalid — re-pair required; "
+            "refusing to silently rotate the relay identity"
+        ) from exc
+
+
+def _load_or_create_relay_identity_secure(
+    *,
+    persist: Optional[RelayKeyPersister] = None,
+):
+    """Load/create the agent relay identity without writing private keys to .env."""
+    if not RELAY_CRYPTO_AVAILABLE:
+        return None
+
+    keychain_value = _load_relay_private_key_base64_from_keychain()
+    if keychain_value:
+        return _agent_identity_from_private_key_base64(keychain_value)
+
+    legacy_value = (os.getenv(RELAY_PRIVATE_KEY_ENV) or "").strip()
+    effective_persist = persist if persist is not None else _relay_key_persister()
+    if legacy_value:
+        identity = _agent_identity_from_private_key_base64(legacy_value)
+        if effective_persist is not None:
+            effective_persist(RELAY_PRIVATE_KEY_ENV, legacy_value)
+        elif sys.platform == "darwin":
+            raise RuntimeError("cannot import legacy BurnBar relay private key: Keychain is unavailable")
+        return identity
+
+    private_key = relay_e2ee.generate_private_key()
+    raw_base64 = private_key.raw_base64()
+    if effective_persist is not None:
+        effective_persist(RELAY_PRIVATE_KEY_ENV, raw_base64)
+    elif sys.platform == "darwin":
+        raise RuntimeError("cannot persist BurnBar relay private key: Keychain is unavailable")
+    return relay_e2ee.AgentRelayIdentity(private_key)
+
+
+def _p256_private_key_from_base64(raw_base64: str, label: str):
+    if not CRYPTOGRAPHY_PRIMITIVES_AVAILABLE:
+        raise RuntimeError("cryptography primitives are unavailable")
+    try:
+        raw = base64.b64decode(raw_base64.strip(), validate=True)
+    except Exception as exc:
+        raise ValueError(f"{label} is not valid base64") from exc
+    if len(raw) != 32:
+        raise ValueError(f"{label} must be a 32-byte P-256 private scalar")
+    private_value = int.from_bytes(raw, "big")
+    if private_value <= 0:
+        raise ValueError(f"{label} must be a non-zero P-256 private scalar")
+    try:
+        return ec.derive_private_key(private_value, ec.SECP256R1())  # type: ignore[union-attr]
+    except Exception as exc:
+        raise ValueError(f"{label} is not a valid P-256 private scalar") from exc
+
+
+def _p256_private_key_base64(private_key) -> str:
+    raw = private_key.private_numbers().private_value.to_bytes(32, "big")
+    return base64.b64encode(raw).decode("ascii")
+
+
+def _p256_public_key_x963(private_key) -> bytes:
+    return private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.X962,  # type: ignore[union-attr]
+        format=serialization.PublicFormat.UncompressedPoint,  # type: ignore[union-attr]
+    )
+
+
+def _load_or_create_p256_private_key_base64(env_var: str, account: str, label: str) -> Optional[str]:
+    if not CRYPTOGRAPHY_PRIMITIVES_AVAILABLE:
+        return None
+    keychain_value = _load_private_key_base64_from_keychain(
+        RATCHET_PRIVATE_KEY_KEYCHAIN_SERVICE,
+        account,
+        label,
+    )
+    if keychain_value:
+        _p256_private_key_from_base64(keychain_value, label)
+        return keychain_value.strip()
+
+    legacy_value = (os.getenv(env_var) or "").strip()
+    if legacy_value:
+        _p256_private_key_from_base64(legacy_value, label)
+        if _relay_keychain_command() is not None:
+            _store_private_key_base64_to_keychain(
+                RATCHET_PRIVATE_KEY_KEYCHAIN_SERVICE,
+                account,
+                legacy_value,
+                label,
+            )
+        elif sys.platform == "darwin":
+            raise RuntimeError(f"cannot import legacy {label}: Keychain is unavailable")
+        return legacy_value
+
+    private_key = ec.generate_private_key(ec.SECP256R1())  # type: ignore[union-attr]
+    raw_base64 = _p256_private_key_base64(private_key)
+    if _relay_keychain_command() is not None:
+        _store_private_key_base64_to_keychain(
+            RATCHET_PRIVATE_KEY_KEYCHAIN_SERVICE,
+            account,
+            raw_base64,
+            label,
+        )
+    elif sys.platform == "darwin":
+        raise RuntimeError(f"cannot persist {label}: Keychain is unavailable")
+    return raw_base64
+
+
+def _ratchet_signed_prekey_id(signed_prekey_public: bytes) -> str:
+    return f"spk_agent_{hashlib.sha256(signed_prekey_public).hexdigest()[:16]}"
+
+
+def _ratchet_signed_prekey_payload(
+    identity_public_key: bytes,
+    signed_prekey_public_key: bytes,
+    signed_prekey_id: str,
+) -> bytes:
+    payload = bytearray(RATCHET_SIGNED_PREKEY_DOMAIN)
+    for part in (identity_public_key, signed_prekey_public_key, signed_prekey_id.encode("utf-8")):
+        payload.extend(len(part).to_bytes(8, "big"))
+        payload.extend(part)
+    return bytes(payload)
+
+
+def _agent_ratchet_prekey_bundle() -> Optional[dict[str, Any]]:
+    """Return the public Phase 6 ratchet prekey bundle for this agent.
+
+    The private identity, signing, and signed-prekey scalars live in macOS
+    Keychain. Only X9.63 public keys and the DER ECDSA signature are published.
+    Returning ``None`` leaves the adapter on relayEnvelope only; callers must not
+    fall back to plaintext for an already E2E-paired relay link.
+    """
+    if not (HERMES_RATCHET_AVAILABLE and CRYPTOGRAPHY_PRIMITIVES_AVAILABLE):
+        return None
+    try:
+        identity_raw = _load_or_create_p256_private_key_base64(
+            RATCHET_IDENTITY_PRIVATE_KEY_ENV,
+            RATCHET_IDENTITY_KEYCHAIN_ACCOUNT,
+            "BurnBar ratchet identity private key",
+        )
+        signing_raw = _load_or_create_p256_private_key_base64(
+            RATCHET_SIGNING_PRIVATE_KEY_ENV,
+            RATCHET_SIGNING_KEYCHAIN_ACCOUNT,
+            "BurnBar ratchet signing private key",
+        )
+        signed_prekey_raw = _load_or_create_p256_private_key_base64(
+            RATCHET_SIGNED_PREKEY_PRIVATE_KEY_ENV,
+            RATCHET_SIGNED_PREKEY_KEYCHAIN_ACCOUNT,
+            "BurnBar ratchet signed-prekey private key",
+        )
+        if not (identity_raw and signing_raw and signed_prekey_raw):
+            return None
+        identity_key = _p256_private_key_from_base64(identity_raw, "BurnBar ratchet identity private key")
+        signing_key = _p256_private_key_from_base64(signing_raw, "BurnBar ratchet signing private key")
+        signed_prekey = _p256_private_key_from_base64(signed_prekey_raw, "BurnBar ratchet signed-prekey private key")
+        identity_public = _p256_public_key_x963(identity_key)
+        signing_public = _p256_public_key_x963(signing_key)
+        signed_prekey_public = _p256_public_key_x963(signed_prekey)
+        signed_prekey_id = _ratchet_signed_prekey_id(signed_prekey_public)
+        signature = signing_key.sign(
+            _ratchet_signed_prekey_payload(identity_public, signed_prekey_public, signed_prekey_id),
+            ec.ECDSA(hashes.SHA256()),  # type: ignore[union-attr]
+        )
+        return {
+            "agentRatchetIdentityPublicKey": base64.b64encode(identity_public).decode("ascii"),
+            "agentRatchetSigningPublicKey": base64.b64encode(signing_public).decode("ascii"),
+            "agentRatchetSignedPreKeyPublicKey": base64.b64encode(signed_prekey_public).decode("ascii"),
+            "agentRatchetSignedPreKeyId": signed_prekey_id,
+            "agentRatchetSignedPreKeySignature": base64.b64encode(signature).decode("ascii"),
+            "agentSupportsRatchetV1": True,
+        }
+    except Exception:
+        logger.debug("Could not prepare BurnBar ratchet prekey bundle", exc_info=True)
+        return None
+
+
+def _agent_ratchet_private_bundle() -> Optional[dict[str, Any]]:
+    if not (HERMES_RATCHET_AVAILABLE and CRYPTOGRAPHY_PRIMITIVES_AVAILABLE):
+        return None
+    identity_raw = _load_or_create_p256_private_key_base64(
+        RATCHET_IDENTITY_PRIVATE_KEY_ENV,
+        RATCHET_IDENTITY_KEYCHAIN_ACCOUNT,
+        "BurnBar ratchet identity private key",
+    )
+    signing_raw = _load_or_create_p256_private_key_base64(
+        RATCHET_SIGNING_PRIVATE_KEY_ENV,
+        RATCHET_SIGNING_KEYCHAIN_ACCOUNT,
+        "BurnBar ratchet signing private key",
+    )
+    signed_prekey_raw = _load_or_create_p256_private_key_base64(
+        RATCHET_SIGNED_PREKEY_PRIVATE_KEY_ENV,
+        RATCHET_SIGNED_PREKEY_KEYCHAIN_ACCOUNT,
+        "BurnBar ratchet signed-prekey private key",
+    )
+    if not (identity_raw and signing_raw and signed_prekey_raw):
+        return None
+    identity_key = _p256_private_key_from_base64(identity_raw, "BurnBar ratchet identity private key")
+    signing_key = _p256_private_key_from_base64(signing_raw, "BurnBar ratchet signing private key")
+    signed_prekey = _p256_private_key_from_base64(signed_prekey_raw, "BurnBar ratchet signed-prekey private key")
+    identity_public = _p256_public_key_x963(identity_key)
+    signing_public = _p256_public_key_x963(signing_key)
+    signed_prekey_public = _p256_public_key_x963(signed_prekey)
+    signed_prekey_id = _ratchet_signed_prekey_id(signed_prekey_public)
+    signature = signing_key.sign(
+        _ratchet_signed_prekey_payload(identity_public, signed_prekey_public, signed_prekey_id),
+        ec.ECDSA(hashes.SHA256()),  # type: ignore[union-attr]
+    )
+    return {
+        "identityPrivateKeyBase64": identity_raw,
+        "identityPublicKeyBase64": base64.b64encode(identity_public).decode("ascii"),
+        "signingPublicKeyBase64": base64.b64encode(signing_public).decode("ascii"),
+        "signedPreKeyPrivateKeyBase64": signed_prekey_raw,
+        "signedPreKeyPublicKeyBase64": base64.b64encode(signed_prekey_public).decode("ascii"),
+        "signedPreKeyId": signed_prekey_id,
+        "signedPreKeySignatureBase64": base64.b64encode(signature).decode("ascii"),
+    }
+
+
+def _append_ratchet_part(buffer: bytearray, part: bytes) -> None:
+    buffer.extend(len(part).to_bytes(8, "big"))
+    buffer.extend(part)
+
+
+def _ratchet_device_id(prefix: str, identity_public_key_base64: str) -> str:
+    raw = base64.b64decode(identity_public_key_base64)
+    if len(raw) != 65:
+        raise ValueError("ratchet identity public key must be 65 bytes")
+    return f"{prefix}:{hashlib.sha256(raw).hexdigest()[:16]}"
+
+
+def _ratchet_session_id(
+    *,
+    uid: str,
+    client_id: str,
+    initiator_role: str,
+    initiator_identity_public_key_base64: str,
+    responder_identity_public_key_base64: str,
+    initiator_signed_prekey_public_key_base64: str,
+    responder_signed_prekey_public_key_base64: str,
+    initiator_initial_ratchet_public_key_base64: str,
+) -> str:
+    transcript = bytearray(RATCHET_SESSION_ID_DOMAIN)
+    for part in (uid, client_id, RATCHET_CHAT_LANE, initiator_role):
+        _append_ratchet_part(transcript, part.encode("utf-8"))
+    for key in (
+        initiator_identity_public_key_base64,
+        responder_identity_public_key_base64,
+        initiator_signed_prekey_public_key_base64,
+        responder_signed_prekey_public_key_base64,
+        initiator_initial_ratchet_public_key_base64,
+    ):
+        raw = base64.b64decode(key)
+        if len(raw) != 65:
+            raise ValueError("ratchet transcript public key must be 65 bytes")
+        _append_ratchet_part(transcript, raw)
+    return "hgr1_" + hashlib.sha256(bytes(transcript)).hexdigest()[:40]
+
+
+def _ratchet_prekey_shared_secret(
+    *,
+    dh1: bytes,
+    dh2: bytes,
+    dh3: bytes,
+    uid: str,
+    client_id: str,
+    initiator_role: str,
+    initiator_identity_public_key_base64: str,
+    responder_identity_public_key_base64: str,
+    initiator_signed_prekey_public_key_base64: str,
+    responder_signed_prekey_public_key_base64: str,
+    initiator_initial_ratchet_public_key_base64: str,
+) -> bytes:
+    if HKDF is None:
+        raise RuntimeError("cryptography HKDF is unavailable")
+    info = bytearray(RATCHET_PREKEY_KDF_DOMAIN)
+    for part in (uid, client_id, RATCHET_CHAT_LANE, initiator_role):
+        _append_ratchet_part(info, part.encode("utf-8"))
+    for key in (
+        initiator_identity_public_key_base64,
+        responder_identity_public_key_base64,
+        initiator_signed_prekey_public_key_base64,
+        responder_signed_prekey_public_key_base64,
+        initiator_initial_ratchet_public_key_base64,
+    ):
+        raw = base64.b64decode(key)
+        if len(raw) != 65:
+            raise ValueError("ratchet transcript public key must be 65 bytes")
+        _append_ratchet_part(info, raw)
+    return HKDF(
+        algorithm=hashes.SHA256(),  # type: ignore[union-attr]
+        length=32,
+        salt=RATCHET_PREKEY_KDF_DOMAIN,
+        info=bytes(info),
+    ).derive(dh1 + dh2 + dh3)
+
+
+def _ratchet_initiator_shared_secret(
+    *,
+    uid: str,
+    client_id: str,
+    initiator_role: str,
+    local_identity_private_key_base64: str,
+    local_signed_prekey_public_key_base64: str,
+    local_initial_ratchet_key_pair,
+    remote_identity_public_key_base64: str,
+    remote_signed_prekey_public_key_base64: str,
+) -> bytes:
+    local_identity = _p256_private_key_from_base64(local_identity_private_key_base64, "ratchet identity private key")
+    local_initial = _p256_private_key_from_base64(local_initial_ratchet_key_pair.private_key_base64, "ratchet initial private key")
+    remote_identity = hermes_ratchet._public_key_from_base64(remote_identity_public_key_base64)
+    remote_signed_prekey = hermes_ratchet._public_key_from_base64(remote_signed_prekey_public_key_base64)
+    local_identity_public = base64.b64encode(_p256_public_key_x963(local_identity)).decode("ascii")
+    return _ratchet_prekey_shared_secret(
+        dh1=local_identity.exchange(ec.ECDH(), remote_signed_prekey),  # type: ignore[union-attr]
+        dh2=local_initial.exchange(ec.ECDH(), remote_identity),  # type: ignore[union-attr]
+        dh3=local_initial.exchange(ec.ECDH(), remote_signed_prekey),  # type: ignore[union-attr]
+        uid=uid,
+        client_id=client_id,
+        initiator_role=initiator_role,
+        initiator_identity_public_key_base64=local_identity_public,
+        responder_identity_public_key_base64=remote_identity_public_key_base64,
+        initiator_signed_prekey_public_key_base64=local_signed_prekey_public_key_base64,
+        responder_signed_prekey_public_key_base64=remote_signed_prekey_public_key_base64,
+        initiator_initial_ratchet_public_key_base64=local_initial_ratchet_key_pair.public_key_base64,
+    )
+
+
+def _ratchet_responder_shared_secret(
+    *,
+    uid: str,
+    client_id: str,
+    initiator_role: str,
+    local_identity_private_key_base64: str,
+    local_signed_prekey_private_key_base64: str,
+    local_identity_public_key_base64: str,
+    local_signed_prekey_public_key_base64: str,
+    remote_identity_public_key_base64: str,
+    remote_signed_prekey_public_key_base64: str,
+    remote_initial_ratchet_public_key_base64: str,
+) -> bytes:
+    local_identity = _p256_private_key_from_base64(local_identity_private_key_base64, "ratchet identity private key")
+    local_signed = _p256_private_key_from_base64(local_signed_prekey_private_key_base64, "ratchet signed-prekey private key")
+    remote_identity = hermes_ratchet._public_key_from_base64(remote_identity_public_key_base64)
+    remote_initial = hermes_ratchet._public_key_from_base64(remote_initial_ratchet_public_key_base64)
+    return _ratchet_prekey_shared_secret(
+        dh1=local_signed.exchange(ec.ECDH(), remote_identity),  # type: ignore[union-attr]
+        dh2=local_identity.exchange(ec.ECDH(), remote_initial),  # type: ignore[union-attr]
+        dh3=local_signed.exchange(ec.ECDH(), remote_initial),  # type: ignore[union-attr]
+        uid=uid,
+        client_id=client_id,
+        initiator_role=initiator_role,
+        initiator_identity_public_key_base64=remote_identity_public_key_base64,
+        responder_identity_public_key_base64=local_identity_public_key_base64,
+        initiator_signed_prekey_public_key_base64=remote_signed_prekey_public_key_base64,
+        responder_signed_prekey_public_key_base64=local_signed_prekey_public_key_base64,
+        initiator_initial_ratchet_public_key_base64=remote_initial_ratchet_public_key_base64,
+    )
+
+
+def _verify_ratchet_signed_prekey(
+    *,
+    signing_public_key_base64: str,
+    identity_public_key_base64: str,
+    signed_prekey_public_key_base64: str,
+    signed_prekey_id: str,
+    signature_base64: str,
+) -> bool:
+    try:
+        signing_public = ec.EllipticCurvePublicKey.from_encoded_point(  # type: ignore[union-attr]
+            ec.SECP256R1(), base64.b64decode(signing_public_key_base64)
+        )
+        signing_public.verify(
+            base64.b64decode(signature_base64),
+            _ratchet_signed_prekey_payload(
+                base64.b64decode(identity_public_key_base64),
+                base64.b64decode(signed_prekey_public_key_base64),
+                signed_prekey_id,
+            ),
+            ec.ECDSA(hashes.SHA256()),  # type: ignore[union-attr]
+        )
+        return True
+    except Exception:
+        return False
 
 
 def _agent_version() -> str:
@@ -146,40 +709,48 @@ def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _relay_safety_code(agent_public_key_b64: str, phone_public_key_b64: str) -> str:
-    """Signal-style two-key safety code matching BurnBar's mobile display.
+def _pairing_safety_code(public_keys_b64: list[str]) -> str:
+    """Signal-style safety code matching BurnBar's mobile display.
 
-    Hashes BOTH paired relay public keys (MP-1): ``SHA-256(sorted([agentRaw,
-    phoneRaw]).joined())``, sorting by the raw decoded bytes so the agent and the
-    phone derive the IDENTICAL code without agreeing on roles. The displayed code
-    is the first **16** digest bytes (>=128 bits) rendered as eight uppercase hex
-    groups.
+    Hashes every paired public identity key (MP-1): relay keys for legacy links
+    and, once both peers publish Phase 6 material, ratchet identity keys too.
+    Sorting by raw decoded bytes lets both sides derive the identical code
+    without agreeing on roles. The displayed code is the first **16** digest
+    bytes (>=128 bits) rendered as eight uppercase hex groups.
 
-    Why both keys + 128 bits: an untrusted relay can substitute the phone key at
-    first pin; a single-key (agent-only) code would still match, so the human
-    comparison authenticates nothing. Hashing both keys binds the substitution
-    into the code. The 64-bit truncation the old code shipped let a
-    key-substituting relay grind a ~2^64 collision on the displayed code; 128 bits
-    closes that.
+    Why all keys + 128 bits: an untrusted relay can substitute either peer key at
+    first pin; a single-key code would still match, so the human comparison
+    authenticates nothing. Hashing every active public identity binds
+    substitution into the code. The 64-bit truncation the old code shipped let a
+    key-substituting relay grind a ~2^64 collision on the displayed code; 128
+    bits closes that.
 
-    Returns ``""`` if EITHER key is missing or not a valid canonical X9.63 P-256
+    Returns ``""`` if any key is missing or not a valid canonical X9.63 P-256
     public key (MP-22) — never a plausible-looking code derived from raw string
     bytes, which a human would compare and wrongly accept.
     """
-    agent_b64 = (agent_public_key_b64 or "").strip()
-    phone_b64 = (phone_public_key_b64 or "").strip()
-    if not agent_b64 or not phone_b64:
+    trimmed = [(value or "").strip() for value in public_keys_b64]
+    if len(trimmed) < 2 or any(not value for value in trimmed):
         return ""
     if not RELAY_CRYPTO_AVAILABLE:
         return ""
     try:
-        agent_bytes = relay_e2ee.public_key_x963_from_base64(agent_b64)
-        phone_bytes = relay_e2ee.public_key_x963_from_base64(phone_b64)
+        decoded = [relay_e2ee.public_key_x963_from_base64(value) for value in trimmed]
     except Exception:
         return ""
-    low, high = sorted((agent_bytes, phone_bytes))
-    digest = hashlib.sha256(low + high).digest()
+    digest = hashlib.sha256(b"".join(sorted(decoded))).digest()
     return " ".join(digest[offset : offset + 2].hex().upper() for offset in range(0, 16, 2))
+
+
+def _relay_safety_code(
+    agent_public_key_b64: str,
+    phone_public_key_b64: str,
+    *,
+    extra_public_keys_b64: Optional[list[str]] = None,
+) -> str:
+    return _pairing_safety_code(
+        [agent_public_key_b64, phone_public_key_b64] + list(extra_public_keys_b64 or [])
+    )
 
 
 # Catalog-id charset for a model-switch value (MP-11). First char alphanumeric so
@@ -191,25 +762,6 @@ _SAFE_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,179}$")
 def _is_safe_model_id(model_id: str) -> bool:
     """Reject a model-switch id that could inject slash-command flags or control chars."""
     return bool(model_id) and bool(_SAFE_MODEL_ID.fullmatch(model_id))
-
-
-def _coalesce_sealed_control_payload(authed: dict) -> dict:
-    """Merge control-plane fields that may live inside a JSON ``text`` wrapper."""
-    kind = str(authed.get("kind") or "").strip()
-    if kind:
-        return authed
-    text = str(authed.get("text") or "").strip()
-    if not text.startswith("{"):
-        return authed
-    try:
-        nested = json.loads(text)
-    except Exception:
-        return authed
-    if not isinstance(nested, dict) or not nested.get("kind"):
-        return authed
-    merged = dict(authed)
-    merged.update(nested)
-    return merged
 
 
 def _api_base(config: PlatformConfig | None = None) -> str:
@@ -322,16 +874,55 @@ def _coerce_replay_counter(value: Any) -> Optional[int]:
     return counter if counter >= 0 else None
 
 
+def _gateway_hpke_v3_enabled() -> bool:
+    """True unless an operator explicitly break-glass disables HPKE v3.
+
+    Production parity now exists across Cloud validation and client open/seal
+    paths, so v3 is the preferred negotiated envelope. The disable flag is for
+    emergency rollback only; normal pairing advertises v2+v3 and prefers v3.
+    """
+    return (os.getenv(GATEWAY_HPKE_V3_DISABLED_ENV) or "").strip() != "1"
+
+
+def _supported_gateway_relay_versions() -> list[int]:
+    versions = [GATEWAY_RELAY_KEY_VERSION]
+    if _gateway_hpke_v3_enabled():
+        versions.append(GATEWAY_RELAY_KEY_VERSION_V3)
+    return versions
+
+
+def _preferred_gateway_relay_version() -> int:
+    versions = _supported_gateway_relay_versions()
+    return versions[-1]
+
+
+def _gateway_relay_encryption_for(version: int) -> str:
+    return GATEWAY_RELAY_ENCRYPTION_V3 if version == GATEWAY_RELAY_KEY_VERSION_V3 else RELAY_ENCRYPTION
+
+
+def _gateway_relay_capability_payload() -> dict:
+    preferred = _preferred_gateway_relay_version()
+    return {
+        "supportsRelayEnvelopeVersions": _supported_gateway_relay_versions(),
+        "preferredRelayEnvelopeVersion": preferred,
+        "supportsHpkeV3": preferred == GATEWAY_RELAY_KEY_VERSION_V3,
+        "clientPlatform": "python-hermes-agent",
+        "clientAppBuild": "burnbar-platform",
+    }
+
+
 def _coerce_peer_relay_key_version(value: Any) -> int:
     """Parse an advertised/configured peer wrap version to a SUPPORTED version.
 
     Floors absent / malformed / unsupported values to the v2 gateway version so a
     v2-only peer is never auto-upgraded and an unknown future version never
-    selects an unimplemented wrap path. Only an explicit, recognised ``3`` opts a
-    link into RFC 9180 HPKE v3.
+    selects an unimplemented wrap path. v3 is accepted only when the local
+    break-glass rollback flag has not disabled HPKE.
     """
     counter = _coerce_replay_counter(value)
-    if counter in _SUPPORTED_GATEWAY_RELAY_VERSIONS:
+    if counter == GATEWAY_RELAY_KEY_VERSION:
+        return counter
+    if counter == GATEWAY_RELAY_KEY_VERSION_V3 and _gateway_hpke_v3_enabled():
         return counter
     return GATEWAY_RELAY_KEY_VERSION
 
@@ -363,7 +954,7 @@ def _peer_relay_key_version_from_pairing_grant(approved: dict, client_payload: d
             continue
         for key in encryption_keys:
             if str(source.get(key) or "") == GATEWAY_RELAY_ENCRYPTION_V3:
-                return GATEWAY_RELAY_KEY_VERSION_V3
+                return GATEWAY_RELAY_KEY_VERSION_V3 if _gateway_hpke_v3_enabled() else GATEWAY_RELAY_KEY_VERSION
     return GATEWAY_RELAY_KEY_VERSION
 
 
@@ -628,8 +1219,11 @@ async def _post_message(
             action_id=action_id,
             kind=kind,
         )
-        body["relayEnvelope"] = envelope
-        body["relayEncryption"] = envelope.get("relayEncryption") or RELAY_ENCRYPTION
+        if envelope.get("ratchetEnvelope") is not None:
+            body["ratchetEnvelope"] = envelope["ratchetEnvelope"]
+        else:
+            body["relayEnvelope"] = envelope
+            body["relayEncryption"] = envelope.get("relayEncryption") or RELAY_ENCRYPTION
         # MP-10: no top-level relayKeyVersion on a sealed write — the relayEnvelope
         # carries the authoritative gateway wrap version (server + phone read THAT,
         # never this body field). The top-level relayEncryption mirrors the envelope
@@ -777,6 +1371,15 @@ class _RelaySealer:
     def _peer_key_for(self, destination_id: str) -> Optional[str]:
         return self._adapter._peer_public_keys.get(destination_id) or self._adapter._peer_public_key
 
+    def _can_ratchet(self) -> bool:
+        return (
+            HERMES_RATCHET_AVAILABLE
+            and CRYPTOGRAPHY_PRIMITIVES_AVAILABLE
+            and self._adapter._relay_e2e_enabled
+            and self._adapter._ratchet_private_payload() is not None
+            and self._adapter._ratchet_peer_bundle() is not None
+        )
+
     def cannot_seal_reason(self, action: str) -> str:
         """Explain why an E2E-paired link cannot seal right now (fail-closed copy)."""
         if not self._adapter._relay_e2e_enabled and self._adapter._has_relay_identity_without_e2e:
@@ -874,6 +1477,14 @@ class _RelaySealer:
         action_id: str | None = None,
         kind: str | None = None,
     ) -> dict:
+        if self._can_ratchet():
+            return self._seal_ratchet_message(
+                destination_id=destination_id,
+                text=text,
+                thread_id=thread_id,
+                action_id=action_id,
+                kind=kind,
+            )
         peer = self._peer_key_for(destination_id)
         if not peer:
             raise _RelayPlaintextRefused(self.cannot_seal_reason("exchange messages"))
@@ -907,6 +1518,69 @@ class _RelaySealer:
             destination_id=destination_id,
         )
         return {"payloadCiphertext": payload_ct, **fields, "messageId": message_id}
+
+    def _seal_ratchet_message(
+        self,
+        *,
+        destination_id: str,
+        text: str,
+        thread_id: str | None,
+        action_id: str | None,
+        kind: str | None,
+    ) -> dict:
+        local = self._adapter._ratchet_private_payload()
+        peer = self._adapter._ratchet_peer_bundle()
+        if not local or not peer:
+            raise _RelayPlaintextRefused(self.cannot_seal_reason("exchange messages"))
+        message_id = secrets.token_hex(16)
+        payload: Dict[str, Any] = {"text": text, "destinationId": destination_id}
+        if thread_id:
+            payload["threadId"] = thread_id
+        if action_id:
+            payload["actionId"] = action_id
+        if kind:
+            payload["kind"] = kind
+
+        session_id = self._adapter._current_ratchet_session_id()
+        state = self._adapter._load_ratchet_session(session_id) if session_id else None
+        if state is None:
+            initial = hermes_ratchet.generate_key_pair()
+            session_id = _ratchet_session_id(
+                uid=self._uid,
+                client_id=self._client_id,
+                initiator_role="agent",
+                initiator_identity_public_key_base64=local["identityPublicKeyBase64"],
+                responder_identity_public_key_base64=peer["identityPublicKeyBase64"],
+                initiator_signed_prekey_public_key_base64=local["signedPreKeyPublicKeyBase64"],
+                responder_signed_prekey_public_key_base64=peer["signedPreKeyPublicKeyBase64"],
+                initiator_initial_ratchet_public_key_base64=initial.public_key_base64,
+            )
+            shared = _ratchet_initiator_shared_secret(
+                uid=self._uid,
+                client_id=self._client_id,
+                initiator_role="agent",
+                local_identity_private_key_base64=local["identityPrivateKeyBase64"],
+                local_signed_prekey_public_key_base64=local["signedPreKeyPublicKeyBase64"],
+                local_initial_ratchet_key_pair=initial,
+                remote_identity_public_key_base64=peer["identityPublicKeyBase64"],
+                remote_signed_prekey_public_key_base64=peer["signedPreKeyPublicKeyBase64"],
+            )
+            state = hermes_ratchet.initiator_state(
+                session_id=session_id,
+                local_device_id=_ratchet_device_id("agent", local["identityPublicKeyBase64"]),
+                remote_device_id=_ratchet_device_id("phone", peer["identityPublicKeyBase64"]),
+                shared_secret=shared,
+                remote_initial_ratchet_public_key_base64=peer["signedPreKeyPublicKeyBase64"],
+                local_initial_ratchet_key_pair=initial,
+            )
+        envelope = hermes_ratchet.encrypt(
+            json.dumps(payload).encode("utf-8"),
+            state,
+            associated_data=_gateway_message_aad(self._uid, self._client_id, message_id),
+        )
+        self._adapter._save_ratchet_session(state)
+        self._adapter._save_current_ratchet_session_id(state.session_id)
+        return {"ratchetEnvelope": envelope.to_wire(), "messageId": message_id}
 
     def seal_attachment(
         self, *, destination_id: str, file_path: Path, content_type: str
@@ -959,6 +1633,9 @@ class _RelaySealer:
         Raises :class:`_RelayPlaintextRefused` when E2E is required but the event
         is unsealed.
         """
+        ratchet_envelope = raw.get("ratchetEnvelope")
+        if isinstance(ratchet_envelope, dict):
+            return self._open_ratchet_event(raw, ratchet_envelope)
         envelope = raw.get("relayEnvelope")
         if not isinstance(envelope, dict):
             envelope = None
@@ -1004,6 +1681,9 @@ class _RelaySealer:
         plaintext (legacy). Raises :class:`_RelayPlaintextRefused` when E2E is
         required but the control event is unsealed.
         """
+        ratchet_envelope = raw.get("ratchetEnvelope")
+        if isinstance(ratchet_envelope, dict):
+            return self._open_ratchet_event(raw, ratchet_envelope)
         envelope = raw.get("relayEnvelope")
         if not isinstance(envelope, dict) or not envelope.get("payloadCiphertext"):
             # Symmetric with ``must_seal`` (P2-1): refuse an unsealed control event
@@ -1132,6 +1812,49 @@ class _RelaySealer:
         decoded = json.loads(plaintext.decode("utf-8"))
         return decoded if isinstance(decoded, dict) else {"text": str(decoded)}
 
+    def _open_ratchet_event(self, raw: dict, envelope_raw: dict) -> dict:
+        local = self._adapter._ratchet_private_payload()
+        peer = self._adapter._ratchet_peer_bundle()
+        if not local or not peer or not HERMES_RATCHET_AVAILABLE:
+            raise _RelayPlaintextRefused("ratchet event received but ratchet state is unavailable")
+        envelope = hermes_ratchet.HermesRatchetEnvelope.from_wire(envelope_raw)
+        state = self._adapter._load_ratchet_session(envelope.header.session_id)
+        if state is None:
+            if not str(envelope.header.sender_device_id).startswith("phone:"):
+                raise _RelayPlaintextRefused("ratchet session is missing for non-phone-initiated event")
+            shared = _ratchet_responder_shared_secret(
+                uid=self._uid,
+                client_id=self._client_id,
+                initiator_role="phone",
+                local_identity_private_key_base64=local["identityPrivateKeyBase64"],
+                local_signed_prekey_private_key_base64=local["signedPreKeyPrivateKeyBase64"],
+                local_identity_public_key_base64=local["identityPublicKeyBase64"],
+                local_signed_prekey_public_key_base64=local["signedPreKeyPublicKeyBase64"],
+                remote_identity_public_key_base64=peer["identityPublicKeyBase64"],
+                remote_signed_prekey_public_key_base64=peer["signedPreKeyPublicKeyBase64"],
+                remote_initial_ratchet_public_key_base64=envelope.header.ratchet_public_key_base64,
+            )
+            state = hermes_ratchet.responder_state(
+                session_id=envelope.header.session_id,
+                local_device_id=envelope.header.receiver_device_id,
+                remote_device_id=envelope.header.sender_device_id,
+                shared_secret=shared,
+                local_initial_ratchet_key_pair=hermes_ratchet.HermesRatchetKeyPair(
+                    private_key_base64=local["signedPreKeyPrivateKeyBase64"],
+                    public_key_base64=local["signedPreKeyPublicKeyBase64"],
+                ),
+            )
+        event_id = str(raw.get("id") or envelope_raw.get("eventId") or "")
+        plaintext = hermes_ratchet.decrypt(
+            envelope,
+            state,
+            associated_data=_gateway_event_aad(self._uid, self._client_id, event_id),
+        )
+        self._adapter._save_ratchet_session(state)
+        self._adapter._save_current_ratchet_session_id(state.session_id)
+        decoded = json.loads(plaintext.decode("utf-8"))
+        return decoded if isinstance(decoded, dict) else {"text": str(decoded)}
+
 
 class BurnBarAdapter(BasePlatformAdapter):
     """BurnBar Cloud adapter backed by the BurnBar Hermes Gateway API."""
@@ -1158,9 +1881,9 @@ class BurnBarAdapter(BasePlatformAdapter):
         # Armed approval gates awaiting a phone decision: actionId -> context.
         self._pending_confirms: Dict[str, Dict[str, Any]] = {}
         # --- E2E relay state ---
-        # The agent's own relay identity (private key persisted to ~/.hermes/.env
-        # by relay_e2ee). Lazily loaded so the import-time path stays cheap and so
-        # a missing `cryptography` never blocks the plaintext (legacy) link.
+        # The agent's own relay identity (private key persisted to Keychain).
+        # Lazily loaded so the import-time path stays cheap and so a missing
+        # `cryptography` never blocks the plaintext (legacy) link.
         self._relay_identity = None
         # The paired phone's relay public key(s). `_peer_public_key` is the
         # default/home link; `_peer_public_keys[destinationId]` overrides per link.
@@ -1183,8 +1906,13 @@ class BurnBarAdapter(BasePlatformAdapter):
         # after the digest cache saturates.
         self._seen_event_ids: "collections.OrderedDict[str, None]" = collections.OrderedDict()
         self._event_replay_high_water = -1
+        self._malformed_sealed_event_failures: "collections.OrderedDict[str, float]" = collections.OrderedDict()
+        self._malformed_sealed_event_failure_times: "collections.deque[float]" = collections.deque()
         # E2E negotiated at pairing (server reports the link relay-capable).
         self._relay_e2e_enabled = (os.getenv(RELAY_E2E_ENV) or "").strip() == "1"
+        self._agent_ratchet_prekey_bundle: Optional[dict[str, Any]] = None
+        self._agent_ratchet_private_bundle: Optional[dict[str, Any]] = None
+        self._ratchet_sessions: Dict[str, Any] = {}
         # AAD identity binding. uid/clientId are routing ids the server echoes and
         # every gateway AAD includes. On E2E links they MUST come from the
         # authenticated pairing grant (persisted env). Learning the first value from
@@ -1215,6 +1943,7 @@ class BurnBarAdapter(BasePlatformAdapter):
         self._plaintext_explicitly_allowed = (os.getenv("BURNBAR_ALLOW_PLAINTEXT") or "").strip() == "1"
         if RELAY_CRYPTO_AVAILABLE and self._relay_e2e_enabled:
             self._ensure_relay_identity()
+            self._agent_ratchet_prekey_bundle = _agent_ratchet_prekey_bundle()
         self._load_replay_ledger()
         self._sealer = _RelaySealer(self)
 
@@ -1224,10 +1953,10 @@ class BurnBarAdapter(BasePlatformAdapter):
     def _ensure_relay_identity(self):
         """Load (or create+persist) the agent relay private key. Returns it or None.
 
-        A freshly minted key is persisted to ``~/.hermes/.env`` (0600, via
-        ``hermes_cli.config.save_env_value``) so the agent's relay identity is
-        STABLE across restarts. Without persistence the key rotated every restart,
-        silently breaking every previously-sealed inbound event.
+        A freshly minted key is persisted to macOS Keychain so the agent's relay
+        identity is stable across restarts without placing private key material
+        in ``~/.hermes/.env``. A legacy ``BURNBAR_RELAY_PRIVATE_KEY`` value is
+        accepted only as a validated import source, then copied to Keychain.
         """
         if not RELAY_CRYPTO_AVAILABLE:
             return None
@@ -1235,20 +1964,11 @@ class BurnBarAdapter(BasePlatformAdapter):
             return self._relay_identity
         persist = self._relay_key_persister()
         try:
-            self._relay_identity = relay_e2ee.AgentRelayIdentity.load_or_create(
-                env_var=RELAY_PRIVATE_KEY_ENV, persist=persist
-            )
-        except TypeError:
-            # Tolerate an older signature that takes no env_var / persist kwarg.
-            try:
-                self._relay_identity = relay_e2ee.AgentRelayIdentity.load_or_create(persist=persist)
-            except TypeError:
-                self._relay_identity = relay_e2ee.AgentRelayIdentity.load_or_create()
+            self._relay_identity = _load_or_create_relay_identity_secure(persist=persist)
         except relay_e2ee.CorruptIdentityError:
             logger.error(
-                "[%s] corrupt relay private key in %s; refusing E2E (re-pair or delete the key)",
+                "[%s] corrupt relay private key; refusing E2E (re-pair or delete the key)",
                 self.name,
-                RELAY_PRIVATE_KEY_ENV,
             )
             raise
         except Exception:
@@ -1258,17 +1978,8 @@ class BurnBarAdapter(BasePlatformAdapter):
 
     @staticmethod
     def _relay_key_persister():
-        """Return a ``(env_var, value) -> None`` persister that writes ~/.hermes/.env at 0600.
-
-        ``save_env_value`` already atomically writes ``~/.hermes/.env`` and chmods
-        it 0600 (``_secure_file``). Returns ``None`` when the CLI config module is
-        unavailable (e.g. unit tests) so identity creation still works in-memory.
-        """
-        try:
-            from hermes_cli.config import save_env_value
-        except Exception:  # pragma: no cover - hermes_cli always present in prod.
-            return None
-        return save_env_value
+        """Return a ``(env_var, value) -> None`` persister for relay private keys."""
+        return _relay_key_persister()
 
     def _relay_private_key(self):
         """Return the RelayPrivateKey suitable for unwrap (handles identity wrapper)."""
@@ -1289,17 +2000,102 @@ class BurnBarAdapter(BasePlatformAdapter):
             logger.debug("[%s] Could not derive relay public key", self.name, exc_info=True)
             return None
 
+    def _ratchet_public_payload(self) -> dict[str, Any]:
+        if self._agent_ratchet_prekey_bundle is None:
+            self._agent_ratchet_prekey_bundle = _agent_ratchet_prekey_bundle()
+        return dict(self._agent_ratchet_prekey_bundle or {})
+
+    def _ratchet_private_payload(self) -> Optional[dict[str, Any]]:
+        if self._agent_ratchet_private_bundle is None:
+            self._agent_ratchet_private_bundle = _agent_ratchet_private_bundle()
+        return dict(self._agent_ratchet_private_bundle or {}) or None
+
+    def _ratchet_peer_bundle(self) -> Optional[dict[str, str]]:
+        identity = (os.getenv(RATCHET_PEER_IDENTITY_PUBLIC_KEY_ENV) or "").strip()
+        signing = (os.getenv(RATCHET_PEER_SIGNING_PUBLIC_KEY_ENV) or "").strip()
+        signed_prekey = (os.getenv(RATCHET_PEER_SIGNED_PREKEY_PUBLIC_KEY_ENV) or "").strip()
+        signed_prekey_id = (os.getenv(RATCHET_PEER_SIGNED_PREKEY_ID_ENV) or "").strip()
+        signature = (os.getenv(RATCHET_PEER_SIGNED_PREKEY_SIGNATURE_ENV) or "").strip()
+        if not all((identity, signing, signed_prekey, signed_prekey_id, signature)):
+            return None
+        if not _verify_ratchet_signed_prekey(
+            signing_public_key_base64=signing,
+            identity_public_key_base64=identity,
+            signed_prekey_public_key_base64=signed_prekey,
+            signed_prekey_id=signed_prekey_id,
+            signature_base64=signature,
+        ):
+            return None
+        return {
+            "identityPublicKeyBase64": identity,
+            "signingPublicKeyBase64": signing,
+            "signedPreKeyPublicKeyBase64": signed_prekey,
+            "signedPreKeyId": signed_prekey_id,
+            "signedPreKeySignatureBase64": signature,
+        }
+
+    @staticmethod
+    def _ratchet_session_account(session_id: str) -> str:
+        return f"session|{session_id}"
+
+    def _load_ratchet_session(self, session_id: str):
+        if not HERMES_RATCHET_AVAILABLE:
+            return None
+        if session_id in self._ratchet_sessions:
+            return self._ratchet_sessions[session_id]
+        account = self._ratchet_session_account(session_id)
+        raw: Optional[str] = None
+        if _relay_keychain_command() is not None:
+            raw = _load_private_key_base64_from_keychain(
+                RATCHET_SESSION_KEYCHAIN_SERVICE,
+                account,
+                "BurnBar ratchet session state",
+            )
+        if raw:
+            state = hermes_ratchet.HermesRatchetSessionState.from_wire(json.loads(raw))
+            self._ratchet_sessions[session_id] = state
+            return state
+        return None
+
+    def _save_ratchet_session(self, state) -> None:
+        self._ratchet_sessions[state.session_id] = state
+        raw = json.dumps(state.to_wire(), sort_keys=True)
+        if _relay_keychain_command() is not None:
+            _store_private_key_base64_to_keychain(
+                RATCHET_SESSION_KEYCHAIN_SERVICE,
+                self._ratchet_session_account(state.session_id),
+                raw,
+                "BurnBar ratchet session state",
+            )
+
+    def _current_ratchet_session_id(self) -> Optional[str]:
+        raw = (os.getenv("BURNBAR_RATCHET_CHAT_SESSION_ID") or "").strip()
+        return raw or None
+
+    def _save_current_ratchet_session_id(self, session_id: str) -> None:
+        save_env_value("BURNBAR_RATCHET_CHAT_SESSION_ID", session_id)
+
     @property
     def _has_relay_identity_without_e2e(self) -> bool:
         """MP-5: True when the agent is E2E-capable (a relay private key is
         persisted) but the link is not E2E-paired — the state where an untrusted
         relay could otherwise harvest plaintext by advertising the link as legacy.
         """
-        return (
-            RELAY_CRYPTO_AVAILABLE
-            and not self._relay_e2e_enabled
-            and bool((os.getenv(RELAY_PRIVATE_KEY_ENV) or "").strip())
-        )
+        if not RELAY_CRYPTO_AVAILABLE or self._relay_e2e_enabled:
+            return False
+        if self._relay_identity is not None:
+            return True
+        if (os.getenv(RELAY_PRIVATE_KEY_ENV) or "").strip():
+            return True
+        try:
+            return _load_relay_private_key_base64_from_keychain() is not None
+        except Exception:
+            logger.warning(
+                "[%s] could not inspect relay private key store; refusing legacy plaintext downgrade",
+                self.name,
+                exc_info=True,
+            )
+            return True
 
     def _pin_peer_public_key(
         self,
@@ -1326,10 +2122,21 @@ class BurnBarAdapter(BasePlatformAdapter):
         return ``False`` so callers (e.g. event handling) can drop the event. A
         re-advertised matching key is idempotent.
 
-        Signed key rotation is a deferred follow-up; pin-only is the policy now.
+        Rotation is explicit re-pair only: no relay-supplied update, signed or
+        unsigned, can change a pin in place.
         """
         if not public_key_b64:
             return True
+        if RELAY_CRYPTO_AVAILABLE:
+            try:
+                relay_e2ee.public_key_x963_from_base64(public_key_b64)
+            except Exception:
+                logger.warning(
+                    "[%s] SECURITY: refusing malformed peer relay key from source=%s",
+                    self.name,
+                    source,
+                )
+                return False
         pinned = self._peer_public_key
         if pinned is None:
             if not allow_new_pin:
@@ -1515,6 +2322,56 @@ class BurnBarAdapter(BasePlatformAdapter):
             # plaintext keeps the in-memory dedup behavior.
             return not self._relay_e2e_enabled
 
+    def _sealed_event_failure_fingerprint(self, raw: dict) -> str:
+        envelope = raw.get("relayEnvelope") if isinstance(raw.get("relayEnvelope"), dict) else {}
+        material = {
+            "eventId": str(envelope.get("eventId") or raw.get("id") or ""),
+            "payloadCiphertext": str(envelope.get("payloadCiphertext") or raw.get("payloadCiphertext") or ""),
+            "wrappedKey": str(envelope.get("wrappedKey") or raw.get("wrappedKey") or ""),
+            "enc": str(envelope.get("enc") or raw.get("enc") or ""),
+            "senderPublicKey": str(envelope.get("senderPublicKey") or raw.get("senderPublicKey") or ""),
+            "relayEncryption": str(envelope.get("relayEncryption") or raw.get("relayEncryption") or ""),
+            "relayKeyVersion": str(envelope.get("relayKeyVersion") or raw.get("relayKeyVersion") or ""),
+        }
+        return hashlib.sha256(json.dumps(material, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def _prune_malformed_sealed_event_failures(self, now: float) -> None:
+        expired = [
+            key for key, seen_at in self._malformed_sealed_event_failures.items()
+            if now - seen_at > MALFORMED_SEALED_EVENT_THROTTLE_SECONDS
+        ]
+        for key in expired:
+            self._malformed_sealed_event_failures.pop(key, None)
+        while (
+            self._malformed_sealed_event_failure_times
+            and now - self._malformed_sealed_event_failure_times[0] > MALFORMED_SEALED_EVENT_THROTTLE_SECONDS
+        ):
+            self._malformed_sealed_event_failure_times.popleft()
+
+    def _drop_throttled_malformed_sealed_event(self, raw: dict) -> bool:
+        if not self._relay_e2e_enabled:
+            return False
+        now = time.monotonic()
+        self._prune_malformed_sealed_event_failures(now)
+        key = self._sealed_event_failure_fingerprint(raw)
+        seen_at = self._malformed_sealed_event_failures.get(key)
+        if seen_at is not None:
+            self._malformed_sealed_event_failures.move_to_end(key)
+            return True
+        return len(self._malformed_sealed_event_failure_times) >= MAX_MALFORMED_SEALED_EVENT_FAILURES_PER_WINDOW
+
+    def _record_malformed_sealed_event_failure(self, raw: dict) -> None:
+        if not self._relay_e2e_enabled:
+            return
+        now = time.monotonic()
+        self._prune_malformed_sealed_event_failures(now)
+        self._malformed_sealed_event_failure_times.append(now)
+        key = self._sealed_event_failure_fingerprint(raw)
+        self._malformed_sealed_event_failures[key] = now
+        self._malformed_sealed_event_failures.move_to_end(key)
+        while len(self._malformed_sealed_event_failures) > MAX_MALFORMED_SEALED_EVENT_FINGERPRINTS:
+            self._malformed_sealed_event_failures.popitem(last=False)
+
     def _absorb_routing_id(self, field: str, value: str) -> None:
         """Confirm-or-warn a runtime routing id (uid/clientId) that feeds every AAD.
 
@@ -1610,6 +2467,8 @@ class BurnBarAdapter(BasePlatformAdapter):
         version = self._peer_relay_key_versions.get(str(destination_id or ""))
         if version is None:
             version = self._peer_relay_key_version_default
+        if version == GATEWAY_RELAY_KEY_VERSION_V3 and not _gateway_hpke_v3_enabled():
+            return GATEWAY_RELAY_KEY_VERSION
         if version in _SUPPORTED_GATEWAY_RELAY_VERSIONS:
             return version
         return GATEWAY_RELAY_KEY_VERSION
@@ -1705,16 +2564,20 @@ class BurnBarAdapter(BasePlatformAdapter):
         replay_counter: Optional[int] = None
         model_switch_applied = False
         destination_id = str(raw.get("destinationId") or self._home_channel)
+        if self._drop_throttled_malformed_sealed_event(raw):
+            logger.info("[%s] throttled malformed sealed event", self.name)
+            return
         try:
             authed = self._sealer.open_event(raw)
         except _RelayPlaintextRefused as exc:
+            self._record_malformed_sealed_event_failure(raw)
             logger.warning("[%s] dropped unsealed event: %s", self.name, exc)
             return
         except Exception:
+            self._record_malformed_sealed_event_failure(raw)
             logger.warning("[%s] failed to open sealed event", self.name, exc_info=True)
             return
         if authed is not None:
-            authed = _coalesce_sealed_control_payload(authed)
             kind = str(authed.get("kind") or "").strip()
             sealed_dest = str(authed.get("destinationId") or "").strip()
             if self._relay_e2e_enabled and not sealed_dest:
@@ -1744,7 +2607,7 @@ class BurnBarAdapter(BasePlatformAdapter):
                     return
                 self._handle_sealed_oversight_mode(authed)
                 return
-            if kind == "model_switch" or authed.get("modelId") is not None:
+            if kind == "model_switch":
                 model_id = str(authed.get("modelId") or "").strip()
                 if not _is_safe_model_id(model_id):
                     logger.warning("[%s] dropped model_switch with unsafe modelId %r", self.name, model_id)
@@ -1824,12 +2687,18 @@ class BurnBarAdapter(BasePlatformAdapter):
         if RELAY_CRYPTO_AVAILABLE and self._relay_e2e_enabled:
             pub = self._relay_public_key_base64()
             if pub:
+                preferred_gateway_relay_version = _preferred_gateway_relay_version()
                 body["relayPublicKey"] = pub
                 body["relayEncryption"] = RELAY_ENCRYPTION
                 body["relayKeyVersion"] = RELAY_KEY_VERSION
-                body["gatewayRelayKeyVersion"] = GATEWAY_RELAY_KEY_VERSION_V3
-                body["gatewayRelayEncryption"] = GATEWAY_RELAY_ENCRYPTION_V3
-                body["supportedGatewayRelayKeyVersions"] = list(_SUPPORTED_GATEWAY_RELAY_VERSIONS)
+                body["agentRelayPublicKey"] = pub
+                body["agentRelayEncryption"] = RELAY_ENCRYPTION
+                body["agentRelayKeyVersion"] = RELAY_KEY_VERSION
+                body["gatewayRelayKeyVersion"] = preferred_gateway_relay_version
+                body["gatewayRelayEncryption"] = _gateway_relay_encryption_for(preferred_gateway_relay_version)
+                body["supportedGatewayRelayKeyVersions"] = _supported_gateway_relay_versions()
+                body.update(_gateway_relay_capability_payload())
+                body.update(self._ratchet_public_payload())
         try:
             response = await self._client.post(
                 f"{self._api_base}/runtime",
@@ -2235,8 +3104,9 @@ async def _standalone_send(
     # Build a sealer carrying the persisted E2E pairing state (relay identity,
     # pinned peer key, uid/clientId) so a one-shot standalone send on a paired
     # link seals exactly like the live adapter — and NEVER leaks plaintext. The
-    # adapter __init__ reads BURNBAR_RELAY_E2E / BURNBAR_RELAY_PEER_PUBLIC_KEY
-    # from ~/.hermes/.env, so the sealer's must_seal/can_seal reflect pairing.
+    # adapter __init__ reads the pairing flags / peer public key from
+    # ~/.hermes/.env and the agent private key from Keychain, so the sealer's
+    # must_seal/can_seal reflect pairing.
     try:
         adapter = BurnBarAdapter(pconfig if pconfig is not None else PlatformConfig(enabled=True, extra={}))
         sealer: Optional["_RelaySealer"] = adapter._sealer
@@ -2349,27 +3219,16 @@ def interactive_setup() -> None:
 
     # Generate (or load) this agent's relay keypair and publish the public key at
     # device/start so the server records the client as E2E-capable. The private
-    # key is persisted to ~/.hermes/.env by relay_e2ee; only ciphertext leaves.
+    # key is persisted to macOS Keychain; only ciphertext leaves.
     agent_relay_public_key = ""
     if RELAY_CRYPTO_AVAILABLE:
         try:
-            # persist= wires the freshly minted private key to ~/.hermes/.env (0600,
-            # via save_env_value) so the agent's relay identity is STABLE across
-            # restarts; without it the key rotated every restart and silently broke
-            # every previously-sealed inbound event.
-            try:
-                identity = relay_e2ee.AgentRelayIdentity.load_or_create(
-                    env_var=RELAY_PRIVATE_KEY_ENV, persist=save_env_value
-                )
-            except TypeError:
-                try:
-                    identity = relay_e2ee.AgentRelayIdentity.load_or_create(persist=save_env_value)
-                except TypeError:
-                    identity = relay_e2ee.AgentRelayIdentity.load_or_create()
+            identity = _load_or_create_relay_identity_secure()
             agent_relay_public_key = _public_key_base64(identity)
         except Exception:
             logger.debug("Could not prepare BurnBar relay identity for pairing", exc_info=True)
             agent_relay_public_key = ""
+    agent_ratchet_prekey_bundle = _agent_ratchet_prekey_bundle() if agent_relay_public_key else None
 
     device_secret = secrets.token_urlsafe(32)
     payload: Dict[str, Any] = {
@@ -2378,12 +3237,18 @@ def interactive_setup() -> None:
         "scopes": ["hermes.gateway.read", "hermes.gateway.write", "hermes.gateway.manage"],
     }
     if agent_relay_public_key:
+        preferred_gateway_relay_version = _preferred_gateway_relay_version()
         payload["agentRelayPublicKey"] = agent_relay_public_key
+        payload["agentRelayKeyVersion"] = RELAY_KEY_VERSION
+        payload["agentRelayEncryption"] = RELAY_ENCRYPTION
         payload["relayKeyVersion"] = RELAY_KEY_VERSION
         payload["relayEncryption"] = RELAY_ENCRYPTION
-        payload["gatewayRelayKeyVersion"] = GATEWAY_RELAY_KEY_VERSION_V3
-        payload["gatewayRelayEncryption"] = GATEWAY_RELAY_ENCRYPTION_V3
-        payload["supportedGatewayRelayKeyVersions"] = list(_SUPPORTED_GATEWAY_RELAY_VERSIONS)
+        payload["gatewayRelayKeyVersion"] = preferred_gateway_relay_version
+        payload["gatewayRelayEncryption"] = _gateway_relay_encryption_for(preferred_gateway_relay_version)
+        payload["supportedGatewayRelayKeyVersions"] = _supported_gateway_relay_versions()
+        payload.update(_gateway_relay_capability_payload())
+        if agent_ratchet_prekey_bundle:
+            payload.update(agent_ratchet_prekey_bundle)
     try:
         with httpx.Client(timeout=30) as client:
             start = client.post(f"{api_base}/device/start", json=payload)
@@ -2424,6 +3289,31 @@ def interactive_setup() -> None:
     peer_relay_key_version = _peer_relay_key_version_from_pairing_grant(approved, client_payload)
     client_id = approved.get("clientId") or client_payload.get("id")
     uid = approved.get("uid") or approved.get("userId")
+    peer_ratchet_identity_public_key = (
+        approved.get("phoneRatchetIdentityPublicKey")
+        or client_payload.get("phoneRatchetIdentityPublicKey")
+        or ""
+    )
+    peer_ratchet_signing_public_key = (
+        approved.get("phoneRatchetSigningPublicKey")
+        or client_payload.get("phoneRatchetSigningPublicKey")
+        or ""
+    )
+    peer_ratchet_signed_prekey_public_key = (
+        approved.get("phoneRatchetSignedPreKeyPublicKey")
+        or client_payload.get("phoneRatchetSignedPreKeyPublicKey")
+        or ""
+    )
+    peer_ratchet_signed_prekey_id = (
+        approved.get("phoneRatchetSignedPreKeyId")
+        or client_payload.get("phoneRatchetSignedPreKeyId")
+        or ""
+    )
+    peer_ratchet_signed_prekey_signature = (
+        approved.get("phoneRatchetSignedPreKeySignature")
+        or client_payload.get("phoneRatchetSignedPreKeySignature")
+        or ""
+    )
     if agent_relay_public_key and relay_capable and peer_relay_public_key:
         if not uid or not client_id:
             print_warning(
@@ -2437,7 +3327,17 @@ def interactive_setup() -> None:
         # persisting the peer key / enabling E2E. An untrusted relay can substitute
         # the phone key at first pin; the human comparing the combined code (a hash
         # of BOTH keys) on the Mac and in BurnBar is what authenticates it.
-        safety_code = _relay_safety_code(agent_relay_public_key, str(peer_relay_public_key))
+        ratchet_safety_keys: list[str] = []
+        if agent_ratchet_prekey_bundle and peer_ratchet_identity_public_key:
+            ratchet_safety_keys = [
+                str(agent_ratchet_prekey_bundle["agentRatchetIdentityPublicKey"]),
+                str(peer_ratchet_identity_public_key),
+            ]
+        safety_code = _relay_safety_code(
+            agent_relay_public_key,
+            str(peer_relay_public_key),
+            extra_public_keys_b64=ratchet_safety_keys,
+        )
         if not safety_code:
             print_warning(
                 "Could not derive the pairing safety code (invalid relay key). "
@@ -2468,6 +3368,16 @@ def interactive_setup() -> None:
         save_env_value(RELAY_PEER_KEY_VERSION_ENV, str(peer_relay_key_version))
         save_env_value("BURNBAR_RELAY_CLIENT_ID", str(client_id))
         save_env_value("BURNBAR_RELAY_UID", str(uid))
+        if ratchet_safety_keys:
+            save_env_value(RATCHET_PEER_IDENTITY_PUBLIC_KEY_ENV, str(peer_ratchet_identity_public_key))
+            if peer_ratchet_signing_public_key:
+                save_env_value(RATCHET_PEER_SIGNING_PUBLIC_KEY_ENV, str(peer_ratchet_signing_public_key))
+            if peer_ratchet_signed_prekey_public_key:
+                save_env_value(RATCHET_PEER_SIGNED_PREKEY_PUBLIC_KEY_ENV, str(peer_ratchet_signed_prekey_public_key))
+            if peer_ratchet_signed_prekey_id:
+                save_env_value(RATCHET_PEER_SIGNED_PREKEY_ID_ENV, str(peer_ratchet_signed_prekey_id))
+            if peer_ratchet_signed_prekey_signature:
+                save_env_value(RATCHET_PEER_SIGNED_PREKEY_SIGNATURE_ENV, str(peer_ratchet_signed_prekey_signature))
         print_success("End-to-end encryption is enabled for this BurnBar link.")
     else:
         save_env_value("BURNBAR_API_BASE_URL", api_base)
@@ -2479,7 +3389,11 @@ def interactive_setup() -> None:
             "the plaintext relay path until BurnBar is upgraded."
         )
     if not get_env_value("BURNBAR_ALLOWED_USERS") and not get_env_value("BURNBAR_ALLOW_ALL_USERS"):
-        save_env_value("BURNBAR_ALLOW_ALL_USERS", "true")
+        print_info(
+            "No BURNBAR_ALLOWED_USERS allowlist is configured. BurnBar setup now leaves "
+            "BURNBAR_ALLOW_ALL_USERS unset; add an explicit allowlist or set "
+            "BURNBAR_ALLOW_ALL_USERS=true yourself only for a deliberately open local gateway."
+        )
     print_success("BurnBar Cloud configuration saved to ~/.hermes/.env")
     print_info("Restart the gateway for changes to take effect: hermes gateway restart")
 
@@ -2508,5 +3422,5 @@ def register(ctx) -> None:
             "mobile-friendly, and explicit about completed actions. Use plain "
             "Markdown that renders cleanly in compact app chat surfaces."
         ),
-        allow_update_command=True,
+        allow_update_command=False,
     )

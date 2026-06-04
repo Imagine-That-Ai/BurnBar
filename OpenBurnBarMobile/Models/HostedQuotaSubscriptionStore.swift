@@ -219,6 +219,15 @@ typealias HostedQuotaProductCatalogFetcher = @MainActor ([String]) async throws 
 typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
 typealias HostedQuotaEntitlementEnvironmentFilter = @MainActor (String?) -> Bool
 
+struct HostedQuotaCurrentEntitlement: Sendable {
+    let productID: String
+    let signedTransactionJWS: String
+    let purchaseDate: Date?
+    let transactionID: UInt64?
+}
+
+typealias HostedQuotaCurrentEntitlementReader = @MainActor () async -> HostedQuotaCurrentEntitlement?
+
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
 ///
 /// Trust model:
@@ -267,6 +276,8 @@ final class HostedQuotaSubscriptionStore {
     private let fetchProducts: HostedQuotaProductCatalogFetcher
     private let isSignedIn: HostedQuotaAuthStateReader
     private let acceptsEntitlementEnvironment: HostedQuotaEntitlementEnvironmentFilter
+    private let currentEntitlementReader: HostedQuotaCurrentEntitlementReader
+    private let observeTransactionUpdates: Bool
 
     private(set) var product: HostedQuotaStoreProduct?
     private(set) var productsByID: [String: HostedQuotaStoreProduct] = [:]
@@ -305,7 +316,10 @@ final class HostedQuotaSubscriptionStore {
         fetchProducts: @escaping HostedQuotaProductCatalogFetcher = HostedQuotaSubscriptionStore.fetchProducts,
         isSignedIn: @escaping HostedQuotaAuthStateReader = { AuthRepository.shared.isSignedIn },
         acceptsEntitlementEnvironment: @escaping HostedQuotaEntitlementEnvironmentFilter =
-            HostedQuotaSubscriptionStore.acceptsCurrentRuntimeEntitlementEnvironment
+            HostedQuotaSubscriptionStore.acceptsCurrentRuntimeEntitlementEnvironment,
+        currentEntitlementReader: @escaping HostedQuotaCurrentEntitlementReader =
+            HostedQuotaSubscriptionStore.currentStoreKitEntitlement,
+        observeTransactionUpdates: Bool = true
     ) {
         self.functions = functions
         self.directReader = directReader
@@ -314,6 +328,8 @@ final class HostedQuotaSubscriptionStore {
         self.fetchProducts = fetchProducts
         self.isSignedIn = isSignedIn
         self.acceptsEntitlementEnvironment = acceptsEntitlementEnvironment
+        self.currentEntitlementReader = currentEntitlementReader
+        self.observeTransactionUpdates = observeTransactionUpdates
     }
 
     deinit {
@@ -324,7 +340,9 @@ final class HostedQuotaSubscriptionStore {
         isLoading = true
         error = nil
         defer { isLoading = false }
-        startObservingTransactionUpdates()
+        if observeTransactionUpdates {
+            startObservingTransactionUpdates()
+        }
         guard isSignedIn() else {
             isActive = false
             activeProductID = nil
@@ -438,7 +456,7 @@ final class HostedQuotaSubscriptionStore {
             if let matchedEntitlement {
                 let response = try await functions.restoreHostedQuotaEntitlement(
                     productID: matchedEntitlement.productID,
-                    signedTransactionJWS: matchedEntitlement.jws
+                    signedTransactionJWS: matchedEntitlement.signedTransactionJWS
                 )
                 apply(response: response)
                 return
@@ -474,7 +492,10 @@ final class HostedQuotaSubscriptionStore {
         }
 
         if let matchedEntitlement = await findCurrentEntitlement() {
-            try await verifyOnServer(jws: matchedEntitlement.jws, productID: matchedEntitlement.productID)
+            try await verifyOnServer(
+                jws: matchedEntitlement.signedTransactionJWS,
+                productID: matchedEntitlement.productID
+            )
             if !isActive {
                 await applyDirectReadIfActive()
             }
@@ -543,7 +564,16 @@ final class HostedQuotaSubscriptionStore {
     /// present locally. As a side-effect, captures `purchaseDate` and
     /// `latestTransactionID` from the matched transaction for display in
     /// the member card.
-    private func findCurrentEntitlement() async -> CurrentEntitlement? {
+    private func findCurrentEntitlement() async -> HostedQuotaCurrentEntitlement? {
+        guard let entitlement = await currentEntitlementReader(),
+              Self.entitlementProductIDs.contains(entitlement.productID)
+        else { return nil }
+        purchaseDate = entitlement.purchaseDate
+        latestTransactionID = entitlement.transactionID
+        return entitlement
+    }
+
+    private static func currentStoreKitEntitlement() async -> HostedQuotaCurrentEntitlement? {
         for await result in Transaction.currentEntitlements {
             do {
                 let transaction = try Self.checked(result)
@@ -552,9 +582,12 @@ final class HostedQuotaSubscriptionStore {
                 if let expires = transaction.expirationDate, expires <= Date() {
                     continue
                 }
-                purchaseDate = transaction.originalPurchaseDate
-                latestTransactionID = transaction.id
-                return CurrentEntitlement(productID: transaction.productID, jws: result.jwsRepresentation)
+                return HostedQuotaCurrentEntitlement(
+                    productID: transaction.productID,
+                    signedTransactionJWS: result.jwsRepresentation,
+                    purchaseDate: transaction.originalPurchaseDate,
+                    transactionID: transaction.id
+                )
             } catch {
                 // Skip unverified entitlements — the server is the
                 // source of truth, but there's no point sending a
@@ -706,11 +739,6 @@ final class HostedQuotaSubscriptionStore {
 
     func subscriptionPlan(for productID: String) -> OpenBurnBarStoreProduct? {
         OpenBurnBarProductCatalog.subscriptions.first(where: { $0.id == productID })
-    }
-
-    private struct CurrentEntitlement {
-        let productID: String
-        let jws: String
     }
 
     private static func purchaseProduct(
