@@ -244,6 +244,7 @@ The play:
 - OpenBurnBar temporarily swaps Cursor's local BYOK token field to a short-lived OpenBurnBar session token while the connector is active, then restores the saved value on disconnect.
 - Routed provider API keys stay in Keychain; client config only receives the local gateway URL and gateway token.
 - Gateway usage shows up as **`OpenBurnBar Gateway`**, and exhausted upstream plans fail over only when the next route proves the same canonical model ID instead of stranding the client on a dead account or silently changing models.
+- The **Route log** button in Settings -> Agents -> CLIs shows each recent proxy request with the requested model, the model/provider/logo OpenBurnBar actually sent upstream, the provider-reported model, status, attempts, and usage metadata.
 
 **v1 upstream provider scope:** `Z.ai`, `MiniMax`, `Ollama Cloud`, `OpenAI`, `Kimi`, `Anthropic`, and `Factory Droid` where configured. Exact model failover may change provider/account, but it will not change `gpt-5.4` into `gpt-5.4-mini`, `gpt-5.4-pro`, a broad family wrapper, or a same-capability-class substitute. Factory Standard exhaustion is treated as exact same-model failover, not silent Droid Core downgrade. **Client targets:** Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code. **Cursor tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared` only for Cursor).
 
@@ -253,7 +254,8 @@ The play:
 2. OpenBurnBar -> **Settings -> Routing pools** and use **Use local defaults**.
 3. Add provider keys/accounts in the matching pool.
 4. Wire Codex, Droid/Factory, Forge, or Claude Code from the **Client apps** rows; use the older Cursor/OpenCode connector controls where those clients need them.
-5. Leave OpenBurnBar and the daemon running while clients chat through the gateway — it's doing real work under the hood.
+5. After a client sends traffic, click **Route log** in the proxy catalog panel to verify the exact slug/provider/model route.
+6. Leave OpenBurnBar and the daemon running while clients chat through the gateway — it's doing real work under the hood.
 
 More detail: [`docs/ROUTED_CLIENT_GATEWAY.md`](docs/ROUTED_CLIENT_GATEWAY.md).
 

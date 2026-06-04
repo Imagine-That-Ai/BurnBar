@@ -28,6 +28,11 @@ enum BurnBarDaemonSocketRPCCoverage {
         .usageRecent
     ]
 
+    static let observability: Set<BurnBarRPCMethod> = [
+        .proxyRouteLogRecent,
+        .proxyRouteLogClear
+    ]
+
     static let tooling: Set<BurnBarRPCMethod> = [
         .connectorPlaneGet,
         .connectorConfigUpdate,
@@ -105,6 +110,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         lifecycle
             .union(config)
             .union(usage)
+            .union(observability)
             .union(tooling)
             .union(computerUse)
             .union(missionControl)
@@ -117,6 +123,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if lifecycle.contains(method) { return "lifecycle" }
         if config.contains(method) { return "config" }
         if usage.contains(method) { return "usage" }
+        if observability.contains(method) { return "observability" }
         if tooling.contains(method) { return "tooling" }
         if computerUse.contains(method) { return "computer_use" }
         if missionControl.contains(method) { return "mission_control" }

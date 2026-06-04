@@ -52,7 +52,7 @@ import {
   publicApprovalView,
   publicClientView,
   randomHermesGatewayUserCode,
-  requireGatewayRelayEnvelope,
+  requireV2GatewayRelayEnvelope,
   safeEqualHex,
   sha256Hex,
   sanitizeHermesGatewayDestinationId,
@@ -285,7 +285,8 @@ function resolveGatewayWriteBody(
   surface: "events" | "messages",
 ): ResolvedGatewayWriteBody {
   if (rawEnvelope != null) {
-    return { relayEnvelope: requireGatewayRelayEnvelope(rawEnvelope, "relayEnvelope") };
+    // MP-28: new sealed message/event writes must be the v2 authenticated wrap.
+    return { relayEnvelope: requireV2GatewayRelayEnvelope(rawEnvelope, "relayEnvelope") };
   }
   const text = typeof rawText === "string" ? rawText.trim() : "";
   if (!text) return {};
@@ -898,7 +899,7 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   // plaintext bytes. byteCount is the CIPHERTEXT length (≈ plaintext + 28B GCM
   // overhead); the stored object is opaque (application/octet-stream).
   const sealedEnvelope =
-    body.relayEnvelope != null ? requireGatewayRelayEnvelope(body.relayEnvelope, "relayEnvelope") : undefined;
+    body.relayEnvelope != null ? requireV2GatewayRelayEnvelope(body.relayEnvelope, "relayEnvelope") : undefined;
   if (!sealedEnvelope && !gatewayPlaintextWriteAllowed(grant.client.relayCapable)) {
     throw new HttpsError(
       "invalid-argument",
@@ -1617,7 +1618,8 @@ export const enqueueHermesGatewayEvent = onCall(
           // to the agent's relay key). The cleartext modelId still rides alongside
           // for routing/optimistic-pending, but no plaintext command is stored and
           // the server does NOT pre-validate against the advertised catalog.
-          sealedBody = { relayEnvelope: requireGatewayRelayEnvelope(request.data.relayEnvelope, "relayEnvelope") };
+          // MP-28: a new sealed model_switch write must be the v2 authenticated wrap.
+          sealedBody = { relayEnvelope: requireV2GatewayRelayEnvelope(request.data.relayEnvelope, "relayEnvelope") };
         }
         // Legacy (grace-window) model_switch: no sealed body. We keep the old
         // plaintext-catalog guard ONLY for these legacy clients so a typo'd model

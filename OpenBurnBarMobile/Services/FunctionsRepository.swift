@@ -540,6 +540,17 @@ extension HermesGatewayApprovalRecord {
     }
 }
 
+/// The sealed gateway message payload schema (MP-27): the agent seals JSON
+/// `{text, actionId?, kind?}`; the phone decodes it (never renders the raw bytes)
+/// and uses `actionId` to bind an approval detail to the right oversight gate
+/// (MP-6). A payload missing `text` is rejected (decode throws → treated as
+/// unopenable) so a malformed sealed body never surfaces as a reply.
+private struct SealedGatewayPayload: Decodable {
+    let text: String
+    let actionId: String?
+    let kind: String?
+}
+
 struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     let id: String
     let clientId: String
@@ -563,6 +574,13 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// Plaintext recovered by opening `payloadCiphertext` in the snapshot handler.
     /// Held in-memory only; never persisted. `nil` until opened.
     var resolvedText: String?
+    /// The `actionId` carried inside a sealed approval-detail payload (MP-27), used
+    /// to bind the decrypted detail to the matching server approval gate (MP-6).
+    /// `nil` for ordinary replies. In-memory only; never persisted.
+    var resolvedActionId: String?
+    /// The optional `kind` discriminator carried inside the sealed payload (e.g.
+    /// "approval"). In-memory only; never persisted.
+    var resolvedKind: String?
     /// Files recovered from `hermes_gateway_attachments`, downloaded from
     /// Storage, opened on this device, and written into the normal chat
     /// attachment workspace. Held in-memory until the chat service persists the
@@ -610,6 +628,8 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
             ?? (data["relayKeyVersion"] as? Int)
         self.resolvedText = nil
+        self.resolvedActionId = nil
+        self.resolvedKind = nil
         self.openedAttachments = []
         self.failedAttachmentIds = []
         self.requiresSealedReply = false
@@ -773,7 +793,16 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
                 keyData: keyData,
                 aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: id)
             )
-            resolved.resolvedText = String(data: plaintext, encoding: .utf8)
+            // MP-27: the agent seals JSON {text, actionId?, kind?}; decode it (never
+            // render the raw bytes, which would show literal `{"text":...}`). A
+            // payload without `text` fails to decode and is treated as unopenable.
+            if let payload = try? JSONDecoder().decode(SealedGatewayPayload.self, from: plaintext) {
+                resolved.resolvedText = payload.text
+                resolved.resolvedActionId = payload.actionId
+                resolved.resolvedKind = payload.kind
+            } else {
+                resolved.resolvedText = nil
+            }
         } catch {
             resolved.resolvedText = nil
         }
@@ -1145,6 +1174,16 @@ protocol HermesGatewayRepository: AnyObject {
     func setHermesGatewayOversightMode(clientId: String, mode: String) async throws
 
     func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws
+
+    /// After a native approval callable succeeds, enqueue a sealed
+    /// ``approval_decision`` event so the Hermes agent applies the choice without
+    /// trusting relay-visible ``/approvals`` poll state.
+    func enqueueHermesGatewayApprovalDecision(
+        approvalId: String,
+        approve: Bool,
+        targetClient: HermesGatewayClientRecord?,
+        targetClientId: String?
+    ) async throws
 }
 
 extension HermesGatewayRepository {
@@ -1928,6 +1967,30 @@ final class FunctionsRepository: HermesGatewayRepository {
             approvalId: approvalId,
             approve: approve,
             deviceId: deviceId
+        )
+    }
+
+    func enqueueHermesGatewayApprovalDecision(
+        approvalId: String,
+        approve: Bool,
+        targetClient: HermesGatewayClientRecord? = nil,
+        targetClientId: String? = nil
+    ) async throws {
+        let choice = approve ? "approve" : "reject"
+        let sealedText = try JSONSerialization.data(withJSONObject: [
+            "kind": "approval_decision",
+            "actionId": approvalId,
+            "choice": choice,
+            "senderId": "burnbar-ios",
+        ])
+        let text = String(data: sealedText, encoding: .utf8) ?? ""
+        _ = try await enqueueHermesGatewayEvent(
+            text: text,
+            destinationId: "burnbar:home",
+            threadId: "burnbar-ios-approval",
+            targetClient: targetClient,
+            targetClientId: targetClientId,
+            senderDisplayName: "OpenBurnBar iPhone"
         )
     }
 

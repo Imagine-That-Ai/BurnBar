@@ -5,6 +5,7 @@ import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import org.json.JSONObject
 
 /**
  * Hermes relay symmetric crypto primitives. Wire-format identical to the
@@ -170,4 +171,123 @@ object HermesRelayCrypto {
     }
 
     fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
+
+    /** Sealed gateway message payload schema (MP-27): `{text, actionId?, kind?}`. */
+    data class HermesGatewaySealedPayload(val text: String, val actionId: String?, val kind: String?)
+
+    /**
+     * Signal-style two-key pairing safety code (MP-1). SHA-256 over BOTH raw X9.63
+     * relay public keys, sorted lexicographically by unsigned byte value so the Mac
+     * and this device derive the IDENTICAL code without agreeing on roles, displayed
+     * as the first 16 digest bytes (>=128 bits) in eight uppercase hex groups.
+     * Byte-identical to the Swift/Python derivation.
+     *
+     * Hashing both keys closes the single-key MITM (a relay substituting the phone
+     * key at first pin would otherwise still match an agent-only code); the 128-bit
+     * width closes the ~2^64 grind on the displayed code.
+     */
+    fun gatewayRelaySafetyCode(agentPublicKeyX963: ByteArray, phonePublicKeyX963: ByteArray): String {
+        val ordered = listOf(agentPublicKeyX963, phonePublicKeyX963)
+            .sortedWith { a, b -> compareUnsignedLex(a, b) }
+        val digest = sha256(ordered[0] + ordered[1])
+        return (0 until 16 step 2).joinToString(" ") { i ->
+            "%02X%02X".format(digest[i].toInt() and 0xFF, digest[i + 1].toInt() and 0xFF)
+        }
+    }
+
+    private fun compareUnsignedLex(a: ByteArray, b: ByteArray): Int {
+        val n = minOf(a.size, b.size)
+        for (i in 0 until n) {
+            val d = (a[i].toInt() and 0xFF) - (b[i].toInt() and 0xFF)
+            if (d != 0) return d
+        }
+        return a.size - b.size
+    }
+
+    /**
+     * Decode a sealed gateway message payload (MP-27). The agent seals JSON
+     * `{text, actionId?, kind?}`; this decodes it (never rendering the raw bytes,
+     * which would surface a literal `{"text":...}`). Throws if `text` is absent, so
+     * a malformed sealed body is treated as unopenable rather than shown.
+     */
+    fun openGatewaySealedPayload(ciphertext: String, keyData: ByteArray, aad: ByteArray): HermesGatewaySealedPayload {
+        val plain = openBase64(ciphertext, keyData, aad)
+        val json = JSONObject(String(plain, Charsets.UTF_8))
+        return HermesGatewaySealedPayload(
+            text = json.getString("text"),
+            actionId = if (json.has("actionId")) json.getString("actionId") else null,
+            kind = if (json.has("kind")) json.getString("kind") else null,
+        )
+    }
+
+    // ------------------------------------------------------------------
+    // Relay key-wrap v3 — RFC 9180 HPKE Auth mode
+    // (DHKEM(P-256, HKDF-SHA256) / HKDF-SHA256 / AES-256-GCM).
+    //
+    // The standards-shaped successor to the v2 `wrapSymmetricKey(...,
+    // senderPrivateKey)` 2-DH wrap. The engine lives in
+    // `HermesRelayCryptoHpkeV3`; these are the base64 wire-envelope wrappers.
+    // v1/v2 stay byte-unchanged and remain the advertised relay capability
+    // until the shared canonical v3 vector lands (see the parity handoff).
+    // ------------------------------------------------------------------
+
+    /** relayKeyVersion for HPKE Auth v3 (== 3). */
+    const val KEY_VERSION_V3 = HermesRelayCryptoHpkeV3.RELAY_KEY_VERSION
+
+    /** relayEncryption marker for HPKE Auth v3. */
+    const val ALGORITHM_V3 = HermesRelayCryptoHpkeV3.RELAY_ENCRYPTION
+
+    /**
+     * The v3 wire envelope as base64 fields: `enc` (HPKE encapsulated key),
+     * `wrappedKey` (HPKE ciphertext over the 32-byte content key), and the
+     * diagnostics-only `senderPublicKey`.
+     */
+    data class RelayKeyWrapV3Wire(val enc: String, val wrappedKey: String, val senderPublicKey: String)
+
+    /**
+     * Seal a 32-byte content key under RFC 9180 HPKE Auth (relayKeyVersion 3)
+     * to [recipientPublicKeyX963], authenticated by the pinned
+     * [senderPrivateKey]. [aad] MUST be the request `keyAAD`. Mirrors the Swift
+     * / Python `seal_key_v3`.
+     */
+    fun wrapSymmetricKeyV3(
+        keyData: ByteArray,
+        recipientPublicKeyX963: ByteArray,
+        senderPrivateKey: java.security.PrivateKey,
+        aad: ByteArray,
+    ): RelayKeyWrapV3Wire {
+        val wrap =
+            HermesRelayCryptoHpkeV3.sealKey(
+                key = keyData,
+                recipientPublicKeyX963 = recipientPublicKeyX963,
+                senderPrivateKey = senderPrivateKey,
+                aad = aad,
+            )
+        return RelayKeyWrapV3Wire(
+            enc = HermesRelayCryptoSupport.base64NoWrap(wrap.enc),
+            wrappedKey = HermesRelayCryptoSupport.base64NoWrap(wrap.wrappedKey),
+            senderPublicKey = HermesRelayCryptoSupport.base64NoWrap(wrap.senderPublicKey),
+        )
+    }
+
+    /**
+     * Open a relayKeyVersion-3 envelope. Binds the **pinned**
+     * [pinnedSenderPublicKeyX963] (NEVER the wire `senderPublicKey` field).
+     * Throws `AEADBadTagException` on a forged sender / wrong recipient / wrong
+     * aad / mutated `enc` or `wrappedKey`. Mirrors `open_key_v3`.
+     */
+    fun unwrapSymmetricKeyV3(
+        encBase64: String,
+        wrappedKeyBase64: String,
+        privateKey: java.security.PrivateKey,
+        pinnedSenderPublicKeyX963: ByteArray,
+        aad: ByteArray,
+    ): ByteArray =
+        HermesRelayCryptoHpkeV3.openKey(
+            enc = HermesRelayCryptoSupport.base64Decode(encBase64),
+            wrappedKey = HermesRelayCryptoSupport.base64Decode(wrappedKeyBase64),
+            recipientPrivateKey = privateKey,
+            pinnedSenderPublicKeyX963 = pinnedSenderPublicKeyX963,
+            aad = aad,
+        )
 }

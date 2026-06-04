@@ -415,6 +415,30 @@ skipped before route attempts.
 This is the same quota-aware path used to avoid a depleted plan while another
 configured plan can still serve the model.
 
+## Route visibility log
+
+Settings -> Agents -> CLIs now includes a **Route log** button in the proxy
+catalog panel. It opens the daemon-backed recent route log so users can inspect
+what happened after a routed client submitted a model ID.
+
+Each entry shows:
+
+- the client-requested model slug and display name;
+- the model slug OpenBurnBar actually sent upstream;
+- the upstream provider name and logo identity used for the route tile;
+- the provider-reported model slug when the upstream response includes one;
+- whether the route was exact, same-model failover, explicit cross-vendor
+  fallback, rejected before upstream, failed, or interrupted;
+- the exact-model invariant result and every attempted provider/account/model;
+- usage totals when the upstream response exposes usage fields.
+
+The log is stored locally by the daemon as `proxy-route-events.jsonl`, capped to
+recent events, readable through `daemon.proxy.route_log.recent`, and clearable
+through `daemon.proxy.route_log.clear`. Route entries intentionally contain
+metadata only: request paths, model/provider/account identifiers, status, usage,
+and sanitized failure text. Prompt bodies, response bodies, API keys, and bearer
+tokens are not written to this log.
+
 ## Streaming relay and accounting truth
 
 The gateway streams upstream responses through to the client chunk-by-chunk

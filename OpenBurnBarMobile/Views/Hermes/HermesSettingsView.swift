@@ -959,6 +959,11 @@ struct HermesSettingsView: View {
 
     private func gatewayApprovalCard(_ approval: HermesGatewayApprovalRecord) -> some View {
         let isResponding = gatewayStore.isRespondingToApproval(approval)
+        // MP-6: the end-to-end-encrypted action detail, bound to this gate by actionId
+        // (the sealed payload's actionId == the agent confirm id), NOT the approval
+        // document id (hga_<hash>) — those differ, so keying by approval.id would never
+        // match and would permanently disable Approve.
+        let sealedDetail = gatewayStore.sealedApprovalDetails[approval.actionId]
         return VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
                 Image(systemName: "hand.raised.fill")
@@ -972,10 +977,21 @@ struct HermesSettingsView: View {
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
                             .lineLimit(1)
                     }
-                    Text(approval.summary.isEmpty ? "Hermes is requesting approval to continue." : approval.summary)
-                        .font(.caption)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // MP-6: show the END-TO-END-ENCRYPTED detail (decrypted on this
+                    // device, bound to this gate by actionId) for the action being
+                    // approved — never a server-supplied free-text summary. Until the
+                    // sealed detail arrives, Approve stays disabled (deny-by-default).
+                    if let sealedDetail, !sealedDetail.isEmpty {
+                        Text(sealedDetail)
+                            .font(.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("Encrypted action details are not available on this device yet. Approve from your Mac, or wait for the secured details to arrive.")
+                            .font(.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -1009,7 +1025,10 @@ struct HermesSettingsView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(MobileTheme.success)
-                .disabled(isResponding)
+                // MP-6: deny-by-default — Approve stays disabled until the matching
+                // sealed detail has been decrypted on this device, so the user always
+                // approves the action they actually saw end-to-end (informed consent).
+                .disabled(isResponding || sealedDetail == nil)
             }
         }
         .padding(12)
@@ -2115,6 +2134,12 @@ final class HermesGatewaySettingsStore {
     private(set) var pendingModelSwitchEvent: HermesGatewayQueuedEvent?
     private(set) var latestReply: HermesGatewayMessageRecord?
     private(set) var approvals: [HermesGatewayApprovalRecord] = []
+    /// MP-6: end-to-end-encrypted approval detail text, keyed by the sealed
+    /// payload's `actionId`, so the phone can bind the decrypted detail to the
+    /// correct oversight gate (informed consent). Populated from opened gateway
+    /// messages whose `kind == "approval"`; the /approvals control-plane record
+    /// itself never carries this text.
+    private(set) var sealedApprovalDetails: [String: String] = [:]
     private(set) var respondingApprovalId: String?
     private(set) var settingOversightClientId: String?
     private(set) var statusNow = Date()
@@ -2264,7 +2289,11 @@ final class HermesGatewaySettingsStore {
             return pinned
         }
         guard let advertised = client.relayPublicKey else { return nil }
-        return HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: advertised)
+        // MP-1: two-key code — the advertised agent key + this device's own relay key.
+        let phoneKey = HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64
+        return HermesGatewayAgentKeyPinStore.safetyCode(
+            agentPublicKeyBase64: advertised, phonePublicKeyBase64: phoneKey
+        )
     }
 
     /// Explicit, user-confirmed re-pair for a client whose private connection now
@@ -2616,6 +2645,14 @@ final class HermesGatewaySettingsStore {
                 approve: approve,
                 deviceId: deviceId
             )
+            if let client = selectedClient, client.canSealToAgent {
+                try await repository.enqueueHermesGatewayApprovalDecision(
+                    approvalId: trimmedApprovalId,
+                    approve: approve,
+                    targetClient: client,
+                    targetClientId: client.id
+                )
+            }
             setNotice(
                 approve ? "Action approved. Hermes will continue." : "Action rejected.",
                 style: approve ? .success : .warning
@@ -2699,6 +2736,19 @@ final class HermesGatewaySettingsStore {
             // genuine reply) — closes the server-injected-plaintext impersonation gap.
             return record.decodedText(using: keypair, uid: uid, pinStore: agentKeyPinStore)
         }
+
+        // MP-6: index the decrypted approval-detail cards by their sealed actionId so
+        // the approval gate can show the right end-to-end-encrypted detail and only
+        // enable Approve once a matching sealed detail has been opened on this device.
+        let approvalDetails: [String: String] = messages.reduce(into: [:]) { acc, record in
+            if record.resolvedKind == "approval", let actionId = record.resolvedActionId,
+               let detail = record.resolvedText, !detail.isEmpty {
+                acc[actionId] = detail
+            }
+        }
+        // handleMessagesSnapshot already runs on the MainActor, so write the keyed
+        // map inline (no redundant Task hop); keyed by the sealed payload's actionId.
+        for (actionId, detail) in approvalDetails { sealedApprovalDetails[actionId] = detail }
 
         if let pendingTestEvent {
             guard let reply = HermesGatewayMessageResolver.newestReply(

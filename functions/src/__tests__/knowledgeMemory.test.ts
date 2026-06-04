@@ -6,8 +6,13 @@ const { PENSIEVE_LIMITS, KNOWLEDGE_VECTOR_DIM, MAX_CHUNK_BYTES, requireSourceKin
 
 describe("Pensieve tier limits", () => {
   it("matches the plan's Pro and Ultra caps", () => {
-    expect(PENSIEVE_LIMITS.pro).toEqual({ sources: 3, chunks: 5_000, bytes: 25 * 1024 * 1024 });
-    expect(PENSIEVE_LIMITS.ultra).toEqual({ sources: 15, chunks: 50_000, bytes: 250 * 1024 * 1024 });
+    expect(PENSIEVE_LIMITS.pro).toEqual({ sources: 10, chunks: 50_000, bytes: 1 * 1024 * 1024 * 1024 });
+    expect(PENSIEVE_LIMITS.ultra).toEqual({ sources: 100, chunks: 500_000, bytes: 10 * 1024 * 1024 * 1024 });
+  });
+
+  it("keeps Ultra at 10× Pro on chunks and storage (public claim)", () => {
+    expect(PENSIEVE_LIMITS.ultra.chunks).toBe(PENSIEVE_LIMITS.pro.chunks * 10);
+    expect(PENSIEVE_LIMITS.ultra.bytes).toBe(PENSIEVE_LIMITS.pro.bytes * 10);
   });
 
   it("Ultra is a strict superset of Pro on every dimension", () => {
