@@ -738,6 +738,27 @@ class _RelaySealer:
             f"peer is on a legacy non-E2E BurnBar build; upgrade BurnBar to {action}"
         )
 
+    def _inbound_plaintext_refusal_reason(self, kind: str) -> str:
+        """Explain why an unsealed inbound ``kind`` is refused (fail-closed, P2-1).
+
+        Mirrors the send-side ``must_seal`` predicate so the receive path is
+        SYMMETRIC with it: once plaintext is forbidden on a link, an untrusted relay
+        cannot DRIVE the agent with an injected plaintext event/control just by
+        advertising an E2E-capable link as "legacy". Re-pairing (or an explicit
+        ``BURNBAR_ALLOW_PLAINTEXT=1`` opt-in) is the only way back to plaintext.
+        """
+        if self._adapter._relay_e2e_enabled:
+            return (
+                f"received a legacy plaintext {kind} on an E2E-paired link; "
+                f"upgrade BurnBar on the sender"
+            )
+        return (
+            f"this agent holds an end-to-end relay identity but the BurnBar link is not "
+            f"E2E-paired; refusing a relay-supplied plaintext {kind} (an untrusted relay "
+            f"must not drive the agent). Re-pair with an E2EE-capable BurnBar, or set "
+            f"BURNBAR_ALLOW_PLAINTEXT=1 to opt into the legacy plaintext relay path."
+        )
+
     def seal_message(
         self,
         *,
@@ -850,13 +871,16 @@ class _RelaySealer:
                 "wrappedKey": raw.get("wrappedKey"),
             }
         if not isinstance(envelope, dict) or not envelope.get("payloadCiphertext"):
-            # Fail-closed: once a link is E2E-paired, a plaintext (unsealed) event
-            # is refused regardless of whether the relay identity loaded. We never
-            # downgrade to plaintext on a paired link.
-            if self._adapter._relay_e2e_enabled:
-                raise _RelayPlaintextRefused(
-                    "received a legacy plaintext event on an E2E-paired link; upgrade BurnBar on the sender"
-                )
+            # Fail-closed: refuse an unsealed (plaintext) event whenever plaintext is
+            # forbidden on this link — the SAME predicate the send path uses
+            # (``must_seal``). That covers BOTH an E2E-paired link AND the MP-5 state
+            # (this agent holds a relay identity but the link is not yet E2E-paired):
+            # an untrusted relay must not DRIVE the agent with an injected plaintext
+            # event just because it advertised the link as "legacy". Only a link with
+            # no relay identity at all (or an explicit BURNBAR_ALLOW_PLAINTEXT=1 opt-in)
+            # still accepts the legacy plaintext path.
+            if self.must_seal:
+                raise _RelayPlaintextRefused(self._inbound_plaintext_refusal_reason("event"))
             return None
         if self._adapter._relay_e2e_config_error:
             raise _RelayPlaintextRefused(self._adapter._relay_e2e_config_error)
@@ -881,9 +905,11 @@ class _RelaySealer:
         """
         envelope = raw.get("relayEnvelope")
         if not isinstance(envelope, dict) or not envelope.get("payloadCiphertext"):
-            if self._adapter._relay_e2e_enabled:
+            # Symmetric with ``must_seal`` (P2-1): refuse an unsealed control event
+            # whenever plaintext is forbidden on this link, not only on a paired link.
+            if self.must_seal:
                 raise _RelayPlaintextRefused(
-                    "received an unsealed model_switch on an E2E-paired link; refusing the control event"
+                    self._inbound_plaintext_refusal_reason("model_switch")
                 )
             return None
         private_key = self._adapter._relay_private_key()
