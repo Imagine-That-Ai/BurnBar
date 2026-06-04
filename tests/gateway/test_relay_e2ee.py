@@ -517,7 +517,14 @@ def test_gateway_model_switch_sealed_by_swift_opens_under_event_aads(gateway_vec
     plaintext = relay_e2ee.open_base64(
         model_switch["payloadCiphertext"], sym, _gw_event_payload_aad(model_switch)
     )
-    assert json.loads(plaintext.decode("utf-8")) == {"modelId": "claude-opus-4-8"}
+    decoded = json.loads(plaintext.decode("utf-8"))
+    assert decoded["modelId"] == "claude-opus-4-8"
+    # Strict E2E schema: a sealed control event now carries an authenticated
+    # destinationId + replayCounter — the exact fields the production open path
+    # (`_handle_burnbar_event`) requires before acting. The Swift vector pins them so
+    # cross-language interop covers the ENFORCED schema, not just the crypto envelope.
+    assert decoded["destinationId"] == "burnbar:home"
+    assert decoded["replayCounter"] == 2
 
 
 def test_gateway_event_unwrap_with_payload_aad_fails_invalid_tag(gateway_vector):

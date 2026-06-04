@@ -1950,6 +1950,107 @@ async def test_mp5_e2e_capable_agent_refuses_plaintext_without_optin(monkeypatch
 
 @requires_relay
 @pytest.mark.asyncio
+async def test_mp5_e2e_capable_agent_refuses_inbound_plaintext_without_optin(monkeypatch, tmp_path):
+    """P2-1: the INBOUND path is symmetric with the send-side ``must_seal``.
+
+    An agent holding a relay identity but not E2E-paired must DROP a relay-supplied
+    plaintext event (the relay could otherwise drive the agent with injected
+    commands), and only process it when the operator explicitly opts into the legacy
+    plaintext path with BURNBAR_ALLOW_PLAINTEXT=1.
+    """
+    monkeypatch.setattr(_burnbar, "CURSOR_FILE", tmp_path / "cursor.json")
+    monkeypatch.setattr(_burnbar, "REPLAY_LEDGER_FILE", tmp_path / "replay.json")
+    monkeypatch.setenv("BURNBAR_RELAY_PRIVATE_KEY", relay_e2ee.generate_private_key().raw_base64())
+    monkeypatch.delenv("BURNBAR_RELAY_E2E", raising=False)
+    monkeypatch.delenv("BURNBAR_ALLOW_PLAINTEXT", raising=False)
+    cfg = PlatformConfig(enabled=True, extra={"access_token": "tok", "home_channel": "burnbar:home"})
+    injected = {"id": "evt_mp5_in", "destinationId": "burnbar:home", "text": "injected by relay"}
+
+    refusing = BurnBarAdapter(cfg)
+    received: list = []
+
+    async def capture(event):
+        received.append(event)
+
+    refusing.handle_message = capture
+    await refusing._handle_burnbar_event(dict(injected))
+    assert received == []  # relay-supplied plaintext was dropped, not executed
+
+    monkeypatch.setenv("BURNBAR_ALLOW_PLAINTEXT", "1")
+    allowing = BurnBarAdapter(cfg)
+    allowed: list = []
+
+    async def capture_allowed(event):
+        allowed.append(event)
+
+    allowing.handle_message = capture_allowed
+    await allowing._handle_burnbar_event(dict(injected))
+    assert len(allowed) == 1  # explicit opt-in still processes the legacy plaintext path
+    assert allowed[0].text == "injected by relay"
+
+
+@requires_relay
+@pytest.mark.asyncio
+async def test_swift_gateway_event_vector_passes_production_open_path(monkeypatch, tmp_path):
+    """#5 closure: the Swift-emitted gateway EVENT vector — now carrying the strict
+    schema (authenticated destinationId + replayCounter) — is ACCEPTED by the FULL
+    production ``_handle_burnbar_event`` path, not merely the direct crypto open.
+
+    Before the schema refresh the same Swift vector was dropped at the destinationId /
+    replayCounter gate, so this is the regression guard proving the cross-language
+    fixture matches the ENFORCED event schema (not just the crypto envelope).
+    """
+    fixture_path = os.path.join(os.path.dirname(__file__), "fixtures", "HermesGatewayWireVector.json")
+    with open(fixture_path, "r", encoding="utf-8") as handle:
+        event = json.load(handle)["event"]
+
+    monkeypatch.setattr(_burnbar, "CURSOR_FILE", tmp_path / "cursor.json")
+    monkeypatch.setattr(_burnbar, "REPLAY_LEDGER_FILE", tmp_path / "replay.json")
+    monkeypatch.delenv("BURNBAR_RELAY_E2E", raising=False)
+    monkeypatch.delenv("BURNBAR_RELAY_PEER_PUBLIC_KEY", raising=False)
+    cfg = PlatformConfig(enabled=True, extra={"access_token": "tok", "home_channel": "burnbar:home"})
+    adapter = BurnBarAdapter(cfg)
+    # Pin the adapter to the vector's identities: agent = recipient, phone = sender.
+    adapter._relay_identity = relay_e2ee.AgentRelayIdentity(
+        relay_e2ee.RelayPrivateKey.from_base64(event["recipientPrivateKey"])
+    )
+    adapter._relay_e2e_enabled = True
+    adapter._relay_e2e_config_error = None
+    adapter._peer_public_key = event["senderPublicKey"]
+    adapter._relay_uid = event["uid"]
+    adapter._relay_client_id = event["clientId"]
+    adapter._relay_uid_pinned = True
+    adapter._relay_client_id_pinned = True
+    adapter._load_replay_ledger(reset=True)
+
+    received: list = []
+
+    async def capture(ev):
+        received.append(ev)
+
+    adapter.handle_message = capture
+    await adapter._handle_burnbar_event({
+        "id": event["eventId"],
+        "destinationId": "burnbar:home",
+        "senderPublicKey": event["senderPublicKey"],
+        "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
+        "relayEnvelope": {
+            "eventId": event["eventId"],
+            "payloadCiphertext": event["payloadCiphertext"],
+            "wrappedKey": event["wrappedKey"],
+            "senderPublicKey": event["senderPublicKey"],
+            "relayEncryption": _burnbar.RELAY_ENCRYPTION,
+            "relayKeyVersion": _burnbar.GATEWAY_RELAY_KEY_VERSION,
+        },
+    })
+    assert len(received) == 1  # accepted by the enforced path, not dropped
+    assert received[0].text == "open the BurnBar gateway"
+    # The authenticated replayCounter (1) advanced the persisted high-water mark.
+    assert adapter._event_replay_high_water == 1
+
+
+@requires_relay
+@pytest.mark.asyncio
 async def test_refuses_v1_wrapped_event_on_e2e_link(monkeypatch, tmp_path):
     """MP-23: a v1 wrap (no sender leg) + omitted relayKeyVersion on an E2E link is
     refused at the v2-only open gate. The library still exposes v1, so this guards
