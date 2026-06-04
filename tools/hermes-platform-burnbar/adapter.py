@@ -340,7 +340,10 @@ async def _init_attachment(
         # needs it for the upload size gate.
         body["relayEnvelope"] = relay_envelope
         body["relayEncryption"] = RELAY_ENCRYPTION
-        body["relayKeyVersion"] = RELAY_KEY_VERSION
+        # MP-10: no top-level relayKeyVersion on a sealed write — the relayEnvelope
+        # carries the authoritative v2 wrap version (server + phone read THAT, never
+        # this body field). The advertised public-key version (1) is a DISTINCT
+        # concept, published only at runtime-status.
         # MP-2: echo the agent's AAD-bound attachment id so the server adopts it
         # (adoptedGatewayDocId) byte-for-byte instead of minting a different id —
         # otherwise the phone rebuilds all three attachment AADs from the server id
@@ -491,7 +494,10 @@ async def _post_message(
         )
         body["relayEnvelope"] = envelope
         body["relayEncryption"] = RELAY_ENCRYPTION
-        body["relayKeyVersion"] = RELAY_KEY_VERSION
+        # MP-10: no top-level relayKeyVersion on a sealed write — the relayEnvelope
+        # carries the authoritative v2 wrap version (server + phone read THAT, never
+        # this body field). The advertised public-key version (1) is a DISTINCT
+        # concept, published only at runtime-status.
         # MP-2: echo the agent's AAD-bound message id so the server adopts it
         # (safeIdentifier) byte-for-byte instead of minting a different id —
         # otherwise the phone rebuilds the message AAD from the server id and the
@@ -1089,8 +1095,10 @@ class BurnBarAdapter(BasePlatformAdapter):
     def _is_event_seen(self, event_id: str) -> bool:
         """Read-only replay check (MP-3): True if this id was already processed.
 
-        Does NOT mutate the cache — recording happens in :meth:`_record_event`
-        only AFTER a successful authenticated open. That ordering is the
+        Does not change cache MEMBERSHIP — on a hit it refreshes recency
+        (``move_to_end``) of an ALREADY-recorded id, but recording a NEW id
+        happens only in :meth:`_record_event`, after a successful authenticated
+        open. That ordering is the
         cache-flush-replay fix: a relay flooding forged-id events with garbage
         ciphertext (all of which fail AEAD) can no longer evict a genuine pending
         id before it is ever authenticated. Idless events are never deduped here
