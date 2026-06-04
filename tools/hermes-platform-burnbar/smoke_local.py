@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import hashlib
 import importlib
+import os
 import json
 import shutil
 import sys
@@ -243,6 +244,37 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
     from gateway.config import Platform, PlatformConfig
     from tools.send_message_tool import _send_to_platform
 
+    # Test isolation: the legacy-path smoke must not read or write the developer's
+    # REAL BurnBar pairing. ~/.hermes/.env carries BURNBAR_RELAY_E2E=1 + a pinned
+    # peer key, so without this the routed standalone-send path correctly SEALS the
+    # attachment (right behavior, but it breaks the legacy plaintext assertions and
+    # makes the run depend on machine state). Sandbox the relay env vars for the run
+    # and stub the env writer so the harness is hermetic.
+    _relay_env_keys = (
+        "BURNBAR_RELAY_E2E",
+        "BURNBAR_RELAY_PEER_PUBLIC_KEY",
+        "BURNBAR_RELAY_PRIVATE_KEY",
+        "BURNBAR_RELAY_UID",
+        "BURNBAR_RELAY_CLIENT_ID",
+    )
+    # A lazy ~/.hermes/.env reload (python-dotenv with override=True) runs later in
+    # the shared-core import path and re-applies the developer's REAL pairing over
+    # anything we set in os.environ. So point HOME at an empty temp dir for the run:
+    # the override then reads a non-existent .env and the legacy path stays legacy.
+    _home_sandbox = tempfile.TemporaryDirectory()
+    _saved_home = os.environ.get("HOME")
+    os.environ["HOME"] = _home_sandbox.name
+    _saved_relay_env = {k: os.environ.get(k) for k in _relay_env_keys}
+    for _k in _relay_env_keys:
+        os.environ.pop(_k, None)
+    try:
+        import hermes_cli.config as _hcfg
+
+        _orig_save_env = getattr(_hcfg, "save_env_value", None)
+        _hcfg.save_env_value = lambda *a, **k: None  # never touch the real ~/.hermes/.env
+    except Exception:
+        _orig_save_env = None
+
     # MP-1: two-key (agent + phone) >=128-bit safety code; MP-22: "" on bad input.
     assert module._relay_safety_code("AQIDBAUGBwg=", "BQYHCAkKCww=") == "87A1 72BA 2694 7DB0 47AB ADB7 E7EE FD69"
     assert module._relay_safety_code("not-base64", "AQIDBAUGBwg=") == ""
@@ -336,6 +368,24 @@ async def run_smoke(hermes_repo: Path) -> dict[str, Any]:
         server.shutdown()
         thread.join(timeout=2)
         cursor_dir.cleanup()
+        # Restore the sandboxed HOME + relay env + the real env writer.
+        if _saved_home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = _saved_home
+        _home_sandbox.cleanup()
+        for _k, _v in _saved_relay_env.items():
+            if _v is None:
+                os.environ.pop(_k, None)
+            else:
+                os.environ[_k] = _v
+        try:
+            if _orig_save_env is not None:
+                import hermes_cli.config as _hcfg2
+
+                _hcfg2.save_env_value = _orig_save_env
+        except Exception:
+            pass
 
 
 def cmd_smoke(args: argparse.Namespace) -> None:
