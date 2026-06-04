@@ -190,10 +190,10 @@ class HermesGatewayV2VectorTest {
         // The same two base64 keys + locked code as the Swift + Python tests, so this
         // asserts byte-for-byte cross-language agreement of the safety-code transform.
         val agent = java.util.Base64.getDecoder().decode(
-            "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4/QEE="
+            "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4/QEE=",
         )
         val phone = java.util.Base64.getDecoder().decode(
-            "QkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYI="
+            "QkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYI=",
         )
         val code = HermesRelayCrypto.gatewayRelaySafetyCode(agent, phone)
         assertEquals("595F D4F3 50B3 70FA 2D8B 6F15 8004 3F80", code)

@@ -223,15 +223,15 @@ class HermesRatchetCryptoTest {
         val envelope =
             HermesRatchetEnvelope(
                 header =
-                    HermesRatchetHeader(
-                        sessionID = "session-alpha",
-                        senderDeviceID = "agent-device",
-                        receiverDeviceID = "phone-device",
-                        ratchetPublicKeyBase64 = initiatorInitial.publicKeyBase64,
-                        previousChainLength = 0,
-                        messageNumber = 0,
-                        epoch = 0,
-                    ),
+                HermesRatchetHeader(
+                    sessionID = "session-alpha",
+                    senderDeviceID = "agent-device",
+                    receiverDeviceID = "phone-device",
+                    ratchetPublicKeyBase64 = initiatorInitial.publicKeyBase64,
+                    previousChainLength = 0,
+                    messageNumber = 0,
+                    epoch = 0,
+                ),
                 ciphertextBase64 = "AAECAwQFBgcICQoLtJG1Ei/8I6FXnVOkbdEygdSRtj69G1Aais9OzfKL9Vhx",
             )
 
@@ -240,7 +240,7 @@ class HermesRatchetCryptoTest {
                 envelope,
                 responder,
                 "gateway-message:session-alpha".toByteArray(Charsets.UTF_8),
-        )
+            )
         assertEquals("hello from python", opened.toString(Charsets.UTF_8))
         assertEquals("yIl48A/RFS5oRS6PiDlDWZt+m8+NNjoV5Mfrpc5+w0s=", responder.receivingChainKeyBase64)
     }
