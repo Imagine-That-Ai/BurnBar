@@ -1174,6 +1174,16 @@ protocol HermesGatewayRepository: AnyObject {
     func setHermesGatewayOversightMode(clientId: String, mode: String) async throws
 
     func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws
+
+    /// After a native approval callable succeeds, enqueue a sealed
+    /// ``approval_decision`` event so the Hermes agent applies the choice without
+    /// trusting relay-visible ``/approvals`` poll state.
+    func enqueueHermesGatewayApprovalDecision(
+        approvalId: String,
+        approve: Bool,
+        targetClient: HermesGatewayClientRecord?,
+        targetClientId: String?
+    ) async throws
 }
 
 extension HermesGatewayRepository {
@@ -1957,6 +1967,30 @@ final class FunctionsRepository: HermesGatewayRepository {
             approvalId: approvalId,
             approve: approve,
             deviceId: deviceId
+        )
+    }
+
+    func enqueueHermesGatewayApprovalDecision(
+        approvalId: String,
+        approve: Bool,
+        targetClient: HermesGatewayClientRecord? = nil,
+        targetClientId: String? = nil
+    ) async throws {
+        let choice = approve ? "approve" : "reject"
+        let sealedText = try JSONSerialization.data(withJSONObject: [
+            "kind": "approval_decision",
+            "actionId": approvalId,
+            "choice": choice,
+            "senderId": "burnbar-ios",
+        ])
+        let text = String(data: sealedText, encoding: .utf8) ?? ""
+        _ = try await enqueueHermesGatewayEvent(
+            text: text,
+            destinationId: "burnbar:home",
+            threadId: "burnbar-ios-approval",
+            targetClient: targetClient,
+            targetClientId: targetClientId,
+            senderDisplayName: "OpenBurnBar iPhone"
         )
     }
 

@@ -2645,6 +2645,14 @@ final class HermesGatewaySettingsStore {
                 approve: approve,
                 deviceId: deviceId
             )
+            if let client = selectedClient, client.canSealToAgent {
+                try await repository.enqueueHermesGatewayApprovalDecision(
+                    approvalId: trimmedApprovalId,
+                    approve: approve,
+                    targetClient: client,
+                    targetClientId: client.id
+                )
+            }
             setNotice(
                 approve ? "Action approved. Hermes will continue." : "Action rejected.",
                 style: approve ? .success : .warning

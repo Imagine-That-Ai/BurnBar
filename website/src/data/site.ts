@@ -67,7 +67,7 @@ export const SITE = {
         productIds: ["com.openburnbar.ultra.monthly", "com.openburnbar.ultra.annual.v2"],
         entitlementId: "burnbar_ultra",
         summary:
-          "Everything in Cloud Pro, plus 10× your private agent memory — 15 sources, 50,000 sealed chunks, and 250 MB your agents can recall.",
+          "Everything in Cloud Pro, plus 10× your private agent memory — 100 sources, 500,000 sealed chunks, and 10 GB your agents can recall.",
         cta: "Choose Ultra",
         allowance: {
           hostedAgentActionsMonthly: 500,

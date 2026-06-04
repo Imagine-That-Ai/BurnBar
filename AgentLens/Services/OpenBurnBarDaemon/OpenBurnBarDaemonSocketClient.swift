@@ -210,6 +210,50 @@ enum OpenBurnBarDaemonSocketClient {
         return result.usage
     }
 
+    static func proxyRouteLog(
+        at socketURL: URL,
+        limit: Int = 50
+    ) throws -> [BurnBarProxyRouteLogEntry] {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarProxyRouteLogRecentResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .proxyRouteLogRecent,
+                params: BurnBarProxyRouteLogRecentRequest(limit: limit)
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+
+        return result.entries
+    }
+
+    @discardableResult
+    static func clearProxyRouteLog(at socketURL: URL) throws -> Bool {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarProxyRouteLogClearResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .proxyRouteLogClear,
+                params: BurnBarProxyRouteLogClearRequest()
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+
+        return result.cleared
+    }
+
     static func runResume(
         _ request: BurnBarRunResumeRequest,
         at socketURL: URL
