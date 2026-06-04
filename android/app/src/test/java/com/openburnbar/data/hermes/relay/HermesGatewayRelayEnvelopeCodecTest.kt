@@ -123,10 +123,10 @@ class HermesGatewayRelayEnvelopeCodecTest {
         assertRejected {
             HermesGatewayRelayEnvelopeCodec.openMessagePayload(
                 envelope =
-                    envelope.copy(
-                        senderPublicKey =
-                            Base64.getEncoder().encodeToString(publicX963(attacker.public)),
-                    ),
+                envelope.copy(
+                    senderPublicKey =
+                    Base64.getEncoder().encodeToString(publicX963(attacker.public)),
+                ),
                 uid = "uid-1",
                 clientId = "client-1",
                 messageId = "m-2",

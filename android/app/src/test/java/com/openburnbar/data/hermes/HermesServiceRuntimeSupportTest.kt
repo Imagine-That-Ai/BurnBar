@@ -42,23 +42,23 @@ class HermesServiceRuntimeSupportTest {
         val support =
             HermesServiceRuntimeSupport(
                 client =
-                    OkHttpClient.Builder()
-                        .addInterceptor(
-                            routeResponses(
-                                "/health" to StubResponse(200, """{"model":"fallback-model"}"""),
-                                "/v1/models" to StubResponse(401, """{"error":"unauthorized"}"""),
-                            ),
-                        )
-                        .build(),
+                OkHttpClient.Builder()
+                    .addInterceptor(
+                        routeResponses(
+                            "/health" to StubResponse(200, """{"model":"fallback-model"}"""),
+                            "/v1/models" to StubResponse(401, """{"error":"unauthorized"}"""),
+                        ),
+                    )
+                    .build(),
                 selectedConnection = { selectedConnection.value },
                 modelState =
-                    HermesRuntimeModelState(
-                        availableModels = MutableStateFlow(emptyList()),
-                        modelOptions = MutableStateFlow(emptyList()),
-                        selectedModelID = MutableStateFlow(null),
-                    ),
+                HermesRuntimeModelState(
+                    availableModels = MutableStateFlow(emptyList()),
+                    modelOptions = MutableStateFlow(emptyList()),
+                    selectedModelID = MutableStateFlow(null),
+                ),
                 probeState =
-                    probeState,
+                probeState,
             )
 
         support.probeSelectedRuntime("http://hermes.test")

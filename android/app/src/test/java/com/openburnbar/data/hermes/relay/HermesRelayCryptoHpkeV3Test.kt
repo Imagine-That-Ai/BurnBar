@@ -295,11 +295,7 @@ class HermesRelayCryptoHpkeV3Test {
 
     // ---- helpers ----
 
-    private fun wrapTo(
-        recipient: java.security.KeyPair,
-        sender: java.security.KeyPair,
-        aad: ByteArray,
-    ): HermesRelayCrypto.RelayKeyWrapV3Wire =
+    private fun wrapTo(recipient: java.security.KeyPair, sender: java.security.KeyPair, aad: ByteArray): HermesRelayCrypto.RelayKeyWrapV3Wire =
         HermesRelayCrypto.wrapSymmetricKeyV3(
             keyData = HermesRelayCrypto.generateSymmetricKey(),
             recipientPublicKeyX963 = publicX963(recipient.public),
@@ -307,12 +303,7 @@ class HermesRelayCryptoHpkeV3Test {
             aad = aad,
         )
 
-    private fun openWith(
-        wrap: HermesRelayCrypto.RelayKeyWrapV3Wire,
-        recipientPrivate: PrivateKey,
-        pinnedSenderPubX963: ByteArray,
-        aad: ByteArray,
-    ): ByteArray =
+    private fun openWith(wrap: HermesRelayCrypto.RelayKeyWrapV3Wire, recipientPrivate: PrivateKey, pinnedSenderPubX963: ByteArray, aad: ByteArray): ByteArray =
         HermesRelayCrypto.unwrapSymmetricKeyV3(
             encBase64 = wrap.enc,
             wrappedKeyBase64 = wrap.wrappedKey,
