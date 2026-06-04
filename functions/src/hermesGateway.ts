@@ -929,7 +929,10 @@ export function negotiateGatewayRelayEnvelopeCapabilities(
     .filter((version) => phone.supportsRelayEnvelopeVersions.includes(version))
     .sort((a, b) => a - b);
   if (!shared.length) {
-    throw new HttpsError("invalid-argument", "No shared Hermes Gateway relay envelope version exists for this pairing.");
+    throw new HttpsError(
+      "invalid-argument",
+      "No shared Hermes Gateway relay envelope version exists for this pairing.",
+    );
   }
   const preferredRelayEnvelopeVersion = Math.max(...shared);
   return {

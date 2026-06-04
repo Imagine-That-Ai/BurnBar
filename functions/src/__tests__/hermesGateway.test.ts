@@ -330,8 +330,9 @@ describe("Hermes Gateway ratchet envelope contract", () => {
         "ratchetEnvelope",
       ),
     ).toThrow(/ratchet/);
-    expect(sanitizeGatewayRatchetEnvelope({ ...ratchetEnvelope(), header: { ...ratchetEnvelope().header, version: 2 } }))
-      .toBeUndefined();
+    expect(
+      sanitizeGatewayRatchetEnvelope({ ...ratchetEnvelope(), header: { ...ratchetEnvelope().header, version: 2 } }),
+    ).toBeUndefined();
     expect(
       sanitizeGatewayRatchetEnvelope({
         ...ratchetEnvelope(),
@@ -526,17 +527,13 @@ describe("sanitizeGatewayRelayEnvelope — strict read-side validation (Codex SA
   });
   it("fails closed (returns undefined) when senderPublicKey is malformed or absent at v2", () => {
     // A v2 envelope whose senderPublicKey is present-but-malformed → unreadable.
-    expect(
-      sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), senderPublicKey: "not base64 !!" }),
-    ).toBeUndefined();
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelope(), senderPublicKey: "not base64 !!" })).toBeUndefined();
     // A v2 envelope missing the now-required hint → unreadable (mirrors require).
     const { senderPublicKey: _omit, ...v2NoSender } = relayEnvelope();
     void _omit;
     expect(sanitizeGatewayRelayEnvelope(v2NoSender)).toBeUndefined();
     // A v1 envelope carrying a present-but-malformed hint also fails closed.
-    expect(
-      sanitizeGatewayRelayEnvelope({ ...relayEnvelopeV1(), senderPublicKey: "not base64 !!" }),
-    ).toBeUndefined();
+    expect(sanitizeGatewayRelayEnvelope({ ...relayEnvelopeV1(), senderPublicKey: "not base64 !!" })).toBeUndefined();
   });
   it("treats a doc with a malformed stored envelope as having no readable envelope", () => {
     // A schema-2 event whose envelope is corrupt must NOT pass the corrupt

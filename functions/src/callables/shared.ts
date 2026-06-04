@@ -379,7 +379,10 @@ function requireCloudVaultAAD(raw: unknown, fieldName: string, expectedAAD?: str
     throw new HttpsError("invalid-argument", `${fieldName} must use the CloudVault aad-v2 context.`);
   }
   if (!/^OpenBurnBar-CloudVault-aad-v2\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[2-9][0-9]*\|[^|]+$/u.test(aad)) {
-    throw new HttpsError("invalid-argument", `${fieldName} must bind uid, collection, document, field, schema version, and purpose.`);
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName} must bind uid, collection, document, field, schema version, and purpose.`,
+    );
   }
   return aad;
 }
@@ -478,8 +481,7 @@ export function requireCloudVaultBlobEnvelope(
     schemaVersion >= 2
       ? requireBoundedNumber(envelope.integrityHashVersion, `${fieldName}.integrityHashVersion`, 1, 100)
       : undefined;
-  const aad =
-    schemaVersion >= 2 ? requireCloudVaultAAD(envelope.aad, `${fieldName}.aad`, expectedAAD) : undefined;
+  const aad = schemaVersion >= 2 ? requireCloudVaultAAD(envelope.aad, `${fieldName}.aad`, expectedAAD) : undefined;
   const sealedBoxBase64 = boundedTrimmedString(
     envelope.sealedBoxBase64,
     `${fieldName}.sealedBoxBase64`,

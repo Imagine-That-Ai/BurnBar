@@ -142,7 +142,13 @@ describe("isSealedEnvelope structural detection", () => {
     expect(isSealedEnvelope(relayEnvelopeV3)).toBe(true);
     // missing wrappedKey → not a complete envelope
     expect(isSealedEnvelope({ relayEncryption: "p256-hkdf-sha256-aesgcm", payloadCiphertext: "x" })).toBe(false);
-    expect(isSealedEnvelope({ relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm", payloadCiphertext: "x", wrappedKey: "y" })).toBe(false);
+    expect(
+      isSealedEnvelope({
+        relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm",
+        payloadCiphertext: "x",
+        wrappedKey: "y",
+      }),
+    ).toBe(false);
     // wrong algorithm constant → not recognized
     expect(isSealedEnvelope({ relayEncryption: "rot13", payloadCiphertext: "x", wrappedKey: "y" })).toBe(false);
   });
