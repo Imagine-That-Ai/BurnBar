@@ -172,7 +172,11 @@ function aesGcmParams(nonce: Uint8Array, aad?: string): AesGcmParams {
 }
 
 function assertCloudVaultAADPart(name: string, value: string): string {
-  if (!value || /[\u0000-\u001f\u007f|]/u.test(value)) {
+  const hasControlOrSeparator = Array.from(value).some((char) => {
+    const codePoint = char.codePointAt(0);
+    return codePoint === undefined || codePoint <= 0x1f || codePoint === 0x7f || char === "|";
+  });
+  if (!value || hasControlOrSeparator) {
     throw new EscrowError("invalid_envelope", `Invalid CloudVault AAD ${name}.`);
   }
   return value;
