@@ -10,6 +10,7 @@ public actor BurnBarDaemonServer {
     let logger: BurnBarDaemonLogger
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
+    let proxyRouteLogStore: BurnBarProxyRouteLogStore
     let clientRegistry: BurnBarClientRegistry
     let runService: BurnBarRunService
     let toolingProxy: BurnBarToolingProxyService
@@ -28,6 +29,7 @@ public actor BurnBarDaemonServer {
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(),
         configStore: BurnBarConfigStore? = nil,
         usageRecorder: BurnBarUsageRecorder? = nil,
+        proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
@@ -42,6 +44,9 @@ public actor BurnBarDaemonServer {
         )
         let resolvedUsageRecorder = usageRecorder ?? BurnBarUsageRecorder(
             logger: BurnBarDaemonLogger(category: "usage-recorder")
+        )
+        let resolvedProxyRouteLogStore = proxyRouteLogStore ?? BurnBarProxyRouteLogStore(
+            logger: BurnBarDaemonLogger(category: "proxy-route-log")
         )
         let resolvedClientRegistry = clientRegistry ?? BurnBarClientRegistry(
             logger: BurnBarDaemonLogger(category: "client-registry")
@@ -59,6 +64,7 @@ public actor BurnBarDaemonServer {
 
         self.configStore = resolvedConfigStore
         self.usageRecorder = resolvedUsageRecorder
+        self.proxyRouteLogStore = resolvedProxyRouteLogStore
         self.clientRegistry = resolvedClientRegistry
         self.runService = resolvedRunService
         self.toolingProxy = BurnBarToolingProxyService(
@@ -169,6 +175,7 @@ public actor BurnBarDaemonServer {
                 configuration: configuration.gateway,
                 configStore: resolvedConfigStore,
                 usageRecorder: resolvedUsageRecorder,
+                proxyRouteLogStore: resolvedProxyRouteLogStore,
                 logger: BurnBarDaemonLogger(category: "http-gateway")
             )
         } else {
@@ -406,6 +413,12 @@ public actor BurnBarDaemonServer {
                 )
             case .usageRecord, .usageRecent:
                 return try await handleUsageRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .proxyRouteLogRecent, .proxyRouteLogClear:
+                return try await handleObservabilityRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

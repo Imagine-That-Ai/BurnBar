@@ -200,6 +200,82 @@ export const disconnectKnowledgeRepo = onCall(
   }),
 );
 
+/** Firestore Timestamp → ISO string (or undefined) for wire-safe responses. */
+function tsToIso(value: unknown): string | undefined {
+  return value instanceof Timestamp ? value.toDate().toISOString() : undefined;
+}
+
+/**
+ * List the caller's connected repos for the console's Sources panel. Returns the
+ * vault-sealed `sealedRepoFullName` (decrypted client-side for display — the
+ * server never holds the cleartext name) plus each source's sync health from its
+ * manifest, so the UI can show "Synced", "Re-sync queued", or "Waiting for your
+ * Mac". Read-only and ungated: a free member simply has no rows.
+ */
+export const listKnowledgeRepos = onCall(
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
+  wrapCallableHandler("listKnowledgeRepos", async (request: CallableRequest) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in to view connected repos.");
+    enforceAuthAndAppCheck(request, uid);
+
+    const reposSnap = await db.collection(`users/${uid}/knowledge_repos`).limit(200).get();
+    const repos = await Promise.all(
+      reposSnap.docs.map(async (repoDoc) => {
+        const sourceSlug = repoDoc.get("sourceSlug");
+        let manifest: FirebaseFirestore.DocumentData | undefined;
+        if (typeof sourceSlug === "string") {
+          const snap = await db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`).get();
+          manifest = snap.exists ? snap.data() : undefined;
+        }
+        return {
+          repoId: repoDoc.id,
+          sealedRepoFullName: repoDoc.get("sealedRepoFullName") ?? null,
+          sourceSlug: typeof sourceSlug === "string" ? sourceSlug : null,
+          installId: repoDoc.get("installId") ?? null,
+          connectedAt: tsToIso(repoDoc.get("connectedAt")) ?? null,
+          chunkCount: Number(manifest?.chunkCount ?? 0),
+          byteCount: Number(manifest?.byteCount ?? 0),
+          lastSyncAt: tsToIso(manifest?.lastSyncAt) ?? null,
+          lastDirtyAt: tsToIso(manifest?.lastDirtyAt) ?? null,
+          needsResync: manifest?.needsResync === true,
+        };
+      }),
+    );
+    // Newest first; rows without connectedAt sort last.
+    repos.sort((a, b) => (b.connectedAt ?? "").localeCompare(a.connectedAt ?? ""));
+    return { ok: true, repos };
+  }),
+);
+
+/**
+ * Manually queue a re-sync of every connected repo: flag each source's manifest
+ * `needsResync` exactly as the GitHub push webhook does, so the member's Mac
+ * daemon re-reads, re-chunks, and re-seals on-device on its next pass. The server
+ * never touches plaintext — this only raises the dirty flag.
+ */
+export const requestKnowledgeResync = onCall(
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
+  wrapCallableHandler("requestKnowledgeResync", async (request: CallableRequest) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in to request a re-sync.");
+    enforceAuthAndAppCheck(request, uid);
+
+    const reposSnap = await db.collection(`users/${uid}/knowledge_repos`).limit(200).get();
+    const now = Timestamp.now();
+    let flagged = 0;
+    for (const repoDoc of reposSnap.docs) {
+      const sourceSlug = repoDoc.get("sourceSlug");
+      if (typeof sourceSlug !== "string") continue;
+      await db
+        .doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`)
+        .set({ needsResync: true, lastDirtyAt: now, schemaVersion: 1 }, { merge: true });
+      flagged += 1;
+    }
+    return { ok: true, flagged };
+  }),
+);
+
 /**
  * Daily drift backstop. Flags manifests whose last sync is older than the
  * staleness window for re-sync by the device. Mirrors wiki-mem0-reconcile's

@@ -251,6 +251,12 @@ enum RoutingClientModelSyncStatus: Sendable, Equatable {
         case .current:
             return "Droid models match BurnBar's live catalog."
         case .stale(let installedModelIDs, let expectedModelIDs):
+            if Set(installedModelIDs) == Set(expectedModelIDs) {
+                // Same model IDs but stale — caused by gateway token rotation.
+                // The sentry will auto-repair; the message explains why without
+                // showing an identical and confusing installed vs. expected diff.
+                return "Droid's BurnBar authentication credential is stale (gateway token rotated). Press Sync models to update."
+            }
             let installed = installedModelIDs.isEmpty ? "none" : installedModelIDs.joined(separator: ", ")
             let expected = expectedModelIDs.isEmpty ? "none" : expectedModelIDs.joined(separator: ", ")
             return "Droid's BurnBar model list is stale. Installed: \(installed). Live now: \(expected). Press Sync models to rewrite Droid from /v1/models."
