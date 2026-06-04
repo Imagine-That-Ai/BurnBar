@@ -182,8 +182,13 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
 
         // --- phone→agent EVENT (sender = phone, recipient = agent) ------------
         let eventSymKey = makeDeterministicSymmetricKey(tweak: 0x11)
+        // Strict E2E event schema (see plugins/platforms/burnbar/SECURITY.md): a sealed
+        // phone→agent event the Python agent will accept MUST carry an authenticated
+        // `destinationId` and a monotonic `replayCounter`/`eventCounter`. Pin that exact
+        // schema in the vector so the cross-language proof matches the enforced open path
+        // (the previous {text,kind}-only payload was rejected by the production adapter).
         let eventPlaintext = Data(
-            #"{"text":"open the BurnBar gateway","kind":"chat"}"#.utf8
+            #"{"text":"open the BurnBar gateway","kind":"chat","destinationId":"burnbar:home","replayCounter":1}"#.utf8
         )
         let gatewayEventAAD = HermesRelayCrypto.gatewayEventAAD(
             uid: uid, clientId: clientId, eventId: eventId
@@ -228,7 +233,11 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
 
         // --- phone→agent model_switch (EVENT AADs, sender = phone) ------------
         let modelSwitchSymKey = makeDeterministicSymmetricKey(tweak: 0x33)
-        let modelSwitchPlaintext = Data(#"{"modelId":"claude-opus-4-8"}"#.utf8)
+        // A sealed model_switch is opened on the SAME enforced event path, so it carries
+        // the strict-schema `destinationId` + `replayCounter` alongside `modelId`.
+        let modelSwitchPlaintext = Data(
+            #"{"modelId":"claude-opus-4-8","destinationId":"burnbar:home","replayCounter":2}"#.utf8
+        )
         let modelSwitchAAD = HermesRelayCrypto.gatewayEventAAD(
             uid: uid, clientId: clientId, eventId: modelSwitchEventId
         )
