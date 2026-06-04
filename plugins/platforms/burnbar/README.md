@@ -71,7 +71,7 @@ From the Hermes repo root:
 ```bash
 # Plugin registration, event mapping, send/typing/attachments, oversight,
 # runtime status + model switch, and the relay seal -> open round-trip.
-scripts/run_tests.sh tests/gateway/test_burnbar_plugin.py tests/gateway/test_relay_e2ee.py
+scripts/run_tests.sh tests/gateway/test_burnbar_plugin.py tests/gateway/test_relay_e2ee.py tests/gateway/test_relay_e2ee_v2.py
 
 # Deterministic smoke against a fake gateway (copies the plugin into a checkout).
 python plugins/platforms/burnbar/smoke_local.py smoke --hermes-repo .
