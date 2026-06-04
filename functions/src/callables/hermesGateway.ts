@@ -38,7 +38,7 @@ import {
   HERMES_GATEWAY_MAX_MESSAGE_TEXT,
   HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_RELAY_ENCRYPTION,
-  HERMES_GATEWAY_RELAY_KEY_VERSION,
+  HERMES_GATEWAY_RELAY_PUBLIC_KEY_VERSION,
   HERMES_GATEWAY_SCHEMA_VERSION,
   isGatewayRelayPublicKeyB64,
   isHermesGatewayClientDoc,
@@ -51,9 +51,13 @@ import {
   publicApprovalView,
   publicClientView,
   randomHermesGatewayUserCode,
-  requireGatewayRelayEnvelope,
+  requireGatewayRatchetEnvelope,
+  requireProductionGatewayRelayEnvelope,
   safeEqualHex,
   sha256Hex,
+  negotiateGatewayRelayEnvelopeCapabilities,
+  sanitizeHermesGatewayApprovalTTL,
+  sanitizeGatewayRelayEnvelopeCapabilities,
   sanitizeHermesGatewayDestinationId,
   sanitizeHermesGatewayModelId,
   sanitizeHermesGatewayModelOptions,
@@ -65,10 +69,12 @@ import {
   serializeHermesGatewayTypingDoc,
   tokenPreview,
   type GatewayRelayEnvelopeDoc,
+  type GatewayRatchetEnvelopeDoc,
   type HermesGatewayApprovalDoc,
   type HermesGatewayAttachmentManifestDoc,
   type HermesGatewayClientDoc,
   type HermesGatewayScope,
+  type HermesGatewayRelayEnvelopeCapabilities,
 } from "../hermesGateway.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 import {
@@ -164,12 +170,42 @@ function baseAttachmentContentType(contentType: string): string {
   return contentType.split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
-function requiredHttpIdentifier(raw: unknown, fieldName: string): string {
-  const value = boundedTrimmedString(raw, fieldName, 160, true);
-  if (!/^[A-Za-z0-9_.:-]+$/u.test(value)) {
+// Canonical id length + charset for gateway HTTP identifiers. attachments/finalize
+// validates `attachmentId` with this exact contract (cap 160, [A-Za-z0-9_.:-]).
+export const HERMES_GATEWAY_HTTP_ID_MAX_LENGTH = 160;
+export const HERMES_GATEWAY_HTTP_ID_PATTERN = /^[A-Za-z0-9_.:-]+$/u;
+
+export function requiredHttpIdentifier(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, HERMES_GATEWAY_HTTP_ID_MAX_LENGTH, true);
+  if (!HERMES_GATEWAY_HTTP_ID_PATTERN.test(value)) {
     throw httpError(400, `invalid_${fieldName}`);
   }
   return value;
+}
+
+/**
+ * Resolve the id a /messages or /attachments/init write should adopt for its
+ * Firestore doc. When the client supplies an id we accept it ONLY if it would
+ * also pass the canonical `requiredHttpIdentifier` contract used by
+ * /attachments/finalize (and the /actions read path) — same ≤160 cap, same
+ * charset. This makes the rules symmetric: an id init adopts is always an id
+ * finalize accepts, closing the asymmetry where `safeIdentifier` (no length cap,
+ * lossy charset coercion) could mint an id finalize would later reject. A
+ * malformed/over-long/absent id falls back to a fresh server-minted token so the
+ * happy path (no client id, the common case) is unchanged.
+ */
+export function adoptedGatewayDocId(rawId: unknown, generateFallback: () => string): string {
+  if (typeof rawId === "string") {
+    const trimmed = rawId.trim();
+    if (
+      trimmed.length > 0 &&
+      trimmed.length <= HERMES_GATEWAY_HTTP_ID_MAX_LENGTH &&
+      HERMES_GATEWAY_HTTP_ID_PATTERN.test(trimmed)
+    ) {
+      return trimmed;
+    }
+  }
+  return generateFallback();
 }
 
 function requestedAttachmentHash(raw: unknown): string | undefined {
@@ -184,6 +220,15 @@ interface ParsedRelayPublicKey {
   publicKey: string;
   keyVersion: number;
   encryption: string;
+}
+
+interface ParsedRatchetPrekeyBundle {
+  identityPublicKey: string;
+  signingPublicKey: string;
+  signedPreKeyPublicKey: string;
+  signedPreKeyId: string;
+  signedPreKeySignature: string;
+  supportsRatchetV1: boolean;
 }
 
 /**
@@ -208,15 +253,12 @@ function parseRelayPublicKey(
   const rawVersion = body[fields.keyVersionField];
   const keyVersion =
     rawVersion == null
-      ? HERMES_GATEWAY_RELAY_KEY_VERSION
+      ? HERMES_GATEWAY_RELAY_PUBLIC_KEY_VERSION
       : typeof rawVersion === "number"
         ? Math.floor(rawVersion)
         : Number(rawVersion);
-  // Only keyVersion 1 crypto exists; a published relay key advertising any other
-  // version is rejected (no v2 wrapper shipped yet). Rotation = future signed
-  // protocol, out of scope for the pin-only TOFU model.
-  if (keyVersion !== HERMES_GATEWAY_RELAY_KEY_VERSION) {
-    throwError(`${fields.keyVersionField} must be ${HERMES_GATEWAY_RELAY_KEY_VERSION}.`);
+  if (keyVersion !== HERMES_GATEWAY_RELAY_PUBLIC_KEY_VERSION) {
+    throwError(`${fields.keyVersionField} must be ${HERMES_GATEWAY_RELAY_PUBLIC_KEY_VERSION}.`);
   }
   const rawEncryption = body[fields.encryptionField];
   const encryption =
@@ -231,8 +273,82 @@ function parseRelayPublicKey(
   return { publicKey, keyVersion, encryption };
 }
 
+function ratchetBundleField(body: Record<string, unknown>, prefix: "agent" | "phone", suffix: string): unknown {
+  const prefixed = `${prefix}Ratchet${suffix}`;
+  const generic = `ratchet${suffix}`;
+  return body[prefixed] ?? body[generic];
+}
+
+function ratchetBundleBoolean(body: Record<string, unknown>, prefix: "agent" | "phone"): boolean | undefined {
+  const raw = body[`${prefix}SupportsRatchetV1`] ?? body.supportsRatchetV1;
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  return raw === true;
+}
+
+function ratchetPrekeyId(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (!value || value.length > 160 || /[\r\n/]/u.test(value)) return undefined;
+  return value;
+}
+
+function ratchetSignature(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (!value || value.length > 1024 || !/^[A-Za-z0-9+/=]+$/u.test(value)) return undefined;
+  try {
+    Buffer.from(value, "base64");
+  } catch {
+    return undefined;
+  }
+  return value;
+}
+
+function parseRatchetPrekeyBundle(
+  body: Record<string, unknown>,
+  prefix: "agent" | "phone",
+  throwError: (message: string) => never,
+): ParsedRatchetPrekeyBundle | undefined {
+  const supports = ratchetBundleBoolean(body, prefix);
+  const rawIdentityPublicKey = ratchetBundleField(body, prefix, "IdentityPublicKey");
+  const rawSigningPublicKey = ratchetBundleField(body, prefix, "SigningPublicKey");
+  const rawSignedPreKeyPublicKey = ratchetBundleField(body, prefix, "SignedPreKeyPublicKey");
+  const rawSignedPreKeyId = ratchetBundleField(body, prefix, "SignedPreKeyId");
+  const rawSignedPreKeySignature = ratchetBundleField(body, prefix, "SignedPreKeySignature");
+  const identityPublicKey = isGatewayRelayPublicKeyB64(rawIdentityPublicKey);
+  const signingPublicKey = isGatewayRelayPublicKeyB64(rawSigningPublicKey);
+  const signedPreKeyPublicKey = isGatewayRelayPublicKeyB64(rawSignedPreKeyPublicKey);
+  const signedPreKeyId = ratchetPrekeyId(rawSignedPreKeyId);
+  const signedPreKeySignature = ratchetSignature(rawSignedPreKeySignature);
+  const rawFieldsPresent =
+    rawIdentityPublicKey !== undefined ||
+    rawSigningPublicKey !== undefined ||
+    rawSignedPreKeyPublicKey !== undefined ||
+    rawSignedPreKeyId !== undefined ||
+    rawSignedPreKeySignature !== undefined;
+  const anyPresent = supports !== undefined || rawFieldsPresent;
+  if (!anyPresent) return undefined;
+  if (supports === false && !rawFieldsPresent) return undefined;
+  if (!identityPublicKey) throwError(`${prefix}RatchetIdentityPublicKey must be a base64 X9.63 P-256 public key.`);
+  if (!signingPublicKey) throwError(`${prefix}RatchetSigningPublicKey must be a base64 X9.63 P-256 public key.`);
+  if (!signedPreKeyPublicKey) {
+    throwError(`${prefix}RatchetSignedPreKeyPublicKey must be a base64 X9.63 P-256 public key.`);
+  }
+  if (!signedPreKeyId) throwError(`${prefix}RatchetSignedPreKeyId must be a non-empty safe identifier.`);
+  if (!signedPreKeySignature) throwError(`${prefix}RatchetSignedPreKeySignature must be base64 within the size cap.`);
+  return {
+    identityPublicKey,
+    signingPublicKey,
+    signedPreKeyPublicKey,
+    signedPreKeyId,
+    signedPreKeySignature,
+    supportsRatchetV1: true,
+  };
+}
+
 interface ResolvedGatewayWriteBody {
   relayEnvelope?: GatewayRelayEnvelopeDoc;
+  ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   legacyText?: string;
 }
 
@@ -247,19 +363,29 @@ interface ResolvedGatewayWriteBody {
  */
 function resolveGatewayWriteBody(
   rawEnvelope: unknown,
+  rawRatchetEnvelope: unknown,
   rawText: unknown,
   client: Pick<HermesGatewayClientDoc, "id" | "relayCapable">,
   surface: "events" | "messages",
 ): ResolvedGatewayWriteBody {
+  if (rawEnvelope != null && rawRatchetEnvelope != null) {
+    throw new HttpsError(
+      "invalid-argument",
+      "ambiguous_ciphertext: provide either relayEnvelope or ratchetEnvelope, not both.",
+    );
+  }
+  if (rawRatchetEnvelope != null) {
+    return { ratchetEnvelope: requireGatewayRatchetEnvelope(rawRatchetEnvelope, "ratchetEnvelope") };
+  }
   if (rawEnvelope != null) {
-    return { relayEnvelope: requireGatewayRelayEnvelope(rawEnvelope, "relayEnvelope") };
+    return { relayEnvelope: requireProductionGatewayRelayEnvelope(rawEnvelope, "relayEnvelope") };
   }
   const text = typeof rawText === "string" ? rawText.trim() : "";
   if (!text) return {};
   if (!gatewayPlaintextWriteAllowed(client.relayCapable)) {
     throw new HttpsError(
       "invalid-argument",
-      "ciphertext_required: a relayEnvelope is required for Hermes Gateway message bodies.",
+      "ciphertext_required: a relayEnvelope or ratchetEnvelope is required for Hermes Gateway message bodies.",
     );
   }
   logInfo({
@@ -493,6 +619,14 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
   if (!agentRelay && !gatewayPlaintextWriteAllowed(false)) {
     throw httpError(400, "unsealed_pairing_unsupported");
   }
+  const agentCapabilities = agentRelay
+    ? sanitizeGatewayRelayEnvelopeCapabilities(body, (message) => {
+        throw httpError(400, "invalid_agent_relay_capabilities", message);
+      })
+    : undefined;
+  const agentRatchet = parseRatchetPrekeyBundle(body, "agent", (message) => {
+    throw httpError(400, "invalid_agent_ratchet_prekey", message);
+  });
 
   await db.doc(`hermes_gateway_device_sessions/${deviceCode}`).set(
     stripUndefinedObject({
@@ -505,6 +639,17 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
       agentRelayPublicKey: agentRelay?.publicKey,
       agentRelayKeyVersion: agentRelay?.keyVersion,
       agentRelayEncryption: agentRelay?.encryption,
+      agentSupportsRelayEnvelopeVersions: agentCapabilities?.supportsRelayEnvelopeVersions,
+      agentPreferredRelayEnvelopeVersion: agentCapabilities?.preferredRelayEnvelopeVersion,
+      agentSupportsHpkeV3: agentCapabilities?.supportsHpkeV3,
+      agentPlatform: agentCapabilities?.platform,
+      agentAppBuild: agentCapabilities?.appBuild,
+      agentRatchetIdentityPublicKey: agentRatchet?.identityPublicKey,
+      agentRatchetSigningPublicKey: agentRatchet?.signingPublicKey,
+      agentRatchetSignedPreKeyPublicKey: agentRatchet?.signedPreKeyPublicKey,
+      agentRatchetSignedPreKeyId: agentRatchet?.signedPreKeyId,
+      agentRatchetSignedPreKeySignature: agentRatchet?.signedPreKeySignature,
+      agentSupportsRatchetV1: agentRatchet?.supportsRatchetV1,
       createdAt: now,
       updatedAt: now,
       expiresAt,
@@ -552,23 +697,43 @@ async function handleDevicePoll(req: HttpRequest, res: HttpResponse): Promise<vo
   if (data.status === "approved") {
     const accessToken = typeof data.accessToken === "string" ? data.accessToken : undefined;
     if (!accessToken) throw httpError(500, "missing_access_token");
+    const uid = typeof data.uid === "string" ? data.uid : undefined;
+    const clientId = typeof data.clientId === "string" ? data.clientId : undefined;
+    if (!uid || !clientId) throw httpError(500, "missing_pairing_identity");
+    const clientSnap = await db.doc(`users/${uid}/hermes_gateway_clients/${clientId}`).get();
+    const rawClient = clientSnap.data();
+    const clientDoc = isHermesGatewayClientDoc(rawClient) ? rawClient : undefined;
+    if (!clientDoc) throw httpError(500, "missing_gateway_client");
+    const clientView = publicClientView(clientDoc);
     sendJSON(
       res,
       200,
       stripUndefinedObject({
         status: "approved",
+        uid,
+        userId: uid,
+        clientId,
         accessToken,
         tokenType: "Bearer",
         scopes: Array.isArray(data.scopes) ? data.scopes : [],
-        clientId: typeof data.clientId === "string" ? data.clientId : undefined,
-        homeDestinationId:
-          typeof data.homeDestinationId === "string" ? data.homeDestinationId : HERMES_GATEWAY_DEFAULT_DESTINATION_ID,
-        relayCapable: data.relayCapable === true,
+        client: clientView,
+        homeDestinationId: clientDoc.homeDestinationId,
+        relayCapable: clientDoc.relayCapable === true,
         // The phone's relay public key (copied onto the session by the approve
         // callable) so the agent can wrap its first reply body to the phone.
-        phoneRelayPublicKey: typeof data.phoneRelayPublicKey === "string" ? data.phoneRelayPublicKey : undefined,
-        phoneRelayKeyVersion: typeof data.phoneRelayKeyVersion === "number" ? data.phoneRelayKeyVersion : undefined,
-        phoneRelayEncryption: typeof data.phoneRelayEncryption === "string" ? data.phoneRelayEncryption : undefined,
+        phoneRelayPublicKey: clientDoc.phoneRelayPublicKey,
+        phoneRelayKeyVersion: clientDoc.phoneRelayKeyVersion,
+        phoneRelayEncryption: clientDoc.phoneRelayEncryption,
+        phoneSupportsRelayEnvelopeVersions: clientDoc.phoneSupportsRelayEnvelopeVersions,
+        phonePreferredRelayEnvelopeVersion: clientDoc.phonePreferredRelayEnvelopeVersion,
+        phoneSupportsHpkeV3: clientDoc.phoneSupportsHpkeV3,
+        phoneRatchetIdentityPublicKey: clientDoc.phoneRatchetIdentityPublicKey,
+        phoneRatchetSigningPublicKey: clientDoc.phoneRatchetSigningPublicKey,
+        phoneRatchetSignedPreKeyPublicKey: clientDoc.phoneRatchetSignedPreKeyPublicKey,
+        phoneRatchetSignedPreKeyId: clientDoc.phoneRatchetSignedPreKeyId,
+        phoneRatchetSignedPreKeySignature: clientDoc.phoneRatchetSignedPreKeySignature,
+        phoneSupportsRatchetV1: clientDoc.phoneSupportsRatchetV1,
+        supportsRatchetV1: clientDoc.supportsRatchetV1,
       }),
     );
     await ref.delete();
@@ -648,9 +813,9 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
   // The agent seals its reply body (the message text) to the phone's relay key
   // BEFORE this call; the server only forwards the opaque envelope. Plaintext
   // `text` is rejected on every new write.
-  const sealed = resolveGatewayWriteBody(body.relayEnvelope, body.text, grant.client, "messages");
+  const sealed = resolveGatewayWriteBody(body.relayEnvelope, body.ratchetEnvelope, body.text, grant.client, "messages");
   const attachmentsOnly = attachmentIds.length > 0;
-  if (!sealed.relayEnvelope && !sealed.legacyText && !attachmentsOnly) {
+  if (!sealed.relayEnvelope && !sealed.ratchetEnvelope && !sealed.legacyText && !attachmentsOnly) {
     throw httpError(400, "empty_message");
   }
   await requireUploadedGatewayAttachments({ uid: grant.uid, clientId: grant.client.id, destinationId, attachmentIds });
@@ -670,12 +835,32 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
       : undefined,
     // Sealed body for schema 2+; plaintext text is never accepted for new writes.
     relayEnvelope: sealed.relayEnvelope,
+    ratchetEnvelope: sealed.ratchetEnvelope,
     text: sealed.legacyText,
     attachmentIds,
     createdAt: now,
     schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
   });
-  await db.doc(`users/${grant.uid}/hermes_gateway_messages/${id}`).set(doc, { merge: false });
+  // Create-if-absent, same hardening as attachments/init: a blind
+  // `set(merge:false)` would let a re-send of the same messageId clobber an
+  // already-stored sealed message. We keep `safeIdentifier` (not the stricter
+  // adoptedGatewayDocId) for the id here ON PURPOSE: the agent derives messageId
+  // as token_hex(16) and BINDS it into the sealed body's AES-GCM AAD
+  // (gatewayMessage/gatewayMessageKey). The phone re-derives that AAD from the
+  // stored `id` to open the body — so the server must echo the client's id
+  // byte-for-byte. token_hex(16) is already lowercase-hex, so safeIdentifier is a
+  // pass-through for the real client; swapping the resolver risks perturbing an
+  // AAD-bound value, and unlike attachments there is no stricter finalize
+  // validator to stay symmetric with. The transaction below still closes the
+  // clobber half of the finding.
+  const messageRef = db.doc(`users/${grant.uid}/hermes_gateway_messages/${id}`);
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(messageRef);
+    if (existing.exists) {
+      throw httpError(409, "message_already_sent");
+    }
+    tx.set(messageRef, doc);
+  });
   logInfo({ event: "hermes_gateway.message_sent", client_id: grant.client.id, message_id: id });
   sendJSON(res, 200, { message: doc });
 }
@@ -711,8 +896,9 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   // first pairing (trust-on-first-use). Once a key is pinned on the client doc it
   // is IMMUTABLE: a /runtime request can never overwrite it. A bearer token alone
   // must not be able to swap the pinned relay key — that would let the server (or
-  // any token holder) substitute its own key and MITM the sealed channel. Signed
-  // key rotation is a deferred follow-up; until then we PIN-only.
+  // any token holder) substitute its own key and MITM the sealed channel. Rotation
+  // is explicit re-pair only: no relay-supplied update, signed or unsigned, can
+  // change a pin in place.
   const agentRelay = parseRelayPublicKey(
     body,
     {
@@ -732,13 +918,37 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   // security event so the substitution attempt is auditable. A re-publish of the
   // SAME pinned key is a harmless no-op (no write needed, no alert).
   let agentRelayKeyWrite: ParsedRelayPublicKey | undefined;
+  let agentCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined;
   if (agentRelay) {
     if (!pinnedAgentKey) {
       agentRelayKeyWrite = agentRelay;
+      agentCapabilities = sanitizeGatewayRelayEnvelopeCapabilities(body);
+    } else if (agentRelay.publicKey === pinnedAgentKey) {
+      agentCapabilities = sanitizeGatewayRelayEnvelopeCapabilities(body);
     } else if (agentRelay.publicKey !== pinnedAgentKey) {
       logInfo({
         event: "hermes_gateway.relay_key_change_rejected",
         reason: "agent_relay_public_key_immutable",
+        client_id: grant.client.id,
+        user_id_hash: grant.uid.slice(0, 8),
+      });
+    }
+  }
+  const requestedAgentRatchet = parseRatchetPrekeyBundle(body, "agent", (message) => {
+    throw new HttpsError("invalid-argument", message);
+  });
+  const pinnedAgentRatchetIdentity =
+    typeof grant.client.agentRatchetIdentityPublicKey === "string"
+      ? grant.client.agentRatchetIdentityPublicKey
+      : undefined;
+  let agentRatchetWrite: ParsedRatchetPrekeyBundle | undefined;
+  if (requestedAgentRatchet) {
+    if (!pinnedAgentRatchetIdentity || requestedAgentRatchet.identityPublicKey === pinnedAgentRatchetIdentity) {
+      agentRatchetWrite = requestedAgentRatchet;
+    } else {
+      logInfo({
+        event: "hermes_gateway.ratchet_identity_change_rejected",
+        reason: "agent_ratchet_identity_immutable",
         client_id: grant.client.id,
         user_id_hash: grant.uid.slice(0, 8),
       });
@@ -755,6 +965,22 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   const phoneKeyOnRecord = typeof grant.client.phoneRelayPublicKey === "string";
   const agentKeyOnRecord = pinnedAgentKey !== undefined || agentRelayKeyWrite != null;
   const relayCapable = agentKeyOnRecord && phoneKeyOnRecord ? true : undefined;
+  const phoneCapabilities = phoneKeyOnRecord
+    ? sanitizeGatewayRelayEnvelopeCapabilities({
+        supportsRelayEnvelopeVersions: grant.client.phoneSupportsRelayEnvelopeVersions,
+        preferredRelayEnvelopeVersion: grant.client.phonePreferredRelayEnvelopeVersion,
+        supportsHpkeV3: grant.client.phoneSupportsHpkeV3,
+        clientPlatform: grant.client.phonePlatform,
+        clientAppBuild: grant.client.phoneAppBuild,
+      })
+    : undefined;
+  const negotiatedCapabilities =
+    agentCapabilities && phoneCapabilities
+      ? negotiateGatewayRelayEnvelopeCapabilities(agentCapabilities, phoneCapabilities)
+      : undefined;
+  const agentRatchetOnRecord = pinnedAgentRatchetIdentity !== undefined || agentRatchetWrite != null;
+  const phoneRatchetOnRecord = grant.client.phoneSupportsRatchetV1 === true;
+  const supportsRatchetV1 = agentRatchetOnRecord && phoneRatchetOnRecord ? true : undefined;
   await db.doc(`users/${grant.uid}/hermes_gateway_clients/${grant.client.id}`).set(
     stripUndefinedObject({
       runtimeModelId,
@@ -766,6 +992,21 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
       agentRelayPublicKey: agentRelayKeyWrite?.publicKey,
       agentRelayKeyVersion: agentRelayKeyWrite?.keyVersion,
       agentRelayEncryption: agentRelayKeyWrite?.encryption,
+      agentSupportsRelayEnvelopeVersions: agentCapabilities?.supportsRelayEnvelopeVersions,
+      agentPreferredRelayEnvelopeVersion: agentCapabilities?.preferredRelayEnvelopeVersion,
+      agentSupportsHpkeV3: agentCapabilities?.supportsHpkeV3,
+      agentPlatform: agentCapabilities?.platform,
+      agentAppBuild: agentCapabilities?.appBuild,
+      supportsRelayEnvelopeVersions: negotiatedCapabilities?.supportsRelayEnvelopeVersions,
+      preferredRelayEnvelopeVersion: negotiatedCapabilities?.preferredRelayEnvelopeVersion,
+      supportsHpkeV3: negotiatedCapabilities?.supportsHpkeV3,
+      agentRatchetIdentityPublicKey: agentRatchetWrite?.identityPublicKey,
+      agentRatchetSigningPublicKey: agentRatchetWrite?.signingPublicKey,
+      agentRatchetSignedPreKeyPublicKey: agentRatchetWrite?.signedPreKeyPublicKey,
+      agentRatchetSignedPreKeyId: agentRatchetWrite?.signedPreKeyId,
+      agentRatchetSignedPreKeySignature: agentRatchetWrite?.signedPreKeySignature,
+      agentSupportsRatchetV1: agentRatchetWrite?.supportsRatchetV1,
+      supportsRatchetV1,
       relayCapable,
       runtimeUpdatedAt: now,
       lastSeenAt: now,
@@ -839,23 +1080,31 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   const body = requestBody(req);
-  // Sealed attachments (schema 2+): the agent seals the BYTES with a per-
-  // attachment key before uploading, and seals {fileName,byteCount,contentType}
-  // into relayEnvelope.payloadCiphertext with the body key wrapped to the phone
-  // in relayEnvelope.wrappedKey. The server never sees the plaintext name or the
-  // plaintext bytes. byteCount is the CIPHERTEXT length (≈ plaintext + 28B GCM
-  // overhead); the stored object is opaque (application/octet-stream).
-  const sealedEnvelope =
-    body.relayEnvelope != null ? requireGatewayRelayEnvelope(body.relayEnvelope, "relayEnvelope") : undefined;
-  if (!sealedEnvelope && !gatewayPlaintextWriteAllowed(grant.client.relayCapable)) {
+  // Sealed attachments (schema 2+): the agent seals the BYTES before uploading,
+  // and seals {fileName,byteCount,contentType} into either relayEnvelope or the
+  // Phase 6 ratchetEnvelope. The server never sees the plaintext name or bytes.
+  // byteCount is the CIPHERTEXT length (≈ plaintext + 28B GCM overhead); the
+  // stored object is opaque (application/octet-stream).
+  if (body.relayEnvelope != null && body.ratchetEnvelope != null) {
     throw new HttpsError(
       "invalid-argument",
-      "ciphertext_required: a relayEnvelope (with the sealed fileName) is required for Hermes Gateway attachments.",
+      "ambiguous_ciphertext: provide either relayEnvelope or ratchetEnvelope, not both.",
+    );
+  }
+  const sealedEnvelope =
+    body.relayEnvelope != null ? requireProductionGatewayRelayEnvelope(body.relayEnvelope, "relayEnvelope") : undefined;
+  const ratchetEnvelope =
+    body.ratchetEnvelope != null ? requireGatewayRatchetEnvelope(body.ratchetEnvelope, "ratchetEnvelope") : undefined;
+  const sealed = sealedEnvelope != null || ratchetEnvelope != null;
+  if (!sealed && !gatewayPlaintextWriteAllowed(grant.client.relayCapable)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "ciphertext_required: a relayEnvelope or ratchetEnvelope (with the sealed fileName) is required for Hermes Gateway attachments.",
     );
   }
   // Plaintext fileName is never accepted for new writes; the name lives inside
   // the envelope and is never stored cleartext.
-  const legacyFileName = sealedEnvelope
+  const legacyFileName = sealed
     ? undefined
     : boundedTrimmedString(body.fileName, "fileName", 255, true).replace(/[\\/]/g, "-");
   if (legacyFileName !== undefined) {
@@ -863,10 +1112,10 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   }
   // Declared content type: opaque ciphertext on the sealed path, the real type on
   // the legacy path (where it is still validated against the unsafe-type list).
-  const declaredContentType = sealedEnvelope
+  const declaredContentType = sealed
     ? "application/octet-stream"
     : boundedTrimmedString(body.contentType, "contentType", 128, true);
-  if (!sealedEnvelope) {
+  if (!sealed) {
     assertSafeAttachmentContentType(declaredContentType);
   }
   const byteCount = typeof body.byteCount === "number" ? body.byteCount : Number(body.byteCount);
@@ -874,7 +1123,10 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
     throw httpError(400, "invalid_byte_count");
   }
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
-  const attachmentId = safeIdentifier(body.attachmentId, `att_${randomBytes(8).toString("hex")}`);
+  // Adopt a client-supplied attachmentId only when it ALSO passes the canonical
+  // finalize contract (≤160, [A-Za-z0-9_.:-]); otherwise mint a fresh token. This
+  // keeps init↔finalize symmetric (no id init accepts that finalize would reject).
+  const attachmentId = adoptedGatewayDocId(body.attachmentId, () => `att_${randomBytes(8).toString("hex")}`);
   // The storage object name carries NO fileName segment — the file name is
   // private and never appears in a path the server (or a Storage listing) sees.
   const storagePath = `users/${grant.uid}/hermes_gateway_attachments/${grant.client.id}/${attachmentId}`;
@@ -892,6 +1144,7 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
     destinationId,
     fileName: legacyFileName,
     relayEnvelope: sealedEnvelope,
+    ratchetEnvelope,
     contentType: declaredContentType,
     byteCount,
     storagePath,
@@ -900,7 +1153,19 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
     expiresAt: expiresAt.toISOString(),
     schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
   });
-  await db.doc(`users/${grant.uid}/hermes_gateway_attachments/${attachmentId}`).set(manifest, { merge: false });
+  // Create-if-absent: a blind `set(merge:false)` would re-mint a fresh signed
+  // upload URL over an already-initialized attachment doc. Adopting an id is now a
+  // create — a re-init of an existing id (malicious or buggy) is rejected (409)
+  // rather than clobbering the prior manifest. The agent's 128-bit token_hex makes
+  // an honest collision negligible.
+  const attachmentRef = db.doc(`users/${grant.uid}/hermes_gateway_attachments/${attachmentId}`);
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(attachmentRef);
+    if (existing.exists) {
+      throw httpError(409, "attachment_already_initialized");
+    }
+    tx.set(attachmentRef, manifest);
+  });
   sendJSON(res, 200, { attachment: manifest, uploadURL, maxBytes: HERMES_GATEWAY_MAX_ATTACHMENT_BYTES });
 }
 
@@ -957,7 +1222,7 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
   if (!exists) {
     throw httpError(404, "attachment_object_missing");
   }
-  const sealed = manifest.relayEnvelope != null;
+  const sealed = manifest.relayEnvelope != null || manifest.ratchetEnvelope != null;
   const [metadata] = await file.getMetadata();
   const observedByteCount = Number(metadata.size);
   const observedContentType = typeof metadata.contentType === "string" ? metadata.contentType : "";
@@ -965,10 +1230,10 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
     await ref.set({ status: "rejected", updatedAt: nowISO() }, { merge: true });
     throw httpError(400, "attachment_size_mismatch");
   }
-  // For a sealed upload the bytes are AES-GCM ciphertext: the real media type is
-  // sealed inside relayEnvelope and the stored object is opaque, so the server
-  // neither matches nor safety-sniffs the content type (the sha256 below is the
-  // integrity gate on the ciphertext). Legacy plaintext uploads still validate.
+  // For a sealed upload the bytes are ciphertext: the real media type is sealed
+  // inside relayEnvelope/ratchetEnvelope and the stored object is opaque, so the
+  // server neither matches nor safety-sniffs the content type (the sha256 below
+  // is the integrity gate on the ciphertext). Legacy plaintext uploads validate.
   if (!sealed) {
     await assertLegacyAttachmentContentType(ref, manifest.contentType, observedContentType);
   }
@@ -1027,6 +1292,7 @@ async function handleArmApproval(req: HttpRequest, res: HttpResponse): Promise<v
   // can reintroduce server-readable private text on the sealed gateway.
   const summary = toolName ? `Approve ${toolName} action` : "Approve agent action";
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
+  const ttlMillis = sanitizeHermesGatewayApprovalTTL(body.expiresInSeconds);
   const approvalId = gatewayApprovalDocId(grant.client.id, actionId);
   const ref = db.doc(`users/${grant.uid}/hermes_gateway_approvals/${approvalId}`);
   const now = Date.now();
@@ -1049,7 +1315,7 @@ async function handleArmApproval(req: HttpRequest, res: HttpResponse): Promise<v
     summary,
     status: "waiting_for_approval",
     requestedAt: nowIso,
-    expiresAt: gatewayApprovalExpiryISO(now),
+    expiresAt: gatewayApprovalExpiryISO(now, ttlMillis),
     schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
   };
   await ref.set(stripUndefinedObject(doc), { merge: false });
@@ -1098,6 +1364,48 @@ async function handleListApprovals(req: HttpRequest, res: HttpResponse): Promise
   sendJSON(res, 200, { approvals });
 }
 
+/**
+ * Inner request dispatcher for the Hermes Gateway HTTP API. Pure
+ * `(req, res) => Promise<void>` with no onRequest/CORS plumbing, so it is the
+ * exact path production runs AND the seam tests drive directly (the wrapped
+ * `burnBarHermesGateway` only adds CORS/trace middleware around this).
+ */
+export async function dispatchHermesGatewayRequest(req: HttpRequest, res: HttpResponse): Promise<void> {
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+  try {
+    const path = gatewayPath(req);
+    if (path === "/device/start") return await handleDeviceStart(req, res);
+    if (path === "/device/poll") return await handleDevicePoll(req, res);
+    if (path === "/destinations") return await handleDestinations(req, res);
+    if (path === "/events") return await handleEvents(req, res);
+    if (path === "/messages") return await handleMessageSend(req, res);
+    if (path === "/typing") return await handleTyping(req, res);
+    if (path === "/runtime") return await handleRuntimeStatus(req, res);
+    if (path === "/state") return await handleGatewayState(req, res);
+    if (path === "/approvals") {
+      return req.method === "GET" ? await handleListApprovals(req, res) : await handleArmApproval(req, res);
+    }
+    if (path === "/attachments/init") return await handleAttachmentInit(req, res);
+    if (path === "/attachments/finalize") return await handleAttachmentFinalize(req, res);
+    sendJSON(res, 404, { error: "not_found" });
+  } catch (err) {
+    if (isGatewayHttpError(err)) {
+      sendJSON(res, err.status, stripUndefinedObject({ error: err.error, detail: err.detail }));
+      return;
+    }
+    if (err instanceof HttpsError) {
+      const status = err.code === "invalid-argument" ? 400 : err.code === "permission-denied" ? 403 : 500;
+      sendJSON(res, status, { error: err.code, detail: err.message });
+      return;
+    }
+    logError({ event: "hermes_gateway.http_failed", error: String(err) });
+    sendJSON(res, 500, { error: "internal" });
+  }
+}
+
 export const burnBarHermesGateway = onRequest(
   {
     region: FUNCTIONS_REGION,
@@ -1106,39 +1414,7 @@ export const burnBarHermesGateway = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res): Promise<void> => {
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
-    try {
-      const path = gatewayPath(req);
-      if (path === "/device/start") return await handleDeviceStart(req, res);
-      if (path === "/device/poll") return await handleDevicePoll(req, res);
-      if (path === "/destinations") return await handleDestinations(req, res);
-      if (path === "/events") return await handleEvents(req, res);
-      if (path === "/messages") return await handleMessageSend(req, res);
-      if (path === "/typing") return await handleTyping(req, res);
-      if (path === "/runtime") return await handleRuntimeStatus(req, res);
-      if (path === "/state") return await handleGatewayState(req, res);
-      if (path === "/approvals") {
-        return req.method === "GET" ? await handleListApprovals(req, res) : await handleArmApproval(req, res);
-      }
-      if (path === "/attachments/init") return await handleAttachmentInit(req, res);
-      if (path === "/attachments/finalize") return await handleAttachmentFinalize(req, res);
-      sendJSON(res, 404, { error: "not_found" });
-    } catch (err) {
-      if (isGatewayHttpError(err)) {
-        sendJSON(res, err.status, stripUndefinedObject({ error: err.error, detail: err.detail }));
-        return;
-      }
-      if (err instanceof HttpsError) {
-        const status = err.code === "invalid-argument" ? 400 : err.code === "permission-denied" ? 403 : 500;
-        sendJSON(res, status, { error: err.code, detail: err.message });
-        return;
-      }
-      logError({ event: "hermes_gateway.http_failed", error: String(err) });
-      sendJSON(res, 500, { error: "internal" });
-    }
+    await dispatchHermesGatewayRequest(req as unknown as HttpRequest, res as unknown as HttpResponse);
   },
 );
 
@@ -1159,6 +1435,23 @@ export const approveHermesGatewayDeviceGrant = onCall(
         phoneRelayPublicKey?: unknown;
         phoneRelayKeyVersion?: unknown;
         phoneRelayEncryption?: unknown;
+        supportsRelayEnvelopeVersions?: unknown;
+        preferredRelayEnvelopeVersion?: unknown;
+        supportsHpkeV3?: unknown;
+        clientPlatform?: unknown;
+        clientAppBuild?: unknown;
+        phoneRatchetIdentityPublicKey?: unknown;
+        phoneRatchetSigningPublicKey?: unknown;
+        phoneRatchetSignedPreKeyPublicKey?: unknown;
+        phoneRatchetSignedPreKeyId?: unknown;
+        phoneRatchetSignedPreKeySignature?: unknown;
+        phoneSupportsRatchetV1?: unknown;
+        ratchetIdentityPublicKey?: unknown;
+        ratchetSigningPublicKey?: unknown;
+        ratchetSignedPreKeyPublicKey?: unknown;
+        ratchetSignedPreKeyId?: unknown;
+        ratchetSignedPreKeySignature?: unknown;
+        supportsRatchetV1?: unknown;
       }>,
     ) => {
       const uid = request.auth?.uid;
@@ -1184,6 +1477,12 @@ export const approveHermesGatewayDeviceGrant = onCall(
           throw new HttpsError("invalid-argument", message);
         },
       );
+      const phoneCapabilities = phoneRelay
+        ? sanitizeGatewayRelayEnvelopeCapabilities(request.data as Record<string, unknown>)
+        : undefined;
+      const phoneRatchet = parseRatchetPrekeyBundle(request.data as Record<string, unknown>, "phone", (message) => {
+        throw new HttpsError("invalid-argument", message);
+      });
 
       const sessions = await db
         .collection("hermes_gateway_device_sessions")
@@ -1221,6 +1520,34 @@ export const approveHermesGatewayDeviceGrant = onCall(
             ? HERMES_GATEWAY_RELAY_ENCRYPTION
             : undefined;
       const relayCapable = !!agentRelayPublicKey && !!phoneRelay;
+      const agentCapabilities = agentRelayPublicKey
+        ? sanitizeGatewayRelayEnvelopeCapabilities({
+            supportsRelayEnvelopeVersions: session.agentSupportsRelayEnvelopeVersions,
+            preferredRelayEnvelopeVersion: session.agentPreferredRelayEnvelopeVersion,
+            supportsHpkeV3: session.agentSupportsHpkeV3,
+            clientPlatform: session.agentPlatform,
+            clientAppBuild: session.agentAppBuild,
+          })
+        : undefined;
+      const negotiatedCapabilities =
+        agentCapabilities && phoneCapabilities
+          ? negotiateGatewayRelayEnvelopeCapabilities(agentCapabilities, phoneCapabilities)
+          : undefined;
+      const agentRatchet = parseRatchetPrekeyBundle(
+        {
+          agentRatchetIdentityPublicKey: session.agentRatchetIdentityPublicKey,
+          agentRatchetSigningPublicKey: session.agentRatchetSigningPublicKey,
+          agentRatchetSignedPreKeyPublicKey: session.agentRatchetSignedPreKeyPublicKey,
+          agentRatchetSignedPreKeyId: session.agentRatchetSignedPreKeyId,
+          agentRatchetSignedPreKeySignature: session.agentRatchetSignedPreKeySignature,
+          agentSupportsRatchetV1: session.agentSupportsRatchetV1,
+        },
+        "agent",
+        (message) => {
+          throw new HttpsError("failed-precondition", `invalid_agent_ratchet_prekey: ${message}`);
+        },
+      );
+      const supportsRatchetV1 = agentRatchet != null && phoneRatchet != null ? true : undefined;
       // A pairing that cannot seal in BOTH directions is refused so no plaintext-
       // only client is ever minted.
       if (!relayCapable && !gatewayPlaintextWriteAllowed(false)) {
@@ -1255,9 +1582,35 @@ export const approveHermesGatewayDeviceGrant = onCall(
         agentRelayPublicKey,
         agentRelayKeyVersion,
         agentRelayEncryption,
+        agentSupportsRelayEnvelopeVersions: agentCapabilities?.supportsRelayEnvelopeVersions,
+        agentPreferredRelayEnvelopeVersion: agentCapabilities?.preferredRelayEnvelopeVersion,
+        agentSupportsHpkeV3: agentCapabilities?.supportsHpkeV3,
+        agentPlatform: agentCapabilities?.platform,
+        agentAppBuild: agentCapabilities?.appBuild,
         phoneRelayPublicKey: phoneRelay?.publicKey,
         phoneRelayKeyVersion: phoneRelay?.keyVersion,
         phoneRelayEncryption: phoneRelay?.encryption,
+        phoneSupportsRelayEnvelopeVersions: phoneCapabilities?.supportsRelayEnvelopeVersions,
+        phonePreferredRelayEnvelopeVersion: phoneCapabilities?.preferredRelayEnvelopeVersion,
+        phoneSupportsHpkeV3: phoneCapabilities?.supportsHpkeV3,
+        phonePlatform: phoneCapabilities?.platform,
+        phoneAppBuild: phoneCapabilities?.appBuild,
+        supportsRelayEnvelopeVersions: negotiatedCapabilities?.supportsRelayEnvelopeVersions,
+        preferredRelayEnvelopeVersion: negotiatedCapabilities?.preferredRelayEnvelopeVersion,
+        supportsHpkeV3: negotiatedCapabilities?.supportsHpkeV3,
+        agentRatchetIdentityPublicKey: agentRatchet?.identityPublicKey,
+        agentRatchetSigningPublicKey: agentRatchet?.signingPublicKey,
+        agentRatchetSignedPreKeyPublicKey: agentRatchet?.signedPreKeyPublicKey,
+        agentRatchetSignedPreKeyId: agentRatchet?.signedPreKeyId,
+        agentRatchetSignedPreKeySignature: agentRatchet?.signedPreKeySignature,
+        agentSupportsRatchetV1: agentRatchet?.supportsRatchetV1,
+        phoneRatchetIdentityPublicKey: phoneRatchet?.identityPublicKey,
+        phoneRatchetSigningPublicKey: phoneRatchet?.signingPublicKey,
+        phoneRatchetSignedPreKeyPublicKey: phoneRatchet?.signedPreKeyPublicKey,
+        phoneRatchetSignedPreKeyId: phoneRatchet?.signedPreKeyId,
+        phoneRatchetSignedPreKeySignature: phoneRatchet?.signedPreKeySignature,
+        phoneSupportsRatchetV1: phoneRatchet?.supportsRatchetV1,
+        supportsRatchetV1,
         relayCapable: relayCapable ? true : undefined,
         createdAt: now,
         updatedAt: now,
@@ -1285,6 +1638,13 @@ export const approveHermesGatewayDeviceGrant = onCall(
             phoneRelayPublicKey: phoneRelay?.publicKey,
             phoneRelayKeyVersion: phoneRelay?.keyVersion,
             phoneRelayEncryption: phoneRelay?.encryption,
+            phoneRatchetIdentityPublicKey: phoneRatchet?.identityPublicKey,
+            phoneRatchetSigningPublicKey: phoneRatchet?.signingPublicKey,
+            phoneRatchetSignedPreKeyPublicKey: phoneRatchet?.signedPreKeyPublicKey,
+            phoneRatchetSignedPreKeyId: phoneRatchet?.signedPreKeyId,
+            phoneRatchetSignedPreKeySignature: phoneRatchet?.signedPreKeySignature,
+            phoneSupportsRatchetV1: phoneRatchet?.supportsRatchetV1,
+            supportsRatchetV1,
             relayCapable: relayCapable ? true : undefined,
             approvedAt: now,
             updatedAt: Timestamp.now(),
@@ -1490,6 +1850,7 @@ export const enqueueHermesGatewayEvent = onCall(
         senderDisplayName?: unknown;
         text?: unknown;
         relayEnvelope?: unknown;
+        ratchetEnvelope?: unknown;
         eventId?: unknown;
         eventKind?: unknown;
         modelId?: unknown;
@@ -1503,9 +1864,6 @@ export const enqueueHermesGatewayEvent = onCall(
       await assertActiveHermesGatewayEntitlement(uid);
       const eventKind = request.data.eventKind === "model_switch" ? "model_switch" : "message";
       const requestedModelId = sanitizeHermesGatewayModelId(request.data.modelId);
-      if (eventKind === "model_switch" && !requestedModelId) {
-        throw new HttpsError("invalid-argument", "modelId is required for Hermes Gateway model switches.");
-      }
       const targetClientId = request.data.targetClientId
         ? requiredIdentifier(request.data.targetClientId, "targetClientId")
         : undefined;
@@ -1526,6 +1884,9 @@ export const enqueueHermesGatewayEvent = onCall(
           "unsealed_target_unsupported: update and re-pair the Hermes Gateway client so messages stay end-to-end encrypted.",
         );
       }
+      if (eventKind === "model_switch" && !targetIsRelayCapable && !requestedModelId) {
+        throw new HttpsError("invalid-argument", "modelId is required for legacy Hermes Gateway model switches.");
+      }
       // The phone seals the event body before this call; the server forwards the
       // opaque envelope and never reads it. A model_switch on a relay-capable
       // target ALSO travels sealed: the model command ("/model …") is private, so
@@ -1537,10 +1898,22 @@ export const enqueueHermesGatewayEvent = onCall(
       if (eventKind === "model_switch") {
         if (targetIsRelayCapable) {
           // Sealed model_switch: require the envelope (the command body is sealed
-          // to the agent's relay key). The cleartext modelId still rides alongside
-          // for routing/optimistic-pending, but no plaintext command is stored and
-          // the server does NOT pre-validate against the advertised catalog.
-          sealedBody = { relayEnvelope: requireGatewayRelayEnvelope(request.data.relayEnvelope, "relayEnvelope") };
+          // to the agent's relay/ratchet key). Do not require or persist a
+          // cleartext modelId for relay-capable clients; the agent opens the
+          // command and validates it against its own catalog after decrypting.
+          sealedBody = resolveGatewayWriteBody(
+            request.data.relayEnvelope,
+            request.data.ratchetEnvelope,
+            undefined,
+            targetClient,
+            "events",
+          );
+          if (!sealedBody.relayEnvelope && !sealedBody.ratchetEnvelope) {
+            throw new HttpsError(
+              "invalid-argument",
+              "ciphertext_required: provide a relayEnvelope or ratchetEnvelope for sealed model_switch events.",
+            );
+          }
         }
         // Legacy (grace-window) model_switch: no sealed body. We keep the old
         // plaintext-catalog guard ONLY for these legacy clients so a typo'd model
@@ -1556,16 +1929,25 @@ export const enqueueHermesGatewayEvent = onCall(
         }
       } else {
         const relayClient = targetClient ?? { id: targetClientId ?? "broadcast", relayCapable: undefined };
-        sealedBody = resolveGatewayWriteBody(request.data.relayEnvelope, request.data.text, relayClient, "events");
-        if (!sealedBody.relayEnvelope && !sealedBody.legacyText) {
-          throw new HttpsError("invalid-argument", "text is required: provide a relayEnvelope (sealed event body).");
+        sealedBody = resolveGatewayWriteBody(
+          request.data.relayEnvelope,
+          request.data.ratchetEnvelope,
+          request.data.text,
+          relayClient,
+          "events",
+        );
+        if (!sealedBody.relayEnvelope && !sealedBody.ratchetEnvelope && !sealedBody.legacyText) {
+          throw new HttpsError(
+            "invalid-argument",
+            "text is required: provide a relayEnvelope or ratchetEnvelope (sealed event body).",
+          );
         }
       }
       const destinationId = sanitizeHermesGatewayDestinationId(request.data.destinationId);
       const attachmentIds = sanitizedAttachmentIds(request.data.attachmentIds);
       await requireUploadedGatewayAttachments({ uid, clientId: targetClientId, destinationId, attachmentIds });
       const eventId =
-        sealedBody.relayEnvelope != null
+        sealedBody.relayEnvelope != null || sealedBody.ratchetEnvelope != null
           ? requireSafeGatewayEventId(request.data.eventId)
           : `evt_${randomBytes(12).toString("hex")}`;
       const now = nowISO();
@@ -1588,22 +1970,23 @@ export const enqueueHermesGatewayEvent = onCall(
             kind: eventKind,
             destinationId,
             targetClientId,
-            // senderId is a non-PII routing id; modelId is not private. The
-            // private fields (text/senderDisplayName/threadId) live ONLY inside
-            // relayEnvelope for sealed message events. Model switches do not carry
-            // a text body or thread id.
+            // senderId is a non-PII routing id. The private fields
+            // (text/senderDisplayName/threadId/modelId) live ONLY inside the
+            // envelope for relay-capable clients. Model switches do not carry a
+            // plaintext command body or thread id.
             threadId:
-              sealedBody.relayEnvelope || eventKind === "model_switch"
+              sealedBody.relayEnvelope || sealedBody.ratchetEnvelope || eventKind === "model_switch"
                 ? undefined
                 : boundedTrimmedString(request.data.threadId, "threadId", 160, false),
             senderId: boundedTrimmedString(request.data.senderId, "senderId", 160, false) ?? "burnbar-user",
             senderDisplayName:
-              sealedBody.relayEnvelope || eventKind === "model_switch"
+              sealedBody.relayEnvelope || sealedBody.ratchetEnvelope || eventKind === "model_switch"
                 ? undefined
                 : boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
             text: sealedBody.legacyText,
             relayEnvelope: sealedBody.relayEnvelope,
-            modelId: requestedModelId,
+            ratchetEnvelope: sealedBody.ratchetEnvelope,
+            modelId: targetIsRelayCapable ? undefined : requestedModelId,
             attachmentIds,
             createdAt: now,
             schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
@@ -1611,7 +1994,7 @@ export const enqueueHermesGatewayEvent = onCall(
         );
         // Optimistically mark the switch in flight so /state reports "switching…"
         // until the runtime republishes the applied model (or the TTL lapses).
-        if (eventKind === "model_switch" && requestedModelId && targetClientId) {
+        if (eventKind === "model_switch" && requestedModelId && targetClientId && !targetIsRelayCapable) {
           tx.set(
             db.doc(`users/${uid}/hermes_gateway_clients/${targetClientId}`),
             { pendingModelId: requestedModelId, pendingModelRequestedAt: now, updatedAt: now },
@@ -1623,7 +2006,7 @@ export const enqueueHermesGatewayEvent = onCall(
         id: eventId,
         sequence,
         targetClientId,
-        pendingModelId: eventKind === "model_switch" ? requestedModelId : undefined,
+        pendingModelId: eventKind === "model_switch" && !targetIsRelayCapable ? requestedModelId : undefined,
       });
     },
   ),

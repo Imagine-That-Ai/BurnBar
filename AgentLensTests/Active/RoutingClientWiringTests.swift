@@ -674,6 +674,59 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(status, .current(modelIDs: ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"]))
     }
 
+    // Regression test: when the gateway auth token rotates after the last wire
+    // (e.g. a new token is generated on daemon restart), the stored API key in
+    // Droid's JSON config files no longer authenticates → every request gets a
+    // 401. modelSyncStatus must detect the drift and return .stale so the sentry
+    // immediately re-wires with the current token.
+    func test_droidModelSyncStatusStaleWhenGatewayTokenRotated() throws {
+        let wiring = makeWiring()
+        let originalGateway = exampleGateway(token: "original-token")
+        _ = try wiring.wire(
+            target: .droid,
+            gateway: originalGateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        // Sanity: wiring with the original token is current.
+        XCTAssertEqual(
+            wiring.modelSyncStatus(
+                target: .droid,
+                gateway: originalGateway,
+                advertisedModels: liveGatewayModels()
+            ),
+            .current(modelIDs: ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
+        )
+
+        // Simulate gateway token rotation — the daemon now uses a different token.
+        let rotatedGateway = exampleGateway(token: "rotated-token")
+        let status = wiring.modelSyncStatus(
+            target: .droid,
+            gateway: rotatedGateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        // Model IDs still match, but the API key is stale → must be .stale.
+        guard case .stale(let installedModelIDs, let expectedModelIDs) = status else {
+            return XCTFail(
+                "Expected .stale after gateway token rotation, got \(status). " +
+                "This means Droid CLI would keep sending the old token and receive 401s."
+            )
+        }
+        XCTAssertEqual(installedModelIDs, ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
+        XCTAssertEqual(expectedModelIDs, ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
+        // The user-visible message should explain the token rotation — NOT show an
+        // identical installed/expected diff which would be confusing and unhelpful.
+        XCTAssertTrue(
+            status.userMessage.contains("authentication credential is stale"),
+            "Expected token-rotation message, got: \(status.userMessage)"
+        )
+        XCTAssertFalse(
+            status.userMessage.contains("Installed: glm-5"),
+            "Token-rotation stale should not show a redundant model-ID diff: \(status.userMessage)"
+        )
+    }
+
     func test_wireDroid_updatesStaleOpenBurnBarDefaultModelToLiveEntry() throws {
         let wiring = makeWiring()
         let gateway = exampleGateway(token: "droid-token")

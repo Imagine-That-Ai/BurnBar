@@ -318,6 +318,18 @@ struct ConnectionsSettingsView: View {
                         await viewModel.refreshWiringState(settings: settingsManager)
                     }
                 },
+                routeLogEntries: viewModel.proxyRouteLogEntries,
+                routeLogState: viewModel.proxyRouteLogState,
+                onRefreshRouteLog: {
+                    Task {
+                        await viewModel.refreshProxyRouteLog(socketURL: daemonManager.paths.socketURL)
+                    }
+                },
+                onClearRouteLog: {
+                    Task {
+                        await viewModel.clearProxyRouteLog(socketURL: daemonManager.paths.socketURL)
+                    }
+                },
                 droidSyncState: viewModel.state(for: .droid),
                 onSyncDroid: { syncDroidProxyModels() },
                 onToggleModelAdvertisement: { model, isEnabled in

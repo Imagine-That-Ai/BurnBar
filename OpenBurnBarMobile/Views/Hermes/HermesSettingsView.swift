@@ -959,6 +959,11 @@ struct HermesSettingsView: View {
 
     private func gatewayApprovalCard(_ approval: HermesGatewayApprovalRecord) -> some View {
         let isResponding = gatewayStore.isRespondingToApproval(approval)
+        // MP-6: the end-to-end-encrypted action detail, bound to this gate by actionId
+        // (the sealed payload's actionId == the agent confirm id), NOT the approval
+        // document id (hga_<hash>) — those differ, so keying by approval.id would never
+        // match and would permanently disable Approve.
+        let sealedDetail = gatewayStore.sealedApprovalDetails[approval.actionId]
         return VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
                 Image(systemName: "hand.raised.fill")
@@ -972,10 +977,21 @@ struct HermesSettingsView: View {
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
                             .lineLimit(1)
                     }
-                    Text(approval.summary.isEmpty ? "Hermes is requesting approval to continue." : approval.summary)
-                        .font(.caption)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // MP-6: show the END-TO-END-ENCRYPTED detail (decrypted on this
+                    // device, bound to this gate by actionId) for the action being
+                    // approved — never a server-supplied free-text summary. Until the
+                    // sealed detail arrives, Approve stays disabled (deny-by-default).
+                    if let sealedDetail, !sealedDetail.isEmpty {
+                        Text(sealedDetail)
+                            .font(.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("Encrypted action details are not available on this device yet. Approve from your Mac, or wait for the secured details to arrive.")
+                            .font(.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -1009,7 +1025,10 @@ struct HermesSettingsView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(MobileTheme.success)
-                .disabled(isResponding)
+                // MP-6: deny-by-default — Approve stays disabled until the matching
+                // sealed detail has been decrypted on this device, so the user always
+                // approves the action they actually saw end-to-end (informed consent).
+                .disabled(isResponding || sealedDetail == nil)
             }
         }
         .padding(12)
@@ -2115,6 +2134,12 @@ final class HermesGatewaySettingsStore {
     private(set) var pendingModelSwitchEvent: HermesGatewayQueuedEvent?
     private(set) var latestReply: HermesGatewayMessageRecord?
     private(set) var approvals: [HermesGatewayApprovalRecord] = []
+    /// MP-6: end-to-end-encrypted approval detail text, keyed by the sealed
+    /// payload's `actionId`, so the phone can bind the decrypted detail to the
+    /// correct oversight gate (informed consent). Populated from opened gateway
+    /// messages whose `kind == "approval"`; the /approvals control-plane record
+    /// itself never carries this text.
+    private(set) var sealedApprovalDetails: [String: String] = [:]
     private(set) var respondingApprovalId: String?
     private(set) var settingOversightClientId: String?
     private(set) var statusNow = Date()
@@ -2259,12 +2284,40 @@ final class HermesGatewaySettingsStore {
     /// on a freshly paired Mac. Returns `nil` only when there is genuinely no key
     /// to show.
     func agentSafetyCode(for client: HermesGatewayClientRecord) -> String? {
+        guard let ratchetIdentityKeys = ratchetSafetyCodeKeys(for: client) else {
+            return nil
+        }
         if let uid = listenedUID, !uid.isEmpty,
-           let pinned = agentKeyPinStore.pinnedSafetyCode(uid: uid, clientId: client.id) {
+           let pinned = agentKeyPinStore.pinnedSafetyCode(
+            uid: uid,
+            clientId: client.id,
+            additionalPublicKeysBase64: ratchetIdentityKeys
+           ) {
             return pinned
         }
         guard let advertised = client.relayPublicKey else { return nil }
-        return HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: advertised)
+        // MP-1: two-key code — the advertised agent key + this device's own relay key.
+        guard let phoneKey = try? HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64 else {
+            return nil
+        }
+        return HermesGatewayAgentKeyPinStore.safetyCode(
+            publicKeysBase64: [advertised, phoneKey] + ratchetIdentityKeys
+        )
+    }
+
+    private func ratchetSafetyCodeKeys(for client: HermesGatewayClientRecord) -> [String]? {
+        guard client.canRatchetToAgent else { return [] }
+        guard
+            let agentRatchetIdentity = nonEmpty(client.agentRatchetIdentityPublicKey),
+            let localRatchetIdentity = try? HermesGatewayRatchetPrekeyStore.loadOrCreateBundle().identityPublicKeyBase64
+        else {
+            return nil
+        }
+        if let echoedPhoneIdentity = nonEmpty(client.phoneRatchetIdentityPublicKey),
+           echoedPhoneIdentity != localRatchetIdentity.trimmingCharacters(in: .whitespacesAndNewlines) {
+            return nil
+        }
+        return [agentRatchetIdentity, localRatchetIdentity]
     }
 
     /// Explicit, user-confirmed re-pair for a client whose private connection now
@@ -2399,14 +2452,44 @@ final class HermesGatewaySettingsStore {
                 userCode: userCode,
                 displayName: displayName
             )
-            // Re-pairing is an explicit operator decision to re-establish trust:
-            // drop any stale TOFU pin so the freshly-advertised agent key is
-            // pinned on first seal instead of tripping the MITM guard forever.
+            // Root the agent-key pin in the AUTHENTICATED approval, not relay TOFU.
+            // `approveHermesGatewayDeviceGrant` is an AppCheck + auth-gated callable;
+            // the `relayPublicKey` it returns is delivered over that authenticated
+            // channel, so a relay cannot swap it post-approval. Re-pairing first
+            // drops any stale pin (explicit operator re-trust), then we pin the
+            // freshly-approved key IMMEDIATELY — so the very first seal authenticates
+            // against a pairing-rooted key instead of one read from a relay-writable
+            // client doc at send time (closes the first-pin poisoning window). The
+            // out-of-band safety code (shown at pairing) remains the ultimate root
+            // against a fully-compromised server, exactly like Signal's safety number.
             clearAgentKeyPin(clientId: client.id)
+            var pinPersisted = true
+            if let uid = listenedUID, !uid.isEmpty,
+               let agentKey = client.relayPublicKey, !agentKey.isEmpty {
+                // Fail-closed: `verifyOrPin` now reflects a Keychain WRITE failure
+                // (it returns `.unknownKeychainError` rather than a phantom
+                // `.pinnedFirstUse`). If the pairing-rooted pin could not be stored
+                // durably, the out-of-band safety code is the fallback root and the
+                // operator must verify it before trusting the link.
+                pinPersisted = agentKeyPinStore.verifyOrPin(
+                    agentPublicKeyBase64: agentKey, uid: uid, clientId: client.id
+                ).allowsSeal
+            }
             upsert(client)
             persistSelectedClientID(client.id)
+            // Surface the out-of-band safety code at pairing: comparing it against
+            // the code your Mac prints is what catches a server that tampered with
+            // the very first key exchange (the one window the authenticated pin
+            // above cannot close on its own). This is the Signal "safety number".
+            // If the pin did not persist, the safety check is the ONLY root, so we
+            // make the instruction emphatic.
+            let safetyHint = agentSafetyCode(for: client).map {
+                pinPersisted
+                    ? " Safety code: \($0) — confirm it matches the code shown on your Mac."
+                    : " IMPORTANT — this device couldn't store the pairing key securely, so you MUST verify the safety code: \($0) must match the code shown on your Mac before you trust this link."
+            } ?? ""
             setNotice(
-                "Hermes is paired. Now run `hermes gateway run`, or start/restart the installed gateway service, so Hermes is online to receive messages.",
+                "Hermes is paired.\(safetyHint) Now run `hermes gateway run`, or start/restart the installed gateway service, so Hermes is online to receive messages.",
                 style: .warning
             )
             return client
@@ -2586,6 +2669,14 @@ final class HermesGatewaySettingsStore {
                 approve: approve,
                 deviceId: deviceId
             )
+            if let client = selectedClient, client.canSealToAgent {
+                try await repository.enqueueHermesGatewayApprovalDecision(
+                    approvalId: trimmedApprovalId,
+                    approve: approve,
+                    targetClient: client,
+                    targetClientId: client.id
+                )
+            }
             setNotice(
                 approve ? "Action approved. Hermes will continue." : "Action rejected.",
                 style: approve ? .success : .warning
@@ -2659,16 +2750,36 @@ final class HermesGatewaySettingsStore {
         // Legacy plaintext docs pass through unchanged; a doc this device cannot
         // open keeps `resolvedText == nil` and renders the sealed-for-another-device
         // state instead of empty.
-        let keypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let keypair: HermesGatewayRelayKeypair
+        do {
+            keypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        } catch {
+            setNotice("Could not open Hermes replies: \(error.localizedDescription)", style: .error)
+            return
+        }
         let messages = (snapshot?.documents.compactMap { document in
             HermesGatewayMessageRecord(documentID: document.documentID, data: document.data())
         } ?? []).map { record -> HermesGatewayMessageRecord in
             guard let uid = listenedUID, !uid.isEmpty else { return record }
+            let targetClient = clients.first { $0.id == record.clientId }
             // Pass the shared pin store so an unsealed reply on a client whose agent
             // key this device pinned is treated as a downgrade (never rendered as a
             // genuine reply) — closes the server-injected-plaintext impersonation gap.
-            return record.decodedText(using: keypair, uid: uid, pinStore: agentKeyPinStore)
+            return record.decodedText(using: keypair, uid: uid, targetClient: targetClient, pinStore: agentKeyPinStore)
         }
+
+        // MP-6: index the decrypted approval-detail cards by their sealed actionId so
+        // the approval gate can show the right end-to-end-encrypted detail and only
+        // enable Approve once a matching sealed detail has been opened on this device.
+        let approvalDetails: [String: String] = messages.reduce(into: [:]) { acc, record in
+            if record.resolvedKind == "approval", let actionId = record.resolvedActionId,
+               let detail = record.resolvedText, !detail.isEmpty {
+                acc[actionId] = detail
+            }
+        }
+        // handleMessagesSnapshot already runs on the MainActor, so write the keyed
+        // map inline (no redundant Task hop); keyed by the sealed payload's actionId.
+        for (actionId, detail) in approvalDetails { sealedApprovalDetails[actionId] = detail }
 
         if let pendingTestEvent {
             guard let reply = HermesGatewayMessageResolver.newestReply(
@@ -2752,8 +2863,13 @@ final class HermesGatewaySettingsStore {
             else { return nil }
 
             let sealedBody = try await downloadGatewayAttachmentBody(storagePath: storagePath)
-            let keypair = HermesGatewayRelayKeypair.loadOrCreate()
-            guard let opened = record.opened(downloadedBody: sealedBody, using: keypair, uid: uid) else {
+            let keypair = try HermesGatewayRelayKeypair.loadOrCreate()
+            // v2: bind the AGENT's pinned relay key so a forged attachment fails
+            // the authenticated unwrap. Fail closed if unpinned.
+            guard let opened = record.opened(
+                downloadedBody: sealedBody, using: keypair, uid: uid,
+                pinnedSenderKey: agentKeyPinStore.pinnedKey(uid: uid, clientId: clientId)
+            ) else {
                 return nil
             }
             return try HermesAttachmentLoader.importGatewayOpenedAttachment(opened, threadID: gatewayThreadID)

@@ -2,7 +2,8 @@
 #
 # test-openburnbar-mobile.sh — SOTA test driver for OpenBurnBarMobileTests.
 #
-# Local default: first connected physical iPhone (USB, unlocked, trusted).
+# Local default: first connected physical iOS device (iPhone/iPad, USB,
+# unlocked, trusted).
 # CI (CI=true / GITHUB_ACTIONS=true): iOS Simulator — GitHub macOS runners have
 # no USB-attached devices.
 #
@@ -14,7 +15,16 @@
 #   OPENBURNBAR_MOBILE_DRY_RUN=1         Print resolved destination and exit 0.
 #   OPENBURNBAR_MOBILE_TEST_ATTEMPTS=N   Override max attempts (default 4).
 #   OPENBURNBAR_MOBILE_TEST_FILTER=...   Pass a custom -only-testing target.
+#   OPENBURNBAR_MOBILE_TEST_SCHEME=...   Override scheme (default: OpenBurnBarMobileUnitTests).
 #   OPENBURNBAR_MOBILE_SIMULATOR=...     Simulator name for CI fallback (default: iPhone 17 Pro Max).
+#   OPENBURNBAR_MOBILE_ALLOW_PROVISIONING_UPDATES=0
+#                                           Disable Xcode automatic profile/device updates on physical-device runs.
+#
+# Test-runner environment:
+#   xcodebuild only forwards custom variables into XCTest runners when they use
+#   the TEST_RUNNER_ prefix. This wrapper mirrors OpenBurnBar proof/test knobs
+#   into that namespace automatically so physical-device tests can read the same
+#   variables callers set in their shell.
 #
 # Exit status:
 #   0  — tests passed (or dry-run succeeded)
@@ -32,6 +42,7 @@ default_test_execution_allowance="${OPENBURNBAR_MOBILE_TEST_DEFAULT_ALLOWANCE:-9
 maximum_test_execution_allowance="${OPENBURNBAR_MOBILE_TEST_MAX_ALLOWANCE:-1800}"
 max_test_attempts="${OPENBURNBAR_MOBILE_TEST_ATTEMPTS:-4}"
 test_filter="${OPENBURNBAR_MOBILE_TEST_FILTER:-OpenBurnBarMobileTests}"
+test_scheme="${OPENBURNBAR_MOBILE_TEST_SCHEME:-OpenBurnBarMobileUnitTests}"
 simulator_name="${OPENBURNBAR_MOBILE_SIMULATOR:-iPhone 17 Pro Max}"
 ios_destination=""
 
@@ -61,33 +72,77 @@ normalize_ios_destination() {
     echo "$raw"
 }
 
-discover_physical_iphone_destination() {
-    local devices online_iphone device_name udid
+discover_physical_ios_destination() {
+    local selected unavailable_ios device_name udid
 
-    devices="$(xcrun xctrace list devices 2>/dev/null || true)"
-    online_iphone="$(echo "$devices" | sed -n '/== Devices ==/,/== Devices Offline ==/p' | grep -i "iPhone" | grep -v "Simulator" | head -1 || true)"
+    selected="$(xcrun xcdevice list 2>/dev/null | python3 -c '
+import json
+import sys
 
-    if [[ -z "$online_iphone" ]]; then
-        echo "ERROR: No connected physical iPhone found for OpenBurnBar mobile tests." >&2
+try:
+    devices = json.load(sys.stdin)
+except Exception:
+    devices = []
+
+candidates = []
+for device in devices:
+    if device.get("simulator"):
+        continue
+    if device.get("platform") != "com.apple.platform.iphoneos":
+        continue
+    if not device.get("available"):
+        continue
+    identifier = device.get("identifier") or ""
+    name = device.get("name") or "iOS device"
+    if not identifier:
+        continue
+    interface = device.get("interface") or ""
+    # Prefer cabled hardware because physical XCTest over Wi-Fi is much flakier.
+    candidates.append((0 if interface == "usb" else 1, name, identifier))
+
+if candidates:
+    _, name, identifier = sorted(candidates)[0]
+    print(f"{name}\t{identifier}")
+')"
+
+    if [[ -z "$selected" ]]; then
+        echo "ERROR: No connected physical iOS device found for OpenBurnBar mobile tests." >&2
         echo "" >&2
-        echo "Connect an iPhone over USB, unlock it, tap Trust on the device, and ensure Developer Mode is on." >&2
+        echo "Connect an iPhone or iPad over USB, unlock it, tap Trust on the device, and ensure Developer Mode is on." >&2
         echo "Or set OPENBURNBAR_IOS_DESTINATION to an explicit UDID, e.g.:" >&2
         echo "  OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=<UDID>' ./scripts/test-openburnbar-mobile.sh" >&2
         echo "" >&2
-        echo "Offline devices (if any):" >&2
-        echo "$devices" | sed -n '/== Devices Offline ==/,/== Simulators ==/p' | grep -i "iPhone" | grep -v "Simulator" || true >&2
+        unavailable_ios="$(xcrun xcdevice list 2>/dev/null | python3 -c '
+import json
+import sys
+
+try:
+    devices = json.load(sys.stdin)
+except Exception:
+    devices = []
+
+for device in devices:
+    if device.get("simulator"):
+        continue
+    if device.get("platform") != "com.apple.platform.iphoneos":
+        continue
+    if device.get("available"):
+        continue
+    name = device.get("name") or "iOS device"
+    identifier = device.get("identifier") or "unknown-udid"
+    reason = ((device.get("error") or {}).get("description")) or "unavailable"
+    print(f"  {name} ({identifier}): {reason}")
+')"
+        if [[ -n "$unavailable_ios" ]]; then
+            echo "Unavailable iOS devices:" >&2
+            echo "$unavailable_ios" >&2
+        fi
         return 1
     fi
 
-    device_name="$(echo "$online_iphone" | sed -E 's/[[:space:]]*\(.+$//' | xargs)"
-    udid="$(echo "$online_iphone" | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{40}' | head -1 || true)"
-    if [[ -z "$udid" ]]; then
-        echo "ERROR: Found a connected iPhone but could not parse its UDID from xctrace output:" >&2
-        echo "  $online_iphone" >&2
-        return 1
-    fi
+    IFS=$'\t' read -r device_name udid <<< "$selected"
 
-    echo ">>> Using connected physical iPhone: $device_name ($udid)" >&2
+    echo ">>> Using connected physical iOS device: $device_name ($udid)" >&2
     echo "platform=iOS,id=$udid"
 }
 
@@ -109,7 +164,7 @@ resolve_ios_destination() {
         return 0
     fi
 
-    discover_physical_iphone_destination
+    discover_physical_ios_destination
 }
 
 simulator_udid=""
@@ -151,6 +206,16 @@ fi
 if [[ "$uses_ios_simulator" -eq 1 ]]; then
     resolve_simulator_udid
     ios_destination="$simulator_destination"
+fi
+
+if [[ "$uses_ios_simulator" -eq 0 && -z "${OPENBURNBAR_APP_CHECK_PROVIDER:-}" ]] \
+    && [[ "${OPENBURNBAR_LIVE_HERMES_RELAY_E2E:-}" == "1" || "${OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E:-}" == "1" || -n "${OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_CODE:-}" ]]; then
+    export OPENBURNBAR_APP_CHECK_PROVIDER=appattest
+    echo ">>> Live Hermes proof: using App Attest App Check on the physical device."
+fi
+
+if [[ "$uses_ios_simulator" -eq 0 && "${OPENBURNBAR_MOBILE_ALLOW_PROVISIONING_UPDATES:-1}" != "0" ]]; then
+    echo ">>> Physical iOS test: allowing Xcode automatic provisioning profile and device registration updates."
 fi
 
 if [[ "${OPENBURNBAR_MOBILE_DRY_RUN:-}" == "1" ]]; then
@@ -278,7 +343,7 @@ populate_xcodebuild_args() {
     local attempt_result="$2"
     xcodebuild_args=(
         -project "$repo_root/OpenBurnBar.xcodeproj"
-        -scheme "OpenBurnBarMobile"
+        -scheme "$test_scheme"
         -destination "$ios_destination"
         -clonedSourcePackagesDirPath "$cache_dir"
         -derivedDataPath "$dd"
@@ -290,13 +355,20 @@ populate_xcodebuild_args() {
         SWIFT_COMPILATION_MODE=singlefile
         SWIFT_ENABLE_BATCH_MODE=NO
         -parallel-testing-enabled NO
-        -skip-testing:OpenBurnBarMobileUITests
         -only-testing:"$test_filter"
     )
+    if [[ "$test_scheme" == "OpenBurnBarMobile" ]]; then
+        xcodebuild_args+=(-skip-testing:OpenBurnBarMobileUITests)
+    fi
     if [[ "$uses_ios_simulator" -eq 1 ]]; then
         xcodebuild_args+=(
             CODE_SIGNING_ALLOWED=NO
             CODE_SIGNING_REQUIRED=NO
+        )
+    elif [[ "${OPENBURNBAR_MOBILE_ALLOW_PROVISIONING_UPDATES:-1}" != "0" ]]; then
+        xcodebuild_args+=(
+            -allowProvisioningUpdates
+            -allowProvisioningDeviceRegistration
         )
     fi
     if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
@@ -310,6 +382,32 @@ fi
 if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
     export TEST_RUNNER_GITHUB_ACTIONS=true
 fi
+
+forward_openburnbar_test_runner_environment() {
+    local env_name runner_name forwarded_count
+    forwarded_count=0
+
+    while IFS= read -r env_name; do
+        case "$env_name" in
+            OPENBURNBAR_*|BURNBAR_SECOND_SIMULATOR|INSIGHTS_*) ;;
+            *) continue ;;
+        esac
+
+        runner_name="TEST_RUNNER_${env_name}"
+        if [[ -n "${!runner_name+x}" ]]; then
+            continue
+        fi
+
+        export "${runner_name}=${!env_name}"
+        forwarded_count=$((forwarded_count + 1))
+    done < <(env | sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p')
+
+    if [[ "$forwarded_count" -gt 0 ]]; then
+        echo ">>> Forwarded $forwarded_count OpenBurnBar test environment value(s) to XCTest runner."
+    fi
+}
+
+forward_openburnbar_test_runner_environment
 
 canonical_xcresult_path="$artifact_root/OpenBurnBarMobile_TestCoverage.xcresult"
 if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then

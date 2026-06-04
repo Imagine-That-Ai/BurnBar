@@ -9,26 +9,30 @@ import Foundation
 /// - Supports batch writes, collection queries, ordering, limits, and simple filtering.
 /// - Replaces `FieldValue.serverTimestamp()` with `Date()` at write time and
 ///   applies `FieldValue.delete()` to merged writes.
-/// - Thread-safe via internal actor isolation.
-final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway {
+/// - Thread-safe via lock-backed in-memory state.
+final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
     private let store = FakeDocumentStore()
+    private let state = CloudSyncFirestoreFakeGatewayState()
 
     /// When non-nil, all subsequent write/read operations will throw this error
     /// until it is consumed or cleared.
-    var nextError: Error?
+    var nextError: Error? {
+        get { state.nextError }
+        set { state.nextError = newValue }
+    }
 
     /// Number of batch commits that have been executed.
-    private(set) var batchCommitCount: Int = 0
+    var batchCommitCount: Int { state.batchCommitCount }
 
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway {
-        CloudSyncCollectionFakeGateway(store: store, path: collectionPath, nextError: { [weak self] in self?.nextError })
+        CloudSyncCollectionFakeGateway(store: store, path: collectionPath, nextError: { [weak state] in state?.nextError })
     }
 
     func batch() -> CloudSyncWriteBatchGateway {
         CloudSyncWriteBatchFakeGateway(
             store: store,
-            nextError: { [weak self] in self?.nextError },
-            onCommit: { [weak self] in self?.batchCommitCount += 1 }
+            nextError: { [weak state] in state?.nextError },
+            onCommit: { [weak state] in state?.incrementBatchCommitCount() }
         )
     }
 
@@ -48,59 +52,86 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway {
     }
 }
 
+private final class CloudSyncFirestoreFakeGatewayState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedNextError: Error?
+    private var storedBatchCommitCount = 0
+
+    var nextError: Error? {
+        get { lock.withLock { storedNextError } }
+        set { lock.withLock { storedNextError = newValue } }
+    }
+
+    var batchCommitCount: Int {
+        lock.withLock { storedBatchCommitCount }
+    }
+
+    func incrementBatchCommitCount() {
+        lock.withLock { storedBatchCommitCount += 1 }
+    }
+}
+
 // MARK: - Fake Document Store
 
-private final class FakeDocumentStore {
+private final class FakeDocumentStore: @unchecked Sendable {
+    private let lock = NSLock()
     private var documents: [String: [String: Any]] = [:]
 
     func documentData(at path: String) -> [String: Any]? {
-        documents[path]
+        lock.withLock { documents[path] }
     }
 
     func documents(under collectionPath: String) -> [String: [String: Any]] {
-        let prefix = collectionPath + "/"
-        var result: [String: [String: Any]] = [:]
-        for (path, data) in documents {
-            if path.hasPrefix(prefix) {
-                // Only direct children of this collection
-                let remainder = String(path.dropFirst(prefix.count))
-                if !remainder.contains("/") {
-                    result[path] = data
+        lock.withLock {
+            let prefix = collectionPath + "/"
+            var result: [String: [String: Any]] = [:]
+            for (path, data) in documents {
+                if path.hasPrefix(prefix) {
+                    // Only direct children of this collection.
+                    let remainder = String(path.dropFirst(prefix.count))
+                    if !remainder.contains("/") {
+                        result[path] = data
+                    }
                 }
             }
+            return result
         }
-        return result
     }
 
     func setDocumentData(_ data: [String: Any], at path: String) {
-        documents[path] = data
+        lock.withLock { documents[path] = data }
     }
 
     func mergeDocumentData(_ data: [String: Any], at path: String) {
-        var existing = documents[path] ?? [:]
-        for (key, value) in data {
-            if value is FakeFieldDelete {
-                existing.removeValue(forKey: key)
-            } else {
-                existing[key] = value
+        lock.withLock {
+            var existing = documents[path] ?? [:]
+            for (key, value) in data {
+                if value is FakeFieldDelete {
+                    existing.removeValue(forKey: key)
+                } else {
+                    existing[key] = value
+                }
             }
+            documents[path] = existing
         }
-        documents[path] = existing
     }
 
     func deleteDocument(at path: String) {
-        documents.removeValue(forKey: path)
+        lock.withLock {
+            documents.removeValue(forKey: path)
+            return ()
+        }
     }
 }
 
 // MARK: - Fake Collection Gateway
 
-private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway {
+private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, @unchecked Sendable {
     private let store: FakeDocumentStore
     private let path: String
-    private let nextError: () -> Error?
+    private let nextError: @Sendable () -> Error?
 
-    init(store: FakeDocumentStore, path: String, nextError: @escaping () -> Error?) {
+    init(store: FakeDocumentStore, path: String, nextError: @escaping @Sendable () -> Error?) {
         self.store = store
         self.path = path
         self.nextError = nextError
@@ -168,12 +199,12 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway {
 
 // MARK: - Fake Document Gateway
 
-private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway {
+private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway, @unchecked Sendable {
     private let store: FakeDocumentStore
     let path: String
-    private let nextError: () -> Error?
+    private let nextError: @Sendable () -> Error?
 
-    init(store: FakeDocumentStore, path: String, nextError: @escaping () -> Error?) {
+    init(store: FakeDocumentStore, path: String, nextError: @escaping @Sendable () -> Error?) {
         self.store = store
         self.path = path
         self.nextError = nextError
@@ -206,13 +237,13 @@ private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway {
 
 // MARK: - Fake Query Gateway
 
-private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway {
+private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, @unchecked Sendable {
     private let store: FakeDocumentStore
     private let collectionPath: String
-    private var predicates: [QueryPredicate]
-    private var sort: SortDescriptor?
-    private var limit: Int?
-    private let nextError: () -> Error?
+    private let predicates: [QueryPredicate]
+    private let sort: SortDescriptor?
+    private let limit: Int?
+    private let nextError: @Sendable () -> Error?
 
     init(
         store: FakeDocumentStore,
@@ -220,7 +251,7 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway {
         predicates: [QueryPredicate],
         sort: SortDescriptor?,
         limit: Int?,
-        nextError: @escaping () -> Error?
+        nextError: @escaping @Sendable () -> Error?
     ) {
         self.store = store
         self.collectionPath = collectionPath
@@ -292,7 +323,7 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway {
 
 // MARK: - Fake Query Snapshot
 
-private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGateway {
+private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGateway, @unchecked Sendable {
     let documents: [CloudSyncDocumentSnapshotGateway]
 
     init(
@@ -333,7 +364,7 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
 
 // MARK: - Fake Document Snapshot
 
-private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnapshotGateway {
+private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnapshotGateway, @unchecked Sendable {
     let documentID: String
     private let storedData: [String: Any]
 
@@ -349,13 +380,18 @@ private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnaps
 
 // MARK: - Fake Write Batch
 
-private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway {
+private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, @unchecked Sendable {
     private let store: FakeDocumentStore
-    private let nextError: () -> Error?
-    private let onCommit: (() -> Void)?
+    private let nextError: @Sendable () -> Error?
+    private let onCommit: (@Sendable () -> Void)?
+    private let lock = NSLock()
     private var pending: [(path: String, data: [String: Any], merge: Bool)] = []
 
-    init(store: FakeDocumentStore, nextError: @escaping () -> Error?, onCommit: (() -> Void)? = nil) {
+    init(
+        store: FakeDocumentStore,
+        nextError: @escaping @Sendable () -> Error?,
+        onCommit: (@Sendable () -> Void)? = nil
+    ) {
         self.store = store
         self.nextError = nextError
         self.onCommit = onCommit
@@ -369,19 +405,25 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway {
             )
             return
         }
-        pending.append((path: fakeDoc.path, data: normalizeFieldValues(data), merge: merge))
+        lock.withLock {
+            pending.append((path: fakeDoc.path, data: normalizeFieldValues(data), merge: merge))
+        }
     }
 
     func commit() async throws {
         if let error = nextError() { throw error }
-        for item in pending {
+        let writes = lock.withLock {
+            let writes = pending
+            pending.removeAll()
+            return writes
+        }
+        for item in writes {
             if item.merge {
                 store.mergeDocumentData(item.data, at: item.path)
             } else {
                 store.setDocumentData(item.data, at: item.path)
             }
         }
-        pending.removeAll()
         onCommit?()
     }
 }
@@ -493,5 +535,13 @@ private extension ComparisonResult {
         case .orderedSame: return 0
         case .orderedDescending: return 1
         }
+    }
+}
+
+private extension NSLock {
+    func withLock<R>(_ work: () throws -> R) rethrows -> R {
+        lock()
+        defer { unlock() }
+        return try work()
     }
 }

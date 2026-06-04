@@ -51,7 +51,8 @@ private struct CLIAgentMissionEventPrivatePayload: Codable {
 }
 
 private enum CLIAgentMissionCloudSealer {
-    static let sealedSchemaVersion = 1
+    static let sealedSchemaVersion = 2
+    static let sealedStateSchemaVersion = 1
 
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -555,7 +556,7 @@ final class CLIAgentMissionDispatcher {
     /// Build the merge update WITH a sealed synthesis summary. The private
     /// `synthesisSummary` lives only inside `sealedStatePayload`; the triplet
     /// of state fields (`contentSealed`/`sealedStateSchemaVersion`/
-    /// `sealedStateVaultKeyID`) matches the dispatch sealing contract.
+    /// `sealedStateVaultKeyID`) matches the Firestore state-update contract.
     static func mergeMissionGroupUpdate(
         winnerMissionID: String?,
         synthesisSummary: String,
@@ -565,7 +566,7 @@ final class CLIAgentMissionDispatcher {
         var update = mergeMissionGroupUpdate(winnerMissionID: winnerMissionID)
         let privatePayload = CLIAgentMissionPrivatePayload(synthesisSummary: synthesisSummary)
         update["contentSealed"] = true
-        update["sealedStateSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
+        update["sealedStateSchemaVersion"] = CLIAgentMissionCloudSealer.sealedStateSchemaVersion
         update["sealedStateVaultKeyID"] = vaultKeyID
         update["sealedStatePayload"] = try CLIAgentMissionCloudSealer.seal(
             privatePayload,
@@ -634,7 +635,7 @@ final class CLIAgentMissionDispatcher {
         return [
             "status": "cancelled",
             "contentSealed": true,
-            "sealedStateSchemaVersion": CLIAgentMissionCloudSealer.sealedSchemaVersion,
+            "sealedStateSchemaVersion": CLIAgentMissionCloudSealer.sealedStateSchemaVersion,
             "sealedStateVaultKeyID": vaultKeyID,
             "sealedStatePayload": try CLIAgentMissionCloudSealer.seal(
                 privatePayload,

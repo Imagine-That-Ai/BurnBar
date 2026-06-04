@@ -83,15 +83,11 @@ final class AgentLiveStageWiringTests: XCTestCase {
     // MARK: - Presenter + state wiring
 
     func test_presenter_observes_session_id_for_auto_open() async throws {
-        let originalGrace = AgentLiveStagePresenter.sessionEndGrace
-        AgentLiveStagePresenter.sessionEndGrace = 0.05
-        defer { AgentLiveStagePresenter.sessionEndGrace = originalGrace }
-
         let singleton = AgentWatchOverlaySingleton(
             coordinator: AgentWatchOverlayCoordinator(),
             pairingKeyProvider: StubPairingKeyProvider()
         )
-        let presenter = AgentLiveStagePresenter()
+        let presenter = AgentLiveStagePresenter(sessionEndGrace: 0.05)
         presenter.observe(singleton.state)
         XCTAssertEqual(presenter.mode, .hidden)
 
@@ -109,15 +105,11 @@ final class AgentLiveStageWiringTests: XCTestCase {
     }
 
     func test_panic_collapse_is_independent_of_state_clear() async throws {
-        let originalGrace = AgentLiveStagePresenter.sessionEndGrace
-        AgentLiveStagePresenter.sessionEndGrace = 0.5 // long enough we can verify panic short-circuits it
-        defer { AgentLiveStagePresenter.sessionEndGrace = originalGrace }
-
         let singleton = AgentWatchOverlaySingleton(
             coordinator: AgentWatchOverlayCoordinator(),
             pairingKeyProvider: StubPairingKeyProvider()
         )
-        let presenter = AgentLiveStagePresenter()
+        let presenter = AgentLiveStagePresenter(sessionEndGrace: 0.5)
         presenter.observe(singleton.state)
 
         singleton.state.setSession(id: ComputerUseSessionID("panic-1"), startedAt: .now)

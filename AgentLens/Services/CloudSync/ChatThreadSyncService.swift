@@ -108,7 +108,7 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                         vaultKeyID: resolvedKey.vaultKeyID
                     )
                     data["contentSealed"] = true
-                    data["sealedSchemaVersion"] = 1
+                    data["sealedSchemaVersion"] = 2
                     data["vaultKeyID"] = resolvedKey.vaultKeyID
                     data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
                     data["title"] = FieldValue.delete()

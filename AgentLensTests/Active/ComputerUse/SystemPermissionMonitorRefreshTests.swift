@@ -16,44 +16,57 @@ final class SystemPermissionMonitorRefreshTests: XCTestCase {
         XCTAssertNotNil(monitor.snapshots["fullDiskAccess|"])
     }
 
-    func testOnboardingWizardForcesLivePermissionRefreshBeforeReadingSnapshots() throws {
-        let sourceURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Onboarding")
-            .appendingPathComponent("OnboardingSystemPermissionsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+    @MainActor
+    func testOnboardingWizardForcesLivePermissionRefreshBeforeReadingSnapshots() async throws {
+        let monitor = FakeSystemPermissionMonitor()
+        let coordinator = PermissionsOnboardingCoordinator(monitor: monitor)
+        let step = try XCTUnwrap(coordinator.currentStep)
+        monitor.onRefresh = { fake in
+            fake.snapshots["\(step.kind.rawValue)|\(step.bundleId ?? "")"] = SystemPermissionMonitor.Snapshot(
+                kind: step.kind,
+                bundleId: step.bundleId,
+                status: .granted
+            )
+        }
 
-        XCTAssertTrue(source.contains("await SystemPermissionMonitor.shared.refreshNow(emitting: true)\n                self?.refreshSnapshots()"))
-        XCTAssertTrue(source.contains("await SystemPermissionMonitor.shared.refreshNow(emitting: true)\n        refreshSnapshots()"))
+        await coordinator.refreshCurrentPermissionState()
+
+        XCTAssertEqual(monitor.refreshCalls, [true])
+        XCTAssertEqual(coordinator.liveStatus(for: step), .granted)
+        XCTAssertEqual(coordinator.currentIndex, 1)
     }
 
-    func testOnboardingAutomationActionSendsRealTargetedAppleEventProbe() throws {
-        let sourceURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Onboarding")
-            .appendingPathComponent("OnboardingSystemPermissionsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+    @MainActor
+    func testOnboardingAutomationActionUsesPreflightBundleTargets() async throws {
+        let targetByBundleId = Dictionary(
+            uniqueKeysWithValues: OnboardingAutomationTargets.preflightTargets.map { ($0.bundleId, $0.displayName) }
+        )
+        XCTAssertEqual(targetByBundleId["com.todesktop.230313mzl4w4u92"], "Cursor")
+        XCTAssertEqual(targetByBundleId["com.apple.Safari"], "Safari")
+        XCTAssertEqual(targetByBundleId["com.google.Chrome"], "Google Chrome")
+        XCTAssertEqual(targetByBundleId["com.apple.finder"], "Finder")
 
-        XCTAssertTrue(source.contains("case .automation: return \"Request Access\""))
-        XCTAssertTrue(source.contains("AEDeterminePermissionToAutomateTarget(target.aeDesc, kAECoreSuite, kAEGetData, true)"))
-        XCTAssertTrue(source.contains("runAutomationProbe(bundleId: bundleId)"))
-        XCTAssertTrue(source.contains("tell application id"))
-        XCTAssertTrue(source.contains("Target(bundleId: \"com.todesktop.230313mzl4w4u92\", displayName: \"Cursor\")"))
-        XCTAssertTrue(source.contains("Target(bundleId: \"com.apple.Safari\", displayName: \"Safari\")"))
-        XCTAssertTrue(source.contains("Target(bundleId: \"com.google.Chrome\", displayName: \"Google Chrome\")"))
-        XCTAssertTrue(source.contains("Target(bundleId: \"com.apple.finder\", displayName: \"Finder\")"))
+        let monitor = FakeSystemPermissionMonitor()
+        var promptedBundleIds: [String] = []
+        let coordinator = PermissionsOnboardingCoordinator(
+            monitor: monitor,
+            automationPromptRunner: { bundleId in promptedBundleIds.append(bundleId) }
+        )
+        while coordinator.currentStep?.kind != .automation {
+            coordinator.skipCurrent()
+        }
+        let step = try XCTUnwrap(coordinator.currentStep)
+
+        await coordinator.requestCurrent()
+
+        XCTAssertEqual(step.bundleId, "com.todesktop.230313mzl4w4u92")
+        XCTAssertEqual(step.targetDisplayName, "Cursor")
+        XCTAssertEqual(promptedBundleIds, ["com.todesktop.230313mzl4w4u92"])
+        XCTAssertEqual(monitor.refreshCalls, [true])
     }
 
     func testMacAppDeclaresAppleEventsUsageDescription() throws {
-        let plistURL = repoRoot()
-            .appendingPathComponent("AgentLens")
-            .appendingPathComponent("Resources")
-            .appendingPathComponent("OpenBurnBar-Info.plist")
-        let data = try Data(contentsOf: plistURL)
-        let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
-        let usage = try XCTUnwrap(plist["NSAppleEventsUsageDescription"] as? String)
+        let usage = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "NSAppleEventsUsageDescription") as? String)
 
         XCTAssertTrue(usage.contains("Cursor"))
         XCTAssertTrue(usage.contains("Safari"))
@@ -61,15 +74,28 @@ final class SystemPermissionMonitorRefreshTests: XCTestCase {
         XCTAssertTrue(usage.contains("Finder"))
     }
 
-    private func repoRoot(file: StaticString = #filePath) -> URL {
-        var url = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
-        while url.path != "/" {
-            if FileManager.default.fileExists(atPath: url.appendingPathComponent("project.yml").path) {
-                return url
-            }
-            url.deleteLastPathComponent()
+    @MainActor
+    private final class FakeSystemPermissionMonitor: SystemPermissionMonitoring {
+        var snapshots: [String: SystemPermissionMonitor.Snapshot] = [:]
+        private(set) var refreshCalls: [Bool] = []
+        private(set) var startedIntervals: [TimeInterval] = []
+        private(set) var trackedBundleIds: [String] = []
+        var onRefresh: ((FakeSystemPermissionMonitor) -> Void)?
+
+        func start(pollInterval: TimeInterval) {
+            startedIntervals.append(pollInterval)
         }
-        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+
+        func stop() {}
+
+        func trackAutomation(bundleId: String) {
+            trackedBundleIds.append(bundleId)
+        }
+
+        func refreshNow(emitting: Bool) async {
+            refreshCalls.append(emitting)
+            onRefresh?(self)
+        }
     }
 }
 #endif

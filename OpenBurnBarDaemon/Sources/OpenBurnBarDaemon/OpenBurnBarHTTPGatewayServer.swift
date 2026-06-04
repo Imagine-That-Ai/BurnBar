@@ -16,6 +16,7 @@ public actor BurnBarHTTPGatewayServer {
     private let configuration: BurnBarGatewayConfiguration
     private let configStore: BurnBarConfigStore
     private let usageRecorder: BurnBarUsageRecorder?
+    private let proxyRouteLogStore: BurnBarProxyRouteLogStore?
     private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     private let anthropicExecutor: BurnBarAnthropicProviderExecutor
     private let factoryExecutor: FactoryDroidProviderExecutor
@@ -40,6 +41,7 @@ public actor BurnBarHTTPGatewayServer {
         configuration: BurnBarGatewayConfiguration,
         configStore: BurnBarConfigStore,
         usageRecorder: BurnBarUsageRecorder? = nil,
+        proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
@@ -54,6 +56,7 @@ public actor BurnBarHTTPGatewayServer {
         self.configuration = configuration
         self.configStore = configStore
         self.usageRecorder = usageRecorder
+        self.proxyRouteLogStore = proxyRouteLogStore
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
         self.factoryExecutor = factoryExecutor
@@ -304,7 +307,7 @@ public actor BurnBarHTTPGatewayServer {
         }
 
         if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
-            guard bearerToken(from: request.headers["authorization"]) == requiredToken else {
+            guard clientAuthToken(from: request) == requiredToken else {
                 await writeResponse(on: connection, status: 401, headers: ["Content-Type": "application/json"], body: errorBody("unauthorized"))
                 connection.cancel()
                 return
@@ -917,6 +920,11 @@ public actor BurnBarHTTPGatewayServer {
         guard modelID.isEmpty == false else {
             return .buffered(jsonResponse(status: 400, body: errorBody("model field required")))
         }
+        let routeLogStartedAt = Date()
+        let requestPath = "/v1/chat/completions"
+        let endpoint = "Chat Completions"
+        var routeLogAttempts: [BurnBarProxyRouteAttempt] = []
+        var rewriteKind: BurnBarProxyRewriteKind = .none
         let wantsStream = completionRequest.stream == true
         let requestSignature = Self.stableDigest(body)
         var requestedModel = gatewayRequestedModel(from: modelID)
@@ -926,24 +934,56 @@ public actor BurnBarHTTPGatewayServer {
             requestedModel = override.requestedModel
             advertisedRequestedModel = override.advertisedRequestedModel
             resolvedVariant = override.variant
+            rewriteKind = override.variant != nil ? .thinkingVariant : .modelAlias
         }
 
         do {
+            let routingModelBeforeAdvertisedResolution = requestedModel.modelID
             let routeResolution = try await resolveAdvertisedRouteKeys(
                 requestedModel: requestedModel,
                 advertisedRequestedModel: advertisedRequestedModel
             )
             requestedModel = routeResolution.requestedModel
             advertisedRequestedModel = routeResolution.advertisedRequestedModel
+            if requestedModel.modelID.caseInsensitiveCompare(routingModelBeforeAdvertisedResolution) != .orderedSame {
+                rewriteKind = .legacyOllamaCloud
+            }
             let advertisedRouteKeysByFamily = routeResolution.routeKeysByFamily
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
                 if let degraded = await attemptCrossVendorDegradeForChat(
                     bodyData: bodyData,
                     requestSignature: requestSignature,
-                    requestedModelID: modelID
+                    requestedModelID: modelID,
+                    routeLogStartedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    requestedCanonicalModelID: nil,
+                    priorAttempts: routeLogAttempts
                 ) {
-                    return degraded
+                    routeLogAttempts.append(contentsOf: degraded.attempts)
+                    if let outcome = degraded.outcome {
+                        return outcome
+                    }
                 }
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: nil,
+                    route: nil,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .rejected,
+                    httpStatus: 503,
+                    attempts: routeLogAttempts,
+                    failureMessage: "No eligible route for \(modelID)."
+                )
                 return .buffered(noEligibleRouteResponse(modelID: modelID))
             }
 
@@ -976,6 +1016,23 @@ public actor BurnBarHTTPGatewayServer {
                 )
                 await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
                 guard let requiredCanonicalModelID = ranking.requiredCanonicalModelID else {
+                    await recordProxyRouteLogEntry(
+                        startedAt: routeLogStartedAt,
+                        requestPath: requestPath,
+                        endpoint: endpoint,
+                        clientModelSlug: modelID,
+                        advertisedModelSlug: advertisedRequestedModel.originalID,
+                        routingModelSlug: requestedModel.modelID,
+                        clientModelDisplayName: modelID,
+                        routingModelDisplayName: requestedModel.modelID,
+                        requestedCanonicalModelID: nil,
+                        route: nil,
+                        rewriteKind: rewriteKind,
+                        finalStatus: .rejected,
+                        httpStatus: 503,
+                        attempts: routeLogAttempts,
+                        failureMessage: "Exact model identity unavailable for \(modelID)."
+                    )
                     return .buffered(exactModelIdentityUnavailableResponse(modelID: modelID))
                 }
                 let rankedRoutes = ranking.rankedRoutes
@@ -992,6 +1049,7 @@ public actor BurnBarHTTPGatewayServer {
                         try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
                     }
                     let idempotencyKey = usageIdempotencyKey(requestSignature: requestSignature, route: route)
+                    let attemptStartedAt = Date()
 
                     do {
                         // Verbatim SSE passthrough only when the client wire
@@ -1003,7 +1061,7 @@ public actor BurnBarHTTPGatewayServer {
                             && route.providerID.caseInsensitiveCompare("factory") != .orderedSame
                         if canStreamVerbatim {
                             do {
-                                let outcome = try await relayProxyStream(
+                                let relay = try await relayProxyStream(
                                     on: connection,
                                     corsHeaders: corsHeaders,
                                     usageFormat: .openAI,
@@ -1023,7 +1081,42 @@ public actor BurnBarHTTPGatewayServer {
                                     formatFamily: formatFamily,
                                     route: route
                                 )
-                                return outcome
+                                let attemptStatus: BurnBarProxyRouteFinalStatus = relay.interrupted ? .interrupted : .exact
+                                routeLogAttempts.append(routeAttempt(
+                                    sequence: routeLogAttempts.count + 1,
+                                    startedAt: attemptStartedAt,
+                                    completedAt: Date(),
+                                    route: route,
+                                    status: attemptStatus,
+                                    httpStatus: relay.httpStatus
+                                ))
+                                let finalStatus = relay.interrupted
+                                    ? BurnBarProxyRouteFinalStatus.interrupted
+                                    : routeFinalStatus(
+                                        route: route,
+                                        requestedCanonicalModelID: requiredCanonicalModelID,
+                                        attempts: routeLogAttempts
+                                    )
+                                await recordProxyRouteLogEntry(
+                                    startedAt: routeLogStartedAt,
+                                    requestPath: requestPath,
+                                    endpoint: endpoint,
+                                    clientModelSlug: modelID,
+                                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                                    routingModelSlug: requestedModel.modelID,
+                                    clientModelDisplayName: modelID,
+                                    routingModelDisplayName: requestedModel.modelID,
+                                    requestedCanonicalModelID: requiredCanonicalModelID,
+                                    route: route,
+                                    rewriteKind: rewriteKind,
+                                    finalStatus: finalStatus,
+                                    streamed: true,
+                                    streamInterrupted: relay.interrupted,
+                                    httpStatus: relay.httpStatus,
+                                    attempts: routeLogAttempts,
+                                    usage: relay.usage
+                                )
+                                return relay.outcome
                             } catch is BurnBarProxyStreamingUnsupported {
                                 // Upstream cannot stream verbatim (e.g. Ollama
                                 // native API) — fall back to buffered below.
@@ -1043,6 +1136,36 @@ public actor BurnBarHTTPGatewayServer {
                             route: route
                         )
                         await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+                        routeLogAttempts.append(routeAttempt(
+                            sequence: routeLogAttempts.count + 1,
+                            startedAt: attemptStartedAt,
+                            completedAt: Date(),
+                            route: route,
+                            status: .exact,
+                            httpStatus: response.statusCode
+                        ))
+                        await recordProxyRouteLogEntry(
+                            startedAt: routeLogStartedAt,
+                            requestPath: requestPath,
+                            endpoint: endpoint,
+                            clientModelSlug: modelID,
+                            advertisedModelSlug: advertisedRequestedModel.originalID,
+                            routingModelSlug: requestedModel.modelID,
+                            clientModelDisplayName: modelID,
+                            routingModelDisplayName: requestedModel.modelID,
+                            requestedCanonicalModelID: requiredCanonicalModelID,
+                            route: route,
+                            providerReportedModelSlug: Self.providerReportedModelSlug(from: response.body),
+                            rewriteKind: rewriteKind,
+                            finalStatus: routeFinalStatus(
+                                route: route,
+                                requestedCanonicalModelID: requiredCanonicalModelID,
+                                attempts: routeLogAttempts
+                            ),
+                            httpStatus: response.statusCode,
+                            attempts: routeLogAttempts,
+                            usage: response.usage
+                        )
                         return .buffered(GatewayHTTPResponse(
                             status: response.statusCode,
                             headers: ["Content-Type": response.contentType],
@@ -1051,6 +1174,15 @@ public actor BurnBarHTTPGatewayServer {
                     } catch {
                         lastError = error
                         lastFailedRoute = route
+                        routeLogAttempts.append(routeAttempt(
+                            sequence: routeLogAttempts.count + 1,
+                            startedAt: attemptStartedAt,
+                            completedAt: Date(),
+                            route: route,
+                            status: .failed,
+                            httpStatus: Self.httpStatus(from: error),
+                            failureMessage: error.localizedDescription
+                        ))
                         await modelHealthStore.recordFailure(
                             modelID: requestedModel.originalID,
                             formatFamily: formatFamily,
@@ -1071,34 +1203,156 @@ public actor BurnBarHTTPGatewayServer {
                     if let degraded = await attemptCrossVendorDegradeForChat(
                         bodyData: bodyData,
                         requestSignature: requestSignature,
-                        requestedModelID: modelID
+                        requestedModelID: modelID,
+                        routeLogStartedAt: routeLogStartedAt,
+                        requestPath: requestPath,
+                        endpoint: endpoint,
+                        advertisedModelSlug: advertisedRequestedModel.originalID,
+                        routingModelSlug: requestedModel.modelID,
+                        requestedCanonicalModelID: requiredCanonicalModelID,
+                        priorAttempts: routeLogAttempts
                     ) {
-                        return degraded
+                        routeLogAttempts.append(contentsOf: degraded.attempts)
+                        if let outcome = degraded.outcome {
+                            return outcome
+                        }
                     }
+                    await recordProxyRouteLogEntry(
+                        startedAt: routeLogStartedAt,
+                        requestPath: requestPath,
+                        endpoint: endpoint,
+                        clientModelSlug: modelID,
+                        advertisedModelSlug: advertisedRequestedModel.originalID,
+                        routingModelSlug: requestedModel.modelID,
+                        clientModelDisplayName: modelID,
+                        routingModelDisplayName: requestedModel.modelID,
+                        requestedCanonicalModelID: requiredCanonicalModelID,
+                        route: lastFailedRoute,
+                        rewriteKind: rewriteKind,
+                        finalStatus: .failed,
+                        httpStatus: Self.httpStatus(from: lastError),
+                        attempts: routeLogAttempts,
+                        failureMessage: "Exact model fail-closed after provider failure."
+                    )
                     return .buffered(exactModelFailClosedResponse(canonicalModelID: requiredCanonicalModelID))
                 }
 
                 if let lastError {
+                    await recordProxyRouteLogEntry(
+                        startedAt: routeLogStartedAt,
+                        requestPath: requestPath,
+                        endpoint: endpoint,
+                        clientModelSlug: modelID,
+                        advertisedModelSlug: advertisedRequestedModel.originalID,
+                        routingModelSlug: requestedModel.modelID,
+                        clientModelDisplayName: modelID,
+                        routingModelDisplayName: requestedModel.modelID,
+                        requestedCanonicalModelID: requiredCanonicalModelID,
+                        route: lastFailedRoute,
+                        rewriteKind: rewriteKind,
+                        finalStatus: .failed,
+                        httpStatus: Self.httpStatus(from: lastError),
+                        attempts: routeLogAttempts,
+                        failureMessage: lastError.localizedDescription
+                    )
                     return .buffered(providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute))
                 }
             }
 
             if let lastError {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: requestedCanonicalModelID,
+                    route: lastFailedRoute,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .failed,
+                    httpStatus: Self.httpStatus(from: lastError),
+                    attempts: routeLogAttempts,
+                    failureMessage: lastError.localizedDescription
+                )
                 return .buffered(providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute))
             }
             if let degraded = await attemptCrossVendorDegradeForChat(
                 bodyData: bodyData,
                 requestSignature: requestSignature,
-                requestedModelID: modelID
+                requestedModelID: modelID,
+                routeLogStartedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                requestedCanonicalModelID: requestedCanonicalModelID,
+                priorAttempts: routeLogAttempts
             ) {
-                return degraded
+                routeLogAttempts.append(contentsOf: degraded.attempts)
+                if let outcome = degraded.outcome {
+                    return outcome
+                }
             }
+            await recordProxyRouteLogEntry(
+                startedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                clientModelSlug: modelID,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                clientModelDisplayName: modelID,
+                routingModelDisplayName: requestedModel.modelID,
+                requestedCanonicalModelID: requestedCanonicalModelID,
+                route: nil,
+                rewriteKind: rewriteKind,
+                finalStatus: .rejected,
+                httpStatus: 503,
+                attempts: routeLogAttempts,
+                failureMessage: "No eligible route for \(modelID)."
+            )
             return .buffered(noEligibleRouteResponse(modelID: modelID))
         } catch let error as BurnBarProviderRouterError {
             logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            await recordProxyRouteLogEntry(
+                startedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                clientModelSlug: modelID,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                clientModelDisplayName: modelID,
+                routingModelDisplayName: requestedModel.modelID,
+                requestedCanonicalModelID: nil,
+                route: nil,
+                rewriteKind: rewriteKind,
+                finalStatus: .rejected,
+                httpStatus: 503,
+                attempts: routeLogAttempts,
+                failureMessage: error.localizedDescription
+            )
             return .buffered(noEligibleRouteResponse(modelID: modelID))
         } catch {
             logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            await recordProxyRouteLogEntry(
+                startedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                clientModelSlug: modelID,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                clientModelDisplayName: modelID,
+                routingModelDisplayName: requestedModel.modelID,
+                requestedCanonicalModelID: nil,
+                route: nil,
+                rewriteKind: rewriteKind,
+                finalStatus: .failed,
+                httpStatus: 502,
+                attempts: routeLogAttempts,
+                failureMessage: error.localizedDescription
+            )
             return .buffered(jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)")))
         }
     }
@@ -1125,6 +1379,11 @@ public actor BurnBarHTTPGatewayServer {
         guard modelID.isEmpty == false else {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
+        let routeLogStartedAt = Date()
+        let requestPath = "/v1/responses"
+        let endpoint = "Responses"
+        var routeLogAttempts: [BurnBarProxyRouteAttempt] = []
+        var rewriteKind: BurnBarProxyRewriteKind = .none
         let requestSignature = Self.stableDigest(body)
         var requestedModel = gatewayRequestedModel(from: modelID)
         var advertisedRequestedModel = requestedModel
@@ -1133,17 +1392,39 @@ public actor BurnBarHTTPGatewayServer {
             requestedModel = override.requestedModel
             advertisedRequestedModel = override.advertisedRequestedModel
             resolvedVariant = override.variant
+            rewriteKind = override.variant != nil ? .thinkingVariant : .modelAlias
         }
 
         do {
+            let routingModelBeforeAdvertisedResolution = requestedModel.modelID
             let routeResolution = try await resolveAdvertisedRouteKeys(
                 requestedModel: requestedModel,
                 advertisedRequestedModel: advertisedRequestedModel
             )
             requestedModel = routeResolution.requestedModel
             advertisedRequestedModel = routeResolution.advertisedRequestedModel
+            if requestedModel.modelID.caseInsensitiveCompare(routingModelBeforeAdvertisedResolution) != .orderedSame {
+                rewriteKind = .legacyOllamaCloud
+            }
             let advertisedRouteKeysByFamily = routeResolution.routeKeysByFamily
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: nil,
+                    route: nil,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .rejected,
+                    httpStatus: 503,
+                    attempts: routeLogAttempts,
+                    failureMessage: "No eligible route for \(modelID)."
+                )
                 return noEligibleRouteResponse(modelID: modelID)
             }
 
@@ -1176,6 +1457,23 @@ public actor BurnBarHTTPGatewayServer {
                 )
                 await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
                 guard let requiredCanonicalModelID = ranking.requiredCanonicalModelID else {
+                    await recordProxyRouteLogEntry(
+                        startedAt: routeLogStartedAt,
+                        requestPath: requestPath,
+                        endpoint: endpoint,
+                        clientModelSlug: modelID,
+                        advertisedModelSlug: advertisedRequestedModel.originalID,
+                        routingModelSlug: requestedModel.modelID,
+                        clientModelDisplayName: modelID,
+                        routingModelDisplayName: requestedModel.modelID,
+                        requestedCanonicalModelID: nil,
+                        route: nil,
+                        rewriteKind: rewriteKind,
+                        finalStatus: .rejected,
+                        httpStatus: 503,
+                        attempts: routeLogAttempts,
+                        failureMessage: "Exact model identity unavailable for \(modelID)."
+                    )
                     return exactModelIdentityUnavailableResponse(modelID: modelID)
                 }
                 let rankedRoutes = ranking.rankedRoutes
@@ -1193,6 +1491,7 @@ public actor BurnBarHTTPGatewayServer {
                     }
 
                     let idempotencyKey = usageIdempotencyKey(requestSignature: requestSignature, route: route)
+                    let attemptStartedAt = Date()
                     do {
                         let response = try await proxyResponses(
                             body: bodyData,
@@ -1207,6 +1506,36 @@ public actor BurnBarHTTPGatewayServer {
                             route: route
                         )
                         await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+                        routeLogAttempts.append(routeAttempt(
+                            sequence: routeLogAttempts.count + 1,
+                            startedAt: attemptStartedAt,
+                            completedAt: Date(),
+                            route: route,
+                            status: .exact,
+                            httpStatus: response.statusCode
+                        ))
+                        await recordProxyRouteLogEntry(
+                            startedAt: routeLogStartedAt,
+                            requestPath: requestPath,
+                            endpoint: endpoint,
+                            clientModelSlug: modelID,
+                            advertisedModelSlug: advertisedRequestedModel.originalID,
+                            routingModelSlug: requestedModel.modelID,
+                            clientModelDisplayName: modelID,
+                            routingModelDisplayName: requestedModel.modelID,
+                            requestedCanonicalModelID: requiredCanonicalModelID,
+                            route: route,
+                            providerReportedModelSlug: Self.providerReportedModelSlug(from: response.body),
+                            rewriteKind: rewriteKind,
+                            finalStatus: routeFinalStatus(
+                                route: route,
+                                requestedCanonicalModelID: requiredCanonicalModelID,
+                                attempts: routeLogAttempts
+                            ),
+                            httpStatus: response.statusCode,
+                            attempts: routeLogAttempts,
+                            usage: response.usage
+                        )
                         return GatewayHTTPResponse(
                             status: response.statusCode,
                             headers: ["Content-Type": response.contentType],
@@ -1215,6 +1544,15 @@ public actor BurnBarHTTPGatewayServer {
                     } catch {
                         lastError = error
                         lastFailedRoute = route
+                        routeLogAttempts.append(routeAttempt(
+                            sequence: routeLogAttempts.count + 1,
+                            startedAt: attemptStartedAt,
+                            completedAt: Date(),
+                            route: route,
+                            status: .failed,
+                            httpStatus: Self.httpStatus(from: error),
+                            failureMessage: error.localizedDescription
+                        ))
                         await modelHealthStore.recordFailure(
                             modelID: requestedModel.originalID,
                             formatFamily: formatFamily,
@@ -1232,23 +1570,125 @@ public actor BurnBarHTTPGatewayServer {
 
                 if let lastError,
                    shouldFailOverProviderError(lastError) {
+                    await recordProxyRouteLogEntry(
+                        startedAt: routeLogStartedAt,
+                        requestPath: requestPath,
+                        endpoint: endpoint,
+                        clientModelSlug: modelID,
+                        advertisedModelSlug: advertisedRequestedModel.originalID,
+                        routingModelSlug: requestedModel.modelID,
+                        clientModelDisplayName: modelID,
+                        routingModelDisplayName: requestedModel.modelID,
+                        requestedCanonicalModelID: requiredCanonicalModelID,
+                        route: lastFailedRoute,
+                        rewriteKind: rewriteKind,
+                        finalStatus: .failed,
+                        httpStatus: Self.httpStatus(from: lastError),
+                        attempts: routeLogAttempts,
+                        failureMessage: "Exact model fail-closed after provider failure."
+                    )
                     return exactModelFailClosedResponse(canonicalModelID: requiredCanonicalModelID)
                 }
 
                 if let lastError {
+                    await recordProxyRouteLogEntry(
+                        startedAt: routeLogStartedAt,
+                        requestPath: requestPath,
+                        endpoint: endpoint,
+                        clientModelSlug: modelID,
+                        advertisedModelSlug: advertisedRequestedModel.originalID,
+                        routingModelSlug: requestedModel.modelID,
+                        clientModelDisplayName: modelID,
+                        routingModelDisplayName: requestedModel.modelID,
+                        requestedCanonicalModelID: requiredCanonicalModelID,
+                        route: lastFailedRoute,
+                        rewriteKind: rewriteKind,
+                        finalStatus: .failed,
+                        httpStatus: Self.httpStatus(from: lastError),
+                        attempts: routeLogAttempts,
+                        failureMessage: lastError.localizedDescription
+                    )
                     return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
                 }
             }
 
             if let lastError {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: requestedCanonicalModelID,
+                    route: lastFailedRoute,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .failed,
+                    httpStatus: Self.httpStatus(from: lastError),
+                    attempts: routeLogAttempts,
+                    failureMessage: lastError.localizedDescription
+                )
                 return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
             }
+            await recordProxyRouteLogEntry(
+                startedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                clientModelSlug: modelID,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                clientModelDisplayName: modelID,
+                routingModelDisplayName: requestedModel.modelID,
+                requestedCanonicalModelID: requestedCanonicalModelID,
+                route: nil,
+                rewriteKind: rewriteKind,
+                finalStatus: .rejected,
+                httpStatus: 503,
+                attempts: routeLogAttempts,
+                failureMessage: "No eligible route for \(modelID)."
+            )
             return noEligibleRouteResponse(modelID: modelID)
         } catch let error as BurnBarProviderRouterError {
             logger.error("gateway_responses_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            await recordProxyRouteLogEntry(
+                startedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                clientModelSlug: modelID,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                clientModelDisplayName: modelID,
+                routingModelDisplayName: requestedModel.modelID,
+                requestedCanonicalModelID: nil,
+                route: nil,
+                rewriteKind: rewriteKind,
+                finalStatus: .rejected,
+                httpStatus: 503,
+                attempts: routeLogAttempts,
+                failureMessage: error.localizedDescription
+            )
             return noEligibleRouteResponse(modelID: modelID)
         } catch {
             logger.error("gateway_responses_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            await recordProxyRouteLogEntry(
+                startedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                clientModelSlug: modelID,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                clientModelDisplayName: modelID,
+                routingModelDisplayName: requestedModel.modelID,
+                requestedCanonicalModelID: nil,
+                route: nil,
+                rewriteKind: rewriteKind,
+                finalStatus: .failed,
+                httpStatus: 502,
+                attempts: routeLogAttempts,
+                failureMessage: error.localizedDescription
+            )
             return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
         }
     }
@@ -1279,6 +1719,11 @@ public actor BurnBarHTTPGatewayServer {
         guard modelID.isEmpty == false else {
             return .buffered(jsonResponse(status: 400, body: errorBody("model field required")))
         }
+        let routeLogStartedAt = Date()
+        let requestPath = "/v1/messages"
+        let endpoint = "Anthropic Messages"
+        var routeLogAttempts: [BurnBarProxyRouteAttempt] = []
+        var rewriteKind: BurnBarProxyRewriteKind = .none
         let wantsStream = messagesRequest.stream == true
         let requestSignature = Self.stableDigest(body)
         var requestedModel = gatewayRequestedModel(from: modelID)
@@ -1288,20 +1733,59 @@ public actor BurnBarHTTPGatewayServer {
             requestedModel = override.requestedModel
             advertisedRequestedModel = override.advertisedRequestedModel
             resolvedVariant = override.variant
+            rewriteKind = override.variant != nil ? .thinkingVariant : .modelAlias
         }
 
         do {
+            let routingModelBeforeAdvertisedResolution = requestedModel.modelID
             let routeResolution = try await resolveAdvertisedRouteKeys(
                 requestedModel: requestedModel,
                 advertisedRequestedModel: advertisedRequestedModel
             )
             requestedModel = routeResolution.requestedModel
             advertisedRequestedModel = routeResolution.advertisedRequestedModel
+            if requestedModel.modelID.caseInsensitiveCompare(routingModelBeforeAdvertisedResolution) != .orderedSame {
+                rewriteKind = .legacyOllamaCloud
+            }
             let advertisedRouteKeysByFamily = routeResolution.routeKeysByFamily
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: nil,
+                    route: nil,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .rejected,
+                    httpStatus: 503,
+                    attempts: routeLogAttempts,
+                    failureMessage: "No eligible route for \(modelID)."
+                )
                 return .buffered(noEligibleRouteResponse(modelID: modelID))
             }
             guard let advertisedRouteKeys = advertisedRouteKeysByFamily[.anthropic], !advertisedRouteKeys.isEmpty else {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: nil,
+                    route: nil,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .rejected,
+                    httpStatus: 503,
+                    attempts: routeLogAttempts,
+                    failureMessage: "No eligible Anthropic-family route for \(modelID)."
+                )
                 return .buffered(noEligibleRouteResponse(modelID: modelID))
             }
 
@@ -1326,6 +1810,23 @@ public actor BurnBarHTTPGatewayServer {
             )
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: requestedModel.modelID)
             guard let requiredCanonicalModelID = ranking.requiredCanonicalModelID else {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: nil,
+                    route: nil,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .rejected,
+                    httpStatus: 503,
+                    attempts: routeLogAttempts,
+                    failureMessage: "Exact model identity unavailable for \(modelID)."
+                )
                 return .buffered(exactModelIdentityUnavailableResponse(modelID: modelID))
             }
             let rankedRoutes = ranking.rankedRoutes
@@ -1336,6 +1837,23 @@ public actor BurnBarHTTPGatewayServer {
                 }
                 .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
             guard rankedRoutes.isEmpty == false else {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: requiredCanonicalModelID,
+                    route: nil,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .rejected,
+                    httpStatus: 503,
+                    attempts: routeLogAttempts,
+                    failureMessage: "No eligible Anthropic-family route for \(modelID)."
+                )
                 return .buffered(jsonResponse(
                     status: 503,
                     body: errorBody(
@@ -1353,6 +1871,7 @@ public actor BurnBarHTTPGatewayServer {
                     try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
                 }
                 let idempotencyKey = usageIdempotencyKey(requestSignature: requestSignature, route: route)
+                let attemptStartedAt = Date()
                 // B2: when the experimental interactive path is enabled and this
                 // OAuth subscription route is eligible, drive a real interactive
                 // `claude` TUI. It produces a single buffered answer, so verbatim
@@ -1366,7 +1885,7 @@ public actor BurnBarHTTPGatewayServer {
                     // unchanged. Falls back to buffered if the upstream cannot stream.
                     if wantsStream && !useInteractiveClaude {
                         do {
-                            let outcome = try await relayProxyStream(
+                            let relay = try await relayProxyStream(
                                 on: connection,
                                 corsHeaders: corsHeaders,
                                 usageFormat: .anthropic,
@@ -1386,7 +1905,42 @@ public actor BurnBarHTTPGatewayServer {
                                 formatFamily: .anthropic,
                                 route: route
                             )
-                            return outcome
+                            let attemptStatus: BurnBarProxyRouteFinalStatus = relay.interrupted ? .interrupted : .exact
+                            routeLogAttempts.append(routeAttempt(
+                                sequence: routeLogAttempts.count + 1,
+                                startedAt: attemptStartedAt,
+                                completedAt: Date(),
+                                route: route,
+                                status: attemptStatus,
+                                httpStatus: relay.httpStatus
+                            ))
+                            let finalStatus = relay.interrupted
+                                ? BurnBarProxyRouteFinalStatus.interrupted
+                                : routeFinalStatus(
+                                    route: route,
+                                    requestedCanonicalModelID: requiredCanonicalModelID,
+                                    attempts: routeLogAttempts
+                                )
+                            await recordProxyRouteLogEntry(
+                                startedAt: routeLogStartedAt,
+                                requestPath: requestPath,
+                                endpoint: endpoint,
+                                clientModelSlug: modelID,
+                                advertisedModelSlug: advertisedRequestedModel.originalID,
+                                routingModelSlug: requestedModel.modelID,
+                                clientModelDisplayName: modelID,
+                                routingModelDisplayName: requestedModel.modelID,
+                                requestedCanonicalModelID: requiredCanonicalModelID,
+                                route: route,
+                                rewriteKind: rewriteKind,
+                                finalStatus: finalStatus,
+                                streamed: true,
+                                streamInterrupted: relay.interrupted,
+                                httpStatus: relay.httpStatus,
+                                attempts: routeLogAttempts,
+                                usage: relay.usage
+                            )
+                            return relay.outcome
                         } catch is BurnBarProxyStreamingUnsupported {
                             // Upstream cannot stream verbatim — fall back to buffered.
                         }
@@ -1413,6 +1967,36 @@ public actor BurnBarHTTPGatewayServer {
                         route: route
                     )
                     await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
+                    routeLogAttempts.append(routeAttempt(
+                        sequence: routeLogAttempts.count + 1,
+                        startedAt: attemptStartedAt,
+                        completedAt: Date(),
+                        route: route,
+                        status: .exact,
+                        httpStatus: response.statusCode
+                    ))
+                    await recordProxyRouteLogEntry(
+                        startedAt: routeLogStartedAt,
+                        requestPath: requestPath,
+                        endpoint: endpoint,
+                        clientModelSlug: modelID,
+                        advertisedModelSlug: advertisedRequestedModel.originalID,
+                        routingModelSlug: requestedModel.modelID,
+                        clientModelDisplayName: modelID,
+                        routingModelDisplayName: requestedModel.modelID,
+                        requestedCanonicalModelID: requiredCanonicalModelID,
+                        route: route,
+                        providerReportedModelSlug: Self.providerReportedModelSlug(from: response.body),
+                        rewriteKind: rewriteKind,
+                        finalStatus: routeFinalStatus(
+                            route: route,
+                            requestedCanonicalModelID: requiredCanonicalModelID,
+                            attempts: routeLogAttempts
+                        ),
+                        httpStatus: response.statusCode,
+                        attempts: routeLogAttempts,
+                        usage: response.usage
+                    )
                     return .buffered(GatewayHTTPResponse(
                         status: response.statusCode,
                         headers: ["Content-Type": response.contentType],
@@ -1421,6 +2005,15 @@ public actor BurnBarHTTPGatewayServer {
                 } catch {
                     lastError = error
                     lastFailedRoute = route
+                    routeLogAttempts.append(routeAttempt(
+                        sequence: routeLogAttempts.count + 1,
+                        startedAt: attemptStartedAt,
+                        completedAt: Date(),
+                        route: route,
+                        status: .failed,
+                        httpStatus: Self.httpStatus(from: error),
+                        failureMessage: error.localizedDescription
+                    ))
                     await modelHealthStore.recordFailure(
                         modelID: requestedModel.originalID,
                         formatFamily: .anthropic,
@@ -1438,15 +2031,83 @@ public actor BurnBarHTTPGatewayServer {
 
             if let lastError,
                shouldFailOverProviderError(lastError) {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: requiredCanonicalModelID,
+                    route: lastFailedRoute,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .failed,
+                    httpStatus: Self.httpStatus(from: lastError),
+                    attempts: routeLogAttempts,
+                    failureMessage: "Exact model fail-closed after provider failure."
+                )
                 return .buffered(exactModelFailClosedResponse(canonicalModelID: requiredCanonicalModelID))
             }
 
             if let lastError {
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: modelID,
+                    advertisedModelSlug: advertisedRequestedModel.originalID,
+                    routingModelSlug: requestedModel.modelID,
+                    clientModelDisplayName: modelID,
+                    routingModelDisplayName: requestedModel.modelID,
+                    requestedCanonicalModelID: requiredCanonicalModelID,
+                    route: lastFailedRoute,
+                    rewriteKind: rewriteKind,
+                    finalStatus: .failed,
+                    httpStatus: Self.httpStatus(from: lastError),
+                    attempts: routeLogAttempts,
+                    failureMessage: lastError.localizedDescription
+                )
                 return .buffered(providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute))
             }
+            await recordProxyRouteLogEntry(
+                startedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                clientModelSlug: modelID,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                clientModelDisplayName: modelID,
+                routingModelDisplayName: requestedModel.modelID,
+                requestedCanonicalModelID: requiredCanonicalModelID,
+                route: nil,
+                rewriteKind: rewriteKind,
+                finalStatus: .rejected,
+                httpStatus: 503,
+                attempts: routeLogAttempts,
+                failureMessage: "No eligible route for \(modelID)."
+            )
             return .buffered(noEligibleRouteResponse(modelID: modelID))
         } catch {
             logger.error("gateway_anthropic_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            await recordProxyRouteLogEntry(
+                startedAt: routeLogStartedAt,
+                requestPath: requestPath,
+                endpoint: endpoint,
+                clientModelSlug: modelID,
+                advertisedModelSlug: advertisedRequestedModel.originalID,
+                routingModelSlug: requestedModel.modelID,
+                clientModelDisplayName: modelID,
+                routingModelDisplayName: requestedModel.modelID,
+                requestedCanonicalModelID: nil,
+                route: nil,
+                rewriteKind: rewriteKind,
+                finalStatus: .failed,
+                httpStatus: 502,
+                attempts: routeLogAttempts,
+                failureMessage: error.localizedDescription
+            )
             return .buffered(jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)")))
         }
     }
@@ -1574,6 +2235,217 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
+    private func appendProxyRouteLog(_ entry: BurnBarProxyRouteLogEntry) async {
+        guard let proxyRouteLogStore else { return }
+        await proxyRouteLogStore.append(entry)
+    }
+
+    private func proxyRouteUsage(
+        from usage: BurnBarProviderProxyUsage?,
+        route: BurnBarProviderRoute
+    ) -> BurnBarProxyRouteUsage? {
+        guard let usage else { return nil }
+        return BurnBarProxyRouteUsage(
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            reasoningTokens: usage.reasoningTokens,
+            cost: route.pricing.cost(
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                cacheCreationTokens: usage.cacheCreationTokens,
+                cacheReadTokens: usage.cacheReadTokens
+            ),
+            confidence: usage.confidence
+        )
+    }
+
+    private func routeAttempt(
+        sequence: Int,
+        startedAt: Date,
+        completedAt: Date,
+        route: BurnBarProviderRoute,
+        status: BurnBarProxyRouteFinalStatus,
+        httpStatus: Int?,
+        failureMessage: String? = nil
+    ) -> BurnBarProxyRouteAttempt {
+        BurnBarProxyRouteAttempt(
+            sequence: sequence,
+            startedAt: startedAt,
+            completedAt: completedAt,
+            durationMilliseconds: Self.elapsedMilliseconds(from: startedAt, to: completedAt),
+            providerID: route.providerID,
+            providerName: route.providerDisplayName,
+            providerLogoKey: providerLogoKey(for: route),
+            accountID: route.credentialSlotID,
+            accountLabel: route.credentialSlotLabel,
+            routingModelSlug: route.requestedModel,
+            upstreamModelSlug: route.resolvedModelID,
+            canonicalModelID: route.canonicalModelID,
+            formatFamily: route.formatFamily.rawValue,
+            endpointProfileID: route.endpointProfileID,
+            transportKind: transportKind(for: route),
+            status: status,
+            httpStatus: httpStatus,
+            failureMessage: Self.sanitizedFailureMessage(failureMessage)
+        )
+    }
+
+    private func providerLogoKey(for route: BurnBarProviderRoute) -> String {
+        configStore.catalogSupport.catalog.provider(id: route.providerID)?.bundledLogoName
+            ?? BurnBarCatalogProvider.bundledLogoName(forProviderID: route.providerID)
+            ?? "\(route.providerID.capitalized)Logo"
+    }
+
+    private func routeFinalStatus(
+        route: BurnBarProviderRoute,
+        requestedCanonicalModelID: String?,
+        attempts: [BurnBarProxyRouteAttempt],
+        fallback: BurnBarProxyRouteFinalStatus = .exact
+    ) -> BurnBarProxyRouteFinalStatus {
+        guard fallback == .exact else { return fallback }
+        guard let requestedCanonicalModelID else {
+            return attempts.contains(where: { $0.status == .failed }) ? .failed : .exact
+        }
+        guard route.canonicalModelID == requestedCanonicalModelID else {
+            return .failed
+        }
+        return attempts.contains(where: { $0.status == .failed }) ? .sameModelFailover : .exact
+    }
+
+    private func exactModelInvariant(
+        route: BurnBarProviderRoute?,
+        requestedCanonicalModelID: String?,
+        finalStatus: BurnBarProxyRouteFinalStatus
+    ) -> BurnBarProxyExactModelInvariant {
+        if finalStatus == .crossVendorFallback {
+            return .notApplicable
+        }
+        guard let requestedCanonicalModelID else {
+            return .unavailable
+        }
+        guard let route else {
+            return .failed
+        }
+        return route.canonicalModelID == requestedCanonicalModelID ? .passed : .failed
+    }
+
+    private func transportKind(for route: BurnBarProviderRoute) -> BurnBarProxyTransportKind {
+        if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
+            return .factoryDroid
+        }
+        if interactiveClaudeExecutor != nil,
+           ClaudeInteractiveSessionExecutor.isEligible(route: route) {
+            return .claudeInteractive
+        }
+        return .http
+    }
+
+    private static func providerReportedModelSlug(from body: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return nil
+        }
+        if let model = object["model"] as? String {
+            return normalizedNonEmpty(model)
+        }
+        if let response = object["response"] as? [String: Any],
+           let model = response["model"] as? String {
+            return normalizedNonEmpty(model)
+        }
+        return nil
+    }
+
+    private static func httpStatus(from error: Error) -> Int? {
+        if case let BurnBarProviderExecutorError.upstreamError(status, _) = error {
+            return status
+        }
+        return nil
+    }
+
+    private static func sanitizedFailureMessage(_ message: String?) -> String? {
+        guard let message else { return nil }
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let oneLine = trimmed
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+        return String(oneLine.prefix(260))
+    }
+
+    private static func normalizedNonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func elapsedMilliseconds(from start: Date, to end: Date) -> Int {
+        max(0, Int((end.timeIntervalSince1970 - start.timeIntervalSince1970) * 1_000))
+    }
+
+    private func recordProxyRouteLogEntry(
+        startedAt: Date,
+        requestPath: String,
+        endpoint: String,
+        clientModelSlug: String,
+        advertisedModelSlug: String?,
+        routingModelSlug: String?,
+        clientModelDisplayName: String?,
+        routingModelDisplayName: String?,
+        requestedCanonicalModelID: String?,
+        route: BurnBarProviderRoute?,
+        providerReportedModelSlug: String? = nil,
+        rewriteKind: BurnBarProxyRewriteKind,
+        finalStatus: BurnBarProxyRouteFinalStatus,
+        streamed: Bool = false,
+        streamInterrupted: Bool = false,
+        httpStatus: Int? = nil,
+        attempts: [BurnBarProxyRouteAttempt],
+        usage: BurnBarProviderProxyUsage? = nil,
+        failureMessage: String? = nil
+    ) async {
+        let completedAt = Date()
+        let routeUsage = route.flatMap { proxyRouteUsage(from: usage, route: $0) }
+        let entry = BurnBarProxyRouteLogEntry(
+            occurredAt: startedAt,
+            completedAt: completedAt,
+            durationMilliseconds: Self.elapsedMilliseconds(from: startedAt, to: completedAt),
+            requestPath: requestPath,
+            endpoint: endpoint,
+            clientModelSlug: clientModelSlug,
+            advertisedModelSlug: advertisedModelSlug,
+            routingModelSlug: routingModelSlug,
+            upstreamModelSlug: route?.resolvedModelID,
+            providerReportedModelSlug: Self.normalizedNonEmpty(providerReportedModelSlug),
+            clientModelDisplayName: Self.normalizedNonEmpty(clientModelDisplayName) ?? clientModelSlug,
+            routingModelDisplayName: Self.normalizedNonEmpty(routingModelDisplayName) ?? routingModelSlug,
+            upstreamModelDisplayName: route?.resolvedModelID,
+            providerID: route?.providerID,
+            providerName: route?.providerDisplayName,
+            providerLogoKey: route.map { providerLogoKey(for: $0) },
+            accountID: route?.credentialSlotID,
+            accountLabel: route?.credentialSlotLabel,
+            requestedCanonicalModelID: requestedCanonicalModelID,
+            servedCanonicalModelID: route?.canonicalModelID,
+            formatFamily: route?.formatFamily.rawValue,
+            endpointProfileID: route?.endpointProfileID,
+            transportKind: route.map(transportKind(for:)),
+            rewriteKind: rewriteKind,
+            exactModelInvariant: exactModelInvariant(
+                route: route,
+                requestedCanonicalModelID: requestedCanonicalModelID,
+                finalStatus: finalStatus
+            ),
+            finalStatus: finalStatus,
+            streamed: streamed,
+            streamInterrupted: streamInterrupted,
+            httpStatus: httpStatus,
+            attempts: attempts,
+            usage: routeUsage,
+            failureMessage: Self.sanitizedFailureMessage(failureMessage)
+        )
+        await appendProxyRouteLog(entry)
+    }
+
     /// Build a stable idempotency key from the request content and the route
     /// it was served on. Identical retries of the same completion on the same
     /// account collapse to one recorded usage event (see A2).
@@ -1594,8 +2466,15 @@ public actor BurnBarHTTPGatewayServer {
     private func attemptCrossVendorDegradeForChat(
         bodyData: Data,
         requestSignature: String,
-        requestedModelID: String
-    ) async -> GatewayRouteOutcome? {
+        requestedModelID: String,
+        routeLogStartedAt: Date,
+        requestPath: String,
+        endpoint: String,
+        advertisedModelSlug: String?,
+        routingModelSlug: String?,
+        requestedCanonicalModelID: String?,
+        priorAttempts: [BurnBarProxyRouteAttempt]
+    ) async -> GatewayDegradeAttemptResult? {
         guard crossVendorDegradePolicy.isEnabled else { return nil }
 
         let router = BurnBarProviderRouter(
@@ -1617,9 +2496,11 @@ public actor BurnBarHTTPGatewayServer {
         }
         guard !degradeRoutes.isEmpty else { return nil }
 
+        var attempts: [BurnBarProxyRouteAttempt] = []
         for ranked in degradeRoutes {
             let route = ranked.route
             let idempotencyKey = usageIdempotencyKey(requestSignature: requestSignature, route: route)
+            let attemptStartedAt = Date()
             do {
                 logger.notice(
                     "cross_vendor_degrade",
@@ -1637,17 +2518,52 @@ public actor BurnBarHTTPGatewayServer {
                 )
                 await router.markRouteSuccess(route)
                 await recordUsageIfAvailable(response.usage, route: route, idempotencyKey: idempotencyKey)
-                return .buffered(GatewayHTTPResponse(
+                attempts.append(routeAttempt(
+                    sequence: priorAttempts.count + attempts.count + 1,
+                    startedAt: attemptStartedAt,
+                    completedAt: Date(),
+                    route: route,
+                    status: .crossVendorFallback,
+                    httpStatus: response.statusCode
+                ))
+                await recordProxyRouteLogEntry(
+                    startedAt: routeLogStartedAt,
+                    requestPath: requestPath,
+                    endpoint: endpoint,
+                    clientModelSlug: requestedModelID,
+                    advertisedModelSlug: advertisedModelSlug,
+                    routingModelSlug: routingModelSlug,
+                    clientModelDisplayName: requestedModelID,
+                    routingModelDisplayName: routingModelSlug,
+                    requestedCanonicalModelID: requestedCanonicalModelID,
+                    route: route,
+                    providerReportedModelSlug: Self.providerReportedModelSlug(from: response.body),
+                    rewriteKind: .crossVendorFallback,
+                    finalStatus: .crossVendorFallback,
+                    httpStatus: response.statusCode,
+                    attempts: priorAttempts + attempts,
+                    usage: response.usage
+                )
+                return GatewayDegradeAttemptResult(outcome: .buffered(GatewayHTTPResponse(
                     status: response.statusCode,
                     headers: ["Content-Type": response.contentType],
                     body: response.body
-                ))
+                )), attempts: attempts)
             } catch {
+                attempts.append(routeAttempt(
+                    sequence: priorAttempts.count + attempts.count + 1,
+                    startedAt: attemptStartedAt,
+                    completedAt: Date(),
+                    route: route,
+                    status: .failed,
+                    httpStatus: Self.httpStatus(from: error),
+                    failureMessage: error.localizedDescription
+                ))
                 await router.markRouteFailure(route, error: error)
                 continue
             }
         }
-        return nil
+        return GatewayDegradeAttemptResult(outcome: nil, attempts: attempts)
     }
 
     private func proxyChatCompletions(
@@ -1823,7 +2739,7 @@ public actor BurnBarHTTPGatewayServer {
         route: BurnBarProviderRoute,
         idempotencyKey: String,
         openStream: () async throws -> BurnBarProviderProxyStream
-    ) async throws -> GatewayRouteOutcome {
+    ) async throws -> GatewayStreamRelayResult {
         let stream = try await openStream()
 
         await writeStreamingHead(
@@ -1834,12 +2750,14 @@ public actor BurnBarHTTPGatewayServer {
         )
 
         let accumulator = GatewayStreamingUsageAccumulator(format: usageFormat)
+        var interrupted = false
         do {
             for try await chunk in stream.chunks {
                 accumulator.consume(chunk)
                 await sendRaw(chunk, on: connection)
             }
         } catch {
+            interrupted = true
             // Bytes already flowed to the client; we cannot fail over now.
             // Emit a terminal SSE error event so the client sees a clean end.
             logger.warning(
@@ -1850,8 +2768,14 @@ public actor BurnBarHTTPGatewayServer {
             await sendRaw(Data(errorEvent.utf8), on: connection)
         }
 
-        await recordUsageIfAvailable(accumulator.finalize(), route: route, idempotencyKey: idempotencyKey)
-        return .streamed
+        let usage = accumulator.finalize()
+        await recordUsageIfAvailable(usage, route: route, idempotencyKey: idempotencyKey)
+        return GatewayStreamRelayResult(
+            outcome: .streamed,
+            usage: usage,
+            interrupted: interrupted,
+            httpStatus: stream.statusCode
+        )
     }
 
     private func writeStreamingHead(
@@ -1974,8 +2898,20 @@ public actor BurnBarHTTPGatewayServer {
         return token.isEmpty ? nil : token
     }
 
+    /// Gateway auth token presented by routed CLI clients. Droid's Anthropic BYOK
+    /// adapter sends `x-api-key`; OpenAI-style clients use `Authorization: Bearer`.
+    private func clientAuthToken(from request: HTTPRequest) -> String? {
+        if let bearer = bearerToken(from: request.headers["authorization"]) {
+            return bearer
+        }
+        if let apiKey = request.headers["x-api-key"]?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return apiKey
+        }
+        return nil
+    }
+
     private func rateLimitClientKey(for request: HTTPRequest) -> String {
-        if let token = bearerToken(from: request.headers["authorization"]) {
+        if let token = clientAuthToken(from: request) {
             return "token:\(Self.stableDigest(token))"
         }
         return "anonymous"
@@ -1993,7 +2929,7 @@ public actor BurnBarHTTPGatewayServer {
         return [
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key",
             "Vary": "Origin"
         ]
     }
@@ -2050,6 +2986,18 @@ public actor BurnBarHTTPGatewayServer {
     private enum GatewayRouteOutcome {
         case buffered(GatewayHTTPResponse)
         case streamed
+    }
+
+    private struct GatewayStreamRelayResult {
+        let outcome: GatewayRouteOutcome
+        let usage: BurnBarProviderProxyUsage?
+        let interrupted: Bool
+        let httpStatus: Int
+    }
+
+    private struct GatewayDegradeAttemptResult {
+        let outcome: GatewayRouteOutcome?
+        let attempts: [BurnBarProxyRouteAttempt]
     }
 
     /// Selects how the streaming usage accumulator parses SSE events.

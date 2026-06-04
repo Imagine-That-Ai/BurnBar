@@ -28,11 +28,31 @@ description = "Deterministic Hermes relay wire-vector keys used only in checked-
 regexTarget = "match"
 regexes = [
   '''symmetricKey"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''plaintextContentKey"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''wrappedKey"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''wrappedKeyOverride"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''bodyKey"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''wrappedVaultKey"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
 ]
 paths = [
   '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesRelayWireVector\.json''',
   '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/HermesGatewayWireVector\.json''',
+  '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/BurnBarHpkeV3Vector\.json''',
   '''android/app/src/test/resources/hermes-relay/HermesRelayWireVector\.json''',
+  '''android/app/src/test/resources/hermes-relay/HermesGatewayWireVector\.json''',
+  '''android/app/src/test/resources/hermes-relay/HermesGatewayWireVectorV3\.json''',
+  '''functions/scripts/test-firestore-rules\.mjs''',
+]
+
+[[allowlists]]
+description = "Deterministic Hermes ratchet golden-vector state outputs used only in Swift crypto tests"
+regexTarget = "match"
+regexes = [
+  '''rootKeyBase64,\s*"[A-Za-z0-9+/_=-]+"''',
+  '''receivingChainKeyBase64,\s*"[A-Za-z0-9+/_=-]+"''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesRatchetCryptoTests\.swift''',
 ]
 
 [[allowlists]]

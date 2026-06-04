@@ -43,8 +43,34 @@ private struct UnreadableGatewayPinBacking: HermesGatewayPinBacking, @unchecked 
     func delete(account: String) {}
 }
 
+private final class InMemoryGatewayPrivateKeyStorage: HermesGatewayPrivateKeyStorage, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Data: Data] = [:]
+
+    func loadKeyData(tag: Data) throws -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage[tag]
+    }
+
+    func saveKeyData(_ data: Data, tag: Data, label: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        storage[tag] = data
+    }
+}
+
 @MainActor
 final class OpenBurnBarMobileTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        HermesGatewayRelayKeypair.configurePrivateKeyStorageForTesting(InMemoryGatewayPrivateKeyStorage())
+    }
+
+    override func tearDown() {
+        HermesGatewayRelayKeypair.resetPrivateKeyStorageForTesting()
+        super.tearDown()
+    }
 
     // MARK: - Shared Model Compatibility
 
@@ -122,6 +148,199 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(client.createdAt, createdAt)
         XCTAssertEqual(client.updatedAt, updatedAt)
         XCTAssertTrue(client.lastSeenAt?.hasPrefix("2027-01-15T08:00:00") == true)
+    }
+
+    func testHermesGatewayApprovalDecoderPreservesRatchetPublicMaterial() throws {
+        let agentIdentity = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let agentSigning = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let agentSignedPreKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let phoneIdentity = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let phoneSigning = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let phoneSignedPreKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let payload = NSDictionary(dictionary: [
+            "client": [
+                "id": "hgw_ratchet",
+                "displayName": "Hermes Agent",
+                "status": "active",
+                "tokenPreview": "obb_hgw_...test",
+                "scopes": ["hermes.gateway.read"],
+                "homeDestinationId": "burnbar:home",
+                "createdAt": "2026-06-01T07:54:03.234Z",
+                "updatedAt": "2026-06-01T07:54:03.833Z",
+                "schemaVersion": 2,
+                "agentRatchetIdentityPublicKey": agentIdentity,
+                "agentRatchetSigningPublicKey": agentSigning,
+                "agentRatchetSignedPreKeyPublicKey": agentSignedPreKey,
+                "agentRatchetSignedPreKeyId": "spk_agent_test",
+                "agentRatchetSignedPreKeySignature": Data("agent-signature".utf8).base64EncodedString(),
+                "agentSupportsRatchetV1": true,
+                "phoneRatchetIdentityPublicKey": phoneIdentity,
+                "phoneRatchetSigningPublicKey": phoneSigning,
+                "phoneRatchetSignedPreKeyPublicKey": phoneSignedPreKey,
+                "phoneRatchetSignedPreKeyId": "spk_phone_test",
+                "phoneRatchetSignedPreKeySignature": Data("phone-signature".utf8).base64EncodedString(),
+                "phoneSupportsRatchetV1": true,
+                "supportsRatchetV1": true
+            ],
+            "homeDestinationId": "burnbar:home"
+        ])
+
+        let client = try FunctionsRepository.decodeHermesGatewayApprovalClientForTesting(payload)
+
+        XCTAssertTrue(client.canRatchetToAgent)
+        XCTAssertEqual(client.agentRatchetIdentityPublicKey, agentIdentity)
+        XCTAssertEqual(client.phoneRatchetIdentityPublicKey, phoneIdentity)
+        XCTAssertEqual(client.agentRatchetSignedPreKeyId, "spk_agent_test")
+        XCTAssertEqual(client.phoneRatchetSignedPreKeyId, "spk_phone_test")
+    }
+
+    func testHermesGatewayRatchetChatLaneRoundTripsPhoneEventAndAgentReply() throws {
+        let uid = "uid_ratchet_roundtrip"
+        let clientId = "hgw_ratchet_roundtrip"
+        let phoneIdentity = P256.KeyAgreement.PrivateKey()
+        let phoneSignedPreKey = P256.KeyAgreement.PrivateKey()
+        let phoneSigningKey = P256.Signing.PrivateKey()
+        let agentIdentity = P256.KeyAgreement.PrivateKey()
+        let agentSignedPreKey = P256.KeyAgreement.PrivateKey()
+        let agentSigningKey = P256.Signing.PrivateKey()
+        let phoneInitial = HermesRatchetCrypto.generateKeyPair()
+        let phoneIdentityPair = ratchetKeyPair(phoneIdentity)
+        let phoneSignedPreKeyPair = ratchetKeyPair(phoneSignedPreKey)
+        let agentIdentityPair = ratchetKeyPair(agentIdentity)
+        let agentSignedPreKeyPair = ratchetKeyPair(agentSignedPreKey)
+        let phoneSignedPreKeyID = "spk_phone_roundtrip"
+        let agentSignedPreKeyID = "spk_agent_roundtrip"
+        let phoneSignedPreKeySignature = try ratchetSignedPreKeySignatureBase64(
+            signingKey: phoneSigningKey,
+            identityPublicKeyBase64: phoneIdentityPair.publicKeyBase64,
+            signedPreKeyPublicKeyBase64: phoneSignedPreKeyPair.publicKeyBase64,
+            signedPreKeyID: phoneSignedPreKeyID
+        )
+        let agentSignedPreKeySignature = try ratchetSignedPreKeySignatureBase64(
+            signingKey: agentSigningKey,
+            identityPublicKeyBase64: agentIdentityPair.publicKeyBase64,
+            signedPreKeyPublicKeyBase64: agentSignedPreKeyPair.publicKeyBase64,
+            signedPreKeyID: agentSignedPreKeyID
+        )
+        XCTAssertTrue(HermesGatewayRatchetChatLane.verifySignedPreKey(
+            signingPublicKeyBase64: phoneSigningKey.publicKey.x963Representation.base64EncodedString(),
+            identityPublicKeyBase64: phoneIdentityPair.publicKeyBase64,
+            signedPreKeyPublicKeyBase64: phoneSignedPreKeyPair.publicKeyBase64,
+            signedPreKeyID: phoneSignedPreKeyID,
+            signatureBase64: phoneSignedPreKeySignature
+        ))
+        XCTAssertTrue(HermesGatewayRatchetChatLane.verifySignedPreKey(
+            signingPublicKeyBase64: agentSigningKey.publicKey.x963Representation.base64EncodedString(),
+            identityPublicKeyBase64: agentIdentityPair.publicKeyBase64,
+            signedPreKeyPublicKeyBase64: agentSignedPreKeyPair.publicKeyBase64,
+            signedPreKeyID: agentSignedPreKeyID,
+            signatureBase64: agentSignedPreKeySignature
+        ))
+        XCTAssertFalse(HermesGatewayRatchetChatLane.verifySignedPreKey(
+            signingPublicKeyBase64: agentSigningKey.publicKey.x963Representation.base64EncodedString(),
+            identityPublicKeyBase64: agentIdentityPair.publicKeyBase64,
+            signedPreKeyPublicKeyBase64: agentSignedPreKeyPair.publicKeyBase64,
+            signedPreKeyID: "spk_agent_tampered",
+            signatureBase64: agentSignedPreKeySignature
+        ))
+
+        let sessionID = try HermesGatewayRatchetChatLane.sessionID(
+            uid: uid,
+            clientId: clientId,
+            initiatorRole: .phone,
+            initiatorIdentityPublicKeyBase64: phoneIdentityPair.publicKeyBase64,
+            responderIdentityPublicKeyBase64: agentIdentityPair.publicKeyBase64,
+            initiatorSignedPreKeyPublicKeyBase64: phoneSignedPreKeyPair.publicKeyBase64,
+            responderSignedPreKeyPublicKeyBase64: agentSignedPreKeyPair.publicKeyBase64,
+            initiatorInitialRatchetPublicKeyBase64: phoneInitial.publicKeyBase64
+        )
+        let phoneDeviceID = try HermesGatewayRatchetChatLane.deviceID(
+            prefix: "phone",
+            identityPublicKeyBase64: phoneIdentityPair.publicKeyBase64
+        )
+        let agentDeviceID = try HermesGatewayRatchetChatLane.deviceID(
+            prefix: "agent",
+            identityPublicKeyBase64: agentIdentityPair.publicKeyBase64
+        )
+        let phoneSharedSecret = try HermesGatewayRatchetChatLane.initiatorSharedSecret(
+            uid: uid,
+            clientId: clientId,
+            initiatorRole: .phone,
+            localIdentityPrivateKeyBase64: phoneIdentityPair.privateKeyBase64,
+            localSignedPreKeyPublicKeyBase64: phoneSignedPreKeyPair.publicKeyBase64,
+            localInitialRatchetKeyPair: phoneInitial,
+            remoteIdentityPublicKeyBase64: agentIdentityPair.publicKeyBase64,
+            remoteSignedPreKeyPublicKeyBase64: agentSignedPreKeyPair.publicKeyBase64
+        )
+        let agentSharedSecret = try HermesGatewayRatchetChatLane.responderSharedSecret(
+            uid: uid,
+            clientId: clientId,
+            initiatorRole: .phone,
+            localIdentityPrivateKeyBase64: agentIdentityPair.privateKeyBase64,
+            localSignedPreKeyPrivateKeyBase64: agentSignedPreKeyPair.privateKeyBase64,
+            localIdentityPublicKeyBase64: agentIdentityPair.publicKeyBase64,
+            localSignedPreKeyPublicKeyBase64: agentSignedPreKeyPair.publicKeyBase64,
+            remoteIdentityPublicKeyBase64: phoneIdentityPair.publicKeyBase64,
+            remoteSignedPreKeyPublicKeyBase64: phoneSignedPreKeyPair.publicKeyBase64,
+            remoteInitialRatchetPublicKeyBase64: phoneInitial.publicKeyBase64
+        )
+        XCTAssertEqual(phoneSharedSecret, agentSharedSecret)
+
+        var phoneState = try HermesRatchetCrypto.initiatorState(
+            sessionID: sessionID,
+            localDeviceID: phoneDeviceID,
+            remoteDeviceID: agentDeviceID,
+            sharedSecret: phoneSharedSecret,
+            remoteInitialRatchetPublicKeyBase64: agentSignedPreKeyPair.publicKeyBase64,
+            localInitialRatchetKeyPair: phoneInitial
+        )
+        var agentState = try HermesRatchetCrypto.responderState(
+            sessionID: sessionID,
+            localDeviceID: agentDeviceID,
+            remoteDeviceID: phoneDeviceID,
+            sharedSecret: agentSharedSecret,
+            localInitialRatchetKeyPair: agentSignedPreKeyPair
+        )
+        let eventID = "evt_ratchet_roundtrip"
+        let eventPlaintext = try JSONSerialization.data(withJSONObject: [
+            "text": "Run the ratchet transport test.",
+            "threadId": HermesGatewayMessageResolver.defaultThreadID,
+            "modelId": "minimax-m2.7-highspeed"
+        ])
+        let eventEnvelope = try HermesRatchetCrypto.encrypt(
+            plaintext: eventPlaintext,
+            state: &phoneState,
+            associatedData: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventID)
+        )
+        let openedEvent = try HermesRatchetCrypto.decrypt(
+            eventEnvelope,
+            state: &agentState,
+            associatedData: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventID)
+        )
+        let openedEventJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: openedEvent) as? [String: String])
+        XCTAssertEqual(openedEventJSON["text"], "Run the ratchet transport test.")
+        XCTAssertEqual(openedEventJSON["modelId"], "minimax-m2.7-highspeed")
+
+        let messageID = "msg_ratchet_roundtrip"
+        let replyPlaintext = try JSONSerialization.data(withJSONObject: [
+            "text": "Ratchet transport replied without relay plaintext.",
+            "kind": "agent_message"
+        ])
+        let replyEnvelope = try HermesRatchetCrypto.encrypt(
+            plaintext: replyPlaintext,
+            state: &agentState,
+            associatedData: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageID)
+        )
+        let openedReply = try HermesRatchetCrypto.decrypt(
+            replyEnvelope,
+            state: &phoneState,
+            associatedData: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageID)
+        )
+        let openedReplyJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: openedReply) as? [String: String])
+        XCTAssertEqual(openedReplyJSON["text"], "Ratchet transport replied without relay plaintext.")
+        XCTAssertEqual(replyEnvelope.header.sessionID, sessionID)
+        XCTAssertEqual(replyEnvelope.header.senderDeviceID, agentDeviceID)
+        XCTAssertEqual(replyEnvelope.header.receiverDeviceID, phoneDeviceID)
     }
 
     func testHermesGatewayOnlineStatusRequiresRecentLastSeen() {
@@ -223,7 +442,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
                     "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
                     "wrappedKey": "WA==",
                     "relayEncryption": HermesRelayCrypto.algorithm,
-                    "relayKeyVersion": 1
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": HermesRelayCrypto.generatePrivateKey().publicKeyBase64
                 ],
                 "createdAt": "2026-06-01T08:08:04.968Z",
                 "schemaVersion": 2
@@ -241,20 +461,26 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let clientId = "hgw_abc"
         let messageId = "msg_round_trip"
         let plaintext = "Hermes received the encrypted test."
+        // MP-27: the agent seals the reply as JSON {text,...}; the phone JSON-decodes it.
+        let payloadJSON = try JSONSerialization.data(withJSONObject: ["text": plaintext])
 
-        // The agent's role: seal the reply body to the phone's relay pubkey.
-        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        // The agent's role: v2-authenticated seal of the reply body to the phone's
+        // relay pubkey, signed with the AGENT's own static relay key.
+        let phoneKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
         let phonePublicKey = phoneKeypair.relayPublicKeyBase64
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
         let key = try HermesRelayCrypto.generateSymmetricKeyData()
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
-            plaintext: Data(plaintext.utf8),
+            plaintext: payloadJSON,
             keyData: key,
             aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: phonePublicKey,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            senderPrivateKey: agentRelayPriv
         )
 
         let sealedRecord = HermesGatewayMessageRecord(
@@ -268,15 +494,74 @@ final class OpenBurnBarMobileTests: XCTestCase {
                     "payloadCiphertext": payloadCiphertext,
                     "wrappedKey": wrappedKey,
                     "relayEncryption": HermesRelayCrypto.algorithm,
-                    "relayKeyVersion": 1
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
                 ],
                 "createdAt": "2026-06-01T08:08:04.968Z",
                 "schemaVersion": 2
             ]
         )
-        let opened = sealedRecord?.decodedText(using: phoneKeypair, uid: uid)
+        // The phone hard-requires v2 + a pinned agent key to open the reply.
+        let pinStore = freshPinStore()
+        XCTAssertEqual(
+            pinStore.verifyOrPin(agentPublicKeyBase64: agentPubB64, uid: uid, clientId: clientId),
+            .pinnedFirstUse
+        )
+        let opened = sealedRecord?.decodedText(using: phoneKeypair, uid: uid, pinStore: pinStore)
         XCTAssertEqual(opened?.resolvedText, plaintext)
         XCTAssertEqual(opened?.displayText, plaintext)
+    }
+
+    func testGatewaySealedApprovalDetailDecodesActionIdAndKind() throws {
+        // MP-6/MP-27: an approval-detail reply carries {text, actionId, kind:"approval"};
+        // the phone must decode all three so the approval card binds the detail to the
+        // gate by actionId (the prior P1 was a key mismatch that disabled Approve).
+        let uid = "uid_appr"
+        let clientId = "hgw_appr"
+        let messageId = "msg_appr"
+        let detail = "Approve running: rm -rf /tmp/build"
+        let actionId = "act_42"
+        let payloadJSON = try JSONSerialization.data(
+            withJSONObject: ["text": detail, "actionId": actionId, "kind": "approval"]
+        )
+        let phoneKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
+        let key = try HermesRelayCrypto.generateSymmetricKeyData()
+        let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: payloadJSON,
+            keyData: key,
+            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+        )
+        let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
+            key,
+            recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            senderPrivateKey: agentRelayPriv
+        )
+        let record = HermesGatewayMessageRecord(
+            documentID: messageId,
+            data: [
+                "id": messageId, "clientId": clientId, "kind": "agent_message",
+                "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": payloadCiphertext, "wrappedKey": wrappedKey,
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
+                ],
+                "createdAt": "2026-06-03T08:08:04.968Z", "schemaVersion": 2
+            ]
+        )
+        let pinStore = freshPinStore()
+        XCTAssertEqual(
+            pinStore.verifyOrPin(agentPublicKeyBase64: agentPubB64, uid: uid, clientId: clientId),
+            .pinnedFirstUse
+        )
+        let opened = try XCTUnwrap(record?.decodedText(using: phoneKeypair, uid: uid, pinStore: pinStore))
+        XCTAssertEqual(opened.resolvedText, detail)
+        XCTAssertEqual(opened.resolvedActionId, actionId)
+        XCTAssertEqual(opened.resolvedKind, "approval")
     }
 
     func testHermesGatewaySealedReplyForAnotherDeviceStaysSealed() throws {
@@ -284,8 +569,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let clientId = "hgw_abc"
         let messageId = "msg_other_device"
 
-        // Seal to a *different* phone key, then try to open with this device's key.
+        // v2-seal to a *different* phone key, then try to open with this device's
+        // key. Even with the agent key pinned (so the v2 gate is satisfied), the
+        // recipient mismatch means the wrap can't be opened on this device.
         let otherDevicePublicKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
         let key = try HermesRelayCrypto.generateSymmetricKeyData()
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: Data("not for this device".utf8),
@@ -295,7 +584,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: otherDevicePublicKey,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            senderPrivateKey: agentRelayPriv
         )
 
         let sealedRecord = HermesGatewayMessageRecord(
@@ -309,13 +599,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
                     "payloadCiphertext": payloadCiphertext,
                     "wrappedKey": wrappedKey,
                     "relayEncryption": HermesRelayCrypto.algorithm,
-                    "relayKeyVersion": 1
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
                 ],
                 "createdAt": "2026-06-01T08:08:04.968Z",
                 "schemaVersion": 2
             ]
         )
-        let opened = sealedRecord?.decodedText(using: HermesGatewayRelayKeypair.loadOrCreate(), uid: uid)
+        let pinStore = freshPinStore()
+        XCTAssertEqual(
+            pinStore.verifyOrPin(agentPublicKeyBase64: agentPubB64, uid: uid, clientId: clientId),
+            .pinnedFirstUse
+        )
+        let opened = sealedRecord?.decodedText(using: try HermesGatewayRelayKeypair.loadOrCreate(), uid: uid, pinStore: pinStore)
         XCTAssertTrue(opened?.isSealed ?? false)
         XCTAssertNil(opened?.resolvedText, "A reply sealed for another device must not open here")
         XCTAssertNil(opened?.displayText)
@@ -334,7 +630,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
                     "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
                     "wrappedKey": "WA==",
                     "relayEncryption": HermesRelayCrypto.algorithm,
-                    "relayKeyVersion": 1
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": HermesRelayCrypto.generatePrivateKey().publicKeyBase64
                 ],
                 "createdAt": "2026-06-01T08:08:04.968Z",
                 "schemaVersion": 2
@@ -361,7 +658,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
                     "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
                     "wrappedKey": "WA==",
                     "relayEncryption": HermesRelayCrypto.algorithm,
-                    "relayKeyVersion": 1
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": HermesRelayCrypto.generatePrivateKey().publicKeyBase64
                 ],
                 "createdAt": "2026-06-01T08:08:04.968Z",
                 "schemaVersion": 2
@@ -392,7 +690,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
                     "payloadCiphertext": "QkFTRTY0X1BBWUxPQUQ=",
                     "wrappedKey": "WA==",
                     "relayEncryption": HermesRelayCrypto.algorithm,
-                    "relayKeyVersion": 1
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": HermesRelayCrypto.generatePrivateKey().publicKeyBase64
                 ],
                 "createdAt": "2026-06-01T08:08:04.968Z",
                 "schemaVersion": 2
@@ -445,7 +744,9 @@ final class OpenBurnBarMobileTests: XCTestCase {
             }
         }
 
-        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let phoneKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
         let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
         let sealedBody = try HermesRelayCrypto.sealToBase64(
             plaintext: plaintext,
@@ -455,7 +756,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let manifestData = try JSONSerialization.data(withJSONObject: [
             "fileName": fileName,
             "byteCount": plaintext.count,
-            "contentType": contentType
+            "contentType": contentType,
+            "destinationId": "burnbar:home"
         ])
         let sealedManifest = try HermesRelayCrypto.sealToBase64(
             plaintext: manifestData,
@@ -465,7 +767,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             bodyKey,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
+            senderPrivateKey: agentRelayPriv
         )
 
         let record = HermesGatewayAttachmentRecord(
@@ -473,16 +776,18 @@ final class OpenBurnBarMobileTests: XCTestCase {
             data: [
                 "id": attachmentId,
                 "clientId": clientId,
+                "destinationId": "burnbar:home",
                 "bodyStoragePath": "users/\(uid)/hermes_gateway_attachments/\(attachmentId)",
                 "relayEnvelope": [
                     "payloadCiphertext": sealedManifest,
                     "wrappedKey": wrappedKey,
                     "relayEncryption": HermesRelayCrypto.algorithm,
-                    "relayKeyVersion": HermesRelayCrypto.keyVersion
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
                 ]
             ]
         )
-        let opened = try XCTUnwrap(record?.opened(downloadedBody: Data(sealedBody.utf8), using: phoneKeypair, uid: uid))
+        let opened = try XCTUnwrap(record?.opened(downloadedBody: Data(sealedBody.utf8), using: phoneKeypair, uid: uid, pinnedSenderKey: agentPubB64))
         XCTAssertEqual(opened.fileName, fileName)
         XCTAssertEqual(opened.contentType, contentType)
         XCTAssertEqual(opened.data, plaintext)
@@ -524,9 +829,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertTrue(record?.canSealToAgent ?? false)
     }
 
-    func testHermesGatewayClientRecordReadsExplicitAgentRelayPubkeyAndCanSeal() {
+    func testHermesGatewayClientRecordReadsExplicitAgentRelayPubkeyAndCanSeal() throws {
         let agentKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
-        let record = HermesGatewayClientRecord(
+        let phoneKey = try HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64
+        let record = try XCTUnwrap(HermesGatewayClientRecord(
             documentID: "hgw_doc",
             data: [
                 "id": "hgw_live",
@@ -539,14 +845,47 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "schemaVersion": 2,
                 "agentRelayPublicKey": agentKey,
                 "agentRelayKeyVersion": HermesRelayCrypto.keyVersion,
-                "agentRelayEncryption": HermesRelayCrypto.algorithm
+                "agentRelayEncryption": HermesRelayCrypto.algorithm,
+                "phoneRelayPublicKey": phoneKey,
+                "phoneRelayKeyVersion": HermesRelayCrypto.keyVersion,
+                "phoneRelayEncryption": HermesRelayCrypto.algorithm,
+                "supportsRelayEnvelopeVersions": [HermesRelayCrypto.gatewayRelayKeyVersion],
+                "preferredRelayEnvelopeVersion": HermesRelayCrypto.gatewayRelayKeyVersion
             ]
-        )
+        ))
 
-        XCTAssertEqual(record?.relayPublicKey, agentKey)
-        XCTAssertEqual(record?.relayKeyVersion, HermesRelayCrypto.keyVersion)
-        XCTAssertEqual(record?.relayEncryption, HermesRelayCrypto.algorithm)
-        XCTAssertTrue(record?.canSealToAgent ?? false)
+        XCTAssertEqual(record.relayPublicKey, agentKey)
+        XCTAssertEqual(record.relayKeyVersion, HermesRelayCrypto.keyVersion)
+        XCTAssertEqual(record.relayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(record.phoneRelayPublicKey, phoneKey)
+        XCTAssertEqual(record.phoneRelayKeyVersion, HermesRelayCrypto.keyVersion)
+        XCTAssertEqual(record.phoneRelayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertTrue(record.isPairedWithThisDevice(relayPublicKeyBase64: phoneKey))
+        XCTAssertFalse(record.isPairedWithThisDevice(relayPublicKeyBase64: HermesRelayCrypto.generatePrivateKey().publicKeyBase64))
+        XCTAssertEqual(record.preferredRelayEnvelopeVersionForSeal, HermesRelayCrypto.gatewayRelayKeyVersion)
+        XCTAssertTrue(record.canSealToAgent)
+
+        let uid = "uid_agent_alias"
+        let store = freshPinStore()
+        defer { store.clearPin(uid: uid, clientId: record.id) }
+        var payload: [String: Any] = ["destinationId": "burnbar:home", "senderId": "burnbar-ios"]
+        try FunctionsRepository.sealGatewayEventPayload(
+            into: &payload,
+            text: "hello from ipad",
+            senderDisplayName: "OpenBurnBar iPad Live E2E",
+            threadId: "burnbar-ios-live-gateway-e2e",
+            modelId: nil,
+            targetClient: record,
+            uid: uid,
+            pinStore: store
+        )
+        XCTAssertNil(payload["text"])
+        let envelope = try XCTUnwrap(payload["relayEnvelope"] as? [String: Any])
+        XCTAssertEqual(envelope["relayEncryption"] as? String, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(envelope["relayKeyVersion"] as? Int, HermesRelayCrypto.gatewayRelayKeyVersion)
+        XCTAssertNotNil(envelope["payloadCiphertext"] as? String)
+        XCTAssertNotNil(envelope["wrappedKey"] as? String)
+        XCTAssertNotNil(envelope["senderPublicKey"] as? String)
     }
 
     func testHermesGatewayClientWithoutAgentPubkeyCannotSeal() {
@@ -571,8 +910,9 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
     /// Build an active, E2EE-ready client that advertises a specific agent relay
     /// pubkey, so seal/pin tests can swap the advertised key under a fixed id.
-    private func sealableGatewayClient(id: String, agentPublicKey: String) -> HermesGatewayClientRecord {
-        HermesGatewayClientRecord(
+    private func sealableGatewayClient(id: String, agentPublicKey: String) throws -> HermesGatewayClientRecord {
+        let phoneRelayPublicKey = try HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64
+        return HermesGatewayClientRecord(
             id: id,
             displayName: "Pinned Hermes",
             status: "active",
@@ -586,7 +926,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
             schemaVersion: 2,
             relayPublicKey: agentPublicKey,
             relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm
+            relayEncryption: HermesRelayCrypto.algorithm,
+            phoneRelayPublicKey: phoneRelayPublicKey,
+            phoneRelayKeyVersion: HermesRelayCrypto.keyVersion,
+            phoneRelayEncryption: HermesRelayCrypto.algorithm
         )
     }
 
@@ -597,6 +940,38 @@ final class OpenBurnBarMobileTests: XCTestCase {
         // unsigned simulators / CI, where the real Keychain returns
         // errSecMissingEntitlement (-34018). Production still uses the Keychain.
         HermesGatewayAgentKeyPinStore(backing: InMemoryGatewayPinBacking())
+    }
+
+    private func ratchetKeyPair(_ privateKey: P256.KeyAgreement.PrivateKey) -> HermesRatchetKeyPair {
+        HermesRatchetKeyPair(
+            privateKeyBase64: privateKey.rawRepresentation.base64EncodedString(),
+            publicKeyBase64: privateKey.publicKey.x963Representation.base64EncodedString()
+        )
+    }
+
+    private func ratchetSignedPreKeySignatureBase64(
+        signingKey: P256.Signing.PrivateKey,
+        identityPublicKeyBase64: String,
+        signedPreKeyPublicKeyBase64: String,
+        signedPreKeyID: String
+    ) throws -> String {
+        guard
+            let identityRaw = Data(base64Encoded: identityPublicKeyBase64),
+            let signedPreKeyRaw = Data(base64Encoded: signedPreKeyPublicKeyBase64)
+        else {
+            throw HermesRatchetError.invalidBase64("signedPreKey")
+        }
+        var payload = Data("OpenBurnBar-HermesRatchet-v1-signed-prekey".utf8)
+        appendRatchetSignaturePart(&payload, identityRaw)
+        appendRatchetSignaturePart(&payload, signedPreKeyRaw)
+        appendRatchetSignaturePart(&payload, Data(signedPreKeyID.utf8))
+        return try signingKey.signature(for: payload).derRepresentation.base64EncodedString()
+    }
+
+    private func appendRatchetSignaturePart(_ data: inout Data, _ part: Data) {
+        var length = UInt64(part.count).bigEndian
+        withUnsafeBytes(of: &length) { data.append(contentsOf: $0) }
+        data.append(part)
     }
 
     func testAgentKeyPinFirstUsePinsAndMatchesSameKey() {
@@ -647,32 +1022,70 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(store.pinnedKey(uid: uid, clientId: clientId), rotatedKey)
     }
 
-    func testAgentKeySafetyCodeIsDeterministicAndKeyDependent() {
-        let keyA = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
-        let keyB = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+    func testAgentKeySafetyCodeIsTwoKeyAndKeyDependent() {
+        let agentKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let phoneKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let otherKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
 
-        let codeA1 = HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: keyA)
-        let codeA2 = HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: keyA)
-        let codeB = HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: keyB)
+        let code = HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agentKey, phonePublicKeyBase64: phoneKey)
+        XCTAssertNotNil(code)
+        // Deterministic: the same pair → identical code (two devices compare it OOB).
+        XCTAssertEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agentKey, phonePublicKeyBase64: phoneKey))
+        // Role-independent: sorting the raw key bytes makes argument order irrelevant.
+        XCTAssertEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: phoneKey, phonePublicKeyBase64: agentKey))
+        // MP-1: changing EITHER key changes the code (closes the single-key MITM).
+        XCTAssertNotEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: otherKey, phonePublicKeyBase64: phoneKey))
+        XCTAssertNotEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agentKey, phonePublicKeyBase64: otherKey))
+        // Whitespace around either key must not change the code.
+        XCTAssertEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: "  \(agentKey)\n", phonePublicKeyBase64: phoneKey))
+        // MP-22: a missing/blank/invalid key yields no code rather than a fabricated one.
+        XCTAssertNil(HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: "   ", phonePublicKeyBase64: phoneKey))
+        XCTAssertNil(HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agentKey, phonePublicKeyBase64: ""))
+    }
 
-        // Same key → identical code, so two devices can compare it out of band.
-        XCTAssertNotNil(codeA1)
-        XCTAssertEqual(codeA1, codeA2)
-        // Different key → different code, so a changed connection is visible.
-        XCTAssertNotEqual(codeA1, codeB)
-        // Whitespace around the same key must not change the code.
-        XCTAssertEqual(codeA1, HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: "  \(keyA)\n"))
-        // An empty key yields no code rather than a fabricated one.
-        XCTAssertNil(HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: "   "))
+    func testAgentKeySafetyCodeBindsRatchetIdentityKeysWhenPresent() throws {
+        let agentRelay = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let phoneRelay = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let agentRatchet = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let phoneRatchet = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let otherRatchet = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+
+        let code = try XCTUnwrap(HermesGatewayAgentKeyPinStore.safetyCode(
+            publicKeysBase64: [agentRelay, phoneRelay, agentRatchet, phoneRatchet]
+        ))
+        XCTAssertEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(
+            publicKeysBase64: [phoneRatchet, agentRelay, phoneRelay, agentRatchet]
+        ))
+        XCTAssertNotEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(
+            publicKeysBase64: [agentRelay, phoneRelay]
+        ))
+        XCTAssertNotEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(
+            publicKeysBase64: [agentRelay, phoneRelay, agentRatchet, otherRatchet]
+        ))
+        XCTAssertNil(HermesGatewayAgentKeyPinStore.safetyCode(
+            publicKeysBase64: [agentRelay, phoneRelay, "not-base64"]
+        ))
+    }
+
+    func testAgentKeySafetyCodeMatchesCrossLanguageVector() {
+        // The same two base64 keys + locked code as the Python + Kotlin tests, so this
+        // asserts byte-for-byte cross-language agreement of the safety-code transform.
+        let agent = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4/QEE="
+        let phone = "QkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYI="
+        XCTAssertEqual(
+            HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agent, phonePublicKeyBase64: phone),
+            "595F D4F3 50B3 70FA 2D8B 6F15 8004 3F80"
+        )
     }
 
     func testAgentKeySafetyCodeFormatIsHumanComparableHexGroups() throws {
-        let key = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
-        let code = try XCTUnwrap(HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: key))
+        let agentKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let phoneKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let code = try XCTUnwrap(HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agentKey, phonePublicKeyBase64: phoneKey))
 
-        // Four groups of four uppercase hex characters, space separated.
+        // Eight groups of four uppercase hex characters (>=128 bits), space separated.
         let groups = code.split(separator: " ").map(String.init)
-        XCTAssertEqual(groups.count, 4)
+        XCTAssertEqual(groups.count, 8)
         let allowed = CharacterSet(charactersIn: "0123456789ABCDEF")
         for group in groups {
             XCTAssertEqual(group.count, 4)
@@ -680,12 +1093,15 @@ final class OpenBurnBarMobileTests: XCTestCase {
         }
     }
 
-    func testPinnedSafetyCodeReflectsTrustedKeyAfterRepair() {
+    func testPinnedSafetyCodeReflectsTrustedKeyAfterRepair() throws {
         let store = freshPinStore()
         let uid = "uid_safety"
         let clientId = "hgw_safety_\(UUID().uuidString)"
         let originalKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
         let rotatedKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        // MP-1: pinnedSafetyCode now binds this device's OWN relay key too, so the
+        // expected value must feed the same phone key.
+        let phoneKey = try HermesGatewayRelayKeypair.loadOrCreate().relayPublicKeyBase64
         defer { store.clearPin(uid: uid, clientId: clientId) }
 
         // No pin yet → no pinned code.
@@ -694,7 +1110,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: originalKey, uid: uid, clientId: clientId), .pinnedFirstUse)
         XCTAssertEqual(
             store.pinnedSafetyCode(uid: uid, clientId: clientId),
-            HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: originalKey)
+            HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: originalKey, phonePublicKeyBase64: phoneKey)
         )
 
         // After a consented re-pair to a new key, the code tracks the new trust.
@@ -702,17 +1118,17 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(store.verifyOrPin(agentPublicKeyBase64: rotatedKey, uid: uid, clientId: clientId), .pinnedFirstUse)
         XCTAssertEqual(
             store.pinnedSafetyCode(uid: uid, clientId: clientId),
-            HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: rotatedKey)
+            HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: rotatedKey, phonePublicKeyBase64: phoneKey)
         )
         XCTAssertNotEqual(
-            HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: originalKey),
-            HermesGatewayAgentKeyPinStore.safetyCode(forPublicKeyBase64: rotatedKey)
+            HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: originalKey, phonePublicKeyBase64: phoneKey),
+            HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: rotatedKey, phonePublicKeyBase64: phoneKey)
         )
     }
 
-    func testGatewayPrivacyStateResolvesFromRealKeyState() {
+    func testGatewayPrivacyStateResolvesFromRealKeyState() throws {
         let sealableKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
-        let verified = sealableGatewayClient(id: "hgw_state_a", agentPublicKey: sealableKey)
+        let verified = try sealableGatewayClient(id: "hgw_state_a", agentPublicKey: sealableKey)
         // A sealable, unchanged connection reads as private + verified.
         XCTAssertEqual(
             HermesGatewayPrivacyState.resolve(client: verified, keyChanged: false),
@@ -761,7 +1177,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let uid = "uid_seal"
         let clientId = "hgw_seal_\(UUID().uuidString)"
         let agentPrivate = HermesRelayCrypto.generatePrivateKey()
-        let client = sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
+        let client = try sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
         defer { store.clearPin(uid: uid, clientId: clientId) }
 
         // First seal pins the key and produces a sealed envelope (no plaintext).
@@ -782,10 +1198,39 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNotNil(envelope?["payloadCiphertext"] as? String)
         XCTAssertNotNil(envelope?["wrappedKey"] as? String)
         XCTAssertEqual(envelope?["relayEncryption"] as? String, HermesRelayCrypto.algorithm)
+        // The phone authoritatively stamps the v2 gateway wrap protocol and its own
+        // gateway relay pubkey as the sender (a lookup hint; the agent authenticates
+        // against its pinned copy). The pubkey is the one actually used to seal, so
+        // read it back from the envelope.
+        XCTAssertEqual(envelope?["relayKeyVersion"] as? Int, HermesRelayCrypto.gatewayRelayKeyVersion)
+        let sealedSenderPub = try XCTUnwrap(envelope?["senderPublicKey"] as? String)
+        XCTAssertFalse(sealedSenderPub.isEmpty)
         XCTAssertEqual(store.pinnedKey(uid: uid, clientId: clientId), agentPrivate.publicKeyBase64)
 
+        // The agent opens the event binding the phone key (the v2 sender it pinned)
+        // and its own private key as the recipient — proving a real round-trip, not
+        // just a well-shaped envelope.
+        let sealedEventId = try XCTUnwrap(payload["eventId"] as? String)
+        let sealedWrappedKey = try XCTUnwrap(envelope?["wrappedKey"] as? String)
+        let sealedCiphertext = try XCTUnwrap(envelope?["payloadCiphertext"] as? String)
+        let agentSymmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
+            sealedWrappedKey,
+            privateKey: agentPrivate,
+            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: sealedEventId),
+            senderPublicKeyBase64: sealedSenderPub
+        )
+        let agentOpened = try HermesRelayCrypto.openBase64(
+            ciphertext: sealedCiphertext,
+            keyData: agentSymmetricKey,
+            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: sealedEventId)
+        )
+        let agentEvent = try XCTUnwrap(try JSONSerialization.jsonObject(with: agentOpened) as? [String: Any])
+        XCTAssertEqual(agentEvent["text"] as? String, "hello hermes")
+        XCTAssertEqual(agentEvent["destinationId"] as? String, "burnbar:home")
+        XCTAssertEqual(agentEvent["replayCounter"] as? Int, 1)
+
         // Server advertises a DIFFERENT agent key for the same client id → MITM.
-        let attackerClient = sealableGatewayClient(
+        let attackerClient = try sealableGatewayClient(
             id: clientId,
             agentPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64
         )
@@ -810,6 +1255,54 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(blockedPayload["eventId"])
     }
 
+    func testGatewayEventSealRequiresThisDevicesEchoedPhoneRelayKey() throws {
+        let store = freshPinStore()
+        let uid = "uid_phone_key_mismatch"
+        let clientId = "hgw_phone_key_mismatch_\(UUID().uuidString)"
+        let agentPrivate = HermesRelayCrypto.generatePrivateKey()
+        let wrongPhoneRelayPublicKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let client = HermesGatewayClientRecord(
+            id: clientId,
+            displayName: "Wrong phone key",
+            status: "active",
+            tokenPreview: "obb_hgw_...pin",
+            scopes: ["hermes.gateway.read", "hermes.gateway.write"],
+            homeDestinationId: "burnbar:home",
+            lastSeenAt: nil,
+            revokedAt: nil,
+            createdAt: "2026-06-01T08:00:00Z",
+            updatedAt: "2026-06-01T08:08:04.968Z",
+            schemaVersion: 2,
+            relayPublicKey: agentPrivate.publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            phoneRelayPublicKey: wrongPhoneRelayPublicKey,
+            phoneRelayKeyVersion: HermesRelayCrypto.keyVersion,
+            phoneRelayEncryption: HermesRelayCrypto.algorithm
+        )
+
+        var payload: [String: Any] = ["destinationId": "burnbar:home"]
+        XCTAssertThrowsError(
+            try FunctionsRepository.sealGatewayEventPayload(
+                into: &payload,
+                text: "secret",
+                senderDisplayName: "iPhone",
+                threadId: "burnbar-ios-e2e",
+                modelId: nil,
+                targetClient: client,
+                uid: uid,
+                pinStore: store
+            )
+        ) { error in
+            XCTAssertEqual(error as? FunctionsError, .gatewayTargetMissingRelayKey)
+        }
+        XCTAssertNil(payload["relayEnvelope"])
+        XCTAssertNil(payload["ratchetEnvelope"])
+        XCTAssertNil(payload["text"])
+        XCTAssertNil(payload["eventId"])
+        XCTAssertNil(store.pinnedKey(uid: uid, clientId: clientId))
+    }
+
     // MARK: - Sealed model_switch — FIX-ios finding 2
 
     func testSealedModelSwitchCarriesModelIdInsideEnvelopeAndRoundTrips() throws {
@@ -817,7 +1310,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let uid = "uid_model"
         let clientId = "hgw_model_\(UUID().uuidString)"
         let agentPrivate = HermesRelayCrypto.generatePrivateKey()
-        let client = sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
+        let client = try sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
         defer { store.clearPin(uid: uid, clientId: clientId) }
 
         // The phone seals a model_switch exactly like other events: modelId rides
@@ -846,12 +1339,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
         else {
             return XCTFail("Sealed model_switch is missing its envelope")
         }
+        // The phone stamps the v2 gateway wrap + its own gateway pubkey as sender.
+        // Read it back from the envelope (the key actually used to seal).
+        XCTAssertEqual(envelope["relayKeyVersion"] as? Int, HermesRelayCrypto.gatewayRelayKeyVersion)
+        let phoneGatewayPub = try XCTUnwrap(envelope["senderPublicKey"] as? String)
+        XCTAssertFalse(phoneGatewayPub.isEmpty)
 
-        // The agent opens it: unwrap the per-event key, open the payload, read modelId.
+        // The agent opens it: unwrap the per-event key binding the phone's PINNED
+        // gateway pubkey as the v2 sender, open the payload, read modelId.
         let symmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
             wrappedKey,
             privateKey: agentPrivate,
-            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId)
+            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
+            senderPublicKeyBase64: phoneGatewayPub
         )
         let openedData = try HermesRelayCrypto.openBase64(
             ciphertext: payloadCiphertext,
@@ -860,6 +1360,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
         let opened = try XCTUnwrap(try JSONSerialization.jsonObject(with: openedData) as? [String: Any])
         XCTAssertEqual(opened["modelId"] as? String, "anthropic/claude-opus")
+        XCTAssertEqual(opened["destinationId"] as? String, "burnbar:home")
+        XCTAssertEqual(opened["replayCounter"] as? Int, 1)
         XCTAssertEqual(opened["threadId"] as? String, "burnbar-ios-e2e")
         XCTAssertEqual(opened["senderDisplayName"] as? String, "iPhone")
     }
@@ -874,18 +1376,23 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let clientId = "hgw_render"
         let messageId = "msg_render"
         let plaintext = "Done — your build is green."
+        // MP-27: seal the reply as JSON {text}; the phone JSON-decodes to readable text.
+        let payloadJSON = try JSONSerialization.data(withJSONObject: ["text": plaintext])
 
-        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let phoneKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
         let key = try HermesRelayCrypto.generateSymmetricKeyData()
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
-            plaintext: Data(plaintext.utf8),
+            plaintext: payloadJSON,
             keyData: key,
             aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            senderPrivateKey: agentRelayPriv
         )
         let record = HermesGatewayMessageRecord(
             documentID: messageId,
@@ -894,12 +1401,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "destinationId": "burnbar:home",
                 "relayEnvelope": [
                     "payloadCiphertext": payloadCiphertext, "wrappedKey": wrappedKey,
-                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
                 ],
                 "createdAt": "2026-06-02T08:08:04.968Z", "schemaVersion": 2
             ]
         )
-        let opened = try XCTUnwrap(record?.decodedText(using: phoneKeypair, uid: uid))
+        let pinStore = freshPinStore()
+        XCTAssertEqual(
+            pinStore.verifyOrPin(agentPublicKeyBase64: agentPubB64, uid: uid, clientId: clientId),
+            .pinnedFirstUse
+        )
+        let opened = try XCTUnwrap(record?.decodedText(using: phoneKeypair, uid: uid, pinStore: pinStore))
         XCTAssertEqual(opened.chatRenderText(), plaintext)
         XCTAssertFalse(opened.isUndecryptableHere)
     }
@@ -912,6 +1426,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let clientId = "hgw_other"
         let messageId = "msg_other"
         let otherDevice = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
         let key = try HermesRelayCrypto.generateSymmetricKeyData()
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: Data("secret".utf8),
@@ -921,7 +1437,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: otherDevice,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            senderPrivateKey: agentRelayPriv
         )
         let record = HermesGatewayMessageRecord(
             documentID: messageId,
@@ -930,12 +1447,22 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "destinationId": "burnbar:home",
                 "relayEnvelope": [
                     "payloadCiphertext": payloadCiphertext, "wrappedKey": wrappedKey,
-                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
                 ],
                 "createdAt": "2026-06-02T08:08:04.968Z", "schemaVersion": 2
             ]
         )
-        let opened = try XCTUnwrap(record?.decodedText(using: HermesGatewayRelayKeypair.loadOrCreate(), uid: uid))
+        // The agent key is pinned (so the v2 gate is satisfied), but the reply was
+        // sealed to ANOTHER device — the unwrap fails on the recipient mismatch and
+        // the calm re-pair state renders.
+        let pinStore = freshPinStore()
+        XCTAssertEqual(
+            pinStore.verifyOrPin(agentPublicKeyBase64: agentPubB64, uid: uid, clientId: clientId),
+            .pinnedFirstUse
+        )
+        let opened = try XCTUnwrap(record?.decodedText(using: try HermesGatewayRelayKeypair.loadOrCreate(), uid: uid, pinStore: pinStore))
         XCTAssertTrue(opened.isUndecryptableHere)
         let rendered = opened.chatRenderText()
         XCTAssertEqual(rendered, HermesGatewayMessageRecord.sealedForAnotherDeviceText)
@@ -981,7 +1508,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
             ]
         ))
         let opened = forged.decodedText(
-            using: HermesGatewayRelayKeypair.loadOrCreate(),
+            using: try HermesGatewayRelayKeypair.loadOrCreate(),
             uid: uid,
             pinStore: pinStore
         )
@@ -1021,7 +1548,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
             ]
         ))
         let opened = record.decodedText(
-            using: HermesGatewayRelayKeypair.loadOrCreate(),
+            using: try HermesGatewayRelayKeypair.loadOrCreate(),
             uid: uid,
             pinStore: pinStore
         )
@@ -1055,7 +1582,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
             ]
         ))
         let opened = forged.decodedText(
-            using: HermesGatewayRelayKeypair.loadOrCreate(),
+            using: try HermesGatewayRelayKeypair.loadOrCreate(),
             uid: uid,
             pinStore: pinStore
         )
@@ -1080,10 +1607,13 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let fileBytes = Data((0..<256).map { UInt8($0 % 251) })
         let contentType = "application/pdf"
 
-        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let phoneKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
 
         // --- Agent (Python adapter) side: one body key seals body + manifest
-        //     under DISTINCT AAD labels, wrapped under the key AAD. ---
+        //     under DISTINCT AAD labels, wrapped under the key AAD with the v2
+        //     authenticated wrap signed by the AGENT's static relay key. ---
         let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
         let sealedBodyBase64 = try HermesRelayCrypto.sealToBase64(
             plaintext: fileBytes,
@@ -1093,7 +1623,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         // The adapter uploads the ASCII base64 of the sealed body as the blob.
         let downloadedBody = Data(sealedBodyBase64.utf8)
         let manifestJSON = try JSONSerialization.data(withJSONObject: [
-            "fileName": fileName, "byteCount": fileBytes.count, "contentType": contentType
+            "fileName": fileName, "byteCount": fileBytes.count, "contentType": contentType, "destinationId": "burnbar:home"
         ])
         let manifestCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: manifestJSON,
@@ -1103,7 +1633,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             bodyKey,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
+            senderPrivateKey: agentRelayPriv
         )
 
         let record = try XCTUnwrap(HermesGatewayAttachmentRecord(
@@ -1113,16 +1644,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "bodyStoragePath": "hermes_gateway_attachments/\(uid)/\(attachmentId)",
                 "relayEnvelope": [
                     "payloadCiphertext": manifestCiphertext, "wrappedKey": wrappedKey,
-                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
                 ],
                 "createdAt": "2026-06-02T08:08:04.968Z"
             ]
         ))
         XCTAssertTrue(record.isSealed)
 
-        // --- Phone side: the new opener round-trips the Python-sealed wire. ---
+        // --- Phone side: the new opener round-trips the Python-sealed wire,
+        //     binding the agent's PINNED relay key as the v2 sender. ---
         let opened = try XCTUnwrap(
-            record.opened(downloadedBody: downloadedBody, using: phoneKeypair, uid: uid),
+            record.opened(downloadedBody: downloadedBody, using: phoneKeypair, uid: uid, pinnedSenderKey: agentPubB64),
             "iOS must open a Python-sealed gateway attachment"
         )
         XCTAssertEqual(opened.fileName, fileName)
@@ -1131,13 +1665,50 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(opened.data, fileBytes)
     }
 
+    func testGatewaySealedAttachmentManifestWrongDestinationFails() throws {
+        let uid = "uid_att"
+        let clientId = "hgw_att"
+        let attachmentId = "att_wrong_dest"
+        let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        let manifestJSON = try JSONSerialization.data(withJSONObject: [
+            "fileName": "report.pdf",
+            "byteCount": 12,
+            "contentType": "application/pdf",
+            "destinationId": "burnbar:other"
+        ])
+        let manifestCiphertext = try HermesRelayCrypto.sealToBase64(
+            plaintext: manifestJSON,
+            keyData: bodyKey,
+            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        )
+        let record = try XCTUnwrap(HermesGatewayAttachmentRecord(
+            documentID: attachmentId,
+            data: [
+                "id": attachmentId,
+                "clientId": clientId,
+                "destinationId": "burnbar:home",
+                "relayEnvelope": [
+                    "payloadCiphertext": manifestCiphertext,
+                    "wrappedKey": "unused",
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": "unused"
+                ]
+            ]
+        ))
+
+        XCTAssertThrowsError(try record.openManifest(bodyKey: bodyKey, uid: uid))
+    }
+
     /// A relay that swaps the body ciphertext into the manifest slot (or vice
     /// versa) must fail the AES-GCM tag — the distinct AAD labels bind each slot.
     func testGatewaySealedAttachmentCrossSlotSwapFailsTag() throws {
         let uid = "uid_swap"
         let clientId = "hgw_swap"
         let attachmentId = "att_swap"
-        let phoneKeypair = HermesGatewayRelayKeypair.loadOrCreate()
+        let phoneKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
 
         let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
         // Seal the body, then try to open it AS IF it were the manifest (wrong AAD).
@@ -1149,7 +1720,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             bodyKey,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
+            senderPrivateKey: agentRelayPriv
         )
         // Put the BODY ciphertext into the manifest (payloadCiphertext) slot.
         let record = try XCTUnwrap(HermesGatewayAttachmentRecord(
@@ -1158,12 +1730,14 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "id": attachmentId, "clientId": clientId, "destinationId": "burnbar:home",
                 "relayEnvelope": [
                     "payloadCiphertext": sealedBodyBase64, "wrappedKey": wrappedKey,
-                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
                 ],
                 "createdAt": "2026-06-02T08:08:04.968Z"
             ]
         ))
-        let bodyKeyUnwrapped = try XCTUnwrap(record.unwrapBodyKey(using: phoneKeypair, uid: uid))
+        let bodyKeyUnwrapped = try XCTUnwrap(record.unwrapBodyKey(using: phoneKeypair, uid: uid, pinnedSenderKey: agentPubB64))
         XCTAssertThrowsError(try record.openManifest(bodyKey: bodyKeyUnwrapped, uid: uid)) { _ in }
     }
 
@@ -1174,6 +1748,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let clientId = "hgw_att_other"
         let attachmentId = "att_other"
         let otherDevice = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let agentRelayPriv = HermesRelayCrypto.generatePrivateKey()
+        let agentPubB64 = agentRelayPriv.publicKeyBase64
 
         let bodyKey = try HermesRelayCrypto.generateSymmetricKeyData()
         let sealedBodyBase64 = try HermesRelayCrypto.sealToBase64(
@@ -1182,14 +1758,17 @@ final class OpenBurnBarMobileTests: XCTestCase {
             aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let manifestCiphertext = try HermesRelayCrypto.sealToBase64(
-            plaintext: try JSONSerialization.data(withJSONObject: ["fileName": "x.txt", "byteCount": 4]),
+            plaintext: try JSONSerialization.data(withJSONObject: [
+                "fileName": "x.txt", "byteCount": 4, "destinationId": "burnbar:home"
+            ]),
             keyData: bodyKey,
             aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             bodyKey,
             recipientPublicKeyBase64: otherDevice,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
+            senderPrivateKey: agentRelayPriv
         )
         let record = try XCTUnwrap(HermesGatewayAttachmentRecord(
             documentID: attachmentId,
@@ -1197,20 +1776,25 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "id": attachmentId, "clientId": clientId, "destinationId": "burnbar:home",
                 "relayEnvelope": [
                     "payloadCiphertext": manifestCiphertext, "wrappedKey": wrappedKey,
-                    "relayEncryption": HermesRelayCrypto.algorithm, "relayKeyVersion": 1
+                    "relayEncryption": HermesRelayCrypto.algorithm,
+                    "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersion,
+                    "senderPublicKey": agentPubB64
                 ],
                 "createdAt": "2026-06-02T08:08:04.968Z"
             ]
         ))
-        XCTAssertNil(record.unwrapBodyKey(using: HermesGatewayRelayKeypair.loadOrCreate(), uid: uid))
+        // Sealed to ANOTHER device: even with the agent's real key bound as the
+        // pinned sender, the recipient mismatch means this device cannot unwrap.
+        XCTAssertNil(record.unwrapBodyKey(using: try HermesGatewayRelayKeypair.loadOrCreate(), uid: uid, pinnedSenderKey: agentPubB64))
         XCTAssertNil(record.opened(
             downloadedBody: Data(sealedBodyBase64.utf8),
-            using: HermesGatewayRelayKeypair.loadOrCreate(),
-            uid: uid
+            using: try HermesGatewayRelayKeypair.loadOrCreate(),
+            uid: uid,
+            pinnedSenderKey: agentPubB64
         ))
     }
 
-    func testHermesGatewayRelayKeypairPublishesX963PubkeyAtPairing() async {
+    func testHermesGatewayPairingPublishesRelayAndRatchetPublicMaterial() async throws {
         let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -1229,6 +1813,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let decoded = Data(base64Encoded: pubkey)
         XCTAssertEqual(decoded?.count, 65)
         XCTAssertEqual(decoded?.first, 0x04)
+        let ratchetBundle = try XCTUnwrap(grant?.phoneRatchetPrekeyBundle)
+        for key in [
+            ratchetBundle.identityPublicKeyBase64,
+            ratchetBundle.signingPublicKeyBase64,
+            ratchetBundle.signedPreKeyPublicKeyBase64
+        ] {
+            let decodedKey = Data(base64Encoded: key)
+            XCTAssertEqual(decodedKey?.count, 65)
+            XCTAssertEqual(decodedKey?.first, 0x04)
+        }
+        XCTAssertTrue(ratchetBundle.signedPreKeyID.hasPrefix("spk_ios_"))
+        XCTAssertFalse(ratchetBundle.signedPreKeySignatureBase64.isEmpty)
+        XCTAssertNotNil(Data(base64Encoded: ratchetBundle.signedPreKeySignatureBase64))
     }
 
     func testHermesGatewayQueuedEventParsesTargetClientId() throws {
@@ -1906,11 +2503,31 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let cache = CloudTranscriptCache(directory: directory, settings: settings)
         let vaultKey = Data(repeating: 7, count: 32)
         let transcript = "session body with private prompt text"
-        let bodyHash = CloudVaultCrypto.sha256Hex(transcript)
+        let bodyHash = try CloudVaultCrypto.sessionBodyHash(transcript, keyData: vaultKey)
+        let bodyHashVersion = CloudVaultCrypto.sessionBodyHashVersion
+        let aadContext = try CloudVaultAADContext(
+            uid: "test-user",
+            collection: "session_logs",
+            docID: "test-doc",
+            field: "sealedBody"
+        )
         let storagePath = "users/test-user/session_logs/test-doc/bodies/\(bodyHash).json.aesgcm"
 
-        try await cache.storeTranscript(transcript, storagePath: storagePath, bodyHash: bodyHash, vaultKey: vaultKey)
-        let loaded = await cache.cachedTranscript(storagePath: storagePath, bodyHash: bodyHash, vaultKey: vaultKey)
+        try await cache.storeTranscript(
+            transcript,
+            storagePath: storagePath,
+            bodyHash: bodyHash,
+            bodyHashVersion: bodyHashVersion,
+            vaultKey: vaultKey,
+            aadContext: aadContext
+        )
+        let loaded = await cache.cachedTranscript(
+            storagePath: storagePath,
+            bodyHash: bodyHash,
+            bodyHashVersion: bodyHashVersion,
+            vaultKey: vaultKey,
+            aadContext: aadContext
+        )
 
         XCTAssertEqual(loaded, transcript)
         let cacheFiles = try FileManager.default.contentsOfDirectory(
@@ -1937,12 +2554,31 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let cache = CloudTranscriptCache(directory: directory, settings: settings)
         let vaultKey = Data(repeating: 8, count: 32)
         let transcript = "do not cache this body"
-        let bodyHash = CloudVaultCrypto.sha256Hex(transcript)
+        let bodyHash = try CloudVaultCrypto.sessionBodyHash(transcript, keyData: vaultKey)
+        let aadContext = try CloudVaultAADContext(
+            uid: "test-user",
+            collection: "session_logs",
+            docID: "test-doc",
+            field: "sealedBody"
+        )
         let storagePath = "users/test-user/session_logs/test-doc/bodies/\(bodyHash).json.aesgcm"
 
-        try await cache.storeTranscript(transcript, storagePath: storagePath, bodyHash: bodyHash, vaultKey: vaultKey)
+        try await cache.storeTranscript(
+            transcript,
+            storagePath: storagePath,
+            bodyHash: bodyHash,
+            bodyHashVersion: CloudVaultCrypto.sessionBodyHashVersion,
+            vaultKey: vaultKey,
+            aadContext: aadContext
+        )
 
-        let loaded = await cache.cachedTranscript(storagePath: storagePath, bodyHash: bodyHash, vaultKey: vaultKey)
+        let loaded = await cache.cachedTranscript(
+            storagePath: storagePath,
+            bodyHash: bodyHash,
+            bodyHashVersion: CloudVaultCrypto.sessionBodyHashVersion,
+            vaultKey: vaultKey,
+            aadContext: aadContext
+        )
         let snapshot = await cache.snapshot()
         XCTAssertNil(loaded)
         XCTAssertTrue(snapshot.isDisabled)
@@ -2515,11 +3151,13 @@ final class OpenBurnBarMobileTests: XCTestCase {
     ) -> CloudConversationSearchRow {
         CloudConversationSearchRow(
             id: id,
+            documentID: id,
             title: title,
             snippet: snippet,
             provider: provider,
             storagePath: "users/test-user/session_logs/\(id)/bodies/hash.json.aesgcm",
             bodyHash: String(repeating: "a", count: 64),
+            bodyHashVersion: 0,
             score: score,
             tokenScore: tokenScore,
             semanticScore: semanticScore,
@@ -2574,6 +3212,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         let phoneRelayPublicKey: String?
         let phoneRelayKeyVersion: Int?
         let phoneRelayEncryption: String?
+        let phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
     }
 
     struct OversightModeChange: Equatable {
@@ -2587,12 +3226,20 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         let deviceId: String
     }
 
+    struct ApprovalDecisionEvent: Equatable {
+        let approvalId: String
+        let approve: Bool
+        let targetClientId: String?
+        let sealedToAgent: Bool
+    }
+
     var clients: [HermesGatewayClientRecord] = []
     private(set) var enqueuedEvents: [EnqueuedEvent] = []
     private(set) var enqueuedModelSwitches: [EnqueuedModelSwitch] = []
     private(set) var revokedClientIds: [String] = []
     private(set) var oversightModeChanges: [OversightModeChange] = []
     private(set) var approvalResponses: [ApprovalResponse] = []
+    private(set) var approvalDecisionEvents: [ApprovalDecisionEvent] = []
     private(set) var approvalGrants: [ApprovalGrant] = []
     private var sequence = 0
 
@@ -2603,14 +3250,16 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         scopes: [String],
         phoneRelayPublicKey: String?,
         phoneRelayKeyVersion: Int?,
-        phoneRelayEncryption: String?
+        phoneRelayEncryption: String?,
+        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
     ) async throws -> HermesGatewayClientRecord {
         approvalGrants.append(
             ApprovalGrant(
                 userCode: userCode,
                 phoneRelayPublicKey: phoneRelayPublicKey,
                 phoneRelayKeyVersion: phoneRelayKeyVersion,
-                phoneRelayEncryption: phoneRelayEncryption
+                phoneRelayEncryption: phoneRelayEncryption,
+                phoneRatchetPrekeyBundle: phoneRatchetPrekeyBundle
             )
         )
         let client = HermesGatewayClientRecord(
@@ -2699,6 +3348,22 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
 
     func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws {
         approvalResponses.append(ApprovalResponse(approvalId: approvalId, approve: approve, deviceId: deviceId))
+    }
+
+    func enqueueHermesGatewayApprovalDecision(
+        approvalId: String,
+        approve: Bool,
+        targetClient: HermesGatewayClientRecord?,
+        targetClientId: String?
+    ) async throws {
+        approvalDecisionEvents.append(
+            ApprovalDecisionEvent(
+                approvalId: approvalId,
+                approve: approve,
+                targetClientId: targetClientId,
+                sealedToAgent: targetClient?.canSealToAgent ?? false
+            )
+        )
     }
 }
 

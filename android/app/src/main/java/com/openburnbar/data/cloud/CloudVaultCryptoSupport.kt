@@ -11,9 +11,14 @@ internal object CloudVaultCryptoSupport {
     private const val WRAPPED_KEY_EPHEMERAL_BYTES = 65
     private const val P256_Y_COORDINATE_OFFSET = 33
 
-    fun openAesGcm(key: ByteArray, nonce: ByteArray, ciphertextAndTag: ByteArray): ByteArray {
+    fun encodeBase64(data: ByteArray): String = java.util.Base64.getEncoder().encodeToString(data)
+
+    fun decodeBase64(value: String): ByteArray = java.util.Base64.getMimeDecoder().decode(value)
+
+    fun openAesGcm(key: ByteArray, nonce: ByteArray, ciphertextAndTag: ByteArray, aad: ByteArray? = null): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        if (aad != null) cipher.updateAAD(aad)
         return cipher.doFinal(ciphertextAndTag)
     }
 

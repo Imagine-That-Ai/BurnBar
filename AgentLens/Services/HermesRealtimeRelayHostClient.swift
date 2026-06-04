@@ -551,7 +551,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             uid: frame.uid,
             connectionId: frame.connectionId,
             requestId: frame.requestId,
-            payload: HermesRealtimeRelayPayload(error: String(message.prefix(2_000)))
+            payload: HermesRealtimeRelayPayload(errorCode: HermesRealtimeRelayErrorCode.requestFailed.rawValue)
         )
         try? await socket.send(.data((try? encoder.encode(response)) ?? Data()))
     }

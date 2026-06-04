@@ -32,6 +32,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private let pairingKeyStore: IrohPairingKeyStore
     private let directory: any IrohPairingDirectory
     private let publicKeyPublisher: IrohPairingPublicKeyPublishing
+    private let inboundPeerPolicyLoader: @Sendable (String, String) async -> IrohInboundPeerPolicy
     private let transportFactory: @MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport
     private let urlSession: URLSession
     private let auditLogger: any IrohTransportAuditLogging
@@ -72,6 +73,13 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var inboundPeerPolicy = IrohInboundPeerPolicy(allowedPeerNodeIds: [])
     private let pairingPublishInterval: TimeInterval
 
+    private static func publicErrorClass(_ error: Error) -> String {
+        let nsError = error as NSError
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-").inverted
+        let domain = nsError.domain.components(separatedBy: allowed).joined(separator: "_")
+        return "\(domain)#\(nsError.code)"
+    }
+
     init(
         accountManager: AccountManager = .shared,
         settingsManager: SettingsManager = .shared,
@@ -80,6 +88,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         directory: any IrohPairingDirectory = FirestoreIrohPairingDirectory.shared,
         publicKeyPublisher: IrohPairingPublicKeyPublishing = IrohPairingPublicKeyPublisher.shared,
         auditLogger: any IrohTransportAuditLogging = FirestoreIrohAuditLogger.shared,
+        inboundPeerPolicyLoader: @escaping @Sendable (String, String) async -> IrohInboundPeerPolicy = { uid, connectionID in
+            await FirestoreIrohInboundPeerAllowlist.load(uid: uid, connectionId: connectionID)
+        },
         urlSession: URLSession = .shared,
         pairingPublishInterval: TimeInterval = 60,
         transportFactory: @escaping @MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport = { _ in
@@ -93,6 +104,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         self.directory = directory
         self.publicKeyPublisher = publicKeyPublisher
         self.auditLogger = auditLogger
+        self.inboundPeerPolicyLoader = inboundPeerPolicyLoader
         self.urlSession = urlSession
         self.pairingPublishInterval = pairingPublishInterval
         self.transportFactory = transportFactory
@@ -178,7 +190,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
 
             readyUID = uid
             readyConnectionID = connectionID
-            inboundPeerPolicy = await FirestoreIrohInboundPeerAllowlist.load(uid: uid, connectionId: connectionID)
+            inboundPeerPolicy = await inboundPeerPolicyLoader(uid, connectionID)
             acceptLoopHealthy = true
             heartbeatHealthy = true
 
@@ -190,10 +202,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     try? await Task.sleep(nanoseconds: UInt64(pairingPublishInterval * 1_000_000_000))
                     await self?.refreshPairingRecord(uid: uid, connectionID: connectionID)
                     if let self {
-                        self.inboundPeerPolicy = await FirestoreIrohInboundPeerAllowlist.load(
-                            uid: uid,
-                            connectionId: connectionID
-                        )
+                        self.inboundPeerPolicy = await self.inboundPeerPolicyLoader(uid, connectionID)
                     }
                 }
             }
@@ -324,7 +333,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                             connectionId: connectionID,
                             transport: .irohDirect,
                             rttMillis: nil,
-                            detail: ["error": String(error.localizedDescription.prefix(256))]
+                            detail: ["errorClass": Self.publicErrorClass(error)]
                         )
                         await stream.close()
                     }
@@ -347,7 +356,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 if Self.isRecoverablePeerAcceptError(error) {
                     consecutiveAcceptFailures = 0
                     AppLogger.network.info(
-                        "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) error=\(String(error.localizedDescription.prefix(160)))"
+                        "hermes_iroh_relay_accept_peer_closed connectionID=\(connectionID) errorClass=\(Self.publicErrorClass(error))"
                     )
                     try? await Task.sleep(nanoseconds: 200_000_000)
                     continue
@@ -361,7 +370,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         transport: transport,
                         uid: uid,
                         connectionID: connectionID,
-                        reason: String(error.localizedDescription.prefix(256)),
+                        reason: Self.publicErrorClass(error),
                         shouldRestart: true
                     )
                     return

@@ -1,3 +1,4 @@
+import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarIrohRelay
@@ -5,6 +6,10 @@ import OpenBurnBarIrohRelay
 /// Loads NodeIds that may dial the Mac iroh host for a given connection.
 enum FirestoreIrohInboundPeerAllowlist {
     static func load(uid: String, connectionId: String) async -> IrohInboundPeerPolicy {
+        guard FirebaseApp.app() != nil else {
+            return IrohInboundPeerPolicy(allowedPeerNodeIds: [])
+        }
+
         let db = Firestore.firestore()
         var allowed = Set<String>()
 

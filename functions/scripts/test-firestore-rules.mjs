@@ -121,11 +121,12 @@ const TEST_VAULT_KEY_ID = `v1_${"a".repeat(32)}`;
 
 function sealedPayload(vaultKeyID = TEST_VAULT_KEY_ID, sealedBoxBase64 = "c2VhbGVk") {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     algorithm: "AES-256-GCM",
     keyVersion: 1,
     vaultKeyID,
     sealedBoxBase64,
+    aad: "OpenBurnBar-CloudVaultSealedPayload-v2",
   };
 }
 
@@ -142,16 +143,18 @@ function sealedText(overrides = {}) {
   };
 }
 
-// Canonical CloudVaultBlobEnvelope (validCloudSealedBlob shape):
-// schemaVersion/algorithm/keyVersion/plaintextSHA256/sealedBoxBase64/createdAt.
+// Canonical CloudVaultBlobEnvelope v2 (validCloudSealedBlob shape):
+// schemaVersion/algorithm/keyVersion/plaintextHMAC/integrityHashVersion/sealedBoxBase64/createdAt/aad.
 function sealedBlob(overrides = {}) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     algorithm: "AES-256-GCM",
     keyVersion: 1,
-    plaintextSHA256: "a".repeat(64),
+    plaintextHMAC: "a".repeat(64),
+    integrityHashVersion: 1,
     sealedBoxBase64: "c2VhbGVkLWJsb2I=",
     createdAt: "2026-06-02T00:00:00.000Z",
+    aad: "OpenBurnBar-CloudVault-aad-v2|pms-owner|project_memory_snapshots|pm_aaaaaaaaaaaaaaaa|sealedSnapshot|2|sealedSnapshot",
     ...overrides,
   };
 }
@@ -176,7 +179,7 @@ function sealedChatThreadPatch(overrides = {}) {
   return {
     contentIncluded: true,
     contentSealed: true,
-    sealedSchemaVersion: 1,
+    sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
     sealedPayload: sealedPayload(),
     ...overrides,
@@ -198,7 +201,7 @@ function sealedMissionBase(id, overrides = {}) {
     updatedAt: serverTimestamp(),
     schemaVersion: 2,
     contentSealed: true,
-    sealedSchemaVersion: 1,
+    sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
     sealedPayload: sealedPayload(),
     ...overrides,
@@ -214,7 +217,7 @@ function sealedMissionEvent(overrides = {}) {
     source: "ios",
     isError: false,
     contentSealed: true,
-    sealedSchemaVersion: 1,
+    sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
     sealedPayload: sealedPayload(),
     ...overrides,
@@ -1504,7 +1507,7 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
       updatedAt: "2026-05-13T00:00:03.000Z",
       schemaVersion: 1,
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
       sealedPayload: sealedPayload(),
       messageCount: 1,
@@ -1523,7 +1526,7 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
       updatedAt: "2026-05-13T00:00:03.000Z",
       schemaVersion: 1,
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
       sealedPayload: sealedPayload(),
     })
@@ -1546,7 +1549,7 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
     sourceType: "provider_log",
     version: 1,
     contentSealed: true,
-    sealedSchemaVersion: 1,
+    sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
     sealedPayload: sealedPayload(),
   };
@@ -1929,6 +1932,22 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
       { merge: true }
     )
   );
+
+  const wrapperPayload = {
+    uid: "pro-user",
+    targetDeviceId: "device",
+    sourceDeviceId: "mac",
+    publicKeyFingerprint: "fingerprint",
+    keyVersion: 1,
+    wrappedVaultKey: "c2VhbGVkLXZhdWx0LWtleQ==",
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    algorithm: "ECIES-P256-AESGCM",
+    status: "active",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    schemaVersion: 2,
+  };
+
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(
       doc(context.firestore(), "users/pro-user/escrow_devices/device"),
@@ -1939,6 +1958,32 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
       },
       { merge: true }
     );
+  });
+
+  await assertSucceeds(
+    setDoc(
+      doc(db, "users/pro-user/escrow_devices/device"),
+      {
+        deviceName: "Phone renamed",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, "users/pro-user/escrow_devices/device"),
+      {
+        trustState: "pending",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+
+  await assertFails(setDoc(doc(db, wrapperPath), wrapperPayload));
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(
       doc(context.firestore(), "users/pro-user/escrow_devices/mac"),
       {
@@ -1950,21 +1995,19 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
     );
   });
 
+  await assertFails(
+    setDoc(
+      doc(db, "users/pro-user/escrow_devices/mac"),
+      {
+        trustState: "revoked",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+
   await assertSucceeds(
-    setDoc(doc(db, wrapperPath), {
-      uid: "pro-user",
-      targetDeviceId: "device",
-      sourceDeviceId: "mac",
-      publicKeyFingerprint: "fingerprint",
-      keyVersion: 1,
-      wrappedVaultKey: "sealed-vault-key",
-      vaultKeyID: TEST_VAULT_KEY_ID,
-      algorithm: "P256_X963_HKDF_SHA256_AESGCM",
-      status: "active",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      schemaVersion: 2,
-    })
+    setDoc(doc(db, wrapperPath), wrapperPayload)
   );
 });
 
@@ -2381,7 +2424,7 @@ test("agent notification events are server-written and replies are queued by own
       runtime: "codex",
       sourceKind: "cli_session",
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
       sealedReplyPayload: sealedPayload(),
       deviceId: "iphone",
@@ -2422,7 +2465,7 @@ test("agent notification events are server-written and replies are queued by own
       runtime: "codex",
       sourceKind: "cli_session",
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
       sealedReplyPayload: sealedPayload(),
       status: "queued",
@@ -2442,7 +2485,7 @@ test("agent notification events are server-written and replies are queued by own
       sourceKind: "cli_session",
       replyText: "",
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
       sealedReplyPayload: sealedPayload(),
       status: "queued",
@@ -2461,7 +2504,7 @@ test("agent notification events are server-written and replies are queued by own
       runtime: "codex",
       sourceKind: "cli_session",
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
       sealedReplyPayload: sealedPayload(),
       status: "queued",
@@ -2480,7 +2523,7 @@ test("agent notification events are server-written and replies are queued by own
       runtime: "codex",
       sourceKind: "cli_session",
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
       sealedReplyPayload: sealedPayload(),
       status: "queued",
@@ -2749,7 +2792,7 @@ test("T2 mobile_assistant_chats denies plaintext content and unlisted keys", asy
     updatedAt: "2026-06-02T00:00:00.000Z",
     messageCount: 3,
     contentSealed: true,
-    sealedSchemaVersion: 1,
+    sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
     sealedPayload: sealedPayload(),
   };
@@ -2892,7 +2935,7 @@ test("T5 conversations deny plaintext smuggled on the merge-update path", async 
     sourceType: "provider_log",
     version: 1,
     contentSealed: true,
-    sealedSchemaVersion: 1,
+    sealedSchemaVersion: 2,
     vaultKeyID: TEST_VAULT_KEY_ID,
     sealedPayload: sealedPayload(),
   };
@@ -2917,7 +2960,7 @@ test("T6 cli_sessions deny plaintext smuggled on the merge-update path", async (
       updatedAt: "2026-06-02T00:00:03.000Z",
       schemaVersion: 1,
       contentSealed: true,
-      sealedSchemaVersion: 1,
+      sealedSchemaVersion: 2,
       vaultKeyID: TEST_VAULT_KEY_ID,
       sealedPayload: sealedPayload(),
       messageCount: 1,
@@ -3107,13 +3150,14 @@ test("T11 project_memory_snapshots seal the name and reject plaintext slug", asy
   const base = {
     docID,
     contentHash: "d".repeat(64),
+    contentHashVersion: 2,
     sourceSessionCount: 3,
     sourceConversationCount: 5,
     generatedAt: "2026-06-02T00:00:00.000Z",
     freshness: "fresh",
     visualKinds: ["chart"],
     sealedSnapshot: sealedBlob(),
-    encryption: { algorithm: "AES-256-GCM", keyVersion: 1, envelopeSchemaVersion: 1 },
+    encryption: { algorithm: "AES-256-GCM", keyVersion: 1, envelopeSchemaVersion: 2 },
     schemaVersion: 2,
     updatedAt: "2026-06-02T00:00:00.000Z",
   };
@@ -3129,6 +3173,21 @@ test("T11 project_memory_snapshots seal the name and reject plaintext slug", asy
   // Legacy v1 plaintext-keyed rows are fenced out (schemaVersion must be >= 2).
   await assertFails(
     setDoc(doc(db, snapshotPath), { ...base, schemaVersion: 1 })
+  );
+  await assertFails(
+    setDoc(doc(db, snapshotPath), {
+      ...base,
+      sealedSnapshot: {
+        schemaVersion: 2,
+        algorithm: "AES-256-GCM",
+        keyVersion: 1,
+        plaintextSHA256: "e".repeat(64),
+        integrityHashVersion: 1,
+        sealedBoxBase64: "c2VhbGVkLWJsb2I=",
+        createdAt: "2026-06-02T00:00:00.000Z",
+        aad: "OpenBurnBar-CloudVault-aad-v2|pms-owner|project_memory_snapshots|pm_aaaaaaaaaaaaaaaa|sealedSnapshot|2|sealedSnapshot",
+      },
+    })
   );
 });
 

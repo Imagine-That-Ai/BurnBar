@@ -100,6 +100,8 @@ export {
   onKnowledgeRepoPush,
   connectKnowledgeRepo,
   disconnectKnowledgeRepo,
+  listKnowledgeRepos,
+  requestKnowledgeResync,
   reconcileKnowledgeMemoryDaily,
 } from "./callables/knowledgeSync.js";
 export { getDataDomainUsage } from "./callables/dataDomainUsage.js";

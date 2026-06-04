@@ -9,6 +9,7 @@ export interface CloudSearchPostingSource {
   provider?: string;
   ordinal: number;
   bodyHash: string;
+  bodyHashVersion?: number;
   storagePath: string;
   sealedSnippet: unknown;
   indexVersion: number;
@@ -55,6 +56,7 @@ export function buildCloudSearchPostingEdges(params: {
           provider: params.source.provider,
           ordinal: params.source.ordinal,
           bodyHash: params.source.bodyHash,
+          bodyHashVersion: params.source.bodyHashVersion,
           storagePath: params.source.storagePath,
           sealedSnippet: params.source.sealedSnippet,
           updatedAt: params.source.updatedAt,

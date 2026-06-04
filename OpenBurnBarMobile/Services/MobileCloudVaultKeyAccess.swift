@@ -22,6 +22,76 @@ enum MobileCloudVaultAccessError: LocalizedError {
     }
 }
 
+enum MobileEscrowPublicKeyPublishError: LocalizedError {
+    case immutablePublicKeyConflict(deviceId: String, keyVersion: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .immutablePublicKeyConflict(let deviceId, let keyVersion):
+            return "Escrow public key conflict for \(deviceId)_\(keyVersion)."
+        }
+    }
+}
+
+enum MobileEscrowPublicKeyPublisher {
+    static func publishIfNeeded(
+        userRef: DocumentReference,
+        deviceId: String,
+        publicKeyData: Data,
+        publicKeyFingerprint: String,
+        keyVersion: Int
+    ) async throws {
+        let publicKeyBase64 = publicKeyData.base64EncodedString()
+        let documentRef = userRef.collection("escrow_public_keys").document("\(deviceId)_\(keyVersion)")
+        let existing = try await documentRef.getDocument()
+
+        if let data = existing.data() {
+            guard matchesExistingPublicKey(
+                data,
+                deviceId: deviceId,
+                publicKeyBase64: publicKeyBase64,
+                publicKeyFingerprint: publicKeyFingerprint,
+                keyVersion: keyVersion
+            ) else {
+                throw MobileEscrowPublicKeyPublishError.immutablePublicKeyConflict(
+                    deviceId: deviceId,
+                    keyVersion: keyVersion
+                )
+            }
+            return
+        }
+
+        try await documentRef.setData([
+            "deviceId": deviceId,
+            "publicKeyData": publicKeyBase64,
+            "publicKeyFingerprint": publicKeyFingerprint,
+            "keyVersion": keyVersion,
+            "algorithm": "ECIES-P256-AESGCM",
+            "createdAt": FieldValue.serverTimestamp()
+        ], merge: false)
+    }
+
+    private static func matchesExistingPublicKey(
+        _ data: [String: Any],
+        deviceId: String,
+        publicKeyBase64: String,
+        publicKeyFingerprint: String,
+        keyVersion: Int
+    ) -> Bool {
+        guard data["deviceId"] as? String == deviceId,
+              data["publicKeyData"] as? String == publicKeyBase64,
+              data["keyVersion"] as? Int == keyVersion,
+              data["algorithm"] as? String == "ECIES-P256-AESGCM" else {
+            return false
+        }
+
+        if let existingFingerprint = data["publicKeyFingerprint"] as? String {
+            return existingFingerprint == publicKeyFingerprint
+        }
+        return true
+    }
+}
+
 enum MobileCloudVaultKeyAccess {
     static func keyForWriting(uid: String, firestore: Firestore = Firestore.firestore()) async throws -> MobileCloudVaultResolvedKey {
         let userRef = firestore.collection("users").document(uid)
@@ -143,33 +213,37 @@ enum MobileCloudVaultKeyAccess {
         ], merge: true)
 
         let deviceRef = userRef.collection("escrow_devices").document(deviceId)
-        let existing: [String: Any]?
+        let existingSnapshot: DocumentSnapshot?
         do {
-            existing = try await deviceRef.getDocument().data()
+            existingSnapshot = try await deviceRef.getDocument()
         } catch {
-            existing = nil
+            existingSnapshot = nil
         }
+        let existing = existingSnapshot?.data()
         let existingTrust = existing?["trustState"] as? String
-        let trustState = existingTrust == EscrowDeviceTrustState.trusted.rawValue
-            ? EscrowDeviceTrustState.trusted.rawValue
-            : EscrowDeviceTrustState.pending.rawValue
-        try await deviceRef.setData([
+        let sourceIsTrusted = existingTrust == EscrowDeviceTrustState.trusted.rawValue
+        var devicePayload: [String: Any] = [
             "deviceId": deviceId,
             "deviceName": deviceName,
             "platform": platform,
-            "trustState": trustState,
             "publicKeyFingerprint": keypair.publicKeyFingerprint,
             "keyVersion": keypair.keyVersion,
             "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
-        try await userRef.collection("escrow_public_keys").document("\(deviceId)_\(keypair.keyVersion)").setData([
-            "deviceId": deviceId,
-            "publicKeyData": keypair.publicKeyData.base64EncodedString(),
-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
-            "keyVersion": keypair.keyVersion,
-            "algorithm": "ECIES-P256-AESGCM",
-            "createdAt": FieldValue.serverTimestamp()
-        ], merge: true)
+        ]
+        if existingSnapshot?.exists == false {
+            devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+        }
+        try await deviceRef.setData(devicePayload, merge: true)
+        try await MobileEscrowPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: deviceId,
+            publicKeyData: keypair.publicKeyData,
+            publicKeyFingerprint: keypair.publicKeyFingerprint,
+            keyVersion: keypair.keyVersion
+        )
+        guard sourceIsTrusted else {
+            return
+        }
 
         let trusted = try await userRef.collection("escrow_devices")
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)

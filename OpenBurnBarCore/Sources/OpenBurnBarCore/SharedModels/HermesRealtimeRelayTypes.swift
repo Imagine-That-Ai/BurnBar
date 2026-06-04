@@ -2297,6 +2297,12 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
     public var sequence: Int?
     public var kind: HermesRelayChunkKind?
     public var ciphertext: String?
+    /// Public, non-sensitive terminal error code for `response.error` frames.
+    /// Do not put user/provider/runtime text here; encrypted `.error` chunks carry
+    /// private detail when the caller needs it.
+    public var errorCode: String?
+    /// Legacy plaintext error text kept decodable for older peers. New iroh
+    /// senders must not populate this on `response.error` frames.
     public var error: String?
     public var chunkCount: Int?
     public var capabilities: [String]?
@@ -2311,6 +2317,7 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
         sequence: Int? = nil,
         kind: HermesRelayChunkKind? = nil,
         ciphertext: String? = nil,
+        errorCode: String? = nil,
         error: String? = nil,
         chunkCount: Int? = nil,
         capabilities: [String]? = nil
@@ -2324,9 +2331,32 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
         self.sequence = sequence
         self.kind = kind
         self.ciphertext = ciphertext
+        self.errorCode = errorCode
         self.error = error
         self.chunkCount = chunkCount
         self.capabilities = capabilities
+    }
+}
+
+public enum HermesRealtimeRelayErrorCode: String, Codable, Sendable, Equatable {
+    case requestFailed = "request_failed"
+    case transportFailed = "transport_failed"
+
+    public var publicMessage: String {
+        switch self {
+        case .requestFailed:
+            return "The remote Hermes relay could not complete the request."
+        case .transportFailed:
+            return "The remote Hermes relay connection failed."
+        }
+    }
+
+    public static func publicMessage(for rawCode: String?) -> String {
+        guard let rawCode,
+              let code = HermesRealtimeRelayErrorCode(rawValue: rawCode) else {
+            return "The remote Hermes relay could not complete the request."
+        }
+        return code.publicMessage
     }
 }
 

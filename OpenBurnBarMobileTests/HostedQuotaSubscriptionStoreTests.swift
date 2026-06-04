@@ -7,6 +7,7 @@ import OpenBurnBarCore
 
 private let burnBarProProductID = "com.openburnbar.pro.monthly"
 private let burnBarProMaxProductID = "com.openburnbar.proMax.v2.monthly"
+private let burnBarUltraProductID = "com.openburnbar.ultra.monthly"
 
 @MainActor
 final class HostedQuotaSubscriptionStoreTests: XCTestCase {
@@ -67,7 +68,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
         let service = FakeHostedQuotaEntitlementService()
-        let store = HostedQuotaSubscriptionStore(functions: service, isSignedIn: { true })
+        let store = makeHostedQuotaSubscriptionStore(functions: service)
 
         await store.load()
 
@@ -93,7 +94,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         )
         var purchasedProductID: String?
         var didFinishTransaction = false
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             purchaseProduct: { product, _ in
                 purchasedProductID = product.id
@@ -119,6 +120,42 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(service.verifyRequests.first?.productID, HostedQuotaSubscriptionStore.cloudProAnnualProductID)
     }
 
+    func testPurchaseUltraMonthlyMintsBindingForSelectedTier() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let service = FakeHostedQuotaEntitlementService(
+            verifyResponse: .burnBarUltra(active: true, expiresAt: expiresAt)
+        )
+        var purchasedProductID: String?
+        var didFinishTransaction = false
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            purchaseProduct: { product, _ in
+                purchasedProductID = product.id
+                return .success(
+                    signedTransactionJWS: "signed-ultra-monthly-jws",
+                    finish: { didFinishTransaction = true }
+                )
+            },
+            isSignedIn: { true }
+        )
+        await store.load()
+
+        await store.purchase(productID: HostedQuotaSubscriptionStore.cloudUltraMonthlyProductID)
+
+        XCTAssertNil(store.error)
+        XCTAssertEqual(purchasedProductID, HostedQuotaSubscriptionStore.cloudUltraMonthlyProductID)
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.isActivePro)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(store.activeProductID, burnBarUltraProductID)
+        XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertTrue(didFinishTransaction)
+        XCTAssertEqual(service.bindingRequests.first?.productID, HostedQuotaSubscriptionStore.cloudUltraMonthlyProductID)
+        XCTAssertEqual(service.verifyRequests.first?.productID, HostedQuotaSubscriptionStore.cloudUltraMonthlyProductID)
+    }
+
     func testPurchaseCloudProTopUpCreditsAllowance() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
@@ -133,7 +170,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         )
         var purchasedProductID: String?
         var didFinishTransaction = false
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             purchaseProduct: { product, _ in
                 purchasedProductID = product.id
@@ -167,7 +204,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             verifyResponse: .hostedQuota(active: true, expiresAt: expiresAt)
         )
         var didFinishTransaction = false
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             purchaseProduct: { _, _ in
                 .success(
@@ -201,7 +238,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let service = FakeHostedQuotaEntitlementService(
             restoreResponse: .hostedQuota(active: true, expiresAt: expiresAt)
         )
-        let store = HostedQuotaSubscriptionStore(functions: service, isSignedIn: { true })
+        let store = makeHostedQuotaSubscriptionStore(functions: service)
 
         try await store.refreshEntitlement()
 
@@ -218,7 +255,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let service = FakeHostedQuotaEntitlementService(
             restoreResponse: .hostedQuota(active: true, expiresAt: expiresAt)
         )
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             fetchProducts: { _ in throw TestHostedQuotaError.productCatalogUnavailable },
             isSignedIn: { true }
@@ -239,7 +276,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let directReader = FakeHostedQuotaDirectReader(
             response: .burnBarPro(active: true, expiresAt: expiresAt)
         )
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             directReader: directReader,
             isSignedIn: { true }
@@ -261,7 +298,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let directReader = FakeHostedQuotaDirectReader(
             response: .burnBarPro(active: true, expiresAt: expiresAt, environment: "Sandbox")
         )
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             directReader: directReader,
             isSignedIn: { true },
@@ -284,7 +321,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             restoreResponse: .hostedQuota(active: true, expiresAt: expiresAt)
         )
         var didSyncAppStore = false
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             syncAppStore: { didSyncAppStore = true },
             isSignedIn: { true }
@@ -308,7 +345,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             restoreResponse: .burnBarPro(active: true, expiresAt: expiresAt, environment: "Sandbox")
         )
         var didSyncAppStore = false
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             syncAppStore: { didSyncAppStore = true },
             isSignedIn: { true },
@@ -330,7 +367,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let service = FakeHostedQuotaEntitlementService()
         var didFinishTransaction = false
         var capturedOptions: Set<Product.PurchaseOption>?
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             purchaseProduct: { _, options in
                 capturedOptions = options
@@ -359,7 +396,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         defer { session.clearTransactions() }
         let service = FakeHostedQuotaEntitlementService()
         var didCallPurchase = false
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             purchaseProduct: { _, _ in
                 didCallPurchase = true
@@ -386,7 +423,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         )
         var purchasedProductID: String?
         var didFinishTransaction = false
-        let store = HostedQuotaSubscriptionStore(
+        let store = makeHostedQuotaSubscriptionStore(
             functions: service,
             purchaseProduct: { product, _ in
                 purchasedProductID = product.id
@@ -416,6 +453,36 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         session.disableDialogs = true
         session.clearTransactions()
         return session
+    }
+
+    private func makeHostedQuotaSubscriptionStore(
+        functions: any HostedQuotaEntitlementServicing,
+        directReader: (any HostedQuotaEntitlementDirectReading)? = nil,
+        purchaseProduct: @escaping HostedQuotaProductPurchaseExecutor = { _, _ in
+            throw TestHostedQuotaError.productCatalogUnavailable
+        },
+        syncAppStore: @escaping HostedQuotaAppStoreSync = {},
+        fetchProducts: @escaping HostedQuotaProductCatalogFetcher = { identifiers in
+            let products = try await Product.products(for: identifiers)
+            return products.map {
+                HostedQuotaStoreProduct(id: $0.id, displayPrice: $0.displayPrice, storeKitProduct: $0)
+            }
+        },
+        isSignedIn: @escaping HostedQuotaAuthStateReader = { true },
+        acceptsEntitlementEnvironment: @escaping HostedQuotaEntitlementEnvironmentFilter = { _ in true },
+        currentEntitlementReader: @escaping HostedQuotaCurrentEntitlementReader = { nil }
+    ) -> HostedQuotaSubscriptionStore {
+        HostedQuotaSubscriptionStore(
+            functions: functions,
+            directReader: directReader,
+            purchaseProduct: purchaseProduct,
+            syncAppStore: syncAppStore,
+            fetchProducts: fetchProducts,
+            isSignedIn: isSignedIn,
+            acceptsEntitlementEnvironment: acceptsEntitlementEnvironment,
+            currentEntitlementReader: currentEntitlementReader,
+            observeTransactionUpdates: false
+        )
     }
 }
 
@@ -655,6 +722,23 @@ private extension HostedQuotaEntitlementResponse {
             productID: burnBarProMaxProductID,
             transactionID: active ? "test-pro-max-transaction" : nil,
             originalTransactionID: active ? "test-pro-max-original-transaction" : nil,
+            environment: environment,
+            expiresAt: expiresAt,
+            revokedAt: nil,
+            revocationReason: nil
+        )
+    }
+
+    static func burnBarUltra(
+        active: Bool,
+        expiresAt: Date? = nil,
+        environment: String = "Xcode"
+    ) -> HostedQuotaEntitlementResponse {
+        HostedQuotaEntitlementResponse(
+            active: active,
+            productID: burnBarUltraProductID,
+            transactionID: active ? "test-ultra-transaction" : nil,
+            originalTransactionID: active ? "test-ultra-original-transaction" : nil,
             environment: environment,
             expiresAt: expiresAt,
             revokedAt: nil,

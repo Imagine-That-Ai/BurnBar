@@ -126,6 +126,21 @@ enum ProxyModelCatalogState: Equatable {
     }
 }
 
+enum ProxyRouteLogState: Equatable {
+    case idle
+    case loading
+    case loaded(lastRefresh: Date)
+    case clearing
+    case error(message: String, lastAttempt: Date)
+
+    var isBusy: Bool {
+        switch self {
+        case .loading, .clearing: return true
+        default: return false
+        }
+    }
+}
+
 // MARK: - View Model
 
 /// Drives the unified Connections settings page. Owns the per-app state
@@ -158,20 +173,28 @@ final class ConnectionsViewModel {
     /// on Settings -> Agents -> CLIs.
     var proxyModels: [ProxyAdvertisedModel] = []
     var proxyModelCatalogState: ProxyModelCatalogState = .idle
+    var proxyRouteLogEntries: [BurnBarProxyRouteLogEntry] = []
+    var proxyRouteLogState: ProxyRouteLogState = .idle
     var vibeProxyMigrationSnapshot: VibeProxyMigrationSnapshot?
     var vibeProxyMigrationState: VibeProxyMigrationState = .idle
 
     private let wiringFactory: () -> RoutingClientWiring
     private let proxyCatalogFetcher: (RoutingClientGateway) async throws -> [ProxyAdvertisedModel]
+    private let proxyRouteLogFetcher: (URL, Int) async throws -> [BurnBarProxyRouteLogEntry]
+    private let proxyRouteLogClearer: (URL) async throws -> Bool
     private let vibeProxyMigrationService: VibeProxyMigrationService
 
     init(
         wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() },
         proxyCatalogFetcher: @escaping (RoutingClientGateway) async throws -> [ProxyAdvertisedModel] = ConnectionsViewModel.fetchProxyModels,
+        proxyRouteLogFetcher: @escaping (URL, Int) async throws -> [BurnBarProxyRouteLogEntry] = ConnectionsViewModel.fetchProxyRouteLog,
+        proxyRouteLogClearer: @escaping (URL) async throws -> Bool = ConnectionsViewModel.clearProxyRouteLog,
         vibeProxyMigrationService: VibeProxyMigrationService = VibeProxyMigrationService()
     ) {
         self.wiringFactory = wiringFactory
         self.proxyCatalogFetcher = proxyCatalogFetcher
+        self.proxyRouteLogFetcher = proxyRouteLogFetcher
+        self.proxyRouteLogClearer = proxyRouteLogClearer
         self.vibeProxyMigrationService = vibeProxyMigrationService
     }
 
@@ -394,6 +417,30 @@ final class ConnectionsViewModel {
         }
     }
 
+    func refreshProxyRouteLog(socketURL: URL, limit: Int = 50) async {
+        guard !proxyRouteLogState.isBusy else { return }
+        proxyRouteLogState = .loading
+        do {
+            proxyRouteLogEntries = try await proxyRouteLogFetcher(socketURL, limit)
+            proxyRouteLogState = .loaded(lastRefresh: Date())
+        } catch {
+            proxyRouteLogEntries = []
+            proxyRouteLogState = .error(message: error.localizedDescription, lastAttempt: Date())
+        }
+    }
+
+    func clearProxyRouteLog(socketURL: URL) async {
+        guard !proxyRouteLogState.isBusy else { return }
+        proxyRouteLogState = .clearing
+        do {
+            _ = try await proxyRouteLogClearer(socketURL)
+            proxyRouteLogEntries = []
+            proxyRouteLogState = .loaded(lastRefresh: Date())
+        } catch {
+            proxyRouteLogState = .error(message: error.localizedDescription, lastAttempt: Date())
+        }
+    }
+
     func enableLocalGateway(settings: SettingsManager) {
         ensureLocalGateway(settings: settings)
     }
@@ -577,6 +624,18 @@ final class ConnectionsViewModel {
             throw ProxyModelCatalogError.decoding
         }
         return envelope.data.compactMap(ProxyAdvertisedModel.init(row:))
+    }
+
+    private static func fetchProxyRouteLog(socketURL: URL, limit: Int) async throws -> [BurnBarProxyRouteLogEntry] {
+        try await Task.detached(priority: .utility) {
+            try OpenBurnBarDaemonSocketClient.proxyRouteLog(at: socketURL, limit: limit)
+        }.value
+    }
+
+    private static func clearProxyRouteLog(socketURL: URL) async throws -> Bool {
+        try await Task.detached(priority: .utility) {
+            try OpenBurnBarDaemonSocketClient.clearProxyRouteLog(at: socketURL)
+        }.value
     }
 
     private static func gatewayErrorMessage(from data: Data) -> String? {

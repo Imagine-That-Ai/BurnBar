@@ -199,16 +199,20 @@ is absent; see the script header for the env vars):
 
 | Dimension | Pro (`burnbar_pro_max`) | Ultra (`burnbar_ultra`) |
 |---|---|---|
-| Knowledge sources | 3 | 15 |
-| Memory chunks (vectors) | 5,000 | 50,000 |
-| Encrypted storage | 25 MB | 250 MB |
+| Knowledge sources | 10 | 100 |
+| Memory chunks (vectors) | 50,000 | 500,000 |
+| Encrypted storage | 1 GB | 10 GB |
 | MCP query rate | 60/min (`knowledge:standard`) | 180/min (`search:ultra`) |
 
 Limits live in `functions/src/callables/knowledgeMemory.ts` (`PENSIEVE_LIMITS`),
 enforced via Firestore `count()` + `sum(byteCount)` aggregates before any write.
 Ultra **mirrors** proMax (inherits every Cloud Pro gate); only the limit lookup
-branches on the `burnbar_ultra` doc. Cost (E2EE, on-device/BYO inference): our
-spend is just Firestore reads/writes ≈ **$0.02–0.10/member/mo** vs ~$21.24 net.
+branches on the `burnbar_ultra` doc. Ultra stays a clean **10×** of Pro on chunks
+and storage so the public claim holds. Cost (E2EE, on-device/BYO inference): the
+data is sealed text + cloaked vectors in Firestore (~$0.18/GiB/mo), so even a
+member who maxes the cap costs **≈ $0.20 (Pro) / $2 (Ultra)/mo** in storage — a
+rounding error against the $21.24 / ~$50 net. The byte ceiling is a generous
+safety net; chunk count is the realistic binding limit.
 
 ---
 

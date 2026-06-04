@@ -319,8 +319,18 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
     @Published private var deferredKeys: Set<String> = []
 
     private var pollTask: Task<Void, Never>?
+    private let monitor: any SystemPermissionMonitoring
+    private let automationPromptRunner: @MainActor @Sendable (String) -> Void
 
-    init() {
+    init(
+        monitor: any SystemPermissionMonitoring = SystemPermissionMonitor.shared,
+        automationPromptRunner: (@MainActor @Sendable (String) -> Void)? = nil
+    ) {
+        self.monitor = monitor
+        self.automationPromptRunner = automationPromptRunner ?? { bundleId in
+            PermissionsOnboardingCoordinator.triggerAutomationPrompt(bundleId: bundleId)
+        }
+
         var ordered: [Step] = [
             Step(id: "microphone", kind: .microphone, bundleId: nil, titleForCard: "Microphone"),
             Step(id: "camera", kind: .camera, bundleId: nil, titleForCard: "Camera"),
@@ -367,18 +377,16 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
     }
 
     func start() {
-        SystemPermissionMonitor.shared.start(pollInterval: 1.0)
+        monitor.start(pollInterval: 1.0)
         for step in steps where step.kind == .automation {
             if let bundleId = step.bundleId {
-                SystemPermissionMonitor.shared.trackAutomation(bundleId: bundleId)
+                monitor.trackAutomation(bundleId: bundleId)
             }
         }
         pollTask?.cancel()
         pollTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                await SystemPermissionMonitor.shared.refreshNow(emitting: true)
-                self?.refreshSnapshots()
-                self?.advanceIfGranted()
+                await self?.refreshCurrentPermissionState()
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
         }
@@ -414,11 +422,10 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
             openSystemSettings(for: step)
         case .automation:
             if let bundleId = step.bundleId {
-                triggerAutomationPrompt(bundleId: bundleId)
+                automationPromptRunner(bundleId)
             }
         }
-        await SystemPermissionMonitor.shared.refreshNow(emitting: true)
-        refreshSnapshots()
+        await refreshCurrentPermissionState()
     }
 
     func skipCurrent() {
@@ -460,11 +467,17 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
 
     private func refreshSnapshots() {
         var next: [String: SystemPermissionStatus] = [:]
-        for snapshot in SystemPermissionMonitor.shared.snapshots.values {
+        for snapshot in monitor.snapshots.values {
             let key = "\(snapshot.kind.rawValue)|\(snapshot.bundleId ?? "")"
             next[key] = snapshot.status
         }
         snapshotByKey = next
+    }
+
+    func refreshCurrentPermissionState() async {
+        await monitor.refreshNow(emitting: true)
+        refreshSnapshots()
+        advanceIfGranted()
     }
 
     private func advanceIfGranted() {
@@ -479,9 +492,11 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
         }
     }
 
-    private func triggerAutomationPrompt(bundleId: String) {
+    private static func triggerAutomationPrompt(bundleId: String) {
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil || bundleId == "com.apple.finder" else {
-            openSystemSettings(for: Step(id: "automation:\(bundleId)", kind: .automation, bundleId: bundleId, titleForCard: "Automation"))
+            if let link = SystemPermissionKind.automation.systemSettingsDeepLink, let url = URL(string: link) {
+                NSWorkspace.shared.open(url)
+            }
             return
         }
         let target = NSAppleEventDescriptor(bundleIdentifier: bundleId)
@@ -489,7 +504,7 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
         runAutomationProbe(bundleId: bundleId)
     }
 
-    private func runAutomationProbe(bundleId: String) {
+    private static func runAutomationProbe(bundleId: String) {
         let escapedBundleId = bundleId
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")

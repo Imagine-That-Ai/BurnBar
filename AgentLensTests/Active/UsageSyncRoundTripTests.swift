@@ -33,7 +33,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         )
         vaultKeyProvider = TestConversationVaultKeyProvider()
         usageSync = UsageSyncService(context: context, vaultKeyProvider: vaultKeyProvider)
-        downloadSync = DownloadSyncService(context: context)
+        downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider)
         providerAccountSync = ProviderAccountSyncService(context: context)
         quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
     }

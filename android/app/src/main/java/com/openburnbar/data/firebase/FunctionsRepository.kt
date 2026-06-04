@@ -3,7 +3,9 @@ package com.openburnbar.data.firebase
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.BuildConfig
 import com.openburnbar.data.cloud.CloudVaultSealedText
+import com.openburnbar.data.hermes.relay.HermesRelayCrypto
 import com.openburnbar.data.models.DeviceLinkCapability
 import kotlinx.coroutines.tasks.await
 
@@ -23,6 +25,7 @@ data class CloudConversationSearchHit(
     val sealedBodyPreview: CloudVaultSealedText?,
     val storagePath: String,
     val bodyHash: String,
+    val bodyHashVersion: Int? = null,
     val score: Double,
     val tokenScore: Double? = null,
     val semanticScore: Double? = null,
@@ -57,6 +60,7 @@ data class ConversationFacetRow(
     val sealedBodyPreview: CloudVaultSealedText?,
     val storagePath: String?,
     val bodyHash: String?,
+    val bodyHashVersion: Int?,
     val startTimeMs: Long?,
     val endTimeMs: Long?,
     val updatedAtMs: Long?,
@@ -79,6 +83,13 @@ data class ConversationQueryResponse(
     val direction: String?,
     val aggregates: ConversationQueryAggregates?,
 )
+
+internal val DEFAULT_HERMES_GATEWAY_SCOPES =
+    listOf(
+        "hermes.gateway.read",
+        "hermes.gateway.write",
+        "hermes.gateway.manage",
+    )
 
 class FunctionsRepository {
     private val functions: FirebaseFunctions = Firebase.functions
@@ -260,6 +271,29 @@ class FunctionsRepository {
             .await()
     }
 
+    suspend fun approveHermesGatewayDeviceGrant(
+        userCode: String,
+        displayName: String? = null,
+        destinationId: String = "burnbar:home",
+        scopes: List<String> = DEFAULT_HERMES_GATEWAY_SCOPES,
+        phoneRelayPublicKey: String? = null,
+        phoneRelayKeyVersion: Int? = null,
+        phoneRelayEncryption: String? = null,
+    ): Map<String, Any> =
+        callMap(
+            "approveHermesGatewayDeviceGrant",
+            buildHermesGatewayDeviceGrantPayload(
+                userCode = userCode,
+                displayName = displayName,
+                destinationId = destinationId,
+                scopes = scopes,
+                phoneRelayPublicKey = phoneRelayPublicKey,
+                phoneRelayKeyVersion = phoneRelayKeyVersion,
+                phoneRelayEncryption = phoneRelayEncryption,
+                clientAppBuild = BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() },
+            ),
+        )
+
     suspend fun adoptProviderAccountForDevice(
         accountId: String,
         deviceId: String,
@@ -293,6 +327,37 @@ class FunctionsRepository {
         val result = functions.getHttpsCallable(name).call(payload).await()
         return result.getData().asStringAnyMap() ?: emptyMap()
     }
+}
+
+internal fun buildHermesGatewayDeviceGrantPayload(
+    userCode: String,
+    displayName: String? = null,
+    destinationId: String = "burnbar:home",
+    scopes: List<String> = DEFAULT_HERMES_GATEWAY_SCOPES,
+    phoneRelayPublicKey: String? = null,
+    phoneRelayKeyVersion: Int? = null,
+    phoneRelayEncryption: String? = null,
+    clientAppBuild: String = "unknown",
+): Map<String, Any> {
+    val payload =
+        linkedMapOf<String, Any>(
+            "userCode" to userCode,
+            "destinationId" to destinationId,
+            "scopes" to scopes,
+        )
+    displayName?.takeIf { it.isNotBlank() }?.let { payload["displayName"] = it }
+    phoneRelayPublicKey?.takeIf { it.isNotBlank() }?.let {
+        payload["phoneRelayPublicKey"] = it
+        payload["supportsRelayEnvelopeVersions"] =
+            listOf(HermesRelayCrypto.GATEWAY_KEY_VERSION, HermesRelayCrypto.KEY_VERSION_V3)
+        payload["preferredRelayEnvelopeVersion"] = HermesRelayCrypto.KEY_VERSION_V3
+        payload["supportsHpkeV3"] = true
+        payload["clientPlatform"] = "android"
+        payload["clientAppBuild"] = clientAppBuild.ifBlank { "unknown" }
+    }
+    phoneRelayKeyVersion?.let { payload["phoneRelayKeyVersion"] = it }
+    phoneRelayEncryption?.takeIf { it.isNotBlank() }?.let { payload["phoneRelayEncryption"] = it }
+    return payload
 }
 
 private fun Any?.asStringAnyMap(): Map<String, Any>? {
@@ -339,6 +404,7 @@ private fun Map<String, Any>.toCloudConversationSearchHit(): CloudConversationSe
         sealedBodyPreview = (this["sealedBodyPreview"] as? Map<*, *>)?.toSealedText(),
         storagePath = storagePath,
         bodyHash = bodyHash,
+        bodyHashVersion = (this["bodyHashVersion"] as? Number)?.toInt(),
         score = (this["score"] as? Number)?.toDouble() ?: 0.0,
         tokenScore = (this["tokenScore"] as? Number)?.toDouble(),
         semanticScore = (this["semanticScore"] as? Number)?.toDouble(),
@@ -370,6 +436,7 @@ private fun Map<String, Any>.toConversationFacetRow(): ConversationFacetRow? {
         sealedBodyPreview = (this["sealedBodyPreview"] as? Map<*, *>)?.toSealedText(),
         storagePath = this["storagePath"] as? String,
         bodyHash = this["bodyHash"] as? String,
+        bodyHashVersion = (this["bodyHashVersion"] as? Number)?.toInt(),
         startTimeMs = parseIsoTimestampMs(this["startTime"]),
         endTimeMs = parseIsoTimestampMs(this["endTime"]),
         updatedAtMs = parseIsoTimestampMs(this["updatedAt"]),
@@ -397,10 +464,12 @@ private fun Map<*, *>.toSealedText(): CloudVaultSealedText? {
         return null
     }
     return CloudVaultSealedText(
+        schemaVersion = (this["schemaVersion"] as? Number)?.toInt(),
         algorithm = algorithm,
         keyVersion = keyVersion,
         nonce = nonce,
         ciphertext = ciphertext,
         tag = tag,
+        aad = this["aad"] as? String,
     )
 }
