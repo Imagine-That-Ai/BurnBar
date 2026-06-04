@@ -104,7 +104,8 @@ internal object HermesRelayCryptoEc {
         val kf = KeyFactory.getInstance("EC")
         val publicKey =
             kf.generatePublic(java.security.spec.ECPublicKeySpec(q, params))
-                as java.security.interfaces.ECPublicKey
+                as? java.security.interfaces.ECPublicKey
+                ?: error("Hermes relay v2 derived a non-EC public key")
         return encodeUncompressedPublicKey(publicKey)
     }
 
@@ -118,7 +119,9 @@ internal object HermesRelayCryptoEc {
         k: java.math.BigInteger,
         params: java.security.spec.ECParameterSpec,
     ): java.security.spec.ECPoint {
-        val field = params.curve.field as java.security.spec.ECFieldFp
+        val field =
+            params.curve.field as? java.security.spec.ECFieldFp
+                ?: error("Hermes relay v2 requires a prime-field EC curve")
         val p = field.p
         var result: java.security.spec.ECPoint? = null
         var addend = point

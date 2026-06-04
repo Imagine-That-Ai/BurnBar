@@ -155,6 +155,13 @@ interface CapturedResponse {
   body: unknown;
 }
 
+interface TestHttpResponse {
+  status(code: number): TestHttpResponse;
+  json(payload: unknown): void;
+  send(payload?: unknown): void;
+  set(name: string, value: string): void;
+}
+
 function makeReq(path: string, body: Record<string, unknown>) {
   const headers: Record<string, string> = { authorization: `Bearer ${TOKEN}` };
   return {
@@ -162,15 +169,15 @@ function makeReq(path: string, body: Record<string, unknown>) {
     path,
     url: path,
     body,
-    headers,
+    headers: { ...headers },
     query: {},
     get: (name: string) => headers[name.toLowerCase()],
   };
 }
 
-function makeRes(): { res: unknown; captured: CapturedResponse } {
+function makeRes(): { res: TestHttpResponse; captured: CapturedResponse } {
   const captured: CapturedResponse = { status: 0, body: undefined };
-  const res = {
+  const res: TestHttpResponse = {
     status(code: number) {
       captured.status = code;
       return res;
@@ -188,6 +195,20 @@ function makeRes(): { res: unknown; captured: CapturedResponse } {
   return { res, captured };
 }
 
+function record(value: unknown, label = "value"): Record<string, unknown> {
+  expect(value, `${label} must be an object`).toEqual(expect.any(Object));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return Object.fromEntries(Object.entries(value));
+}
+
+function stringField(value: unknown, key: string): string {
+  const out = record(value)[key];
+  if (typeof out !== "string") throw new Error(`${key} must be a string`);
+  return out;
+}
+
 // The canonical id cap (mirrors HERMES_GATEWAY_HTTP_ID_MAX_LENGTH in the module;
 // inlined here so the integration block needs no lazy import just for a constant).
 const ID_CAP = 160;
@@ -197,7 +218,7 @@ async function callGateway(path: string, body: Record<string, unknown>): Promise
   // production calls; the wrapped burnBarHermesGateway only adds CORS middleware.
   const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
   const { res, captured } = makeRes();
-  await dispatchHermesGatewayRequest(makeReq(path, body) as never, res as never);
+  await dispatchHermesGatewayRequest(makeReq(path, body), res);
   return captured;
 }
 
@@ -216,9 +237,9 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
       byteCount: 1024,
     });
     expect(res.status).toBe(200);
-    const body = res.body as Record<string, unknown>;
+    const body = record(res.body, "init response body");
     expect(typeof body.uploadURL).toBe("string");
-    const manifest = body.attachment as Record<string, unknown>;
+    const manifest = record(body.attachment, "attachment manifest");
     expect(manifest.id).toBe("att_happy_path_0001");
     expect(manifest.status).toBe("pending_upload");
     expect(manifest.clientId).toBe(CLIENT_ID);
@@ -235,7 +256,7 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
       byteCount: 2048,
     });
     expect(first.status).toBe(200);
-    const firstURL = (first.body as Record<string, unknown>).uploadURL;
+    const firstURL = record(first.body, "first init response body").uploadURL;
     const firstManifest = { ...stored.get(`users/${UID}/hermes_gateway_attachments/att_dup_0002`) };
 
     const second = await callGateway("/attachments/init", {
@@ -244,14 +265,14 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
       byteCount: 4096, // different byteCount: prove a clobber would have been observable
     });
     expect(second.status).toBe(409);
-    expect((second.body as Record<string, unknown>).error).toBe("attachment_already_initialized");
+    expect(record(second.body, "second init response body").error).toBe("attachment_already_initialized");
 
     // The stored manifest is untouched by the rejected re-init (no clobber).
     const afterManifest = stored.get(`users/${UID}/hermes_gateway_attachments/att_dup_0002`);
     expect(afterManifest).toEqual(firstManifest);
     expect(afterManifest?.byteCount).toBe(2048);
     // The first URL remains the only minted URL for this id.
-    expect((second.body as Record<string, unknown>).uploadURL).toBeUndefined();
+    expect(record(second.body, "second init response body").uploadURL).toBeUndefined();
     expect(typeof firstURL).toBe("string");
   });
 
@@ -264,9 +285,9 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
     });
     // init did not adopt the over-long id; it minted a fresh att_<hex> instead.
     expect(initRes.status).toBe(200);
-    const manifest = (initRes.body as Record<string, unknown>).attachment as Record<string, unknown>;
+    const manifest = record(record(initRes.body, "init response body").attachment, "attachment manifest");
     expect(manifest.id).not.toBe(overLong);
-    expect(manifest.id as string).toMatch(/^att_[0-9a-f]{16}$/);
+    expect(stringField(manifest, "id")).toMatch(/^att_[0-9a-f]{16}$/);
     // And no doc was ever written under the over-long key.
     expect(stored.has(`users/${UID}/hermes_gateway_attachments/${overLong}`)).toBe(false);
 
@@ -276,7 +297,7 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
     // address. The rejection code is the length-cap error from requiredHttpIdentifier.
     const finalizeRes = await callGateway("/attachments/finalize", { attachmentId: overLong });
     expect(finalizeRes.status).toBe(400);
-    expect((finalizeRes.body as Record<string, unknown>).error).toBe("invalid-argument");
+    expect(record(finalizeRes.body, "finalize response body").error).toBe("invalid-argument");
   });
 
   it("happy path: init then finalize the SAME minted attachment succeeds", async () => {
@@ -286,7 +307,7 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
       byteCount: 3072,
     });
     expect(initRes.status).toBe(200);
-    const attachmentId = ((initRes.body as Record<string, unknown>).attachment as Record<string, unknown>).id as string;
+    const attachmentId = stringField(record(record(initRes.body, "init response body").attachment, "attachment manifest"), "id");
     expect(attachmentId).toBe("att_finalize_0003");
 
     // Simulate the upload having completed: flip the manifest to uploaded so
@@ -297,7 +318,7 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
     const finalizeRes = await callGateway("/attachments/finalize", { attachmentId });
     // finalize resolves the manifest by id (no 404 / no validation mismatch).
     expect(finalizeRes.status).toBe(200);
-    const finalManifest = (finalizeRes.body as Record<string, unknown>).attachment as Record<string, unknown>;
+    const finalManifest = record(record(finalizeRes.body, "finalize response body").attachment, "attachment manifest");
     expect(finalManifest.id).toBe(attachmentId);
     expect(finalManifest.status).toBe("uploaded");
   });

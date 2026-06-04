@@ -38,7 +38,7 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
-import { stripUndefinedObject } from "../guards.js";
+import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import { nowISO, requireBoundedStringArray, sha256Hex } from "./shared.js";
 import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -351,7 +351,7 @@ export function isSealedEnvelope(value: unknown): boolean {
   // metadata; ciphertextBase64 carries the AES-GCM nonce+ciphertext+tag. The
   // plaintext body never appears as a sibling once the gateway serializer sees
   // this shape.
-  const header = v.header as Record<string, unknown> | undefined;
+  const header = recordOrUndefined(v.header);
   if (
     header &&
     typeof header === "object" &&
@@ -503,23 +503,26 @@ function sanitizeSealedEnvelope(
   if (!serialized || typeof serialized !== "object" || Array.isArray(serialized)) {
     return { out: serialized, dropped: [] };
   }
-  const envelope = serialized as Record<string, unknown>;
+  const envelope = recordOrUndefined(serialized);
+  if (!envelope) {
+    return { out: serialized, dropped: [] };
+  }
   if (envelope.algorithm === "AES-256-GCM") {
     return sanitizeAllowedObject(key, envelope, CLOUD_VAULT_SEALED_FIELDS);
   }
   if (typeof envelope.relayEncryption === "string") {
     return sanitizeAllowedObject(key, envelope, HERMES_RELAY_ENVELOPE_FIELDS);
   }
-  const header = envelope.header;
-  if (header && typeof header === "object" && !Array.isArray(header)) {
+  const header = recordOrUndefined(envelope.header);
+  if (header) {
     const outer = sanitizeAllowedObject(key, envelope, new Set(["header", "ciphertextBase64"]));
     const sanitizedHeader = sanitizeAllowedObject(
       `${key}.header`,
-      header as Record<string, unknown>,
+      header,
       HERMES_RATCHET_HEADER_FIELDS,
     );
     return {
-      out: { ...(outer.out as Record<string, unknown>), header: sanitizedHeader.out },
+      out: { ...outer.out, header: sanitizedHeader.out },
       dropped: [...outer.dropped, ...sanitizedHeader.dropped],
     };
   }

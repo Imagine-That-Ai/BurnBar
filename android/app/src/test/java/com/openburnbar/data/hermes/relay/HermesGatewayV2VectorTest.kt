@@ -163,14 +163,8 @@ class HermesGatewayV2VectorTest {
         // vector — the sender key must be pinned, never wire-asserted.
         val recipient = HermesRelayCryptoEc.generateEphemeralKeyPair()
         val sender = HermesRelayCryptoEc.generateEphemeralKeyPair()
-        val recipientPubX963 =
-            HermesRelayCryptoEc.encodeUncompressedPublicKey(
-                recipient.public as java.security.interfaces.ECPublicKey,
-            )
-        val senderPubX963 =
-            HermesRelayCryptoEc.encodeUncompressedPublicKey(
-                sender.public as java.security.interfaces.ECPublicKey,
-            )
+        val recipientPubX963 = publicX963(recipient.public)
+        val senderPubX963 = publicX963(sender.public)
         val keyData = HermesRelayCrypto.generateSymmetricKey()
         val aad = HermesRelayCrypto.keyAAD("u1", "c1", "r1")
 
@@ -257,6 +251,13 @@ class HermesGatewayV2VectorTest {
         val bytes = java.util.Base64.getDecoder().decode(base64)
         assertEquals("X9.63 public key must be 65 bytes", X963_POINT_BYTES, bytes.size)
         return bytes
+    }
+
+    private fun publicX963(key: java.security.PublicKey): ByteArray {
+        val ecPublic =
+            key as? java.security.interfaces.ECPublicKey
+                ?: error("test fixture expected a P-256 EC public key")
+        return HermesRelayCryptoEc.encodeUncompressedPublicKey(ecPublic)
     }
 
     /**

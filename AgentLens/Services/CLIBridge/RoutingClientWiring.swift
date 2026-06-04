@@ -1538,7 +1538,12 @@ struct RoutingClientWiring {
     private func droidAPIKeyMatchesGateway(gateway: RoutingClientGateway) -> Bool {
         let expectedKey = gateway.effectiveClientToken
         for url in droidConfigURLs() where fileManager.fileExists(atPath: url.path) {
-            guard let root = try? readJSONObject(at: url) else { continue }
+            let root: [String: Any]
+            do {
+                root = try readJSONObject(at: url)
+            } catch {
+                continue
+            }
             let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
             let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
             for entry in settingsModels + configModels where isOpenBurnBarDroidModel(entry, gateway: gateway) {

@@ -11,7 +11,6 @@ import io.mockk.unmockkStatic
 import java.security.AlgorithmParameters
 import java.security.KeyFactory
 import java.security.PrivateKey
-import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.ECParameterSpec
 import java.security.spec.ECPrivateKeySpec
@@ -84,7 +83,7 @@ class HermesRelayCryptoHpkeV3Test {
         val wrap =
             HermesRelayCrypto.wrapSymmetricKeyV3(
                 keyData = key,
-                recipientPublicKeyX963 = publicX963(recipient.public as ECPublicKey),
+                recipientPublicKeyX963 = publicX963(recipient.public),
                 senderPrivateKey = sender.private,
                 aad = aad,
             )
@@ -93,14 +92,14 @@ class HermesRelayCryptoHpkeV3Test {
         assertEquals(X963_POINT_BYTES, decode(wrap.enc).size)
         assertEquals(0x04.toByte(), decode(wrap.enc)[0])
         assertEquals(WRAPPED_KEY_BYTES, decode(wrap.wrappedKey).size)
-        assertArrayEquals(publicX963(sender.public as ECPublicKey), decode(wrap.senderPublicKey))
+        assertArrayEquals(publicX963(sender.public), decode(wrap.senderPublicKey))
 
         val opened =
             HermesRelayCrypto.unwrapSymmetricKeyV3(
                 encBase64 = wrap.enc,
                 wrappedKeyBase64 = wrap.wrappedKey,
                 privateKey = recipient.private,
-                pinnedSenderPublicKeyX963 = publicX963(sender.public as ECPublicKey),
+                pinnedSenderPublicKeyX963 = publicX963(sender.public),
                 aad = aad,
             )
         assertArrayEquals("v3 open must recover the sealed content key", key, opened)
@@ -110,8 +109,8 @@ class HermesRelayCryptoHpkeV3Test {
     fun seal_is_randomized_but_both_envelopes_open_to_the_same_key() {
         val recipient = HermesRelayCryptoEc.generateEphemeralKeyPair()
         val sender = HermesRelayCryptoEc.generateEphemeralKeyPair()
-        val recipientPubX963 = publicX963(recipient.public as ECPublicKey)
-        val senderPubX963 = publicX963(sender.public as ECPublicKey)
+        val recipientPubX963 = publicX963(recipient.public)
+        val senderPubX963 = publicX963(sender.public)
         val key = HermesRelayCrypto.generateSymmetricKey()
         val aad = HermesRelayCrypto.keyAAD("u1", "c1", "r1")
 
@@ -136,7 +135,7 @@ class HermesRelayCryptoHpkeV3Test {
         // Pin a DIFFERENT sender key: AuthDecap's second DH + kem_context both
         // change, so the shared secret is wrong and AES-GCM tag verification fails.
         assertRejected {
-            openWith(wrap, recipient.private, publicX963(forger.public as ECPublicKey), aad)
+            openWith(wrap, recipient.private, publicX963(forger.public), aad)
         }
     }
 
@@ -148,7 +147,7 @@ class HermesRelayCryptoHpkeV3Test {
         val aad = HermesRelayCrypto.keyAAD("u1", "c1", "r1")
         val wrap = wrapTo(recipient, sender, aad)
         assertRejected {
-            openWith(wrap, other.private, publicX963(sender.public as ECPublicKey), aad)
+            openWith(wrap, other.private, publicX963(sender.public), aad)
         }
     }
 
@@ -159,7 +158,7 @@ class HermesRelayCryptoHpkeV3Test {
         val wrap = wrapTo(recipient, sender, HermesRelayCrypto.keyAAD("u1", "c1", "r1"))
         val wrongAad = HermesRelayCrypto.keyAAD("u1", "c1", "r2")
         assertRejected {
-            openWith(wrap, recipient.private, publicX963(sender.public as ECPublicKey), wrongAad)
+            openWith(wrap, recipient.private, publicX963(sender.public), wrongAad)
         }
     }
 
@@ -175,7 +174,7 @@ class HermesRelayCryptoHpkeV3Test {
                 encBase64 = mutatedEnc,
                 wrappedKeyBase64 = wrap.wrappedKey,
                 privateKey = recipient.private,
-                pinnedSenderPublicKeyX963 = publicX963(sender.public as ECPublicKey),
+                pinnedSenderPublicKeyX963 = publicX963(sender.public),
                 aad = aad,
             )
         }
@@ -193,7 +192,7 @@ class HermesRelayCryptoHpkeV3Test {
                 encBase64 = wrap.enc,
                 wrappedKeyBase64 = mutatedWrappedKey,
                 privateKey = recipient.private,
-                pinnedSenderPublicKeyX963 = publicX963(sender.public as ECPublicKey),
+                pinnedSenderPublicKeyX963 = publicX963(sender.public),
                 aad = aad,
             )
         }
@@ -214,7 +213,7 @@ class HermesRelayCryptoHpkeV3Test {
                 wrappedKeyBase64 = asV2Blob,
                 privateKey = recipient.private,
                 aad = aad,
-                senderPublicKeyX963 = publicX963(sender.public as ECPublicKey),
+                senderPublicKeyX963 = publicX963(sender.public),
             )
         }
     }
@@ -230,7 +229,7 @@ class HermesRelayCryptoHpkeV3Test {
         val wrapped =
             HermesRelayCrypto.wrapSymmetricKey(
                 keyData = key,
-                recipientPublicKeyX963 = publicX963(recipient.public as ECPublicKey),
+                recipientPublicKeyX963 = publicX963(recipient.public),
                 aad = aad,
                 senderPrivateKey = sender.private,
             )
@@ -239,7 +238,7 @@ class HermesRelayCryptoHpkeV3Test {
                 wrappedKeyBase64 = wrapped,
                 privateKey = recipient.private,
                 aad = aad,
-                senderPublicKeyX963 = publicX963(sender.public as ECPublicKey),
+                senderPublicKeyX963 = publicX963(sender.public),
             )
         assertArrayEquals(key, unwrapped)
     }
@@ -256,7 +255,7 @@ class HermesRelayCryptoHpkeV3Test {
             "shared canonical v3 vector ($V3_VECTOR_RESOURCE) is absent",
             raw != null,
         )
-        val fixture = JSONObject(raw!!)
+        val fixture = JSONObject(requireNotNull(raw))
         assertEquals(1, fixture.getInt("schemaVersion"))
         assertEquals(3, fixture.getInt("relayKeyVersion"))
         assertEquals(HermesRelayCrypto.ALGORITHM_V3, fixture.getString("relayEncryption"))
@@ -303,7 +302,7 @@ class HermesRelayCryptoHpkeV3Test {
     ): HermesRelayCrypto.RelayKeyWrapV3Wire =
         HermesRelayCrypto.wrapSymmetricKeyV3(
             keyData = HermesRelayCrypto.generateSymmetricKey(),
-            recipientPublicKeyX963 = publicX963(recipient.public as ECPublicKey),
+            recipientPublicKeyX963 = publicX963(recipient.public),
             senderPrivateKey = sender.private,
             aad = aad,
         )
@@ -322,7 +321,10 @@ class HermesRelayCryptoHpkeV3Test {
             aad = aad,
         )
 
-    private fun publicX963(key: ECPublicKey): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(key)
+    private fun publicX963(key: java.security.PublicKey): ByteArray {
+        val ecPublic = key as? java.security.interfaces.ECPublicKey ?: error("test expected a P-256 public key")
+        return HermesRelayCryptoEc.encodeUncompressedPublicKey(ecPublic)
+    }
 
     private fun decode(base64: String): ByteArray = Base64.getDecoder().decode(base64)
 

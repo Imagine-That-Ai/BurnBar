@@ -716,14 +716,15 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
       `${fieldName}.senderPublicKey must be a base64 X9.63 P-256 public key (65 bytes, 0x04-prefixed).`,
     );
   }
-  return stripUndefinedObject({
+  const envelope: GatewayRelayEnvelopeDoc = {
     payloadCiphertext,
     wrappedKey,
     relayEncryption,
     relayKeyVersion,
-    enc: enc || undefined,
-    senderPublicKey,
-  }) as GatewayRelayEnvelopeDoc;
+  };
+  if (enc) envelope.enc = enc;
+  if (senderPublicKey) envelope.senderPublicKey = senderPublicKey;
+  return envelope;
 }
 
 /**
@@ -799,14 +800,15 @@ export function sanitizeGatewayRelayEnvelope(raw: unknown): GatewayRelayEnvelope
   } else if (record.senderPublicKey != null && !senderPublicKey) {
     return undefined;
   }
-  return stripUndefinedObject({
+  const envelope: GatewayRelayEnvelopeDoc = {
     payloadCiphertext,
     wrappedKey,
     relayEncryption,
     relayKeyVersion,
-    enc: enc || undefined,
-    senderPublicKey,
-  }) as GatewayRelayEnvelopeDoc;
+  };
+  if (enc) envelope.enc = enc;
+  if (senderPublicKey) envelope.senderPublicKey = senderPublicKey;
+  return envelope;
 }
 
 export function bearerTokenFromAuthorizationHeader(raw: unknown): string | undefined {
@@ -907,13 +909,16 @@ export function sanitizeGatewayRelayEnvelopeCapabilities(
     throwError("preferredRelayEnvelopeVersion must be included in supportsRelayEnvelopeVersions.");
   }
 
-  return stripUndefinedObject({
+  const capabilities: HermesGatewayRelayEnvelopeCapabilities = {
     supportsRelayEnvelopeVersions,
     preferredRelayEnvelopeVersion,
     supportsHpkeV3,
-    platform: sanitizeGatewayCapabilityText(raw?.clientPlatform ?? raw?.platform, 80),
-    appBuild: sanitizeGatewayCapabilityText(raw?.clientAppBuild ?? raw?.appBuild, 80),
-  }) as HermesGatewayRelayEnvelopeCapabilities;
+  };
+  const platform = sanitizeGatewayCapabilityText(raw?.clientPlatform ?? raw?.platform, 80);
+  const appBuild = sanitizeGatewayCapabilityText(raw?.clientAppBuild ?? raw?.appBuild, 80);
+  if (platform) capabilities.platform = platform;
+  if (appBuild) capabilities.appBuild = appBuild;
+  return capabilities;
 }
 
 export function negotiateGatewayRelayEnvelopeCapabilities(
@@ -1103,6 +1108,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
   const schemaVersion = typeof record.schemaVersion === "number" ? record.schemaVersion : NaN;
   const isSealedDoc = relayEnvelope !== undefined || ratchetEnvelope !== undefined || schemaVersion >= 2;
   const hasLegacyText = !isSealedDoc && typeof record.text === "string";
+  const legacyText = hasLegacyText && typeof record.text === "string" ? record.text : undefined;
   const isModelSwitch = record.kind === "model_switch";
   const hasModelSwitchRoute = isModelSwitch && typeof record.modelId === "string";
   if (
@@ -1132,7 +1138,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     senderId: record.senderId,
     senderDisplayName:
       !isSealedDoc && typeof record.senderDisplayName === "string" ? record.senderDisplayName : undefined,
-    text: hasLegacyText ? (record.text as string) : undefined,
+    text: legacyText,
     modelId: typeof record.modelId === "string" ? record.modelId : undefined,
     relayEnvelope,
     ratchetEnvelope,
