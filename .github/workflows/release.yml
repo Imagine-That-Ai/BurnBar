@@ -83,6 +83,7 @@ jobs:
         run: |
           git fetch --force --tags origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
           git checkout --detach "$TAG_NAME"
+          git submodule update --init --recursive Vendor/libsignal
           echo "Building release tag $TAG_NAME at $(git rev-parse HEAD)"
 
       - name: Install release security scanners
