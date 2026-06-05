@@ -63,6 +63,23 @@ describe("escrow device fingerprint enforcement (Stream 6)", () => {
       // Non-base64 garbage.
       expect(recomputeEscrowFingerprint("!!! not base64 !!!")).toBeNull();
     });
+
+    it("rejects a well-formed-but-OFF-CURVE P-256 point (native CryptoKit parity)", () => {
+      // 0x04 || X(32) || Y(32) with X = Y = 0xAB repeated: correct 65-byte x9.63
+      // shape and 0x04 prefix, valid canonical base64 — but (X, Y) is NOT a point
+      // on the P-256 curve. Native CryptoKit rejects off-curve points on import;
+      // the server must too, or a chosen off-curve key whose SHA-256 matches a
+      // stored fingerprint could be admitted. Fail closed → null.
+      const offCurve = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 0xab)]);
+      expect(offCurve.length).toBe(65);
+      expect(offCurve[0]).toBe(0x04);
+      expect(recomputeEscrowFingerprint(offCurve.toString("base64"))).toBeNull();
+
+      // A real on-curve key with the SAME length/prefix still fingerprints fine,
+      // proving the rejection is the curve check and not a length/prefix regression.
+      const onCurve = realPublicKeyBase64();
+      expect(recomputeEscrowFingerprint(onCurve)).toBe(canonicalFingerprint(onCurve));
+    });
   });
 
   describe("evaluateEscrowFingerprintBinding", () => {

@@ -20,7 +20,7 @@
 
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -78,6 +78,17 @@ function parsePublicKeyJwk(raw: unknown): ParsedJwk {
   const publicKeyData = Buffer.concat([Buffer.from([0x04]), x, y]);
   if (publicKeyData.length !== P256_X963_LENGTH) {
     throw new HttpsError("invalid-argument", "publicKeyJwk must export a 65-byte X9.63 public key.");
+  }
+  // Reject off-curve points so an invalid key can never be STORED. Native
+  // CryptoKit rejects off-curve points on import; `createPublicKey` runs the
+  // same on-curve check and throws on an invalid point. Fail closed.
+  try {
+    createPublicKey({
+      key: { kty: "EC", crv: "P-256", x: x.toString("base64url"), y: y.toString("base64url") },
+      format: "jwk",
+    });
+  } catch {
+    throw new HttpsError("invalid-argument", "publicKeyJwk must be a valid point on the P-256 curve.");
   }
   const sanitized = stripUndefinedObject({
     kty: "EC",

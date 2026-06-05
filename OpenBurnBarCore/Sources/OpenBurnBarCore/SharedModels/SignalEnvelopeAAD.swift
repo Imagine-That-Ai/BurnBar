@@ -28,11 +28,22 @@ import Foundation
 ///
 /// Field order is fixed; absent optionals serialize as EMPTY segments so the
 /// positions stay stable (a transport binding can never be confused with an
-/// at-rest one under a shared AAD). Every value is already guaranteed pipe/CRLF
-/// free by the TypeScript contract's `boundedText` validator; this Swift side
-/// RE-ASSERTS that invariant and throws ``SignalEnvelopeAADError`` rather than
-/// emitting an ambiguous AAD. This is production E2EE code — never silently
-/// weaken domain separation.
+/// at-rest one under a shared AAD).
+///
+/// Unicode normalization: every segment is normalized to NFC
+/// (`precomposedStringWithCanonicalMapping`) BEFORE the reserved-char guard and
+/// the join, byte-for-byte matching the TypeScript side's `.normalize("NFC")`. A
+/// non-ASCII value supplied decomposed (NFD) and the same value supplied
+/// precomposed (NFC) therefore canonicalize to the byte-identical AAD; without
+/// this, a Swift-sealed ciphertext and a Node-sealed one for the same logical
+/// string could carry divergent UTF-8 AAD and fail to open. ASCII values are
+/// NFC-stable, so existing fixtures are unaffected.
+///
+/// Every value is already guaranteed pipe/CRLF free by the TypeScript contract's
+/// `boundedText` validator; this Swift side RE-ASSERTS that invariant (on the
+/// NORMALIZED segment) and throws ``SignalEnvelopeAADError`` rather than emitting
+/// an ambiguous AAD. This is production E2EE code — never silently weaken domain
+/// separation.
 public enum SignalEnvelopeAAD {
     /// Domain-separation prefix for the v4 binding canonicalization. Byte-identical
     /// to `SIGNAL_BINDING_AAD_PREFIX` in the TypeScript contract.
@@ -109,7 +120,7 @@ public func signalEnvelopeBindingToAAD(_ binding: SignalEnvelopeAAD.Binding) thr
         binding.field ?? "",
         binding.slotId ?? "",
         String(binding.formatVersion),
-    ]
+    ].map { $0.precomposedStringWithCanonicalMapping }
     for segment in segments where segment.contains(where: { $0 == "|" || $0 == "\r" || $0 == "\n" }) {
         throw SignalEnvelopeAAD.SignalEnvelopeAADError.reservedCharacterInSegment
     }
