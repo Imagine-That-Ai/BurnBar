@@ -777,6 +777,7 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
             f"MEDIA attachments were omitted for {platform.value}; "
             "native send_message media delivery is currently only supported for telegram, discord, matrix, weixin, signal, yuanbao and feishu"
         )
+        media_files = []
 
     last_result = None
     for i, chunk in enumerate(chunks):

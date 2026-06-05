@@ -2649,6 +2649,49 @@ class TestSendViaAdapterStandaloneFallback:
         assert all(call["media_files"] == [] for call in calls[:-1])
         assert calls[-1]["media_files"] == [("/tmp/artifact.png", False)]
 
+    @pytest.mark.asyncio
+    async def test_send_to_platform_plugin_without_media_sender_omits_media_for_live_adapter(self, monkeypatch):
+        """If a plugin cannot send media natively, send text via the live adapter with a warning."""
+        from gateway.platform_registry import platform_registry
+
+        platform = _FakePlatform("fakeplatform")
+        recorded = {}
+
+        class FakeAdapter:
+            async def send(self, chat_id, content, metadata=None):
+                recorded["chat_id"] = chat_id
+                recorded["content"] = content
+                recorded["metadata"] = metadata
+                return SimpleNamespace(success=True, message_id="text-1", error=None)
+
+        platform_registry.register(self._make_entry(None))
+        try:
+            monkeypatch.setattr(
+                "gateway.run._gateway_runner_ref",
+                lambda: SimpleNamespace(adapters={platform: FakeAdapter()}),
+            )
+
+            result = await _send_to_platform(
+                platform,
+                SimpleNamespace(extra={}),
+                "chat-1",
+                "hello with attachment",
+                thread_id="thread-1",
+                media_files=[("/tmp/artifact.png", False)],
+            )
+        finally:
+            platform_registry.unregister("fakeplatform")
+
+        assert result["success"] is True
+        assert result["message_id"] == "text-1"
+        assert "warnings" in result
+        assert "MEDIA attachments were omitted" in result["warnings"][0]
+        assert recorded == {
+            "chat_id": "chat-1",
+            "content": "hello with attachment",
+            "metadata": {"thread_id": "thread-1"},
+        }
+
 
 # ---------------------------------------------------------------------------
 # _check_send_message — availability gating
