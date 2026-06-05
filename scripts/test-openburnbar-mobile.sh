@@ -416,6 +416,8 @@ fi
 
 : > "$attempt_log_path"
 
+"$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
+
 hang_substrings=(
     "test runner hung before establishing connection"
     "Test runner never began executing tests"
