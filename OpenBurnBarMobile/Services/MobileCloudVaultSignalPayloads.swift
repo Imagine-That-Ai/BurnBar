@@ -119,6 +119,24 @@ enum MobileCloudVaultSignalPayloads {
             .boolValue
     }
 
+    /// Best-effort PINNED trusted-sender public keys for READ-time sender-auth verification:
+    /// local identity + every trusted escrow device's published identity. Never blocks a read
+    /// — if the full set cannot resolve it returns just the local identity, so cross-device
+    /// envelopes from unresolved senders fall back to the legacy payload. After the readiness
+    /// gate (all trusted devices published) this returns the full set, activating cross-device
+    /// sender-auth verification.
+    static func trustedSenderPublicKeys(
+        uid: String,
+        firestore: Firestore,
+        localIdentity: OpenBurnBarSignalIdentityKeypair
+    ) async -> [String: Data] {
+        var map: [String: Data] = [localIdentity.identityKeyId: localIdentity.atRestRecipient().publicKeyData]
+        if let recipients = try? await atRestRecipients(uid: uid, firestore: firestore, localIdentity: localIdentity) {
+            for recipient in recipients { map[recipient.recipientIdentityKeyId] = recipient.publicKeyData }
+        }
+        return map
+    }
+
     private static func atRestRecipients(
         uid: String,
         firestore: Firestore,

@@ -433,6 +433,11 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
             var vaultKey: CloudVaultResolvedKey?
+            // Resolved once per cycle: the PINNED trusted-sender public keys so a conversation
+            // written by ANOTHER trusted device verifies its sender signature cross-device
+            // (without this, only self-authored docs verify and peer docs fall back to legacy).
+            var trustedSenders: [String: Data] = [:]
+            var trustedSendersResolved = false
 
             for doc in snapshot.documents {
                 let data = doc.data()
@@ -446,9 +451,16 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
                 if vaultKey == nil {
                     vaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
                 }
+                if !trustedSendersResolved, let identity = vaultKey?.signalIdentity {
+                    trustedSenders = await MacCloudVaultSignalPayloads.trustedSenderPublicKeys(
+                        uid: uid, firestore: Firestore.firestore(), localIdentity: identity
+                    )
+                    trustedSendersResolved = true
+                }
                 guard let privatePayload = ConversationCloudSealer.open(
                     data, keyData: vaultKey?.keyData,
-                    uid: uid, docId: doc.documentID, signalIdentity: vaultKey?.signalIdentity
+                    uid: uid, docId: doc.documentID, signalIdentity: vaultKey?.signalIdentity,
+                    trustedSenderPublicKeys: trustedSenders
                 ) else { continue }
                 let id = data["id"] as? String ?? doc.documentID
                 let stableId = "\(remoteDeviceId):\(id)"

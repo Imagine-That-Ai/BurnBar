@@ -571,6 +571,15 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             .limit(to: 200)
             .getDocuments()
         let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid, firestore: db)
+        // Resolve the PINNED trusted-sender set once so a thread written by ANOTHER trusted
+        // device verifies its sender signature cross-device (else only self-authored threads
+        // verify and peer threads fall back to legacy).
+        var trustedSenders: [String: Data] = [:]
+        if let identity = key?.signalIdentity {
+            trustedSenders = await MobileCloudVaultSignalPayloads.trustedSenderPublicKeys(
+                uid: uid, firestore: db, localIdentity: identity
+            )
+        }
 
         return snapshot.documents.compactMap { document in
             Self.decodeThread(
@@ -578,7 +587,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
                 data: document.data(),
                 uid: uid,
                 vaultKey: key?.keyData,
-                signalIdentity: key?.signalIdentity
+                signalIdentity: key?.signalIdentity,
+                trustedSenderPublicKeys: trustedSenders
             )
         }
     }
@@ -588,7 +598,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         data: [String: Any],
         uid: String? = nil,
         vaultKey: Data? = nil,
-        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil
+        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil,
+        trustedSenderPublicKeys: [String: Data] = [:]
     ) -> MobileChatThread? {
         if data["signalEnvelope"] != nil, let uid {
             do {
@@ -597,7 +608,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
                     uid: uid,
                     collection: "mobile_assistant_chats",
                     docId: documentID,
-                    signalIdentity: signalIdentity
+                    signalIdentity: signalIdentity,
+                    trustedSenderPublicKeys: trustedSenderPublicKeys
                 ) {
                     return try cloudPayloadDecoder.decode(MobileChatThread.self, from: payload)
                 }
