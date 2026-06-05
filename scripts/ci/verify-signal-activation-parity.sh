@@ -28,16 +28,22 @@ if (/HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set<number>\(\
   fail("HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS is NOT empty — production v4 would be accepted");
 }
 
-// (2) Data-domains registry: no end_to_end domain may have a 'signal' sealingScheme.
+// (2) Data-domains registry: the Signal at-rest sealingScheme is an INTENTIONAL activation
+// allowed on EXACTLY the allowlisted domains and nowhere else (allowlist drift gate).
+// pensieve is intentionally NOT activated (its ingest producers are not wired).
+const SIGNAL_AT_REST_ACTIVATED = new Set(["conversations_chat"]);
 const registry = JSON.parse(readFileSync("packages/data-domains/registry.json", "utf8"));
 const domains = registry.domains ?? [];
 const activated = domains.filter(
   (d) => typeof d.sealingScheme === "string" && /signal/i.test(d.sealingScheme),
 );
-if (activated.length === 0) {
-  ok(`no domain carries a 'signal' sealingScheme (${domains.length} domains, all cloudvault default)`);
+const unexpected = activated.filter((d) => !SIGNAL_AT_REST_ACTIVATED.has(d.id));
+const missingAllow = [...SIGNAL_AT_REST_ACTIVATED].filter((id) => !activated.some((d) => d.id === id));
+if (unexpected.length === 0 && missingAllow.length === 0) {
+  ok(`Signal at-rest scheme on EXACTLY the allowlisted domains: ${[...SIGNAL_AT_REST_ACTIVATED].sort().join(", ")}`);
 } else {
-  fail(`domains already on a signal sealingScheme: ${activated.map((d) => `${d.id}=${d.sealingScheme}`).join(", ")}`);
+  if (unexpected.length) fail(`Signal at-rest scheme on NON-allowlisted domain(s): ${unexpected.map((d) => `${d.id}=${d.sealingScheme}`).join(", ")}`);
+  if (missingAllow.length) fail(`allowlisted domain(s) missing the expected Signal at-rest scheme: ${missingAllow.join(", ")}`);
 }
 
 // (2b) Producer-coverage honesty gate: the gate is keyed by DOMAIN id but producers
@@ -83,7 +89,7 @@ scan("remoteconfig");
 ok("no committed Remote Config template flips a Signal flag ON");
 
 console.log(failures === 0
-  ? "\nactivation parity OK — all Signal levers are at the fail-closed default."
-  : `\nactivation parity FAILED — ${failures} lever(s) drifted from the safe default.`);
+  ? "\nactivation parity OK — transport + Remote Config fail-closed; at-rest on the allowlist only (PREPARED, NOT DEPLOYED — sender-auth + Android parity + RC bootstrap gate the flip; see SECURITY.md)."
+  : `\nactivation parity FAILED — ${failures} lever(s) drifted from the intended state.`);
 process.exit(failures === 0 ? 0 : 1);
 NODE

@@ -48,7 +48,7 @@ object DataDomains {
             countSource = "chat_threads", byteSource = null,
             retention = "until_deleted", actions = listOf("view", "export", "delete"),
             entitlementGate = "burnbar_pro", suspensionSurface = "burnbar_cloud",
-            sealingScheme = null,
+            sealingScheme = "signal-hpke-identity-seal-v1",
         ),
         DataDomain(
             id = "session_logs", title = "Searchable Session Logs", icon = "text.magnifyingglass",

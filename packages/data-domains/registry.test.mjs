@@ -309,24 +309,27 @@ test("HONEST CLAIMS: W3 sealed private collections are folded into conversations
 // changing the tier or leaking the codename to the public trust surface. These
 // assertions bind the field to reality so it can never be misused.
 
-test("sealingScheme: pensieve carries the CloudVault at-rest scheme; future Signal scheme is NOT set yet", () => {
-  const pensieve = registry.domains.find((d) => d.id === "pensieve");
-  assert.ok(pensieve, "expected the pensieve domain");
-  // Today's value is the existing CloudVault AES-GCM at-rest seal.
+test("sealingScheme: Signal at-rest is activated for EXACTLY conversations_chat (pensieve stays CloudVault)", () => {
+  // ACTIVATION (prepared, NOT deployed — gated by the kill switch + sender-auth/Android
+  // parity per SECURITY.md). conversations_chat carries the Signal scheme (its wired
+  // producers are in signalSealedCollections); pensieve stays CloudVault (producers not
+  // wired); no OTHER domain may carry the Signal scheme.
+  const cc = registry.domains.find((d) => d.id === "conversations_chat");
   assert.equal(
-    pensieve.sealingScheme,
-    "cloudvault-aesgcm-v2",
-    "pensieve sealingScheme must record the current CloudVault AES-GCM at-rest seal",
+    cc.sealingScheme,
+    "signal-hpke-identity-seal-v1",
+    "conversations_chat must advertise the Signal at-rest scheme",
   );
-  // Flag-OFF: the future Signal HPKE identity seal must NOT be advertised in the
-  // registry until the client-side ciphertext path actually ships.
-  for (const d of registry.domains) {
-    assert.notEqual(
-      d.sealingScheme,
-      "signal-hpke-identity-seal-v1",
-      `${d.id} must not advertise the Signal at-rest scheme before the client ciphertext path ships`,
-    );
-  }
+  assert.equal(
+    registry.domains.find((d) => d.id === "pensieve").sealingScheme,
+    "cloudvault-aesgcm-v2",
+    "pensieve must stay on CloudVault AES-GCM — not in this activation",
+  );
+  const signalDomains = registry.domains
+    .filter((d) => d.sealingScheme === "signal-hpke-identity-seal-v1")
+    .map((d) => d.id)
+    .sort();
+  assert.deepEqual(signalDomains, ["conversations_chat"], `unexpected signal domains: ${signalDomains.join(", ")}`);
 });
 
 test("sealingScheme: tier invariance — declaring a sealing scheme never changes the encryption tier", () => {
