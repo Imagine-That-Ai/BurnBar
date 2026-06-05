@@ -25,6 +25,7 @@ data class DataDomain(
     val actions: List<String>,
     val entitlementGate: String?,
     val suspensionSurface: String?,
+    val sealingScheme: String?,
 )
 
 object DataDomains {
@@ -37,6 +38,7 @@ object DataDomains {
             countSource = "usage", byteSource = null,
             retention = "rolling", actions = listOf("view", "export", "delete"),
             entitlementGate = null, suspensionSurface = null,
+            sealingScheme = null,
         ),
         DataDomain(
             id = "conversations_chat", title = "Conversations & Chat", icon = "bubble.left.and.bubble.right.fill",
@@ -46,6 +48,7 @@ object DataDomains {
             countSource = "chat_threads", byteSource = null,
             retention = "until_deleted", actions = listOf("view", "export", "delete"),
             entitlementGate = "burnbar_pro", suspensionSurface = "burnbar_cloud",
+            sealingScheme = null,
         ),
         DataDomain(
             id = "session_logs", title = "Searchable Session Logs", icon = "text.magnifyingglass",
@@ -55,15 +58,17 @@ object DataDomains {
             countSource = "cloud_search_documents", byteSource = "session_logs",
             retention = "until_deleted", actions = listOf("view", "export", "delete"),
             entitlementGate = "burnbar_pro", suspensionSurface = "burnbar_cloud",
+            sealingScheme = null,
         ),
         DataDomain(
             id = "pensieve", title = "Pensieve Knowledge", icon = "brain.head.profile",
-            encryptionTier = EncryptionTier.END_TO_END, summary = "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN search without reading either. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
+            encryptionTier = EncryptionTier.END_TO_END, summary = "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN over them without reading your content, though these structures still reveal some recurrence/co-occurrence patterns. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
             serverSees = listOf("cloaked 384-dim vectors", "sourceKind", "opaque keyed slug/dedup hashes", "opaque repo match token", "chunk/byte counts", "timestamps"), deviceOnly = listOf("chunk text", "source paths", "repo names", "section/category metadata"),
             firestorePaths = listOf("cloud_search_knowledge", "knowledge_sync_manifests", "knowledge_repos"), storagePaths = listOf(),
             countSource = "knowledge_sync_manifests.chunkCount", byteSource = "knowledge_sync_manifests.byteCount",
             retention = "until_deleted", actions = listOf("view", "export", "delete", "configure", "sync"),
             entitlementGate = "burnbar_pro_max", suspensionSurface = "burnbar_cloud_pro",
+            sealingScheme = "cloudvault-aesgcm-v2",
         ),
         DataDomain(
             id = "provider_accounts", title = "Provider Accounts", icon = "person.badge.key.fill",
@@ -73,6 +78,7 @@ object DataDomains {
             countSource = "provider_accounts", byteSource = null,
             retention = "until_disconnected", actions = listOf("view", "revoke"),
             entitlementGate = null, suspensionSurface = null,
+            sealingScheme = null,
         ),
         DataDomain(
             id = "connected_devices", title = "Connected Devices & Pairings", icon = "laptopcomputer.and.iphone",
@@ -82,6 +88,7 @@ object DataDomains {
             countSource = "devices", byteSource = null,
             retention = "until_revoked", actions = listOf("view", "revoke"),
             entitlementGate = null, suspensionSurface = null,
+            sealingScheme = null,
         ),
         DataDomain(
             id = "external_mcp", title = "External Agent Access (MCP)", icon = "key.horizontal.fill",
@@ -91,6 +98,7 @@ object DataDomains {
             countSource = "remote_mcp_clients", byteSource = null,
             retention = "until_revoked", actions = listOf("view", "revoke"),
             entitlementGate = "burnbar_pro", suspensionSurface = "remote_mcp",
+            sealingScheme = null,
         ),
         DataDomain(
             id = "computer_use", title = "Agent Control & Escrow", icon = "cursorarrow.rays",
@@ -100,6 +108,7 @@ object DataDomains {
             countSource = "computer_use_sessions", byteSource = null,
             retention = "rolling", actions = listOf("view", "delete"),
             entitlementGate = "burnbar_pro_max", suspensionSurface = "hosted_agent_control",
+            sealingScheme = null,
         ),
         DataDomain(
             id = "media", title = "Media", icon = "photo.on.rectangle.angled",
@@ -109,6 +118,7 @@ object DataDomains {
             countSource = "media_attachment_manifests", byteSource = "media_attachment_manifests",
             retention = "rolling", actions = listOf("view", "delete"),
             entitlementGate = "burnbar_pro_max", suspensionSurface = "floo_relay",
+            sealingScheme = null,
         ),
         DataDomain(
             id = "entitlements_billing", title = "Plan & Billing", icon = "creditcard.fill",
@@ -118,15 +128,17 @@ object DataDomains {
             countSource = "entitlements", byteSource = null,
             retention = "permanent", actions = listOf("view"),
             entitlementGate = null, suspensionSurface = null,
+            sealingScheme = null,
         ),
         DataDomain(
             id = "device_trust_keys", title = "Device Trust & Vault Keys", icon = "lock.shield.fill",
-            encryptionTier = EncryptionTier.END_TO_END, summary = "Which devices are trusted to decrypt your data, and the wrapped vault keys that make zero-knowledge possible. The crux of the whole E2EE model.",
+            encryptionTier = EncryptionTier.END_TO_END, summary = "Which devices are trusted to decrypt your data, and the wrapped vault keys that make end-to-end encryption possible. The crux of the whole E2EE model.",
             serverSees = listOf("device trust state", "public key fingerprints", "wrapped (ciphertext) key blobs"), deviceOnly = listOf("the vault key itself (Keychain / 0600 file, never uploaded)"),
-            firestorePaths = listOf("cloud_vault_state", "cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"), storagePaths = listOf(),
+            firestorePaths = listOf("cloud_vault_state", "cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "signal_identity_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"), storagePaths = listOf(),
             countSource = "escrow_devices", byteSource = null,
             retention = "until_revoked", actions = listOf("view", "approve", "revoke", "recover"),
             entitlementGate = null, suspensionSurface = null,
+            sealingScheme = null,
         ),
         DataDomain(
             id = "audit_timeline", title = "Access Audit Timeline", icon = "list.bullet.rectangle.portrait.fill",
@@ -136,6 +148,7 @@ object DataDomains {
             countSource = "unified_audit_log", byteSource = null,
             retention = "append_only", actions = listOf("view", "verify", "export"),
             entitlementGate = null, suspensionSurface = null,
+            sealingScheme = null,
         ),
     )
     fun domain(id: String): DataDomain? = all.firstOrNull { it.id == id }

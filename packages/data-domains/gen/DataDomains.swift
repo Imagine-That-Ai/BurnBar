@@ -24,6 +24,7 @@ public struct DataDomain: Identifiable, Codable, Sendable {
     public let actions: [String]
     public let entitlementGate: String?
     public let suspensionSurface: String?
+    public let sealingScheme: String?
 }
 
 public enum DataDomains {
@@ -35,7 +36,8 @@ public enum DataDomains {
             firestorePaths: ["usage", "usage_rollups", "usage_counter_days", "usage_counter_totals", "recent_usage", "quota_snapshots", "rollup_jobs", "projects"], storagePaths: [],
             countSource: "usage", byteSource: nil,
             retention: "rolling", actions: ["view", "export", "delete"],
-            entitlementGate: nil, suspensionSurface: nil
+            entitlementGate: nil, suspensionSurface: nil,
+            sealingScheme: nil
         ),
         DataDomain(
             id: "conversations_chat", title: "Conversations & Chat", icon: "bubble.left.and.bubble.right.fill",
@@ -44,7 +46,8 @@ public enum DataDomains {
             firestorePaths: ["conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets", "rollback_requests", "approval_policies", "agent_identities", "subscription_topics"], storagePaths: [],
             countSource: "chat_threads", byteSource: nil,
             retention: "until_deleted", actions: ["view", "export", "delete"],
-            entitlementGate: "burnbar_pro", suspensionSurface: "burnbar_cloud"
+            entitlementGate: "burnbar_pro", suspensionSurface: "burnbar_cloud",
+            sealingScheme: nil
         ),
         DataDomain(
             id: "session_logs", title: "Searchable Session Logs", icon: "text.magnifyingglass",
@@ -53,16 +56,18 @@ public enum DataDomains {
             firestorePaths: ["session_logs", "cloud_search_documents", "cloud_search_chunks", "cloud_search_postings", "cloud_search_index_state", "cloud_search_index_manifest", "project_memory_snapshots"], storagePaths: ["session_logs/{documentID}/bodies/{bodyHash}.json.aesgcm"],
             countSource: "cloud_search_documents", byteSource: "session_logs",
             retention: "until_deleted", actions: ["view", "export", "delete"],
-            entitlementGate: "burnbar_pro", suspensionSurface: "burnbar_cloud"
+            entitlementGate: "burnbar_pro", suspensionSurface: "burnbar_cloud",
+            sealingScheme: nil
         ),
         DataDomain(
             id: "pensieve", title: "Pensieve Knowledge", icon: "brain.head.profile",
-            encryptionTier: .endToEnd, summary: "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN search without reading either. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
+            encryptionTier: .endToEnd, summary: "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN over them without reading your content, though these structures still reveal some recurrence/co-occurrence patterns. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
             serverSees: ["cloaked 384-dim vectors", "sourceKind", "opaque keyed slug/dedup hashes", "opaque repo match token", "chunk/byte counts", "timestamps"], deviceOnly: ["chunk text", "source paths", "repo names", "section/category metadata"],
             firestorePaths: ["cloud_search_knowledge", "knowledge_sync_manifests", "knowledge_repos"], storagePaths: [],
             countSource: "knowledge_sync_manifests.chunkCount", byteSource: "knowledge_sync_manifests.byteCount",
             retention: "until_deleted", actions: ["view", "export", "delete", "configure", "sync"],
-            entitlementGate: "burnbar_pro_max", suspensionSurface: "burnbar_cloud_pro"
+            entitlementGate: "burnbar_pro_max", suspensionSurface: "burnbar_cloud_pro",
+            sealingScheme: "cloudvault-aesgcm-v2"
         ),
         DataDomain(
             id: "provider_accounts", title: "Provider Accounts", icon: "person.badge.key.fill",
@@ -71,7 +76,8 @@ public enum DataDomains {
             firestorePaths: ["provider_accounts", "provider_connections", "provider_account_device_links", "runtime_connection_preferences"], storagePaths: [],
             countSource: "provider_accounts", byteSource: nil,
             retention: "until_disconnected", actions: ["view", "revoke"],
-            entitlementGate: nil, suspensionSurface: nil
+            entitlementGate: nil, suspensionSurface: nil,
+            sealingScheme: nil
         ),
         DataDomain(
             id: "connected_devices", title: "Connected Devices & Pairings", icon: "laptopcomputer.and.iphone",
@@ -80,7 +86,8 @@ public enum DataDomains {
             firestorePaths: ["devices", "hermes_connections", "hermes_pairings", "hermes_relay_requests", "hermes_session_cache", "hermes_gateway_clients", "hermes_gateway_destinations", "hermes_gateway_events", "hermes_gateway_messages", "hermes_gateway_typing", "hermes_gateway_state", "hermes_gateway_attachments", "hermes_gateway_approvals", "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests", "iroh_pairing", "iroh_pairing_keys", "runtime_connection_preferences"], storagePaths: ["hermes_gateway_attachments/**"],
             countSource: "devices", byteSource: nil,
             retention: "until_revoked", actions: ["view", "revoke"],
-            entitlementGate: nil, suspensionSurface: nil
+            entitlementGate: nil, suspensionSurface: nil,
+            sealingScheme: nil
         ),
         DataDomain(
             id: "external_mcp", title: "External Agent Access (MCP)", icon: "key.horizontal.fill",
@@ -89,7 +96,8 @@ public enum DataDomains {
             firestorePaths: ["remote_mcp_clients", "remote_mcp_grants", "remote_mcp_audit_events", "remote_mcp_rate_limits"], storagePaths: [],
             countSource: "remote_mcp_clients", byteSource: nil,
             retention: "until_revoked", actions: ["view", "revoke"],
-            entitlementGate: "burnbar_pro", suspensionSurface: "remote_mcp"
+            entitlementGate: "burnbar_pro", suspensionSurface: "remote_mcp",
+            sealingScheme: nil
         ),
         DataDomain(
             id: "computer_use", title: "Agent Control & Escrow", icon: "cursorarrow.rays",
@@ -98,7 +106,8 @@ public enum DataDomains {
             firestorePaths: ["computer_use_sessions", "computer_use_actions", "computer_use_quota_usage", "agent_grant_authorities", "agent_capability_grant_requests"], storagePaths: [],
             countSource: "computer_use_sessions", byteSource: nil,
             retention: "rolling", actions: ["view", "delete"],
-            entitlementGate: "burnbar_pro_max", suspensionSurface: "hosted_agent_control"
+            entitlementGate: "burnbar_pro_max", suspensionSurface: "hosted_agent_control",
+            sealingScheme: nil
         ),
         DataDomain(
             id: "media", title: "Media", icon: "photo.on.rectangle.angled",
@@ -107,7 +116,8 @@ public enum DataDomains {
             firestorePaths: ["media_session_events", "media_quota_usage", "media_attachment_manifests"], storagePaths: [],
             countSource: "media_attachment_manifests", byteSource: "media_attachment_manifests",
             retention: "rolling", actions: ["view", "delete"],
-            entitlementGate: "burnbar_pro_max", suspensionSurface: "floo_relay"
+            entitlementGate: "burnbar_pro_max", suspensionSurface: "floo_relay",
+            sealingScheme: nil
         ),
         DataDomain(
             id: "entitlements_billing", title: "Plan & Billing", icon: "creditcard.fill",
@@ -116,16 +126,18 @@ public enum DataDomains {
             firestorePaths: ["entitlements", "entitlement_events", "entitlement_bindings"], storagePaths: [],
             countSource: "entitlements", byteSource: nil,
             retention: "permanent", actions: ["view"],
-            entitlementGate: nil, suspensionSurface: nil
+            entitlementGate: nil, suspensionSurface: nil,
+            sealingScheme: nil
         ),
         DataDomain(
             id: "device_trust_keys", title: "Device Trust & Vault Keys", icon: "lock.shield.fill",
-            encryptionTier: .endToEnd, summary: "Which devices are trusted to decrypt your data, and the wrapped vault keys that make zero-knowledge possible. The crux of the whole E2EE model.",
+            encryptionTier: .endToEnd, summary: "Which devices are trusted to decrypt your data, and the wrapped vault keys that make end-to-end encryption possible. The crux of the whole E2EE model.",
             serverSees: ["device trust state", "public key fingerprints", "wrapped (ciphertext) key blobs"], deviceOnly: ["the vault key itself (Keychain / 0600 file, never uploaded)"],
-            firestorePaths: ["cloud_vault_state", "cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"], storagePaths: [],
+            firestorePaths: ["cloud_vault_state", "cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "signal_identity_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"], storagePaths: [],
             countSource: "escrow_devices", byteSource: nil,
             retention: "until_revoked", actions: ["view", "approve", "revoke", "recover"],
-            entitlementGate: nil, suspensionSurface: nil
+            entitlementGate: nil, suspensionSurface: nil,
+            sealingScheme: nil
         ),
         DataDomain(
             id: "audit_timeline", title: "Access Audit Timeline", icon: "list.bullet.rectangle.portrait.fill",
@@ -134,7 +146,8 @@ public enum DataDomains {
             firestorePaths: ["remote_mcp_audit_events", "hermes_audit_events", "pi_agent_audit_events", "iroh_audit_events", "escrow_audit_events", "entitlement_events", "budgetEvents", "agent_notification_events", "agent_notification_replies", "unified_audit_log", "audit_meta"], storagePaths: [],
             countSource: "unified_audit_log", byteSource: nil,
             retention: "append_only", actions: ["view", "verify", "export"],
-            entitlementGate: nil, suspensionSurface: nil
+            entitlementGate: nil, suspensionSurface: nil,
+            sealingScheme: nil
         ),
     ]
     public static func domain(_ id: String) -> DataDomain? { all.first { $0.id == id } }

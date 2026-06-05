@@ -89,23 +89,33 @@ public struct DeviceRecord: Sendable, Equatable, Identifiable {
     public let keyVersion: Int?
     public let isCurrentDevice: Bool
     /// Stored `escrow_devices.publicKeyFingerprint` (base64 SHA-256 of the
-    /// device public key), surfaced read-only so the trust UX can render a
-    /// comparable safety code. Plumbing only — never mutated here.
+    /// device public key). The approval gate verifies this against
+    /// ``publicKeyData`` before trusting it.
     public let publicKeyFingerprint: String?
+    /// Stored `escrow_public_keys/{deviceId}_{keyVersion}.publicKeyData`
+    /// (base64 P-256 X9.63 public key), used as the load-bearing safety-code
+    /// source so the server cannot spoof only a fingerprint string.
+    public let publicKeyData: String?
 
-    public init(id: String, displayName: String, platform: String, appVersion: String? = nil, lastSeen: Date? = nil, trustState: DeviceTrustState, approvedAt: Date? = nil, keyVersion: Int? = nil, isCurrentDevice: Bool = false, publicKeyFingerprint: String? = nil) {
+    public init(id: String, displayName: String, platform: String, appVersion: String? = nil, lastSeen: Date? = nil, trustState: DeviceTrustState, approvedAt: Date? = nil, keyVersion: Int? = nil, isCurrentDevice: Bool = false, publicKeyFingerprint: String? = nil, publicKeyData: String? = nil) {
         self.id = id; self.displayName = displayName; self.platform = platform
         self.appVersion = appVersion; self.lastSeen = lastSeen
         self.trustState = trustState; self.approvedAt = approvedAt
         self.keyVersion = keyVersion; self.isCurrentDevice = isCurrentDevice
         self.publicKeyFingerprint = publicKeyFingerprint
+        self.publicKeyData = publicKeyData
     }
 
-    /// Grouped, human-comparable safety code derived from the stored
-    /// fingerprint with the shared cross-device formatter, or `nil` when no
-    /// fingerprint is present.
+    /// Grouped, human-comparable safety code re-derived from the published
+    /// public key bytes, or `nil` when the key is absent/invalid.
     public var safetyCode: String? {
-        EscrowDeviceSafetyCode.format(fingerprint: publicKeyFingerprint)
+        EscrowDeviceSafetyCode.format(publicKeyData: publicKeyData)
+    }
+
+    /// Load-bearing trust check for Approve: the stored fingerprint must match
+    /// the published public key bytes that produced the displayed safety code.
+    public var hasVerifiedSafetyCode: Bool {
+        EscrowDeviceSafetyCode.isFingerprint(publicKeyFingerprint, boundTo: publicKeyData)
     }
 }
 

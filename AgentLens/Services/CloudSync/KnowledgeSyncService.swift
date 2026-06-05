@@ -1,7 +1,9 @@
 import FirebaseAuth
+import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 
 /// Serializes Pensieve knowledge syncs across the process so a folder-watch
 /// burst and a manual "Sync now" can't run two commits at once. Mirrors
@@ -27,6 +29,9 @@ public enum KnowledgeSyncError: LocalizedError {
     case vaultKeyUnavailable
     case configureFailed
     case commitFailed(String)
+    case signalIdentityUnavailable
+    case trustedDeviceMissingSignalIdentity(deviceId: String, keyVersion: Int)
+    case trustedDeviceSignalIdentityMismatch(deviceId: String, keyVersion: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -38,6 +43,12 @@ public enum KnowledgeSyncError: LocalizedError {
             return "Could not register the Pensieve knowledge source."
         case .commitFailed(let message):
             return message
+        case .signalIdentityUnavailable:
+            return "This Mac has no published Signal identity for Pensieve knowledge sealing."
+        case .trustedDeviceMissingSignalIdentity(let deviceId, let keyVersion):
+            return "Trusted device \(deviceId)_\(keyVersion) is missing its Signal identity public key."
+        case .trustedDeviceSignalIdentityMismatch(let deviceId, let keyVersion):
+            return "Trusted device \(deviceId)_\(keyVersion) has an invalid Signal identity public key."
         }
     }
 }
@@ -94,6 +105,13 @@ public protocol KnowledgeVaultKeyProviding: Sendable {
 }
 
 extension CloudVaultKeyStore: KnowledgeVaultKeyProviding {}
+
+private struct PensieveSignalSealContext: Sendable {
+    let uid: String
+    let vaultKey: Data
+    let localIdentity: OpenBurnBarSignalIdentityKeypair
+    let recipients: [OpenBurnBarSignalAtRestRecipient]
+}
 
 /// Live Firebase callable adapter for the Pensieve write path.
 public struct FirebaseKnowledgeSyncCallable: KnowledgeSyncCallable {
@@ -176,12 +194,25 @@ public final class KnowledgeSyncService: @unchecked Sendable {
         defer { isSyncing = false }
 
         let vaultKey: Data
-        do {
-            vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
-        } catch {
-            let error = KnowledgeSyncError.vaultKeyUnavailable
-            lastSyncError = error.localizedDescription
-            throw error
+        let signalContext: PensieveSignalSealContext?
+        if Self.signalSealingIsEnabled() {
+            do {
+                let context = try await Self.prepareSignalSealContext(uid: uid)
+                vaultKey = context.vaultKey
+                signalContext = context
+            } catch {
+                lastSyncError = error.localizedDescription
+                throw error
+            }
+        } else {
+            do {
+                vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
+                signalContext = nil
+            } catch {
+                let error = KnowledgeSyncError.vaultKeyUnavailable
+                lastSyncError = error.localizedDescription
+                throw error
+            }
         }
 
         var totalWritten = 0
@@ -216,7 +247,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
                 guard !batch.vectors.isEmpty else { continue }
 
                 // 3) commit (device-authed; server stores only ciphertext + vectors).
-                let result = try await callable.commitKnowledgeBatch(Self.encode(batch))
+                let result = try await callable.commitKnowledgeBatch(Self.encode(batch, signalContext: signalContext))
                 totalWritten += result.written
                 totalSkipped += result.skipped
                 lastTier = result.tier
@@ -283,16 +314,33 @@ public final class KnowledgeSyncService: @unchecked Sendable {
     /// cleartext slug side channel; each vector carries `dedupHash` and NO
     /// cleartext `contentHash`/`sourcePath` (B-SEC-2).
     public static func encode(_ batch: PensieveKnowledgeBatch) -> [String: Any] {
-        [
+        encode(batch, signalEnvelopeForVector: { _ in nil })
+    }
+
+    public static func encode(
+        _ batch: PensieveKnowledgeBatch,
+        signalEnvelopeForVector: (PensieveKnowledgeVector) throws -> [String: Any]?
+    ) rethrows -> [String: Any] {
+        let vectors = try batch.vectors.map { vector in
+            try encode(vector, signalEnvelope: signalEnvelopeForVector(vector))
+        }
+        return [
             "sourceSlug": batch.sourceSlug,
             "slugHmac": batch.slugHmac,
             "embeddingModelVersion": batch.embeddingModelVersion,
-            "vectors": batch.vectors.map(encode(_:)),
+            "vectors": vectors,
         ]
     }
 
     private static func encode(_ vector: PensieveKnowledgeVector) -> [String: Any] {
-        [
+        encode(vector, signalEnvelope: nil)
+    }
+
+    private static func encode(
+        _ vector: PensieveKnowledgeVector,
+        signalEnvelope: [String: Any]?
+    ) -> [String: Any] {
+        var encoded: [String: Any] = [
             "vectorId": vector.vectorId,
             "cloakedVector": vector.cloakedVector,
             "sealedCiphertext": encode(vector.sealedCiphertext),
@@ -302,6 +350,135 @@ public final class KnowledgeSyncService: @unchecked Sendable {
             "chunkIndex": vector.chunkIndex,
             "byteCount": vector.byteCount,
         ]
+        if let signalEnvelope {
+            encoded["signalEnvelope"] = signalEnvelope
+        }
+        return encoded
+    }
+
+    private static func encode(
+        _ batch: PensieveKnowledgeBatch,
+        signalContext: PensieveSignalSealContext?
+    ) throws -> [String: Any] {
+        guard let signalContext else {
+            return encode(batch)
+        }
+        return try encode(batch) { vector in
+            try signalEnvelopeDictionary(for: vector, context: signalContext)
+        }
+    }
+
+    private static func signalEnvelopeDictionary(
+        for vector: PensieveKnowledgeVector,
+        context: PensieveSignalSealContext
+    ) throws -> [String: Any] {
+        let plaintext = try CloudVaultCrypto.openText(vector.sealedCiphertext, keyData: context.vaultKey)
+        let binding = CloudVaultSignalBinding(
+            uid: context.uid,
+            collection: "cloud_search_knowledge",
+            docId: vector.vectorId,
+            field: "sealedCiphertext"
+        )
+        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
+            Data(plaintext.utf8),
+            recipients: context.recipients,
+            binding: binding
+        )
+        return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
+    }
+
+    private static func signalSealingIsEnabled() -> Bool {
+        DataDomains.domain("pensieve")?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption
+    }
+
+    private static func prepareSignalSealContext(uid: String) async throws -> PensieveSignalSealContext {
+        let firestore = Firestore.firestore()
+        let deviceId = await MainActor.run { AccountManager.shared.deviceId }
+        let resolved = try await MacCloudVaultKeyAccess.keyForWriting(
+            uid: uid,
+            deviceId: deviceId,
+            firestore: firestore
+        )
+        guard let signalIdentity = resolved.signalIdentity else {
+            throw KnowledgeSyncError.signalIdentityUnavailable
+        }
+        let recipients = try await atRestRecipients(
+            uid: uid,
+            firestore: firestore,
+            localIdentity: signalIdentity
+        )
+        return PensieveSignalSealContext(
+            uid: uid,
+            vaultKey: resolved.keyData,
+            localIdentity: signalIdentity,
+            recipients: recipients
+        )
+    }
+
+    private static func atRestRecipients(
+        uid: String,
+        firestore: Firestore,
+        localIdentity: OpenBurnBarSignalIdentityKeypair
+    ) async throws -> [OpenBurnBarSignalAtRestRecipient] {
+        let userRef = firestore.collection("users").document(uid)
+        let trustedDevices = try await userRef.collection("escrow_devices")
+            .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
+            .getDocuments()
+
+        var recipientsByIdentityKeyId: [String: OpenBurnBarSignalAtRestRecipient] = [
+            localIdentity.identityKeyId: localIdentity.atRestRecipient()
+        ]
+
+        for document in trustedDevices.documents {
+            let data = document.data()
+            let rawDeviceId = (data["deviceId"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let deviceId: String
+            if let rawDeviceId, !rawDeviceId.isEmpty {
+                deviceId = rawDeviceId
+            } else {
+                deviceId = document.documentID
+            }
+            guard let keyVersion = data["keyVersion"] as? Int else {
+                throw KnowledgeSyncError.trustedDeviceSignalIdentityMismatch(
+                    deviceId: deviceId,
+                    keyVersion: 0
+                )
+            }
+            let identityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(
+                deviceId: deviceId,
+                keyVersion: keyVersion
+            )
+            let identityDoc = try await userRef.collection("signal_identity_public_keys")
+                .document(identityKeyId)
+                .getDocument()
+            guard let identityData = identityDoc.data() else {
+                throw KnowledgeSyncError.trustedDeviceMissingSignalIdentity(
+                    deviceId: deviceId,
+                    keyVersion: keyVersion
+                )
+            }
+            guard identityData["deviceId"] as? String == deviceId,
+                  identityData["identityKeyId"] as? String == identityKeyId,
+                  identityData["keyVersion"] as? Int == keyVersion,
+                  identityData["algorithm"] as? String == CloudVaultCrypto.signalAtRestEncryption,
+                  let publicKeyBase64 = identityData["publicKeyData"] as? String,
+                  let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
+                throw KnowledgeSyncError.trustedDeviceSignalIdentityMismatch(
+                    deviceId: deviceId,
+                    keyVersion: keyVersion
+                )
+            }
+            recipientsByIdentityKeyId[identityKeyId] = OpenBurnBarSignalAtRestRecipient(
+                recipientKind: "device",
+                recipientIdentityKeyId: identityKeyId,
+                publicKeyData: publicKeyData
+            )
+        }
+
+        return recipientsByIdentityKeyId.values.sorted {
+            $0.recipientIdentityKeyId < $1.recipientIdentityKeyId
+        }
     }
 
     private static func encode(_ sealed: CloudVaultSealedText) -> [String: Any] {

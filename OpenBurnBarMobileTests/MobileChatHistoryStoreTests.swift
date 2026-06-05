@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 @testable import OpenBurnBarMobile
 
 @MainActor
@@ -350,6 +351,97 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         let snapshot = try store.load()
         XCTAssertEqual(snapshot.threads.first?.messages.first?.attachments.count, 0)
         XCTAssertNil(snapshot.threads.first?.messages.first?.hermes)
+    }
+
+    func testDecodeThreadOpensPathBoundSignalEnvelopeAndRejectsRelocation() throws {
+        let uid = "signal-chat-user-\(UUID().uuidString)"
+        let documentID = "thread-signal"
+        let thread = Self.makeThread(id: documentID, runtime: .codex, title: "Signal thread", messageCount: 2)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let payloadData = try encoder.encode(thread)
+        let identity = try OpenBurnBarSignalIdentityKeyStore(
+            service: "com.openburnbar.tests.mobile-signal-\(UUID().uuidString)"
+        ).loadOrCreate(uid: uid, deviceId: "device-1")
+        let binding = CloudVaultSignalBinding(
+            uid: uid,
+            collection: "mobile_assistant_chats",
+            docId: documentID,
+            field: "signalEnvelope"
+        )
+        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
+            payloadData,
+            recipients: [identity.atRestRecipient()],
+            binding: binding
+        )
+        let data: [String: Any] = [
+            "id": documentID,
+            "runtime": thread.runtime,
+            "contentSealed": true,
+            "signalEnvelope": try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
+        ]
+
+        let decoded = try XCTUnwrap(
+            MobileChatFirestoreStore.decodeThread(
+                documentID: documentID,
+                data: data,
+                uid: uid,
+                signalIdentity: identity
+            )
+        )
+        XCTAssertEqual(decoded.id, documentID)
+        XCTAssertEqual(decoded.title, "Signal thread")
+        XCTAssertEqual(decoded.messages.map(\.text), ["Message 0", "Message 1"])
+
+        XCTAssertNil(
+            MobileChatFirestoreStore.decodeThread(
+                documentID: "thread-relocated",
+                data: data,
+                uid: uid,
+                signalIdentity: identity
+            ),
+            "Signal envelopes must fail closed when moved to another Firestore document."
+        )
+    }
+
+    func testDecodeThreadFallsBackToLegacySealedPayloadWhenOptionalSignalEnvelopeCannotOpen() throws {
+        let uid = "signal-chat-user-\(UUID().uuidString)"
+        let documentID = "thread-legacy-fallback"
+        let thread = Self.makeThread(id: documentID, runtime: .codex, title: "Legacy fallback", messageCount: 2)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let payloadData = try encoder.encode(thread)
+        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let sealedPayload = try CloudVaultCrypto.sealPayload(payloadData, keyData: vaultKey, vaultKeyID: vaultKeyID)
+        let data: [String: Any] = [
+            "id": documentID,
+            "runtime": thread.runtime,
+            "contentSealed": true,
+            "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(sealedPayload),
+            // Malformed optional Signal shape. During flag-off rollout the legacy
+            // AES-GCM payload is still present and must remain readable.
+            "signalEnvelope": [
+                "signalEnvelopeFormatVersion": 1,
+                "mode": "at-rest",
+                "plaintext": "not a valid Signal envelope"
+            ]
+        ]
+
+        let decoded = try XCTUnwrap(
+            MobileChatFirestoreStore.decodeThread(
+                documentID: documentID,
+                data: data,
+                uid: uid,
+                vaultKey: vaultKey,
+                signalIdentity: nil
+            )
+        )
+        XCTAssertEqual(decoded.id, documentID)
+        XCTAssertEqual(decoded.title, "Legacy fallback")
+        XCTAssertEqual(decoded.messages.map(\.text), ["Message 0", "Message 1"])
     }
 
     // MARK: - Helpers

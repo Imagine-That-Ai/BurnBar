@@ -72,9 +72,40 @@ object QuotaResetFormatter {
 
     private fun displayResetInstant(resetsAt: Instant, windowLabel: String?, now: Instant, zone: ZoneId): Instant? {
         if (resetsAt.isAfter(now)) return resetsAt
+        return advancedResetIfElapsed(resetsAt, windowLabel, now, zone)
+    }
+
+    /**
+     * The next future reset boundary **only when** [resetsAt] has already
+     * elapsed and the window period can be inferred from [windowLabel];
+     * `null` otherwise (still in the future, or an unknown/custom window).
+     *
+     * This is the gate the usage bar reconciles against: when this returns a
+     * future instant, the provider's counter has rolled into a fresh window,
+     * so the bucket reads as 0 used / full remaining. Because the countdown
+     * (`displayResetInstant`) delegates to the same logic, the bar and the
+     * countdown can never disagree.
+     */
+    fun advancedResetIfElapsed(
+        resetsAt: Instant,
+        windowLabel: String?,
+        now: Instant = Instant.now(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): Instant? {
+        if (resetsAt.isAfter(now)) return null
 
         val marker = windowLabel.orEmpty().lowercase(Locale.US)
         return when {
+            // Canonical `ProviderQuotaWindowKind` raw values the Mac writes as
+            // `window`. Codex syncs `window: "rollingHours"` / `name:
+            // "codex-primary"`, which the digit/word markers below never match,
+            // so without these the Codex 5h window never advances or resets on
+            // mobile. `rollingdays` precedes the generic `day` branch (it
+            // contains "day") so the weekly window advances by 7 days, not 1.
+            marker.contains("rollinghours") ->
+                advance(resetsAt, Duration.ofHours(TimeThresholds.HOURS_FIVE), now)
+            marker.contains("rollingdays") ->
+                advance(resetsAt, Duration.ofDays(TimeThresholds.DAYS_SEVEN), now)
             marker.contains("5") || marker.contains("five") ->
                 advance(resetsAt, Duration.ofHours(TimeThresholds.HOURS_FIVE), now)
             marker.contains("7") || marker.contains("seven") || marker.contains("week") ->

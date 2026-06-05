@@ -1181,7 +1181,7 @@ struct CloudStoreSettingsView: View {
                 .font(.system(size: 10, weight: .heavy))
                 .tracking(1.8)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text("BurnBar Cloud, Cloud Pro, and Cloud Ultra are auto-renewable subscriptions billed through the App Store. Cloud adds hosted quota refresh, encrypted backup and resume, cloud search, synced agent memory, and remote relay. Cloud Pro adds Floo phone-to-Mac control and supervised Agent Control with prepaid hosted allowances. Cloud Ultra keeps all of Pro and gives your agents 10× private memory — sealed on your device so the server searches without reading it. Prices shown are live from the App Store; Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
+            Text("BurnBar Cloud, Cloud Pro, and Cloud Ultra are auto-renewable subscriptions billed through the App Store. Cloud adds hosted quota refresh, encrypted backup and resume, cloud search, synced agent memory, and remote relay. Cloud Pro adds Floo phone-to-Mac control and supervised Agent Control with prepaid hosted allowances. Cloud Ultra keeps all of Pro and gives your agents 10× private memory — sealed on your device, with search running over encrypted structures (some access patterns stay visible). Prices shown are live from the App Store; Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1641,7 +1641,7 @@ private struct MacPricingTierModel: Identifiable {
             bullets: [
                 "Everything in BurnBar Cloud Pro",
                 "10× agent memory: 15 sources · 50,000 chunks · 250 MB",
-                "Sealed on-device — the server searches without reading it",
+                "Sealed on-device — search runs over encrypted structures (some patterns stay visible)",
                 "Same hosted Agent Control & relay allowance as Pro"
             ],
             includedNote: MacPricingTierModel.IncludedNote(

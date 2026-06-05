@@ -546,6 +546,7 @@ struct DeviceTrustSafetyCompareSheet: View {
     @State private var didCompare = false
 
     private var safetyCode: String? { device?.safetyCode }
+    private var canApprove: Bool { device?.hasVerifiedSafetyCode == true }
     private var deviceName: String { device?.displayName ?? "this device" }
 
     var body: some View {
@@ -566,13 +567,18 @@ struct DeviceTrustSafetyCompareSheet: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             .accessibilityLabel("Safety code: \(EscrowDeviceSafetyCode.spelledOut(safetyCode))")
                     } else {
-                        Text("This device has not published a key fingerprint yet, so a safety code cannot be shown. Make sure it is signed in and on a current app version, then try again.")
+                        Text("This device has not published a verifiable escrow public key yet, so a safety code cannot be shown. Make sure it is signed in and on a current app version, then try again.")
+                            .font(.caption)
+                            .foregroundStyle(MobileTheme.Colors.warning)
+                    }
+                    if safetyCode != nil && !canApprove {
+                        Text("The published key does not match the stored fingerprint. Approval is disabled until this device republishes a matching key.")
                             .font(.caption)
                             .foregroundStyle(MobileTheme.Colors.warning)
                     }
                 }
 
-                if safetyCode != nil {
+                if canApprove {
                     Section {
                         Toggle("I compared this code on my other device and it matches.", isOn: $didCompare)
                             .font(.callout)
@@ -587,7 +593,7 @@ struct DeviceTrustSafetyCompareSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Approve", action: onConfirm)
-                        .disabled(safetyCode == nil || !didCompare)
+                        .disabled(!canApprove || !didCompare)
                 }
             }
         }
