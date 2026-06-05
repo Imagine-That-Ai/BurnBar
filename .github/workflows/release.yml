@@ -485,6 +485,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          bash scripts/ci/verify-libsignal-pin.sh --network
+          bash scripts/ci/verify-corresponding-source-archive.sh --version "$VERSION"
           SOURCE_ARCHIVE="$RUNNER_TEMP/OpenBurnBar-${VERSION}-corresponding-source.tar.gz"
           scripts/create-corresponding-source.sh --version "$VERSION" --output "$SOURCE_ARCHIVE"
           echo "source_path=$SOURCE_ARCHIVE" >> "$GITHUB_OUTPUT"

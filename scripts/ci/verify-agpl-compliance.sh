@@ -21,6 +21,8 @@ require_file REUSE.toml
 require_file third_party/libsignal/manifest.json
 require_file third_party/libsignal/runtime-readiness.json
 require_file scripts/require-agpl-store-legal-review.sh
+require_file scripts/ci/verify-corresponding-source-archive.sh
+require_file scripts/ci/verify-libsignal-pin.sh
 require_file scripts/ci/verify-libsignal-runtime-readiness.sh
 
 grep -q "GNU AFFERO GENERAL PUBLIC LICENSE" LICENSE || fail "root LICENSE is not AGPLv3 text"
@@ -102,19 +104,13 @@ grep -q 'runtime-readiness' website/src/pages/legal/source.astro || fail "websit
 
 bash -n scripts/create-corresponding-source.sh
 bash -n scripts/require-agpl-store-legal-review.sh
+bash -n scripts/ci/verify-corresponding-source-archive.sh
+bash -n scripts/ci/verify-libsignal-pin.sh
 bash -n scripts/ci/verify-libsignal-runtime-readiness.sh
 bash -n scripts/build-macos-website-release.sh
 bash -n scripts/upload-macos-downloads-r2.sh
 
-tmpdir="$(mktemp -d)"
-trap 'rm -rf "$tmpdir"' EXIT
-OPENBURNBAR_ALLOW_DIRTY_SOURCE=1 scripts/create-corresponding-source.sh \
-  --version compliance-test \
-  --output "$tmpdir/OpenBurnBar-compliance-test-corresponding-source.tar.gz" >/dev/null
-
-tar -tzf "$tmpdir/OpenBurnBar-compliance-test-corresponding-source.tar.gz" | grep -q 'CORRESPONDING_SOURCE_MANIFEST.json' \
-  || fail "corresponding source archive missing manifest"
-tar -tzf "$tmpdir/OpenBurnBar-compliance-test-corresponding-source.tar.gz" | grep -q 'docs/legal/agpl-compliance.md' \
-  || fail "corresponding source archive missing AGPL compliance doc"
+bash scripts/ci/verify-libsignal-pin.sh
+bash scripts/ci/verify-corresponding-source-archive.sh --version compliance-test
 
 echo "PASS: AGPL compliance gate"
