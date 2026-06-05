@@ -230,6 +230,16 @@ struct TrustedDevicesDetailView: View {
     @Bindable var deviceTrust: DeviceTrustViewModel
     @Bindable var exportViewModel: CredentialTransferExportViewModel
 
+    /// Stream 6 (flag-OFF default): when the safety-code compare step is enabled,
+    /// tapping Approve first opens a sheet that shows the device's safety code so
+    /// the operator can confirm it matches the other device before trust is
+    /// granted. Holds the device pending confirmation.
+    @State private var deviceAwaitingSafetyCompare: MacTrustedDevice?
+
+    private var safetyCompareEnabled: Bool {
+        EscrowDeviceTrustSafetyCheckFlag.isEnabled()
+    }
+
     var body: some View {
         SettingsDetailContainer(
             title: "Trusted Devices",
@@ -265,6 +275,16 @@ struct TrustedDevicesDetailView: View {
             )
         }
         .task { await deviceTrust.load() }
+        .sheet(item: $deviceAwaitingSafetyCompare) { device in
+            DeviceTrustSafetyCompareSheet(
+                device: device,
+                onConfirm: {
+                    deviceAwaitingSafetyCompare = nil
+                    Task { await deviceTrust.approve(deviceID: device.id) }
+                },
+                onCancel: { deviceAwaitingSafetyCompare = nil }
+            )
+        }
     }
 
     @ViewBuilder
@@ -330,7 +350,13 @@ struct TrustedDevicesDetailView: View {
 
                 if device.trustState != .trusted {
                     Button(device.isCurrentDevice ? "Approve This Mac" : MacCopy.approveDevice) {
-                        Task { await deviceTrust.approve(deviceID: device.id) }
+                        // Flag-OFF default: approve immediately (existing behavior).
+                        // Flag-ON: gate on the safety-code compare confirmation.
+                        if safetyCompareEnabled {
+                            deviceAwaitingSafetyCompare = device
+                        } else {
+                            Task { await deviceTrust.approve(deviceID: device.id) }
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
@@ -377,6 +403,79 @@ struct TrustedDevicesDetailView: View {
         case .revoked:
             return DesignSystem.Colors.error
         }
+    }
+}
+
+// MARK: - Device Trust Safety-Code Compare
+
+/// Stream 6 — the "Compare this code on your other device" confirmation step
+/// shown before an escrow device is approved (only when the safety-code compare
+/// feature flag is ON). Renders the device's stored fingerprint as a grouped
+/// safety code using the shared formatter so the Mac and the device under
+/// approval display byte-identical codes. UX only — confirmation merely calls
+/// the same unchanged approve path; server-side fingerprint enforcement is a
+/// later PR.
+struct DeviceTrustSafetyCompareSheet: View {
+    let device: MacTrustedDevice
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    @State private var didCompare = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Verify \(device.displayName)")
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("Open OpenBurnBar on \(device.displayName) and confirm the safety code below matches exactly. Approve only if both codes are identical.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Text("Safety code")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    if let code = device.safetyCode {
+                        Text(code)
+                            .font(.system(.title3, design: .monospaced))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .textSelection(.enabled)
+                            .accessibilityLabel("Safety code: \(EscrowDeviceSafetyCode.spelledOut(code))")
+                    } else {
+                        Text("This device has not published a key fingerprint yet, so a safety code cannot be shown. Make sure it is signed in and on a current app version, then try again.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(DesignSystem.Spacing.md)
+            }
+
+            if device.safetyCode != nil {
+                Toggle(isOn: $didCompare) {
+                    Text("I compared this code on \(device.displayName) and it matches.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                }
+                .toggleStyle(.checkbox)
+            }
+
+            HStack {
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(.bordered)
+                Spacer()
+                Button("Approve device", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(device.safetyCode == nil || !didCompare)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(minWidth: 380, maxWidth: 460)
     }
 }
 
@@ -570,19 +669,32 @@ struct MacTrustedDevice: Identifiable, Equatable {
     let platform: String
     let trustState: EscrowDeviceTrustState
     let isCurrentDevice: Bool
+    /// Stored `escrow_devices.publicKeyFingerprint` (base64 SHA-256 of the
+    /// device public key), surfaced read-only so the approve UX can render a
+    /// comparable safety code. Never mutated here — display/plumbing only.
+    let publicKeyFingerprint: String?
 
     init(
         id: String,
         displayName: String,
         platform: String = "macOS",
         trustState: EscrowDeviceTrustState = .pending,
-        isCurrentDevice: Bool = false
+        isCurrentDevice: Bool = false,
+        publicKeyFingerprint: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.platform = platform
         self.trustState = trustState
         self.isCurrentDevice = isCurrentDevice
+        self.publicKeyFingerprint = publicKeyFingerprint
+    }
+
+    /// Grouped, human-comparable safety code derived from the stored
+    /// fingerprint with the shared cross-device formatter, or `nil` when no
+    /// fingerprint is present.
+    var safetyCode: String? {
+        EscrowDeviceSafetyCode.format(fingerprint: publicKeyFingerprint)
     }
 }
 
@@ -611,7 +723,8 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
                 displayName: d["deviceName"] as? String ?? "Unknown",
                 platform: d["platform"] as? String ?? "macOS",
                 trustState: EscrowDeviceTrustState(rawValue: d["trustState"] as? String ?? "") ?? .pending,
-                isCurrentDevice: doc.documentID == self.deviceId
+                isCurrentDevice: doc.documentID == self.deviceId,
+                publicKeyFingerprint: d["publicKeyFingerprint"] as? String
             )
         }
     }
