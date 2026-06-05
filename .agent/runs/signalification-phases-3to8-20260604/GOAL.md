@@ -36,6 +36,24 @@ Wave-1 (Streams 1/6-UX/7) + envelope contracts + AGPL relicense already LANDED o
 - [todo] **Wire real ciphertext** through client paths (Swift FunctionsRepository, Android repo, Mac); activation proven on real devices (full-SOTA, no stubs/workarounds). External crypto-review remains a human sign-off.
 - [todo] Keep `implementation-notes.html` current (Resume Here + progressEvents) at every phase checkpoint; link bulky proof under `evidence/`.
 
+## Status at handoff (2026-06-05, landed on main @ 9cc095ff4)
+
+**[done] — landed flag-OFF on `main`, adversarially audited (43 agents: SAFE, 0 land-blockers), all tests green:**
+- P0 `bindingToAAD` cross-language canonicalizer (TS+Swift byte-parity fixture, NFC-normalized, pipe/CRLF fail-closed).
+- Stream 6 enablement CODE: key-bound safety-code verifier + server-side `approveEscrowDeviceTrust` enforcement (shadow mode, flag OFF) + P-256 on-curve validation.
+- Stream 3 gateway v4 `signalEnvelope` shape + validator + capability (PRODUCTION set empty = fail-closed).
+- Stream 5 `CloudVaultSignalEnvelope` type + registry additive `sealingScheme` (non-websited) + dataExport recognizer.
+- Stream 8 (crypto proof): **real libsignal 0.94.4 proven in Node + Swift + Kotlin**, and a **cross-language KAT** (Node-sealed HPKE opens byte-correct in Swift AND Kotlin via identical `bindingToAAD`; tamper fails closed). Evidence in `evidence/`.
+- Intense adversarial audit + its cheap confirmed fixes applied.
+
+**[incomplete] — feasibility PROVEN (crypto works on all 3 languages + interop KAT; toolchain ready: Xcode+sim+device, Android SDK+device, adb), NOT completed this session (large multi-step productionization, no stubs/workarounds taken):**
+- Vendor libsignal into the iOS/Android/Mac APP build graphs (Swift Package local-path + `build_ffi`; Android `org.signal:libsignal-client` from Signal maven). Proven buildable in-agent in isolation; not yet wired into the app targets.
+  - reason: forces cargo/native-lib builds into every app/CI build; large XcodeGen/Gradle integration; deliberate to keep flag-OFF landing clean.
+- Wire real ciphertext through production client paths (Swift `FunctionsRepository`, Android repo, Mac) + Stream 6 UI key-bound display (audit MAJOR: verifier built+tested but unwired) + transport AAD binding (audit minor).
+- On-device E2E on the attached iPhone (`00008150-…`) + Android (`R3CXB0CNS0J`): crypto proven on host/JVM with the same libsignal; on-device app runs not executed.
+- Flag activation (add 4 to `HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS`; flip escrow + Stream 6 flags) — gated on the above + external crypto review.
+- External crypto-review sign-off (human).
+
 ## Escape Hatch
 
 Pause, ask the user, or mark a scoped item `[blocked]` / `[incomplete]` if:
