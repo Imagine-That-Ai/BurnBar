@@ -164,6 +164,18 @@ jobs:
       - name: Install extension dependencies
         run: npm ci --prefix extensions/openburnbar
 
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
       - name: Run Swift tests
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
