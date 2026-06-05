@@ -88,7 +88,8 @@
       },
       "entitlementGate": "burnbar_pro_max",
       "tieredLimits": "PENSIEVE_LIMITS",
-      "suspensionSurface": "burnbar_cloud_pro"
+      "suspensionSurface": "burnbar_cloud_pro",
+      "sealingScheme": "cloudvault-aesgcm-v2"
     },
     {
       "id": "provider_accounts",

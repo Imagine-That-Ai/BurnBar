@@ -382,10 +382,15 @@ describe("Hermes Gateway relay envelope capability matrix", () => {
     });
     expect(agent.platform).toBe("python");
     expect(phone.platform).toBe("ios");
+    // supportsSignalEnvelope defaults FALSE on both endpoints and negotiates as the
+    // AND of the two (false) — v4 is never folded into the relay-envelope ladder.
+    expect(agent.supportsSignalEnvelope).toBe(false);
+    expect(phone.supportsSignalEnvelope).toBe(false);
     expect(negotiateGatewayRelayEnvelopeCapabilities(agent, phone)).toEqual({
       supportsRelayEnvelopeVersions: [2, 3],
       preferredRelayEnvelopeVersion: 3,
       supportsHpkeV3: true,
+      supportsSignalEnvelope: false,
     });
   });
 

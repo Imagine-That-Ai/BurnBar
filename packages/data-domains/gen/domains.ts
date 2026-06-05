@@ -22,6 +22,14 @@ export interface DataDomain {
   suspensionSurface: string | null;
   /** Optional reference to a tiered-limits table (e.g. PENSIEVE_LIMITS). */
   tieredLimits?: string;
+  /**
+   * Optional, apps-internal at-rest sealing scheme for an end_to_end domain
+   * (e.g. "cloudvault-aesgcm-v2"; the future "signal-hpke-identity-seal-v1").
+   * NON-WEBSITED: this scheme codename never reaches the public trust surface
+   * (trust.generated.ts speaks the tier language only). Absent == legacy
+   * CloudVault sealing; it never changes the encryptionTier.
+   */
+  sealingScheme?: string;
 }
 
 export const ENCRYPTION_TIERS = {
@@ -229,7 +237,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     },
     "entitlementGate": "burnbar_pro_max",
     "tieredLimits": "PENSIEVE_LIMITS",
-    "suspensionSurface": "burnbar_cloud_pro"
+    "suspensionSurface": "burnbar_cloud_pro",
+    "sealingScheme": "cloudvault-aesgcm-v2"
   },
   {
     "id": "provider_accounts",

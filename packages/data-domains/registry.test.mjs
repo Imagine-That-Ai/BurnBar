@@ -302,3 +302,68 @@ test("HONEST CLAIMS: W3 sealed private collections are folded into conversations
     "conversations_chat deviceOnly must list subscription graph edges",
   );
 });
+
+// ── sealingScheme: an OPTIONAL, apps-internal at-rest sealing codename ────────
+// (signalification Stream 5). It records HOW an end_to_end domain is sealed at
+// rest (CloudVault AES-GCM today; a future Signal HPKE identity seal) WITHOUT
+// changing the tier or leaking the codename to the public trust surface. These
+// assertions bind the field to reality so it can never be misused.
+
+test("sealingScheme: pensieve carries the CloudVault at-rest scheme; future Signal scheme is NOT set yet", () => {
+  const pensieve = registry.domains.find((d) => d.id === "pensieve");
+  assert.ok(pensieve, "expected the pensieve domain");
+  // Today's value is the existing CloudVault AES-GCM at-rest seal.
+  assert.equal(
+    pensieve.sealingScheme,
+    "cloudvault-aesgcm-v2",
+    "pensieve sealingScheme must record the current CloudVault AES-GCM at-rest seal",
+  );
+  // Flag-OFF: the future Signal HPKE identity seal must NOT be advertised in the
+  // registry until the client-side ciphertext path actually ships.
+  for (const d of registry.domains) {
+    assert.notEqual(
+      d.sealingScheme,
+      "signal-hpke-identity-seal-v1",
+      `${d.id} must not advertise the Signal at-rest scheme before the client ciphertext path ships`,
+    );
+  }
+});
+
+test("sealingScheme: tier invariance — declaring a sealing scheme never changes the encryption tier", () => {
+  for (const d of registry.domains) {
+    if (d.sealingScheme === undefined) continue;
+    assert.equal(typeof d.sealingScheme, "string", `${d.id} sealingScheme must be a string when present`);
+    assert.ok(d.sealingScheme.length > 0, `${d.id} sealingScheme must be non-empty when present`);
+    // A domain that names a sealing scheme is, by definition, sealed at rest.
+    assert.equal(
+      d.encryptionTier,
+      "end_to_end",
+      `${d.id} declares a sealingScheme but is not end_to_end — a sealing scheme never weakens or changes the tier`,
+    );
+  }
+});
+
+test("sealingScheme: self-encryption guard — only end_to_end domains may carry a scheme", () => {
+  const scheme = registry.domains.filter((d) => d.sealingScheme !== undefined).map((d) => d.id);
+  const e2e = new Set(registry.domains.filter((d) => d.encryptionTier === "end_to_end").map((d) => d.id));
+  for (const id of scheme) {
+    assert.ok(
+      e2e.has(id),
+      `${id} carries a sealingScheme but is not one of the end_to_end domains — block signalifying a non-E2E domain`,
+    );
+  }
+});
+
+test("sealingScheme: NON-WEBSITED — the scheme codename never reaches the public trust surface", () => {
+  const trust = emitWebsiteTrust(registry, loadTierColors());
+  // The field key and every scheme value must be absent from the generated
+  // public trust module — burnbar.ai speaks the tier language only.
+  assert.ok(!/sealingScheme/.test(trust), "trust.generated.ts must not contain the sealingScheme field");
+  for (const d of registry.domains) {
+    if (d.sealingScheme === undefined) continue;
+    assert.ok(
+      !trust.includes(d.sealingScheme),
+      `trust.generated.ts must not leak the sealing scheme codename "${d.sealingScheme}"`,
+    );
+  }
+});
