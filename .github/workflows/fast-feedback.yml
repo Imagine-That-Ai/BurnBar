@@ -119,7 +119,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify license metadata and source offer
+      - name: Verify license metadata, libsignal pin, and source offer
         run: bash scripts/ci/verify-agpl-compliance.sh
 
   # ── libsignal bridge: official package load proof ────────────────────────
