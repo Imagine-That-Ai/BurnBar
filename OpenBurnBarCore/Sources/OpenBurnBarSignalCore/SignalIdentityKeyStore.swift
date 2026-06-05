@@ -10,6 +10,16 @@ public struct OpenBurnBarSignalIdentityKeypair: Sendable, Hashable {
     public let privateKeyData: Data
     public let keyVersion: Int
 
+    public static func generateInMemory(deviceId: String, keyVersion: Int = 1) -> OpenBurnBarSignalIdentityKeypair {
+        let identity = IdentityKeyPair.generate()
+        return OpenBurnBarSignalIdentityKeypair(
+            identityKeyId: OpenBurnBarSignalIdentityKeyStore.identityKeyId(deviceId: deviceId, keyVersion: keyVersion),
+            publicKeyData: identity.publicKey.serialize(),
+            privateKeyData: identity.privateKey.serialize(),
+            keyVersion: keyVersion
+        )
+    }
+
     public var publicKeyBase64: String {
         publicKeyData.base64EncodedString()
     }

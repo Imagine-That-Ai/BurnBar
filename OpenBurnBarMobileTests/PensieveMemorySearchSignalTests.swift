@@ -9,9 +9,7 @@ final class PensieveMemorySearchSignalTests: XCTestCase {
         let uid = "pensieve-signal-user-\(UUID().uuidString)"
         let vectorId = "vector-signal"
         let vaultKey = Data(repeating: 0x13, count: 32)
-        let identity = try OpenBurnBarSignalIdentityKeyStore(
-            service: "com.openburnbar.tests.pensieve-signal-\(UUID().uuidString)"
-        ).loadOrCreate(uid: uid, deviceId: "device-1")
+        let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "device-1")
 
         let raw: [String: Any] = [
             "vectorId": vectorId,
@@ -54,9 +52,7 @@ final class PensieveMemorySearchSignalTests: XCTestCase {
     func testDecodeHitRejectsRelocatedSignalEnvelope() throws {
         let uid = "pensieve-relocation-user-\(UUID().uuidString)"
         let vaultKey = Data(repeating: 0x27, count: 32)
-        let identity = try OpenBurnBarSignalIdentityKeyStore(
-            service: "com.openburnbar.tests.pensieve-relocation-\(UUID().uuidString)"
-        ).loadOrCreate(uid: uid, deviceId: "device-1")
+        let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "device-1")
 
         let raw: [String: Any] = [
             "vectorId": "vector-relocated",

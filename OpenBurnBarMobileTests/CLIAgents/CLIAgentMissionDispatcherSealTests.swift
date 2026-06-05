@@ -112,9 +112,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
     func test_missionSnapshotOpensPathBoundSignalEnvelopeAndRejectsRelocation() throws {
         let uid = "mission-signal-user-\(UUID().uuidString)"
         let documentID = "mission-signal"
-        let identity = try OpenBurnBarSignalIdentityKeyStore(
-            service: "com.openburnbar.tests.cli-signal-\(UUID().uuidString)"
-        ).loadOrCreate(uid: uid, deviceId: "device-1")
+        let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "device-1")
         let privatePayload = Data("""
         {
           "title": "Signal mission",
