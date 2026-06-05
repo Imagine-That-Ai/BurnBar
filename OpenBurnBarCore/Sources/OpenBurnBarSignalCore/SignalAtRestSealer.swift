@@ -13,6 +13,9 @@ public enum OpenBurnBarSignalCoreError: LocalizedError, Sendable, Equatable {
     case missingRecipientWrap(String)
     case invalidContentKey
     case recipientPrivateKeyMismatch
+    case senderAuthMissing
+    case senderNotTrusted(String)
+    case senderSignatureInvalid
 
     public var errorDescription: String? {
         switch self {
@@ -34,6 +37,12 @@ public enum OpenBurnBarSignalCoreError: LocalizedError, Sendable, Equatable {
             return "The at-rest Signal content key is invalid."
         case .recipientPrivateKeyMismatch:
             return "The supplied Signal private key does not match the recipient wrap."
+        case .senderAuthMissing:
+            return "The at-rest Signal envelope has no sender authentication block."
+        case .senderNotTrusted(let id):
+            return "The at-rest Signal envelope sender \(id) is not a trusted device."
+        case .senderSignatureInvalid:
+            return "The at-rest Signal envelope sender signature failed verification."
         }
     }
 }
@@ -75,12 +84,41 @@ public enum OpenBurnBarSignalAtRest {
         return try privateKey.open(ciphertext, info: aad.info, associatedData: aad.associatedData)
     }
 
+    /// Canonical bytes the sender signs and the reader verifies. Deterministic and
+    /// byte-identical across platforms: domain separator, then the HPKE `info`
+    /// (which embeds the path binding → relocation guard), then the ciphertext, then
+    /// the recipient wraps (sorted by id) so neither the content nor the recipient
+    /// set can be tampered without breaking the signature. Unit-separator framed.
+    public static func senderAuthSignedMessage(
+        info: String,
+        payloadCiphertextB64: String,
+        wraps: [CloudVaultSignalAtRestWrap]
+    ) -> Data {
+        let us = "\u{1F}"
+        let wrapsJoined = wraps
+            .sorted { $0.recipientIdentityKeyId < $1.recipientIdentityKeyId }
+            .map { "\($0.recipientIdentityKeyId)=\($0.sealedContentKeyB64)" }
+            .joined(separator: "\n")
+        let message = [
+            CloudVaultCrypto.signalAtRestSenderAuthDomain,
+            info,
+            payloadCiphertextB64,
+            wrapsJoined,
+        ].joined(separator: us)
+        return Data(message.utf8)
+    }
+
     public static func sealPayload(
         _ plaintext: Data,
         recipients: [OpenBurnBarSignalAtRestRecipient],
-        binding: CloudVaultSignalBinding
+        binding: CloudVaultSignalBinding,
+        senderIdentityKeyId: String,
+        senderIdentityPrivateKey: Data
     ) throws -> CloudVaultSignalEnvelope {
         try validate(recipients: recipients)
+
+        let senderPrivateKey = try PrivateKey(senderIdentityPrivateKey)
+        let senderPublicKeyB64 = senderPrivateKey.publicKey.serialize().base64EncodedString()
 
         let contentKey = CloudVaultCrypto.generateVaultKey()
         let aad = try canonicalAAD(for: binding.aadBinding)
@@ -92,6 +130,7 @@ public enum OpenBurnBarSignalAtRest {
         guard let combinedPayload = sealedPayload.combined else {
             throw CloudVaultCryptoError.sealedBoxUnavailable
         }
+        let payloadCiphertextB64 = combinedPayload.base64EncodedString()
 
         let wraps = try recipients.map { recipient in
             let sealedContentKey = try atRestSeal(
@@ -107,22 +146,46 @@ public enum OpenBurnBarSignalAtRest {
             )
         }
 
+        // Sender authentication: sign the envelope (binding + ciphertext + wraps) with
+        // the writing device's identity private key. A malicious server holds only
+        // public keys and cannot forge this signature.
+        let signedMessage = senderAuthSignedMessage(
+            info: aad.info,
+            payloadCiphertextB64: payloadCiphertextB64,
+            wraps: wraps
+        )
+        let signature = senderPrivateKey.generateSignature(message: signedMessage)
+
         return CloudVaultSignalEnvelope(
             ciphertextLayer: CloudVaultSignalCiphertextLayer(
-                payloadCiphertextB64: combinedPayload.base64EncodedString(),
+                payloadCiphertextB64: payloadCiphertextB64,
                 payloadAADLabel: payloadAADLabel(forCanonicalAAD: aad.canonical),
                 schemaVersion: payloadCiphertextSchemaVersion
             ),
             keyDelivery: CloudVaultSignalAtRestKeyDelivery(wraps: wraps),
-            binding: binding
+            binding: binding,
+            senderAuth: CloudVaultSignalSenderAuth(
+                senderIdentityKeyId: senderIdentityKeyId,
+                senderIdentityKeyB64: senderPublicKeyB64,
+                signatureB64: signature.base64EncodedString()
+            )
         )
     }
 
+    /// Opens an at-rest envelope after verifying sender authentication.
+    ///
+    /// `trustedSenderPublicKeys` maps identityKeyId -> the PINNED identity public key
+    /// of each trusted device (resolved from the directory + escrow trust set, NOT
+    /// taken from the envelope). The envelope is rejected unless its `senderAuth`
+    /// names a sender in this set AND the signature verifies under that pinned key —
+    /// so a server (which holds only public keys) cannot forge an accepted envelope.
+    /// Callers MUST treat any throw as "fall back to the legacy sealedPayload".
     public static func openPayload(
         _ envelope: CloudVaultSignalEnvelope,
         recipientIdentityKeyId: String,
         recipientIdentityPrivateKey: Data,
-        expectedBinding: CloudVaultSignalBinding
+        expectedBinding: CloudVaultSignalBinding,
+        trustedSenderPublicKeys: [String: Data]
     ) throws -> Data {
         guard envelope.signalEnvelopeFormatVersion == CloudVaultCrypto.signalEnvelopeFormatVersion,
               envelope.mode == CloudVaultCrypto.signalAtRestMode,
@@ -134,6 +197,28 @@ public enum OpenBurnBarSignalAtRest {
         }
         guard envelope.binding == expectedBinding else {
             throw OpenBurnBarSignalCoreError.bindingMismatch
+        }
+        // Sender authentication (fail-closed): the envelope MUST carry a sender-auth
+        // block whose sender is pinned-trusted and whose signature verifies.
+        guard let senderAuth = envelope.senderAuth else {
+            throw OpenBurnBarSignalCoreError.senderAuthMissing
+        }
+        guard let pinnedSenderKey = trustedSenderPublicKeys[senderAuth.senderIdentityKeyId] else {
+            throw OpenBurnBarSignalCoreError.senderNotTrusted(senderAuth.senderIdentityKeyId)
+        }
+        let aadForVerify = try canonicalAAD(for: expectedBinding.aadBinding)
+        let signedMessage = senderAuthSignedMessage(
+            info: aadForVerify.info,
+            payloadCiphertextB64: envelope.ciphertextLayer.payloadCiphertextB64,
+            wraps: envelope.keyDelivery.wraps
+        )
+        guard let signatureBytes = Data(base64Encoded: senderAuth.signatureB64) else {
+            throw OpenBurnBarSignalCoreError.senderSignatureInvalid
+        }
+        let senderPublicKey = try PublicKey(pinnedSenderKey)
+        let signatureValid = (try? senderPublicKey.verifySignature(message: signedMessage, signature: signatureBytes)) ?? false
+        guard signatureValid else {
+            throw OpenBurnBarSignalCoreError.senderSignatureInvalid
         }
         let wrap = envelope.keyDelivery.wraps.first { $0.recipientIdentityKeyId == recipientIdentityKeyId }
         guard let wrap else {

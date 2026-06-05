@@ -103,6 +103,8 @@ final class SignalAtRestSealerTests: XCTestCase {
             field: "body"
         )
         let plaintext = Data("cloudvault signal payload".utf8)
+        // The writing device ("device-key-1") is the sender and signs the envelope.
+        let trusted = ["device-key-1": device.publicKey.serialize()]
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
             plaintext,
             recipients: [
@@ -117,7 +119,9 @@ final class SignalAtRestSealerTests: XCTestCase {
                     publicKeyData: escrow.publicKey.serialize()
                 ),
             ],
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: "device-key-1",
+            senderIdentityPrivateKey: device.privateKey.serialize()
         )
 
         XCTAssertEqual(envelope.signalEnvelopeFormatVersion, 1)
@@ -125,13 +129,15 @@ final class SignalAtRestSealerTests: XCTestCase {
         XCTAssertEqual(envelope.relayEncryption, CloudVaultCrypto.signalAtRestEncryption)
         XCTAssertEqual(envelope.keyDelivery.wraps.count, 2)
         XCTAssertEqual(envelope.keyDelivery.contentKeyLength, 32)
+        XCTAssertEqual(envelope.senderAuth?.senderIdentityKeyId, "device-key-1")
         XCTAssertTrue(envelope.ciphertextLayer.payloadAADLabel.hasPrefix("bindingToAAD-sha256:"))
         XCTAssertEqual(
             try OpenBurnBarSignalAtRest.openPayload(
                 envelope,
                 recipientIdentityKeyId: "device-key-1",
                 recipientIdentityPrivateKey: device.privateKey.serialize(),
-                expectedBinding: binding
+                expectedBinding: binding,
+                trustedSenderPublicKeys: trusted
             ),
             plaintext
         )
@@ -145,17 +151,20 @@ final class SignalAtRestSealerTests: XCTestCase {
                     collection: "pensieve",
                     docId: "relocated-doc",
                     field: "body"
-                )
+                ),
+                trustedSenderPublicKeys: trusted
             )
         ) { error in
             XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .bindingMismatch)
         }
+        // The escrow recipient can open, but still verifies the SAME sender signature.
         XCTAssertEqual(
             try OpenBurnBarSignalAtRest.openPayload(
                 envelope,
                 recipientIdentityKeyId: "escrow-key-1",
                 recipientIdentityPrivateKey: escrow.privateKey.serialize(),
-                expectedBinding: binding
+                expectedBinding: binding,
+                trustedSenderPublicKeys: trusted
             ),
             plaintext
         )
@@ -164,9 +173,69 @@ final class SignalAtRestSealerTests: XCTestCase {
                 envelope,
                 recipientIdentityKeyId: "device-key-1",
                 recipientIdentityPrivateKey: escrow.privateKey.serialize(),
-                expectedBinding: binding
+                expectedBinding: binding,
+                trustedSenderPublicKeys: trusted
             )
         )
+        // SENDER AUTH: a reader that does not pin the sender as trusted rejects the
+        // envelope (this is what stops a server-forged envelope from being accepted).
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                envelope,
+                recipientIdentityKeyId: "device-key-1",
+                recipientIdentityPrivateKey: device.privateKey.serialize(),
+                expectedBinding: binding,
+                trustedSenderPublicKeys: [:]
+            )
+        ) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .senderNotTrusted("device-key-1"))
+        }
+        // SENDER AUTH: a forged signature (sender id pinned to a DIFFERENT key) fails.
+        let attacker = IdentityKeyPair.generate()
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                envelope,
+                recipientIdentityKeyId: "device-key-1",
+                recipientIdentityPrivateKey: device.privateKey.serialize(),
+                expectedBinding: binding,
+                trustedSenderPublicKeys: ["device-key-1": attacker.publicKey.serialize()]
+            )
+        ) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .senderSignatureInvalid)
+        }
+    }
+
+    func testServerForgedEnvelopeIsRejectedBySenderAuth() throws {
+        // Models the P0-1 attack: a malicious server holds the victim's PUBLIC identity
+        // key (recipient) and forges an envelope sealed to it, signed by the server's OWN
+        // (untrusted) key. The reader pins only the legitimate device key, so the forgery
+        // is rejected and the caller falls back to the non-forgeable legacy payload.
+        let victim = IdentityKeyPair.generate()
+        let server = IdentityKeyPair.generate()
+        let binding = CloudVaultSignalBinding(uid: "uid-1", collection: "conversations", docId: "doc-9", field: "signalEnvelope")
+        let forged = try OpenBurnBarSignalAtRest.sealPayload(
+            Data("forged approval policy".utf8),
+            recipients: [OpenBurnBarSignalAtRestRecipient(
+                recipientKind: "device",
+                recipientIdentityKeyId: "victim-device_1",
+                publicKeyData: victim.publicKey.serialize()
+            )],
+            binding: binding,
+            senderIdentityKeyId: "victim-device_1", // server LIES about who sent it
+            senderIdentityPrivateKey: server.privateKey.serialize() // but can only sign with its own key
+        )
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                forged,
+                recipientIdentityKeyId: "victim-device_1",
+                recipientIdentityPrivateKey: victim.privateKey.serialize(),
+                expectedBinding: binding,
+                // The reader pins the victim device's REAL public key.
+                trustedSenderPublicKeys: ["victim-device_1": victim.publicKey.serialize()]
+            )
+        ) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .senderSignatureInvalid)
+        }
     }
 
     func testCloudVaultSignalEnvelopeRejectsPayloadTamper() throws {
@@ -186,8 +255,12 @@ final class SignalAtRestSealerTests: XCTestCase {
                     publicKeyData: identity.publicKey.serialize()
                 ),
             ],
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: "device-key-1",
+            senderIdentityPrivateKey: identity.privateKey.serialize()
         )
+        // Tamper the ciphertext but keep the (now stale) sender signature: the signature
+        // covers the ciphertext, so verification fails closed BEFORE any AEAD attempt.
         let mutated = CloudVaultSignalEnvelope(
             ciphertextLayer: CloudVaultSignalCiphertextLayer(
                 payloadCiphertextB64: String(envelope.ciphertextLayer.payloadCiphertextB64.dropLast()) + "A",
@@ -195,7 +268,8 @@ final class SignalAtRestSealerTests: XCTestCase {
                 schemaVersion: envelope.ciphertextLayer.schemaVersion
             ),
             keyDelivery: envelope.keyDelivery,
-            binding: envelope.binding
+            binding: envelope.binding,
+            senderAuth: envelope.senderAuth
         )
 
         XCTAssertThrowsError(
@@ -203,9 +277,12 @@ final class SignalAtRestSealerTests: XCTestCase {
                 mutated,
                 recipientIdentityKeyId: "device-key-1",
                 recipientIdentityPrivateKey: identity.privateKey.serialize(),
-                expectedBinding: binding
+                expectedBinding: binding,
+                trustedSenderPublicKeys: ["device-key-1": identity.publicKey.serialize()]
             )
-        )
+        ) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .senderSignatureInvalid)
+        }
     }
 
     func testOpensCommittedNodeSealedKatAndTamperFailsClosed() throws {

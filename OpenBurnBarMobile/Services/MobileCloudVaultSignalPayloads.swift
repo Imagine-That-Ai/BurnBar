@@ -53,14 +53,21 @@ enum MobileCloudVaultSignalPayloads {
             firestore: firestore,
             localIdentity: signalIdentity
         )
+        // Sender authentication: sign with THIS device's identity private key.
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
             plaintext,
             recipients: recipients,
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: signalIdentity.identityKeyId,
+            senderIdentityPrivateKey: signalIdentity.privateKeyData
         )
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
     }
 
+    /// `trustedSenderPublicKeys` are PINNED identity public keys used to verify the
+    /// envelope's sender signature. The local identity is always added, so a self-authored
+    /// doc is fully verified with no extra I/O; an envelope whose sender is not in the set
+    /// throws and the caller falls back to the non-forgeable legacy sealedPayload.
     static func openSignalPayloadIfPresent(
         _ data: [String: Any],
         uid: String,
@@ -68,7 +75,8 @@ enum MobileCloudVaultSignalPayloads {
         docId: String,
         field: String = "signalEnvelope",
         bindingField: String? = nil,
-        signalIdentity: OpenBurnBarSignalIdentityKeypair?
+        signalIdentity: OpenBurnBarSignalIdentityKeypair?,
+        trustedSenderPublicKeys: [String: Data] = [:]
     ) throws -> Data? {
         guard data[field] != nil else { return nil }
         guard let envelope = CloudVaultCrypto.signalEnvelope(from: data[field]) else {
@@ -86,11 +94,14 @@ enum MobileCloudVaultSignalPayloads {
         guard let signalIdentity else {
             throw MobileCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: collection)
         }
+        var trustedSenders = trustedSenderPublicKeys
+        trustedSenders[signalIdentity.identityKeyId] = signalIdentity.atRestRecipient().publicKeyData
         return try OpenBurnBarSignalAtRest.openPayload(
             envelope,
             recipientIdentityKeyId: signalIdentity.identityKeyId,
             recipientIdentityPrivateKey: signalIdentity.privateKeyData,
-            expectedBinding: expectedBinding
+            expectedBinding: expectedBinding,
+            trustedSenderPublicKeys: trustedSenders
         )
     }
 

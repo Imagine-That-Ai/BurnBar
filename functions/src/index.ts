@@ -111,6 +111,7 @@ export {
   recordSignalRotation,
   signalPrekeyWatermark,
 } from "./callables/signalPrekeyDirectory.js";
+export { signalActivationReadiness } from "./callables/signalActivationReadiness.js";
 export { getDataDomainUsage } from "./callables/dataDomainUsage.js";
 export { searchKnowledge } from "./callables/knowledgeSearch.js";
 export { exportUserData } from "./callables/dataExport.js";
