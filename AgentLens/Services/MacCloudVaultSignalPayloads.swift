@@ -1,4 +1,5 @@
 import FirebaseFirestore
+import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
@@ -33,7 +34,15 @@ enum MacCloudVaultSignalPayloadError: LocalizedError {
 /// in `KnowledgeSyncService` (Firestore resolved via `Firestore.firestore()` directly).
 enum MacCloudVaultSignalPayloads {
     static func signalSealingIsEnabled(domainID: String) -> Bool {
-        DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption
+        guard DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption else {
+            return false
+        }
+        // Kill switch: scheme set in the registry is necessary but not sufficient — at-rest
+        // sealing stays OFF until the per-domain Remote Config flag is enabled (staged rollout
+        // + instant server-side revert without an app release). Defaults false.
+        return RemoteConfig.remoteConfig()
+            .configValue(forKey: "signal_at_rest_\(domainID)_enabled")
+            .boolValue
     }
 
     /// Seal `plaintext` to the local identity + every trusted device, returning the Firestore
