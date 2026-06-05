@@ -26,6 +26,17 @@ if [[ ! -f "$gitleaks_config" ]]; then
 fi
 
 cd "$repo_root"
+
+# Confidentiality guard: block internal-only content (pricing/COGS, GTM strategy,
+# open-vuln working notes) before it ships. Complements the secret scans below —
+# this catches content that is sensitive but is not a credential.
+if command -v node >/dev/null 2>&1; then
+  echo "Running confidentiality guard over the tracked tree..."
+  node "$repo_root/scripts/security/scan-internal-content.mjs"
+else
+  echo "node not found — skipping confidentiality guard (install Node to enable)." >&2
+fi
+
 git ls-files -z --cached --others --exclude-standard > "$file_list"
 
 file_count="$(tr -cd '\0' < "$file_list" | wc -c | tr -d ' ')"

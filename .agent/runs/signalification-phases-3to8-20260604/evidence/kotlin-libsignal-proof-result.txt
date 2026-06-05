@@ -1,5 +1,0 @@
-org.signal:libsignal-client:0.94.4 (from build-artifacts.signal.org) — Kotlin/JVM, in-agent (JDK 21):
-ATREST seal/open OK: true
-ATREST wrong-AAD fails closed: true
-LIBSIGNAL_KOTLIN_PROOF_OK
-(Same upstream libsignal the Android app ships; resolves from Signal's maven, not Maven Central which stops at 0.86.5.)
