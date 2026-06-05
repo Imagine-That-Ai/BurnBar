@@ -1,14 +1,36 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
   SIGNAL_AT_REST_ENCRYPTION,
+  SIGNAL_BINDING_AAD_PREFIX,
   SIGNAL_ENVELOPE_FORMAT_VERSION,
   SIGNAL_RELAY_KEY_VERSION,
   SIGNAL_TRANSPORT_ENCRYPTION,
+  bindingToAAD,
   sanitizeSignalEnvelope,
   sanitizeSignalEnvelopeForExport,
+  type SignalBinding,
 } from "./index.js";
+
+interface BindingAADVector {
+  name: string;
+  binding: SignalBinding;
+  expectedAAD: string;
+}
+
+interface BindingAADFixture {
+  prefix: string;
+  vectors: BindingAADVector[];
+}
+
+// The fixture lives at <package>/fixtures/binding-aad-vectors.json. The compiled
+// test runs from lib/, so resolve relative to this module then walk up to the
+// package root. This is the SAME byte-parity fixture the Swift suite consumes.
+const fixtureUrl = new URL("../fixtures/binding-aad-vectors.json", import.meta.url);
+const bindingAADFixture = JSON.parse(readFileSync(fileURLToPath(fixtureUrl), "utf8")) as BindingAADFixture;
 
 function transportEnvelope() {
   return {
@@ -107,4 +129,95 @@ test("rejects downgrade, mode confusion, malformed base64, and plaintext sibling
   const { out, dropped } = sanitizeSignalEnvelopeForExport("signalEnvelope", envelope);
   assert.deepEqual(out, transportEnvelope());
   assert.deepEqual(dropped, ["signalEnvelope.plaintext", "signalEnvelope.keyDelivery.decryptedContentKey"]);
+});
+
+test("bindingToAAD produces the deterministic v1 canonical string for transport and at-rest bindings", () => {
+  const transport = transportEnvelope().binding as SignalBinding;
+  assert.equal(
+    bindingToAAD(transport),
+    `${SIGNAL_BINDING_AAD_PREFIX}transport|gateway|uid-1|client-1||||event-1|1`,
+  );
+
+  const atRest = atRestEnvelope().binding as SignalBinding;
+  assert.equal(
+    bindingToAAD(atRest),
+    `${SIGNAL_BINDING_AAD_PREFIX}at-rest|cloudvault|uid-1||session_logs|doc-1|body||1`,
+  );
+
+  // Deterministic: the same binding serializes to the same string every call.
+  assert.equal(bindingToAAD(transport), bindingToAAD(transport));
+});
+
+test("bindingToAAD keeps absent-optional positions stable as empty segments", () => {
+  // Gateway binding with NO optionals beyond the required gateway ones, versus a
+  // fully populated binding: the segment COUNT and pipe positions are identical;
+  // only the absent optionals differ (empty vs filled), so a transport binding
+  // can never be confused with an at-rest one under a shared AAD.
+  const minimal: SignalBinding = {
+    uid: "u",
+    scope: "gateway",
+    mode: "transport",
+    formatVersion: SIGNAL_ENVELOPE_FORMAT_VERSION,
+  };
+  assert.equal(bindingToAAD(minimal), `${SIGNAL_BINDING_AAD_PREFIX}transport|gateway|u||||||1`);
+
+  const full: SignalBinding = {
+    uid: "u",
+    scope: "cloudvault",
+    clientId: "c",
+    collection: "col",
+    docId: "d",
+    field: "f",
+    slotId: "s",
+    mode: "at-rest",
+    formatVersion: SIGNAL_ENVELOPE_FORMAT_VERSION,
+  };
+  assert.equal(bindingToAAD(full), `${SIGNAL_BINDING_AAD_PREFIX}at-rest|cloudvault|u|c|col|d|f|s|1`);
+
+  // Same number of '|' separators regardless of which optionals are present:
+  // prefix contributes one trailing '|', then 8 join separators between 9 fields.
+  const pipeCount = (s: string) => s.split("|").length - 1;
+  assert.equal(pipeCount(bindingToAAD(minimal)), pipeCount(bindingToAAD(full)));
+});
+
+test("bindingToAAD throws fail-closed on a pipe- or CRLF-injected segment", () => {
+  for (const injected of ["a|b", "line\r", "line\n", "x|\n"]) {
+    assert.throws(
+      () =>
+        bindingToAAD({
+          uid: injected,
+          scope: "gateway",
+          mode: "transport",
+          formatVersion: SIGNAL_ENVELOPE_FORMAT_VERSION,
+        }),
+      /reserved '\|' or CR\/LF/,
+      `injection of ${JSON.stringify(injected)} must throw`,
+    );
+  }
+  // Injection in an OPTIONAL segment is rejected too (not silently dropped).
+  assert.throws(
+    () =>
+      bindingToAAD({
+        uid: "u",
+        scope: "cloudvault",
+        collection: "col|evil",
+        docId: "d",
+        field: "f",
+        mode: "at-rest",
+        formatVersion: SIGNAL_ENVELOPE_FORMAT_VERSION,
+      }),
+    /reserved '\|' or CR\/LF/,
+  );
+});
+
+test("bindingToAAD matches the shared cross-language fixture byte-for-byte", () => {
+  assert.equal(bindingAADFixture.prefix, SIGNAL_BINDING_AAD_PREFIX);
+  assert.ok(bindingAADFixture.vectors.length >= 4, "fixture must cover the documented vectors");
+  for (const vector of bindingAADFixture.vectors) {
+    assert.equal(
+      bindingToAAD(vector.binding),
+      vector.expectedAAD,
+      `${vector.name}: TS output must equal the vendored expectedAAD`,
+    );
+  }
 });

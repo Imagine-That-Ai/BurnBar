@@ -58,6 +58,7 @@ import {
   // Safety number
   Fingerprint,
 } from '@signalapp/libsignal-client';
+import { bindingToAAD, type SignalBinding } from '@openburnbar/signal-envelope-contracts';
 import { randomInt } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
@@ -76,8 +77,10 @@ export const FINGERPRINT_VERSION = 2;
 
 /**
  * Domain-separation prefix for the HPKE at-rest primitive. The full `info` value
- * passed to seal/open is `AT_REST_INFO_PREFIX + binding`. Bumping the `v1`
- * suffix is a hard fork of all sealed-at-rest material.
+ * passed to seal/open is `AT_REST_INFO_PREFIX + bindingToAAD(binding)`, where the
+ * binding canonicalization is the shared, cross-language v4 grammar defined in
+ * `@openburnbar/signal-envelope-contracts`. Bumping the `v1` suffix is a hard
+ * fork of all sealed-at-rest material.
  */
 export const AT_REST_INFO_PREFIX = 'OpenBurnBar-Signal-AtRest-v1|';
 
@@ -528,17 +531,22 @@ export function safetyNumber(
  * Seal `plaintext` so only the holder of the private half of `recipientIdentity`
  * can open it. Single-shot HPKE (RFC 9180) via PublicKey#seal.
  *
- * `binding` is a caller-chosen context string (e.g. a record id / purpose). It
- * is woven into BOTH the HPKE `info` (as AT_REST_INFO_PREFIX + binding) AND the
- * `associatedData`. Opening with a different binding fails closed (see test 6).
+ * `binding` is the structured v4 {@link SignalBinding} (uid/scope/collection/…).
+ * It is canonicalized via {@link bindingToAAD} — the shared cross-language
+ * serializer — and the resulting string is woven into BOTH the HPKE `info`
+ * (`AT_REST_INFO_PREFIX + bindingToAAD(binding)`) AND the AEAD `associatedData`
+ * (`utf8(bindingToAAD(binding))`). Opening with a different binding fails closed
+ * (see the at-rest tamper test). `bindingToAAD` is itself fail-closed: it THROWS
+ * before any seal happens if a segment carries a reserved `|`/CR/LF.
  */
 export function atRestSeal(
   plaintext: Uint8Array,
   recipientIdentity: PublicKey,
-  binding: string,
+  binding: SignalBinding,
 ): Uint8Array {
-  const info = AT_REST_INFO_PREFIX + binding;
-  const aad = utf8.encode(binding);
+  const canonical = bindingToAAD(binding);
+  const info = AT_REST_INFO_PREFIX + canonical;
+  const aad = utf8.encode(canonical);
   return recipientIdentity.seal(
     asArrayBufferBacked(plaintext),
     info,
@@ -547,17 +555,19 @@ export function atRestSeal(
 }
 
 /**
- * Open a ciphertext produced by atRestSeal. The `binding` MUST match exactly the
- * one used at seal time; any mismatch in `info` or `associatedData` causes the
- * underlying AEAD to fail and this throws (fail-closed).
+ * Open a ciphertext produced by atRestSeal. The structured `binding` MUST
+ * canonicalize (via {@link bindingToAAD}) to exactly the one used at seal time;
+ * any mismatch in `info` or `associatedData` causes the underlying AEAD to fail
+ * and this throws (fail-closed).
  */
 export function atRestOpen(
   ciphertext: Uint8Array,
   recipientPrivate: PrivateKey,
-  binding: string,
+  binding: SignalBinding,
 ): Uint8Array {
-  const info = AT_REST_INFO_PREFIX + binding;
-  const aad = utf8.encode(binding);
+  const canonical = bindingToAAD(binding);
+  const info = AT_REST_INFO_PREFIX + canonical;
+  const aad = utf8.encode(canonical);
   return recipientPrivate.open(
     asArrayBufferBacked(ciphertext),
     info,
@@ -614,3 +624,7 @@ export {
   SessionRecord,
   CiphertextMessageType,
 };
+
+// Re-export the structured binding type so consumers of the at-rest seal/open
+// API can construct bindings without importing the contracts package directly.
+export type { SignalBinding } from '@openburnbar/signal-envelope-contracts';
