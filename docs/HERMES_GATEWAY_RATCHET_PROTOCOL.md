@@ -150,21 +150,59 @@ The v1 primitive is a 1:1 DH ratchet:
 6. Replay after a successful open fails because the relevant message key has
    advanced or been consumed.
 
+## Sealed Payload Schema and Control Dispatch
+
+Every gateway event sealed via `relayEnvelope` v2/v3 or `ratchetEnvelope` carries
+the following fields inside the authenticated ciphertext:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `text` | String | Chat events | Empty string for control events |
+| `destinationId` | String | Yes | Authenticated binding — relay cannot override |
+| `replayCounter` | Int | Yes | Monotonic per-link counter |
+| `senderDisplayName` | String | Yes | Must come from sealed payload, not wire metadata |
+| `threadId` | String | Yes | Thread routing |
+| `modelId` | String | No | Present only for model_switch events |
+| `kind` | String | Control only | **Must be at root** for dispatch to sealed control handlers |
+
+**Control event dispatch rule (critical):** For the agent to dispatch a sealed
+event to a special control handler (`_handle_sealed_approval_decision`,
+`_handle_sealed_oversight_mode`) instead of chat-text processing, the `kind`
+field **must appear at the root of the authenticated sealed payload JSON** — not
+embedded inside `text`. The receiver reads `authed.get("kind")` after open; if
+absent or not a recognized control kind, the event falls through to chat-text
+handling. An event whose `text` value contains embedded JSON with `kind` inside
+is treated as opaque chat text only.
+
+Control kind values:
+- `approval_decision` — must carry `actionId`, `choice` at root
+- `oversight_mode` — must carry `mode` at root  
+- `model_switch` — must carry `modelId` at root (preferred over `text` command synthesis)
+
+iOS emits control events as follows (all E2E paths, v2 relay or ratchet):
+- `model_switch`: `kind: "model_switch"` via `applyGatewayEventSeal(kind:)`
+- `approval_decision`: `kind: "approval_decision"` + `actionId` + `choice` via `extraSealedFields`
+- `oversight_mode`: `kind: "oversight_mode"` + `mode` via `extraSealedFields`
+
+Chat text events never pass `kind` or `extraSealedFields`, preserving the
+invariant that only explicitly-constructed control paths can produce control-kind
+sealed events.
+
 ## Shipped Boundary
 
 Implemented:
 
 - Swift/Kotlin/Python ratchet primitive and tests.
-- Python -> Swift/Kotlin deterministic ciphertext vector.
+- Python → Swift/Kotlin deterministic ciphertext vector.
 - Functions `ratchetEnvelope` validation and plaintext sibling stripping.
 - Data export opaque handling for `ratchetEnvelope`.
 - iOS and Python public ratchet prekey publication.
 - Safety-code binding for ratchet identities.
 - X3DH-style P-256 signed-prekey setup for the live chat lane.
 - Persistent per-client chat ratchet session state on phone and agent.
-- Live phone -> agent gateway events and model switches prefer
+- Live phone → agent gateway events and model switches prefer
   `ratchetEnvelope` when both peers are ratchet-capable.
-- Live agent -> phone gateway messages prefer `ratchetEnvelope` when both peers
+- Live agent → phone gateway messages prefer `ratchetEnvelope` when both peers
   are ratchet-capable.
 - Mobile read-model opening for ratchet-sealed replies, with fail-closed handling
   when the target client or local ratchet key material is unavailable.
@@ -172,6 +210,13 @@ Implemented:
 - Attachments remain on authenticated `relayEnvelope` E2EE because their
   manifests and bodies are random-access blobs that do not share the chat
   message ordering guarantees.
+- **Control event dispatch correctness (principal review fix):** iOS E2E sends
+  for `model_switch`, `approval_decision`, and `oversight_mode` now emit `kind`
+  (and control-specific fields) at the root of the sealed payload so the agent's
+  authenticated open path dispatches to the correct sealed control handler.
+  Prior to this fix, control events were silently dropped (model_switch) or
+  surfaced as JSON chat text (approval_decision). All three control kinds are
+  covered by unit tests verifying root-level `kind` invariant.
 
 Remaining non-goals and gates:
 

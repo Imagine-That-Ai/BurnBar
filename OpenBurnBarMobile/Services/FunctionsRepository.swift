@@ -1541,7 +1541,7 @@ protocol HermesGatewayRepository: AnyObject {
         senderDisplayName: String
     ) async throws -> HermesGatewayQueuedEvent
 
-    func setHermesGatewayOversightMode(clientId: String, mode: String) async throws
+    func setHermesGatewayOversightMode(clientId: String, mode: String, targetClient: HermesGatewayClientRecord?) async throws
 
     func respondHermesGatewayApproval(approvalId: String, approve: Bool, deviceId: String) async throws
 
@@ -2207,13 +2207,17 @@ final class FunctionsRepository: HermesGatewayRepository {
             // (alongside text/senderDisplayName/threadId) like every other event,
             // so the model command never leaves the device in cleartext. The
             // agent opens `modelId` from inside the sealed payload after polling.
+            // We now also stamp top-level `kind` inside the sealed payload so the
+            // receiving agent dispatches it as a control (not chat text) per the
+            // E2EE remediation requirement.
             try Self.applyGatewayEventSeal(
                 into: &payload,
                 text: "",
                 senderDisplayName: senderDisplayName,
                 threadId: threadId,
                 modelId: modelId,
-                targetClient: targetClient
+                targetClient: targetClient,
+                kind: "model_switch"
             )
         } else {
             // Legacy (non-canSealToAgent) link during the grace window: the agent
@@ -2246,6 +2250,16 @@ final class FunctionsRepository: HermesGatewayRepository {
 
     private nonisolated static let gatewayEventCounterLock = NSLock()
     private nonisolated static let gatewayEventCounterKeyPrefix = "openburnbar.hermesGateway.eventReplayCounter.v1"
+    private nonisolated static let gatewaySealedPayloadReservedKeys: Set<String> = [
+        "text",
+        "destinationId",
+        "replayCounter",
+        "eventCounter",
+        "senderDisplayName",
+        "threadId",
+        "modelId",
+        "kind"
+    ]
 
     private nonisolated static func gatewayEventCounterStorageKey(
         uid: String,
@@ -2290,6 +2304,26 @@ final class FunctionsRepository: HermesGatewayRepository {
         return next
     }
 
+    private nonisolated static func applyExtraSealedFields(
+        _ fields: [String: Any],
+        to sealedPayload: inout [String: Any]
+    ) throws {
+        try validateExtraSealedFields(fields)
+        for (rawKey, value) in fields {
+            let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            sealedPayload[key] = value
+        }
+    }
+
+    private nonisolated static func validateExtraSealedFields(_ fields: [String: Any]) throws {
+        for rawKey in fields.keys {
+            let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, !gatewaySealedPayloadReservedKeys.contains(key) else {
+                throw FunctionsError.gatewayInvalidSealedControlPayload
+            }
+        }
+    }
+
     /// Seal the phone→agent event payload into `payload`, reusing the existing
     /// `HermesRelayCrypto` envelope. When the target agent has published a usable
     /// relay pubkey (`canSealToAgent`), the cleartext body never leaves the
@@ -2305,7 +2339,9 @@ final class FunctionsRepository: HermesGatewayRepository {
         threadId: String,
         modelId: String?,
         targetClient: HermesGatewayClientRecord?,
-        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
+        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore(),
+        kind: String? = nil,
+        extraSealedFields: [String: Any] = [:]
     ) throws {
         guard let uid = Auth.auth().currentUser?.uid, !uid.isEmpty else {
             throw FunctionsError.gatewayTargetMissingRelayKey
@@ -2318,7 +2354,9 @@ final class FunctionsRepository: HermesGatewayRepository {
             modelId: modelId,
             targetClient: targetClient,
             uid: uid,
-            pinStore: pinStore
+            pinStore: pinStore,
+            kind: kind,
+            extraSealedFields: extraSealedFields
         )
     }
 
@@ -2333,11 +2371,14 @@ final class FunctionsRepository: HermesGatewayRepository {
         modelId: String?,
         targetClient: HermesGatewayClientRecord?,
         uid: String,
-        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore()
+        pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore(),
+        kind: String? = nil,
+        extraSealedFields: [String: Any] = [:]
     ) throws {
         guard let targetClient, !uid.isEmpty else {
             throw FunctionsError.gatewayTargetMissingRelayKey
         }
+        try validateExtraSealedFields(extraSealedFields)
 
         if targetClient.canRatchetToAgent {
             try sealGatewayEventRatchetPayload(
@@ -2348,7 +2389,9 @@ final class FunctionsRepository: HermesGatewayRepository {
                 modelId: modelId,
                 targetClient: targetClient,
                 uid: uid,
-                pinStore: pinStore
+                pinStore: pinStore,
+                kind: kind,
+                extraSealedFields: extraSealedFields
             )
             return
         }
@@ -2397,6 +2440,10 @@ final class FunctionsRepository: HermesGatewayRepository {
         if let modelId, !modelId.isEmpty {
             sealedPayload["modelId"] = modelId
         }
+        if let k = kind, !k.isEmpty {
+            sealedPayload["kind"] = k
+        }
+        try applyExtraSealedFields(extraSealedFields, to: &sealedPayload)
         let plaintext = try JSONSerialization.data(withJSONObject: sealedPayload)
         let key = try HermesRelayCrypto.generateSymmetricKeyData()
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
@@ -2448,7 +2495,9 @@ final class FunctionsRepository: HermesGatewayRepository {
         modelId: String?,
         targetClient: HermesGatewayClientRecord,
         uid: String,
-        pinStore: HermesGatewayAgentKeyPinStore
+        pinStore: HermesGatewayAgentKeyPinStore,
+        kind: String? = nil,
+        extraSealedFields: [String: Any] = [:]
     ) throws {
         let localRelayKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
         guard targetClient.isPairedWithThisDevice(relayPublicKeyBase64: localRelayKeypair.relayPublicKeyBase64) else {
@@ -2497,6 +2546,10 @@ final class FunctionsRepository: HermesGatewayRepository {
         if let modelId, !modelId.isEmpty {
             sealedPayload["modelId"] = modelId
         }
+        if let k = kind, !k.isEmpty {
+            sealedPayload["kind"] = k
+        }
+        try applyExtraSealedFields(extraSealedFields, to: &sealedPayload)
         let plaintext = try JSONSerialization.data(withJSONObject: sealedPayload)
         let phoneDeviceID = try HermesGatewayRatchetChatLane.deviceID(prefix: "phone", identityPublicKeyBase64: local.identityPublicKeyBase64)
         let agentDeviceID = try HermesGatewayRatchetChatLane.deviceID(prefix: "agent", identityPublicKeyBase64: agentIdentity)
@@ -2550,12 +2603,49 @@ final class FunctionsRepository: HermesGatewayRepository {
         payload["ratchetEnvelope"] = envelopeJSON
     }
 
-    func setHermesGatewayOversightMode(clientId: String, mode: String) async throws {
+    func setHermesGatewayOversightMode(clientId: String, mode: String, targetClient: HermesGatewayClientRecord?) async throws {
+        // On E2E-paired links, also emit a sealed oversight_mode control event.
+        // The agent on E2E links ignores the relay-visible client doc state for
+        // oversight (to avoid relay-controlled flips) and only applies changes
+        // delivered via pinned-sender sealed events. Build the envelope before
+        // mutating the relay-visible doc so local key/pin failures fail cleanly.
+        var sealedOversightPayload: [String: Any]?
+        if let tc = targetClient, tc.canSealToAgent {
+            var payload: [String: Any] = [
+                "destinationId": "burnbar:home",
+                "senderId": "burnbar-ios",
+                "threadId": "burnbar-ios-oversight"
+            ]
+            if let rid = Self.trimmedClientID(tc.id) {
+                payload["targetClientId"] = rid
+            }
+            let extra: [String: Any] = [
+                "mode": mode,
+                "senderId": "burnbar-ios"
+            ]
+            try Self.applyGatewayEventSeal(
+                into: &payload,
+                text: "",
+                senderDisplayName: "OpenBurnBar iPhone",
+                threadId: "burnbar-ios-oversight",
+                modelId: nil,
+                targetClient: tc,
+                kind: "oversight_mode",
+                extraSealedFields: extra
+            )
+            sealedOversightPayload = payload
+        }
+
         let callable = functions.httpsCallable("setHermesGatewayOversightMode")
         _ = try await callable.call([
             "clientId": clientId,
             "mode": mode
         ])
+
+        if let sealedOversightPayload {
+            let ev = functions.httpsCallable("enqueueHermesGatewayEvent")
+            _ = try await FirebaseCallableExecutor(ev).call(FirebaseCallablePayload(sealedOversightPayload))
+        }
     }
 
     /// Bind a gateway oversight approve/reject decision to this trusted native
@@ -2576,21 +2666,35 @@ final class FunctionsRepository: HermesGatewayRepository {
         targetClientId: String? = nil
     ) async throws {
         let choice = approve ? "approve" : "reject"
-        let sealedText = try JSONSerialization.data(withJSONObject: [
-            "kind": "approval_decision",
+        // For E2E links we must emit the control fields (including "kind") at the
+        // root of the sealed payload so the agent can dispatch to the special
+        // _handle_sealed_approval_decision path (rather than treating it as chat
+        // text). The legacy json-in-text path is retired for correctness.
+        var payload: [String: Any] = [
+            "destinationId": "burnbar:home",
+            "senderId": "burnbar-ios",
+            "threadId": "burnbar-ios-approval"
+        ]
+        if let resolvedTargetClientId = Self.trimmedClientID(targetClientId) ?? Self.trimmedClientID(targetClient?.id) {
+            payload["targetClientId"] = resolvedTargetClientId
+        }
+        let extra: [String: Any] = [
             "actionId": approvalId,
             "choice": choice,
-            "senderId": "burnbar-ios",
-        ])
-        let text = String(data: sealedText, encoding: .utf8) ?? ""
-        _ = try await enqueueHermesGatewayEvent(
-            text: text,
-            destinationId: "burnbar:home",
+            "senderId": "burnbar-ios"
+        ]
+        try Self.applyGatewayEventSeal(
+            into: &payload,
+            text: "",
+            senderDisplayName: "OpenBurnBar iPhone",
             threadId: "burnbar-ios-approval",
+            modelId: nil,
             targetClient: targetClient,
-            targetClientId: targetClientId,
-            senderDisplayName: "OpenBurnBar iPhone"
+            kind: "approval_decision",
+            extraSealedFields: extra
         )
+        let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
+        _ = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
     }
 
     // MARK: Pi Agent host pairing
@@ -2942,6 +3046,7 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     case gatewayApprovalNotAuthenticated
     case gatewayApprovalAppCheckBlocked
     case gatewayReplayCounterExhausted
+    case gatewayInvalidSealedControlPayload
 
     var errorDescription: String? {
         switch self {
@@ -2962,6 +3067,8 @@ enum FunctionsError: Error, LocalizedError, Equatable {
             return "App Check rejected this build. Reinstall from the official channel, or register and stamp the local debug token before trying Connect Hermes."
         case .gatewayReplayCounterExhausted:
             return "Reconnect Hermes on your Mac before sending more private gateway messages."
+        case .gatewayInvalidSealedControlPayload:
+            return "Could not prepare this private Hermes control message. Reconnect Hermes on your Mac, then try again."
         }
     }
 }
