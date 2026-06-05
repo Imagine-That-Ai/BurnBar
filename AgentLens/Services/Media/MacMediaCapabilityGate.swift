@@ -393,7 +393,9 @@ final class MacRemoteUnlockReadinessService {
     func revokeAllRemoteUnlockSessions(revokePublishedTrust: Bool = true) {
         activeRemoteUnlockSessions.removeAll()
         if revokePublishedTrust && revokesPublishedTrustOnClearAll {
+            #if canImport(AppKit) && !DISTRIBUTION_MAS
             try? RemoteUnlockCapabilitySigningKeyStore.shared.revokePublishedTrust()
+            #endif
         }
     }
 
@@ -416,7 +418,9 @@ final class MacRemoteUnlockReadinessService {
         )
         let report = try? certificationStore.load()
         if report != nil {
+            #if canImport(AppKit) && !DISTRIBUTION_MAS
             try? RemoteUnlockCapabilitySigningKeyStore.shared.publishIssuerTrust()
+            #endif
         }
         let observedLockedScreenCapture =
             defaults.bool(forKey: Keys.lastLockScreenProbeSucceeded) ||
@@ -499,7 +503,9 @@ final class MacRemoteUnlockReadinessService {
         defaults.set(fileVaultSSHSupported, forKey: Keys.fileVaultSSHSupported)
         defaults.set(credentialRecipientKeyId, forKey: Keys.credentialRecipientKeyId)
         defaults.set(credentialRecipientPublicKeyBase64, forKey: Keys.credentialRecipientPublicKeyBase64)
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
         try? RemoteUnlockCapabilitySigningKeyStore.shared.publishIssuerTrust()
+        #endif
     }
 
     private var isDirectDownloadBuild: Bool {

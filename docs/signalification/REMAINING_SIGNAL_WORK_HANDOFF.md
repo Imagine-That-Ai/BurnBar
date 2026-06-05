@@ -23,7 +23,7 @@ Implemented and green in the current dirty tree:
 - Data export Signal sanitizer fails closed on malformed signal-shaped values.
 - User-facing "server searches without reading it" style over-claims were rewritten to caveated copy across website, macOS, iOS, Android, and generated trust/domain outputs.
 - Phase-F scripts exist: crypto proof harness, activation parity, Rule-0 guard, honesty gate, rollback drill.
-- Apple Signal FFI packaging was rebuilt from script, Swift Signal at-rest tests pass against it, the full mobile unit suite passed on a connected physical iPhone, focused mobile assistant chat + CLI mission Signal path-binding tests passed on that physical iPhone, and the Android physical Signal instrumented suite passed on a connected Galaxy S24. Evidence: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/physical-device-packaging-status.md`.
+- Apple Signal FFI packaging was rebuilt from script, Swift Signal at-rest tests pass against it, the full mobile unit suite passed on a connected physical iPhone, focused mobile assistant chat + CLI mission Signal path-binding tests passed on that physical iPhone, final focused iPad Pensieve/chat Signal tests passed on the wired iPad, and the Android physical Signal instrumented suite passed on a connected Galaxy S24. Evidence: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/physical-device-packaging-status.md` and `.agent/runs/sotasignal-full-ship-20260605/evidence/physical-device-final-20260605.md`.
 
 Latest claimed green proof matrix:
 
@@ -86,6 +86,8 @@ Who can do it:
 
 The same implementation agent cannot honestly sign this gate. It can prepare the package and fix findings, but independence requires a separate reviewer.
 
+Concrete options to contact: Trail of Bits, NCC Group, Cure53, Least Authority, Latacora, or an independent applied cryptographer/security engineer with E2EE review experience. The deliverable is not a chat opinion; it is a named report with signer/reviewer identity, scope, findings, and disposition.
+
 Inputs:
 
 - `docs/signalification/EXTERNAL_CRYPTO_REVIEW_PACKAGE.md`
@@ -126,6 +128,8 @@ Who can do it:
 - If Alberto self-approves: record it as **owner risk acceptance**, not "legal sign-off". That can unblock an internal/private build, but it is weaker than legal review for public release.
 
 An implementation agent cannot provide legal advice or create a true legal sign-off. It can only prepare the artifact list, source-offer language, manifests, and risk memo for the approver.
+
+Concrete options: company counsel, an OSS licensing attorney, an OSS compliance consultant, or the Apple/store release owner with written authority. The required artifact is a dated approval/risk-acceptance note that names the exact distribution target: direct-download macOS, MAS, iOS App Store, Android/Play, or internal-only.
 
 Must review:
 
@@ -200,7 +204,7 @@ Acceptance:
 
 ### 4. Physical-Device E2E Matrix
 
-**Status:** local physical Signal device proof is now green for the implemented flag-OFF code on the reachable iPhone and Android devices; live production-domain E2E is still pending because producers remain flag-OFF, and the paired iPad is still unavailable to CoreDevice.
+**Status:** local physical Signal device proof is now green for the implemented flag-OFF code on reachable iPhone/iPad/Android surfaces; live production-domain E2E is still pending because producers remain flag-OFF.
 **Owner:** device operator with attached iPhone/iPad/Android/Mac.
 **Why it blocks activation:** simulator/unit proof is not enough for keychain, libsignal native bindings, app lifecycle, trust UI, and cross-device ciphertext interoperability.
 
@@ -210,7 +214,7 @@ Proof now collected:
 - Physical iPhone focused mobile assistant chat Signal path-binding: `MobileChatHistoryStoreTests/testDecodeThreadOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed on `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
 - Physical iPhone focused CLI mission Signal path-binding: `CLIAgentMissionDispatcherSealTests/test_missionSnapshotOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed on `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
 - Physical Android: `CloudVaultCryptoSignalInstrumentedTest` against `R3CXB0CNS0J` / `SM-S921U` passed.
-- iPad: `407C0B12-010B-5970-8E85-D0E43DA8F457` remains `unavailable` in `xcrun devicectl list devices`; app deletion/reinstall cannot run until the device is reachable/unlocked/trusted.
+- Physical iPad final rerun: `PensieveMemorySearchSignalTests` passed **3/3** on `00008132-001158191E9A401C`, and `MobileChatHistoryStoreTests/testDecodeThreadOpensPathBoundSignalEnvelopeAndRejectsRelocation` passed **1/1** on the same wired iPad. Logs: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-physical-final/`.
 
 Remaining live matrix after producer wiring:
 
