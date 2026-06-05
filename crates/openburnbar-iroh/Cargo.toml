@@ -31,7 +31,7 @@ iroh-services = "=1.0.0-rc.0"
 # Async runtime + utilities used by iroh.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
 tokio-stream = "0.1"
-thiserror = "1"
+thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 jni = "0.22"
 
