@@ -14,6 +14,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { logInfo, logError } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
+import { sourceMetadata } from "./sourceMetadata.js";
 
 const FUNCTION_VERSION = process.env.FUNCTION_VERSION ?? "unknown";
 
@@ -41,7 +42,7 @@ async function probeFirestore(timeoutMs = 3000): Promise<number> {
 
 /** Liveness probe — returns 200 if the function process is alive. */
 export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, (_req, res) => {
-  res.status(200).json({ status: "alive", timestamp: new Date().toISOString() });
+  res.status(200).json({ status: "alive", timestamp: new Date().toISOString(), ...sourceMetadata() });
 });
 
 /**
@@ -60,6 +61,7 @@ export const healthReady = onRequest(
         version: FUNCTION_VERSION,
         latency_ms: latencyMs,
         checks: { firestore: "ok" },
+        ...sourceMetadata(),
       });
     } catch (error) {
       logError({ event: "health_ready_failed", error: String(error) });
@@ -69,6 +71,7 @@ export const healthReady = onRequest(
         version: FUNCTION_VERSION,
         checks: { firestore: "error" },
         error: "Firestore connectivity check failed",
+        ...sourceMetadata(),
       });
     }
   },
@@ -106,6 +109,7 @@ export const healthCheck = onRequest(
       uptime_ms: Math.round(process.uptime() * 1000),
       checks: { firestore: firestoreStatus },
       ...(latencyMs > 0 && { latency_ms: latencyMs }),
+      ...sourceMetadata(),
     });
   },
 );

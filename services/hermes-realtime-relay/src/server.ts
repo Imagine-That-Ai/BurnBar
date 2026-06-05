@@ -11,6 +11,7 @@ import { RedisRelayQuotaStore } from "./quota.js";
 import { createRedisClient } from "./redisClient.js";
 import { RedisRelayHub } from "./redisHub.js";
 import { HermesRealtimeRelaySession } from "./relay.js";
+import { sourceMetadata } from "./sourceMetadata.js";
 
 initializeApp();
 
@@ -30,11 +31,11 @@ const server = createServer(async (req, res) => {
     try {
       await relayHub.ping();
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, redis: true, maxFrameBytes: config.limits.maxFrameBytes }));
+      res.end(JSON.stringify({ ok: true, redis: true, maxFrameBytes: config.limits.maxFrameBytes, ...sourceMetadata() }));
     } catch (error) {
       logError("readyz_failed", error);
       res.writeHead(503, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, redis: false }));
+      res.end(JSON.stringify({ ok: false, redis: false, ...sourceMetadata() }));
     }
     return;
   }

@@ -3,7 +3,7 @@ name: burnbar-operator
 description: Use when asked about AI-agent spend, token usage, session history, workflow patterns, or cost investigations. Grounds all answers in OpenBurnBar/BurnBar local data via prompt context and MCP tools.
 version: 1.0.0
 author: OpenBurnBar
-license: MIT
+license: AGPL-3.0-only
 metadata:
   hermes:
     tags: [burnbar, openburnbar, ai-agents, token-usage, spend-analysis, session-recall, workflow, debugging, observability, cost]

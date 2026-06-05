@@ -9,6 +9,9 @@ bash scripts/ci/verify-callable-logging.sh
 echo "==> verify-resilience-wiring"
 bash scripts/ci/verify-resilience-wiring.sh
 
+echo "==> verify-agpl-compliance"
+bash scripts/ci/verify-agpl-compliance.sh
+
 echo "==> ops alert policy manifest"
 node --check functions/scripts/ops-alert-policy-definitions.mjs
 node --check functions/scripts/apply-ops-alert-policies.mjs

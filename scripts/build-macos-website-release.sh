@@ -43,6 +43,8 @@ zip_path="$release_dir/$zip_name"
 checksums_path="$release_dir/checksums-v${version}.txt"
 metadata_path="$release_dir/release-metadata.json"
 sbom_path="$release_dir/sbom-v${version}.spdx.json"
+source_archive_name="OpenBurnBar-${version}-corresponding-source.tar.gz"
+source_archive_path="$release_dir/$source_archive_name"
 
 if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing release entitlements at $entitlements" >&2
@@ -245,6 +247,8 @@ cd "$(dirname "$app_path")"
 ditto -c -k --keepParent "$(basename "$app_path")" "$repo_root/$zip_path"
 cd "$repo_root"
 
+bash scripts/create-corresponding-source.sh --version "$version" --output "$source_archive_path"
+
 {
   echo "# OpenBurnBar v${version} macOS release checksums"
   echo "# Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -254,6 +258,8 @@ cd "$repo_root"
   shasum -a 512 "$dmg_path"
   shasum -a 256 "$zip_path"
   shasum -a 512 "$zip_path"
+  shasum -a 256 "$source_archive_path"
+  shasum -a 512 "$source_archive_path"
 } > "$checksums_path"
 
 python3 scripts/generate-sbom.py --version "$version" --repo-root "$repo_root" --output "$sbom_path" || true
@@ -270,6 +276,7 @@ metadata = {
     "channel": "direct-download",
     "dmg": "$dmg_name",
     "zip": "$zip_name",
+    "correspondingSource": "$source_archive_name",
     "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
     "createdAt": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
 }
@@ -288,3 +295,4 @@ echo "  DMG: $dmg_path"
 echo "  ZIP: $zip_path"
 echo "  Checksums: $checksums_path"
 echo "  SBOM: $sbom_path"
+echo "  Corresponding source: $source_archive_path"

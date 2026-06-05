@@ -8,6 +8,7 @@ import { handleMcpRequest } from "./mcp.js";
 import { authorizationServerMetadata, protectedResourceMetadata } from "./oauthMetadata.js";
 import { logError, logInfo, logWarn } from "./logging.js";
 import { writeAuditEvent } from "./audit.js";
+import { sourceMetadata } from "./sourceMetadata.js";
 
 function sendJson(res: ServerResponse, status: number, value: unknown, headers: Record<string, string> = {}): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", ...headers });
@@ -42,11 +43,11 @@ function validateProtocol(req: IncomingMessage): void {
 async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname === "/healthz") {
-    sendJson(res, 200, { ok: true });
+    sendJson(res, 200, { ok: true, service: "openburnbar-hosted-mcp", ...sourceMetadata() });
     return;
   }
   if (url.pathname === "/readyz") {
-    sendJson(res, 200, { ok: true, service: "openburnbar-hosted-mcp" });
+    sendJson(res, 200, { ok: true, service: "openburnbar-hosted-mcp", ...sourceMetadata() });
     return;
   }
   if (url.pathname === "/.well-known/oauth-protected-resource") {

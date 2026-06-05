@@ -1060,6 +1060,7 @@ async function submitReview() {
         `Set OPENBURNBAR_SUBMIT_APP_REVIEW=\"ios:${APP.buildVersion}\" when you are ready to submit this build.`
     );
   }
+  requireAgplStoreLegalReview();
 
   await setContentRightsDeclaration();
   await prepareReviewMetadata();
@@ -1067,6 +1068,15 @@ async function submitReview() {
   await submitSubscriptionReview();
   await submitIosAppReview();
   await printStatus();
+}
+
+function requireAgplStoreLegalReview() {
+  if (process.env.OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW !== "approved") {
+    throw new Error(
+      "Refusing App Review submission without AGPL/App Store legal review approval. " +
+        "Set OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved only after counsel approves this store-bound AGPL/libsignal release."
+    );
+  }
 }
 
 async function getVersionLocalization(versionId) {

@@ -13,6 +13,10 @@ upload="${OPENBURNBAR_UPLOAD_MAC_APP_STORE:-0}"
 auth_key_file=""
 auth_args=()
 
+if [[ "$upload" == "1" ]]; then
+  bash scripts/require-agpl-store-legal-review.sh
+fi
+
 cleanup() {
   if [[ -n "$auth_key_file" && -f "$auth_key_file" ]]; then
     rm -f "$auth_key_file"

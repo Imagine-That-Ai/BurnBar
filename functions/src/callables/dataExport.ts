@@ -39,6 +39,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
+import { isGatewaySignalEnvelope, sanitizeSignalEnvelopeForExport } from "../signalEnvelopeExport.js";
 import { nowISO, requireBoundedStringArray, sha256Hex } from "./shared.js";
 import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -320,40 +321,41 @@ function storagePathEmbedsBodyHash(value: unknown): boolean {
 export function isSealedEnvelope(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
-  // Mirrors requireSealedText (shared.ts): AES-256-GCM text envelope …
-  if (
+  return (
+    isCloudVaultTextEnvelope(v) ||
+    isCloudVaultBlobEnvelope(v) ||
+    isGatewayRelayEnvelope(v) ||
+    isGatewayRatchetEnvelope(v) ||
+    isGatewaySignalEnvelope(v)
+  );
+}
+
+function isCloudVaultTextEnvelope(v: Record<string, unknown>): boolean {
+  return (
     v.algorithm === "AES-256-GCM" &&
     typeof v.nonce === "string" &&
     typeof v.ciphertext === "string" &&
     typeof v.tag === "string"
-  ) {
-    return true;
-  }
-  // … or a CloudVault blob/payload envelope (sealedBoxBase64 combined box).
-  if (v.algorithm === "AES-256-GCM" && typeof v.sealedBoxBase64 === "string") {
-    return true;
-  }
-  // … or a Hermes gateway relay envelope. v2 uses the authenticated 2-DH
-  // p256-hkdf-sha256-aesgcm wrap; v3 uses RFC 9180 HPKE Auth and carries `enc`.
-  // The sealed gateway sub-object carries only opaque base64 ciphertext +
-  // wrapped key + the algorithm/version constants — no plaintext — so it is safe
-  // to round-trip through the export verbatim (gateway-e2e Wave 4).
-  if (
+  );
+}
+
+function isCloudVaultBlobEnvelope(v: Record<string, unknown>): boolean {
+  return v.algorithm === "AES-256-GCM" && typeof v.sealedBoxBase64 === "string";
+}
+
+function isGatewayRelayEnvelope(v: Record<string, unknown>): boolean {
+  return (
     (v.relayEncryption === "p256-hkdf-sha256-aesgcm" || v.relayEncryption === "hpke-auth-p256-hkdfsha256-aes256gcm") &&
     typeof v.payloadCiphertext === "string" &&
     typeof v.wrappedKey === "string" &&
     (v.relayEncryption !== "hpke-auth-p256-hkdfsha256-aes256gcm" || typeof v.enc === "string")
-  ) {
-    return true;
-  }
-  // … or a Hermes gateway ratchet envelope. The header is routing/session
-  // metadata; ciphertextBase64 carries the AES-GCM nonce+ciphertext+tag. The
-  // plaintext body never appears as a sibling once the gateway serializer sees
-  // this shape.
+  );
+}
+
+function isGatewayRatchetEnvelope(v: Record<string, unknown>): boolean {
   const header = recordOrUndefined(v.header);
-  if (
-    header &&
-    typeof header === "object" &&
+  return (
+    !!header &&
     header.algorithm === "OpenBurnBar-HermesRatchet-v1-P256-HKDFSHA256-AESGCM" &&
     header.version === 1 &&
     typeof header.sessionID === "string" &&
@@ -361,10 +363,7 @@ export function isSealedEnvelope(value: unknown): boolean {
     typeof header.receiverDeviceID === "string" &&
     typeof header.ratchetPublicKeyBase64 === "string" &&
     typeof v.ciphertextBase64 === "string"
-  ) {
-    return true;
-  }
-  return false;
+  );
 }
 
 /** True for Firestore Timestamp-like, number, boolean, or null (all content-free). */
@@ -508,6 +507,9 @@ function sanitizeSealedEnvelope(
   }
   if (envelope.algorithm === "AES-256-GCM") {
     return sanitizeAllowedObject(key, envelope, CLOUD_VAULT_SEALED_FIELDS);
+  }
+  if (typeof envelope.signalEnvelopeFormatVersion === "number") {
+    return sanitizeSignalEnvelopeForExport(key, envelope);
   }
   if (typeof envelope.relayEncryption === "string") {
     return sanitizeAllowedObject(key, envelope, HERMES_RELAY_ENVELOPE_FIELDS);

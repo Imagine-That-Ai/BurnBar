@@ -480,11 +480,22 @@ jobs:
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Build corresponding source archive
+        id: corresponding-source
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          SOURCE_ARCHIVE="$RUNNER_TEMP/OpenBurnBar-${VERSION}-corresponding-source.tar.gz"
+          scripts/create-corresponding-source.sh --version "$VERSION" --output "$SOURCE_ARCHIVE"
+          echo "source_path=$SOURCE_ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "source_sha256_path=${SOURCE_ARCHIVE}.sha256" >> "$GITHUB_OUTPUT"
+
       - name: Compute artifact checksums
         id: checksums
         env:
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+          SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
@@ -499,6 +510,8 @@ jobs:
             sha512sum "$DMG_PATH"
             sha256sum "$ZIP_PATH"
             sha512sum "$ZIP_PATH"
+            sha256sum "$SOURCE_PATH"
+            sha512sum "$SOURCE_PATH"
           } > "$CHECKSUMS_FILE"
 
           cat "$CHECKSUMS_FILE"
@@ -561,6 +574,7 @@ jobs:
           CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+          SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
         run: |
           cosign attest --yes "$SBOM_PATH"
           cosign attest --yes "$VEX_PATH"
@@ -572,6 +586,9 @@ jobs:
           fi
           if [[ -f "$ZIP_PATH" ]]; then
             cosign attest --yes "$ZIP_PATH"
+          fi
+          if [[ -f "$SOURCE_PATH" ]]; then
+            cosign attest --yes "$SOURCE_PATH"
           fi
 
       - name: Verify Apple privacy manifests in release bundles
@@ -633,6 +650,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          SOURCE_ARCHIVE: OpenBurnBar-${{ steps.version.outputs.version }}-corresponding-source.tar.gz
         run: |
           METADATA_FILE="$RUNNER_TEMP/release-metadata.json"
 
@@ -645,6 +663,7 @@ jobs:
           metadata = {
               "version": os.environ["VERSION"],
               "tag": os.environ["TAG_NAME"],
+              "correspondingSource": os.environ["SOURCE_ARCHIVE"],
               "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "build_timestamp": datetime.datetime.now(datetime.timezone.utc)
                   .replace(microsecond=0)
@@ -694,6 +713,15 @@ jobs:
         with:
           name: sbom-v${{ steps.version.outputs.version }}
           path: ${{ steps.sbom.outputs.sbom_path }}
+          if-no-files-found: error
+
+      - name: Upload corresponding source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenBurnBar-${{ steps.version.outputs.version }}-corresponding-source
+          path: |
+            ${{ steps.corresponding-source.outputs.source_path }}
+            ${{ steps.corresponding-source.outputs.source_sha256_path }}
           if-no-files-found: error
 
       - name: Upload VEX artifact
@@ -859,6 +887,8 @@ jobs:
           VEX_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.vex.json" -print -quit 2>/dev/null)
           NOTICES_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "NOTICES-v${VERSION}*.txt" -print -quit 2>/dev/null)
           METADATA_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "release-metadata.json" -print -quit 2>/dev/null)
+          SOURCE_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz" -print -quit 2>/dev/null)
+          SOURCE_SHA256_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz.sha256" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
@@ -887,6 +917,8 @@ jobs:
           [[ -n "$VEX_PATH" && -f "$VEX_PATH" ]] && ASSETS+=("$VEX_PATH")
           [[ -n "$NOTICES_PATH" && -f "$NOTICES_PATH" ]] && ASSETS+=("$NOTICES_PATH")
           [[ -n "$METADATA_PATH" && -f "$METADATA_PATH" ]] && ASSETS+=("$METADATA_PATH")
+          [[ -n "$SOURCE_PATH" && -f "$SOURCE_PATH" ]] && ASSETS+=("$SOURCE_PATH")
+          [[ -n "$SOURCE_SHA256_PATH" && -f "$SOURCE_SHA256_PATH" ]] && ASSETS+=("$SOURCE_SHA256_PATH")
           [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")
 
           if gh release view "v${VERSION}" >/dev/null 2>&1; then

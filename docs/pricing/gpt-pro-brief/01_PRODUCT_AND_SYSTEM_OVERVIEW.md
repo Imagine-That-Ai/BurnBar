@@ -22,7 +22,7 @@
 **OpenBurnBar is a native, local-first macOS menu-bar app that watches your AI coding agents — telling you in real time how many tokens and dollars each one is burning — plus an optional, opt-in cloud that syncs that intelligence (and a set of premium remote-control / search / agent features) across your Mac, iPhone, iPad, and Android.**
 
 - **Bundle id:** `com.openburnbar.app` (the source folder is still named `AgentLens/` for historical reasons; the product is OpenBurnBar).
-- **License:** MIT (open-source core).
+- **License:** AGPL-3.0-only (open-source core); historical MIT snapshots remain preserved separately.
 - **Repo:** `github.com/Imagine-That-Ai/BurnBar`.
 - **Status (2026-05-30):** macOS `1.0` submitted to Mac App Store review + shipping as a notarized Developer ID DMG; iOS `1.0` and the first paid subscription ("Hosted Quota Sync") in Apple review with manual release; Android at feature parity.
 

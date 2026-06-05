@@ -140,5 +140,5 @@ need Alberto's sign-off before going live.
 
 ## License
 
-MIT — same as the rest of the OpenBurnBar repo. Site content (copy,
-illustrations, generated mockups) is the property of Imagine That AI LLC.
+OpenBurnBar code is `AGPL-3.0-only`, same as the rest of the repo. Site content
+(copy, illustrations, generated mockups) is the property of Imagine That AI LLC.

@@ -1,0 +1,42 @@
+{
+  "name": "official-signal-libsignal",
+  "upstreamRepository": "https://github.com/signalapp/libsignal",
+  "license": "AGPL-3.0-only",
+  "pinnedTag": "v0.94.4",
+  "pinnedTagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
+  "pinnedCommit": "46d867c986f66201e34e7ae20ce423eec742bf3f",
+  "artifacts": {
+    "node": {
+      "package": "@signalapp/libsignal-client",
+      "version": "0.94.4",
+      "integrity": "sha512-ZkZN3Vy+yK4X+qx13nrW+Ve4ofIvxW9QQ22YS7uL76Cls5y2tcrXWQJc5l8lFVOZ7zctsGHp38ikbcJOMeHwxg=="
+    },
+    "android": [
+      {
+        "group": "org.signal",
+        "artifact": "libsignal-client",
+        "version": "0.94.4",
+        "repository": "https://build-artifacts.signal.org/libraries/maven/"
+      },
+      {
+        "group": "org.signal",
+        "artifact": "libsignal-android",
+        "version": "0.94.4",
+        "repository": "https://build-artifacts.signal.org/libraries/maven/"
+      }
+    ],
+    "swift": {
+      "sourceSubdirectory": "swift",
+      "buildDocumentation": "https://github.com/signalapp/libsignal/tree/v0.94.4/swift"
+    },
+    "rust": {
+      "sourceSubdirectory": "rust",
+      "buildDocumentation": "https://github.com/signalapp/libsignal/tree/v0.94.4/rust"
+    }
+  },
+  "burnbarIntegration": {
+    "nodeBridgePackage": "packages/libsignal-bridge",
+    "status": "pinned-and-load-tested",
+    "migrationPolicy": "New Signal-backed private-domain writes must use this manifest and the shared bridge; existing HPKE/CloudVault envelopes remain legacy read-only until migration telemetry proves old rows are gone."
+  }
+}

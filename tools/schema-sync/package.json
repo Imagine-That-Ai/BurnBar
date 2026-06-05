@@ -13,5 +13,6 @@
     "@typespec/http": "^0.63.0",
     "@typespec/rest": "^0.63.0",
     "@typespec/openapi3": "^0.63.0"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

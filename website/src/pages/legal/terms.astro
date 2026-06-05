@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
-const updated = "May 12, 2026";
+const updated = "June 5, 2026";
 const paidTiers = SITE.pricing.tiers.filter((tier) => tier.priceMonthlyUSD !== "0");
 ---
 
@@ -16,8 +16,8 @@ const paidTiers = SITE.pricing.tiers.filter((tier) => tier.priceMonthlyUSD !== "
       <p class="muted small mono">Last updated: {updated}</p>
 
       <p class="lead">
-        OpenBurnBar is open-source software offered under the MIT License, plus an optional in-app
-        subscriptions and prepaid top-ups billed through Apple, Google Play, or Stripe. By
+        OpenBurnBar is open-source software offered under the AGPL-3.0-only license, plus optional
+        in-app subscriptions and prepaid top-ups billed through Apple, Google Play, or Stripe. By
         installing or using OpenBurnBar, you agree to the terms below. If you don't, please don't
         install the software.
       </p>
@@ -26,9 +26,15 @@ const paidTiers = SITE.pricing.tiers.filter((tier) => tier.priceMonthlyUSD !== "
       <p>
         The OpenBurnBar source code is released under the
         <a href={`${SITE.github}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer"
-          >MIT License</a
-        >. The MIT terms govern your use, modification, and distribution of the source. The
-        disclaimer of warranty in the MIT License applies.
+          >AGPL-3.0-only license</a
+        >. The AGPL terms govern your use, modification, distribution, and network use of the
+        covered source. Historical snapshots that were released under MIT remain under their
+        original terms.
+      </p>
+
+      <p>
+        Corresponding source access for OpenBurnBar releases and hosted services is available at
+        <a href="/legal/source">/legal/source</a>.
       </p>
 
       <h2>2. License — this website</h2>

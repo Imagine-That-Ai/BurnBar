@@ -13,7 +13,7 @@ export const SITE = {
   supportContact: "support@openburnbar.app",
   privacyContact: "privacy@imagine-that.ai",
   entity: "Imagine That AI LLC",
-  license: "MIT",
+  license: "AGPL-3.0-only",
   bundleId: "com.openburnbar.app",
   pricing: {
     tiers: [
@@ -139,6 +139,7 @@ export const NAV_FOOTER = {
     { href: "/privacy#data-domains", label: "What we can see" },
     { href: "/security", label: "Security model" },
     { href: "/mcp", label: "MCP integration" },
+    { href: "/legal/source", label: "Source offer" },
     { href: "/legal/privacy-policy", label: "Privacy policy" },
     { href: "/legal/terms", label: "Terms" }
   ],

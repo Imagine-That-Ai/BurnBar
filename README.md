@@ -505,6 +505,8 @@ See [SECURITY.md](SECURITY.md) for our vulnerability disclosure policy.
 
 ## License
 
-Licensed under the MIT License. See [LICENSE](LICENSE) file for details.
+Future OpenBurnBar releases are licensed under `AGPL-3.0-only`. See [LICENSE](LICENSE) for the full license text and [NOTICE](NOTICE) for project notices.
 
-Third-party asset and branding notes live in [THIRD_PARTY.md](THIRD_PARTY.md).
+Historical snapshots published under MIT remain under the terms that applied to those releases; the preserved notice is in [LICENSES/MIT-legacy.txt](LICENSES/MIT-legacy.txt).
+
+Third-party asset and branding notes live in [THIRD_PARTY.md](THIRD_PARTY.md). Dependency and libsignal notices live in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). AGPL corresponding-source policy lives in [docs/legal/agpl-compliance.md](docs/legal/agpl-compliance.md).

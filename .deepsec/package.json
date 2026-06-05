@@ -12,5 +12,6 @@
   "dependencies": {
     "deepsec": "^2.0.8",
     "zod": "^4.4.3"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

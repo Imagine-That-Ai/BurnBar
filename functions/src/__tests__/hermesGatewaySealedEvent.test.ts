@@ -112,6 +112,34 @@ function sealedEnvelope() {
   };
 }
 
+function signalEnvelope() {
+  return {
+    signalEnvelopeFormatVersion: 1,
+    mode: "transport",
+    relayKeyVersion: 4,
+    relayEncryption: "signal-doubleratchet-pqxdh-v1",
+    ciphertextLayer: {
+      payloadCiphertextB64: Buffer.from("signal-event-payload-bytes").toString("base64"),
+      payloadAADLabel: "gatewayEvent",
+      schemaVersion: 2,
+    },
+    keyDelivery: {
+      scheme: "signal-doubleratchet-pqxdh-v1",
+      signalMessageType: 3,
+      signalMessageB64: Buffer.from("serialized-prekey-signal-message").toString("base64"),
+      senderIdentityKeyId: "agent-signal-identity",
+    },
+    binding: {
+      uid: UID,
+      scope: "gateway",
+      clientId: TARGET_CLIENT_ID,
+      slotId: "evt_signal_disabled",
+      mode: "transport",
+      formatVersion: 1,
+    },
+  };
+}
+
 function seedRelayCapableTargetClient(): void {
   stored.set(`users/${UID}/hermes_gateway_clients/${TARGET_CLIENT_ID}`, {
     id: TARGET_CLIENT_ID,
@@ -240,6 +268,22 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
         }),
       ),
     ).rejects.toThrow(/relayEncryption/);
+  });
+
+  it("rejects staged Signal envelopes until the libsignal runtime readiness gate is complete", async () => {
+    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const run = callableRun(enqueueHermesGatewayEvent);
+    await expect(
+      run(
+        request({
+          targetClientId: TARGET_CLIENT_ID,
+          eventId: "evt_signal_disabled",
+          signalEnvelope: signalEnvelope(),
+        }),
+      ),
+    ).rejects.toThrow(/runtime readiness gate/);
+    const leaked = [...stored.keys()].some((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
+    expect(leaked).toBe(false);
   });
 
   it("requires a sealed relayEnvelope for a model_switch on a relay-capable client", async () => {

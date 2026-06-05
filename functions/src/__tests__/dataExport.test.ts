@@ -4,6 +4,14 @@ import { join } from "node:path";
 
 import { DATA_DOMAIN_PATHS, isSealedEnvelope, sealAwareSerializeDoc } from "../callables/dataExport.js";
 import { UNDELETABLE_DOMAINS } from "../callables/dataDeletion.js";
+import {
+  HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION,
+  HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
+  HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
+  HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
+  type GatewaySignalAtRestKeyDeliveryDoc,
+  type GatewaySignalEnvelopeDoc,
+} from "../hermesGateway.js";
 
 // vitest runs from the functions/ package root; the registry is a sibling package.
 const registry = JSON.parse(
@@ -131,6 +139,66 @@ const ratchetEnvelope = {
   ciphertextBase64: "Y2lwaGVydGV4dA==",
 };
 
+const signalTransportEnvelope: GatewaySignalEnvelopeDoc = {
+  signalEnvelopeFormatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
+  mode: "transport",
+  relayKeyVersion: HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
+  relayEncryption: HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
+  ciphertextLayer: {
+    payloadCiphertextB64: "Y2lwaGVydGV4dA==",
+    payloadAADLabel: "gatewayEvent",
+    schemaVersion: 2,
+  },
+  keyDelivery: {
+    scheme: HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
+    signalMessageType: 3,
+    signalMessageB64: "cHJla2V5LW1lc3NhZ2U=",
+    senderIdentityKeyId: "agent-signal-identity",
+    ratchetEpochHint: 1,
+  },
+  binding: {
+    uid: "user_1",
+    scope: "gateway",
+    clientId: "client-1",
+    slotId: "evt_signal_1",
+    mode: "transport",
+    formatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
+  },
+};
+
+const signalAtRestEnvelope: GatewaySignalEnvelopeDoc = {
+  signalEnvelopeFormatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
+  mode: "at-rest",
+  relayEncryption: HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION,
+  ciphertextLayer: {
+    payloadCiphertextB64: "Y2xvdWR2YXVsdC1jaXBoZXJ0ZXh0",
+    payloadAADLabel: "cloudVault",
+    schemaVersion: 2,
+  },
+  keyDelivery: {
+    scheme: HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION,
+    wraps: [
+      {
+        recipientKind: "device",
+        recipientIdentityKeyId: "device-signal-identity",
+        recipientIdentityKeyB64: "aWRlbnRpdHkta2V5",
+        sealedContentKeyB64: "c2VhbGVkLWNvbnRlbnQta2V5",
+      },
+    ],
+    contentKeyLength: 32,
+  },
+  binding: {
+    uid: "user_1",
+    scope: "cloudvault",
+    collection: "cloud_search_knowledge",
+    docId: "doc-1",
+    field: "signalEnvelope",
+    mode: "at-rest",
+    formatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
+  },
+};
+const signalAtRestKeyDelivery = signalAtRestEnvelope.keyDelivery as GatewaySignalAtRestKeyDeliveryDoc;
+
 describe("isSealedEnvelope structural detection", () => {
   it("detects AES-256-GCM text + blob envelopes regardless of key name", () => {
     expect(isSealedEnvelope(sealedText)).toBe(true);
@@ -157,6 +225,18 @@ describe("isSealedEnvelope structural detection", () => {
     expect(isSealedEnvelope(ratchetEnvelope)).toBe(true);
     expect(isSealedEnvelope({ ...ratchetEnvelope, ciphertextBase64: undefined })).toBe(false);
     expect(isSealedEnvelope({ ...ratchetEnvelope, header: { ...ratchetEnvelope.header, version: 2 } })).toBe(false);
+  });
+
+  it("detects future official-libsignal transport and at-rest envelopes", () => {
+    expect(isSealedEnvelope(signalTransportEnvelope)).toBe(true);
+    expect(isSealedEnvelope(signalAtRestEnvelope)).toBe(true);
+    expect(isSealedEnvelope({ ...signalTransportEnvelope, relayKeyVersion: 3 })).toBe(false);
+    expect(
+      isSealedEnvelope({
+        ...signalAtRestEnvelope,
+        keyDelivery: { ...signalAtRestEnvelope.keyDelivery, wraps: [] },
+      }),
+    ).toBe(false);
   });
 
   it("rejects plaintext, partial envelopes, arrays, and scalars", () => {
@@ -234,6 +314,52 @@ describe("sealAwareSerializeDoc seals gateway / media / subscription content", (
       expect(out, `${leaked} must be dropped`).not.toHaveProperty(leaked);
       expect(dropped, `${leaked} must be reported`).toContain(leaked);
     }
+  });
+
+  it("emits future Signal envelopes opaquely and strips nested plaintext junk", () => {
+    const { out, dropped } = sealAwareSerializeDoc({
+      signalEnvelope: {
+        ...signalTransportEnvelope,
+        plaintext: "secret prompt",
+        ciphertextLayer: {
+          ...signalTransportEnvelope.ciphertextLayer,
+          plaintextAAD: "OpenBurnBar-HermesRelay-v1|secret",
+        },
+        keyDelivery: {
+          ...signalTransportEnvelope.keyDelivery,
+          decryptedContentKey: "secret key",
+        },
+        binding: {
+          ...signalTransportEnvelope.binding,
+          privateThreadName: "Project Atlas",
+        },
+      },
+      signalAtRestEnvelope: {
+        ...signalAtRestEnvelope,
+        keyDelivery: {
+          ...signalAtRestEnvelope.keyDelivery,
+          wraps: [
+            {
+              ...signalAtRestKeyDelivery.wraps[0],
+              privateDeviceName: "Alberto's Mac",
+            },
+          ],
+        },
+      },
+      sequence: 9,
+      schemaVersion: 2,
+      text: "the secret prompt",
+    });
+
+    expect(out.signalEnvelope).toEqual(signalTransportEnvelope);
+    expect(out.signalAtRestEnvelope).toEqual(signalAtRestEnvelope);
+    expect(out).not.toHaveProperty("text");
+    expect(dropped).toContain("signalEnvelope.plaintext");
+    expect(dropped).toContain("signalEnvelope.ciphertextLayer.plaintextAAD");
+    expect(dropped).toContain("signalEnvelope.keyDelivery.decryptedContentKey");
+    expect(dropped).toContain("signalEnvelope.binding.privateThreadName");
+    expect(dropped).toContain("signalAtRestEnvelope.keyDelivery.wraps.0.privateDeviceName");
+    expect(dropped).toContain("text");
   });
 
   it("emits a sealed media manifest as sealedFilename + opaque columns, drops plaintext filename", () => {

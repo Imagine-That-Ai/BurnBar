@@ -87,6 +87,13 @@ export const HERMES_GATEWAY_RATCHET_ALGORITHM = "OpenBurnBar-HermesRatchet-v1-P2
 export const HERMES_GATEWAY_MAX_RATCHET_CIPHERTEXT_B64 = HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64;
 export const HERMES_GATEWAY_MAX_RATCHET_ID = 160;
 export const HERMES_GATEWAY_MAX_RATCHET_COUNTER = 1_000_000_000;
+export const HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION = 1;
+export const HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION = 4;
+export const HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION = "signal-doubleratchet-pqxdh-v1";
+export const HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION = "signal-hpke-identity-seal-v1";
+export const HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64 = HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64;
+export const HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64 = 16_384;
+export const HERMES_GATEWAY_MAX_SIGNAL_RECIPIENT_WRAPS = 32;
 // Historical cutoff for the now-closed schema-1 plaintext migration. New writes
 // are sealed-only; reads keep a legacy plaintext fallback so old queued docs can
 // still render while backfills/scrubbers drain them.
@@ -173,6 +180,61 @@ export interface GatewayRatchetHeaderDoc {
 export interface GatewayRatchetEnvelopeDoc {
   header: GatewayRatchetHeaderDoc;
   ciphertextBase64: string;
+}
+
+export type GatewaySignalEnvelopeMode = "transport" | "at-rest";
+export type GatewaySignalEnvelopeScope = "gateway" | "cloudvault";
+export type GatewaySignalMessageType = 2 | 3;
+
+export interface GatewaySignalCiphertextLayerDoc {
+  payloadCiphertextB64: string;
+  payloadAADLabel: string;
+  schemaVersion: number;
+}
+
+export interface GatewaySignalBindingDoc {
+  uid: string;
+  scope: GatewaySignalEnvelopeScope;
+  clientId?: string;
+  collection?: string;
+  docId?: string;
+  field?: string;
+  slotId?: string;
+  mode: GatewaySignalEnvelopeMode;
+  formatVersion: number;
+}
+
+export interface GatewaySignalTransportKeyDeliveryDoc {
+  scheme: typeof HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION;
+  signalMessageType: GatewaySignalMessageType;
+  signalMessageB64: string;
+  senderIdentityKeyId: string;
+  ratchetEpochHint?: number;
+}
+
+export type GatewaySignalRecipientKind = "device" | "escrow" | "recovery";
+
+export interface GatewaySignalAtRestWrapDoc {
+  recipientKind: GatewaySignalRecipientKind;
+  recipientIdentityKeyId: string;
+  recipientIdentityKeyB64: string;
+  sealedContentKeyB64: string;
+}
+
+export interface GatewaySignalAtRestKeyDeliveryDoc {
+  scheme: typeof HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION;
+  wraps: GatewaySignalAtRestWrapDoc[];
+  contentKeyLength: 32;
+}
+
+export interface GatewaySignalEnvelopeDoc {
+  signalEnvelopeFormatVersion: number;
+  mode: GatewaySignalEnvelopeMode;
+  relayKeyVersion?: number;
+  relayEncryption: typeof HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION | typeof HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION;
+  ciphertextLayer: GatewaySignalCiphertextLayerDoc;
+  keyDelivery: GatewaySignalTransportKeyDeliveryDoc | GatewaySignalAtRestKeyDeliveryDoc;
+  binding: GatewaySignalBindingDoc;
 }
 
 export interface HermesGatewayClientDoc {
@@ -304,6 +366,10 @@ export interface HermesGatewayEventDoc {
   // Ratcheted body for Phase 6 v1 sessions. Mutually exclusive with
   // relayEnvelope on new writes; the blind relay validates shape only.
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  // Official libsignal envelope v1, read-tolerant only while runtime readiness is
+  // not green. New production writes reject this field until every libsignal
+  // cross-language runtime gate is complete.
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }
@@ -323,6 +389,9 @@ export interface HermesGatewayMessageDoc {
   // Ratcheted reply body for Phase 6 v1 sessions. Mutually exclusive with
   // relayEnvelope on new writes; the blind relay validates shape only.
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  // Official libsignal envelope v1, read-tolerant only while runtime readiness is
+  // not green. New production writes reject this field until activation.
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
@@ -348,6 +417,10 @@ export interface HermesGatewayAttachmentManifestDoc {
   // bytes remain opaque ciphertext; the relay validates this manifest envelope
   // shape only and never decrypts.
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  // Official libsignal envelope v1 for future attachment manifests, read-tolerant
+  // only while runtime readiness is not green. Production writes reject it until
+  // activation so staged clients cannot assume Signal was used.
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   updatedAt?: string;
   expiresAt: string;
@@ -635,6 +708,196 @@ export function requireGatewayRatchetEnvelope(raw: unknown, fieldName: string): 
     );
   }
   return envelope;
+}
+
+function gatewaySignalText(raw: unknown, maxLength: number): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (!value || value.length > maxLength || /[\r\n|]/u.test(value)) return undefined;
+  return value;
+}
+
+function sanitizeGatewaySignalCiphertextLayer(raw: unknown): GatewaySignalCiphertextLayerDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  const payloadCiphertextB64 = gatewayBase64Within(record.payloadCiphertextB64, HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64);
+  const payloadAADLabel = gatewaySignalText(record.payloadAADLabel, 120);
+  const schemaVersion = gatewayRatchetCounter(record.schemaVersion);
+  if (!payloadCiphertextB64 || !payloadAADLabel || schemaVersion === undefined) return undefined;
+  return { payloadCiphertextB64, payloadAADLabel, schemaVersion };
+}
+
+function sanitizeGatewaySignalBinding(
+  raw: unknown,
+  expected: { mode: GatewaySignalEnvelopeMode; scope?: GatewaySignalEnvelopeScope },
+): GatewaySignalBindingDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  const uid = gatewaySignalText(record.uid, 160);
+  const scope = record.scope === "gateway" || record.scope === "cloudvault" ? record.scope : undefined;
+  const mode = record.mode === "transport" || record.mode === "at-rest" ? record.mode : undefined;
+  const formatVersion = gatewayRatchetCounter(record.formatVersion);
+  if (
+    !uid ||
+    !scope ||
+    !mode ||
+    mode !== expected.mode ||
+    (expected.scope !== undefined && scope !== expected.scope) ||
+    formatVersion !== HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION
+  ) {
+    return undefined;
+  }
+
+  if (scope === "gateway") {
+    if (mode !== "transport") return undefined;
+    const clientId = gatewaySignalText(record.clientId, HERMES_GATEWAY_MAX_RATCHET_ID);
+    const slotId = gatewaySignalText(record.slotId, HERMES_GATEWAY_MAX_RATCHET_ID);
+    if (
+      !clientId ||
+      !slotId ||
+      record.collection !== undefined ||
+      record.docId !== undefined ||
+      record.field !== undefined
+    ) {
+      return undefined;
+    }
+    return { uid, scope, clientId, slotId, mode, formatVersion };
+  }
+
+  const collection = gatewaySignalText(record.collection, HERMES_GATEWAY_MAX_RATCHET_ID);
+  const docId = gatewaySignalText(record.docId, HERMES_GATEWAY_MAX_RATCHET_ID);
+  const field = gatewaySignalText(record.field, HERMES_GATEWAY_MAX_RATCHET_ID);
+  if (!collection || !docId || !field || record.clientId !== undefined || record.slotId !== undefined) {
+    return undefined;
+  }
+  return { uid, scope, collection, docId, field, mode, formatVersion };
+}
+
+function sanitizeGatewaySignalTransportDelivery(raw: unknown): GatewaySignalTransportKeyDeliveryDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record || record.scheme !== HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION) return undefined;
+  const signalMessageType =
+    record.signalMessageType === 2 || record.signalMessageType === 3 ? record.signalMessageType : undefined;
+  const signalMessageB64 = gatewayBase64Within(record.signalMessageB64, HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64);
+  const senderIdentityKeyId = gatewaySignalText(record.senderIdentityKeyId, HERMES_GATEWAY_MAX_RATCHET_ID);
+  const ratchetEpochHint =
+    record.ratchetEpochHint === undefined ? undefined : gatewayRatchetCounter(record.ratchetEpochHint);
+  if (
+    !signalMessageType ||
+    !signalMessageB64 ||
+    !senderIdentityKeyId ||
+    (ratchetEpochHint === undefined && record.ratchetEpochHint !== undefined)
+  ) {
+    return undefined;
+  }
+  return stripUndefinedObject({
+    scheme: HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
+    signalMessageType,
+    signalMessageB64,
+    senderIdentityKeyId,
+    ratchetEpochHint,
+  }) as GatewaySignalTransportKeyDeliveryDoc;
+}
+
+function sanitizeGatewaySignalAtRestDelivery(raw: unknown): GatewaySignalAtRestKeyDeliveryDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record || record.scheme !== HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION) return undefined;
+  if (record.contentKeyLength !== 32 || !Array.isArray(record.wraps)) return undefined;
+  if (record.wraps.length < 1 || record.wraps.length > HERMES_GATEWAY_MAX_SIGNAL_RECIPIENT_WRAPS) return undefined;
+  const wraps = record.wraps.flatMap((item): GatewaySignalAtRestWrapDoc[] => {
+    const wrap = recordOrUndefined(item);
+    if (!wrap) return [];
+    const recipientKind =
+      wrap.recipientKind === "device" || wrap.recipientKind === "escrow" || wrap.recipientKind === "recovery"
+        ? wrap.recipientKind
+        : undefined;
+    const recipientIdentityKeyId = gatewaySignalText(wrap.recipientIdentityKeyId, HERMES_GATEWAY_MAX_RATCHET_ID);
+    const recipientIdentityKeyB64 = gatewayBase64Within(
+      wrap.recipientIdentityKeyB64,
+      HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64,
+    );
+    const sealedContentKeyB64 = gatewayBase64Within(wrap.sealedContentKeyB64, HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64);
+    if (!recipientKind || !recipientIdentityKeyId || !recipientIdentityKeyB64 || !sealedContentKeyB64) return [];
+    return [{ recipientKind, recipientIdentityKeyId, recipientIdentityKeyB64, sealedContentKeyB64 }];
+  });
+  if (wraps.length !== record.wraps.length) return undefined;
+  return { scheme: HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION, wraps, contentKeyLength: 32 };
+}
+
+export function sanitizeGatewaySignalEnvelope(
+  raw: unknown,
+  expectedMode?: GatewaySignalEnvelopeMode,
+): GatewaySignalEnvelopeDoc | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) return undefined;
+  const signalEnvelopeFormatVersion = gatewayRatchetCounter(record.signalEnvelopeFormatVersion);
+  const mode = record.mode === "transport" || record.mode === "at-rest" ? record.mode : undefined;
+  if (
+    signalEnvelopeFormatVersion !== HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION ||
+    !mode ||
+    (expectedMode !== undefined && mode !== expectedMode)
+  ) {
+    return undefined;
+  }
+
+  const expectedEncryption =
+    mode === "transport" ? HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION : HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION;
+  if (record.relayEncryption !== expectedEncryption) return undefined;
+
+  const rawRelayKeyVersion =
+    record.relayKeyVersion === undefined
+      ? undefined
+      : typeof record.relayKeyVersion === "number"
+        ? Math.floor(record.relayKeyVersion)
+        : Number(record.relayKeyVersion);
+  if (mode === "transport") {
+    if (rawRelayKeyVersion !== HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION) return undefined;
+  } else if (record.relayKeyVersion !== undefined) {
+    return undefined;
+  }
+
+  const ciphertextLayer = sanitizeGatewaySignalCiphertextLayer(record.ciphertextLayer);
+  const keyDelivery =
+    mode === "transport"
+      ? sanitizeGatewaySignalTransportDelivery(record.keyDelivery)
+      : sanitizeGatewaySignalAtRestDelivery(record.keyDelivery);
+  const binding = sanitizeGatewaySignalBinding(record.binding, {
+    mode,
+    scope: mode === "transport" ? "gateway" : undefined,
+  });
+  if (!ciphertextLayer || !keyDelivery || !binding) return undefined;
+  return stripUndefinedObject({
+    signalEnvelopeFormatVersion,
+    mode,
+    relayKeyVersion: mode === "transport" ? HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION : undefined,
+    relayEncryption: expectedEncryption,
+    ciphertextLayer,
+    keyDelivery,
+    binding,
+  }) as GatewaySignalEnvelopeDoc;
+}
+
+export function requireGatewaySignalEnvelope(
+  raw: unknown,
+  fieldName: string,
+  expectedMode?: GatewaySignalEnvelopeMode,
+): GatewaySignalEnvelopeDoc {
+  const envelope = sanitizeGatewaySignalEnvelope(raw, expectedMode);
+  if (!envelope) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName} must be a Signal envelope v${HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION}.`,
+    );
+  }
+  return envelope;
+}
+
+export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: string): GatewaySignalEnvelopeDoc {
+  requireGatewaySignalEnvelope(raw, fieldName, "transport");
+  throw new HttpsError(
+    "failed-precondition",
+    `${fieldName} is valid, but Signal envelope writes are disabled until the libsignal runtime readiness gate is complete.`,
+  );
 }
 
 /**
@@ -1063,6 +1326,8 @@ export function isHermesGatewayAttachmentManifestDoc(raw: unknown): raw is Herme
     (typeof record.fileName === "string" || record.fileName === undefined) &&
     (record.relayEnvelope === undefined || sanitizeGatewayRelayEnvelope(record.relayEnvelope) !== undefined) &&
     (record.ratchetEnvelope === undefined || sanitizeGatewayRatchetEnvelope(record.ratchetEnvelope) !== undefined) &&
+    (record.signalEnvelope === undefined ||
+      sanitizeGatewaySignalEnvelope(record.signalEnvelope, "transport") !== undefined) &&
     typeof record.contentType === "string" &&
     typeof record.byteCount === "number" &&
     Number.isFinite(record.byteCount) &&
@@ -1102,6 +1367,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
   if (!record) return undefined;
   const relayEnvelope = sanitizeGatewayRelayEnvelope(record.relayEnvelope);
   const ratchetEnvelope = sanitizeGatewayRatchetEnvelope(record.ratchetEnvelope);
+  const signalEnvelope = sanitizeGatewaySignalEnvelope(record.signalEnvelope, "transport");
   // A doc is "sealed" once it carries a valid relayEnvelope/ratchetEnvelope OR
   // advertises schemaVersion >= 2. For ANY sealed doc the private fields (text /
   // senderDisplayName / threadId) MUST be dropped, even if a backfilled, admin-
@@ -1109,7 +1375,8 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
   // them would re-expose plaintext the sealed-doc invariant promises is gone.
   // Legacy plaintext is surfaced ONLY for an unsealed schema-1 doc.
   const schemaVersion = typeof record.schemaVersion === "number" ? record.schemaVersion : NaN;
-  const isSealedDoc = relayEnvelope !== undefined || ratchetEnvelope !== undefined || schemaVersion >= 2;
+  const isSealedDoc =
+    relayEnvelope !== undefined || ratchetEnvelope !== undefined || signalEnvelope !== undefined || schemaVersion >= 2;
   const hasLegacyText = !isSealedDoc && typeof record.text === "string";
   const legacyText = hasLegacyText && typeof record.text === "string" ? record.text : undefined;
   const isModelSwitch = record.kind === "model_switch";
@@ -1120,7 +1387,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     (record.kind !== "message" && record.kind !== "model_switch") ||
     typeof record.destinationId !== "string" ||
     typeof record.senderId !== "string" ||
-    (!hasModelSwitchRoute && !relayEnvelope && !ratchetEnvelope && !hasLegacyText) ||
+    (!hasModelSwitchRoute && !relayEnvelope && !ratchetEnvelope && !signalEnvelope && !hasLegacyText) ||
     !Array.isArray(record.attachmentIds) ||
     typeof record.createdAt !== "string" ||
     typeof record.schemaVersion !== "number"
@@ -1145,6 +1412,7 @@ export function serializeHermesGatewayEvent(raw: unknown): HermesGatewayEventDoc
     modelId: typeof record.modelId === "string" ? record.modelId : undefined,
     relayEnvelope,
     ratchetEnvelope,
+    signalEnvelope,
     attachmentIds: record.attachmentIds.filter((item): item is string => typeof item === "string"),
     createdAt: record.createdAt,
     schemaVersion: record.schemaVersion,

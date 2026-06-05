@@ -39,6 +39,18 @@ scripts/build-macos-app-store-release.sh
 scripts/build-macos-website-release.sh
 ```
 
+Before either channel ships publicly, run the AGPL compliance gate:
+
+```bash
+bash scripts/ci/verify-agpl-compliance.sh
+```
+
+Store-bound uploads also require legal review because App Store and Mac App
+Store terms can interact with GPL/AGPL obligations. Do not upload
+AGPL/libsignal-linked review binaries until counsel signs off. The upload path
+fails unless `OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved` is set by the
+operator after counsel approval.
+
 Upload the customer-facing direct-download artifacts to Cloudflare R2 with:
 
 ```bash
@@ -125,6 +137,7 @@ Each release includes:
 | `checksums-vVERSION.txt` | SHA256/SHA512 checksums for DMG + ZIP |
 | `checksums-vVERSION.txt.asc` | GPG detached signature (if configured) |
 | `sbom-vVERSION.spdx.json` | Software Bill of Materials (SPDX format) |
+| `OpenBurnBar-VERSION-corresponding-source.tar.gz` | Corresponding source archive for AGPL-covered binaries and services |
 | `release-metadata.json` | Build provenance: version, commit, timestamp, runner |
 
 ## Release provenance
