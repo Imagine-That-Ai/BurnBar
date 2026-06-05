@@ -1,8 +1,8 @@
 # HANDOFF — finish the Hermes Gateway 3 features (device-capable agent)
 
 > **Superseded on 2026-06-03 and refreshed on 2026-06-04:** this was the
-> pre-merge handoff checklist. For current launch status, audit evidence, E2EE
-> remediation proof, and the remaining Sentry readback gate, use
+> pre-merge handoff checklist. For current launch status, audit evidence, and E2EE
+> remediation proof, use
 > `docs/runbooks/hermes-gateway-3features.md` §7-§8 and
 > `docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md`. Do not treat the command counts
 > or branch names below as current proof.
@@ -18,7 +18,8 @@ closed. The focused live iPad approval test armed approve/reject/expiry cases,
 resolved approve/reject from trusted iPad device
 `6566F689-F2FA-4A57-8A0F-4B38D47A76C0`, proved public expiry and late-response
 fail-closed behavior, and read back allowlisted approval docs with no plaintext
-command detail. Sentry admin readback is still credential-gated.
+command detail. Sentry issue/event readback is now closed against the transferred
+`openburnbar-functions` project in `imagine-that-ai-qh`.
 
 **Alberto has authorized you to: re-audit (correctness + security), run the real
 on-device E2E, and PUBLISH the Hermes PR once the gates below are green.** Order of
