@@ -52,7 +52,7 @@ def git_tracked_files(repo_root: Path, *patterns: str) -> list[Path]:
 
 def dedupe_packages(packages: list[dict]) -> list[dict]:
     """Deduplicate package records while preserving deterministic order."""
-    seen: set[tuple[str, str, str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     out: list[dict] = []
     for package in sorted(
         packages,
@@ -63,12 +63,7 @@ def dedupe_packages(packages: list[dict]) -> list[dict]:
             item.get("source", ""),
         ),
     ):
-        key = (
-            package.get("type", ""),
-            package.get("name", ""),
-            package.get("version", ""),
-            package.get("url", ""),
-        )
+        key = (package.get("type", ""), package.get("name", ""), package.get("version", ""))
         if key in seen:
             continue
         seen.add(key)
