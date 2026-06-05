@@ -18,7 +18,10 @@ jobs:
     # image's Xcode 16.4 Swift frontend crashes while lowering lazy global
     # initializers in the large OpenBurnBar SwiftUI target, before tests run.
     runs-on: macos-26
-    timeout-minutes: 120
+    # The macOS-hosted all-in-one harness now runs Swift/macOS/iOS, replay
+    # evals, Firestore, and Android on one runner. Android D8 can otherwise be
+    # killed at the 120-minute job cap after the earlier suites have passed.
+    timeout-minutes: 180
     env:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
       HAS_ASC_SECRETS: ${{ secrets.APP_STORE_ASC_KEY_ID != '' && secrets.APP_STORE_ASC_ISSUER_ID != '' && secrets.APP_STORE_ASC_KEY_P8 != '' }}
