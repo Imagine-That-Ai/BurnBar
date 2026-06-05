@@ -361,9 +361,7 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         let payloadData = try encoder.encode(thread)
-        let identity = try OpenBurnBarSignalIdentityKeyStore(
-            service: "com.openburnbar.tests.mobile-signal-\(UUID().uuidString)"
-        ).loadOrCreate(uid: uid, deviceId: "device-1")
+        let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "device-1")
         let binding = CloudVaultSignalBinding(
             uid: uid,
             collection: "mobile_assistant_chats",
