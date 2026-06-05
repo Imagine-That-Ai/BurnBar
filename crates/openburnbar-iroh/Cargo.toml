@@ -38,7 +38,7 @@ jni = "0.22"
 # UniFFI surface used by `OpenBurnBarIroh` Swift package. The proc-macro
 # attribute path (`#[uniffi::export]`) is the modern, scaffolding-free way to
 # expose Rust APIs — no .udl file required.
-uniffi = { version = "0.28", features = ["cli"] }
+uniffi = { version = "0.31", features = ["cli"] }
 
 # Ed25519 pairing signatures live in OpenBurnBarCore (Swift CryptoKit). The
 # Rust side only needs the iroh secret-key representation, which iroh exposes
@@ -46,7 +46,7 @@ uniffi = { version = "0.28", features = ["cli"] }
 # canonical signer (Swift) and one canonical verifier (Swift) per role.
 
 [build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
+uniffi = { version = "0.31", features = ["build"] }
 
 [profile.release]
 opt-level = "z"
