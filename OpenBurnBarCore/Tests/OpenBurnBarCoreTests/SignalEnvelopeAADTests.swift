@@ -128,6 +128,52 @@ final class SignalEnvelopeAADTests: XCTestCase {
         )
     }
 
+    /// Cross-platform Unicode parity: a uid supplied DECOMPOSED (NFD: `e` +
+    /// U+0301) canonicalizes to the byte-identical AAD as the PRECOMPOSED form
+    /// (NFC: U+00E9) the shared fixture stores, byte-for-byte matching the
+    /// TypeScript `.normalize("NFC")`. Without this a Swift-sealed and a
+    /// Node-sealed ciphertext for the same logical uid would carry divergent
+    /// UTF-8 AAD and fail to open. ASCII vectors are NFC-stable (verified).
+    func test_nfdNormalizesToTheSameAADAsNFC() throws {
+        let fixture = try loadFixture()
+        let nfcVector = try XCTUnwrap(
+            fixture.vectors.first { $0.name == "non-ascii-nfc-uid" },
+            "fixture must include the non-ascii-nfc-uid vector"
+        )
+
+        let nfcUid = nfcVector.binding.uid
+        XCTAssertEqual(nfcUid.precomposedStringWithCanonicalMapping, nfcUid, "fixture uid must be stored in NFC")
+        let nfdUid = nfcUid.decomposedStringWithCanonicalMapping
+        // NFD and NFC are the same Swift String value (canonical equivalence) but
+        // a different byte sequence; compare the raw UTF-8 to prove they differ.
+        XCTAssertNotEqual(
+            Array(nfdUid.utf8),
+            Array(nfcUid.utf8),
+            "NFD and NFC of the fixture uid must differ at the UTF-8 byte level"
+        )
+
+        var nfdBinding = try nfcVector.binding.toBinding()
+        nfdBinding.uid = nfdUid
+        let nfcBinding = try nfcVector.binding.toBinding()
+
+        let nfdAAD = try signalEnvelopeBindingToAAD(nfdBinding)
+        XCTAssertEqual(nfdAAD, nfcVector.expectedAAD, "NFD uid must canonicalize to the NFC expectedAAD")
+        XCTAssertEqual(
+            Array(nfdAAD.utf8),
+            Array(try signalEnvelopeBindingToAAD(nfcBinding).utf8),
+            "NFD and NFC bindings must produce byte-identical AAD"
+        )
+
+        // ASCII vectors are NFC-stable, so normalization is a no-op for them.
+        for vector in fixture.vectors where vector.name != "non-ascii-nfc-uid" {
+            XCTAssertEqual(
+                vector.expectedAAD.precomposedStringWithCanonicalMapping,
+                vector.expectedAAD,
+                "\(vector.name) expectedAAD must be NFC-stable"
+            )
+        }
+    }
+
     /// Fail-closed: a segment carrying `|`, CR, or LF throws rather than emitting
     /// an ambiguous AAD — in required AND optional positions.
     func test_throwsFailClosedOnReservedCharacterInSegment() {

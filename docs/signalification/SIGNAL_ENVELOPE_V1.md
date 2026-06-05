@@ -159,7 +159,9 @@ The content key is delivered as a Signal message produced by `signalEncrypt` ove
 - `signalMessageType == 3` ⇒ the receiver routes to `signalDecryptPreKey`; `== 2` ⇒ `signalDecrypt`.
 
 ### 5.4 `binding` — replay/tamper context bound into every AEAD
-The binding string is the load-bearing anti-tamper / anti-cross-slot field. It is concatenated into BOTH the `info` and `associatedData` of every seal (at-rest) and into the AAD of the AES-GCM body layer (transport), and it reuses the **exact existing AAD grammar** so a relay cannot move ciphertext between slots, directions, or domains.
+The binding string is the load-bearing anti-tamper / anti-cross-slot field. It is concatenated into BOTH the `info` and `associatedData` of every seal (at-rest) and into the AAD of the AES-GCM body layer (transport) so a relay cannot move ciphertext between slots, directions, or domains.
+
+> **Reconciliation note (P0).** Earlier drafts of this section proposed *reusing the legacy `OpenBurnBar-HermesRelay-v1|` / `OpenBurnBar-CloudVault-aad-v2|` AAD grammars verbatim*. The **implemented, byte-parity-proven** canonicalizer (`bindingToAAD` in `packages/signal-envelope-contracts/src/index.ts`, `signalEnvelopeBindingToAAD` in `OpenBurnBarCore/.../SignalEnvelopeAAD.swift`, frozen by the cross-language fixture `binding-aad-vectors.json` / `SignalBindingAADVectors.json`) instead uses a **fresh v4 namespace**: `OpenBurnBar-Signal-AAD-v1|`. It does **not** reuse any legacy grammar. The structured `binding` object does not carry `schemaVersion` or `purpose`, so those segments are intentionally dropped (see §13 Q11). This section documents the grammar as actually shipped.
 
 ```jsonc
 "binding": {
@@ -174,8 +176,17 @@ The binding string is the load-bearing anti-tamper / anti-cross-slot field. It i
   "formatVersion": 1
 }
 ```
-- **Transport** canonical binding string = the existing labels verbatim, e.g. body uses `OpenBurnBar-HermesRelay-v1|gatewayEvent|<uid>|<clientId>|<eventId>` (verified at `HermesRelayCrypto.swift:180-191`) and the key-delivery `associatedData` uses `…|gatewayEventKey|<uid>|<clientId>|<eventId>`. **Unchanged** — Signal V1 reuses these strings byte-for-byte.
-- **At-rest** canonical binding string = the existing CloudVault AAD context verbatim: `OpenBurnBar-CloudVault-aad-v2|<uid>|<collection>|<docId>|<field>|<schemaVersion>|<purpose>` (verified at `CloudVaultCrypto.swift:58/173`). Signal V1 reuses this exact string as the `PublicKey#seal` `associatedData`; the `info` adds the `OpenBurnBar-Signal-AtRest-v1|` prefix.
+
+**Canonical binding string (implemented, both modes).** A single fresh-namespace grammar covers transport and at-rest. Fixed field order, joined by `|`, with absent optionals serialized as EMPTY segments so positions stay stable:
+
+```
+OpenBurnBar-Signal-AAD-v1|<mode>|<scope>|<uid>|<clientId>|<collection>|<docId>|<field>|<slotId>|<formatVersion>
+```
+
+- Every segment is normalized to **NFC** before the join (TS `.normalize("NFC")`, Swift `precomposedStringWithCanonicalMapping`) so non-ASCII values are byte-identical across languages; any segment containing `|`, CR, or LF is rejected fail-closed (never silently joined).
+- **Transport** (`mode == "transport"`, `scope == "gateway"`): `collection`/`docId`/`field` are empty, `clientId` + `slotId` carry the stream context — e.g. `OpenBurnBar-Signal-AAD-v1|transport|gateway|<uid>|<clientId>||||<slotId>|1`.
+- **At-rest** (`mode == "at-rest"`, `scope == "cloudvault"`): `clientId`/`slotId` are empty, `collection`/`docId`/`field` carry the document context — e.g. `OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|<uid>||<collection>|<docId>|<field>||1`. This string is the `PublicKey#seal` `associatedData`; the `info` adds the `OpenBurnBar-Signal-AtRest-v1|` prefix.
+- Because `mode` is the FIRST data segment and absent optionals stay positionally fixed, an at-rest binding can never be confused with a transport one under a shared AAD (mode-confusion fail-close, §6.3).
 
 ### 5.5 Replay & ordering (transport)
 Replay defense today is NOT in the crypto — it is the AAD-bound `eventId` + the agent's persisted monotonic `replayCounter` high-water + bounded seen-id cache, recorded only after authenticated open (verified: `tools/hermes-platform-burnbar/adapter.py` REPLAY_COUNTER_KEYS, `_RelayPlaintextRefused`; counter minted in `FunctionsRepository.sealGatewayEventPayload`). `SIGNAL_ENVELOPE_V1` transport mode has TWO compatible options; pick ONE and pin it in the activation PR:
@@ -277,8 +288,8 @@ Mirror the verified `BurnBarHpkeV3Vector.json` shape (a Python reference generat
   "relayKeyVersion": 4,
   "relayEncryption": "signal-hpke-identity-seal-v1" | "signal-doubleratchet-pqxdh-v1",
   "binding": { /* §5.4, fully expanded */ },
-  "bindingStringInfo": "OpenBurnBar-Signal-AtRest-v1|OpenBurnBar-CloudVault-aad-v2|u|coll|doc|field|2|purpose",
-  "payloadAAD": "OpenBurnBar-HermesRelay-v1|gatewayEvent|u|c|e",   // or cloudvault context
+  "bindingStringInfo": "OpenBurnBar-Signal-AtRest-v1|OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|u||coll|doc|field||1",  // info = "OpenBurnBar-Signal-AtRest-v1|" + bindingToAAD(binding) (§5.4)
+  "payloadAAD": "OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|u||coll|doc|field||1",   // = bindingToAAD(binding); transport uses the transport positions
   "payloadCiphertextB64": "…",
   "payloadPlaintext": "{…}",
   "contentKeyB64": "<32 bytes, for test only>",
@@ -329,7 +340,7 @@ Mirror the verified `BurnBarHpkeV3Vector.json` shape (a Python reference generat
 8. **Two ratchets coexisting.** Bespoke `OpenBurnBar-HermesRatchet-v1` and real Signal transport both occupy the "upgraded transport" slot (mutually exclusive per write, `callables/hermesGateway.ts:374`). Does Signal *replace* or *coexist with* the bespoke ratchet long-term? Two ratchets = audit hazard; what is the deprecation plan?
 9. **Fixture provenance / reproducibility.** The cross-language vectors are generated by an external Python repo not in this tree (verified for the HPKE v3 lane). Can an external auditor regenerate `SignalEnvelopeV1Vector.json` from a fresh clone, or is "triangulation" really Python(external)→{Swift,Kotlin}? In-source the generator.
 10. **No live stored-ciphertext gate.** Today the only proof the server stored ciphertext (not plaintext) is a **manual device run** (Phase 7) + a **string-matching** privacy scanner that does not read stored bytes. What automated test proves a real end_to_end domain stored only `SIGNAL_ENVELOPE_V1` ciphertext server-side?
-11. **AAD label namespace collision.** Signal V1 reuses the existing `OpenBurnBar-HermesRelay-v1|`/`OpenBurnBar-CloudVault-aad-v2|` strings verbatim. Is reusing the v1/v2 labels for a v4/Signal envelope safe, or should the label namespace bump to prevent a cross-version oracle where a v3 and a v4 envelope share an AAD?
+11. **AAD label namespace collision. — RESOLVED.** Signal V1 does **not** reuse the legacy `OpenBurnBar-HermesRelay-v1|`/`OpenBurnBar-CloudVault-aad-v2|` strings. The implemented, byte-parity-proven canonicalizer (§5.4) uses a **fresh v4 namespace**, `OpenBurnBar-Signal-AAD-v1|`, with its own fixed field grammar. There is therefore **no cross-version oracle**: a v2/v3 envelope and a v4 envelope can never share an AAD because the v4 prefix is distinct and never produced by the legacy paths (and vice versa). `schemaVersion`/`purpose` are intentionally dropped from the v4 grammar because the structured `binding` object does not carry them.
 12. **`enc` field semantics divergence.** v3 introduced a distinct `enc` field; Signal transport carries `signalMessageB64` instead. Does any shape validator conflate `enc` presence with version, such that a v4 lacking `enc` is mis-bucketed as v2?
 13. **Key transparency / MITM at first pin.** Trust is still TOFU (first-use pin) + manual safety-number comparison. The remediation plan's own future-work item ("add a key transparency log / signed audit trail") is unbuilt. Without KT, a compromised directory can hand a fresh device the wrong IdentityKey at first pin. Is KT in scope before GA?
 14. **AGPL containment.** Vendoring the libsignal Swift Package / Android maven / Rust crate pulls AGPL native code into shipped binaries, forcing LICENSE/NOTICE/THIRD_PARTY/source-offer updates (Rule-0 AGPL-owned). Has the AGPL agent confirmed the source-offer (`scripts/create-corresponding-source.sh`) covers all four language bindings, and is the App Store binary-size / notarization impact assessed?
@@ -344,6 +355,6 @@ Mirror the verified `BurnBarHpkeV3Vector.json` shape (a Python reference generat
 6. Does Signal transport REPLACE or COEXIST with the bespoke OpenBurnBar-HermesRatchet-v1 long-term? Two ratchets in the mutually-exclusive 'upgraded transport' slot is an audit hazard; a deprecation plan is needed.
 7. Fixture provenance: the cross-language KAT generator currently lives in an external Python repo (verified for the HPKE v3 lane), so vectors are not regenerable from a fresh clone. Will the generator be in-sourced so external auditors can reproduce SignalEnvelopeV1Vector.json?
 8. There is no automated gate proving the server stored only ciphertext for any end_to_end domain (Phase 7 readback is manual; the privacy scanner is string-match only, not stored-byte). What automated stored-ciphertext proof gates activation?
-9. Reusing the existing OpenBurnBar-HermesRelay-v1| / OpenBurnBar-CloudVault-aad-v2| AAD labels verbatim for a v4/Signal envelope: is this safe, or should the AAD namespace bump to prevent a cross-version oracle between v3 and v4 envelopes sharing an AAD?
+9. **RESOLVED — fresh v4 namespace, no cross-version oracle.** Signal V1 does NOT reuse the legacy `OpenBurnBar-HermesRelay-v1|` / `OpenBurnBar-CloudVault-aad-v2|` labels. The shipped canonicalizer uses a fresh `OpenBurnBar-Signal-AAD-v1|` namespace (§5.4), so a v2/v3 envelope and a v4 envelope can never share an AAD. `schemaVersion`/`purpose` are intentionally dropped because the structured binding does not carry them.
 10. Trust is still TOFU + manual safety-number; the remediation plan's key-transparency-log future-work item is unbuilt. Is a key transparency / signed audit log in scope before GA to close the first-pin MITM window?
 11. AGPL containment: vendoring libsignal Swift/Android/Rust bindings pulls AGPL native code into shipped binaries (LICENSE/NOTICE/THIRD_PARTY/source-offer impact, App Store binary-size + notarization). Has the AGPL owner confirmed scripts/create-corresponding-source.sh covers all four bindings?

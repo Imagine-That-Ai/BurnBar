@@ -6,7 +6,7 @@
  * Firestore writes to `trustState: trusted`.
  */
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createPublicKey, timingSafeEqual } from "node:crypto";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
@@ -61,6 +61,32 @@ function parseEscrowPlatform(raw: unknown): string {
 // 65-byte uncompressed x9.63 P-256 public key: 0x04 || X(32) || Y(32) — the same
 // shape `registerBrowserEscrowDevice` and the native keypair advertise.
 const P256_X963_PUBLIC_KEY_BYTE_LENGTH = 65;
+const P256_COORDINATE_BYTE_LENGTH = 32;
+
+/**
+ * Validate that the 65-byte x9.63 public-key bytes encode a point that actually
+ * lies on the NIST P-256 curve. Native CryptoKit rejects off-curve points when
+ * it imports a `P256.KeyAgreement.PublicKey`; the server + web recompute paths
+ * must match that posture or a malformed/off-curve key whose SHA-256 happens to
+ * equal a stored fingerprint could be admitted. `node:crypto.createPublicKey`
+ * with a JWK runs the same on-curve check and throws on an invalid point, so we
+ * fail closed (return false) on any error.
+ *
+ * `raw` MUST already be the 65-byte `0x04 || X(32) || Y(32)` buffer (length +
+ * prefix checked by the caller).
+ */
+function isPointOnP256Curve(raw: Buffer): boolean {
+  try {
+    const x = raw.subarray(1, 1 + P256_COORDINATE_BYTE_LENGTH).toString("base64url");
+    const y = raw
+      .subarray(1 + P256_COORDINATE_BYTE_LENGTH, 1 + 2 * P256_COORDINATE_BYTE_LENGTH)
+      .toString("base64url");
+    createPublicKey({ key: { kty: "EC", crv: "P-256", x, y }, format: "jwk" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Stream 6 capability gate (server mirror of `EscrowDeviceTrustSafetyCheckFlag`).
@@ -97,6 +123,9 @@ function recomputeEscrowFingerprint(publicKeyDataBase64: unknown): string | null
   const raw = Buffer.from(trimmed, "base64");
   if (raw.length !== P256_X963_PUBLIC_KEY_BYTE_LENGTH || raw[0] !== 0x04) return null;
   if (raw.toString("base64") !== normalizeBase64(trimmed)) return null;
+  // Native CryptoKit rejects off-curve points on import; mirror that here so a
+  // well-formed-but-off-curve key can never be fingerprinted (fail closed).
+  if (!isPointOnP256Curve(raw)) return null;
   return createHash("sha256").update(raw).digest("base64");
 }
 
