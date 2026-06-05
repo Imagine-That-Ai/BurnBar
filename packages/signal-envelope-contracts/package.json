@@ -1,0 +1,19 @@
+{
+  "name": "@openburnbar/signal-envelope-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared OpenBurnBar Signal envelope v1 schema and sanitizers for Node services.",
+  "license": "AGPL-3.0-only",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test lib/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.3"
+  }
+}

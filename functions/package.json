@@ -7,6 +7,7 @@
   },
   "main": "lib/index.js",
   "scripts": {
+    "prebuild": "npm run build --prefix ../packages/signal-envelope-contracts",
     "build": "tsc && node scripts/copy-certs.mjs",
     "build:watch": "tsc --watch",
     "test:rollups": "npm run build && node scripts/test-rollups.mjs",
@@ -62,6 +63,7 @@
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.0.0",
+    "@openburnbar/signal-envelope-contracts": "file:../packages/signal-envelope-contracts",
     "@sentry/node": "8.55.2",
     "@simplewebauthn/server": "13.3.0",
     "cockatiel": "3.2.1",

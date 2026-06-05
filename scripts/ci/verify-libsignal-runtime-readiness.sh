@@ -47,6 +47,19 @@ if (missing.length > 0) {
 const incomplete = requiredIds
   .map((id) => gates.get(id))
   .filter((gate) => gate.status !== 'complete');
+const completedEvidence = manifest.completedEvidence ?? [];
+const completedEvidenceIds = new Set(
+  completedEvidence
+    .filter((evidence) => evidence.status === 'complete')
+    .map((evidence) => evidence.id),
+);
+const missingCompletedEvidence = requiredIds
+  .map((id) => gates.get(id))
+  .filter((gate) => gate.status === 'complete' && !completedEvidenceIds.has(gate.id))
+  .map((gate) => gate.id);
+if (missingCompletedEvidence.length > 0) {
+  throw new Error(`complete gates missing completed evidence: ${missingCompletedEvidence.join(', ')}`);
+}
 
 if (manifest.status === 'ready') {
   if (incomplete.length > 0) {
@@ -63,7 +76,6 @@ if (manifest.status !== 'not_ready') {
 console.error('HOLD: official libsignal is not yet the OpenBurnBar runtime crypto core.');
 console.error(`Current runtime core: ${manifest.runtimeCryptoCore}`);
 console.error(`Blocking reason: ${manifest.blockingReason}`);
-const completedEvidence = manifest.completedEvidence ?? [];
 if (completedEvidence.length > 0) {
   console.error('Completed evidence:');
   for (const evidence of completedEvidence) {

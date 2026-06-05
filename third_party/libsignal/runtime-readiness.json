@@ -19,6 +19,12 @@
       "status": "complete",
       "proof": "Functions now has strict Signal envelope v1 helper validation, generated schema bindings, Hermes Gateway read/export pass-through, production-write fail-closed behavior, and seal-aware export redaction tests.",
       "command": "npm run build --prefix functions && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/dataExport.test.ts src/__tests__/hermesGatewaySealedEvent.test.ts --reporter=verbose && npm run test:hermes-gateway --prefix ../functions"
+    },
+    {
+      "id": "node_contracts",
+      "status": "complete",
+      "proof": "Functions, hosted MCP, Hermes realtime relay, and the shared @openburnbar/signal-envelope-contracts package validate official-libsignal Signal envelope v1 transport/at-rest shapes, strip plaintext siblings on export, reject downgrade/mode confusion/non-canonical base64, and keep production writes fail-closed until runtime crypto gates are complete.",
+      "command": "npm test --prefix packages/signal-envelope-contracts && npm run build --prefix functions && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/dataExport.test.ts src/__tests__/hermesGatewaySealedEvent.test.ts --reporter=verbose && npm run test:hermes-gateway --prefix ../functions && npm test --prefix ../services/hosted-mcp && npm test --prefix ../services/hermes-realtime-relay"
     }
   ],
   "requiredGates": [
@@ -39,8 +45,8 @@
     },
     {
       "id": "node_contracts",
-      "status": "pending",
-      "proof": "Functions and hosted-service schema/validation tests for Signal-backed envelopes."
+      "status": "complete",
+      "proof": "Shared @openburnbar/signal-envelope-contracts package consumed by Functions, hosted MCP, and Hermes realtime relay with schema, export-sanitization, downgrade, and malformed-base64 tests."
     },
     {
       "id": "hermes_gateway_writes",

@@ -33,3 +33,9 @@ prekeys, marks Kyber prekeys used, decrypts out-of-order Whisper messages,
 rejects replay, and proves safety-number changes when the remote identity key
 changes. It is evidence for the Node protocol surface; it is not proof that
 macOS, iOS, Android, Functions, or hosted-service writes have migrated.
+
+The shared Node envelope contract lives in
+`packages/signal-envelope-contracts`. It validates staged Signal transport and
+at-rest envelope shapes for Functions and hosted services, but it is only a
+schema/export-sanitization gate; it does not make official libsignal the runtime
+crypto core.

@@ -7,11 +7,13 @@
     "node": "22"
   },
   "scripts": {
+    "prebuild": "npm run build --prefix ../../packages/signal-envelope-contracts",
     "build": "tsc",
     "start": "node lib/server.js",
     "test": "npm run build && node --test lib/*.test.js"
   },
   "dependencies": {
+    "@openburnbar/signal-envelope-contracts": "file:../../packages/signal-envelope-contracts",
     "firebase-admin": "13.10.0",
     "ioredis": "^5.4.2",
     "protobufjs": "7.6.1",
