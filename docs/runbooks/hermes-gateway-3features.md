@@ -15,9 +15,9 @@ procedure, and the readiness verdict for the Hermes plugin PR.
 > (`00008132-001158191E9A401C`, iPad Air 11-inch M4, iPadOS 26.5): 95 executed,
 > 3 source-inspection checks skipped because the Mac workspace is not mounted in
 > the app-host process, 0 failures. Live deployed readback also confirms sealed
-> chat, model-switch, attachment, approval, Firestore, Storage, and Cloud
-> Logging surfaces. The only unresolved external proof gate is Sentry issue/event
-> readback, because this machine has no `sentry-cli` or Sentry API token.
+> chat, model-switch, attachment, approval, Firestore, Storage, Cloud Logging,
+> and Sentry issue/event surfaces. No external proof gate remains open for this
+> remediation claim.
 
 ---
 
@@ -389,19 +389,18 @@ bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
 | Live Firestore/Storage attachments | pass; 2 uploaded attachment manifests in `hermes_gateway_attachments` store `application/octet-stream`, no plaintext `fileName`, destination-bound sealed `relayEnvelope` v2, and matching opaque Storage objects in the deployed bucket |
 | Cloud Logging | pass; Cloud Run revision `burnbarhermesgateway-00014-yoc` shows successful `/approvals` traffic, and callable logs show `hermes_gateway.approval_resolved` for approved and rejected decisions; the expiry late-response callable error is expected fail-closed proof |
 | Live approvals | pass; docs `hga_95470e7cb6a48a8660b1b0f29d185cb384f4e04a`, `hga_df8499df712293a6d6dfd636f0d8550ebd4f1ed4`, and `hga_4c1cc9b55a69444616eb3b975bb85784bb7fb4ed` have only server-derived labels and allowlisted routing/status fields, no plaintext prompt/body/message/detail fields; trusted iPad device `6566F689-F2FA-4A57-8A0F-4B38D47A76C0`, Mac approver `23AA015D-B6C5-434C-8EBA-E33B8B8E4AAA` |
-| Sentry readback | not yet proven; no local `sentry-cli` or `SENTRY_AUTH_TOKEN` was available for issue/event readback |
+| Sentry readback | pass; transferred project `openburnbar-functions` in org `imagine-that-ai-qh` matches deployed DSN project id `4511485521362944`; browser-authenticated Sentry API readback returned `hasAccess: true`, platform `node-gcpfunctions`, first event `2026-06-01T06:52:10.682000Z`, and production issues/events including `OPENBURNBAR-FUNCTIONS-B` / `Error: Oversight request has expired.` from `2026-06-04T17:51:03.841000Z` |
 
-Remaining non-code proof gate: run Sentry issue/event readback with a Sentry API
-token. The broader deployed proof is now complete for live chat, model-switch,
-attachments, approvals, Firestore, Storage, and Cloud Logging.
+Remaining non-code proof gate: none for this remediation claim. The deployed
+proof is complete for live chat, model-switch, attachments, approvals,
+Firestore, Storage, Cloud Logging, and Sentry.
 
 ## 10. Final adversarial audit — 2026-06-04
 
-Verdict: **code and deployed live proof are green; hold only on Sentry admin
-readback.** The code, contract, cross-language vector, external Hermes fork,
-physical iPad unit surface, live approval decisions, and live cloud ciphertext
-readback are green. Do not claim Sentry observability proof until issue/event
-readback is performed with valid Sentry credentials.
+Verdict: **code, deployed live proof, and Sentry observability proof are
+green.** The code, contract, cross-language vector, external Hermes fork,
+physical iPad unit surface, live approval decisions, live cloud ciphertext
+readback, and Sentry issue/event readback are green.
 
 Final verifier rerun from the current BurnBar worktree and clean Hermes fork
 checkout:
@@ -420,7 +419,8 @@ bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
 | Full E2EE remediation verifier | pass; scanner, Functions contract, 96 focused Functions tests, 45 Firestore rule tests, schema drift, vector/mirror diffs, local smoke, and 211 external Hermes tests |
 | SOTA source check | pass for current claim boundary; HPKE is a good sealed-envelope primitive, while broad SOTA claims still require externally reviewed attachment/PQXDH/MLS-grade coverage documented in `docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md` |
 
-Open gate remains an external admin-readback gate, not hidden implementation
-work:
-
-- Run Sentry issue/event readback with `sentry-cli` or a valid Sentry API token.
+No open implementation or external admin-readback gate remains for this
+remediation claim. For repeatable headless Sentry automation, create a personal
+or internal-integration token with `org:read`, `project:read`, and `event:read`;
+the proof above used the authenticated Sentry browser session and did not commit
+or persist a secret.
