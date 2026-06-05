@@ -120,7 +120,7 @@ The workflow will:
 7. Notarize + staple DMG using `notarytool` with App Store Connect API key
 8. Compute SHA256/SHA512 checksums for DMG and ZIP
 9. Sign checksums with GPG key (if `RELEASE_SIGNING_KEY` secret is configured)
-10. Generate SPDX SBOM from SPM + npm dependencies
+10. Generate SPDX SBOM from SwiftPM, npm, Cargo, and Android/Gradle dependencies
 11. Write release metadata JSON with version, commit, timestamp, and runner metadata
 12. Upload the DMG, ZIP, checksums, optional checksum signature, SBOM, and metadata as Actions artifacts
 13. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health

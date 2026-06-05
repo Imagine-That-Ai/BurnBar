@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-generate-sbom.py — Merge SPM and npm dependency data into an SPDX SBOM for OpenBurnBar.
+generate-sbom.py — Merge dependency data into an SPDX SBOM for OpenBurnBar.
 
 Usage:
     scripts/generate-sbom.py --version VERSION [--repo-root PATH] [--output PATH]
 
-Collects dependency information from:
-  - Swift Package Manager (OpenBurnBarCore, OpenBurnBarDaemon Package.swift)
-  - npm (extensions/openburnbar package.json + package-lock.json)
+Collects dependency information from tracked manifests and lockfiles:
+  - Swift Package Manager (Package.resolved pins)
+  - npm (all tracked package-lock.json files plus package.json fallbacks)
+  - Cargo (all tracked Cargo.lock files)
+  - Android/Gradle (tracked build.gradle.kts dependency coordinates)
 
 Produces an SPDX 2.3 JSON SBOM with:
   - The OpenBurnBar application as the top-level package
@@ -15,8 +17,7 @@ Produces an SPDX 2.3 JSON SBOM with:
 
 Prerequisites:
     - Python 3.9+ (no external dependencies)
-    - Swift tools (for `swift package dump-package`)
-    - Node.js (for `npm ls --json`)
+    - git (to enumerate tracked manifest files)
 """
 
 import argparse
@@ -27,6 +28,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from hashlib import sha256
+import re
 from urllib.parse import quote
 
 
@@ -40,92 +42,193 @@ def run(cmd: list[str], cwd: str | None = None, check: bool = True) -> str:
     return result.stdout.strip()
 
 
-def collect_spm_dependencies(repo_root: Path) -> list[dict]:
-    """Collect dependencies from SPM Package.swift files."""
-    packages = []
-    spm_dirs = [
-        repo_root / "OpenBurnBarCore",
-        repo_root / "OpenBurnBarDaemon",
-    ]
+def git_tracked_files(repo_root: Path, *patterns: str) -> list[Path]:
+    """Return tracked files matching one or more git pathspecs."""
+    output = run(["git", "ls-files", *patterns], cwd=str(repo_root), check=False)
+    if not output:
+        return []
+    return [repo_root / line for line in output.splitlines() if line.strip()]
 
-    for spm_dir in spm_dirs:
-        pkg_manifest = spm_dir / "Package.swift"
-        if not pkg_manifest.exists():
-            continue
 
-        output = run(
-            ["swift", "package", "dump-package"],
-            cwd=str(spm_dir),
-            check=False,
+def dedupe_packages(packages: list[dict]) -> list[dict]:
+    """Deduplicate package records while preserving deterministic order."""
+    seen: set[tuple[str, str, str, str]] = set()
+    out: list[dict] = []
+    for package in sorted(
+        packages,
+        key=lambda item: (
+            item.get("type", ""),
+            item.get("name", ""),
+            item.get("version", ""),
+            item.get("source", ""),
+        ),
+    ):
+        key = (
+            package.get("type", ""),
+            package.get("name", ""),
+            package.get("version", ""),
+            package.get("url", ""),
         )
-        if not output:
+        if key in seen:
             continue
+        seen.add(key)
+        out.append(package)
+    return out
 
+
+def package_lock_name_from_path(path: str, meta: dict) -> str:
+    """Resolve a package name from a package-lock v3 packages key."""
+    if isinstance(meta.get("name"), str) and meta["name"]:
+        return meta["name"]
+    marker = "node_modules/"
+    if marker not in path:
+        return ""
+    return path.rsplit(marker, 1)[-1]
+
+
+def collect_spm_dependencies(repo_root: Path) -> list[dict]:
+    """Collect dependencies from tracked SwiftPM Package.resolved files."""
+    packages = []
+    for resolved in git_tracked_files(repo_root, "Package.resolved", "**/Package.resolved"):
         try:
-            pkg_data = json.loads(output)
-        except json.JSONDecodeError:
-            print(f"WARNING: Could not parse dump-package output for {spm_dir}", file=sys.stderr)
+            pkg_data = json.loads(resolved.read_text())
+        except (json.JSONDecodeError, OSError):
+            print(f"WARNING: Could not parse Package.resolved at {resolved}", file=sys.stderr)
             continue
 
-        name = pkg_data.get("name", spm_dir.name)
-        for dep in pkg_data.get("dependencies", []):
-            # Package.swift dependency format
-            for req in dep.get("product", [dep]):
-                dep_name = req.get("name", "") or dep.get("identity", "")
-                url = dep.get("url", dep.get("location", ""))
-                if isinstance(url, dict):
-                    url = url.get("url", "")
-                if not dep_name and url:
-                    dep_name = url.split("/")[-1].replace(".git", "")
-                packages.append({
-                    "name": dep_name,
-                    "version": "unknown",
-                    "url": url,
-                    "type": "spm",
-                })
+        rel = str(resolved.relative_to(repo_root))
+        for pin in pkg_data.get("pins", []):
+            state = pin.get("state", {})
+            location = pin.get("location", "")
+            name = pin.get("identity") or pin.get("package") or Path(str(location)).stem.replace(".git", "")
+            version = state.get("version") or state.get("revision") or state.get("branch") or "unknown"
+            if not name:
+                continue
+            packages.append({
+                "name": name,
+                "version": str(version),
+                "url": location,
+                "type": "spm",
+                "source": rel,
+            })
 
-    return packages
+    return dedupe_packages(packages)
 
 
 def collect_npm_dependencies(repo_root: Path) -> list[dict]:
-    """Collect dependencies from the npm extension."""
-    ext_dir = repo_root / "extensions" / "openburnbar"
+    """Collect dependencies from tracked npm lockfiles and package manifests."""
     packages = []
 
-    pkg_json = ext_dir / "package.json"
-    if not pkg_json.exists():
-        return packages
+    for lock_file in git_tracked_files(repo_root, "**/package-lock.json"):
+        try:
+            lock_data = json.loads(lock_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            print(f"WARNING: Could not parse package lock at {lock_file}", file=sys.stderr)
+            continue
 
-    try:
-        with open(pkg_json) as f:
-            pkg_data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return packages
-
-    # Collect from dependencies and devDependencies
-    for dep_type in ("dependencies", "devDependencies"):
-        for dep_name, dep_version_spec in pkg_data.get(dep_type, {}).items():
-            # Try to resolve exact version from package-lock.json
-            lock_file = ext_dir / "package-lock.json"
-            exact_version = dep_version_spec
-            if lock_file.exists():
-                try:
-                    with open(lock_file) as lf:
-                        lock_data = json.load(lf)
-                    # package-lock v3 format
-                    locked = lock_data.get("packages", {}).get(f"node_modules/{dep_name}", {})
-                    exact_version = locked.get("version", dep_version_spec)
-                except (json.JSONDecodeError, OSError, KeyError):
-                    pass
-
+        rel = str(lock_file.relative_to(repo_root))
+        for package_path, meta in (lock_data.get("packages") or {}).items():
+            if not package_path:
+                continue
+            name = package_lock_name_from_path(package_path, meta)
+            version = meta.get("version")
+            if not name or not version:
+                continue
+            resolved = meta.get("resolved") or f"https://www.npmjs.com/package/{name}"
             packages.append({
-                "name": dep_name,
-                "version": exact_version.lstrip("^~><= "),
-                "url": f"https://www.npmjs.com/package/{dep_name}",
+                "name": name,
+                "version": str(version),
+                "url": str(resolved),
                 "type": "npm",
+                "license": meta.get("license"),
+                "source": rel,
             })
 
-    return packages
+    # Include direct manifest dependencies for small internal packages that have
+    # no lockfile yet; exact transitive pins will be added once a lock exists.
+    for pkg_json in git_tracked_files(repo_root, "**/package.json"):
+        if pkg_json.name == "package-lock.json":
+            continue
+        try:
+            pkg_data = json.loads(pkg_json.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        rel = str(pkg_json.relative_to(repo_root))
+        for dep_type in ("dependencies", "devDependencies", "optionalDependencies"):
+            for dep_name, dep_version_spec in pkg_data.get(dep_type, {}).items():
+                packages.append({
+                    "name": dep_name,
+                    "version": str(dep_version_spec).lstrip("^~><= "),
+                    "url": f"https://www.npmjs.com/package/{dep_name}",
+                    "type": "npm",
+                    "license": "NOASSERTION",
+                    "source": rel,
+                })
+
+    return dedupe_packages(packages)
+
+
+def collect_cargo_dependencies(repo_root: Path) -> list[dict]:
+    """Collect dependencies from tracked Cargo.lock files."""
+    packages = []
+
+    for lock_file in git_tracked_files(repo_root, "**/Cargo.lock"):
+        rel = str(lock_file.relative_to(repo_root))
+        current: dict[str, str] = {}
+
+        def flush() -> None:
+            if current.get("name") and current.get("version"):
+                source = current.get("source", "")
+                url = source if source.startswith("git+") else f"https://crates.io/crates/{current['name']}"
+                packages.append({
+                    "name": current["name"],
+                    "version": current["version"],
+                    "url": url,
+                    "type": "cargo",
+                    "source": rel,
+                })
+
+        for raw_line in lock_file.read_text().splitlines():
+            line = raw_line.strip()
+            if line == "[[package]]":
+                flush()
+                current = {}
+                continue
+            match = re.match(r'^(name|version|source)\s*=\s*"([^"]+)"$', line)
+            if match:
+                current[match.group(1)] = match.group(2)
+        flush()
+
+    return dedupe_packages(packages)
+
+
+def collect_gradle_dependencies(repo_root: Path) -> list[dict]:
+    """Collect Android/Gradle dependency coordinates from tracked Kotlin build files."""
+    packages = []
+    coordinate_re = re.compile(r'"([A-Za-z0-9_.-]+):([A-Za-z0-9_.-]+):([^"@]+)(?:@[^"]+)?"')
+    plugin_re = re.compile(r'id\("([^"]+)"\)\s+version\s+"([^"]+)"')
+
+    for gradle_file in git_tracked_files(repo_root, "android/**/*.gradle.kts"):
+        rel = str(gradle_file.relative_to(repo_root))
+        text = gradle_file.read_text()
+        for group, artifact, version in coordinate_re.findall(text):
+            packages.append({
+                "name": f"{group}:{artifact}",
+                "version": version,
+                "url": f"https://mvnrepository.com/artifact/{group}/{artifact}",
+                "type": "gradle",
+                "source": rel,
+            })
+        for plugin_id, version in plugin_re.findall(text):
+            packages.append({
+                "name": plugin_id,
+                "version": version,
+                "url": f"https://plugins.gradle.org/plugin/{plugin_id}",
+                "type": "gradle-plugin",
+                "source": rel,
+            })
+
+    return dedupe_packages(packages)
 
 
 def build_spdx_document(
@@ -133,6 +236,8 @@ def build_spdx_document(
     repo_root: Path,
     spm_deps: list[dict],
     npm_deps: list[dict],
+    cargo_deps: list[dict],
+    gradle_deps: list[dict],
 ) -> dict:
     """Build an SPDX 2.3 JSON document."""
     spdx_id = "SPDXRef-DOCUMENT"
@@ -168,10 +273,20 @@ def build_spdx_document(
         }
     ]
 
-    for i, dep in enumerate(spm_deps + npm_deps, start=1):
+    purl_types = {
+        "cargo": "cargo",
+        "gradle": "maven",
+        "gradle-plugin": "maven",
+        "npm": "npm",
+        "spm": "swift",
+    }
+
+    for i, dep in enumerate(spm_deps + npm_deps + cargo_deps + gradle_deps, start=1):
         dep_spdx_id = f"SPDXRef-Package-dep-{i:04d}"
-        purl_type = "swift" if dep["type"] == "spm" else "npm"
-        purl = f"pkg:{purl_type}/{quote(dep['name'], safe='')}@{quote(dep['version'], safe='')}"
+        purl_type = purl_types.get(dep["type"], "generic")
+        purl_name = dep["name"].replace(":", "/") if dep["type"] in ("gradle", "gradle-plugin") else dep["name"]
+        purl = f"pkg:{purl_type}/{quote(purl_name, safe='@/')}@{quote(dep['version'], safe='')}"
+        declared_license = dep.get("license") or "NOASSERTION"
 
         pkg = {
             "SPDXID": dep_spdx_id,
@@ -181,7 +296,14 @@ def build_spdx_document(
             "filesAnalyzed": False,
             "copyrightText": "NOASSERTION",
             "licenseConcluded": "NOASSERTION",
-            "licenseDeclared": "NOASSERTION",
+            "licenseDeclared": declared_license if isinstance(declared_license, str) else "NOASSERTION",
+            "externalRefs": [
+                {
+                    "referenceCategory": "PACKAGE_MANAGER",
+                    "referenceType": "purl",
+                    "referenceLocator": purl,
+                }
+            ],
         }
         packages.append(pkg)
 
@@ -230,7 +352,13 @@ def main() -> None:
     npm_deps = collect_npm_dependencies(repo_root)
     print(f"  npm dependencies: {len(npm_deps)}")
 
-    doc = build_spdx_document(version, repo_root, spm_deps, npm_deps)
+    cargo_deps = collect_cargo_dependencies(repo_root)
+    print(f"  Cargo dependencies: {len(cargo_deps)}")
+
+    gradle_deps = collect_gradle_dependencies(repo_root)
+    print(f"  Gradle dependencies: {len(gradle_deps)}")
+
+    doc = build_spdx_document(version, repo_root, spm_deps, npm_deps, cargo_deps, gradle_deps)
 
     with open(output, "w") as f:
         json.dump(doc, f, indent=2, sort_keys=False)

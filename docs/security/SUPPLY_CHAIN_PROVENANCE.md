@@ -34,8 +34,8 @@ Cosign uses GitHub's OIDC identity (`sigstore/cosign-installer` + `cosign attest
 
 | Surface | SBOM | VEX |
 |---------|------|-----|
-| PR | `scripts/generate-sbom.py` (lightweight, no notarization) | `scripts/supply-chain/generate-vex.py` |
-| Release tag | Full SPDX via `scripts/generate-sbom.py` + syft optional mirror | OpenVEX sidecar uploaded to GitHub Release |
+| PR | `scripts/generate-sbom.py` from tracked SwiftPM, npm, Cargo, and Android/Gradle manifests | `scripts/supply-chain/generate-vex.py` |
+| Release tag | Full SPDX via `scripts/generate-sbom.py` from the same tracked dependency surface | OpenVEX sidecar uploaded to GitHub Release |
 
 VEX is a **triage artifact**: default generation marks `not_affected` with a placeholder statement when no exceptions are filed. Update VEX when `npm audit`, OSV-Scanner, or `cargo-deny` findings are accepted with documented rationale.
 
@@ -47,6 +47,7 @@ VEX is a **triage artifact**: default generation marks `not_affected` with a pla
 |-----------|------|--------|
 | Rust (`crates/openburnbar-iroh`) | `cargo-deny` | [`crates/openburnbar-iroh/deny.toml`](../../crates/openburnbar-iroh/deny.toml) |
 | Node (functions + extension) | `npm audit --audit-level=high` | lockfiles |
+| SBOM inventory | SPDX package URLs | tracked SwiftPM, npm, Cargo, and Android/Gradle manifests |
 | Cross-ecosystem | OSV-Scanner | `security-pr.yml` + harness |
 
 ## Bit-reproducible notarized builds — explicitly de-scoped
