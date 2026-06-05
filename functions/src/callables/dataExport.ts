@@ -269,6 +269,7 @@ const OPAQUE_EXPORT_COLUMNS = new Set<string>([
   "chunkIndex",
   "schemaVersion",
   "repoMatchToken",
+  "sourceSlugToken",
   "docID",
   "projectKeyHash",
   "bodyHashVersion",
