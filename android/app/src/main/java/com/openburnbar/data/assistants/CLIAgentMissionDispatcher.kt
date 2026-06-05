@@ -7,7 +7,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
+import com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads
+import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
+import com.openburnbar.data.cloud.AndroidSignalIdentityKeypair
 import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.cloud.CloudVaultSignalRecipient
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.time.Instant
 import java.util.UUID
@@ -21,6 +25,25 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private const val VAL_3 = 3
+
+/** Data-domain id whose sealingScheme gates at-rest Signal sealing for CLI missions. */
+private const val SIGNAL_CLI_DOMAIN = "conversations_chat"
+
+/**
+ * Carries the at-rest Signal sealing context into the (non-suspend) mission payload
+ * factories. Resolved in the suspend dispatch path ONLY when the domain gate is on, so
+ * a null context (the default everywhere) means production stays fully inert. Matches the
+ * iOS-wired surfaces: the single mission request doc + fan-out child request docs (NOT the
+ * group doc or event sub-docs, which iOS leaves legacy — wiring them would create envelopes
+ * iOS/Mac cannot yet read).
+ */
+data class CLISignalSealContext(
+    val uid: String,
+    val collection: String,
+    val docId: String,
+    val localIdentity: AndroidSignalIdentityKeypair,
+    val otherRecipients: List<CloudVaultSignalRecipient>,
+)
 
 private val missionCloudJson =
     Json {
@@ -232,6 +255,7 @@ class CLIAgentMissionDispatcher(
                 key = resolvedKey,
             ),
         )
+        val fanOutSignal = resolveSignalContext(uid = uid, docId = plan.groupID)
         appendFanOutChildMissionWrites(
             FanOutChildWriteRequest(
                 batch = batch,
@@ -251,6 +275,8 @@ class CLIAgentMissionDispatcher(
                 deliveryMode = deliveryMode,
                 parentHermesThreadID = parentHermesThreadID,
                 key = resolvedKey,
+                signalIdentity = fanOutSignal?.localIdentity,
+                signalRecipients = fanOutSignal?.otherRecipients ?: emptyList(),
             ),
         )
 
@@ -289,6 +315,7 @@ class CLIAgentMissionDispatcher(
 
         val id = UUID.randomUUID().toString()
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
+        val signalContext = resolveSignalContext(uid = uid, docId = id)
         val payload =
             CLIAgentMissionRequestPayloadFactory.buildSealed(
                 id = id,
@@ -311,6 +338,7 @@ class CLIAgentMissionDispatcher(
                 parentHermesThreadID = parentHermesThreadID,
                 presentationMode = presentationMode,
                 key = resolvedKey,
+                signal = signalContext,
             )
         val requestRef =
             firestore.collection("users").document(uid)
@@ -334,6 +362,29 @@ class CLIAgentMissionDispatcher(
         return id
     }
 
+    /**
+     * Resolve the at-rest Signal sealing context for a mission doc, or null when the domain
+     * gate is off (the production default → inert). Loads/publishes the device's Signal
+     * identity and fetches the trusted-device recipient set only when the gate is on.
+     */
+    private suspend fun resolveSignalContext(uid: String, docId: String): CLISignalSealContext? {
+        if (!AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CLI_DOMAIN)) return null
+        val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+        val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
+        AndroidSignalIdentityKeyStore.publishIfNeeded(
+            uid = uid, deviceId = escrow.deviceId, identity = identity, firestore = firestore,
+        )
+        val recipients =
+            AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
+        return CLISignalSealContext(
+            uid = uid,
+            collection = "cli_agent_mission_requests",
+            docId = docId,
+            localIdentity = identity,
+            otherRecipients = recipients,
+        )
+    }
+
     fun observe(requestID: String): Flow<CLIAgentMissionSnapshot> = callbackFlow {
         val uid = auth.currentUser?.uid
         if (uid == null) {
@@ -344,6 +395,12 @@ class CLIAgentMissionDispatcher(
             firestore.collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(requestID)
         val vaultKey = runCatching { AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData }.getOrNull()
+        // Local-only (no network): null until the device generates a Signal identity (activation).
+        val signalIdentity =
+            runCatching {
+                val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+                AndroidSignalIdentityKeyStore.load(escrow.deviceId, escrow.keyVersion)
+            }.getOrNull()
         var latestSnapshot: DocumentSnapshot? = null
         var latestEvents: List<CLIAgentMissionEvent> = emptyList()
 
@@ -353,6 +410,8 @@ class CLIAgentMissionDispatcher(
                     fallbackID = requestID,
                     eventOverride = latestEvents.takeIf { it.isNotEmpty() },
                     vaultKey = vaultKey,
+                    uid = uid,
+                    signalIdentity = signalIdentity,
                 )
             if (mission != null) trySend(mission)
         }
@@ -517,6 +576,7 @@ object CLIAgentMissionRequestPayloadFactory {
         presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
         key: AndroidCloudVaultResolvedKey,
         now: Instant = Instant.now(),
+        signal: CLISignalSealContext? = null,
     ): Map<String, Any> {
         val legacy =
             build(
@@ -557,6 +617,7 @@ object CLIAgentMissionRequestPayloadFactory {
                         },
                 ),
             key = key,
+            signal = signal,
         )
     }
 
@@ -704,6 +765,7 @@ object CLIAgentMissionRequestPayloadFactory {
         payload: Map<String, Any>,
         privatePayload: AndroidMissionPrivatePayload,
         key: AndroidCloudVaultResolvedKey,
+        signal: CLISignalSealContext? = null,
     ): Map<String, Any> {
         val sealed = payload.toMutableMap()
         listOf(
@@ -722,6 +784,20 @@ object CLIAgentMissionRequestPayloadFactory {
         sealed["sealedSchemaVersion"] = 2
         sealed["vaultKeyID"] = key.vaultKeyID
         sealed["sealedPayload"] = sealedMissionPayloadMap(privatePayload, key)
+        if (signal != null) {
+            // Dual-write the at-rest Signal envelope (same plaintext bytes as the AES-GCM
+            // seal above). Gated: signalEnvelopeMapIfEnabled returns null when the domain
+            // gate is off, so this is inert in production until the flip.
+            AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
+                domainID = SIGNAL_CLI_DOMAIN,
+                uid = signal.uid,
+                collection = signal.collection,
+                docId = signal.docId,
+                plaintext = missionCloudJson.encodeToString(privatePayload).toByteArray(Charsets.UTF_8),
+                localIdentity = signal.localIdentity,
+                otherRecipients = signal.otherRecipients,
+            )?.let { sealed["signalEnvelope"] = it }
+        }
         return sealed
     }
 }
@@ -836,14 +912,48 @@ data class CLIAgentMissionEvent(
 /** Public alias used by mission/host code outside this file. Mirrors
  *  the iOS `CLIAgentMissionSnapshot` decoder so the mission console host
  *  can decode list-listener documents without re-implementing the parser. */
-fun DocumentSnapshot.toMissionSnapshotOrNull(vaultKey: ByteArray? = null): CLIAgentMissionSnapshot? = toMissionSnapshot(fallbackID = id, vaultKey = vaultKey)
+fun DocumentSnapshot.toMissionSnapshotOrNull(
+    vaultKey: ByteArray? = null,
+    uid: String? = null,
+    signalIdentity: AndroidSignalIdentityKeypair? = null,
+): CLIAgentMissionSnapshot? =
+    toMissionSnapshot(fallbackID = id, vaultKey = vaultKey, uid = uid, signalIdentity = signalIdentity)
+
+/**
+ * Signal-first open of a mission request doc's private payload. Returns null when no
+ * envelope is present, uid/identity is missing, or anything fails — so the caller falls
+ * through to the legacy AES-GCM opener (rollout compatibility, matching iOS).
+ */
+private fun DocumentSnapshot.openSignalMissionPayload(
+    uid: String?,
+    docId: String,
+    signalIdentity: AndroidSignalIdentityKeypair?,
+): AndroidMissionPrivatePayload? {
+    if (get("signalEnvelope") == null || uid == null) return null
+    return runCatching {
+        AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+            data = data ?: emptyMap(),
+            uid = uid,
+            collection = "cli_agent_mission_requests",
+            docId = docId,
+            localIdentity = signalIdentity,
+        )?.let { missionCloudJson.decodeFromString<AndroidMissionPrivatePayload>(it.toString(Charsets.UTF_8)) }
+    }.getOrNull()
+}
 
 private fun DocumentSnapshot.toMissionSnapshot(
     fallbackID: String,
     eventOverride: List<CLIAgentMissionEvent>? = null,
     vaultKey: ByteArray? = null,
+    uid: String? = null,
+    signalIdentity: AndroidSignalIdentityKeypair? = null,
 ): CLIAgentMissionSnapshot? {
-    val requestPrivate = openMissionPayload(get("sealedPayload"), vaultKey)
+    val missionDocId = getString("id") ?: fallbackID
+    // Signal-first open of the request private payload (item 3), legacy AES-GCM fallback on
+    // any failure (gate off / identity unavailable / malformed / relocated) — matches iOS.
+    val requestPrivate =
+        openSignalMissionPayload(uid, missionDocId, signalIdentity)
+            ?: openMissionPayload(get("sealedPayload"), vaultKey)
     val statePrivate = openMissionPayload(get("sealedStatePayload"), vaultKey)
     val title = requestPrivate?.title ?: getString("title") ?: return null
     val status = getString("status") ?: return null

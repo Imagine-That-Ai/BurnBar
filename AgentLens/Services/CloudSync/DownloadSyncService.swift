@@ -446,7 +446,10 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
                 if vaultKey == nil {
                     vaultKey = try? await conversationVaultKeyProvider.keyForReading(uid: uid, deviceId: localDeviceId)
                 }
-                guard let privatePayload = ConversationCloudSealer.open(data, keyData: vaultKey?.keyData) else { continue }
+                guard let privatePayload = ConversationCloudSealer.open(
+                    data, keyData: vaultKey?.keyData,
+                    uid: uid, docId: doc.documentID, signalIdentity: vaultKey?.signalIdentity
+                ) else { continue }
                 let id = data["id"] as? String ?? doc.documentID
                 let stableId = "\(remoteDeviceId):\(id)"
                 let deviceName = nameMap[remoteDeviceId] ?? remoteDeviceId

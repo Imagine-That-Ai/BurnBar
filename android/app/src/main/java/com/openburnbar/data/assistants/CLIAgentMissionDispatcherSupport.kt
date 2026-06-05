@@ -5,6 +5,8 @@ package com.openburnbar.data.assistants
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.WriteBatch
 import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
+import com.openburnbar.data.cloud.AndroidSignalIdentityKeypair
+import com.openburnbar.data.cloud.CloudVaultSignalRecipient
 import java.time.Instant
 import java.util.UUID
 
@@ -34,6 +36,10 @@ internal data class FanOutChildWriteRequest(
     val deliveryMode: SkillRunDeliveryMode,
     val parentHermesThreadID: String?,
     val key: AndroidCloudVaultResolvedKey,
+    // At-rest Signal sealing material, resolved once in dispatchFanOut when the gate is on
+    // (null/empty in production = inert). Each child builds its own docId-bound context.
+    val signalIdentity: AndroidSignalIdentityKeypair? = null,
+    val signalRecipients: List<CloudVaultSignalRecipient> = emptyList(),
 )
 
 internal fun planFanOutDispatch(
@@ -110,6 +116,16 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
                 deliveryMode = request.deliveryMode,
                 parentHermesThreadID = request.parentHermesThreadID,
                 key = request.key,
+                signal =
+                    request.signalIdentity?.let { identity ->
+                        CLISignalSealContext(
+                            uid = request.uid,
+                            collection = "cli_agent_mission_requests",
+                            docId = missionID,
+                            localIdentity = identity,
+                            otherRecipients = request.signalRecipients,
+                        )
+                    },
             ).toMutableMap().apply {
                 put("groupID", request.plan.groupID)
                 put("siblingIndex", index)

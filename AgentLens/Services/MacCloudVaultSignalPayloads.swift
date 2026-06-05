@@ -3,7 +3,7 @@ import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 
-enum MobileCloudVaultSignalPayloadError: LocalizedError {
+enum MacCloudVaultSignalPayloadError: LocalizedError {
     case signalIdentityUnavailable(domainID: String)
     case invalidSignalEnvelope
     case signalBindingMismatch
@@ -26,7 +26,18 @@ enum MobileCloudVaultSignalPayloadError: LocalizedError {
     }
 }
 
-enum MobileCloudVaultSignalPayloads {
+/// macOS counterpart of iOS `MobileCloudVaultSignalPayloads` — produces + opens at-rest
+/// Signal `signalEnvelope` payloads for the AgentLens (Mac) chat/conversation write/read
+/// paths. Gated on the data-domain `sealingScheme`, so it is fully inert in production
+/// until the registry is flipped (item 5). Mirrors the already-shipped Pensieve seal path
+/// in `KnowledgeSyncService` (Firestore resolved via `Firestore.firestore()` directly).
+enum MacCloudVaultSignalPayloads {
+    static func signalSealingIsEnabled(domainID: String) -> Bool {
+        DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption
+    }
+
+    /// Seal `plaintext` to the local identity + every trusted device, returning the Firestore
+    /// map, or nil when the domain's Signal gate is OFF (caller keeps the legacy AES-GCM seal).
     static func signalEnvelopeIfEnabled(
         domainID: String,
         uid: String,
@@ -35,32 +46,20 @@ enum MobileCloudVaultSignalPayloads {
         docId: String,
         field: String = "signalEnvelope",
         plaintext: Data,
-        resolvedKey: MobileCloudVaultResolvedKey
+        resolvedKey: CloudVaultResolvedKey
     ) async throws -> [String: Any]? {
         guard signalSealingIsEnabled(domainID: domainID) else { return nil }
         guard let signalIdentity = resolvedKey.signalIdentity else {
-            throw MobileCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: domainID)
+            throw MacCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: domainID)
         }
-
-        let binding = CloudVaultSignalBinding(
-            uid: uid,
-            collection: collection,
-            docId: docId,
-            field: field
-        )
-        let recipients = try await atRestRecipients(
-            uid: uid,
-            firestore: firestore,
-            localIdentity: signalIdentity
-        )
-        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
-            plaintext,
-            recipients: recipients,
-            binding: binding
-        )
+        let binding = CloudVaultSignalBinding(uid: uid, collection: collection, docId: docId, field: field)
+        let recipients = try await atRestRecipients(uid: uid, firestore: firestore, localIdentity: signalIdentity)
+        let envelope = try OpenBurnBarSignalAtRest.sealPayload(plaintext, recipients: recipients, binding: binding)
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
     }
 
+    /// Signal-first open with a relocation guard; nil when no envelope present (caller falls
+    /// back to the legacy AES-GCM opener). Throws on invalid/relocated envelope or missing identity.
     static func openSignalPayloadIfPresent(
         _ data: [String: Any],
         uid: String,
@@ -72,19 +71,16 @@ enum MobileCloudVaultSignalPayloads {
     ) throws -> Data? {
         guard data[field] != nil else { return nil }
         guard let envelope = CloudVaultCrypto.signalEnvelope(from: data[field]) else {
-            throw MobileCloudVaultSignalPayloadError.invalidSignalEnvelope
+            throw MacCloudVaultSignalPayloadError.invalidSignalEnvelope
         }
         let expectedBinding = CloudVaultSignalBinding(
-            uid: uid,
-            collection: collection,
-            docId: docId,
-            field: bindingField ?? field
+            uid: uid, collection: collection, docId: docId, field: bindingField ?? field
         )
         guard envelope.binding == expectedBinding else {
-            throw MobileCloudVaultSignalPayloadError.signalBindingMismatch
+            throw MacCloudVaultSignalPayloadError.signalBindingMismatch
         }
         guard let signalIdentity else {
-            throw MobileCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: collection)
+            throw MacCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: collection)
         }
         return try OpenBurnBarSignalAtRest.openPayload(
             envelope,
@@ -94,11 +90,9 @@ enum MobileCloudVaultSignalPayloads {
         )
     }
 
-    static func signalSealingIsEnabled(domainID: String) -> Bool {
-        DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption
-    }
-
-    private static func atRestRecipients(
+    /// Local identity + every trusted escrow device's published Signal identity. Fail-closed:
+    /// throws on a missing/invalid trusted-device identity (matches iOS + the Android producer).
+    static func atRestRecipients(
         uid: String,
         firestore: Firestore,
         localIdentity: OpenBurnBarSignalIdentityKeypair
@@ -114,36 +108,18 @@ enum MobileCloudVaultSignalPayloads {
 
         for document in trustedDevices.documents {
             let data = document.data()
-            let rawDeviceId = (data["deviceId"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let deviceId: String
-            if let rawDeviceId, !rawDeviceId.isEmpty {
-                deviceId = rawDeviceId
-            } else {
-                deviceId = document.documentID
-            }
+            let rawDeviceId = (data["deviceId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let deviceId = (rawDeviceId?.isEmpty == false ? rawDeviceId! : document.documentID)
             guard let keyVersion = data["keyVersion"] as? Int else {
-                throw MobileCloudVaultSignalPayloadError.trustedDeviceSignalIdentityMismatch(
-                    deviceId: deviceId,
-                    keyVersion: 0
-                )
+                throw MacCloudVaultSignalPayloadError.trustedDeviceSignalIdentityMismatch(deviceId: deviceId, keyVersion: 0)
             }
-            let identityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(
-                deviceId: deviceId,
-                keyVersion: keyVersion
-            )
-            // Self-exclusion (parity with Mac/Android): the local recipient is already seeded
-            // from the in-memory keypair above; skip the Firestore round-trip + avoid overwriting
-            // the authoritative local public key with a server-fetched copy.
+            let identityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(deviceId: deviceId, keyVersion: keyVersion)
             if identityKeyId == localIdentity.identityKeyId { continue }
             let identityDoc = try await userRef.collection("signal_identity_public_keys")
                 .document(identityKeyId)
                 .getDocument()
             guard let identityData = identityDoc.data() else {
-                throw MobileCloudVaultSignalPayloadError.trustedDeviceMissingSignalIdentity(
-                    deviceId: deviceId,
-                    keyVersion: keyVersion
-                )
+                throw MacCloudVaultSignalPayloadError.trustedDeviceMissingSignalIdentity(deviceId: deviceId, keyVersion: keyVersion)
             }
             guard identityData["deviceId"] as? String == deviceId,
                   identityData["identityKeyId"] as? String == identityKeyId,
@@ -151,10 +127,7 @@ enum MobileCloudVaultSignalPayloads {
                   identityData["algorithm"] as? String == CloudVaultCrypto.signalAtRestEncryption,
                   let publicKeyBase64 = identityData["publicKeyData"] as? String,
                   let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
-                throw MobileCloudVaultSignalPayloadError.trustedDeviceSignalIdentityMismatch(
-                    deviceId: deviceId,
-                    keyVersion: keyVersion
-                )
+                throw MacCloudVaultSignalPayloadError.trustedDeviceSignalIdentityMismatch(deviceId: deviceId, keyVersion: keyVersion)
             }
             recipientsByIdentityKeyId[identityKeyId] = OpenBurnBarSignalAtRestRecipient(
                 recipientKind: "device",
@@ -163,8 +136,6 @@ enum MobileCloudVaultSignalPayloads {
             )
         }
 
-        return recipientsByIdentityKeyId.values.sorted {
-            $0.recipientIdentityKeyId < $1.recipientIdentityKeyId
-        }
+        return recipientsByIdentityKeyId.values.sorted { $0.recipientIdentityKeyId < $1.recipientIdentityKeyId }
     }
 }

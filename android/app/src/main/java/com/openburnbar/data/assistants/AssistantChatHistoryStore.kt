@@ -9,7 +9,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
+import com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads
+import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
+import com.openburnbar.data.cloud.AndroidSignalIdentityKeypair
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import java.io.File
 import java.lang.IllegalStateException
@@ -34,6 +38,9 @@ import kotlinx.serialization.json.Json
 
 private const val VAL_200 = 200
 private const val VAL_600 = 600
+
+/** Data-domain id whose sealingScheme gates at-rest Signal sealing for chat + CLI. */
+private const val SIGNAL_CHAT_DOMAIN = "conversations_chat"
 
 /**
  * Persisted shape of a single assistant chat thread on Android. Matches the
@@ -328,7 +335,10 @@ class AssistantChatHistoryStore internal constructor(
                 try {
                     cloud.upsert(thread)
                     synchronized(pendingMirrorsLock) { pendingMirrors.remove(thread.id) }
-                } catch (e: IllegalStateException) {
+                } catch (e: Exception) {
+                    // Surface (not crash) any cloud-mirror error — incl. Signal producer throws
+                    // (atRestRecipients fail-closed) and Firestore exceptions — on this
+                    // SupervisorJob IO coroutine. Matches the delete/tombstone coroutines.
                     _lastSyncError.value = e.message
                 }
             }
@@ -463,9 +473,10 @@ internal class AssistantChatFirestoreMirror(
     override suspend fun upsert(thread: AssistantChatThread) {
         val uid = requireUID()
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
+        val plaintextBytes = json.encodeToString(thread).toByteArray(Charsets.UTF_8)
         val sealedPayload =
             CloudVaultCrypto.sealPayload(
-                json.encodeToString(thread).toByteArray(Charsets.UTF_8),
+                plaintextBytes,
                 resolvedKey.keyData,
                 resolvedKey.vaultKeyID,
             )
@@ -490,6 +501,29 @@ internal class AssistantChatFirestoreMirror(
         if (thread.priorityOrder != null) {
             payload["priorityOrder"] = thread.priorityOrder
         }
+        // L41/at-rest Signal dual-write (item 3). Inert in production: the gate is
+        // fail-closed until the conversations_chat sealingScheme is flipped (item 5),
+        // so this whole block is skipped today. When on, it adds a "signalEnvelope"
+        // sibling field alongside the legacy AES-GCM "sealedPayload" (never replaces it),
+        // sealed to this device + every trusted device's published Signal identity.
+        if (AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CHAT_DOMAIN)) {
+            val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+            val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
+            AndroidSignalIdentityKeyStore.publishIfNeeded(
+                uid = uid, deviceId = escrow.deviceId, identity = identity, firestore = firestore,
+            )
+            val recipients =
+                AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
+            AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
+                domainID = SIGNAL_CHAT_DOMAIN,
+                uid = uid,
+                collection = "mobile_assistant_chats",
+                docId = thread.id,
+                plaintext = plaintextBytes,
+                localIdentity = identity,
+                otherRecipients = recipients,
+            )?.let { payload["signalEnvelope"] = it }
+        }
         collection(uid).document(thread.id).set(payload).await()
     }
 
@@ -501,6 +535,13 @@ internal class AssistantChatFirestoreMirror(
     override suspend fun fetchAll(): List<AssistantChatThread> {
         val uid = requireUID()
         val key = AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)
+        // Local-only (no network): null until the device has generated a Signal identity,
+        // which only happens once at-rest Signal sealing is activated.
+        val signalIdentity =
+            runCatching {
+                val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+                AndroidSignalIdentityKeyStore.load(escrow.deviceId, escrow.keyVersion)
+            }.getOrNull()
         val snapshot =
             collection(uid)
                 .orderBy("updatedAt", Query.Direction.DESCENDING)
@@ -508,7 +549,7 @@ internal class AssistantChatFirestoreMirror(
                 .get()
                 .await()
         return snapshot.documents.mapNotNull { document ->
-            decodeThread(document.id, document.data ?: return@mapNotNull null, key?.keyData)
+            decodeThread(document.id, document.data ?: return@mapNotNull null, key?.keyData, uid, signalIdentity)
         }
     }
 
@@ -560,7 +601,30 @@ internal class AssistantChatFirestoreMirror(
         return map
     }
 
-    internal fun decodeThread(documentID: String, data: Map<String, Any?>, vaultKey: ByteArray? = null): AssistantChatThread? {
+    internal fun decodeThread(
+        documentID: String,
+        data: Map<String, Any?>,
+        vaultKey: ByteArray? = null,
+        uid: String? = null,
+        signalIdentity: AndroidSignalIdentityKeypair? = null,
+    ): AssistantChatThread? {
+        // Signal-first open (item 3). Rollout compatibility: direct client writes carry the
+        // legacy AES-GCM "sealedPayload" alongside the optional Signal envelope until Phase-E.
+        // On any failure (gate off, identity unavailable, malformed, relocated binding), fall
+        // through to the legacy opener rather than dropping the thread — mirrors iOS decodeThread.
+        if (data["signalEnvelope"] != null && uid != null) {
+            val decoded =
+                runCatching {
+                    AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                        data = data,
+                        uid = uid,
+                        collection = "mobile_assistant_chats",
+                        docId = documentID,
+                        localIdentity = signalIdentity,
+                    )?.let { json.decodeFromString<AssistantChatThread>(it.toString(Charsets.UTF_8)) }
+                }.getOrNull()
+            if (decoded != null) return decoded
+        }
         if (data["contentSealed"] == true || data["sealedPayload"] != null) {
             val sealedPayload = CloudVaultCrypto.sealedPayloadFromMap(data["sealedPayload"] as? Map<*, *>) ?: return null
             val key = vaultKey ?: return null

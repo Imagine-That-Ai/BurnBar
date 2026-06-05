@@ -111,6 +111,21 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                     data["sealedSchemaVersion"] = 2
                     data["vaultKeyID"] = resolvedKey.vaultKeyID
                     data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
+                    // L41/at-rest Signal dual-write (item 3). Inert in production: the gate is
+                    // fail-closed until the conversations_chat sealingScheme is flipped (item 5),
+                    // so signalEnvelopeIfEnabled returns nil and no signalEnvelope is written.
+                    // Same plaintext bytes as the AES-GCM seal above; never replaces sealedPayload.
+                    if let signalEnvelope = try await MacCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+                        domainID: "conversations_chat",
+                        uid: uid,
+                        firestore: Firestore.firestore(),
+                        collection: "chat_threads",
+                        docId: docId,
+                        plaintext: payloadData,
+                        resolvedKey: resolvedKey
+                    ) {
+                        data["signalEnvelope"] = signalEnvelope
+                    }
                     data["title"] = FieldValue.delete()
                     data["preview"] = FieldValue.delete()
                     data["messages"] = FieldValue.delete()
