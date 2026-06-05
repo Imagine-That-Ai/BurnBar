@@ -1,0 +1,80 @@
+# Signal honesty-copy allowlist (SOTASIGNAL L21).
+#
+# Reviewed banned-phrase occurrences. Format (count-bearing):
+#   <relative-path> ::: <banned-phrase> ::: <expected-occurrence-count>
+# The count closes the file+phrase-only bypass: a NEW occurrence (or a removed one)
+# trips scripts/ci/verify-signal-honesty-copy.sh and forces re-review.
+# Audit trail + open findings:
+#   .agent/runs/sotasignal-full-ship-20260605/evidence/honesty-copy-audit.md
+#
+# Classification key:
+#   [FIX-REQUIRED]  genuine USER-FACING over-claim (app/website copy). Baselined so the
+#                   gate blocks NEW regressions, but it MUST be caveated by the copy
+#                   owner before the Phase-E honesty sign-off. OPEN debt, not "fine".
+#   [review-app]    "zero-knowledge" in app source — owner must confirm each is a
+#                   non-user-facing identifier/comment OR properly contextualized.
+#   [rule0-codegen] generated from the data-domains registry (Rule-0); the row's
+#                   serverSees discloses the residual inline. Route to registry owner.
+#   [comment]       source comment / @fileoverview / test name — not user-facing.
+#   [internal]      internal spec / runbook / pricing brief — not shipped to users.
+
+# ======================= [FIX-REQUIRED] user-facing copy =========================
+# RESOLVED (L21): every "the server searches without reading it" user-facing string
+# was rewritten to the honest caveated form ("search runs over encrypted structures
+# (some patterns stay visible)") in PricingPlans.astro, CloudStoreSettingsView.swift,
+# GatedFeature.kt, and CloudStoreViewPlanSections.kt. The accompanying source comments
+# were reworded so the bare banned phrase no longer appears. No allowlist entries
+# remain for these surfaces — the gate now greps zero occurrences.
+
+# ===================== [review-app] zero-knowledge in app source =================
+# Reviewed: each remaining hit is an internal identifier / source comment / search
+# keyword — NOT a user-facing privacy claim. The two user-facing strings (the
+# DataControlCenterView help tooltip and the DataControlCenterActions / Android
+# recovery copy) were softened to "end-to-end encrypted mode"; counts updated below.
+AgentLens/Services/Protocols/SettingsManagerProtocol.swift ::: zero-knowledge ::: 1
+AgentLens/Views/Settings/DataControlCenter/DataControlCenterActions.swift ::: zero-knowledge ::: 1
+AgentLens/Views/Settings/Search/SettingsManifest.swift ::: zero-knowledge ::: 1
+android/app/src/main/java/com/openburnbar/ui/control/ControlCenterFunctions.kt ::: zero-knowledge ::: 1
+android/app/src/main/java/com/openburnbar/ui/control/RecoveryAndPanicSections.kt ::: zero-knowledge ::: 1
+
+# ===================== [rule0-codegen] data-domains registry =====================
+# (Remediation R3) The Device-Trust domain summary was reworded "zero-knowledge" ->
+# "end-to-end encryption" at the registry source (registry.json) and regenerated into
+# gen/DataDomains.{swift,kt}, the website trust module, the synced Android in-tree
+# DataDomains.kt, and apps/console/lib/domains.generated.ts. No banned phrase remains
+# in any generated copy, so the former allowlist baselines here were removed.
+
+# ===================== [comment] source comments / test names ====================
+# iOS app: doc-comment + flow comment, not user-facing strings (the two user-facing
+# DataVaultControl* "zero-knowledge mode" strings were rewritten to "end-to-end encrypted mode").
+OpenBurnBarMobile/Models/ActivityStore.swift ::: zero-knowledge ::: 1
+OpenBurnBarMobile/Views/Control/DataVaultRecoveryView.swift ::: zero-knowledge ::: 1
+functions/src/__tests__/knowledgeMemoryDedupHash.test.ts ::: zero-knowledge ::: 1
+functions/src/callables/encryptedSearch.ts ::: zero-knowledge ::: 1
+functions/src/callables/knowledgeMemory.ts ::: zero-knowledge ::: 1
+functions/src/callables/knowledgeSearch.ts ::: zero-knowledge ::: 1
+functions/src/callables/recovery.ts ::: zero-knowledge ::: 2
+# apps/console (app.burnbar.ai) developer comments — NOT user-facing copy. The
+# rendered console copy (domain summaries, dashboard) is the caveated form; these two
+# are a JSDoc crypto-model note and a section-divider comment. (Remediation R3.)
+apps/console/lib/escrow.ts ::: zero-knowledge ::: 1
+apps/console/lib/api.ts ::: zero-knowledge ::: 1
+
+# ===================== [internal] internal specs / briefs ========================
+# Honesty-guardrail doc ("## Honest claim ceiling"): the phrase is the CAVEATED honest
+# form (discloses the deterministic-index structure leak in the same sentence).
+docs/searchable-index-leakage.md ::: search without reading ::: 1
+docs/FEATURE_GATING_SPEC.md ::: server searches without reading it ::: 2
+docs/FEATURE_GATING_SPEC.md ::: searches without reading ::: 4
+docs/PENSIEVE_CONTROL_CENTER.md ::: zero-knowledge ::: 2
+docs/PENSIEVE_CONTROL_CENTER_RUNBOOK.md ::: zero-knowledge ::: 2
+docs/PROVIDERS.md ::: zero-knowledge ::: 1
+docs/pricing/1_architecture_and_cost_vectors.md ::: zero-knowledge ::: 3
+docs/pricing/3_paid_pro_cloud_tier.md ::: zero-knowledge ::: 4
+docs/pricing/4_cost_of_goods_sold_cogs_model.md ::: zero-knowledge ::: 1
+docs/pricing/5_pricing_strategy_and_recommendations.md ::: zero-knowledge ::: 5
+docs/pricing/gpt-pro-brief/01_PRODUCT_AND_SYSTEM_OVERVIEW.md ::: zero-knowledge ::: 2
+docs/pricing/gpt-pro-brief/02_CLOUD_BACKEND_AND_INFRASTRUCTURE.md ::: zero-knowledge ::: 1
+docs/pricing/gpt-pro-brief/03_FEATURE_COST_AND_QUOTA_MAP.md ::: zero-knowledge ::: 3
+docs/pricing/gpt-pro-brief/05_TWO_TIER_PRICING_BRIEF_FOR_GPT_PRO.md ::: zero-knowledge ::: 2
+docs/pricing/gpt-pro-brief/06_OPERATIONAL_EXECUTION_APPENDIX.md ::: zero-knowledge ::: 1

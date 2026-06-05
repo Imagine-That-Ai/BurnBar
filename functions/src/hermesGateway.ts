@@ -126,6 +126,9 @@ export const HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION = SIGNAL_AT_REST_ENCRYPTIO
 // PRODUCTION is the set a NEW write may negotiate/emit — deliberately EMPTY while
 // the libsignal cross-language runtime readiness gate is open, so v4 is read-
 // tolerant but never producible (flag OFF). Activation flips v4 into PRODUCTION.
+// (Remediation R12) It is INTENTIONAL and EXPECTED for SUPPORTED to be non-empty
+// ({4}) while PRODUCTION is empty — that is the stable read-tolerant staging state,
+// NOT a misconfiguration or drift. Do not "fix" the asymmetry by emptying SUPPORTED.
 export const HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS = new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL]);
 export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = new Set<number>();
 export const HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64 = SIGNAL_MAX_MESSAGE_B64;

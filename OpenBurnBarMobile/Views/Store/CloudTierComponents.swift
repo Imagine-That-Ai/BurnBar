@@ -463,7 +463,7 @@ struct CloudTierCard: View {
                 CloudTierBenefit(icon: "brain.head.profile",
                                  text: "10× agent memory: 15 sources · 50,000 chunks · 250 MB"),
                 CloudTierBenefit(icon: "lock.shield.fill",
-                                 text: "Sealed on-device — the server searches without reading it"),
+                                 text: "Sealed on-device — the server searches over it without reading your content (some patterns stay visible)"),
                 CloudTierBenefit(icon: "arrow.up.arrow.down",
                                  text: "Same hosted Agent Control & relay allowance as Pro")
             ]

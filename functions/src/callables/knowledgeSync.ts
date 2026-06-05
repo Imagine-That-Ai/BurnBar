@@ -67,21 +67,22 @@ function repoMatchTokenFor(repoFullName: string): string {
 }
 
 /**
- * Server-keyed, owner-namespaced manifest-key token:
+ * Server-keyed, owner-namespaced source manifest id:
  * HMAC_SHA256(KNOWLEDGE_REPO_MATCH_KEY, "manifest|<uid>|<cleartext slug>") → hex.
  *
  * The console derives `sourceSlug` deterministically from the repo full name
  * (e.g. `repo-acme-handbook`), which is reversible cleartext repo identity. We
  * MUST NOT persist it (privacy-leak-remediation §4 + firestore.rules bans it on
  * client writes and comments claim it is never stored; the Admin-SDK callable
- * formerly bypassed that promise). Instead we store/route on this opaque token,
+ * formerly bypassed that promise). Instead we store/route on this opaque
+ * `sourceManifestId`,
  * which is non-reversible to a Firestore-only adversary yet deterministic so the
  * connect callable, the webhook, and the list/resync reads all derive the SAME
  * manifest doc id. The `uid` is folded in so the same repo across two members
  * never collides to the same global manifest token. Reuses the existing
  * repoMatchToken vault-keyed-token pattern (same secret, distinct domain prefix).
  */
-function sourceSlugTokenFor(uid: string, sourceSlug: string): string {
+function sourceManifestIdFor(uid: string, sourceSlug: string): string {
   const secret = KNOWLEDGE_REPO_MATCH_KEY.value();
   if (!secret) {
     throw new HttpsError("failed-precondition", "Knowledge repo match key is not configured.");
@@ -91,7 +92,8 @@ function sourceSlugTokenFor(uid: string, sourceSlug: string): string {
 
 /**
  * Resolve the manifest doc id for a connected-repo row with a LAZY DUAL-READ:
- *  - New rows (post-§4-slug-migration) carry an opaque `sourceSlugToken`.
+ *  - New rows (L40) carry an opaque canonical `sourceManifestId`.
+ *  - Transitional rows carry an opaque `sourceSlugToken`.
  *  - Legacy rows carry only the cleartext `sourceSlug`; their manifest is still
  *    keyed by that cleartext value, so we fall back to it on read so existing
  *    manifests keep resolving WITHOUT a server backfill (the device holds the
@@ -99,14 +101,36 @@ function sourceSlugTokenFor(uid: string, sourceSlug: string): string {
  *    the row to the token form). Returns undefined when neither is present.
  */
 function manifestKeyForRepoRow(row: {
+  sourceManifestId?: unknown;
   sourceSlugToken?: unknown;
   sourceSlug?: unknown;
 }): string | undefined {
+  if (typeof row.sourceManifestId === "string" && row.sourceManifestId.length > 0) {
+    return row.sourceManifestId;
+  }
   if (typeof row.sourceSlugToken === "string" && row.sourceSlugToken.length > 0) {
     return row.sourceSlugToken;
   }
   if (typeof row.sourceSlug === "string" && row.sourceSlug.length > 0) {
     return row.sourceSlug; // legacy slug-keyed manifest (read-only fallback)
+  }
+  return undefined;
+}
+
+/**
+ * Return only opaque manifest ids for API responses. This deliberately does NOT
+ * fall back to legacy cleartext `sourceSlug`, so listKnowledgeRepos never echoes
+ * a reversible slug even while manifest reads keep a lazy legacy fallback.
+ */
+function opaqueSourceManifestIdForRepoRow(row: {
+  sourceManifestId?: unknown;
+  sourceSlugToken?: unknown;
+}): string | undefined {
+  if (typeof row.sourceManifestId === "string" && row.sourceManifestId.length > 0) {
+    return row.sourceManifestId;
+  }
+  if (typeof row.sourceSlugToken === "string" && row.sourceSlugToken.length > 0) {
+    return row.sourceSlugToken;
   }
   return undefined;
 }
@@ -164,10 +188,12 @@ export const onKnowledgeRepoPush = onRequest(
     let flagged = 0;
     for (const repoDoc of repos.docs) {
       const uid = repoDoc.ref.parent.parent?.id;
-      // Manifest is keyed by the opaque `sourceSlugToken` (new rows) with a
-      // read-only fallback to a legacy cleartext `sourceSlug`; no cleartext slug
-      // is read into a stored path for new rows.
+      // Manifest is keyed by the canonical opaque `sourceManifestId` (new rows),
+      // with read-only fallbacks to transitional `sourceSlugToken` and legacy
+      // cleartext `sourceSlug`; no cleartext slug is read into a stored path for
+      // new rows.
       const manifestKey = manifestKeyForRepoRow({
+        sourceManifestId: repoDoc.get("sourceManifestId"),
         sourceSlugToken: repoDoc.get("sourceSlugToken"),
         sourceSlug: repoDoc.get("sourceSlug"),
       });
@@ -215,13 +241,13 @@ export const connectKnowledgeRepo = onCall(
           : undefined;
       // The console derives `sourceSlug` deterministically from the repo full
       // name (e.g. `repo-acme-handbook`) — reversible cleartext repo identity.
-      // We validate it transiently to derive the opaque manifest-key token, then
-      // DISCARD the cleartext: the stored row carries only `sourceSlugToken`, so
+      // We validate it transiently to derive the opaque source manifest id, then
+      // DISCARD the cleartext: the stored row carries only `sourceManifestId`, so
       // a Firestore-only adversary never sees the repo-name-derived slug. This is
       // what firestore.rules already promises for client writes (it bans
       // `sourceSlug`); the Admin-SDK callable formerly broke that promise (§4).
       const sourceSlug = safeCloudDocumentID(request.data.sourceSlug, "sourceSlug");
-      const sourceSlugToken = sourceSlugTokenFor(uid, sourceSlug);
+      const sourceManifestId = sourceManifestIdFor(uid, sourceSlug);
       const installId = boundedTrimmedString(request.data.installId, "installId", 128, false);
       const repoMatchToken = repoMatchTokenFor(repoFullName);
       // Doc id derived from the opaque token (never the repo name).
@@ -233,13 +259,14 @@ export const connectKnowledgeRepo = onCall(
           repoId,
           repoMatchToken,
           sealedRepoFullName,
-          // Opaque, server-keyed manifest routing token (replaces cleartext
-          // `sourceSlug`). MIGRATION: legacy rows that still hold `sourceSlug` are
-          // read via manifestKeyForRepoRow's fallback; a re-connect upgrades them
-          // to the token form (no server backfill — device holds the key).
-          sourceSlugToken,
-          // Defensively clear any legacy cleartext slug on re-connect (merge:true
-          // would otherwise leave a stale plaintext field behind).
+          // Canonical opaque, server-keyed source manifest id. MIGRATION: legacy
+          // rows that still hold `sourceSlugToken` or `sourceSlug` are read via
+          // manifestKeyForRepoRow's fallback; re-connect upgrades them here (no
+          // server backfill — device holds the key).
+          sourceManifestId,
+          // Defensively clear transitional + legacy fields on re-connect
+          // (merge:true would otherwise leave stale columns behind).
+          sourceSlugToken: FieldValue.delete(),
           sourceSlug: FieldValue.delete(),
           installId,
           connectedAt: Timestamp.now(),
@@ -247,7 +274,7 @@ export const connectKnowledgeRepo = onCall(
         }),
         { merge: true },
       );
-      return { ok: true, repoId };
+      return { ok: true, repoId, sourceManifestId };
     },
   ),
 );
@@ -288,9 +315,15 @@ export const listKnowledgeRepos = onCall(
     const reposSnap = await db.collection(`users/${uid}/knowledge_repos`).limit(200).get();
     const repos = await Promise.all(
       reposSnap.docs.map(async (repoDoc) => {
-        // Manifest doc id is the opaque `sourceSlugToken` (new rows) with a
-        // read-only fallback to a legacy cleartext `sourceSlug` (lazy dual-read).
+        const sourceManifestId = opaqueSourceManifestIdForRepoRow({
+          sourceManifestId: repoDoc.get("sourceManifestId"),
+          sourceSlugToken: repoDoc.get("sourceSlugToken"),
+        });
+        // Manifest doc id is the canonical opaque `sourceManifestId` (new rows),
+        // with read-only fallbacks to transitional `sourceSlugToken` and legacy
+        // cleartext `sourceSlug` (lazy dual-read). Only opaque ids are returned.
         const manifestKey = manifestKeyForRepoRow({
+          sourceManifestId: repoDoc.get("sourceManifestId"),
           sourceSlugToken: repoDoc.get("sourceSlugToken"),
           sourceSlug: repoDoc.get("sourceSlug"),
         });
@@ -307,7 +340,10 @@ export const listKnowledgeRepos = onCall(
           // `sourceSlug` stays in the response shape (back-compat) but is always
           // null now: the cleartext slug is no longer stored or echoed.
           sourceSlug: null,
-          sourceSlugToken: repoDoc.get("sourceSlugToken") ?? null,
+          sourceManifestId: sourceManifestId ?? null,
+          // Back-compat response alias for transitional clients. This is not
+          // stored on new rows and never falls back to legacy cleartext sourceSlug.
+          sourceSlugToken: sourceManifestId ?? null,
           installId: repoDoc.get("installId") ?? null,
           connectedAt: tsToIso(repoDoc.get("connectedAt")) ?? null,
           chunkCount: Number(manifest?.chunkCount ?? 0),
@@ -341,9 +377,11 @@ export const requestKnowledgeResync = onCall(
     const now = Timestamp.now();
     let flagged = 0;
     for (const repoDoc of reposSnap.docs) {
-      // Opaque `sourceSlugToken` (new rows) with legacy cleartext `sourceSlug`
-      // read-only fallback (lazy dual-read; no server backfill).
+      // Canonical opaque `sourceManifestId` (new rows), transitional
+      // `sourceSlugToken`, then legacy cleartext `sourceSlug` read-only fallback
+      // (lazy dual-read; no server backfill).
       const manifestKey = manifestKeyForRepoRow({
+        sourceManifestId: repoDoc.get("sourceManifestId"),
         sourceSlugToken: repoDoc.get("sourceSlugToken"),
         sourceSlug: repoDoc.get("sourceSlug"),
       });
@@ -383,3 +421,9 @@ export const reconcileKnowledgeMemoryDaily = onSchedule(
     });
   },
 );
+
+export const __testing__ = {
+  sourceManifestIdFor,
+  manifestKeyForRepoRow,
+  opaqueSourceManifestIdForRepoRow,
+};

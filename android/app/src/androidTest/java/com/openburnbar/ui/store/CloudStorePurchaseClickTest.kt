@@ -44,6 +44,7 @@ class CloudStorePurchaseClickTest {
                         revokingRemoteMcpClientId = null,
                     ),
                     onPurchase = { purchasedProductIDs += it },
+                    onRestore = {},
                     onRevoke = {},
                 )
             }

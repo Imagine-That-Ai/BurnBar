@@ -131,6 +131,27 @@ test("rejects downgrade, mode confusion, malformed base64, and plaintext sibling
   assert.deepEqual(dropped, ["signalEnvelope.plaintext", "signalEnvelope.keyDelivery.decryptedContentKey"]);
 });
 
+test("sanitizeSignalEnvelopeForExport FAILS CLOSED on a signal-shaped but invalid envelope (no raw plaintext passthrough)", () => {
+  // The dataExport caller routes anything with a numeric signalEnvelopeFormatVersion
+  // here; a value that then fails strict validation must be REDACTED, not re-emitted
+  // raw with an empty dropped[] (the prior fail-open leaked attacker plaintext).
+  const polluted = {
+    signalEnvelopeFormatVersion: 1,
+    mode: "at-rest",
+    INJECTED_PLAINTEXT: "the server must never read this",
+    secret: { nested: "leak" },
+  };
+  const { out, dropped } = sanitizeSignalEnvelopeForExport("signalEnvelope", polluted);
+  assert.deepEqual(out, {});
+  assert.ok(!("INJECTED_PLAINTEXT" in (out as Record<string, unknown>)));
+  assert.deepEqual(dropped.slice().sort(), [
+    "signalEnvelope.INJECTED_PLAINTEXT",
+    "signalEnvelope.mode",
+    "signalEnvelope.secret",
+    "signalEnvelope.signalEnvelopeFormatVersion",
+  ]);
+});
+
 test("bindingToAAD produces the deterministic v1 canonical string for transport and at-rest bindings", () => {
   const transport = transportEnvelope().binding as SignalBinding;
   assert.equal(

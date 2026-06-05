@@ -234,6 +234,57 @@ function sealedMissionStatePatch(overrides = {}) {
   };
 }
 
+// Canonical at-rest CloudVault Signal envelope (validSignalAtRestEnvelope shape),
+// mirroring packages/signal-envelope-contracts at-rest wire shape. base64 fields are
+// length %4 == 0 so the rules base64 guard passes. The `binding` is path-bound by the
+// caller; per-coordinate overrides let a test relocate or pollute exactly one field.
+function signalAtRestEnvelope({
+  uid,
+  collection,
+  docId,
+  field = "signalEnvelope",
+  envelope = {},
+  ciphertextLayer = {},
+  keyDelivery = {},
+  binding = {},
+} = {}) {
+  return {
+    signalEnvelopeFormatVersion: 1,
+    mode: "at-rest",
+    relayEncryption: "signal-hpke-identity-seal-v1",
+    ciphertextLayer: {
+      payloadCiphertextB64: "c2VhbGVkLXBheWxvYWQ=",
+      payloadAADLabel: "bindingToAAD-sha256:0123456789abcdef0123456789abcdef",
+      schemaVersion: 1,
+      ...ciphertextLayer,
+    },
+    keyDelivery: {
+      scheme: "signal-hpke-identity-seal-v1",
+      contentKeyLength: 32,
+      wraps: [
+        {
+          recipientKind: "device",
+          recipientIdentityKeyId: "device-key-1",
+          recipientIdentityKeyB64: "cHVibGljLWtleQ==",
+          sealedContentKeyB64: "c2VhbGVkLWtleQ==",
+        },
+      ],
+      ...keyDelivery,
+    },
+    binding: {
+      uid,
+      scope: "cloudvault",
+      collection,
+      docId,
+      field,
+      mode: "at-rest",
+      formatVersion: 1,
+      ...binding,
+    },
+    ...envelope,
+  };
+}
+
 function authedDb(uid) {
   return testEnv.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore();
 }
@@ -387,6 +438,59 @@ test("escrow public keys and envelopes are schema-constrained encrypted docs", a
       publicKeyJwk: { kty: "EC", crv: "P-256", x: "A", y: "B", d: "PRIVATE" },
     })
   );
+  const signalIdentityPublicKey = {
+    deviceId: "device-1",
+    platform: "iOS",
+    identityKeyId: "device-1_1",
+    publicKeyData: "S".repeat(44),
+    publicKeyFingerprint: "H".repeat(44),
+    keyVersion: 1,
+    algorithm: "signal-hpke-identity-seal-v1",
+    createdAt: Timestamp.fromMillis(Date.now()),
+  };
+  await assertSucceeds(
+    setDoc(
+      doc(ownerDb, "users/escrow-owner/signal_identity_public_keys/device-1_1"),
+      signalIdentityPublicKey
+    )
+  );
+  await assertFails(
+    updateDoc(doc(ownerDb, "users/escrow-owner/signal_identity_public_keys/device-1_1"), {
+      publicKeyData: "T".repeat(44),
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/signal_identity_public_keys/device-1_wrong"), signalIdentityPublicKey)
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/signal_identity_public_keys/device-1_2"), {
+      ...signalIdentityPublicKey,
+      identityKeyId: "device-1_2",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/signal_identity_public_keys/device-1_2"), {
+      ...signalIdentityPublicKey,
+      identityKeyId: "device-1_2",
+      keyVersion: 2,
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/signal_identity_public_keys/device-2_1"), {
+      ...signalIdentityPublicKey,
+      deviceId: "device-2",
+      identityKeyId: "device-2_1",
+      privateKeyData: "PRIVATE",
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/escrow-owner/signal_identity_public_keys/device-3_1"), {
+      ...signalIdentityPublicKey,
+      deviceId: "device-3",
+      identityKeyId: "device-3_1",
+      algorithm: "ECIES-P256-AESGCM",
+    })
+  );
 
   const envelope = {
     id: "envelope-1",
@@ -413,6 +517,226 @@ test("escrow public keys and envelopes are schema-constrained encrypted docs", a
       ...envelope,
       id: "envelope-3",
       credentials: { apiKey: "plaintext" },
+    })
+  );
+});
+
+test("L41 Signal prekey/session directory is path-bound, public-only, and rotation-aware", async () => {
+  const ownerDb = authedDb("signal-dir-owner");
+  const now = Timestamp.fromDate(new Date("2026-06-05T12:00:00.000Z"));
+  const soon = Timestamp.fromDate(new Date("2030-01-01T00:00:00.000Z"));
+
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/escrow_devices/device-1"), {
+      deviceId: "device-1",
+      deviceName: "iPhone",
+      platform: "iOS",
+      trustState: "pending",
+      publicKeyFingerprint: "F".repeat(44),
+      keyVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-1_1"), {
+      deviceId: "device-1",
+      platform: "iOS",
+      identityKeyId: "device-1_1",
+      publicKeyData: "S".repeat(44),
+      publicKeyFingerprint: "H".repeat(44),
+      keyVersion: 1,
+      algorithm: "signal-hpke-identity-seal-v1",
+      createdAt: now,
+    })
+  );
+
+  // Rotation support: Firestore rules cannot stringify ints, so v2+ identity
+  // docs must carry keyVersionLabel and the label must map back to keyVersion.
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/escrow_devices/device-r"), {
+      deviceId: "device-r",
+      deviceName: "Rotating Mac",
+      platform: "macOS",
+      trustState: "pending",
+      publicKeyFingerprint: "R".repeat(44),
+      keyVersion: 2,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-r_2"), {
+      deviceId: "device-r",
+      platform: "macOS",
+      identityKeyId: "device-r_2",
+      keyVersionLabel: "2",
+      publicKeyData: "V".repeat(44),
+      publicKeyFingerprint: "W".repeat(44),
+      keyVersion: 2,
+      algorithm: "signal-hpke-identity-seal-v1",
+      createdAt: now,
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-r_3"), {
+      deviceId: "device-r",
+      platform: "macOS",
+      identityKeyId: "device-r_3",
+      keyVersionLabel: "3",
+      publicKeyData: "X".repeat(44),
+      publicKeyFingerprint: "Y".repeat(44),
+      keyVersion: 2,
+      algorithm: "signal-hpke-identity-seal-v1",
+      createdAt: now,
+    })
+  );
+
+  const baseChild = {
+    identityKeyId: "device-1_1",
+    deviceId: "device-1",
+    keyVersion: 1,
+    createdAt: now,
+  };
+
+  const signedPreKeyPath =
+    "users/signal-dir-owner/signal_identity_public_keys/device-1_1/signed_prekeys/spk-1";
+  const signedPreKey = {
+    ...baseChild,
+    signedPreKeyId: "spk-1",
+    signedPreKeyNumericId: 11,
+    publicKeyB64: "A".repeat(44),
+    signatureB64: "B".repeat(88),
+    algorithm: "signal-pqxdh-signed-prekey-v1",
+    status: "active",
+    expiresAt: soon,
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, signedPreKeyPath), signedPreKey));
+  await assertSucceeds(
+    updateDoc(doc(ownerDb, signedPreKeyPath), {
+      status: "retired",
+      updatedAt: now,
+    })
+  );
+  await assertFails(
+    updateDoc(doc(ownerDb, signedPreKeyPath), {
+      publicKeyB64: "C".repeat(44),
+    })
+  );
+  await assertFails(deleteDoc(doc(ownerDb, signedPreKeyPath)));
+
+  const oneTimePreKeyPath =
+    "users/signal-dir-owner/signal_identity_public_keys/device-1_1/one_time_prekeys/opk-1";
+  const oneTimePreKey = {
+    ...baseChild,
+    oneTimePreKeyId: "opk-1",
+    oneTimePreKeyNumericId: 101,
+    publicKeyB64: "D".repeat(44),
+    algorithm: "signal-pqxdh-one-time-prekey-v1",
+    status: "available",
+    expiresAt: soon,
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, oneTimePreKeyPath), oneTimePreKey));
+  await assertSucceeds(
+    updateDoc(doc(ownerDb, oneTimePreKeyPath), {
+      status: "claimed",
+      claimedBySessionId: "session-1",
+      claimedAt: now,
+      updatedAt: now,
+    })
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-1_1/one_time_prekeys/opk-private"), {
+      ...oneTimePreKey,
+      oneTimePreKeyId: "opk-private",
+      privateKeyData: "PRIVATE",
+    })
+  );
+
+  const kyberPreKeyPath =
+    "users/signal-dir-owner/signal_identity_public_keys/device-1_1/kyber_prekeys/kpk-1";
+  const kyberPreKey = {
+    ...baseChild,
+    kyberPreKeyId: "kpk-1",
+    kyberPreKeyNumericId: 201,
+    publicKeyB64: "E".repeat(1600),
+    signatureB64: "G".repeat(88),
+    algorithm: "signal-pqxdh-kyber-prekey-v1",
+    status: "available",
+    expiresAt: soon,
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, kyberPreKeyPath), kyberPreKey));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-1_1/kyber_prekeys/kpk-nosig"), {
+      ...kyberPreKey,
+      kyberPreKeyId: "kpk-nosig",
+      signatureB64: "",
+    })
+  );
+  await assertSucceeds(
+    updateDoc(doc(ownerDb, kyberPreKeyPath), {
+      status: "exhausted",
+      claimedBySessionId: "session-1",
+      claimedAt: now,
+      updatedAt: now,
+    })
+  );
+
+  const sessionPath =
+    "users/signal-dir-owner/signal_identity_public_keys/device-1_1/sessions/session-1";
+  const sessionDirectoryDoc = {
+    ...baseChild,
+    sessionId: "session-1",
+    peerUid: "signal-dir-owner",
+    peerDeviceId: "device-r",
+    peerIdentityKeyId: "device-r_2",
+    mode: "same-user-device",
+    stateStorage: "device-local-only",
+    status: "active",
+    lastMessageAt: now,
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, sessionPath), sessionDirectoryDoc));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-1_1/sessions/session-private"), {
+      ...sessionDirectoryDoc,
+      sessionId: "session-private",
+      sessionStateB64: "SERIALIZED_SIGNAL_SESSION_MUST_STAY_ON_DEVICE",
+    })
+  );
+  await assertSucceeds(
+    updateDoc(doc(ownerDb, sessionPath), {
+      status: "archived",
+      archivedAt: now,
+      updatedAt: now,
+    })
+  );
+  await assertFails(
+    updateDoc(doc(ownerDb, sessionPath), {
+      peerIdentityKeyId: "attacker-key",
+    })
+  );
+
+  const rotationPath =
+    "users/signal-dir-owner/signal_identity_public_keys/device-1_1/rotation_events/rotation-1";
+  const rotationEvent = {
+    ...baseChild,
+    rotationId: "rotation-1",
+    fromKeyVersion: 1,
+    toKeyVersion: 2,
+    reason: "manual",
+    status: "planned",
+    rewrapRequired: true,
+    rewrapJobId: "rewrap-1",
+  };
+  await assertSucceeds(setDoc(doc(ownerDb, rotationPath), rotationEvent));
+  await assertFails(updateDoc(doc(ownerDb, rotationPath), { status: "running", updatedAt: now }));
+  await assertFails(deleteDoc(doc(ownerDb, rotationPath)));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/signal-dir-owner/signal_identity_public_keys/device-1_1/rotation_events/bad-rotation"), {
+      ...rotationEvent,
+      rotationId: "bad-rotation",
+      fromKeyVersion: 2,
+      toKeyVersion: 1,
     })
   );
 });
@@ -2824,6 +3148,224 @@ test("T2 mobile_assistant_chats denies plaintext content and unlisted keys", asy
   );
 });
 
+// L37 (rules half) — the optional additive Signal at-rest `signalEnvelope` field is
+// accepted ONLY when its binding matches the doc PATH, and every relocation / forgery /
+// pollution / mode-confusion fails closed. This is the named "Current Live Blocker"
+// (firestore.rules had CloudVault validators but no validSignalEnvelope path-binding
+// validator) and the rules dimension of L31 + L37.
+test("L37 signalEnvelope is path-bound on mobile_assistant_chats; relocation fails closed", async () => {
+  const db = authedDb("sig-owner");
+  await seedCloudVaultState("sig-owner");
+  const threadPath = "users/sig-owner/mobile_assistant_chats/thread-1";
+
+  const baseThread = {
+    id: "thread-1",
+    runtime: "hermes",
+    createdAt: "2026-06-05T00:00:00.000Z",
+    updatedAt: "2026-06-05T00:00:00.000Z",
+    messageCount: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
+
+  const goodEnvelope = signalAtRestEnvelope({
+    uid: "sig-owner",
+    collection: "mobile_assistant_chats",
+    docId: "thread-1",
+  });
+
+  // 1. Valid envelope bound to THIS exact path is accepted (alongside the legacy field).
+  await assertSucceeds(setDoc(doc(db, threadPath), { ...baseThread, signalEnvelope: goodEnvelope }));
+
+  // 2. The IDENTICAL envelope written at a DIFFERENT doc path fails closed (relocation):
+  //    binding.docId="thread-1" no longer matches the path's threadId="thread-2".
+  await assertFails(
+    setDoc(doc(db, "users/sig-owner/mobile_assistant_chats/thread-2"), {
+      ...baseThread,
+      id: "thread-2",
+      signalEnvelope: goodEnvelope,
+    })
+  );
+
+  // 3. Per-coordinate relocation of the binding — each must fail closed.
+  const relocations = [
+    { binding: { uid: "attacker" } }, // wrong uid
+    { binding: { collection: "cli_agent_mission_requests" } }, // wrong collection
+    { binding: { docId: "thread-999" } }, // wrong docId
+    { binding: { field: "sealedPayload" } }, // wrong field
+    { binding: { scope: "gateway" } }, // wrong scope (gateway≠cloudvault)
+    { binding: { mode: "transport" } }, // binding mode confusion
+    { binding: { formatVersion: 2 } }, // wrong format version
+    { binding: { clientId: "c1" } }, // gateway-only field on a cloudvault binding (hasOnly)
+    { binding: { slotId: "s1" } }, // gateway-only field on a cloudvault binding (hasOnly)
+  ];
+  let n = 100;
+  for (const reloc of relocations) {
+    n += 1;
+    await assertFails(
+      setDoc(doc(db, `users/sig-owner/mobile_assistant_chats/thread-${n}`), {
+        ...baseThread,
+        id: `thread-${n}`,
+        signalEnvelope: signalAtRestEnvelope({
+          uid: "sig-owner",
+          collection: "mobile_assistant_chats",
+          docId: `thread-${n}`,
+          ...reloc,
+        }),
+      })
+    );
+  }
+
+  // 4. Envelope-level forgery / mode confusion / pollution — each must fail closed.
+  const forgeries = [
+    { envelope: { mode: "transport" } }, // top-level mode mismatch
+    { envelope: { relayEncryption: "signal-doubleratchet-pqxdh-v1" } }, // transport scheme on at-rest
+    { envelope: { signalEnvelopeFormatVersion: 2 } }, // wrong envelope version
+    { envelope: { relayKeyVersion: 4 } }, // transport-only field present (hasOnly rejects on at-rest)
+    { envelope: { extraTopLevel: "x" } }, // unlisted top-level key (hasOnly)
+    { ciphertextLayer: { payloadCiphertextB64: "not_base64!!" } }, // bad base64 charset
+    { ciphertextLayer: { payloadCiphertextB64: "abc" } }, // length not %4
+    { ciphertextLayer: { payloadCiphertextB64: "" } }, // empty ciphertext
+    { ciphertextLayer: { payloadAADLabel: "has a space" } }, // label charset (no spaces/pipe)
+    { ciphertextLayer: { extra: "x" } }, // unlisted ciphertextLayer key (hasOnly)
+    { keyDelivery: { contentKeyLength: 16 } }, // wrong content-key length
+    { keyDelivery: { scheme: "signal-doubleratchet-pqxdh-v1" } }, // transport scheme in keyDelivery
+    { keyDelivery: { wraps: [] } }, // empty wraps (< 1)
+    { keyDelivery: { extra: "x" } }, // unlisted keyDelivery key (hasOnly)
+  ];
+  let m = 200;
+  for (const forge of forgeries) {
+    m += 1;
+    await assertFails(
+      setDoc(doc(db, `users/sig-owner/mobile_assistant_chats/thread-${m}`), {
+        ...baseThread,
+        id: `thread-${m}`,
+        signalEnvelope: signalAtRestEnvelope({
+          uid: "sig-owner",
+          collection: "mobile_assistant_chats",
+          docId: `thread-${m}`,
+          ...forge,
+        }),
+      })
+    );
+  }
+
+  // 5. A plaintext field smuggled INSIDE the envelope key slot (not the envelope shape)
+  //    fails closed — the field must be a valid envelope, never arbitrary data.
+  await assertFails(
+    setDoc(doc(db, "users/sig-owner/mobile_assistant_chats/thread-plain"), {
+      ...baseThread,
+      id: "thread-plain",
+      signalEnvelope: { plaintext: "secret message" },
+    })
+  );
+
+  // 6. (Remediation R11) Type confusion — a NON-MAP signalEnvelope value (string,
+  //    number, bool, list) fails closed; validSignalAtRestEnvelope opens with
+  //    `value is map`, so a non-map can never substitute for an envelope.
+  const nonMapValues = ["not-a-map", 123, true, ["array", "not", "map"]];
+  for (let i = 0; i < nonMapValues.length; i += 1) {
+    await assertFails(
+      setDoc(doc(db, `users/sig-owner/mobile_assistant_chats/thread-nonmap-${i}`), {
+        ...baseThread,
+        id: `thread-nonmap-${i}`,
+        signalEnvelope: nonMapValues[i],
+      })
+    );
+  }
+});
+
+// L37 (rules half) — the same path-binding guard on the second client-writable at-rest
+// body collection (cli_agent_mission_requests), proving the validator is wired
+// per-collection, not just once.
+test("L37 signalEnvelope is path-bound on cli_agent_mission_requests; cross-collection fails", async () => {
+  const phoneDb = authedDb("ivy-sig");
+  await seedCloudVaultState("ivy-sig");
+  const requestPath = "users/ivy-sig/cli_agent_mission_requests/mission-1";
+
+  const goodEnvelope = signalAtRestEnvelope({
+    uid: "ivy-sig",
+    collection: "cli_agent_mission_requests",
+    docId: "mission-1",
+  });
+
+  // Valid envelope bound to this mission doc is accepted alongside the sealed payload.
+  await assertSucceeds(
+    setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1", { signalEnvelope: goodEnvelope }))
+  );
+
+  // Cross-collection binding (envelope says it belongs to mobile_assistant_chats) fails.
+  await assertFails(
+    setDoc(
+      doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-2"),
+      sealedMissionBase("mission-2", {
+        signalEnvelope: signalAtRestEnvelope({
+          uid: "ivy-sig",
+          collection: "mobile_assistant_chats",
+          docId: "mission-2",
+        }),
+      })
+    )
+  );
+
+  // Same-collection wrong docId (relocation within the collection) fails.
+  await assertFails(
+    setDoc(
+      doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-3"),
+      sealedMissionBase("mission-3", {
+        signalEnvelope: signalAtRestEnvelope({
+          uid: "ivy-sig",
+          collection: "cli_agent_mission_requests",
+          docId: "mission-DIFFERENT",
+        }),
+      })
+    )
+  );
+
+  // Cross-user uid in the binding fails (the path owner is ivy-sig).
+  await assertFails(
+    setDoc(
+      doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-4"),
+      sealedMissionBase("mission-4", {
+        signalEnvelope: signalAtRestEnvelope({
+          uid: "someone-else",
+          collection: "cli_agent_mission_requests",
+          docId: "mission-4",
+        }),
+      })
+    )
+  );
+});
+
+// L37 — a (well-formed) signalEnvelope on a collection that was NOT wired (cli_sessions)
+// is rejected by that collection's hasOnly allowlist. Proves the optional field was added
+// per-collection, fail-closed by default — not globally.
+test("L37 signalEnvelope is rejected on a not-wired collection (cli_sessions hasOnly)", async () => {
+  const db = authedDb("nw-owner");
+  await seedCloudVaultState("nw-owner");
+  const base = {
+    id: "sess-1",
+    agent: "codex",
+    createdAt: "2026-06-05T00:00:00.000Z",
+    updatedAt: "2026-06-05T00:00:00.000Z",
+    schemaVersion: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
+  await assertSucceeds(setDoc(doc(db, "users/nw-owner/cli_sessions/sess-1"), base));
+  await assertFails(
+    setDoc(doc(db, "users/nw-owner/cli_sessions/sess-2"), {
+      ...base,
+      id: "sess-2",
+      signalEnvelope: signalAtRestEnvelope({ uid: "nw-owner", collection: "cli_sessions", docId: "sess-2" }),
+    })
+  );
+});
+
 // T3 — session_logs manifest rejects an arbitrary unlisted key (hasOnly).
 test("T3 session_logs manifest denies arbitrary unlisted keys", async () => {
   const db = authedDb("slm-owner");
@@ -3684,13 +4226,14 @@ test("T17 subscription_topics require sealed graph/display text and reject plain
   );
 });
 
-// T18 — knowledge_repos: opaque keyed repoMatchToken + sourceSlugToken + sealed
-// name accepted; every cleartext repo identity (repoFullName / sourcePath /
-// sourceSlug) rejected; non-opaque tokens + smuggled keys rejected; cross-user
-// denied. knowledge_sync_manifests is server-only (allow write: if false) and
-// owner-read. (§4 slug remediation — the connectKnowledgeRepo callable now
-// persists the opaque sourceSlugToken instead of the reversible cleartext slug;
-// these rules tests pin the on-disk contract that the new shape enforces.)
+// T18 — knowledge_repos: opaque keyed repoMatchToken + canonical
+// sourceManifestId + sealed name accepted; every cleartext/deprecated repo
+// identity (repoFullName / sourcePath / sourceSlug / sourceSlugToken) rejected;
+// non-opaque tokens + smuggled keys rejected; cross-user denied.
+// knowledge_sync_manifests is server-only (allow write: if false) and
+// owner-read. (L40 — the connectKnowledgeRepo callable now persists the
+// canonical opaque sourceManifestId instead of the transitional sourceSlugToken
+// or reversible cleartext slug; these rules tests pin the on-disk contract.)
 test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity + cross-user", async () => {
   const ownerUid = "kr-owner";
   const otherUid = "kr-intruder";
@@ -3702,7 +4245,7 @@ test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity +
     uid: ownerUid,
     repoId,
     repoMatchToken: "a".repeat(64),
-    sourceSlugToken: "b".repeat(64),
+    sourceManifestId: "b".repeat(64),
     sealedRepoFullName: sealedText(),
     installId: "inst-123",
     connectedAt: serverTimestamp(),
@@ -3719,11 +4262,14 @@ test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity +
   await assertFails(setDoc(doc(db, repoPath), { ...base, sourcePath: "/Users/me/secret" }));
   // The §4 residual: the reversible repo-name-derived slug must never be stored.
   await assertFails(setDoc(doc(db, repoPath), { ...base, sourceSlug: "repo-owner-secret-repo" }));
+  // The transitional Stream-7 name is also rejected on new client writes; L40's
+  // canonical field is sourceManifestId. Legacy rows are dual-read by callables.
+  await assertFails(setDoc(doc(db, repoPath), { ...base, sourceSlugToken: "b".repeat(64) }));
 
   // Opaque tokens must be 64-hex; a non-hex / wrong-shape token is rejected.
   await assertFails(setDoc(doc(db, repoPath), { ...base, repoMatchToken: "not-a-hex-token" }));
-  await assertFails(setDoc(doc(db, repoPath), { ...base, sourceSlugToken: "repo-owner-secret-repo" }));
-  await assertFails(setDoc(doc(db, repoPath), { ...base, sourceSlugToken: "c".repeat(63) }));
+  await assertFails(setDoc(doc(db, repoPath), { ...base, sourceManifestId: "repo-owner-secret-repo" }));
+  await assertFails(setDoc(doc(db, repoPath), { ...base, sourceManifestId: "c".repeat(63) }));
 
   // A malformed sealed name is rejected by validCloudSealedText.
   await assertFails(
@@ -3752,7 +4298,7 @@ test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity +
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), manifestPath), {
       uid: ownerUid,
-      sourceSlugToken: "b".repeat(64),
+      sourceManifestId: "b".repeat(64),
       needsResync: true,
       chunkCount: 12,
       byteCount: 3456,

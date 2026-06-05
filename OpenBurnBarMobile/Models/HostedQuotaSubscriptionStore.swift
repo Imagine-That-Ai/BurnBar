@@ -132,7 +132,7 @@ enum OpenBurnBarProductCatalog {
             fallbackDisplayPrice: "$59.99",
             entitlementID: "burnbar_ultra",
             role: .subscription,
-            included: "Everything in BurnBar Cloud Pro plus 10x agent memory — 15 sources, 50,000 chunks, 250 MB. Memory text is sealed on-device; the server searches without reading it. Same hosted Agent Control and relay allowance as Pro.",
+            included: "Everything in BurnBar Cloud Pro plus 10x agent memory — 15 sources, 50,000 chunks, 250 MB. Memory text is sealed on-device; the server searches over it without reading your content, though the cloaked structures still reveal some patterns. Same hosted Agent Control and relay allowance as Pro.",
             disclosure: "1 month, auto-renews monthly. No introductory trial.",
             topUpKind: nil
         ),

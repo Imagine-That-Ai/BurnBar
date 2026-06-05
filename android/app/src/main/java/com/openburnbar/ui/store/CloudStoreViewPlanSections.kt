@@ -223,8 +223,9 @@ private fun cloudPaidTierSections(): CloudPaidTierSections {
 
 // ── Canonical per-tier presentation (mirrors the marketing site) ──
 //
-// Copy is benefit-first and honest: agent memory is "sealed on-device, the
-// server searches without reading it" — never "end-to-end encrypted chat".
+// Copy is benefit-first and honest: agent memory is "sealed on-device, with
+// search running over encrypted structures (some patterns stay visible)" —
+// never "end-to-end encrypted chat".
 // Crests follow the website's final swap: Cloud→cloud, Cloud Pro→pro (the
 // high-tech ring logo), Cloud Ultra→ultra (the provider-icon ring logo).
 

@@ -10,12 +10,17 @@ import javax.crypto.spec.SecretKeySpec
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private const val SHA256_DIGEST_BYTES = 32
 private const val VAL_24 = 24
+private const val SIGNAL_KAT_PRIVATE_KEY_B64 = "yGZ5zfds7ljkjsopcLya1ayDbjV+TCL6/b4BQBpqfV0="
+private const val SIGNAL_KAT_PUBLIC_KEY_B64_CANONICAL = "BVw7AC8duGgSdz/wLmMLMe+ymSUCcMkOcoJ+E6Eb+RhO"
+private const val SIGNAL_KAT_CIPHERTEXT_B64 = "AQt/WxZMem2jpwxChzbQuzg/yMY5kdPdzuOmgLoJwoIZOFUfdEr33hTkLyIzwQTD7J2uShoruECN2ty8j1QlSe2siO6trszlngaJe7Zhb7liPArb1x/A+J/nrS5GNw=="
+private const val SIGNAL_KAT_PLAINTEXT_B64 = "Y3Jvc3MtbGFuZ3VhZ2UgaW50ZXJvcCBzZWNyZXQg4oCUIG5vZGUgc2VhbGVk"
 
 class CloudVaultCryptoTest {
     @Test
@@ -194,6 +199,138 @@ class CloudVaultCryptoTest {
         val unwrapped = CloudVaultCrypto.unwrapVaultKey(wrapped, recipient.private)
 
         assertArrayEquals(vaultKey, unwrapped)
+    }
+
+    @Test
+    fun signalBindingToAadMatchesCanonicalGrammarAndRejectsInjection() {
+        val binding =
+            SignalEnvelopeBinding(
+                uid = "u1",
+                scope = "cloudvault",
+                collection = "pensieve",
+                docId = "doc-42",
+                field = "body",
+                mode = "at-rest",
+                formatVersion = 1,
+            )
+
+        assertEquals(
+            "OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|u1||pensieve|doc-42|body||1",
+            CloudVaultCryptoSupport.bindingToAAD(binding),
+        )
+        assertEquals(
+            CloudVaultCryptoSupport.bindingToAAD(binding.copy(uid = "café")),
+            CloudVaultCryptoSupport.bindingToAAD(binding.copy(uid = "cafe\u0301")),
+        )
+        assertTrue(runCatching { CloudVaultCryptoSupport.bindingToAAD(binding.copy(uid = "u|1")) }.isFailure)
+        assertTrue(runCatching { CloudVaultCryptoSupport.bindingToAAD(binding.copy(docId = "doc\n42")) }.isFailure)
+    }
+
+    @Test
+    fun signalAtRestDirectOpenMatchesNodeKatAndRoundTrips() {
+        val privateKey = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_PRIVATE_KEY_B64)
+        val publicKey = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_PUBLIC_KEY_B64_CANONICAL)
+        val binding =
+            SignalEnvelopeBinding(
+                uid = "u1",
+                scope = "cloudvault",
+                collection = "pensieve",
+                docId = "doc-42",
+                field = "body",
+                mode = "at-rest",
+                formatVersion = 1,
+            )
+        val katPlaintext = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_PLAINTEXT_B64)
+        val katCiphertext = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_CIPHERTEXT_B64)
+
+        assertArrayEquals(katPlaintext, CloudVaultCryptoSupport.atRestOpen(katCiphertext, privateKey, binding))
+        assertTrue(runCatching { CloudVaultCryptoSupport.atRestOpen(katCiphertext, privateKey, binding.copy(docId = "wrong")) }.isFailure)
+
+        val plaintext = "android signal direct payload".toByteArray()
+        val ciphertext = CloudVaultCryptoSupport.atRestSeal(plaintext, publicKey, binding)
+        assertArrayEquals(plaintext, CloudVaultCryptoSupport.atRestOpen(ciphertext, privateKey, binding))
+        assertTrue(runCatching { CloudVaultCryptoSupport.atRestOpen(ciphertext, privateKey, binding.copy(field = "other")) }.isFailure)
+    }
+
+    @Test
+    fun signalCloudVaultEnvelopeWrapsContentKeyAndRejectsTamper() {
+        val privateKey = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_PRIVATE_KEY_B64)
+        val publicKey = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_PUBLIC_KEY_B64_CANONICAL)
+        val binding =
+            CloudVaultSignalBinding(
+                uid = "uid-1",
+                collection = "pensieve",
+                docId = "doc-42",
+                field = "body",
+            )
+        val plaintext = "android cloudvault signal payload".toByteArray()
+        val envelope =
+            CloudVaultCrypto.sealSignalPayload(
+                plaintext,
+                recipients =
+                    listOf(
+                        CloudVaultSignalRecipient("device", "device-key-1", publicKey),
+                        CloudVaultSignalRecipient("escrow", "escrow-key-1", publicKey),
+                    ),
+                binding = binding,
+            )
+
+        assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_MODE, envelope.mode)
+        assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION, envelope.relayEncryption)
+        assertEquals(2, envelope.keyDelivery.wraps.size)
+        assertTrue(envelope.ciphertextLayer.payloadAADLabel.startsWith("bindingToAAD-sha256:"))
+        assertArrayEquals(
+            plaintext,
+            CloudVaultCrypto.openSignalPayload(envelope, "device-key-1", privateKey, expectedBinding = binding),
+        )
+        assertArrayEquals(
+            plaintext,
+            CloudVaultCrypto.openSignalPayload(envelope, "escrow-key-1", privateKey, expectedBinding = binding),
+        )
+        assertTrue(
+            runCatching {
+                CloudVaultCrypto.openSignalPayload(
+                    envelope,
+                    "device-key-1",
+                    privateKey,
+                    expectedBinding = binding.copy(docId = "relocated-doc"),
+                )
+            }.isFailure,
+        )
+
+        val tampered =
+            envelope.copy(
+                ciphertextLayer =
+                    envelope.ciphertextLayer.copy(
+                        payloadCiphertextB64 = envelope.ciphertextLayer.payloadCiphertextB64.dropLast(1) + "A",
+                    ),
+            )
+        assertTrue(runCatching { CloudVaultCrypto.openSignalPayload(tampered, "device-key-1", privateKey, expectedBinding = binding) }.isFailure)
+        assertTrue(runCatching { CloudVaultCrypto.openSignalPayload(envelope, "missing-key", privateKey, expectedBinding = binding) }.isFailure)
+    }
+
+    @Test
+    fun signalCloudVaultEnvelopeMapRoundTrips() {
+        val publicKey = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_PUBLIC_KEY_B64_CANONICAL)
+        val envelope =
+            CloudVaultCrypto.sealSignalPayload(
+                "android cloudvault signal map payload".toByteArray(),
+                recipients = listOf(CloudVaultSignalRecipient("device", "device-key-1", publicKey)),
+                binding =
+                    CloudVaultSignalBinding(
+                        uid = "uid-1",
+                        collection = "pensieve",
+                        docId = "doc-42",
+                        field = "body",
+                    ),
+            )
+        val raw = CloudVaultCrypto.signalEnvelopeMap(envelope)
+
+        assertFalse(raw.containsKey("relayKeyVersion"))
+        assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_MODE, raw["mode"])
+        assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION, raw["relayEncryption"])
+        assertEquals(envelope, CloudVaultCrypto.signalEnvelopeFromMap(raw))
+        assertNull(CloudVaultCrypto.signalEnvelopeFromMap(mapOf("mode" to CloudVaultCrypto.SIGNAL_AT_REST_MODE)))
     }
 
     private fun wrapVaultKeyForTest(vaultKey: ByteArray, recipient: KeyPair, ephemeral: KeyPair): ByteArray {
