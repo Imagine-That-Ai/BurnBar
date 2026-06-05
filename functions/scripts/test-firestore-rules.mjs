@@ -3684,6 +3684,87 @@ test("T17 subscription_topics require sealed graph/display text and reject plain
   );
 });
 
+// T18 — knowledge_repos: opaque keyed repoMatchToken + sourceSlugToken + sealed
+// name accepted; every cleartext repo identity (repoFullName / sourcePath /
+// sourceSlug) rejected; non-opaque tokens + smuggled keys rejected; cross-user
+// denied. knowledge_sync_manifests is server-only (allow write: if false) and
+// owner-read. (§4 slug remediation — the connectKnowledgeRepo callable now
+// persists the opaque sourceSlugToken instead of the reversible cleartext slug;
+// these rules tests pin the on-disk contract that the new shape enforces.)
+test("T18 knowledge_repos accept opaque tokens, reject cleartext repo identity + cross-user", async () => {
+  const ownerUid = "kr-owner";
+  const otherUid = "kr-intruder";
+  const db = authedDb(ownerUid);
+  const intruder = authedDb(otherUid);
+  const repoId = "a".repeat(64); // doc id is the opaque repoMatchToken (64 hex)
+  const repoPath = `users/${ownerUid}/knowledge_repos/${repoId}`;
+  const base = {
+    uid: ownerUid,
+    repoId,
+    repoMatchToken: "a".repeat(64),
+    sourceSlugToken: "b".repeat(64),
+    sealedRepoFullName: sealedText(),
+    installId: "inst-123",
+    connectedAt: serverTimestamp(),
+    schemaVersion: 1,
+  };
+
+  // Opaque-only shape (keyed match token + manifest token + sealed name) accepted.
+  await assertSucceeds(setDoc(doc(db, repoPath), base));
+  // Owner can read its own row.
+  await assertSucceeds(getDoc(doc(db, repoPath)));
+
+  // Every cleartext repo-identity field is rejected by the allowlist + ban.
+  await assertFails(setDoc(doc(db, repoPath), { ...base, repoFullName: "owner/secret-repo" }));
+  await assertFails(setDoc(doc(db, repoPath), { ...base, sourcePath: "/Users/me/secret" }));
+  // The §4 residual: the reversible repo-name-derived slug must never be stored.
+  await assertFails(setDoc(doc(db, repoPath), { ...base, sourceSlug: "repo-owner-secret-repo" }));
+
+  // Opaque tokens must be 64-hex; a non-hex / wrong-shape token is rejected.
+  await assertFails(setDoc(doc(db, repoPath), { ...base, repoMatchToken: "not-a-hex-token" }));
+  await assertFails(setDoc(doc(db, repoPath), { ...base, sourceSlugToken: "repo-owner-secret-repo" }));
+  await assertFails(setDoc(doc(db, repoPath), { ...base, sourceSlugToken: "c".repeat(63) }));
+
+  // A malformed sealed name is rejected by validCloudSealedText.
+  await assertFails(
+    setDoc(doc(db, repoPath), { ...base, sealedRepoFullName: { algorithm: "AES-256-GCM" } })
+  );
+  // An arbitrary unlisted key is rejected by keys().hasOnly([...]).
+  await assertFails(setDoc(doc(db, repoPath), { ...base, foo: "bar" }));
+
+  // Cross-user read + write are denied.
+  await assertFails(getDoc(doc(intruder, repoPath)));
+  await assertFails(setDoc(doc(intruder, repoPath), base));
+
+  // knowledge_sync_manifests is a SERVER-ONLY writer (allow write: if false):
+  // a direct client write is denied even with a well-formed payload...
+  const manifestPath = `users/${ownerUid}/knowledge_sync_manifests/${"b".repeat(64)}`;
+  await assertFails(
+    setDoc(doc(db, manifestPath), {
+      uid: ownerUid,
+      needsResync: true,
+      chunkCount: 0,
+      byteCount: 0,
+      schemaVersion: 1,
+    })
+  );
+  // ...but the owner CAN read a server-seeded manifest (UI sync-health surface).
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), manifestPath), {
+      uid: ownerUid,
+      sourceSlugToken: "b".repeat(64),
+      needsResync: true,
+      chunkCount: 12,
+      byteCount: 3456,
+      lastSyncAt: Timestamp.fromDate(new Date("2026-06-03T00:00:00.000Z")),
+      schemaVersion: 1,
+    });
+  });
+  await assertSucceeds(getDoc(doc(db, manifestPath)));
+  // A cross-user read of another member's manifest is denied.
+  await assertFails(getDoc(doc(intruder, manifestPath)));
+});
+
 test("rules test environment is isolated", () => {
   assert.ok(testEnv.projectId.startsWith("openburnbar-rules-"));
 });

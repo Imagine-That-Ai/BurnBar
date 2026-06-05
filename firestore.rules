@@ -1966,20 +1966,24 @@ service cloud.firestore {
     // Connected GitHub repo registry (the dirty-signal source registration). The
     // repo identity is project-class private text: rows are written by the
     // connectKnowledgeRepo callable (Admin SDK, which bypasses these rules) and
-    // hold only an opaque server-keyed `repoMatchToken` (for webhook routing)
-    // plus a vault-`sealedRepoFullName` (for owner-only display). A direct client
-    // write is now constrained to that opaque shape by a STRICT allowlist: no
-    // arbitrary smuggled fields, an opaque 64-hex `repoMatchToken`, an owner-only
-    // `sealedRepoFullName`, and an explicit ban on every cleartext repo identity
-    // (`repoFullName`/`sourcePath`/`sourceSlug`) so a future/buggy client can
-    // never reintroduce reversible path/name text (F5). The cleartext name is
-    // observed server-side only transiently for webhook routing, never stored.
+    // hold only an opaque server-keyed `repoMatchToken` (for webhook routing),
+    // an opaque server-keyed `sourceSlugToken` (the manifest doc-id key — replaces
+    // the formerly-stored cleartext `sourceSlug`), and a vault-`sealedRepoFullName`
+    // (for owner-only display). A direct client write is now constrained to that
+    // opaque shape by a STRICT allowlist: no arbitrary smuggled fields, opaque
+    // 64-hex `repoMatchToken`/`sourceSlugToken`, an owner-only `sealedRepoFullName`,
+    // and an explicit ban on every cleartext repo identity (`repoFullName`/
+    // `sourcePath`/`sourceSlug`) so a future/buggy client can never reintroduce
+    // reversible path/name text (F5). The cleartext name + cleartext slug are
+    // observed server-side only transiently (webhook routing / token derivation),
+    // never stored.
     match /users/{userId}/knowledge_repos/{repoId} {
       function validKnowledgeRepoKeys() {
         return request.resource.data.keys().hasOnly([
           "uid",
           "repoId",
           "repoMatchToken",
+          "sourceSlugToken",
           "sealedRepoFullName",
           "installId",
           "connectedAt",
@@ -1996,6 +2000,9 @@ service cloud.firestore {
         && (!("repoMatchToken" in request.resource.data)
             || (request.resource.data.repoMatchToken is string
                 && request.resource.data.repoMatchToken.matches("^[a-f0-9]{64}$")))
+        && (!("sourceSlugToken" in request.resource.data)
+            || (request.resource.data.sourceSlugToken is string
+                && request.resource.data.sourceSlugToken.matches("^[a-f0-9]{64}$")))
         && (!("sealedRepoFullName" in request.resource.data)
             || validCloudSealedText(request.resource.data.sealedRepoFullName));
       allow delete: if ownsUserNamespace(userId);
