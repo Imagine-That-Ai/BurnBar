@@ -179,6 +179,13 @@ jobs:
           END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "Functions tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Install protobuf compiler for libsignal FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
       - name: Build libsignal FFI for Swift tests
         run: |
           SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin \
