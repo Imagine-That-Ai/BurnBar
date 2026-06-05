@@ -61,17 +61,20 @@ remains the only at-rest path until activation; producers fail **open** to legac
 Signal seal cannot be produced, so confidentiality never regresses.
 
 A prepared activation diff exists for the `conversations_chat` domain only. **It MUST NOT be
-deployed until every gate below is cleared** (these were confirmed by an adversarial review):
+deployed until every remaining gate below is cleared** (these were confirmed by an adversarial
+review; ✅ items have since landed):
 
-1. **Sender authentication (BLOCKER).** The at-rest envelope is sealed with RFC 9180 HPKE
-   **Base mode** (recipient public key only) and carries no sender field, while Signal-first
-   readers accept it without cross-checking the secret-keyed legacy payload. Because identity
-   public keys are server-readable, a malicious/compromised server could forge a readable,
-   trusted envelope (e.g. for `approval_policies`, `cli_agent_mission_requests`). Fix before
-   any flip: seal in HPKE **Auth mode** keyed by the writing device's identity private key and
-   verify the asserted sender against the user's *pinned* trusted-device set (the relay path
-   already uses Auth mode), or as interim hardening require byte-agreement with the legacy
-   `sealedPayload` on read.
+1. **Sender authentication — ✅ LANDED on Apple (Swift), Android parity REMAINING.** The
+   at-rest envelope now carries a `senderAuth` block: the writing device signs the envelope
+   (domain-separated over the HPKE info/binding + ciphertext + sorted wraps) with its identity
+   PRIVATE key, and `OpenBurnBarSignalAtRest.openPayload` REQUIRES it and verifies the
+   signature against the reader's PINNED trusted-device public key (never the wire field) —
+   so a server holding only public keys cannot forge an accepted envelope (proven by
+   `testServerForgedEnvelopeIsRejectedBySenderAuth`). Apple producers sign and readers verify
+   (self-authored docs fully, cross-device falls back to legacy until the trusted-sender set
+   is resolved on the read path). REMAINING before flip: (a) Android (Kotlin) must sign on
+   write AND verify on read with the identical canonical signed-message + a Swift↔Android
+   signature KAT; (b) wire cross-device trusted-sender resolution into the Apple readers.
 2. **Per-collection coverage.** The gate is domain-keyed but producers are per-collection.
    `signalSealedCollections` in the registry records the EXACT collections that emit an
    envelope (today: `conversations`, `chat_threads`, `mobile_assistant_chats`,
@@ -79,17 +82,21 @@ deployed until every gate below is cleared** (these were confirmed by an adversa
    end-to-end). The scheme codename is internal/non-websited, so this is not a user-facing
    claim, but do not advertise whole-domain Signal coverage. Pensieve is intentionally NOT in
    the activation diff — its daemon/iOS/MCP ingest paths do not yet emit envelopes.
-3. **No staged rollout / kill switch.** Activation is registry/compile-baked with no Remote
-   Config, per-cohort, or percentage lever. Add a server-served flag AND-ed with the registry
-   scheme before fleet activation so a flip can be canaried and instantly reverted without an
-   app release.
-4. **Publish-readiness.** Activation should be gated on every trusted escrow device having a
-   published `signal_identity_public_keys/{deviceId}_{keyVersion}` doc; otherwise envelopes
-   degrade to legacy-only for users with an un-upgraded peer (the producer fail-open prevents
-   write loss, but coverage is incomplete until readiness is 100% for the cohort).
+3. **Staged rollout / kill switch — ✅ LANDED (Apple), Android RC bootstrap REMAINING.**
+   `signalSealingIsEnabled` now requires BOTH the registry scheme AND a per-domain runtime
+   flag `signal_at_rest_<domainID>_enabled` (default OFF), so a deployed-but-unramped flip is
+   inert and activation is a console flip with staged % rollout + instant revert. iOS/Mac read
+   it from Firebase Remote Config directly; Android reads it from an injected
+   `signalAtRestActivationProvider` (fail-closed false) — wiring that provider to Firebase
+   Remote Config (add `firebase-config`, bootstrap in `BurnBarApplication`) is the REMAINING
+   one-line step before Android can be ramped.
+4. **Publish-readiness — ✅ LANDED.** The `signalActivationReadiness` callable reports, per
+   account, whether every trusted escrow device has a valid published Signal identity; the
+   activation runbook ramps the kill switch only where readiness is 100% for the cohort. (The
+   producer fail-open already prevents write loss when a peer is un-upgraded.)
 5. **Cross-language KAT + libsignal pin.** Pin `Vendor/libsignal` to a verified official
-   0.94.4 build and add a Swift↔Android sealed-vector known-answer test before relying on
-   cross-device opens.
+   0.94.4 build and add a Swift↔Android sealed-vector + sender-signature known-answer test
+   before relying on cross-device opens.
 6. **Revocation rewrap.** Revoking a device's trust flips its sessions to `revoked` but does
    NOT re-seal existing at-rest documents (rewrap is planning-only). A revoked device retains
    read access to previously-sealed content — identical to the legacy path. Do not claim a

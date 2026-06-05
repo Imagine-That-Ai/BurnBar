@@ -26,9 +26,21 @@ object AndroidCloudVaultSignalPayloads {
     /** Test-only deterministic gate override (domainID -> enabled?, null = no override). */
     internal var signalSealingOverrideProvider: ((String) -> Boolean?)? = null
 
+    /**
+     * Kill switch (P1-5): the per-domain RUNTIME activation flag, AND-ed with the registry
+     * scheme. Defaults to OFF (fail-closed), so a deployed-but-unramped registry flip is
+     * inert on Android. Production wires this to Firebase Remote Config
+     * (`signal_at_rest_<domainID>_enabled`) from BurnBarApplication once the firebase-config
+     * dependency is added — a one-line provider assignment — mirroring how iOS/Mac read RC
+     * directly. Kept as an injected provider so the crypto layer has no Firebase coupling and
+     * the AND is unit-testable. Returns false until wired => Android stays fail-closed.
+     */
+    internal var signalAtRestActivationProvider: ((String) -> Boolean)? = null
+
     fun signalSealingIsEnabled(domainID: String): Boolean {
         signalSealingOverrideProvider?.invoke(domainID)?.let { return it }
-        return DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION
+        if (DataDomains.domain(domainID)?.sealingScheme != CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION) return false
+        return signalAtRestActivationProvider?.invoke(domainID) ?: false
     }
 
     /**

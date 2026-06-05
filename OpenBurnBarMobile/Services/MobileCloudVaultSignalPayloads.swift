@@ -1,4 +1,5 @@
 import FirebaseFirestore
+import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
@@ -106,7 +107,16 @@ enum MobileCloudVaultSignalPayloads {
     }
 
     static func signalSealingIsEnabled(domainID: String) -> Bool {
-        DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption
+        guard DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption else {
+            return false
+        }
+        // Kill switch: even when the registry scheme is set, at-rest sealing stays OFF until
+        // the per-domain Remote Config flag is enabled — enabling staged % rollout and an
+        // instant server-side revert without an app release. Defaults false (RC boolValue
+        // default), so a deployed-but-unramped flip is inert.
+        return RemoteConfig.remoteConfig()
+            .configValue(forKey: "signal_at_rest_\(domainID)_enabled")
+            .boolValue
     }
 
     private static func atRestRecipients(
