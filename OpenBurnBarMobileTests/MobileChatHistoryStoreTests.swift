@@ -6,6 +6,33 @@ import OpenBurnBarSignalCore
 
 @MainActor
 final class MobileChatHistoryStoreTests: XCTestCase {
+    private static let physicalMatrixPhonePrivateKeyB64 = "yGZ5zfds7ljkjsopcLya1ayDbjV+TCL6/b4BQBpqfV0="
+    private static let physicalMatrixMacPrivateKeyB64 = "yGZ5zfds7ljkjsopcLya1ayDbjV+TCL6/b4BQBpqfV0="
+    private static let physicalMatrixMacPublicKeyB64 = "BVw7AC8duGgSdz/wLmMLMe+ymSUCcMkOcoJ+E6Eb+RhO"
+
+    func testSignalSealingGateDefaultsOffAndSupportsRemoteOverride() {
+        MobileCloudVaultSignalPayloads.signalSealingOverrideProvider = nil
+        defer { MobileCloudVaultSignalPayloads.signalSealingOverrideProvider = nil }
+
+        XCTAssertEqual(
+            MobileCloudVaultSignalPayloads.signalAtRestRemoteConfigKey(domainID: "conversations_chat"),
+            "signal_at_rest_conversations_chat_enabled"
+        )
+        XCTAssertEqual(
+            MobileCloudVaultSignalPayloads.signalAtRestDisabledRemoteConfigKey,
+            "signal_at_rest_disabled"
+        )
+        XCTAssertFalse(
+            MobileCloudVaultSignalPayloads.signalSealingIsEnabled(domainID: "conversations_chat"),
+            "conversations_chat must stay Signal-OFF until Remote Config or the registry explicitly activates it."
+        )
+
+        MobileCloudVaultSignalPayloads.signalSealingOverrideProvider = { domainID in
+            domainID == "conversations_chat"
+        }
+        XCTAssertTrue(MobileCloudVaultSignalPayloads.signalSealingIsEnabled(domainID: "conversations_chat"))
+        XCTAssertFalse(MobileCloudVaultSignalPayloads.signalSealingIsEnabled(domainID: "session_logs"))
+    }
 
     func testUpsertPersistsToLocalStore() throws {
         let local = InMemoryLocalStore()
@@ -442,6 +469,63 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         XCTAssertEqual(decoded.messages.map(\.text), ["Message 0", "Message 1"])
     }
 
+    func testPhysicalMatrixMobileEmitsEnvelopeForMac() throws {
+        let binding = CloudVaultSignalBinding(
+            uid: "physical-matrix-user",
+            collection: "mobile_assistant_chats",
+            docId: "mobile-to-mac-thread",
+            field: "signalEnvelope"
+        )
+        let plaintext = "physical-matrix mobile-to-mac at-rest payload"
+        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
+            Data(plaintext.utf8),
+            recipients: [
+                OpenBurnBarSignalAtRestRecipient(
+                    recipientKind: "device",
+                    recipientIdentityKeyId: "physical-mac-device_1",
+                    publicKeyData: try decodeBase64(Self.physicalMatrixMacPublicKeyB64)
+                ),
+            ],
+            binding: binding
+        )
+        let vector = PhysicalMatrixVector(
+            producer: "mobile",
+            consumer: "mac",
+            recipientIdentityKeyId: "physical-mac-device_1",
+            recipientPrivateKeyB64: Self.physicalMatrixMacPrivateKeyB64,
+            plaintext: plaintext,
+            binding: binding,
+            envelope: envelope
+        )
+        print("SIGNAL_MATRIX_MOBILE_TO_MAC_V1 \(try vector.encodedForLog())")
+    }
+
+    func testPhysicalMatrixMobileOpensMacProducedEnvelopeFromEnvironment() throws {
+        let vector = try Self.matrixVector(fromEnvironment: "OPENBURNBAR_SIGNAL_MATRIX_MAC_TO_MOBILE_B64")
+        XCTAssertEqual(vector.producer, "mac")
+        XCTAssertEqual(vector.consumer, "mobile")
+        let opened = try OpenBurnBarSignalAtRest.openPayload(
+            vector.envelope,
+            recipientIdentityKeyId: vector.recipientIdentityKeyId,
+            recipientIdentityPrivateKey: try decodeBase64(Self.physicalMatrixPhonePrivateKeyB64),
+            expectedBinding: vector.binding
+        )
+        XCTAssertEqual(String(data: opened, encoding: .utf8), vector.plaintext)
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                vector.envelope,
+                recipientIdentityKeyId: vector.recipientIdentityKeyId,
+                recipientIdentityPrivateKey: try decodeBase64(Self.physicalMatrixPhonePrivateKeyB64),
+                expectedBinding: CloudVaultSignalBinding(
+                    uid: vector.binding.uid,
+                    collection: vector.binding.collection,
+                    docId: "relocated-\(vector.binding.docId)",
+                    field: vector.binding.field
+                )
+            )
+        )
+    }
+
     // MARK: - Helpers
 
     private static func makeThread(
@@ -470,6 +554,35 @@ final class MobileChatHistoryStoreTests: XCTestCase {
             messages: messages
         )
     }
+
+    private static func matrixVector(fromEnvironment name: String) throws -> PhysicalMatrixVector {
+        let env = ProcessInfo.processInfo.environment
+        let encoded = env["TEST_RUNNER_\(name)"] ?? env[name]
+        guard let encoded, !encoded.isEmpty else {
+            throw XCTSkip("Set \(name) to a base64 PhysicalMatrixVector produced by the peer-device test.")
+        }
+        return try JSONDecoder().decode(PhysicalMatrixVector.self, from: try decodeBase64(encoded))
+    }
+}
+
+private struct PhysicalMatrixVector: Codable {
+    var producer: String
+    var consumer: String
+    var recipientIdentityKeyId: String
+    var recipientPrivateKeyB64: String
+    var plaintext: String
+    var binding: CloudVaultSignalBinding
+    var envelope: CloudVaultSignalEnvelope
+
+    func encodedForLog() throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(self).base64EncodedString()
+    }
+}
+
+private func decodeBase64(_ value: String) throws -> Data {
+    try XCTUnwrap(Data(base64Encoded: value, options: [.ignoreUnknownCharacters]))
 }
 
 // MARK: - Test doubles

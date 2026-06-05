@@ -169,6 +169,138 @@ enum SignalIdentityPublicKeyPublisher {
     }
 }
 
+enum SignalPrekeyDirectoryPublisher {
+    static func publishIfNeeded(
+        userRef: DocumentReference,
+        publication: OpenBurnBarSignalPrekeyPublication
+    ) async throws {
+        let identityRef = userRef.collection("signal_identity_public_keys")
+            .document(publication.signedPreKey.identityKeyId)
+        try await publishDocumentIfNeeded(
+            identityRef.collection("signed_prekeys").document(publication.signedPreKey.signedPreKeyId),
+            data: signedPreKeyData(publication.signedPreKey),
+            matches: signedPreKeyMatches
+        )
+        for prekey in publication.oneTimePreKeys {
+            try await publishDocumentIfNeeded(
+                identityRef.collection("one_time_prekeys").document(prekey.oneTimePreKeyId),
+                data: oneTimePreKeyData(prekey),
+                matches: oneTimePreKeyMatches
+            )
+        }
+        for prekey in publication.kyberPreKeys {
+            try await publishDocumentIfNeeded(
+                identityRef.collection("kyber_prekeys").document(prekey.kyberPreKeyId),
+                data: kyberPreKeyData(prekey),
+                matches: kyberPreKeyMatches
+            )
+        }
+    }
+
+    private static func publishDocumentIfNeeded(
+        _ documentRef: DocumentReference,
+        data: [String: Any],
+        matches: ([String: Any], [String: Any]) -> Bool
+    ) async throws {
+        let existing = try await documentRef.getDocument()
+        if let existingData = existing.data() {
+            guard matches(existingData, data) else {
+                throw SignalIdentityPublicKeyPublishError.immutablePublicKeyConflict(
+                    deviceId: data["deviceId"] as? String ?? "unknown",
+                    keyVersion: data["keyVersion"] as? Int ?? -1
+                )
+            }
+            return
+        }
+        try await documentRef.setData(data, merge: false)
+    }
+
+    private static func signedPreKeyData(_ prekey: OpenBurnBarSignalSignedPrekeyDocument) -> [String: Any] {
+        [
+            "signedPreKeyId": prekey.signedPreKeyId,
+            "signedPreKeyNumericId": Int(prekey.signedPreKeyNumericId),
+            "identityKeyId": prekey.identityKeyId,
+            "deviceId": prekey.deviceId,
+            "keyVersion": prekey.keyVersion,
+            "publicKeyB64": prekey.publicKeyB64,
+            "signatureB64": prekey.signatureB64,
+            "algorithm": OpenBurnBarSignalPrekeyDirectory.signedPrekeyAlgorithm,
+            "status": "active",
+            "createdAt": prekey.createdAt,
+            "expiresAt": prekey.expiresAt
+        ]
+    }
+
+    private static func oneTimePreKeyData(_ prekey: OpenBurnBarSignalOneTimePrekeyDocument) -> [String: Any] {
+        [
+            "oneTimePreKeyId": prekey.oneTimePreKeyId,
+            "oneTimePreKeyNumericId": Int(prekey.oneTimePreKeyNumericId),
+            "identityKeyId": prekey.identityKeyId,
+            "deviceId": prekey.deviceId,
+            "keyVersion": prekey.keyVersion,
+            "publicKeyB64": prekey.publicKeyB64,
+            "algorithm": OpenBurnBarSignalPrekeyDirectory.oneTimePrekeyAlgorithm,
+            "status": "available",
+            "createdAt": prekey.createdAt,
+            "expiresAt": prekey.expiresAt
+        ]
+    }
+
+    private static func kyberPreKeyData(_ prekey: OpenBurnBarSignalKyberPrekeyDocument) -> [String: Any] {
+        [
+            "kyberPreKeyId": prekey.kyberPreKeyId,
+            "kyberPreKeyNumericId": Int(prekey.kyberPreKeyNumericId),
+            "identityKeyId": prekey.identityKeyId,
+            "deviceId": prekey.deviceId,
+            "keyVersion": prekey.keyVersion,
+            "publicKeyB64": prekey.publicKeyB64,
+            "signatureB64": prekey.signatureB64,
+            "algorithm": OpenBurnBarSignalPrekeyDirectory.kyberPrekeyAlgorithm,
+            "status": "available",
+            "createdAt": prekey.createdAt,
+            "expiresAt": prekey.expiresAt
+        ]
+    }
+
+    private static func signedPreKeyMatches(_ existing: [String: Any], _ expected: [String: Any]) -> Bool {
+        existing["signedPreKeyId"] as? String == expected["signedPreKeyId"] as? String
+            && intValue(existing["signedPreKeyNumericId"]) == expected["signedPreKeyNumericId"] as? Int
+            && commonPublicFieldsMatch(existing, expected)
+            && existing["publicKeyB64"] as? String == expected["publicKeyB64"] as? String
+            && existing["signatureB64"] as? String == expected["signatureB64"] as? String
+            && existing["algorithm"] as? String == OpenBurnBarSignalPrekeyDirectory.signedPrekeyAlgorithm
+    }
+
+    private static func oneTimePreKeyMatches(_ existing: [String: Any], _ expected: [String: Any]) -> Bool {
+        existing["oneTimePreKeyId"] as? String == expected["oneTimePreKeyId"] as? String
+            && intValue(existing["oneTimePreKeyNumericId"]) == expected["oneTimePreKeyNumericId"] as? Int
+            && commonPublicFieldsMatch(existing, expected)
+            && existing["publicKeyB64"] as? String == expected["publicKeyB64"] as? String
+            && existing["algorithm"] as? String == OpenBurnBarSignalPrekeyDirectory.oneTimePrekeyAlgorithm
+    }
+
+    private static func kyberPreKeyMatches(_ existing: [String: Any], _ expected: [String: Any]) -> Bool {
+        existing["kyberPreKeyId"] as? String == expected["kyberPreKeyId"] as? String
+            && intValue(existing["kyberPreKeyNumericId"]) == expected["kyberPreKeyNumericId"] as? Int
+            && commonPublicFieldsMatch(existing, expected)
+            && existing["publicKeyB64"] as? String == expected["publicKeyB64"] as? String
+            && existing["signatureB64"] as? String == expected["signatureB64"] as? String
+            && existing["algorithm"] as? String == OpenBurnBarSignalPrekeyDirectory.kyberPrekeyAlgorithm
+    }
+
+    private static func commonPublicFieldsMatch(_ existing: [String: Any], _ expected: [String: Any]) -> Bool {
+        existing["identityKeyId"] as? String == expected["identityKeyId"] as? String
+            && existing["deviceId"] as? String == expected["deviceId"] as? String
+            && intValue(existing["keyVersion"]) == expected["keyVersion"] as? Int
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        return nil
+    }
+}
+
 enum MacCloudVaultKeyAccess {
     static func keyForWriting(uid: String, deviceId: String, firestore: Firestore) async throws -> CloudVaultResolvedKey {
         let userRef = firestore.collection("users").document(uid)
@@ -313,6 +445,12 @@ enum MacCloudVaultKeyAccess {
             deviceId: deviceId,
             platform: "macOS",
             identity: signalIdentity
+        )
+        let prekeys = try OpenBurnBarSignalPrekeyPublicationStore()
+            .loadOrCreate(uid: uid, deviceId: deviceId, identity: signalIdentity)
+        try await SignalPrekeyDirectoryPublisher.publishIfNeeded(
+            userRef: userRef,
+            publication: prekeys
         )
         guard sourceIsTrusted else {
             return signalIdentity

@@ -6,6 +6,9 @@ import OpenBurnBarCore
 import XCTest
 
 final class SignalAtRestSealerTests: XCTestCase {
+    private static let physicalMatrixPhonePrivateKeyB64 = "yGZ5zfds7ljkjsopcLya1ayDbjV+TCL6/b4BQBpqfV0="
+    private static let physicalMatrixPhonePublicKeyB64 = "BVw7AC8duGgSdz/wLmMLMe+ymSUCcMkOcoJ+E6Eb+RhO"
+
     func testSignalIdentityKeyStorePersistsStableRecipientMaterial() throws {
         let service = "com.openburnbar.signal-identity.tests.\(UUID().uuidString)"
         let store = OpenBurnBarSignalIdentityKeyStore(service: service)
@@ -237,10 +240,122 @@ final class SignalAtRestSealerTests: XCTestCase {
         )
     }
 
+    func testPhysicalMatrixMacEmitsEnvelopeForMobile() throws {
+        let binding = CloudVaultSignalBinding(
+            uid: "physical-matrix-user",
+            collection: "mobile_assistant_chats",
+            docId: "mac-to-mobile-thread",
+            field: "signalEnvelope"
+        )
+        let plaintext = "physical-matrix mac-to-mobile at-rest payload"
+        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
+            Data(plaintext.utf8),
+            recipients: [
+                OpenBurnBarSignalAtRestRecipient(
+                    recipientKind: "device",
+                    recipientIdentityKeyId: "physical-mobile-device_1",
+                    publicKeyData: try decodeBase64(Self.physicalMatrixPhonePublicKeyB64)
+                ),
+            ],
+            binding: binding
+        )
+
+        let vector = PhysicalMatrixVector(
+            producer: "mac",
+            consumer: "mobile",
+            recipientIdentityKeyId: "physical-mobile-device_1",
+            recipientPrivateKeyB64: Self.physicalMatrixPhonePrivateKeyB64,
+            plaintext: plaintext,
+            binding: binding,
+            envelope: envelope
+        )
+        print("SIGNAL_MATRIX_MAC_TO_MOBILE_V1 \(try vector.encodedForLog())")
+    }
+
+    func testPhysicalMatrixMacOpensMobileProducedEnvelopeFromEnvironment() throws {
+        let vector = try Self.matrixVector(fromEnvironment: "OPENBURNBAR_SIGNAL_MATRIX_MOBILE_TO_MAC_B64")
+        XCTAssertEqual(vector.producer, "mobile")
+        XCTAssertEqual(vector.consumer, "mac")
+        let opened = try OpenBurnBarSignalAtRest.openPayload(
+            vector.envelope,
+            recipientIdentityKeyId: vector.recipientIdentityKeyId,
+            recipientIdentityPrivateKey: try decodeBase64(vector.recipientPrivateKeyB64),
+            expectedBinding: vector.binding
+        )
+        XCTAssertEqual(String(data: opened, encoding: .utf8), vector.plaintext)
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                vector.envelope,
+                recipientIdentityKeyId: vector.recipientIdentityKeyId,
+                recipientIdentityPrivateKey: try decodeBase64(vector.recipientPrivateKeyB64),
+                expectedBinding: CloudVaultSignalBinding(
+                    uid: vector.binding.uid,
+                    collection: vector.binding.collection,
+                    docId: "relocated-\(vector.binding.docId)",
+                    field: vector.binding.field
+                )
+            )
+        )
+    }
+
+    func testPhysicalMatrixMacOpensAndroidProducedEnvelopeFromEnvironment() throws {
+        let vector = try Self.matrixVector(fromEnvironment: "OPENBURNBAR_SIGNAL_MATRIX_ANDROID_TO_MAC_B64")
+        XCTAssertEqual(vector.producer, "android")
+        XCTAssertEqual(vector.consumer, "mac")
+        let opened = try OpenBurnBarSignalAtRest.openPayload(
+            vector.envelope,
+            recipientIdentityKeyId: vector.recipientIdentityKeyId,
+            recipientIdentityPrivateKey: try decodeBase64(vector.recipientPrivateKeyB64),
+            expectedBinding: vector.binding
+        )
+        XCTAssertEqual(String(data: opened, encoding: .utf8), vector.plaintext)
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                vector.envelope,
+                recipientIdentityKeyId: vector.recipientIdentityKeyId,
+                recipientIdentityPrivateKey: try decodeBase64(vector.recipientPrivateKeyB64),
+                expectedBinding: CloudVaultSignalBinding(
+                    uid: vector.binding.uid,
+                    collection: vector.binding.collection,
+                    docId: "relocated-\(vector.binding.docId)",
+                    field: vector.binding.field
+                )
+            )
+        )
+    }
+
     private func loadKATVector() throws -> KATVector {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "SignalEnvelopeV1Vector", withExtension: "json"))
         return try JSONDecoder().decode(KATVector.self, from: Data(contentsOf: url))
     }
+
+    private static func matrixVector(fromEnvironment name: String) throws -> PhysicalMatrixVector {
+        guard let encoded = ProcessInfo.processInfo.environment[name], !encoded.isEmpty else {
+            throw XCTSkip("Set \(name) to a base64 PhysicalMatrixVector produced by the peer-device test.")
+        }
+        let data = try decodeBase64(encoded)
+        return try JSONDecoder().decode(PhysicalMatrixVector.self, from: data)
+    }
+}
+
+private struct PhysicalMatrixVector: Codable {
+    var producer: String
+    var consumer: String
+    var recipientIdentityKeyId: String
+    var recipientPrivateKeyB64: String
+    var plaintext: String
+    var binding: CloudVaultSignalBinding
+    var envelope: CloudVaultSignalEnvelope
+
+    func encodedForLog() throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(self).base64EncodedString()
+    }
+}
+
+private func decodeBase64(_ value: String) throws -> Data {
+    try XCTUnwrap(Data(base64Encoded: value, options: [.ignoreUnknownCharacters]))
 }
 
 private struct KATVector: Decodable {

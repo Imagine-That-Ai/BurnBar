@@ -470,7 +470,11 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
     }
 
     var primaryBucket: ProviderQuotaBucket? {
-        buckets.map { $0.reconcilingElapsedWindow() }.sorted {
+        primaryBucket(asOf: Date())
+    }
+
+    func primaryBucket(asOf now: Date) -> ProviderQuotaBucket? {
+        buckets.map { $0.reconcilingElapsedWindow(asOf: now) }.sorted {
             let lhsPriority = primaryBucketPriority(for: $0)
             let rhsPriority = primaryBucketPriority(for: $1)
             if lhsPriority != rhsPriority {
@@ -544,31 +548,31 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
 
     /// Returns the bucket representing the hourly/5h window (windowKind == .rollingHours)
     var hourlyBucket: ProviderQuotaBucket? {
-        hourlyBucket(relativeTo: Date())
+        displayableQuotaBuckets.first { $0.windowKind == .rollingHours }
     }
 
-    func hourlyBucket(relativeTo now: Date) -> ProviderQuotaBucket? {
-        displayableQuotaBuckets(relativeTo: now).first { $0.windowKind == .rollingHours }
+    func hourlyBucket(asOf now: Date) -> ProviderQuotaBucket? {
+        displayableQuotaBuckets(asOf: now).first { $0.windowKind == .rollingHours }
     }
 
     /// Returns the bucket representing the weekly window (windowKind == .weekly or .rollingDays)
     var weeklyBucket: ProviderQuotaBucket? {
-        weeklyBucket(relativeTo: Date())
+        displayableQuotaBuckets.first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
     }
 
-    func weeklyBucket(relativeTo now: Date) -> ProviderQuotaBucket? {
-        displayableQuotaBuckets(relativeTo: now).first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
+    func weeklyBucket(asOf now: Date) -> ProviderQuotaBucket? {
+        displayableQuotaBuckets(asOf: now).first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
     }
 
     var displayableQuotaBuckets: [ProviderQuotaBucket] {
+        displayableQuotaBuckets(asOf: Date())
+    }
+
+    func displayableQuotaBuckets(asOf now: Date) -> [ProviderQuotaBucket] {
         // Reconcile each survivor to the current moment so a rolled-over window
         // reports its fresh (0 used / full remaining) state. Single chokepoint
         // feeding the strip, popover, hourly/weekly accessors, customizedBuckets,
         // the primary-bucket pickers, and the cross-surface sync writer.
-        displayableQuotaBuckets(relativeTo: Date())
-    }
-
-    func displayableQuotaBuckets(relativeTo now: Date) -> [ProviderQuotaBucket] {
         buckets.filter(\.isDisplayableQuotaSignal).map { $0.reconcilingElapsedWindow(asOf: now) }
     }
 
@@ -604,7 +608,11 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
     }
 
     var primaryDisplayableBucket: ProviderQuotaBucket? {
-        displayableQuotaBuckets.sorted {
+        primaryDisplayableBucket(asOf: Date())
+    }
+
+    func primaryDisplayableBucket(asOf now: Date) -> ProviderQuotaBucket? {
+        displayableQuotaBuckets(asOf: now).sorted {
             let lhsPriority = primaryBucketPriority(for: $0)
             let rhsPriority = primaryBucketPriority(for: $1)
             if lhsPriority != rhsPriority {

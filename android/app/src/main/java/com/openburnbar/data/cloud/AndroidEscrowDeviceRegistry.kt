@@ -19,6 +19,10 @@ class AndroidEscrowDeviceRegistry(
     suspend fun registerSelf(
         uid: String,
         keypair: AndroidCloudVaultDeviceKeypair = AndroidCloudVaultDeviceKeypair.loadOrCreate(),
+        signalIdentity: AndroidSignalIdentityKeypair = AndroidSignalIdentityKeyStore.loadOrCreate(
+            uid = uid,
+            deviceId = keypair.deviceId,
+        ),
     ): AndroidEscrowDeviceRegistration {
         val userRef = firestore.collection("users").document(uid)
         val deviceRef = userRef.collection("escrow_devices").document(keypair.deviceId)
@@ -42,6 +46,18 @@ class AndroidEscrowDeviceRegistry(
         }
 
         publishPublicKeyIfNeeded(keypair = keypair, userRef = userRef)
+        publishSignalIdentityIfNeeded(
+            deviceId = keypair.deviceId,
+            platform = "Android",
+            identity = signalIdentity,
+            userRef = userRef,
+        )
+        AndroidSignalPrekeyDirectory.publishIfNeeded(
+            uid = uid,
+            deviceId = keypair.deviceId,
+            identity = signalIdentity,
+            userRef = userRef,
+        )
 
         return AndroidEscrowDeviceRegistration(
             deviceId = keypair.deviceId,
@@ -98,6 +114,22 @@ class AndroidEscrowDeviceRegistry(
             val existingFingerprint = data["publicKeyFingerprint"] as? String
             return existingFingerprint == null || existingFingerprint == publicKeyFingerprint
         }
+
+        internal fun signalIdentityDocumentMatches(
+            data: Map<String, Any?>,
+            deviceId: String,
+            platform: String,
+            identity: AndroidSignalIdentityKeypair,
+        ): Boolean {
+            if (data["deviceId"] != deviceId) return false
+            if (data["platform"] != platform) return false
+            if (data["identityKeyId"] != identity.identityKeyId) return false
+            if (data["publicKeyData"] != identity.publicKeyBase64) return false
+            if (data["publicKeyFingerprint"] != identity.publicKeyFingerprint) return false
+            if ((data["keyVersion"] as? Number)?.toInt() != identity.keyVersion) return false
+            if (data["algorithm"] != CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION) return false
+            return true
+        }
     }
 
     private suspend fun publishPublicKeyIfNeeded(
@@ -124,6 +156,40 @@ class AndroidEscrowDeviceRegistry(
                     "publicKeyFingerprint" to keypair.publicKeyFingerprint,
                     "keyVersion" to keypair.keyVersion,
                     "algorithm" to ESCROW_PUBLIC_KEY_ALGORITHM,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                ),
+                SetOptions.merge(),
+            )
+            .await()
+    }
+
+    private suspend fun publishSignalIdentityIfNeeded(
+        deviceId: String,
+        platform: String,
+        identity: AndroidSignalIdentityKeypair,
+        userRef: com.google.firebase.firestore.DocumentReference,
+    ) {
+        val identityRef = userRef.collection("signal_identity_public_keys")
+            .document(identity.identityKeyId)
+        val existing = identityRef.get().await()
+        if (existing.exists()) {
+            val data = existing.data ?: emptyMap()
+            require(signalIdentityDocumentMatches(data, deviceId, platform, identity)) {
+                "Signal identity public key conflict for ${identity.identityKeyId}."
+            }
+            return
+        }
+
+        identityRef
+            .set(
+                mapOf(
+                    "deviceId" to deviceId,
+                    "platform" to platform,
+                    "identityKeyId" to identity.identityKeyId,
+                    "publicKeyData" to identity.publicKeyBase64,
+                    "publicKeyFingerprint" to identity.publicKeyFingerprint,
+                    "keyVersion" to identity.keyVersion,
+                    "algorithm" to CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION,
                     "createdAt" to FieldValue.serverTimestamp(),
                 ),
                 SetOptions.merge(),

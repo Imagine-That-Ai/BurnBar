@@ -1,4 +1,6 @@
 import FirebaseFirestore
+import FirebaseCore
+import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
@@ -27,6 +29,12 @@ enum MobileCloudVaultSignalPayloadError: LocalizedError {
 }
 
 enum MobileCloudVaultSignalPayloads {
+    static let globalSignalAtRestRemoteConfigKey = "signal_at_rest_enabled"
+    static let signalAtRestDisabledRemoteConfigKey = "signal_at_rest_disabled"
+
+    /// Test hook for deterministic activation checks without Firebase Remote Config.
+    static var signalSealingOverrideProvider: ((String) -> Bool?)?
+
     static func signalEnvelopeIfEnabled(
         domainID: String,
         uid: String,
@@ -37,6 +45,7 @@ enum MobileCloudVaultSignalPayloads {
         plaintext: Data,
         resolvedKey: MobileCloudVaultResolvedKey
     ) async throws -> [String: Any]? {
+        await refreshSignalRemoteConfigIfAvailable()
         guard signalSealingIsEnabled(domainID: domainID) else { return nil }
         guard let signalIdentity = resolvedKey.signalIdentity else {
             throw MobileCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: domainID)
@@ -95,7 +104,53 @@ enum MobileCloudVaultSignalPayloads {
     }
 
     static func signalSealingIsEnabled(domainID: String) -> Bool {
-        DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption
+        if let override = signalSealingOverrideProvider?(domainID) {
+            return override
+        }
+        if remoteConfigSignalAtRestIsDisabled() {
+            return false
+        }
+        if DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption {
+            return true
+        }
+        return remoteConfigSignalSealingIsEnabled(domainID: domainID)
+    }
+
+    static func signalAtRestRemoteConfigKey(domainID: String) -> String {
+        let safe = domainID
+            .lowercased()
+            .map { character -> Character in
+                character.isLetter || character.isNumber || character == "_" ? character : "_"
+            }
+        return "signal_at_rest_\(String(safe))_enabled"
+    }
+
+    private static func remoteConfigSignalSealingIsEnabled(domainID: String) -> Bool {
+        guard FirebaseApp.app() != nil else { return false }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults([
+            globalSignalAtRestRemoteConfigKey: NSNumber(value: false),
+            signalAtRestDisabledRemoteConfigKey: NSNumber(value: false),
+            signalAtRestRemoteConfigKey(domainID: domainID): NSNumber(value: false)
+        ])
+        return remoteConfig.configValue(forKey: globalSignalAtRestRemoteConfigKey).boolValue
+            || remoteConfig.configValue(forKey: signalAtRestRemoteConfigKey(domainID: domainID)).boolValue
+    }
+
+    private static func remoteConfigSignalAtRestIsDisabled() -> Bool {
+        guard FirebaseApp.app() != nil else { return false }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults([signalAtRestDisabledRemoteConfigKey: NSNumber(value: false)])
+        return remoteConfig.configValue(forKey: signalAtRestDisabledRemoteConfigKey).boolValue
+    }
+
+    private static func refreshSignalRemoteConfigIfAvailable() async {
+        guard FirebaseApp.app() != nil else { return }
+        await withCheckedContinuation { continuation in
+            RemoteConfig.remoteConfig().fetchAndActivate { _, _ in
+                continuation.resume()
+            }
+        }
     }
 
     private static func atRestRecipients(

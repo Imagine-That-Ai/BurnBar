@@ -4474,8 +4474,6 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let session = makeStubSession { request in
             XCTAssertEqual(request.url?.absoluteString, "https://www.minimax.io/v1/api/openplatform/coding_plan/remains")
 
-            let windowStartMillis = Int64(Date().addingTimeInterval(-60).timeIntervalSince1970 * 1000)
-            let fiveHourEndMillis = windowStartMillis + Int64(5 * 60 * 60 * 1000)
             let body = """
             {
               "base_resp": {
@@ -4485,8 +4483,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
               "model_remains": [
                 {
                   "model_name": "MiniMax-M2.7-HighSpeed",
-                  "start_time": \(windowStartMillis),
-                  "end_time": \(fiveHourEndMillis),
+                  "start_time": 1774320000000,
+                  "end_time": 1774338000000,
                   "remains_time": 7200000,
                   "current_interval_total_count": 1500,
                   "current_interval_usage_count": 1437
@@ -4507,7 +4505,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .minimax, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
-        let bucket = try XCTUnwrap(snapshot.primaryBucket)
+        let bucket = try XCTUnwrap(snapshot.primaryBucket(asOf: Date(timeIntervalSince1970: 1_774_334_400)))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(bucket.label, "Minimax M2.7 Highspeed")
@@ -4524,23 +4522,20 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let session = makeStubSession { request in
             XCTAssertEqual(request.url?.absoluteString, "https://www.minimax.io/v1/api/openplatform/coding_plan/remains")
 
-            let windowStartMillis = Int64(Date().addingTimeInterval(-60).timeIntervalSince1970 * 1000)
-            let fiveHourEndMillis = windowStartMillis + Int64(5 * 60 * 60 * 1000)
-            let sevenDayEndMillis = windowStartMillis + Int64(7 * 24 * 60 * 60 * 1000)
             let body = """
             {
               "model_remains": [
                 {
                   "model_name": "MiniMax-M2.7-HighSpeed",
-                  "start_time": \(windowStartMillis),
-                  "end_time": \(fiveHourEndMillis),
+                  "start_time": 1774320000000,
+                  "end_time": 1774338000000,
                   "current_interval_total_count": 1500,
                   "current_interval_usage_count": 1437
                 },
                 {
                   "model_name": "MiniMax-M2.7-HighSpeed",
-                  "start_time": \(windowStartMillis),
-                  "end_time": \(sevenDayEndMillis),
+                  "start_time": 1774320000000,
+                  "end_time": 1774924800000,
                   "current_interval_total_count": 10000,
                   "current_interval_usage_count": 6400
                 }
@@ -4717,14 +4712,12 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
             switch url.path {
             case "/api/usage-summary":
-                let billingCycleEnd = ISO8601DateFormatter()
-                    .string(from: Date().addingTimeInterval(30 * 24 * 60 * 60))
                 return try self.httpResponse(
                     url: url,
                     statusCode: 200,
                     body: """
                     {
-                      "billing_cycle_end": "\(billingCycleEnd)",
+                      "billing_cycle_end": "2026-04-24T12:00:00Z",
                       "individual_usage": {
                         "plan": {
                           "used": 12000,
@@ -4774,7 +4767,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         await service.refresh(provider: .cursor, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
-        let primary = try XCTUnwrap(snapshot.primaryBucket)
+        let primary = try XCTUnwrap(snapshot.primaryBucket(asOf: Date(timeIntervalSince1970: 1_777_029_600)))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
@@ -5557,14 +5550,14 @@ extension ProviderQuotaServiceTests {
         XCTAssertNil(result.accountID)
         XCTAssertEqual(result.buckets.count, 2)
 
-        let hourly = try XCTUnwrap(result.hourlyBucket(relativeTo: now))
+        let hourly = try XCTUnwrap(result.hourlyBucket(asOf: now))
         XCTAssertEqual(hourly.usedValue, 100)
         XCTAssertEqual(hourly.limitValue, 200)
         XCTAssertEqual(try XCTUnwrap(hourly.usedPercent), 50, accuracy: 0.001)
         // Earliest resetsAt wins.
         XCTAssertEqual(hourly.resetsAt, now.addingTimeInterval(60 * 60))
 
-        let weekly = try XCTUnwrap(result.weeklyBucket(relativeTo: now))
+        let weekly = try XCTUnwrap(result.weeklyBucket(asOf: now))
         XCTAssertEqual(weekly.usedValue, 700)
         XCTAssertEqual(weekly.limitValue, 2000)
         XCTAssertEqual(try XCTUnwrap(weekly.usedPercent), 35, accuracy: 0.001)
@@ -5600,7 +5593,7 @@ extension ProviderQuotaServiceTests {
                 now: now
             )
         )
-        let hourly = try XCTUnwrap(merged.hourlyBucket(relativeTo: now))
+        let hourly = try XCTUnwrap(merged.hourlyBucket(asOf: now))
         let hourlyUsedPercent = try XCTUnwrap(hourly.usedPercent)
         XCTAssertEqual(hourlyUsedPercent, 190.0 / 1100.0 * 100, accuracy: 0.01)
         XCTAssertNotEqual(hourlyUsedPercent, 50, accuracy: 1)
@@ -5628,7 +5621,7 @@ extension ProviderQuotaServiceTests {
                 now: now
             )
         )
-        XCTAssertTrue(try XCTUnwrap(merged.hourlyBucket(relativeTo: now)).isEstimated)
+        XCTAssertTrue(try XCTUnwrap(merged.hourlyBucket(asOf: now)).isEstimated)
     }
 
     func test_cumulativeSnapshot_excludesLocalOnlyScope() {
@@ -5684,8 +5677,8 @@ extension ProviderQuotaServiceTests {
             )
         )
         XCTAssertEqual(merged.buckets.count, 2)
-        XCTAssertNotNil(merged.hourlyBucket(relativeTo: now))
-        XCTAssertNotNil(merged.weeklyBucket(relativeTo: now))
+        XCTAssertNotNil(merged.hourlyBucket(asOf: now))
+        XCTAssertNotNil(merged.weeklyBucket(asOf: now))
     }
 
     func test_cumulativeSnapshot_picksEarliestResetsAt() throws {
@@ -5710,7 +5703,7 @@ extension ProviderQuotaServiceTests {
                 now: now
             )
         )
-        XCTAssertEqual(try XCTUnwrap(merged.hourlyBucket(relativeTo: now)).resetsAt, earlier)
+        XCTAssertEqual(try XCTUnwrap(merged.hourlyBucket(asOf: now)).resetsAt, earlier)
     }
 
     func test_cumulativeSnapshot_staleFallbackWhenAllAccountsStale() throws {

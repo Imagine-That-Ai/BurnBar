@@ -9,13 +9,19 @@
  *   # List current rollout status for all flags:
  *   node scripts/rollout.mjs --status
  *
- *   # Start a new rollout at 1%:
+ *   # Preview a new rollout at 1%:
  *   node scripts/rollout.mjs --flag computer_use_system_enabled --stage ring-1
+ *
+ *   # Apply a rollout to Firebase Remote Config:
+ *   node scripts/rollout.mjs --flag computer_use_system_enabled --stage ring-1 --apply --project openburnbar
+ *
+ *   # Apply a targeted canary (for example, one Firebase installation id):
+ *   node scripts/rollout.mjs --flag signal_at_rest_conversations_chat_enabled --stage ring-1 --condition "app.firebaseInstallationId in ['...']" --apply --project burnbar
  *
  *   # Advance to next ring after health check passes:
  *   node scripts/rollout.mjs --flag computer_use_system_enabled --advance
  *
- *   # Emergency halt (set to 0%):
+ *   # Preview emergency halt (set to 0%):
  *   node scripts/rollout.mjs --flag computer_use_system_enabled --halt
  *
  *   # Dry-run (print what would change without applying):
@@ -24,7 +30,7 @@
  * Prerequisites:
  *   - firebase CLI authenticated: firebase login
  *   - Project set: firebase use openburnbar
- *   - Service account with Remote Config Admin role
+ *   - For --apply: gcloud auth or FIREBASE_TOKEN with Remote Config Admin role
  *
  * Rollout rings:
  *   ring-0: 0%  (off / roll-back target)
@@ -34,7 +40,7 @@
  *   ring-4: 100% (general availability)
  */
 
-import { execSync, spawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 
 const RINGS = [
@@ -55,6 +61,10 @@ const MANAGED_FLAGS = {
   computer_use_phone_control_attestation_required: { minDwellHours: 72 },
   hermes_iroh_default_enabled:      { minDwellHours: 48 },
   mercury_media_enabled:            { minDwellHours: 48 },
+  signal_at_rest_disabled:          { minDwellHours: 0 },
+  signal_at_rest_enabled:           { minDwellHours: 72 },
+  signal_at_rest_conversations_chat_enabled: { minDwellHours: 72 },
+  signal_at_rest_pensieve_enabled:  { minDwellHours: 72 },
 };
 
 const { values: args } = parseArgs({
@@ -64,12 +74,23 @@ const { values: args } = parseArgs({
     advance: { type: 'boolean', default: false },
     halt:    { type: 'boolean', default: false },
     status:  { type: 'boolean', default: false },
+    apply:   { type: 'boolean', default: false },
+    project: { type: 'string' },
+    condition: { type: 'string' },
     'dry-run': { type: 'boolean', default: false },
   },
   allowPositionals: false,
 });
 
 const DRY_RUN = args['dry-run'];
+const APPLY = args.apply;
+const PROJECT_ID = args.project ?? process.env.PROJECT_ID ?? '';
+const CONDITION_EXPRESSION = args.condition ?? '';
+
+if (APPLY && DRY_RUN) {
+  console.error('Use either --apply or --dry-run, not both.');
+  process.exit(64);
+}
 
 function log(msg) {
   console.log(`[rollout] ${msg}`);
@@ -80,11 +101,24 @@ function warn(msg) {
 }
 
 function runFirebase(command) {
-  if (DRY_RUN) {
-    log(`[dry-run] Would run: firebase ${command}`);
-    return '{}';
-  }
   return execSync(`firebase ${command} --json`, { encoding: 'utf-8' });
+}
+
+function requireProjectForApply() {
+  if (!PROJECT_ID) {
+    console.error('Remote Config publish requires --project <firebase-project-id> or PROJECT_ID.');
+    process.exit(64);
+  }
+}
+
+function remoteConfigAccessToken() {
+  if (process.env.FIREBASE_TOKEN) return process.env.FIREBASE_TOKEN;
+  try {
+    return execSync('gcloud auth print-access-token', { encoding: 'utf-8' }).trim();
+  } catch {
+    console.error('Remote Config publish requires FIREBASE_TOKEN or gcloud auth print-access-token.');
+    process.exit(1);
+  }
 }
 
 function printRings() {
@@ -111,10 +145,48 @@ function nextRing(currentRing) {
 async function getRemoteConfigTemplate() {
   try {
     const output = runFirebase('remoteconfig:get');
-    return JSON.parse(output);
+    const parsed = JSON.parse(output);
+    return parsed.result ?? parsed;
   } catch {
     warn('Could not fetch Remote Config template (firebase CLI required).');
     return null;
+  }
+}
+
+async function fetchRemoteConfigTemplateForPublish() {
+  requireProjectForApply();
+  const token = remoteConfigAccessToken();
+  const url = `https://firebaseremoteconfig.googleapis.com/v1/projects/${PROJECT_ID}/remoteConfig`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'x-goog-user-project': PROJECT_ID,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Remote Config GET failed (${response.status}): ${await response.text()}`);
+  }
+  const etag = response.headers.get('etag');
+  if (!etag) {
+    throw new Error('Remote Config GET did not return an ETag; refusing to publish.');
+  }
+  return { template: await response.json(), etag, token, url };
+}
+
+async function publishRemoteConfigTemplate(template, etag, token, url) {
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json; UTF8',
+      'If-Match': etag,
+      'x-goog-user-project': PROJECT_ID,
+    },
+    body: JSON.stringify(template),
+  });
+  if (!response.ok) {
+    throw new Error(`Remote Config PUT failed (${response.status}): ${await response.text()}`);
   }
 }
 
@@ -126,6 +198,65 @@ function buildPercentageCondition(flagName, pct) {
     expression: `percent <= ${pct}`,
     tagColor: pct >= 100 ? 'GREEN' : pct >= 25 ? 'YELLOW' : 'ORANGE',
   };
+}
+
+function buildCondition(flagName, pct) {
+  if (CONDITION_EXPRESSION) {
+    return {
+      name: `rollout_${flagName}_targeted`,
+      expression: CONDITION_EXPRESSION,
+      tagColor: 'BLUE',
+    };
+  }
+  return buildPercentageCondition(flagName, pct);
+}
+
+function withoutManagedRolloutConditions(template, flagName) {
+  const next = structuredClone(template ?? {});
+  const rolloutPrefix = `rollout_${flagName}_`;
+  const removed = new Set();
+
+  next.conditions = (next.conditions ?? []).filter((condition) => {
+    if (typeof condition?.name === 'string' && condition.name.startsWith(rolloutPrefix)) {
+      removed.add(condition.name);
+      return false;
+    }
+    return true;
+  });
+
+  next.parameters = next.parameters ?? {};
+  for (const param of Object.values(next.parameters)) {
+    if (!param?.conditionalValues) continue;
+    for (const name of removed) delete param.conditionalValues[name];
+    if (Object.keys(param.conditionalValues).length === 0) delete param.conditionalValues;
+  }
+
+  return next;
+}
+
+function buildRolledTemplate(template, flagName, pct) {
+  const next = withoutManagedRolloutConditions(template, flagName);
+  next.parameters = next.parameters ?? {};
+  const condition = pct > 0 && pct < 100 ? buildCondition(flagName, pct) : null;
+  const param = {
+    ...(next.parameters[flagName] ?? {}),
+    defaultValue: { value: pct === 100 ? 'true' : 'false' },
+    valueType: 'BOOLEAN',
+    description: `OpenBurnBar managed rollout flag (${flagName}). Updated by scripts/rollout.mjs.`,
+  };
+
+  const conditionalValues = { ...(param.conditionalValues ?? {}) };
+  if (condition) {
+    next.conditions = [...(next.conditions ?? []), condition];
+    conditionalValues[condition.name] = { value: 'true' };
+  }
+  if (Object.keys(conditionalValues).length > 0) {
+    param.conditionalValues = conditionalValues;
+  } else {
+    delete param.conditionalValues;
+  }
+  next.parameters[flagName] = param;
+  return { template: next, condition };
 }
 
 async function showStatus() {
@@ -177,23 +308,25 @@ async function setRollout(flagName, targetRing) {
     log(`Completing rollout: ${flagName} → 100% (GA for all users)`);
   }
 
-  if (DRY_RUN) {
-    log(`[dry-run] Would set Remote Config parameter '${flagName}' with ${pct}% rollout condition`);
-    log(`[dry-run] Condition: ${JSON.stringify(buildPercentageCondition(flagName, pct))}`);
+  if (!APPLY) {
+    const liveTemplate = await getRemoteConfigTemplate();
+    const { template, condition } = buildRolledTemplate(liveTemplate ?? { conditions: [], parameters: {} }, flagName, pct);
+    log(`${DRY_RUN ? '[dry-run] ' : ''}Remote Config preview only; pass --apply --project <id> to publish.`);
+    log(`  Parameter: ${flagName}`);
+    log(`  Condition: ${condition ? JSON.stringify(condition) : '(none)'}`);
+    log(`  Default value: ${template.parameters[flagName].defaultValue.value}`);
+    console.log(JSON.stringify({ conditions: template.conditions ?? [], parameter: template.parameters[flagName] }, null, 2));
     return;
   }
 
-  // In production: use firebase remoteconfig:update with the new template.
-  // This script outputs the update command for manual or CI execution.
-  const condition = buildPercentageCondition(flagName, pct);
-  log(`Remote Config update required:`);
+  const current = await fetchRemoteConfigTemplateForPublish();
+  const { template, condition } = buildRolledTemplate(current.template, flagName, pct);
+  log(`Publishing Remote Config update:`);
   log(`  Parameter: ${flagName}`);
-  log(`  Condition: ${JSON.stringify(condition)}`);
-  log(`  Value when condition is true: true`);
-  log(`  Default value: ${pct === 100 ? 'true' : 'false'}`);
-  log('');
-  log('To apply: update the Remote Config template via Firebase Console or');
-  log('`firebase remoteconfig:set` with an updated template JSON.');
+  log(`  Condition: ${condition ? JSON.stringify(condition) : '(none)'}`);
+  log(`  Default value: ${template.parameters[flagName].defaultValue.value}`);
+  await publishRemoteConfigTemplate(template, current.etag, current.token, current.url);
+  log(`Remote Config published for ${flagName} at ${targetRing.name}.`);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -223,6 +356,7 @@ if (args.status) {
         const match = condition.match(/(\d+)pct/);
         if (match) currentPct = Math.max(currentPct, parseInt(match[1], 10));
       }
+      if ((param.defaultValue?.value ?? 'false') === 'true') currentPct = 100;
     }
   }
   const currentRing = RINGS.find(r => r.pct === currentPct) ?? RINGS[0];
@@ -241,6 +375,7 @@ if (args.status) {
   console.log('Usage:');
   console.log('  node scripts/rollout.mjs --status');
   console.log('  node scripts/rollout.mjs --flag <flag_name> --stage ring-1');
+  console.log('  node scripts/rollout.mjs --flag <flag_name> --stage ring-1 --apply --project openburnbar');
   console.log('  node scripts/rollout.mjs --flag <flag_name> --advance');
   console.log('  node scripts/rollout.mjs --flag <flag_name> --halt');
   console.log('  node scripts/rollout.mjs --flag <flag_name> --stage ring-2 --dry-run');

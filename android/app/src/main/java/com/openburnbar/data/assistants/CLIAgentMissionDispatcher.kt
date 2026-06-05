@@ -7,6 +7,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
+import com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads
+import com.openburnbar.data.cloud.AndroidSignalIdentityKeypair
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.time.Instant
@@ -78,6 +80,31 @@ private fun openMissionPayload(raw: Any?, vaultKey: ByteArray?): AndroidMissionP
             CloudVaultCrypto.openPayload(envelope, key).toString(Charsets.UTF_8),
         )
     }.getOrNull()
+}
+
+private fun openMissionRequestPayload(
+    data: Map<String, Any?>,
+    uid: String?,
+    documentID: String,
+    vaultKey: ByteArray?,
+    signalIdentity: AndroidSignalIdentityKeypair?,
+): AndroidMissionPrivatePayload? {
+    if (data["signalEnvelope"] != null && uid != null) {
+        runCatching {
+            AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                data = data,
+                uid = uid,
+                collection = "cli_agent_mission_requests",
+                docId = documentID,
+                signalIdentity = signalIdentity,
+            )
+        }.getOrNull()?.let { payload ->
+            return runCatching {
+                missionCloudJson.decodeFromString<AndroidMissionPrivatePayload>(payload.toString(Charsets.UTF_8))
+            }.getOrNull()
+        }
+    }
+    return openMissionPayload(data["sealedPayload"], vaultKey)
 }
 
 private fun openMissionEventPayload(raw: Any?, vaultKey: ByteArray?): AndroidMissionEventPrivatePayload? {
@@ -311,7 +338,16 @@ class CLIAgentMissionDispatcher(
                 parentHermesThreadID = parentHermesThreadID,
                 presentationMode = presentationMode,
                 key = resolvedKey,
-            )
+            ).toMutableMap()
+        AndroidCloudVaultSignalPayloads.signalEnvelopeFromLegacyPayloadIfEnabled(
+            domainID = "conversations_chat",
+            uid = uid,
+            firestore = firestore,
+            collection = "cli_agent_mission_requests",
+            docId = id,
+            sealedData = payload,
+            resolvedKey = resolvedKey,
+        )?.let { payload["signalEnvelope"] = it }
         val requestRef =
             firestore.collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(id)
@@ -343,7 +379,7 @@ class CLIAgentMissionDispatcher(
         val requestRef =
             firestore.collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(requestID)
-        val vaultKey = runCatching { AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore)?.keyData }.getOrNull()
+        val resolvedKey = runCatching { AndroidCloudVaultKeyAccess.keyForReading(uid = uid, firestore = firestore) }.getOrNull()
         var latestSnapshot: DocumentSnapshot? = null
         var latestEvents: List<CLIAgentMissionEvent> = emptyList()
 
@@ -352,7 +388,8 @@ class CLIAgentMissionDispatcher(
                 latestSnapshot?.toMissionSnapshot(
                     fallbackID = requestID,
                     eventOverride = latestEvents.takeIf { it.isNotEmpty() },
-                    vaultKey = vaultKey,
+                    uid = uid,
+                    resolvedKey = resolvedKey,
                 )
             if (mission != null) trySend(mission)
         }
@@ -375,7 +412,7 @@ class CLIAgentMissionDispatcher(
                         close(error)
                         return@addSnapshotListener
                     }
-                    latestEvents = snapshot?.documents.orEmpty().mapNotNull { it.toMissionEvent(vaultKey) }
+                    latestEvents = snapshot?.documents.orEmpty().mapNotNull { it.toMissionEvent(resolvedKey?.keyData) }
                     emitLatest()
                 }
         awaitClose {
@@ -841,17 +878,26 @@ fun DocumentSnapshot.toMissionSnapshotOrNull(vaultKey: ByteArray? = null): CLIAg
 private fun DocumentSnapshot.toMissionSnapshot(
     fallbackID: String,
     eventOverride: List<CLIAgentMissionEvent>? = null,
+    uid: String? = null,
+    resolvedKey: AndroidCloudVaultResolvedKey? = null,
     vaultKey: ByteArray? = null,
 ): CLIAgentMissionSnapshot? {
-    val requestPrivate = openMissionPayload(get("sealedPayload"), vaultKey)
-    val statePrivate = openMissionPayload(get("sealedStatePayload"), vaultKey)
+    val effectiveVaultKey = vaultKey ?: resolvedKey?.keyData
+    val requestPrivate = openMissionRequestPayload(
+        data = data ?: emptyMap(),
+        uid = uid,
+        documentID = fallbackID,
+        vaultKey = effectiveVaultKey,
+        signalIdentity = resolvedKey?.signalIdentity,
+    )
+    val statePrivate = openMissionPayload(get("sealedStatePayload"), effectiveVaultKey)
     val title = requestPrivate?.title ?: getString("title") ?: return null
     val status = getString("status") ?: return null
     val rawEvents = get("events") as? List<*> ?: emptyList<Any>()
     val events =
         eventOverride ?: rawEvents.mapNotNull { raw ->
             val map = raw as? Map<*, *> ?: return@mapNotNull null
-            map.toMissionEvent(vaultKey)
+            map.toMissionEvent(effectiveVaultKey)
         }
     return CLIAgentMissionSnapshot(
         id = getString("id") ?: fallbackID,

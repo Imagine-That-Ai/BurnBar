@@ -5,9 +5,36 @@
 **Branch/worktree:** `signal/phase2`, dirty tree with completed implementable Signal work
 **Read first:** `docs/signalification/SKEPTICAL_ADVERSARIAL_REVIEW_HANDOFF.md` and `.agent/runs/sotasignal-full-ship-20260605/evidence/final-validation.md`
 
-This handoff is for the next operator after the SOTASIGNAL implementation pass. The flag-OFF safety/proof layers in this checkout are done and verified. The remaining work is the activation path: some gates require humans or reachable hardware, and some are still code/runtime work (production producer rollout, remaining identity/revocation wiring, telemetry, and live E2E).
+This handoff is for the next operator after the SOTASIGNAL implementation pass. The flag-OFF safety/proof layers in this checkout are done and verified. The external cryptographer and legal/AGPL/MAS review gates were owner-waived by Alberto and recorded as risk acceptance, not as independent review. The production Remote Config backend rollout/rollback tooling is now real, and a live at-rest rollback drill completed in 5 seconds. The remaining work is live **client consumption** of the canary: physical-device Remote Config fetch, live Signal write/read telemetry/domain-flow evidence, then marking Phase-E active.
 
-Do not claim 10/10, GA-ready, or production-activated until every gate below is closed with durable evidence.
+Do not claim production-activated until `signal-activation-evidence.json` is changed from `ready-for-phase-e` to `phase-e-active` with durable activation and rollback evidence.
+
+## 2026-06-05 Owner-Waiver Update
+
+Current activation validator status:
+
+```bash
+scripts/ci/validate-signal-activation-evidence.mjs \
+  .agent/runs/sotasignal-full-ship-20260605/evidence/signal-activation-evidence.json
+# signal activation evidence OK — all Phase-E prerequisite artifacts are present; production activation is not marked complete.
+```
+
+The waiver evidence is:
+
+```text
+.agent/runs/sotasignal-full-ship-20260605/evidence/owner-risk-acceptance-20260605.md
+```
+
+Important wording:
+
+- Owner-waived external/legal review is **not** an external cryptographer report.
+- Owner-waived external/legal review is **not** legal advice or Apple/MAS approval.
+- Physical-device at-rest Signal matrix is green: iPhone -> Mac, Mac -> iPhone, Android -> Mac.
+- Live backend rollback evidence exists: `phase-e-live-rollback-20260605/signal-rollback-drill.txt` (`elapsed_seconds=5`, `kill_lever_failures=0`).
+- Production Remote Config is currently fail-closed: `signal_at_rest_disabled=true`, all at-rest enable flags false.
+- The remaining activation item is live canary client consumption: Android Remote Config fetch is currently blocked by Firebase Installations auth-token failure on the connected Galaxy, and iOS devices are offline to Xcode in the current session.
+
+Sections below still explain who could perform external/legal review if Alberto later wants independent sign-off before public/store release.
 
 ---
 
@@ -18,12 +45,12 @@ Implemented and green in the current dirty tree:
 - Native L37 relocation hardening is complete: Swift and Android openers require caller-derived `expectedBinding`, compare it unconditionally, and derive AAD from `expectedBinding`.
 - Swift AAD reserved-character guard is scalar-level, not grapheme-level.
 - Firestore at-rest Signal envelope validators are wired for the direct-write collections and path-bound to doc coordinates.
-- Admin at-rest Signal validator exists and is tested, but is not yet wired to a production writer because production Signal writes are still flag-OFF.
+- Admin at-rest Signal validator exists, is tested, and is wired at the first real Admin write seam (`commitKnowledgeBatch`) for optional Pensieve `signalEnvelope` validation while flags remain OFF. Direct client collections are enforced by Firestore rules instead of Admin SDK.
 - L41 v1 `signal_identity_public_keys` rules are green.
 - Data export Signal sanitizer fails closed on malformed signal-shaped values.
 - User-facing "server searches without reading it" style over-claims were rewritten to caveated copy across website, macOS, iOS, Android, and generated trust/domain outputs.
 - Phase-F scripts exist: crypto proof harness, activation parity, Rule-0 guard, honesty gate, rollback drill.
-- Apple Signal FFI packaging was rebuilt from script, Swift Signal at-rest tests pass against it, the full mobile unit suite passed on a connected physical iPhone, focused mobile assistant chat + CLI mission Signal path-binding tests passed on that physical iPhone, final focused iPad Pensieve/chat Signal tests passed on the wired iPad, and the Android physical Signal instrumented suite passed on a connected Galaxy S24. Evidence: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/physical-device-packaging-status.md` and `.agent/runs/sotasignal-full-ship-20260605/evidence/physical-device-final-20260605.md`.
+- Apple Signal FFI packaging was rebuilt from script, Swift Signal at-rest tests pass against it, Mac App Store readiness compilation is green, and a direct-download Developer ID macOS release artifact was signed, notarized, stapled, Gatekeeper-accepted, and paired with SBOM/corresponding-source evidence. The full mobile unit suite passed on a connected physical iPhone, focused mobile assistant chat + CLI mission Signal path-binding tests passed on that physical iPhone, final focused iPad Pensieve/chat Signal tests passed on the wired iPad, Android direct chat/mission Signal producer/reader wiring is implemented behind the existing data-domain flag, and the Android physical Signal instrumented suite passed on a connected Galaxy S24. The final connected-device matrix also passed iPhone -> Mac, Mac -> iPhone, and Android -> Mac at-rest Signal handoffs. Evidence: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/notarization-mas-status.md`, `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/macos-direct-notarized-release-20260605.md`, `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/physical-device-packaging-status.md`, `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/android-direct-signal-producer-reader-20260605.md`, `.agent/runs/sotasignal-full-ship-20260605/evidence/physical-device-final-20260605.md`, and `.agent/runs/sotasignal-full-ship-20260605/evidence/physical-e2e-matrix-20260605/summary.md`.
 
 Latest claimed green proof matrix:
 
@@ -96,6 +123,7 @@ Inputs:
 - `docs/signalification/SKEPTICAL_ADVERSARIAL_REVIEW_HANDOFF.md`
 - `.agent/runs/sotasignal-full-ship-20260605/evidence/adversarial-3waves.json`
 - `~/Desktop/Signal Audit/audit-claude-opus-4-8-2026-06-05-023411.md`
+- `~/Desktop/Signal Audit/audit-gpt-5-2026-06-05-074823.md`
 
 Reviewer must attack:
 
@@ -152,7 +180,7 @@ Acceptance:
 
 ### 3. Reproducible Native Packaging Proof
 
-**Status:** local reproducible Apple FFI + host/device debug proof is now green; release/notarization/store proof still requires owner/legal sign-off.
+**Status:** local reproducible Apple FFI + host/device debug proof is green; direct-download Developer ID notarization proof is green; MAS/store/legal approval still requires owner/legal sign-off.
 **Owner:** native packaging/operator.
 **Why it blocks device E2E and store release:** the current tree has native libsignal work, but the release-quality multi-platform packaging proof still needs to be reproduced end to end.
 
@@ -165,11 +193,11 @@ Apple proof now collected:
 - `xcodebuild ... -scheme OpenBurnBar -destination 'platform=macOS' ... build` passed.
 - `OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=AFB07C15-AD18-5EFA-AD1C-CADB4F286797' ./scripts/test-openburnbar-mobile.sh` passed on a physical iPhone: 972 tests, 24 skipped, 0 failures.
 
-Remaining release Apple proof:
+Still required before public release:
 
-- Verify Xcode project integration through `project.yml`/XcodeGen, not hand-edited `.pbxproj` drift.
-- Prove notarization/direct-download packaging if Path C/macOS direct download uses this binary.
-- Prove MAS build either links legally or compiles the relevant path out.
+- Rerun the direct-download packaging proof from a clean release tag instead of the active dirty proof tree if this exact artifact is going public.
+- Obtain legal/store owner approval for AGPL/source-offer obligations and MAS policy.
+- Upload/review through MAS/App Store if MAS distribution is selected.
 
 Android proof now collected:
 
@@ -199,6 +227,7 @@ Acceptance:
 - Packaging steps are scripted, reproducible, and documented.
 - Build logs are saved under `.agent/runs/sotasignal-full-ship-20260605/evidence/` or a new run folder.
 - No manual dylib/framework artifact is treated as final unless the script can recreate it.
+- Current activation evidence marks native packaging closed; remaining release blockers are legal/store/clean-tag approval gates, not a missing local build proof.
 
 ---
 
@@ -259,13 +288,14 @@ Acceptance:
 
 ### 5. Production Producer Wiring and Admin Validator Wiring
 
-**Status:** partially closed while flag-OFF. The first server/Admin seam is now wired and tested for pensieve: `commitKnowledgeBatch` accepts an optional path-bound `signalEnvelope`, validates it with `validateSignalAtRestEnvelopeForWrite`, stores only the sanitized envelope, and `searchKnowledge` returns it additively alongside legacy sealed fields. Evidence: `.agent/runs/sotasignal-full-ship-20260605/evidence/producer-wiring-recon-20260605.md`.
+**Status:** closed for flag-OFF implementation proof. The Pensieve producer/admin/client-reader seam is wired and tested; iOS and Android direct `mobile_assistant_chats` / `cli_agent_mission_requests` producer/readers add optional path-bound `signalEnvelope` behind the `conversations_chat` data-domain sealing flag and read Signal first with legacy fallback. Evidence: `.agent/runs/sotasignal-full-ship-20260605/evidence/producer-admin-l40-l41-current-20260605.md` and `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/android-direct-signal-producer-reader-20260605.md`.
 **Owner:** feature/domain implementer.
-**Why it still blocks activation:** validators and sealers exist, but app/daemon producers are not yet writing real Signal envelopes across every target domain, pensieve clients do not yet open returned Signal envelopes, and Android direct client writers are still legacy-only.
+**Why it still blocks activation:** producer wiring is no longer the blocker. Activation is still blocked by missing live production telemetry/dashboards, live cross-device E2E, and broader L41 runtime identity/prekey/revocation/rewrap work.
 
 Work required:
 
-- Finish the first ramp domain (`pensieve`): app/daemon producer must add optional `signalEnvelope` bound to `cloud_search_knowledge/{vectorId}/sealedCiphertext`; client reader must prefer it when present and fall back to legacy `ciphertext`.
+- Preserve and reverify the first ramp domain (`pensieve`): app/daemon producer adds optional `signalEnvelope` bound to `cloud_search_knowledge/{vectorId}/sealedCiphertext`; client reader prefers it when present and falls back to legacy `ciphertext`.
+- Preserve and reverify Android direct optional Signal dual-write/dual-read for `mobile_assistant_chats` and `cli_agent_mission_requests`: Android now uses a real libsignal identity key, publishes the public identity document, gathers trusted Signal recipients, and keeps the legacy payload for rollout fallback.
 - Preserve legacy opener/dual-read until Phase-E activation is fully rolled out.
 - Ensure every remaining Admin SDK/callable write path that persists `signalEnvelope` calls:
 

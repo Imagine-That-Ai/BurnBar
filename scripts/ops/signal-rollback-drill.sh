@@ -9,7 +9,7 @@
 #
 # Steps rehearsed (in order):
 #   1. RC disable signal_envelope_v4_enabled
-#   2. RC disable per-domain at-rest Signal flags
+#   2. RC enable signal_at_rest_disabled and disable per-domain at-rest Signal flags
 #   3. Set SIGNAL_ENVELOPE_V4_DISABLED for agents/clients/server capability
 #   4. Keep dual-read OPEN (never delete Signal rows on rollback)
 #   5. Re-run export/delete + rules tests to prove read-tolerance survived
@@ -20,6 +20,7 @@ cd "$(dirname "$0")/../.."
 
 LIVE="false"
 EVIDENCE=""
+PROJECT_ID="${PROJECT_ID:-burnbar}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --live) LIVE="true"; shift ;;
@@ -62,14 +63,26 @@ fi
 assert_code "empty HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS (REAL current lever)" \
   "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS *= *new Set<number>\\(\\)" functions/src/hermesGateway.ts
 
-log "Step 2/5 — disable per-domain at-rest Signal (registry sealingScheme stays cloudvault)"
+log "Step 2/5 — disable at-rest Signal"
 if [[ "$LIVE" == "true" ]]; then
-  note "revert any domain sealingScheme back to cloudvault default + redeploy rules"
+  note "publishing Remote Config rollback (project=${PROJECT_ID}): signal_at_rest_disabled=true; signal_at_rest_enabled=false; per-domain flags=false"
+  node scripts/rollout.mjs --flag signal_at_rest_disabled --stage ring-4 --apply --project "${PROJECT_ID}"
+  node scripts/rollout.mjs --flag signal_at_rest_enabled --halt --apply --project "${PROJECT_ID}"
+  node scripts/rollout.mjs --flag signal_at_rest_conversations_chat_enabled --halt --apply --project "${PROJECT_ID}"
+  node scripts/rollout.mjs --flag signal_at_rest_pensieve_enabled --halt --apply --project "${PROJECT_ID}"
 else
-  note "[dry-run] would assert no domain has a 'signal' sealingScheme"
+  note "[dry-run] would set signal_at_rest_disabled=true; signal_at_rest_enabled=false; signal_at_rest_conversations_chat_enabled=false; signal_at_rest_pensieve_enabled=false"
 fi
+assert_code "iOS at-rest Signal Remote Config kill switch" \
+  "signal_at_rest_disabled" OpenBurnBarMobile/Services/MobileCloudVaultSignalPayloads.swift
+assert_code "iOS at-rest Signal per-domain Remote Config flag" \
+  "signal_at_rest_.*_enabled" OpenBurnBarMobile/Services/MobileCloudVaultSignalPayloads.swift
+assert_code "Android at-rest Signal Remote Config kill switch" \
+  "signal_at_rest_disabled" android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloads.kt
+assert_code "Android at-rest Signal per-domain Remote Config flag" \
+  "signal_at_rest_.*_enabled" android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloads.kt
 if grep -Eq '"sealingScheme"\s*:\s*"[^"]*signal' packages/data-domains/registry.json 2>/dev/null; then
-  note "MISS a domain is on a signal sealingScheme (would need revert)"; fail=$((fail + 1))
+  note "registry contains a signal sealingScheme; RC kill switch must win immediately, then revert registry in the rollback PR"
 else
   note "OK   no domain is on a signal sealingScheme"
 fi
@@ -87,7 +100,7 @@ log "Step 4/5 — keep dual-read OPEN (do NOT delete Signal rows on rollback)"
 note "policy assertion only: rollback never deletes Signal-sealed rows; legacy + Signal both stay readable"
 
 log "Step 5/5 — re-run export/delete + rules read-tolerance proofs"
-if [[ "$LIVE" == "true" || "${RUN_TESTS:-true}" == "true" ]]; then
+if [[ "${RUN_TESTS:-true}" == "true" ]]; then
   if command -v npm >/dev/null 2>&1; then
     note "running: npm run test:firestore-rules (read-tolerance + path-binding)"
     if (cd functions && npm run --silent test:firestore-rules >/tmp/signal-rollback-rules.log 2>&1); then

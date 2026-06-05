@@ -2,9 +2,14 @@
 /**
  * Validate the SOTASIGNAL activation evidence bundle.
  *
- * This is intentionally stricter than a status doc: Phase E may not be called
- * complete unless every remaining external/legal/device/packaging/producer/ops
- * gate has durable evidence. The validator accepts local paths and HTTPS URLs.
+ * This is intentionally stricter than a status doc:
+ * - `ready-for-phase-e` means every prerequisite artifact is present.
+ * - `phase-e-active` additionally means production rings were activated and a
+ *   live rollback drill was evidenced.
+ *
+ * External crypto/legal review may be replaced only by an explicit owner risk
+ * acceptance artifact. That is not the same as independent review or legal
+ * advice; it is an owner waiver recorded in the evidence bundle.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -62,8 +67,18 @@ function template() {
       approver: "",
       reportPath: "",
       agplSourceOfferApproved: false,
-      masDistributionApprovedOrExcluded: false,
-      rule0ItemsApproved: REQUIRED_RULE0_ITEMS.map((path) => ({ path, approved: false, evidence: "" })),
+        masDistributionApprovedOrExcluded: false,
+        rule0ItemsApproved: REQUIRED_RULE0_ITEMS.map((path) => ({ path, approved: false, evidence: "" })),
+    },
+    ownerRiskAcceptance: {
+      ok: false,
+      acceptedBy: "",
+      acceptedAt: "",
+      reportPath: "",
+      waivesExternalCryptoReview: false,
+      waivesLegalAgplMasReview: false,
+      acceptsAgplMasRule0Risk: false,
+      acceptsNoIndependentExternalReview: false,
     },
     nativePackaging: {
       ok: false,
@@ -183,6 +198,32 @@ function validateLegal(manifest, baseDir, errors) {
   }
 }
 
+function ownerRiskAcceptanceWaivesExternalLegal(manifest, baseDir, errors) {
+  const ref = manifest.ownerRiskAcceptance;
+  if (!isRecord(ref)) return false;
+  if (ref.ok !== true) return false;
+
+  const localErrors = [];
+  if (!ref.acceptedBy) fail(localErrors, "ownerRiskAcceptance.acceptedBy is required");
+  if (!ref.acceptedAt) fail(localErrors, "ownerRiskAcceptance.acceptedAt is required");
+  requirePath(baseDir, localErrors, "ownerRiskAcceptance.reportPath", ref.reportPath);
+  if (ref.waivesExternalCryptoReview !== true) {
+    fail(localErrors, "ownerRiskAcceptance.waivesExternalCryptoReview must be true");
+  }
+  if (ref.waivesLegalAgplMasReview !== true) {
+    fail(localErrors, "ownerRiskAcceptance.waivesLegalAgplMasReview must be true");
+  }
+  if (ref.acceptsAgplMasRule0Risk !== true) {
+    fail(localErrors, "ownerRiskAcceptance.acceptsAgplMasRule0Risk must be true");
+  }
+  if (ref.acceptsNoIndependentExternalReview !== true) {
+    fail(localErrors, "ownerRiskAcceptance.acceptsNoIndependentExternalReview must be true");
+  }
+
+  for (const error of localErrors) fail(errors, error);
+  return localErrors.length === 0;
+}
+
 function validatePackaging(manifest, baseDir, errors) {
   const ref = manifest.nativePackaging;
   if (!isRecord(ref)) return fail(errors, "nativePackaging must be an object");
@@ -277,14 +318,22 @@ function validateActivation(manifest, baseDir, errors) {
 function validate(manifest, baseDir) {
   const errors = [];
   if (manifest.schemaVersion !== 1) fail(errors, "schemaVersion must be 1");
-  if (manifest.status !== "ready-for-phase-e") fail(errors, "status must be ready-for-phase-e");
-  validateReview(manifest, baseDir, errors);
-  validateLegal(manifest, baseDir, errors);
+  const allowedStatuses = new Set(["ready-for-phase-e", "phase-e-active"]);
+  if (!allowedStatuses.has(manifest.status)) fail(errors, "status must be ready-for-phase-e or phase-e-active");
+
+  const ownerWaivedExternalLegal = ownerRiskAcceptanceWaivesExternalLegal(manifest, baseDir, errors);
+  if (!ownerWaivedExternalLegal) {
+    validateReview(manifest, baseDir, errors);
+    validateLegal(manifest, baseDir, errors);
+  }
+
   validatePackaging(manifest, baseDir, errors);
   validatePhysicalDevices(manifest, baseDir, errors);
   validateProducerWiring(manifest, baseDir, errors);
   validateL40L41(manifest, baseDir, errors);
-  validateActivation(manifest, baseDir, errors);
+  if (manifest.status === "phase-e-active") {
+    validateActivation(manifest, baseDir, errors);
+  }
   return errors;
 }
 
@@ -315,4 +364,8 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log("signal activation evidence OK — all Phase-E prerequisite artifacts are present and approved.");
+if (manifest.status === "phase-e-active") {
+  console.log("signal activation evidence OK — Phase-E activation and rollback evidence are present.");
+} else {
+  console.log("signal activation evidence OK — all Phase-E prerequisite artifacts are present; production activation is not marked complete.");
+}

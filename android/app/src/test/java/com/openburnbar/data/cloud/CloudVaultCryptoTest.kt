@@ -333,6 +333,82 @@ class CloudVaultCryptoTest {
         assertNull(CloudVaultCrypto.signalEnvelopeFromMap(mapOf("mode" to CloudVaultCrypto.SIGNAL_AT_REST_MODE)))
     }
 
+    @Test
+    fun signalSealingGateDefaultsOffAndSupportsRemoteOverride() {
+        AndroidCloudVaultSignalPayloads.signalSealingOverrideProvider = null
+        try {
+            assertEquals(
+                "signal_at_rest_conversations_chat_enabled",
+                AndroidCloudVaultSignalPayloads.signalAtRestRemoteConfigKey("conversations_chat"),
+            )
+            assertEquals(
+                "signal_at_rest_disabled",
+                AndroidCloudVaultSignalPayloads.SIGNAL_AT_REST_DISABLED_REMOTE_CONFIG_KEY,
+            )
+            assertFalse(
+                "conversations_chat must stay Signal-OFF until Remote Config or the registry explicitly activates it.",
+                AndroidCloudVaultSignalPayloads.signalSealingIsEnabled("conversations_chat"),
+            )
+
+            AndroidCloudVaultSignalPayloads.signalSealingOverrideProvider = { domainID ->
+                domainID == "conversations_chat"
+            }
+            assertTrue(AndroidCloudVaultSignalPayloads.signalSealingIsEnabled("conversations_chat"))
+            assertFalse(AndroidCloudVaultSignalPayloads.signalSealingIsEnabled("session_logs"))
+        } finally {
+            AndroidCloudVaultSignalPayloads.signalSealingOverrideProvider = null
+        }
+    }
+
+    @Test
+    fun androidSignalPayloadHelperOpensPathBoundEnvelopeAndRejectsRelocation() {
+        val keyPair = org.signal.libsignal.protocol.ecc.ECKeyPair.generate()
+        val identity =
+            AndroidSignalIdentityKeypair(
+                identityKeyId = "android-device_1",
+                publicKeyData = keyPair.publicKey.serialize(),
+                privateKeyData = keyPair.privateKey.serialize(),
+                keyVersion = 1,
+            )
+        val binding =
+            CloudVaultSignalBinding(
+                uid = "android-user",
+                collection = "mobile_assistant_chats",
+                docId = "thread-1",
+                field = "signalEnvelope",
+            )
+        val plaintext = """{"id":"thread-1","runtime":"hermes"}""".toByteArray()
+        val envelope =
+            CloudVaultCrypto.sealSignalPayload(
+                plaintext = plaintext,
+                recipients = listOf(identity.atRestRecipient()),
+                binding = binding,
+            )
+        val data = mapOf("signalEnvelope" to CloudVaultCrypto.signalEnvelopeMap(envelope))
+
+        assertArrayEquals(
+            plaintext,
+            AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                data = data,
+                uid = "android-user",
+                collection = "mobile_assistant_chats",
+                docId = "thread-1",
+                signalIdentity = identity,
+            ),
+        )
+        assertTrue(
+            runCatching {
+                AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                    data = data,
+                    uid = "android-user",
+                    collection = "mobile_assistant_chats",
+                    docId = "relocated-thread",
+                    signalIdentity = identity,
+                )
+            }.isFailure,
+        )
+    }
+
     private fun wrapVaultKeyForTest(vaultKey: ByteArray, recipient: KeyPair, ephemeral: KeyPair): ByteArray {
         val sharedSecret =
             KeyAgreement.getInstance("ECDH").run {

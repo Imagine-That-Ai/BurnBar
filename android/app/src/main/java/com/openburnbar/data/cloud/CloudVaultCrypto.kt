@@ -634,9 +634,98 @@ class AndroidCloudVaultDeviceKeypair private constructor(
     }
 }
 
+data class AndroidSignalIdentityKeypair(
+    val identityKeyId: String,
+    val publicKeyData: ByteArray,
+    val privateKeyData: ByteArray,
+    val keyVersion: Int = 1,
+) {
+    val publicKeyBase64: String = CloudVaultCryptoSupport.encodeBase64(publicKeyData)
+    val publicKeyFingerprint: String = CloudVaultCrypto.sha256Base64(publicKeyData)
+
+    fun atRestRecipient(kind: String = "device"): CloudVaultSignalRecipient =
+        CloudVaultSignalRecipient(
+            recipientKind = kind,
+            recipientIdentityKeyId = identityKeyId,
+            publicKeyData = publicKeyData,
+        )
+}
+
+object AndroidSignalIdentityKeyStore {
+    private const val PREFS = "openburnbar_signal_identity"
+    private const val KEY_VERSION = 1
+
+    fun identityKeyId(deviceId: String, keyVersion: Int = KEY_VERSION): String = "${deviceId}_$keyVersion"
+
+    fun loadOrCreate(uid: String, deviceId: String): AndroidSignalIdentityKeypair {
+        load(uid = uid, deviceId = deviceId)?.let { return it }
+        val keyPair = org.signal.libsignal.protocol.ecc.ECKeyPair.generate()
+        val privateKeyData = keyPair.privateKey.serialize()
+        val publicKeyData = keyPair.publicKey.serialize()
+        save(
+            uid = uid,
+            deviceId = deviceId,
+            privateKeyData = privateKeyData,
+            publicKeyData = publicKeyData,
+            keyVersion = KEY_VERSION,
+        )
+        return material(
+            privateKeyData = privateKeyData,
+            publicKeyData = publicKeyData,
+            deviceId = deviceId,
+            keyVersion = KEY_VERSION,
+        )
+    }
+
+    fun load(uid: String, deviceId: String): AndroidSignalIdentityKeypair? {
+        val prefs = BurnBarApplication.appContext.getSharedPreferences(PREFS, 0)
+        val prefix = prefPrefix(uid = uid, deviceId = deviceId)
+        val sealedPrivate = prefs.getString("${prefix}_private_key", null) ?: return null
+        val publicKeyData = prefs.getString("${prefix}_public_key", null)
+            ?.let(CloudVaultCryptoSupport::decodeBase64)
+            ?: return null
+        val keyVersion = prefs.getInt("${prefix}_key_version", KEY_VERSION)
+        val privateKeyData = AndroidLocalSecretBox.decrypt(CloudVaultCryptoSupport.decodeBase64(sealedPrivate))
+        return material(
+            privateKeyData = privateKeyData,
+            publicKeyData = publicKeyData,
+            deviceId = deviceId,
+            keyVersion = keyVersion,
+        )
+    }
+
+    private fun save(uid: String, deviceId: String, privateKeyData: ByteArray, publicKeyData: ByteArray, keyVersion: Int) {
+        val prefs = BurnBarApplication.appContext.getSharedPreferences(PREFS, 0)
+        val prefix = prefPrefix(uid = uid, deviceId = deviceId)
+        prefs.edit()
+            .putString("${prefix}_private_key", CloudVaultCryptoSupport.encodeBase64(AndroidLocalSecretBox.encrypt(privateKeyData)))
+            .putString("${prefix}_public_key", CloudVaultCryptoSupport.encodeBase64(publicKeyData))
+            .putInt("${prefix}_key_version", keyVersion)
+            .apply()
+    }
+
+    private fun material(
+        privateKeyData: ByteArray,
+        publicKeyData: ByteArray,
+        deviceId: String,
+        keyVersion: Int,
+    ): AndroidSignalIdentityKeypair {
+        return AndroidSignalIdentityKeypair(
+            identityKeyId = identityKeyId(deviceId = deviceId, keyVersion = keyVersion),
+            publicKeyData = publicKeyData,
+            privateKeyData = privateKeyData,
+            keyVersion = keyVersion,
+        )
+    }
+
+    private fun prefPrefix(uid: String, deviceId: String): String =
+        "signal_at_rest_identity_${CloudVaultCrypto.sha256Hex("$uid:$deviceId".toByteArray(Charsets.UTF_8))}"
+}
+
 data class AndroidCloudVaultResolvedKey(
     val keyData: ByteArray,
     val vaultKeyID: String,
+    val signalIdentity: AndroidSignalIdentityKeypair? = null,
 )
 
 object AndroidCloudVaultKeyAccess {
@@ -648,15 +737,20 @@ object AndroidCloudVaultKeyAccess {
 
     suspend fun keyForReading(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey? {
         val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
-        AndroidEscrowDeviceRegistry(firestore).registerSelf(uid = uid, keypair = keypair)
+        val signalIdentity = AndroidSignalIdentityKeyStore.loadOrCreate(uid = uid, deviceId = keypair.deviceId)
+        AndroidEscrowDeviceRegistry(firestore).registerSelf(
+            uid = uid,
+            keypair = keypair,
+            signalIdentity = signalIdentity,
+        )
         loadLocalKey(uid)?.let { local ->
-            val resolved = AndroidCloudVaultResolvedKey(local, CloudVaultCrypto.vaultKeyID(local))
+            val resolved = AndroidCloudVaultResolvedKey(local, CloudVaultCrypto.vaultKeyID(local), signalIdentity)
             verifyStateIfPresent(uid, firestore, resolved.vaultKeyID)
             return resolved
         }
         val unwrapped = unwrapExistingKey(uid, firestore, keypair) ?: return null
         saveLocalKey(uid, unwrapped.keyData)
-        return unwrapped
+        return unwrapped.copy(signalIdentity = signalIdentity)
     }
 
     private suspend fun unwrapExistingKey(
@@ -738,7 +832,7 @@ object AndroidCloudVaultKeyAccess {
     }
 }
 
-private object AndroidLocalSecretBox {
+internal object AndroidLocalSecretBox {
     private const val ALIAS = "openburnbar-cloud-vault-device-secret"
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_NONCE_BYTES = 12

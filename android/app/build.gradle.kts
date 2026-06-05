@@ -264,6 +264,7 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")
+    implementation("com.google.firebase:firebase-config-ktx")
     // Sentry Android SDK — structured error tracking with crash reports,
     // ANR detection, breadcrumbs, and release health metrics. Captures
     // errors via the sentry-issue-sync CI workflow → GitHub issues pipeline.

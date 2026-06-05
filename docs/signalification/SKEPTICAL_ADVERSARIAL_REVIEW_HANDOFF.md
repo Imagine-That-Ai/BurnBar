@@ -19,8 +19,11 @@ When you finish your skeptical adversarial review, write **all** of your finding
   - **Never overwrite a prior audit** — each run is its own timestamped file, so the folder accumulates one audit per reviewer/run.
 - **Contents:** every finding with **severity, `file:line`, the attack/repro, a confirmed/refuted verdict, and your recommended fix**, plus the human/hardware-gated items you could not close, plus the exact commands you ran to verify. Be hostile: try to break the claims in this handoff, don't restate them.
 
-The first such audit (this finish's consolidated findings) is already there — read it, then try to break its conclusions:
-`~/Desktop/Signal Audit/audit-claude-opus-4-8-2026-06-05-023411.md`.
+Existing audit artifacts are already there — read them, then try to break their conclusions:
+
+- `~/Desktop/Signal Audit/audit-claude-opus-4-8-2026-06-05-023411.md` — earlier Claude audit.
+- `~/Desktop/Signal Audit/audit-gpt-5-2026-06-05-074823.md` — current GPT-5 closeout audit, including owner-waiver and connected-device matrix status.
+- `~/Desktop/Signal Audit/audit-gpt-5-2026-06-05-081817.md` — current GPT-5 activation-state audit, including live rollback proof, fail-closed production Remote Config state, Android Firebase Installations blocker, and offline Apple-device status.
 
 ---
 
@@ -44,7 +47,9 @@ This work was originally done **alongside a second, live "native-crypto" agent**
 
 ## FINAL STATUS — current pre-activation truth (2026-06-05, supersedes stale details below)
 
-The second agent was stopped; one owner then finished the safety/proof layers and re-ran focused physical-device proofs. **The flag-OFF safety infrastructure is green, but production activation is still blocked.** The current activation validator fails with 32 real Phase-E issues; do not claim "10/10" or flags-on readiness until those are closed.
+The second agent was stopped; one owner then finished the safety/proof layers and re-ran the connected-device physical E2E matrix. **The flag-OFF safety infrastructure is green and the activation evidence validator now passes in `ready-for-phase-e` mode.** Production activation is still **not** marked complete. Since the original writeup, the production Remote Config backend rollout/rollback tooling was made real and a live at-rest rollback drill completed in **5 seconds**, leaving production fail-closed (`signal_at_rest_disabled=true`, all at-rest enable flags false). What is still missing is live canary **client consumption**: a physical device must successfully fetch the targeted RC canary, perform live Signal write/read telemetry, and then be rolled back.
+
+Alberto also instructed the agent to delete/waive the external cryptographer review and legal/AGPL/MAS review blockers. That waiver is recorded as owner risk acceptance in `.agent/runs/sotasignal-full-ship-20260605/evidence/owner-risk-acceptance-20260605.md`. This is not an external review, not legal advice, and not Apple/MAS approval; it is an owner decision to proceed without those independent sign-offs.
 
 For the operational checklist of every remaining item, owner, order, and acceptance gate, use:
 [`docs/signalification/REMAINING_SIGNAL_WORK_HANDOFF.md`](./REMAINING_SIGNAL_WORK_HANDOFF.md).
@@ -55,16 +60,12 @@ For the operational checklist of every remaining item, owner, order, and accepta
 - **L41 Signal identity/prekey/session directory rules** are green for the server/rules contract (identity versions 1-10, public-only prekeys, metadata-only sessions, append-only rotation events); runtime producers/revocation/rewrap remain activation work.
 - **All user-facing honesty over-claims FIXED** (not just flagged): every "the server searches without reading it" / "ANN search without reading" string rewritten to the caveated form across website (`PricingPlans.astro`, `faq.ts`, `pricing.astro`, regenerated `trust.generated.ts`), macOS (`CloudStoreSettingsView.swift`, `GatedFeature.swift`), iOS (`HostedQuotaSubscriptionStore.swift`, `CloudTierComponents.swift`, `DataVaultControl*View.swift`), Android (`GatedFeature.kt`, `CloudStoreViewPlanSections.kt`, regenerated `DataDomains.kt`) — fixed at the **registry source** for the generated copies. The honesty gate now also scans the **iOS app + shared Swift catalog** and the **singular** "search without reading".
 - **Full gate sweep GREEN:** functions `tsc` clean; full vitest **320 pass**; emulator rules **50/50**; contract **12/12**; libsignal-protocol **7/7**; data-domains **19/19** + no drift; crypto-harness **18/18**; activation-parity OK; honesty OK; schema-drift OK.
-- **Final local physical-device Signal proof GREEN:** iPad `PensieveMemorySearchSignalTests` **3/3**, iPad chat relocation **1/1**, Android physical Signal instrumented **2 tests on SM-S921U**, and Android JVM regression all exit 0 in `.agent/runs/sotasignal-full-ship-20260605/evidence/device-physical-final/`. Earlier iPhone focused/full Signal proofs remain in `evidence/device-packaging/`; the final rerun found the iPhone CoreDevice tunnel unavailable after build validation, so no new iPhone code failure was observed.
-- **rule0 gate** intentionally flags **3** Rule-0 touches — `.gitmodules` + `Vendor/libsignal/` (AGPL vendoring → **legal/L12 sign-off**) and `website/src/data/trust.generated.ts` (the honesty regen → **registry/copy-owner ratification**). These are legitimate-but-owner-gated; the gate surfacing them is correct.
+- **Native packaging proof GREEN:** Apple Signal FFI script rebuilds the multi-slice XCFramework, host/device debug builds are green, Mac App Store readiness compilation is green, and the direct-download macOS proof artifact was signed, notarized, stapled, and Gatekeeper-accepted. This is packaging proof, not legal/MAS approval.
+- **Final connected-device Signal matrix GREEN:** `scripts/ci/run-signal-physical-e2e-matrix.sh` produced `.agent/runs/sotasignal-full-ship-20260605/evidence/physical-e2e-matrix-20260605/summary.md`, proving iPhone physical device -> macOS at-rest open, macOS -> iPhone physical device at-rest open, and Android physical device -> macOS at-rest open. Safety-code compare, future-wrap revocation exclusion, and legacy dual-read focused proofs are also recorded in the activation evidence manifest.
+- **rule0 gate** intentionally flags **3** Rule-0 touches — `.gitmodules` + `Vendor/libsignal/` (AGPL vendoring) and `website/src/data/trust.generated.ts` (the honesty regen). These are now owner-risk-accepted for internal closeout by `owner-risk-acceptance-20260605.md`; public/store release still carries the underlying legal/MAS/compliance risk.
 
-**Remaining activation blockers (the real "not 10/10 yet" list):**
-1. **External cryptographer review** + **legal/AGPL & MAS sign-off** (hard Phase-E prerequisites; require named independent/owner signers).
-2. **Release packaging proof** — local Apple multi-slice XCFramework + iOS/macOS builds and Android device proof are green; notarization/MAS/store/legal approval remains.
-3. **Live physical-device E2E matrix** — local flag-OFF Signal proofs are green on iPhone evidence already collected, iPad final rerun, and Android final rerun; production-domain live flows remain blocked until producers are enabled and activation flags are staged.
-4. **Production producer wiring** of the at-rest sealer through every domain + **wiring the admin validator** at every real admin/callable write site. The pensieve server/admin seam is partially wired and tested; app/daemon producers, Android direct producers, client readers, telemetry, and live domain flows still block activation.
-5. **Broader L41 runtime work** — client prekey/session producers, revocation exclusion, and rewrap jobs. L40 (`sourceSlugToken` → canonical `sourceManifestId`) is closed in the current working tree; see `.agent/runs/sotasignal-full-ship-20260605/evidence/l40-source-manifest-id.md`.
-6. **Phase-E activation** (ring rollout) + **live timed rollback drill** + owner ratification of the two rule0-flagged items.
+**Remaining activation step:**
+1. **Phase-E production activation** — fix/prove physical-device Remote Config fetch, perform the targeted ring rollout, record live telemetry/domain-flow proof, use the already-working live rollback drill (5s) or rerun it, then change `signal-activation-evidence.json` status from `ready-for-phase-e` to `phase-e-active` with the activation commit, rollback seconds, and owner sign-off.
 
 Sections 1–7 below are the original review record; where they say "optional expectedBinding", "unfixed over-claim", or "flagged for owner", read the FINAL STATUS above as authoritative.
 
@@ -116,7 +117,7 @@ The plan itself forbids "flags ON" / 10/10 until these pass. Some are technical 
 | **L37 Swift** `SignalAtRestSealer.openPayload` used `envelope.binding` (relocation bug) | **FIXED in working tree** — `expectedBinding` is non-optional, equality is unconditional, AAD derives from `expectedBinding` | re-run Swift tests |
 | **AAD grapheme guard** (`SignalEnvelopeAAD.swift`) is grapheme-level (fail-open vs TS scalar-level) | **FIXED in working tree** — `unicodeScalars` guard + negative test | re-run Swift AAD tests |
 | **L37 Android** `openSignalPayload` used `envelope.binding` | **FIXED in working tree** — `expectedBinding` is non-null and required, equality is unconditional, AAD derives from `expectedBinding` | re-run Android tests |
-| Production client ciphertext wiring (Phase C producers) | at-rest mobile paths partially wired; real transport v4 and Android/Mac production domain wiring still incomplete | future |
+| Production client ciphertext wiring (Phase C producers) | at-rest Pensieve + iOS/Android direct chat/mission paths are wired behind flags; real transport v4 and live production-domain activation proof still incomplete | future |
 | L23 admin validator **wired** into a real producer | validator built, **unwired** | future producer PR |
 | Phase D physical-device E2E (iPhone/iPad/Android/Mac/Python matrix) | local flag-OFF iPhone/iPad/Android Signal proofs green; live production-domain flows still blocked by flag-OFF producers | hardware + producer activation |
 | External crypto review + legal/AGPL sign-off | not done | humans (hard Phase-E gate) |

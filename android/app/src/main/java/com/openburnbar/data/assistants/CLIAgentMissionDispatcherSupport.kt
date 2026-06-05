@@ -5,6 +5,7 @@ package com.openburnbar.data.assistants
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.WriteBatch
 import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
+import com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads
 import java.time.Instant
 import java.util.UUID
 
@@ -89,7 +90,7 @@ internal fun fanOutGroupPayload(
     )
 }
 
-internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
+internal suspend fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
     request.runtimeTokens.forEachIndexed { index, runtimeToken ->
         val missionID = request.plan.childMissionIDs[index]
         val childPayload =
@@ -116,6 +117,15 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
                 put("siblingCount", request.runtimeTokens.size)
                 put("isGroupChild", true)
             }
+        AndroidCloudVaultSignalPayloads.signalEnvelopeFromLegacyPayloadIfEnabled(
+            domainID = "conversations_chat",
+            uid = request.uid,
+            firestore = request.firestore,
+            collection = "cli_agent_mission_requests",
+            docId = missionID,
+            sealedData = childPayload,
+            resolvedKey = request.key,
+        )?.let { childPayload["signalEnvelope"] = it }
         val requestRef =
             request.firestore.collection("users").document(request.uid)
                 .collection("cli_agent_mission_requests").document(missionID)

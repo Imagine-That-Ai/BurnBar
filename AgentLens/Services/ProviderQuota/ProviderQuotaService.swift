@@ -1591,7 +1591,9 @@ extension ProviderQuotaService {
         }
         var groups: [GroupKey: [ProviderQuotaBucket]] = [:]
         for snapshot in snapshots {
-            for bucket in snapshot.displayableQuotaBuckets(relativeTo: now) {
+            for bucket in snapshot.buckets
+                .filter(\.isDisplayableQuotaSignal)
+                .map({ $0.reconcilingElapsedWindow(asOf: now) }) {
                 let groupKey = GroupKey(key: bucket.key, windowKind: bucket.windowKind)
                 groups[groupKey, default: []].append(bucket)
             }
