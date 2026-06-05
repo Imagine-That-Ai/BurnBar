@@ -91,7 +91,8 @@
 
   <h2>Resume Here</h2>
   <ul>
-    <li><strong>Status:</strong> [doing] Server layers (P0/Stream3/5/6) committed + cross-language crypto PROVEN (Node+Swift+Kotlin KAT) + adversarial audit DONE (SAFE to land flag-OFF, 0 blockers; 1 major/6 minor/25 nit ALL activation-gate). Applying cheap audit fixes (NFC + P-256 curve check + spec reconcile, task w3ccff1h0), then land to main. REMAINING: Stream 6 UI key-bound wiring, transport AAD binding, on-device E2E, full app libsignal vendoring, flag activation, external review.</li>
+    <li><strong>Status:</strong> [done-for-this-session] LANDED on main @ <code>9cc095ff4</code> (flag-OFF, audit-clean, protection restored). Server/schema/validator layers + P0 + Stream 6 enablement code + cross-language crypto PROOF (Node+Swift+Kotlin + interop KAT) + adversarial audit + fixes — all on main. <strong>[incomplete]</strong> productionization (app-graph libsignal vendoring, real client ciphertext wiring, Stream 6 UI key-bound display, transport AAD binding, on-device E2E, flag activation, external review) — feasibility PROVEN, not completed this session. See GOAL.md "Status at handoff".</li>
+    <li><strong>Next exact action (resume):</strong> Vendor libsignal Swift Package (local <code>swift/</code> path + build_ffi) into the iOS/Mac app target + Android <code>org.signal:libsignal-client</code> (Signal maven) into the app, write the real Swift/Kotlin sealers consuming <code>bindingToAAD</code>, then build+deploy to the attached devices for on-device E2E. Crypto recipe proven in evidence/*-kat-opener.* + SignalEnvelopeV1Vector.json.</li>
     <li><strong>Env ready (proven):</strong> Xcode 26.5 + cargo + protoc(35.0) → libsignal Swift builds in-agent (building now). Android SDK installed (platform-tools/adb, build-tools 35.0.0, android-35). Attached devices: iPhone 17 Pro Max <code>00008150-00180C661EF0401C</code>, iPad Air M4, Android <code>R3CXB0CNS0J</code> (adb sees it). libsignal v0.94.4 SwiftPM is at repo <code>swift/</code> (consume via local path, build_ffi.sh).</li>
     <li><strong>Completed:</strong> Wave-1 (Streams 1/6-UX/7) + Signal envelope contracts + AGPL relicense + origin/main reconciliation LANDED on <code>main</code> @ <code>6fa0c9ab9</code> (FF via surgical enforce_admins toggle; protection restored exactly). Phase-2 branch <code>signal/phase2</code> + this ledger created.</li>
     <li><strong>Current phase:</strong> WF1 = P0 <code>bindingToAAD</code> canonicalizer (TS contracts + libsignal-protocol + Swift parity) + Stream 6 enablement (real-key safety code + server-side fingerprint enforcement). Then in order: Stream 3 (gateway v4 signalEnvelope, flag OFF) -> Stream 4 (attachments) -> Stream 5 (CloudVault domains) -> Stream 8 (proof harness) -> intense adversarial audits.</li>
@@ -134,7 +135,8 @@
 
   <h2>Next Goal Candidates</h2>
   <ul>
-    <li>Empty at start.</li>
+    <li><strong>signal-client-ciphertext-and-on-device-e2e</strong> — vendor libsignal into the iOS/Android/Mac app build graphs, wire real ciphertext + Stream 6 UI key-bound display + transport AAD binding, then on-device E2E on the attached iPhone + Android. (Proven feasible; the productionization remainder of this goal.)</li>
+    <li><strong>signal-activation</strong> — after on-device E2E + external crypto review: add v4 to PRODUCTION sets, flip escrow + Stream 6 flags, ramp.</li>
   </ul>
   <script>
     const progressEvents = [
@@ -221,6 +223,27 @@
         phase: "audit",
         actor: "agent",
         summary: "Intense adversarial audit running (task wsvcn1xdw): 6 dimensions (fail-closed, downgrade/replay/version, flag-off inert, Stream 6 trust, Rule-0/registry, over-claim/residual) -> per-finding refutation -> synthesis, over all new signal code on signal/phase2."
+      },
+      {
+        ts: "2026-06-05T06:00:00Z",
+        status: "validated",
+        phase: "audit",
+        actor: "agent",
+        summary: "Adversarial audit (43 agents, 36 findings) DONE: SAFE to land flag-OFF, 0 land-blockers. 1 major (Stream 6 UI uses server fingerprint — key-bound verifier built+tested but unwired, activation-gate) + 6 minor + 25 nit, ALL activation-gate (flags verifiably OFF + fail-closed). Synthesis in evidence/adversarial-audit-synthesis.md."
+      },
+      {
+        ts: "2026-06-05T06:10:00Z",
+        status: "done",
+        phase: "audit-fixes",
+        actor: "agent",
+        summary: "Cheap confirmed fixes applied + APPROVED + tests green: NFC normalization (TS+Swift, non-ASCII parity fixture), P-256 on-curve validation (computerUseSecurity + webAppCheck), spec §5.4 reconciled. contracts 11/11, libsignal 7/7, escrow 13/13, webAppCheck 7/7, swift 5/5, KAT re-open MATCH."
+      },
+      {
+        ts: "2026-06-05T06:20:00Z",
+        status: "done",
+        phase: "land",
+        actor: "agent",
+        summary: "LANDED Phase-2 on main: 6fa0c9ab9..9cc095ff4 via surgical enforce_admins toggle; protection restored exactly. Everything flag-OFF (no production behavior change). Goal handoff: implementation/proof/audit DONE; productionization [incomplete] (feasibility proven) per GOAL.md."
       }
     ];
 
