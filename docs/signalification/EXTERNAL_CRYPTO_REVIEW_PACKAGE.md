@@ -89,14 +89,14 @@ Proven in the current dirty tree:
 - Firestore rules accept optional `signalEnvelope` only on explicitly wired owner-direct collections and bind it to the document path.
 - Admin validator deep-validates wraps and path-binding, but is not yet wired into a production writer.
 - Fast-feedback now runs the Signal crypto proof harness in addition to the legacy libsignal bridge package proof.
-- Apple FFI packaging rebuild, iOS Simulator build, macOS app build, physical iPhone test suite, Android debug build/install, Signal Maven source probe, and Android physical Signal instrumented KAT all pass. Evidence: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/physical-device-packaging-status.md`.
+- Apple FFI packaging rebuild, iOS Simulator build, macOS app build, physical iPhone test suite, final physical iPad focused Signal reader/relocation tests, Android debug build/install, Signal Maven source probe, and Android physical Signal instrumented KAT all pass. Evidence: `.agent/runs/sotasignal-full-ship-20260605/evidence/device-packaging/physical-device-packaging-status.md` and `.agent/runs/sotasignal-full-ship-20260605/evidence/physical-device-final-20260605.md`.
 - Activation remains flag-off.
 
 Not proven or not complete:
 
 - No external cryptographer has reviewed or signed this off.
 - No legal/AGPL/MAS sign-off has been recorded for vendored libsignal.
-- Live production-domain physical-device E2E is not complete because producers remain flag-off and the paired iPad was unavailable during the local proof run.
+- Live production-domain physical-device E2E is not complete because producers remain flag-off. Local flag-OFF iPhone/iPad/Android Signal proofs are green, but they are not a substitute for Phase-E live production-domain E2E after activation.
 - Production domain writers are not all switched to real Signal ciphertext.
 - Transport v4 production identity binding and full client producer paths still need final review before activation.
 - Live rollback drill has not been run against production Remote Config/deploy machinery.
