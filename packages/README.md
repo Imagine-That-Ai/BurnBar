@@ -36,3 +36,16 @@ Outfit/Geist/JetBrains Mono) → **Style Dictionary v5**:
 
 One source → every surface, so the control center is one product across web,
 iOS, iPadOS, macOS, and Android.
+
+## `libsignal-bridge/` — official Signal libsignal readiness
+
+Pins `@signalapp/libsignal-client@0.94.4` and verifies the required Signal
+Protocol symbols load from the official Signal-maintained package. The test
+harness also establishes a real Signal Protocol session, consumes one-time
+prekeys, marks Kyber prekeys used, decrypts out-of-order Whisper messages,
+rejects replay, and proves safety-number changes on remote identity replacement.
+
+This is the first bridge layer for the Signal-grade E2EE migration;
+private-domain traffic must not switch to Signal-backed envelopes until the
+platform bridge, cross-language vectors, replay rejection, skipped-key,
+safety-number, and stale-session repair tests are green across shipping clients.

@@ -1,0 +1,120 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { SITE } from "@data/site";
+
+const sourceCommit =
+  import.meta.env.PUBLIC_SOURCE_COMMIT ?? import.meta.env.PUBLIC_SITE_VERSION ?? "unknown";
+const sourceArchiveName = `OpenBurnBar-${SITE.macReleaseLatest}-corresponding-source.tar.gz`;
+const sourceOfferUrl = `${SITE.url}/legal/source`;
+---
+
+<BaseLayout
+  title="Corresponding Source"
+  description="Corresponding source access for OpenBurnBar AGPL-covered releases and hosted services."
+>
+  <section class="legalpage">
+    <div class="container container--narrow">
+      <span class="eyebrow eyebrow--ember">Legal</span>
+      <h1>Corresponding source</h1>
+      <p class="lead">
+        OpenBurnBar future releases are licensed under {SITE.license}. The source for the app,
+        services, extension, release scripts, dependency lockfiles, and build notes is available
+        from the public repository and release source archives.
+      </p>
+
+      <h2>Repository</h2>
+      <p>
+        Canonical source repository:
+        <a href={SITE.github} target="_blank" rel="noopener noreferrer">{SITE.github}</a>
+      </p>
+      <p class="muted small mono">Current published source commit: {sourceCommit}</p>
+      <p class="muted small mono">Canonical source-offer URL: {sourceOfferUrl}</p>
+
+      <h2>Release source archive</h2>
+      <p>
+        Direct-download releases publish a corresponding source archive named
+        <code>{sourceArchiveName}</code> next to the signed macOS DMG, ZIP, SBOM, checksums, and release
+        metadata.
+      </p>
+      <p>
+        Release artifacts are listed at
+        <a href={SITE.releasesUrl} target="_blank" rel="noopener noreferrer">{SITE.releasesUrl}</a>.
+      </p>
+
+      <h2>What is included</h2>
+      <ul>
+        <li>Exact Git commit SHA and release metadata.</li>
+        <li>OpenBurnBar source tree, build scripts, release scripts, and docs.</li>
+        <li>Dependency lockfiles, SBOM/license reports, and third-party notices.</li>
+        <li>
+          Official Signal libsignal pin, generated binding instructions, and
+          <code>third_party/libsignal/runtime-readiness.json</code>.
+        </li>
+        <li>Hosted-service deployment notes with secret values redacted.</li>
+      </ul>
+
+      <h2>Crypto runtime status</h2>
+      <p>
+        The source archive includes the libsignal runtime-readiness manifest. That manifest is the
+        source of truth for whether official libsignal is only pinned for migration work or is
+        already the runtime crypto core for new private-domain writes across macOS, iOS, Android,
+        Functions, and hosted services.
+      </p>
+
+      <h2>Hosted services</h2>
+      <p>
+        Public OpenBurnBar health and metadata endpoints expose <code>license</code>,
+        <code>source.repository</code>, <code>source.commit</code>, and
+        <code>source.correspondingSource</code> fields so network users can find the matching source offer.
+      </p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .legalpage {
+    padding-block: var(--s-9);
+  }
+  .legalpage h1 {
+    margin-top: var(--s-3);
+    margin-bottom: var(--s-2);
+  }
+  .legalpage h2 {
+    margin-top: var(--s-7);
+    margin-bottom: var(--s-3);
+    font-size: 1.4rem;
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 500;
+  }
+  .legalpage p,
+  .legalpage ul {
+    color: var(--text-base);
+    max-width: 64ch;
+  }
+  .legalpage ul {
+    display: grid;
+    gap: var(--s-2);
+    margin: var(--s-3) 0;
+    padding-left: 1.2em;
+  }
+  .legalpage ul li {
+    list-style: disc;
+    list-style-position: outside;
+    padding-left: 0.4em;
+  }
+  .legalpage strong {
+    color: var(--text-bright);
+  }
+  .legalpage a {
+    color: var(--ember-bright);
+    text-decoration: underline;
+  }
+  .lead {
+    margin-top: var(--s-3);
+    margin-bottom: var(--s-5);
+  }
+  .small {
+    font-size: var(--t-caption);
+  }
+</style>

@@ -52,6 +52,7 @@ import {
   publicClientView,
   randomHermesGatewayUserCode,
   requireGatewayRatchetEnvelope,
+  requireProductionGatewaySignalEnvelope,
   requireProductionGatewayRelayEnvelope,
   safeEqualHex,
   sha256Hex,
@@ -70,6 +71,7 @@ import {
   tokenPreview,
   type GatewayRelayEnvelopeDoc,
   type GatewayRatchetEnvelopeDoc,
+  type GatewaySignalEnvelopeDoc,
   type HermesGatewayApprovalDoc,
   type HermesGatewayAttachmentManifestDoc,
   type HermesGatewayClientDoc,
@@ -349,6 +351,7 @@ function parseRatchetPrekeyBundle(
 interface ResolvedGatewayWriteBody {
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   legacyText?: string;
 }
 
@@ -364,15 +367,22 @@ interface ResolvedGatewayWriteBody {
 function resolveGatewayWriteBody(
   rawEnvelope: unknown,
   rawRatchetEnvelope: unknown,
+  rawSignalEnvelope: unknown,
   rawText: unknown,
   client: Pick<HermesGatewayClientDoc, "id" | "relayCapable">,
   surface: "events" | "messages",
 ): ResolvedGatewayWriteBody {
-  if (rawEnvelope != null && rawRatchetEnvelope != null) {
+  const providedEnvelopeCount = [rawEnvelope, rawRatchetEnvelope, rawSignalEnvelope].filter(
+    (value) => value != null,
+  ).length;
+  if (providedEnvelopeCount > 1) {
     throw new HttpsError(
       "invalid-argument",
-      "ambiguous_ciphertext: provide either relayEnvelope or ratchetEnvelope, not both.",
+      "ambiguous_ciphertext: provide only one of relayEnvelope, ratchetEnvelope, or signalEnvelope.",
     );
+  }
+  if (rawSignalEnvelope != null) {
+    return { signalEnvelope: requireProductionGatewaySignalEnvelope(rawSignalEnvelope, "signalEnvelope") };
   }
   if (rawRatchetEnvelope != null) {
     return { ratchetEnvelope: requireGatewayRatchetEnvelope(rawRatchetEnvelope, "ratchetEnvelope") };
@@ -813,9 +823,22 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
   // The agent seals its reply body (the message text) to the phone's relay key
   // BEFORE this call; the server only forwards the opaque envelope. Plaintext
   // `text` is rejected on every new write.
-  const sealed = resolveGatewayWriteBody(body.relayEnvelope, body.ratchetEnvelope, body.text, grant.client, "messages");
+  const sealed = resolveGatewayWriteBody(
+    body.relayEnvelope,
+    body.ratchetEnvelope,
+    body.signalEnvelope,
+    body.text,
+    grant.client,
+    "messages",
+  );
   const attachmentsOnly = attachmentIds.length > 0;
-  if (!sealed.relayEnvelope && !sealed.ratchetEnvelope && !sealed.legacyText && !attachmentsOnly) {
+  if (
+    !sealed.relayEnvelope &&
+    !sealed.ratchetEnvelope &&
+    !sealed.signalEnvelope &&
+    !sealed.legacyText &&
+    !attachmentsOnly
+  ) {
     throw httpError(400, "empty_message");
   }
   await requireUploadedGatewayAttachments({ uid: grant.uid, clientId: grant.client.id, destinationId, attachmentIds });
@@ -836,6 +859,7 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
     // Sealed body for schema 2+; plaintext text is never accepted for new writes.
     relayEnvelope: sealed.relayEnvelope,
     ratchetEnvelope: sealed.ratchetEnvelope,
+    signalEnvelope: sealed.signalEnvelope,
     text: sealed.legacyText,
     attachmentIds,
     createdAt: now,
@@ -1085,17 +1109,24 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   // Phase 6 ratchetEnvelope. The server never sees the plaintext name or bytes.
   // byteCount is the CIPHERTEXT length (≈ plaintext + 28B GCM overhead); the
   // stored object is opaque (application/octet-stream).
-  if (body.relayEnvelope != null && body.ratchetEnvelope != null) {
+  const providedEnvelopeCount = [body.relayEnvelope, body.ratchetEnvelope, body.signalEnvelope].filter(
+    (value) => value != null,
+  ).length;
+  if (providedEnvelopeCount > 1) {
     throw new HttpsError(
       "invalid-argument",
-      "ambiguous_ciphertext: provide either relayEnvelope or ratchetEnvelope, not both.",
+      "ambiguous_ciphertext: provide only one of relayEnvelope, ratchetEnvelope, or signalEnvelope.",
     );
   }
+  const signalEnvelope =
+    body.signalEnvelope != null
+      ? requireProductionGatewaySignalEnvelope(body.signalEnvelope, "signalEnvelope")
+      : undefined;
   const sealedEnvelope =
     body.relayEnvelope != null ? requireProductionGatewayRelayEnvelope(body.relayEnvelope, "relayEnvelope") : undefined;
   const ratchetEnvelope =
     body.ratchetEnvelope != null ? requireGatewayRatchetEnvelope(body.ratchetEnvelope, "ratchetEnvelope") : undefined;
-  const sealed = sealedEnvelope != null || ratchetEnvelope != null;
+  const sealed = sealedEnvelope != null || ratchetEnvelope != null || signalEnvelope != null;
   if (!sealed && !gatewayPlaintextWriteAllowed(grant.client.relayCapable)) {
     throw new HttpsError(
       "invalid-argument",
@@ -1145,6 +1176,7 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
     fileName: legacyFileName,
     relayEnvelope: sealedEnvelope,
     ratchetEnvelope,
+    signalEnvelope,
     contentType: declaredContentType,
     byteCount,
     storagePath,
@@ -1222,7 +1254,7 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
   if (!exists) {
     throw httpError(404, "attachment_object_missing");
   }
-  const sealed = manifest.relayEnvelope != null || manifest.ratchetEnvelope != null;
+  const sealed = manifest.relayEnvelope != null || manifest.ratchetEnvelope != null || manifest.signalEnvelope != null;
   const [metadata] = await file.getMetadata();
   const observedByteCount = Number(metadata.size);
   const observedContentType = typeof metadata.contentType === "string" ? metadata.contentType : "";
@@ -1851,6 +1883,7 @@ export const enqueueHermesGatewayEvent = onCall(
         text?: unknown;
         relayEnvelope?: unknown;
         ratchetEnvelope?: unknown;
+        signalEnvelope?: unknown;
         eventId?: unknown;
         eventKind?: unknown;
         modelId?: unknown;
@@ -1904,14 +1937,15 @@ export const enqueueHermesGatewayEvent = onCall(
           sealedBody = resolveGatewayWriteBody(
             request.data.relayEnvelope,
             request.data.ratchetEnvelope,
+            request.data.signalEnvelope,
             undefined,
             targetClient,
             "events",
           );
-          if (!sealedBody.relayEnvelope && !sealedBody.ratchetEnvelope) {
+          if (!sealedBody.relayEnvelope && !sealedBody.ratchetEnvelope && !sealedBody.signalEnvelope) {
             throw new HttpsError(
               "invalid-argument",
-              "ciphertext_required: provide a relayEnvelope or ratchetEnvelope for sealed model_switch events.",
+              "ciphertext_required: provide a relayEnvelope, ratchetEnvelope, or signalEnvelope for sealed model_switch events.",
             );
           }
         }
@@ -1932,14 +1966,20 @@ export const enqueueHermesGatewayEvent = onCall(
         sealedBody = resolveGatewayWriteBody(
           request.data.relayEnvelope,
           request.data.ratchetEnvelope,
+          request.data.signalEnvelope,
           request.data.text,
           relayClient,
           "events",
         );
-        if (!sealedBody.relayEnvelope && !sealedBody.ratchetEnvelope && !sealedBody.legacyText) {
+        if (
+          !sealedBody.relayEnvelope &&
+          !sealedBody.ratchetEnvelope &&
+          !sealedBody.signalEnvelope &&
+          !sealedBody.legacyText
+        ) {
           throw new HttpsError(
             "invalid-argument",
-            "text is required: provide a relayEnvelope or ratchetEnvelope (sealed event body).",
+            "text is required: provide a relayEnvelope, ratchetEnvelope, or signalEnvelope (sealed event body).",
           );
         }
       }
@@ -1947,7 +1987,7 @@ export const enqueueHermesGatewayEvent = onCall(
       const attachmentIds = sanitizedAttachmentIds(request.data.attachmentIds);
       await requireUploadedGatewayAttachments({ uid, clientId: targetClientId, destinationId, attachmentIds });
       const eventId =
-        sealedBody.relayEnvelope != null || sealedBody.ratchetEnvelope != null
+        sealedBody.relayEnvelope != null || sealedBody.ratchetEnvelope != null || sealedBody.signalEnvelope != null
           ? requireSafeGatewayEventId(request.data.eventId)
           : `evt_${randomBytes(12).toString("hex")}`;
       const now = nowISO();
@@ -1975,17 +2015,24 @@ export const enqueueHermesGatewayEvent = onCall(
             // envelope for relay-capable clients. Model switches do not carry a
             // plaintext command body or thread id.
             threadId:
-              sealedBody.relayEnvelope || sealedBody.ratchetEnvelope || eventKind === "model_switch"
+              sealedBody.relayEnvelope ||
+              sealedBody.ratchetEnvelope ||
+              sealedBody.signalEnvelope ||
+              eventKind === "model_switch"
                 ? undefined
                 : boundedTrimmedString(request.data.threadId, "threadId", 160, false),
             senderId: boundedTrimmedString(request.data.senderId, "senderId", 160, false) ?? "burnbar-user",
             senderDisplayName:
-              sealedBody.relayEnvelope || sealedBody.ratchetEnvelope || eventKind === "model_switch"
+              sealedBody.relayEnvelope ||
+              sealedBody.ratchetEnvelope ||
+              sealedBody.signalEnvelope ||
+              eventKind === "model_switch"
                 ? undefined
                 : boundedTrimmedString(request.data.senderDisplayName, "senderDisplayName", 80, false),
             text: sealedBody.legacyText,
             relayEnvelope: sealedBody.relayEnvelope,
             ratchetEnvelope: sealedBody.ratchetEnvelope,
+            signalEnvelope: sealedBody.signalEnvelope,
             modelId: targetIsRelayCapable ? undefined : requestedModelId,
             attachmentIds,
             createdAt: now,

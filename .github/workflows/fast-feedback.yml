@@ -108,6 +108,41 @@ jobs:
         run: npm run format:check --prefix website
 
   # ── Shell scripts: syntax validation ────────────────────────────────────
+  agpl-compliance:
+    name: AGPL compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Verify license metadata and source offer
+        run: bash scripts/ci/verify-agpl-compliance.sh
+
+  # ── libsignal bridge: official package load proof ────────────────────────
+  libsignal-bridge:
+    name: libsignal bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/libsignal-bridge/package-lock.json
+
+      - name: Install libsignal bridge dependencies
+        run: npm ci --prefix packages/libsignal-bridge
+
+      - name: Test official libsignal bridge
+        run: npm test --prefix packages/libsignal-bridge
+
+  # ── Shell scripts: syntax validation ────────────────────────────────────
   shell-syntax:
     name: Shell syntax validation
     runs-on: ubuntu-latest

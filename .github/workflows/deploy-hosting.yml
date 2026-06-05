@@ -75,6 +75,7 @@ jobs:
         if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          PUBLIC_SOURCE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           firebase_args=(deploy --only hosting --project burnbar --non-interactive)

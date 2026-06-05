@@ -92,6 +92,16 @@ Re-check every item immediately before changing repository visibility.
 
 ## Still needs manual confirmation before public launch
 
+- [ ] Run `bash scripts/ci/verify-agpl-compliance.sh` and attach the output to
+  the launch evidence bundle.
+- [ ] Confirm public repository metadata says `AGPL-3.0-only`, not MIT.
+- [ ] Confirm `NOTICE`, `THIRD_PARTY_NOTICES.md`, `LICENSES/MIT-legacy.txt`, and
+  `docs/legal/agpl-compliance.md` are present in the source release.
+- [ ] Confirm hosted-service health/metadata endpoints expose the AGPL source
+  offer link required by `docs/legal/agpl-compliance.md`.
+- [ ] Complete counsel review before publishing App Store, Mac App Store,
+  extension-marketplace, npm, Docker, or hosted-service releases that link
+  AGPL-covered dependencies such as official Signal libsignal.
 - [ ] After the repository is public, enable private vulnerability reporting in repository settings (GitHub documents this as a public-repository feature)
 - [ ] After the repository is public, verify secret scanning is active; for a user-owned free public repo GitHub runs secret scanning automatically
 - [ ] After the repository is public, enable code scanning if the public-repo settings expose it, or document the plan/visibility limitation if GitHub does not
@@ -105,6 +115,8 @@ Re-check every item immediately before changing repository visibility.
 
 ## Before the next tagged release beyond `v0.1.0-beta`
 
+- [ ] Build and publish the corresponding source tarball next to every binary
+  artifact.
 - [ ] Re-review unexpected local source changes and any mid-audit edits to confirm they are intentional to ship
 - [ ] Naming and trademark clearance for broader public distribution under the name `OpenBurnBar`
 - [ ] Consider reserving npm package name `openburnbar` if not already taken

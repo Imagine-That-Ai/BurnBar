@@ -35,6 +35,51 @@ export interface GatewayRatchetEnvelopeDoc {
   ciphertextBase64: string;
 }
 
+export interface GatewaySignalCiphertextLayerDoc {
+  payloadCiphertextB64: string;
+  payloadAADLabel: string;
+  schemaVersion: number;
+}
+
+export interface GatewaySignalBindingDoc {
+  uid: string;
+  scope: string;
+  clientId?: string;
+  collection?: string;
+  docId?: string;
+  field?: string;
+  slotId?: string;
+  mode: string;
+  formatVersion: number;
+}
+
+export interface GatewaySignalAtRestWrapDoc {
+  recipientKind: string;
+  recipientIdentityKeyId: string;
+  recipientIdentityKeyB64: string;
+  sealedContentKeyB64: string;
+}
+
+export interface GatewaySignalKeyDeliveryDoc {
+  scheme: string;
+  signalMessageType?: number;
+  signalMessageB64?: string;
+  senderIdentityKeyId?: string;
+  ratchetEpochHint?: number;
+  wraps?: GatewaySignalAtRestWrapDoc[];
+  contentKeyLength?: number;
+}
+
+export interface GatewaySignalEnvelopeDoc {
+  signalEnvelopeFormatVersion: number;
+  mode: string;
+  relayKeyVersion?: number;
+  relayEncryption: string;
+  ciphertextLayer: GatewaySignalCiphertextLayerDoc;
+  keyDelivery: GatewaySignalKeyDeliveryDoc;
+  binding: GatewaySignalBindingDoc;
+}
+
 export interface HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -135,6 +180,7 @@ export interface HermesGatewayEventDoc {
   attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }
@@ -150,6 +196,7 @@ export interface HermesGatewayMessageDoc {
   attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }
@@ -166,6 +213,7 @@ export interface HermesGatewayAttachmentManifestDoc {
   status?: string;
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   expiresAt: string;
   schemaVersion: number;

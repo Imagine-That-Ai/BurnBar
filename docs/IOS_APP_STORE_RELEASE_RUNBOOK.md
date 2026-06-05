@@ -144,6 +144,13 @@ review account is moved to another supported sign-in method.
 
 ## Build Compliance And Review Metadata
 
+Before submitting any AGPL/libsignal-linked iOS build to App Review, run
+`bash scripts/ci/verify-agpl-compliance.sh` and complete legal review for
+App Store GPL/AGPL compatibility. Do not rely on a successful upload as legal
+approval. The App Review submission helper fails unless
+`OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved` is set by the operator after
+counsel approval.
+
 The source plist contains:
 
 ```xml

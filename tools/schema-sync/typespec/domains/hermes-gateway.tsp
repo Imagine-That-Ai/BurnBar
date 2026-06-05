@@ -34,6 +34,51 @@ model GatewayRatchetEnvelopeDoc {
   ciphertextBase64: string;
 }
 
+model GatewaySignalCiphertextLayerDoc {
+  payloadCiphertextB64: string;
+  payloadAADLabel: string;
+  schemaVersion: int32;
+}
+
+model GatewaySignalBindingDoc {
+  uid: string;
+  scope: string;
+  clientId?: string;
+  collection?: string;
+  docId?: string;
+  field?: string;
+  slotId?: string;
+  mode: string;
+  formatVersion: int32;
+}
+
+model GatewaySignalKeyDeliveryDoc {
+  scheme: string;
+  signalMessageType?: int32;
+  signalMessageB64?: string;
+  senderIdentityKeyId?: string;
+  ratchetEpochHint?: int32;
+  wraps?: GatewaySignalAtRestWrapDoc[];
+  contentKeyLength?: int32;
+}
+
+model GatewaySignalAtRestWrapDoc {
+  recipientKind: string;
+  recipientIdentityKeyId: string;
+  recipientIdentityKeyB64: string;
+  sealedContentKeyB64: string;
+}
+
+model GatewaySignalEnvelopeDoc {
+  signalEnvelopeFormatVersion: int32;
+  mode: string;
+  relayKeyVersion?: int32;
+  relayEncryption: string;
+  ciphertextLayer: GatewaySignalCiphertextLayerDoc;
+  keyDelivery: GatewaySignalKeyDeliveryDoc;
+  binding: GatewaySignalBindingDoc;
+}
+
 model HermesGatewayClientDoc {
   id: string;
   uid: string;
@@ -134,6 +179,7 @@ model HermesGatewayEventDoc {
   attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   schemaVersion: int32;
 }
@@ -149,6 +195,7 @@ model HermesGatewayMessageDoc {
   attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   schemaVersion: int32;
 }
@@ -165,6 +212,7 @@ model HermesGatewayAttachmentManifestDoc {
   status?: string;
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   expiresAt: string;
   schemaVersion: int32;

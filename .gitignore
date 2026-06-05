@@ -123,6 +123,8 @@ services/**/node_modules/
 services/**/lib/
 tools/**/node_modules/
 tools/**/lib/
+packages/**/node_modules/
+packages/**/lib/
 
 # Local-only Factory skills and xcodegen scratch
 .factory/skills/

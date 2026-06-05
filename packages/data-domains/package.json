@@ -11,5 +11,6 @@
     "build": "node codegen.mjs",
     "driftcheck": "node driftcheck.mjs",
     "test": "node codegen.mjs && node --test"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

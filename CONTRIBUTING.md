@@ -123,6 +123,16 @@ the operation is safe and idempotent.
 
 ## Dependency update policy
 
+## Contribution License
+
+New contributions are accepted under `AGPL-3.0-only`, matching the current
+OpenBurnBar license in [LICENSE](LICENSE). By contributing, you agree that your
+contribution may be distributed as part of OpenBurnBar under `AGPL-3.0-only`.
+
+Historical OpenBurnBar snapshots released under MIT keep their original license
+notice in [LICENSES/MIT-legacy.txt](LICENSES/MIT-legacy.txt). Do not remove prior
+copyright or attribution notices when modifying older files.
+
 ### Minimum release age
 
 New dependency versions must be at least **3 days old** before they are merged into `main`. This policy provides supply chain protection — it gives the ecosystem time to detect and report malicious packages before we adopt them.
@@ -162,4 +172,3 @@ The hooks (`.pre-commit-config.yaml`) run SwiftLint, ESLint, Prettier, shellchec
 | TypeScript (website) | Prettier | `npm --prefix website run format` |
 | Swift | SwiftLint | `swiftlint lint --fix` |
 | Kotlin | ktlint | `cd android && ./gradlew ktlintFormat` |
-

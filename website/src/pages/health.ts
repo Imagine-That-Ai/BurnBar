@@ -11,7 +11,14 @@ export const GET: APIRoute = () => {
     status: "ok",
     service: "burnbar-website",
     timestamp: new Date().toISOString(),
-    version: import.meta.env.PUBLIC_SITE_VERSION ?? "unknown"
+    version: import.meta.env.PUBLIC_SITE_VERSION ?? "unknown",
+    license: "AGPL-3.0-only",
+    source: {
+      repository: "https://github.com/Imagine-That-Ai/BurnBar",
+      commit:
+        import.meta.env.PUBLIC_SOURCE_COMMIT ?? import.meta.env.PUBLIC_SITE_VERSION ?? "unknown",
+      correspondingSource: "https://burnbar.ai/legal/source"
+    }
   };
 
   return new Response(JSON.stringify(status), {

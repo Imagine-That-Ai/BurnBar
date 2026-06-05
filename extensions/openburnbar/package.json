@@ -5,7 +5,7 @@
   "version": "1.0.2",
   "publisher": "openburnbar",
   "icon": "media/app-icon-128.png",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "homepage": "https://github.com/Ajnunezg/BurnBar/tree/main/extensions/openburnbar",
   "repository": {
     "type": "git",

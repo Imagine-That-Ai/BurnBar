@@ -52,13 +52,17 @@ files=(
   "checksums-v${release_version}.txt"
   "release-metadata.json"
   "sbom-v${release_version}.spdx.json"
+  "OpenBurnBar-${release_version}-corresponding-source.tar.gz"
+  "OpenBurnBar-${release_version}-corresponding-source.tar.gz.sha256"
 )
 
 content_type_for() {
   case "$1" in
     *.dmg) echo "application/x-apple-diskimage" ;;
+    *.tar.gz) echo "application/gzip" ;;
     *.zip) echo "application/zip" ;;
     *.txt) echo "text/plain; charset=utf-8" ;;
+    *.sha256) echo "text/plain; charset=utf-8" ;;
     *.json) echo "application/json; charset=utf-8" ;;
     *) echo "application/octet-stream" ;;
   esac

@@ -2,6 +2,9 @@
 
 OpenBurnBar includes or references a small amount of third-party material.
 
+Dependency license notices, the official Signal libsignal pin, and release
+source-offer obligations are tracked in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Bundled provider and vendor logos
 
 - `AgentLens/Resources/Assets.xcassets/*Logo.imageset/` — bundled provider and model logos used by:

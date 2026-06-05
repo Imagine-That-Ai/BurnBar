@@ -53,6 +53,61 @@ data class FirestoreGatewayRatchetEnvelopeDoc(
 
 @Keep
 @IgnoreExtraProperties
+data class FirestoreGatewaySignalCiphertextLayerDoc(
+    val payloadCiphertextB64: String = "",
+    val payloadAADLabel: String = "",
+    val schemaVersion: Long = 0,
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalBindingDoc(
+    val uid: String = "",
+    val scope: String = "",
+    val clientId: String? = null,
+    val collection: String? = null,
+    val docId: String? = null,
+    val field: String? = null,
+    val slotId: String? = null,
+    val mode: String = "",
+    val formatVersion: Long = 0,
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalAtRestWrapDoc(
+    val recipientKind: String = "",
+    val recipientIdentityKeyId: String = "",
+    val recipientIdentityKeyB64: String = "",
+    val sealedContentKeyB64: String = "",
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalKeyDeliveryDoc(
+    val scheme: String = "",
+    val signalMessageType: Long? = null,
+    val signalMessageB64: String? = null,
+    val senderIdentityKeyId: String? = null,
+    val ratchetEpochHint: Long? = null,
+    val wraps: List<FirestoreGatewaySignalAtRestWrapDoc>? = null,
+    val contentKeyLength: Long? = null,
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalEnvelopeDoc(
+    val signalEnvelopeFormatVersion: Long = 0,
+    val mode: String = "",
+    val relayKeyVersion: Long? = null,
+    val relayEncryption: String = "",
+    val ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc = FirestoreGatewaySignalCiphertextLayerDoc(),
+    val keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc = FirestoreGatewaySignalKeyDeliveryDoc(),
+    val binding: FirestoreGatewaySignalBindingDoc = FirestoreGatewaySignalBindingDoc(),
+)
+
+@Keep
+@IgnoreExtraProperties
 data class FirestoreHermesGatewayClientDoc(
     val id: String = "",
     val uid: String = "",
@@ -159,6 +214,7 @@ data class FirestoreHermesGatewayEventDoc(
     val attachmentIds: List<String> = emptyList(),
     val relayEnvelope: FirestoreGatewayRelayEnvelopeDoc? = null,
     val ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc? = null,
+    val signalEnvelope: FirestoreGatewaySignalEnvelopeDoc? = null,
     val createdAt: String = "",
     val schemaVersion: Long = 0,
 )
@@ -176,6 +232,7 @@ data class FirestoreHermesGatewayMessageDoc(
     val attachmentIds: List<String> = emptyList(),
     val relayEnvelope: FirestoreGatewayRelayEnvelopeDoc? = null,
     val ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc? = null,
+    val signalEnvelope: FirestoreGatewaySignalEnvelopeDoc? = null,
     val createdAt: String = "",
     val schemaVersion: Long = 0,
 )
@@ -194,6 +251,7 @@ data class FirestoreHermesGatewayAttachmentManifestDoc(
     val status: String? = null,
     val relayEnvelope: FirestoreGatewayRelayEnvelopeDoc? = null,
     val ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc? = null,
+    val signalEnvelope: FirestoreGatewaySignalEnvelopeDoc? = null,
     val createdAt: String = "",
     val expiresAt: String = "",
     val schemaVersion: Long = 0,

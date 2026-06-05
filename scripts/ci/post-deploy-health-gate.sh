@@ -11,6 +11,26 @@ SLEEP_SEC="${HEALTH_GATE_SLEEP_SEC:-10}"
 LAST_HTTP_CODE=""
 LAST_URL=""
 LAST_BODY_SNIPPET=""
+EXPECTED_SOURCE_URL="${OPENBURNBAR_CORRESPONDING_SOURCE_URL:-https://burnbar.ai/legal/source}"
+
+source_metadata_ok() {
+  local body_file="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -e \
+      --arg sourceUrl "$EXPECTED_SOURCE_URL" \
+      '.license == "AGPL-3.0-only"
+        and .source.correspondingSource == $sourceUrl
+        and (.source.repository | type == "string" and length > 0)
+        and (.source.commit | type == "string" and length > 0)' \
+      "$body_file" >/dev/null 2>&1
+    return $?
+  fi
+
+  grep -q '"license"[[:space:]]*:[[:space:]]*"AGPL-3.0-only"' "$body_file" \
+    && grep -q '"correspondingSource"[[:space:]]*:[[:space:]]*"'"$EXPECTED_SOURCE_URL"'"' "$body_file" \
+    && grep -q '"repository"[[:space:]]*:[[:space:]]*"[^"]\+"' "$body_file" \
+    && grep -q '"commit"[[:space:]]*:[[:space:]]*"[^"]\+"' "$body_file"
+}
 
 curl_health() {
   local label="$1"
@@ -32,7 +52,7 @@ curl_health() {
         elif [[ "$expect_field" == '.status == "ready"' ]] && grep -q '"status"[[:space:]]*:[[:space:]]*"ready"' "$body_file"; then
           ok=true
         fi
-        if [[ "$ok" == true ]]; then
+        if [[ "$ok" == true ]] && source_metadata_ok "$body_file"; then
           echo "OK ${label} (attempt ${attempt})"
           cat "$body_file"
           if [[ -n "$snapshot_path" ]]; then

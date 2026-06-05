@@ -10,5 +10,6 @@
   "dependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
     "firebase": "12.14.0"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

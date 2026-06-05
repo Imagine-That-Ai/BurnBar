@@ -36,6 +36,51 @@ public struct FirestoreGatewayRatchetEnvelopeDoc: Codable, Sendable, Equatable {
     public var ciphertextBase64: String
 }
 
+public struct FirestoreGatewaySignalCiphertextLayerDoc: Codable, Sendable, Equatable {
+    public var payloadCiphertextB64: String
+    public var payloadAADLabel: String
+    public var schemaVersion: Int
+}
+
+public struct FirestoreGatewaySignalBindingDoc: Codable, Sendable, Equatable {
+    public var uid: String
+    public var scope: String
+    public var clientId: String?
+    public var collection: String?
+    public var docId: String?
+    public var field: String?
+    public var slotId: String?
+    public var mode: String
+    public var formatVersion: Int
+}
+
+public struct FirestoreGatewaySignalAtRestWrapDoc: Codable, Sendable, Equatable {
+    public var recipientKind: String
+    public var recipientIdentityKeyId: String
+    public var recipientIdentityKeyB64: String
+    public var sealedContentKeyB64: String
+}
+
+public struct FirestoreGatewaySignalKeyDeliveryDoc: Codable, Sendable, Equatable {
+    public var scheme: String
+    public var signalMessageType: Int?
+    public var signalMessageB64: String?
+    public var senderIdentityKeyId: String?
+    public var ratchetEpochHint: Int?
+    public var wraps: [FirestoreGatewaySignalAtRestWrapDoc]?
+    public var contentKeyLength: Int?
+}
+
+public struct FirestoreGatewaySignalEnvelopeDoc: Codable, Sendable, Equatable {
+    public var signalEnvelopeFormatVersion: Int
+    public var mode: String
+    public var relayKeyVersion: Int?
+    public var relayEncryption: String
+    public var ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc
+    public var keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc
+    public var binding: FirestoreGatewaySignalBindingDoc
+}
+
 public struct FirestoreHermesGatewayClientDoc: Codable, Sendable, Equatable {
     public var id: String
     public var uid: String
@@ -136,6 +181,7 @@ public struct FirestoreHermesGatewayEventDoc: Codable, Sendable, Equatable {
     public var attachmentIds: [String]
     public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
     public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
+    public var signalEnvelope: FirestoreGatewaySignalEnvelopeDoc?
     public var createdAt: String
     public var schemaVersion: Int
 }
@@ -151,6 +197,7 @@ public struct FirestoreHermesGatewayMessageDoc: Codable, Sendable, Equatable {
     public var attachmentIds: [String]
     public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
     public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
+    public var signalEnvelope: FirestoreGatewaySignalEnvelopeDoc?
     public var createdAt: String
     public var schemaVersion: Int
 }
@@ -167,6 +214,7 @@ public struct FirestoreHermesGatewayAttachmentManifestDoc: Codable, Sendable, Eq
     public var status: String?
     public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
     public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
+    public var signalEnvelope: FirestoreGatewaySignalEnvelopeDoc?
     public var createdAt: String
     public var expiresAt: String
     public var schemaVersion: Int

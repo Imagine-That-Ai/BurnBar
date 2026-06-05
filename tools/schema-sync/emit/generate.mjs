@@ -438,6 +438,146 @@ data class FirestoreGatewayRatchetEnvelopeDoc(
     val ciphertextBase64: String = "",
 )`,
       },
+      GatewaySignalCiphertextLayerDoc: {
+        ts: `export interface GatewaySignalCiphertextLayerDoc {
+  payloadCiphertextB64: string;
+  payloadAADLabel: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreGatewaySignalCiphertextLayerDoc: Codable, Sendable, Equatable {
+    public var payloadCiphertextB64: String
+    public var payloadAADLabel: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalCiphertextLayerDoc(
+    val payloadCiphertextB64: String = "",
+    val payloadAADLabel: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+      GatewaySignalBindingDoc: {
+        ts: `export interface GatewaySignalBindingDoc {
+  uid: string;
+  scope: string;
+  clientId?: string;
+  collection?: string;
+  docId?: string;
+  field?: string;
+  slotId?: string;
+  mode: string;
+  formatVersion: number;
+}`,
+        swift: `public struct FirestoreGatewaySignalBindingDoc: Codable, Sendable, Equatable {
+    public var uid: String
+    public var scope: String
+    public var clientId: String?
+    public var collection: String?
+    public var docId: String?
+    public var field: String?
+    public var slotId: String?
+    public var mode: String
+    public var formatVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalBindingDoc(
+    val uid: String = "",
+    val scope: String = "",
+    val clientId: String? = null,
+    val collection: String? = null,
+    val docId: String? = null,
+    val field: String? = null,
+    val slotId: String? = null,
+    val mode: String = "",
+    val formatVersion: Long = 0,
+)`,
+      },
+      GatewaySignalAtRestWrapDoc: {
+        ts: `export interface GatewaySignalAtRestWrapDoc {
+  recipientKind: string;
+  recipientIdentityKeyId: string;
+  recipientIdentityKeyB64: string;
+  sealedContentKeyB64: string;
+}`,
+        swift: `public struct FirestoreGatewaySignalAtRestWrapDoc: Codable, Sendable, Equatable {
+    public var recipientKind: String
+    public var recipientIdentityKeyId: String
+    public var recipientIdentityKeyB64: String
+    public var sealedContentKeyB64: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalAtRestWrapDoc(
+    val recipientKind: String = "",
+    val recipientIdentityKeyId: String = "",
+    val recipientIdentityKeyB64: String = "",
+    val sealedContentKeyB64: String = "",
+)`,
+      },
+      GatewaySignalKeyDeliveryDoc: {
+        ts: `export interface GatewaySignalKeyDeliveryDoc {
+  scheme: string;
+  signalMessageType?: number;
+  signalMessageB64?: string;
+  senderIdentityKeyId?: string;
+  ratchetEpochHint?: number;
+  wraps?: GatewaySignalAtRestWrapDoc[];
+  contentKeyLength?: number;
+}`,
+        swift: `public struct FirestoreGatewaySignalKeyDeliveryDoc: Codable, Sendable, Equatable {
+    public var scheme: String
+    public var signalMessageType: Int?
+    public var signalMessageB64: String?
+    public var senderIdentityKeyId: String?
+    public var ratchetEpochHint: Int?
+    public var wraps: [FirestoreGatewaySignalAtRestWrapDoc]?
+    public var contentKeyLength: Int?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalKeyDeliveryDoc(
+    val scheme: String = "",
+    val signalMessageType: Long? = null,
+    val signalMessageB64: String? = null,
+    val senderIdentityKeyId: String? = null,
+    val ratchetEpochHint: Long? = null,
+    val wraps: List<FirestoreGatewaySignalAtRestWrapDoc>? = null,
+    val contentKeyLength: Long? = null,
+)`,
+      },
+      GatewaySignalEnvelopeDoc: {
+        ts: `export interface GatewaySignalEnvelopeDoc {
+  signalEnvelopeFormatVersion: number;
+  mode: string;
+  relayKeyVersion?: number;
+  relayEncryption: string;
+  ciphertextLayer: GatewaySignalCiphertextLayerDoc;
+  keyDelivery: GatewaySignalKeyDeliveryDoc;
+  binding: GatewaySignalBindingDoc;
+}`,
+        swift: `public struct FirestoreGatewaySignalEnvelopeDoc: Codable, Sendable, Equatable {
+    public var signalEnvelopeFormatVersion: Int
+    public var mode: String
+    public var relayKeyVersion: Int?
+    public var relayEncryption: String
+    public var ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc
+    public var keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc
+    public var binding: FirestoreGatewaySignalBindingDoc
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreGatewaySignalEnvelopeDoc(
+    val signalEnvelopeFormatVersion: Long = 0,
+    val mode: String = "",
+    val relayKeyVersion: Long? = null,
+    val relayEncryption: String = "",
+    val ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc = FirestoreGatewaySignalCiphertextLayerDoc(),
+    val keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc = FirestoreGatewaySignalKeyDeliveryDoc(),
+    val binding: FirestoreGatewaySignalBindingDoc = FirestoreGatewaySignalBindingDoc(),
+)`,
+      },
       HermesGatewayClientDoc: {
         ts: `export interface HermesGatewayClientDoc {
   id: string;
@@ -714,6 +854,7 @@ data class FirestoreHermesGatewayDestinationDoc(
   attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }`,
@@ -731,6 +872,7 @@ data class FirestoreHermesGatewayDestinationDoc(
     public var attachmentIds: [String]
     public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
     public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
+    public var signalEnvelope: FirestoreGatewaySignalEnvelopeDoc?
     public var createdAt: String
     public var schemaVersion: Int
 }`,
@@ -750,6 +892,7 @@ data class FirestoreHermesGatewayEventDoc(
     val attachmentIds: List<String> = emptyList(),
     val relayEnvelope: FirestoreGatewayRelayEnvelopeDoc? = null,
     val ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc? = null,
+    val signalEnvelope: FirestoreGatewaySignalEnvelopeDoc? = null,
     val createdAt: String = "",
     val schemaVersion: Long = 0,
 )`,
@@ -766,6 +909,7 @@ data class FirestoreHermesGatewayEventDoc(
   attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   schemaVersion: number;
 }`,
@@ -780,6 +924,7 @@ data class FirestoreHermesGatewayEventDoc(
     public var attachmentIds: [String]
     public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
     public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
+    public var signalEnvelope: FirestoreGatewaySignalEnvelopeDoc?
     public var createdAt: String
     public var schemaVersion: Int
 }`,
@@ -796,6 +941,7 @@ data class FirestoreHermesGatewayMessageDoc(
     val attachmentIds: List<String> = emptyList(),
     val relayEnvelope: FirestoreGatewayRelayEnvelopeDoc? = null,
     val ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc? = null,
+    val signalEnvelope: FirestoreGatewaySignalEnvelopeDoc? = null,
     val createdAt: String = "",
     val schemaVersion: Long = 0,
 )`,
@@ -813,6 +959,7 @@ data class FirestoreHermesGatewayMessageDoc(
   status?: string;
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
+  signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
   expiresAt: string;
   schemaVersion: number;
@@ -829,6 +976,7 @@ data class FirestoreHermesGatewayMessageDoc(
     public var status: String?
     public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
     public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
+    public var signalEnvelope: FirestoreGatewaySignalEnvelopeDoc?
     public var createdAt: String
     public var expiresAt: String
     public var schemaVersion: Int
@@ -847,6 +995,7 @@ data class FirestoreHermesGatewayAttachmentManifestDoc(
     val status: String? = null,
     val relayEnvelope: FirestoreGatewayRelayEnvelopeDoc? = null,
     val ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc? = null,
+    val signalEnvelope: FirestoreGatewaySignalEnvelopeDoc? = null,
     val createdAt: String = "",
     val expiresAt: String = "",
     val schemaVersion: Long = 0,
@@ -978,7 +1127,7 @@ data class FirestoreEntitlementBindingDoc(
       },
     },
   },
-  "entitlements": {
+  entitlements: {
     models: {
       EscrowDeviceDoc: {
         ts: `export interface EscrowDeviceDoc {
@@ -1004,7 +1153,7 @@ data class FirestoreEscrowDeviceDoc(
       },
     },
   },
-  "insights": {
+  insights: {
     models: {
       InsightCanvasDoc: {
         ts: `export interface InsightCanvasDoc {
@@ -1033,7 +1182,7 @@ data class FirestoreInsightCanvasDoc(
       },
     },
   },
-  "missions": {
+  missions: {
     models: {
       MissionDispatchDoc: {
         ts: `export interface MissionDispatchDoc {
@@ -1276,7 +1425,12 @@ function emitSwift(domainId, models) {
 import Foundation
 
 `;
-  return header + Object.values(models).map((m) => m.swift).join("\n\n");
+  return (
+    header +
+    Object.values(models)
+      .map((m) => m.swift)
+      .join("\n\n")
+  );
 }
 
 function emitKotlin(domainId, models) {
@@ -1290,7 +1444,12 @@ import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 
 `;
-  return header + Object.values(models).map((m) => m.kotlin).join("\n\n");
+  return (
+    header +
+    Object.values(models)
+      .map((m) => m.kotlin)
+      .join("\n\n")
+  );
 }
 
 for (const domain of manifest.domains) {

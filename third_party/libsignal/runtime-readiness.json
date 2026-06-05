@@ -1,0 +1,71 @@
+{
+  "status": "not_ready",
+  "runtimeCryptoCore": "legacy_hpke_cloudvault_and_openburnbar_hermes_ratchet",
+  "officialLibsignalPin": {
+    "tag": "v0.94.4",
+    "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
+    "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f"
+  },
+  "blockingReason": "Official libsignal is pinned and load-tested for Node, but OpenBurnBar private-domain writes still use the existing HPKE/CloudVault and OpenBurnBar Hermes ratchet runtime implementations.",
+  "completedEvidence": [
+    {
+      "id": "node_protocol_harness",
+      "status": "complete",
+      "proof": "packages/libsignal-bridge now uses official @signalapp/libsignal-client to establish a real Signal Protocol session, consume one-time prekeys, mark Kyber prekeys used, decrypt out-of-order Whisper messages within skip limits, reject replay, and detect safety-number identity changes.",
+      "command": "npm test --prefix packages/libsignal-bridge"
+    },
+    {
+      "id": "functions_signal_envelope_contracts",
+      "status": "complete",
+      "proof": "Functions now has strict Signal envelope v1 helper validation, generated schema bindings, Hermes Gateway read/export pass-through, production-write fail-closed behavior, and seal-aware export redaction tests.",
+      "command": "npm run build --prefix functions && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/dataExport.test.ts src/__tests__/hermesGatewaySealedEvent.test.ts --reporter=verbose && npm run test:hermes-gateway --prefix ../functions"
+    }
+  ],
+  "requiredGates": [
+    {
+      "id": "rust_core_bridge",
+      "status": "pending",
+      "proof": "Shared Rust libsignal adapter with stable FFI contracts for Swift, Kotlin, and Node."
+    },
+    {
+      "id": "swift_round_trips",
+      "status": "pending",
+      "proof": "Swift/macOS/iOS libsignal identity, prekey, session, encrypt, decrypt, replay, skipped-key, and safety-number tests."
+    },
+    {
+      "id": "kotlin_round_trips",
+      "status": "pending",
+      "proof": "Android/Kotlin libsignal identity, prekey, session, encrypt, decrypt, replay, skipped-key, and safety-number tests."
+    },
+    {
+      "id": "node_contracts",
+      "status": "pending",
+      "proof": "Functions and hosted-service schema/validation tests for Signal-backed envelopes."
+    },
+    {
+      "id": "hermes_gateway_writes",
+      "status": "pending",
+      "proof": "New Hermes Gateway text/control writes use Signal-backed envelopes; legacy relayEnvelope and ratchetEnvelope remain read-only."
+    },
+    {
+      "id": "hermes_attachment_writes",
+      "status": "pending",
+      "proof": "New Hermes Gateway attachment writes use Signal-backed envelopes; legacy envelopes remain read-only."
+    },
+    {
+      "id": "cloudvault_private_domains",
+      "status": "pending",
+      "proof": "New data-domain private writes use Signal-backed envelopes or a reviewed Signal-derived key schedule."
+    },
+    {
+      "id": "migration_telemetry",
+      "status": "pending",
+      "proof": "Legacy HPKE/CloudVault envelope read telemetry proves compatibility rows are drained or safely retained read-only."
+    },
+    {
+      "id": "store_and_counsel_approval",
+      "status": "pending",
+      "proof": "Counsel signs off before public app-store, direct-download, extension, npm, Docker, or hosted-service release that links libsignal."
+    }
+  ]
+}
