@@ -21,7 +21,7 @@ import {
   readAppIdFromCallableRequest,
 } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
-import { logInfo, wrapCallableHandler } from "../logging.js";
+import { logInfo, logWarn, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { revokeSignalSessionsForDevice } from "../signalDirectoryRuntime.js";
@@ -464,18 +464,20 @@ export const revokeEscrowDeviceTrust = onCall(
       // it owns + sessions where it is the peer). Best-effort — a failure here
       // must NOT block the trust revocation itself, which already succeeded.
       let revokedSignalSessions = 0;
+      let signalSessionRevokeFailed = false;
       try {
         revokedSignalSessions = await revokeSignalSessionsForDevice(uid, deviceId);
       } catch (err) {
-        // On failure the returned count stays 0; the warn log below is the
-        // authoritative signal that cleanup did NOT complete (0 here means
-        // "failed/unknown", not "no sessions existed"). Per-user session counts
-        // fit in a single Firestore batch, so a partial commit is not expected.
-        logInfo({
-          event: "callable_warn",
-          message: "signal_session_revoke_failed",
+        // The trust flip already committed and stands. Signal session cleanup is
+        // a separate best-effort step; surface its failure to the caller
+        // (signalSessionRevokeFailed) instead of masking it behind ok:true, and
+        // log at WARN so it reaches alerting (revokedSignalSessions stays 0 =
+        // "failed/unknown", not "no sessions existed").
+        signalSessionRevokeFailed = true;
+        logWarn({
+          event: "escrow_device_signal_session_revoke_failed",
           device_id: deviceId,
-          detail: String(err),
+          error: String(err),
         });
       }
 
@@ -485,6 +487,7 @@ export const revokeEscrowDeviceTrust = onCall(
         device_id: deviceId,
         revoked_grants: grants.size,
         revoked_signal_sessions: revokedSignalSessions,
+        signal_session_revoke_failed: signalSessionRevokeFailed,
       });
       return {
         ok: true,
@@ -492,6 +495,7 @@ export const revokeEscrowDeviceTrust = onCall(
         trustState: "revoked",
         revokedGrants: grants.size,
         revokedSignalSessions,
+        signalSessionRevokeFailed,
       };
     },
   ),

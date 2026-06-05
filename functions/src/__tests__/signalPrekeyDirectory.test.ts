@@ -175,6 +175,7 @@ describe("buildSessionDoc", () => {
         mode: "same-user-device",
       },
       CTX,
+      "user",
     );
     expect(data.stateStorage).toBe("device-local-only");
     expect(data.status).toBe("active");
@@ -183,13 +184,36 @@ describe("buildSessionDoc", () => {
       buildSessionDoc(
         { sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "same-user-device", serializedSession: "leak" },
         CTX,
+        "u",
       ),
     ).toThrow();
   });
   it("rejects an unknown session mode", () => {
     expect(() =>
-      buildSessionDoc({ sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "broadcast" }, CTX),
+      buildSessionDoc({ sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "broadcast" }, CTX, "u"),
     ).toThrow();
+  });
+  it("rejects the not-yet-shipped cross-user gateway-transport mode (fail-closed scope)", () => {
+    expect(() =>
+      buildSessionDoc({ sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "gateway-transport" }, CTX, "u"),
+    ).toThrow();
+  });
+  it("rejects a peerUid that names a DIFFERENT account (same-user multi-device scope)", () => {
+    expect(() =>
+      buildSessionDoc(
+        { sessionId: "s", peerUid: "someone-else", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "same-user-device" },
+        CTX,
+        "owner",
+      ),
+    ).toThrow();
+  });
+  it("accepts a peerUid equal to the owner (same account, another device)", () => {
+    const { data } = buildSessionDoc(
+      { sessionId: "s2", peerUid: "owner", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "same-user-device" },
+      CTX,
+      "owner",
+    );
+    expect(data.peerUid).toBe("owner");
   });
 });
 
