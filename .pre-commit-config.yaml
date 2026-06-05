@@ -140,6 +140,20 @@ repos:
         args: [--severity=warning]
         files: \.(sh|bash)$
 
+  # ── Confidentiality guard (internal-only content) ─────────────────────────
+  # Blocks pricing/COGS/GTM strategy and open-vuln working notes — and anything
+  # carrying the `BurnBar-Confidential: internal` banner — from the public tree.
+  # Complements the secret scanners: this catches content that is sensitive but
+  # is not a credential. Policy: scripts/security/internal-content-policy.mjs.
+  - repo: local
+    hooks:
+      - id: confidentiality-guard
+        name: Confidentiality guard (internal-only content)
+        language: system
+        entry: node scripts/security/scan-internal-content.mjs --staged
+        pass_filenames: false
+        stages: [pre-commit]
+
   # ── Secret detection ────────────────────────────────────────────────────
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.27.2

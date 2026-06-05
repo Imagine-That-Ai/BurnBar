@@ -47,3 +47,14 @@ We do not promise formal SLA response times. Reports are handled on a best-effor
 - **Factory exact quota**: OpenBurnBar no longer borrows session state from other local apps for Factory exact quota. Use explicit `FACTORY_COOKIE_HEADER` and/or `FACTORY_BEARER_TOKEN` overrides if you want the official API path.
 - **Local settings**: Non-secret values such as gateway URLs, chat model overrides, and controller chat IDs still live in app preferences on the same Mac.
 - **Third-party tunnels**: When using the Cursor connector with cloud tunnels, review tunnel provider privacy policies.
+
+## For Maintainers — keeping internal material out of the public repo
+
+This repository is public. Beyond secret scanning (gitleaks / trufflehog /
+detect-secrets), a **confidentiality guard** keeps sensitive-but-not-secret
+content — pricing/COGS, go-to-market strategy, and working notes that map
+open vulnerabilities — out of the public tree. It runs at pre-commit, in CI on
+every PR (`Confidentiality Guard / guard`), and at release. See
+[`docs/security/CONFIDENTIALITY_POLICY.md`](../docs/security/CONFIDENTIALITY_POLICY.md)
+and, for scrubbing already-committed material,
+[`docs/security/PUBLIC_REPO_HISTORY_PURGE_RUNBOOK.md`](../docs/security/PUBLIC_REPO_HISTORY_PURGE_RUNBOOK.md).
