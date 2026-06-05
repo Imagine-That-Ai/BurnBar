@@ -49,3 +49,16 @@ This is the first bridge layer for the Signal-grade E2EE migration;
 private-domain traffic must not switch to Signal-backed envelopes until the
 platform bridge, cross-language vectors, replay rejection, skipped-key,
 safety-number, and stale-session repair tests are green across shipping clients.
+
+## `signal-envelope-contracts/` — Signal envelope v1 Node contract
+
+Shared TypeScript schema constants and sanitizers for staged Signal-backed
+`signalEnvelope` records. Functions, hosted MCP, and the Hermes realtime relay
+consume this package so transport and at-rest envelope validation, export
+redaction, downgrade rejection, and plaintext-sibling stripping stay identical
+across Node services.
+
+This package does **not** perform Signal Protocol cryptography. It only defines
+the fail-closed Node contract that future official-libsignal writes must satisfy;
+`third_party/libsignal/runtime-readiness.json` remains the release gate for
+actual runtime migration.

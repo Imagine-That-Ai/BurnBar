@@ -81,6 +81,18 @@ def package_lock_name_from_path(path: str, meta: dict) -> str:
     return path.rsplit(marker, 1)[-1]
 
 
+def npm_package_url(name: str, package_path: str, meta: dict) -> str:
+    """Resolve an SBOM download location for npm lockfile entries."""
+    resolved = meta.get("resolved")
+    if isinstance(resolved, str) and resolved:
+        if resolved.startswith((".", "/")):
+            return f"file:{resolved}"
+        return resolved
+    if package_path.startswith((".", "/")):
+        return f"file:{package_path}"
+    return f"https://www.npmjs.com/package/{name}"
+
+
 def collect_spm_dependencies(repo_root: Path) -> list[dict]:
     """Collect dependencies from tracked SwiftPM Package.resolved files."""
     packages = []
@@ -129,11 +141,10 @@ def collect_npm_dependencies(repo_root: Path) -> list[dict]:
             version = meta.get("version")
             if not name or not version:
                 continue
-            resolved = meta.get("resolved") or f"https://www.npmjs.com/package/{name}"
             packages.append({
                 "name": name,
                 "version": str(version),
-                "url": str(resolved),
+                "url": npm_package_url(name, package_path, meta),
                 "type": "npm",
                 "license": meta.get("license"),
                 "source": rel,
@@ -151,6 +162,8 @@ def collect_npm_dependencies(repo_root: Path) -> list[dict]:
         rel = str(pkg_json.relative_to(repo_root))
         for dep_type in ("dependencies", "devDependencies", "optionalDependencies"):
             for dep_name, dep_version_spec in pkg_data.get(dep_type, {}).items():
+                if str(dep_version_spec).startswith("file:"):
+                    continue
                 packages.append({
                     "name": dep_name,
                     "version": str(dep_version_spec).lstrip("^~><= "),
