@@ -3489,6 +3489,99 @@ test("T5 conversations deny plaintext smuggled on the merge-update path", async 
   );
 });
 
+// L37b (rules half) — the Mac client-direct collections chat_threads + conversations
+// accept the optional additive Signal at-rest `signalEnvelope` ONLY when its binding
+// matches the doc PATH; relocation / wrong-collection forgery fails closed. These two
+// were the collections missing from the hasOnly allowlists (P0-2): without the field in
+// hasOnly the whole write (legacy sealedPayload included) was permission-denied.
+test("L37b signalEnvelope is path-bound on chat_threads + conversations; relocation fails closed", async () => {
+  const db = authedDb("sigb-owner");
+  await seedCloudVaultState("sigb-owner");
+  await seedHostedCloudEntitlement("sigb-owner");
+
+  // ---- chat_threads ----
+  const threadBase = {
+    threadId: "ct-1",
+    deviceId: "device",
+    messageCount: 1,
+    contentIncluded: true,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+    createdAt: "2026-06-05T00:00:00.000Z",
+    updatedAt: "2026-06-05T00:00:00.000Z",
+  };
+  const goodThreadEnv = signalAtRestEnvelope({
+    uid: "sigb-owner",
+    collection: "chat_threads",
+    docId: "ct-1",
+  });
+  // 1. Valid envelope bound to THIS exact path is accepted alongside the legacy field.
+  await assertSucceeds(
+    setDoc(doc(db, "users/sigb-owner/chat_threads/ct-1"), { ...threadBase, signalEnvelope: goodThreadEnv })
+  );
+  // 2. The SAME envelope at a different doc fails closed (binding.docId no longer matches).
+  await assertFails(
+    setDoc(doc(db, "users/sigb-owner/chat_threads/ct-2"), {
+      ...threadBase,
+      threadId: "ct-2",
+      signalEnvelope: goodThreadEnv,
+    })
+  );
+  // 3. An envelope bound to a DIFFERENT collection fails closed on chat_threads.
+  await assertFails(
+    setDoc(doc(db, "users/sigb-owner/chat_threads/ct-3"), {
+      ...threadBase,
+      threadId: "ct-3",
+      signalEnvelope: signalAtRestEnvelope({ uid: "sigb-owner", collection: "mobile_assistant_chats", docId: "ct-3" }),
+    })
+  );
+
+  // ---- conversations ----
+  const convBase = {
+    id: "conv-sig-1",
+    deviceId: "device",
+    provider: "codex",
+    sessionId: "session",
+    messageCount: 1,
+    userWordCount: 10,
+    assistantWordCount: 20,
+    updatedAt: serverTimestamp(),
+    sourceType: "provider_log",
+    version: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(),
+  };
+  const goodConvEnv = signalAtRestEnvelope({
+    uid: "sigb-owner",
+    collection: "conversations",
+    docId: "conv-sig-1",
+  });
+  // 1. Valid envelope bound to THIS exact path is accepted.
+  await assertSucceeds(
+    setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-1"), { ...convBase, signalEnvelope: goodConvEnv })
+  );
+  // 2. Relocation to a different conversation doc fails closed.
+  await assertFails(
+    setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-2"), {
+      ...convBase,
+      id: "conv-sig-2",
+      signalEnvelope: goodConvEnv,
+    })
+  );
+  // 3. Wrong-collection binding fails closed on conversations.
+  await assertFails(
+    setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-3"), {
+      ...convBase,
+      id: "conv-sig-3",
+      signalEnvelope: signalAtRestEnvelope({ uid: "sigb-owner", collection: "chat_threads", docId: "conv-sig-3" }),
+    })
+  );
+});
+
 // T6 — cli_sessions: create sealed, then a merge update adding plaintext is denied.
 test("T6 cli_sessions deny plaintext smuggled on the merge-update path", async () => {
   const db = authedDb("cli-owner");

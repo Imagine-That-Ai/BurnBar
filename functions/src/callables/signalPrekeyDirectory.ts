@@ -21,8 +21,10 @@
  *     available key and both mark it claimed → key reuse). The single-claim
  *     guarantee only exists inside a Firestore transaction, so it lives here.
  *   - recordSignalSession        — write session DIRECTORY metadata (never the
- *     serialized Signal session; that stays device-local). Cross-checks the
- *     claimed prekeys belong to the named identity.
+ *     serialized Signal session; that stays device-local) under the caller's OWN
+ *     trusted identity. Same-user multi-device scope only: a named peerUid must
+ *     equal the owner. (It does NOT verify the referenced prekeys were claimed by
+ *     this session — that cross-check is not implemented; do not rely on it.)
  *   - recordSignalRotation       — append a rotation event before an identity
  *     key-version transition, optionally minting a rewrap job id.
  *
@@ -34,7 +36,9 @@
  *
  * Scope: same-user multi-device only (mode "same-user-device"). The rules are
  * owner-only read, so a caller can only publish/claim under their OWN namespace.
- * Cross-user "gateway-transport" claiming is a deliberate future extension.
+ * A cross-user "gateway-transport" mode is a deliberate future extension and is
+ * NOT accepted today (SESSION_MODES rejects it; recordSignalSession requires any
+ * named peerUid to equal the owner).
  */
 
 import { Timestamp, FieldValue } from "firebase-admin/firestore";
@@ -64,7 +68,11 @@ export const ONE_TIME_PREKEY_ALGORITHM = "signal-pqxdh-one-time-prekey-v1";
 export const KYBER_PREKEY_ALGORITHM = "signal-pqxdh-kyber-prekey-v1";
 
 const TRUSTED_DEVICE_STATES = new Set(["pending", "trusted"]);
-const SESSION_MODES = new Set(["same-user-device", "gateway-transport"]);
+// Fail-closed to the documented scope: only same-user multi-device sessions are
+// accepted. A cross-user "gateway-transport" mode is a deliberate FUTURE
+// extension and must NOT be accepted until that feature ships with its own
+// cross-user authorization checks.
+const SESSION_MODES = new Set(["same-user-device"]);
 const ROTATION_REASONS = new Set([
   "scheduled",
   "suspected_compromise",
@@ -270,12 +278,22 @@ export function buildKyberPreKeyDoc(
 export function buildSessionDoc(
   raw: Record<string, unknown>,
   ctx: DirectoryContext,
+  ownerUid: string,
 ): { id: string; data: DocumentData } {
   assertNoForbiddenFields(raw, "session");
   const sessionId = safeCloudDocumentID(raw.sessionId, "session.sessionId");
   const mode = boundedTrimmedString(raw.mode, "session.mode", 40, true);
   if (!SESSION_MODES.has(mode)) {
     throw new HttpsError("invalid-argument", `session.mode must be one of: ${[...SESSION_MODES].join(", ")}.`);
+  }
+  // Scope is same-user multi-device only: the peer is another device of the SAME
+  // account, so when a peerUid is asserted it MUST equal the owner. This blocks a
+  // caller from registering a session doc that names an arbitrary other user as
+  // the peer (fail-closed to the documented scope; cross-user sessions are not
+  // an accepted mode yet — see SESSION_MODES).
+  const peerUid = boundedTrimmedString(raw.peerUid, "session.peerUid", 160, true);
+  if (peerUid && peerUid !== ownerUid) {
+    throw new HttpsError("invalid-argument", "session.peerUid must be the same account (same-user multi-device scope).");
   }
   return {
     id: sessionId,
@@ -284,7 +302,7 @@ export function buildSessionDoc(
       identityKeyId: ctx.identityKeyId,
       deviceId: ctx.deviceId,
       keyVersion: ctx.keyVersion,
-      peerUid: boundedTrimmedString(raw.peerUid, "session.peerUid", 160, true),
+      peerUid,
       peerDeviceId: boundedTrimmedString(raw.peerDeviceId, "session.peerDeviceId", 160, true),
       peerIdentityKeyId: boundedTrimmedString(raw.peerIdentityKeyId, "session.peerIdentityKeyId", 200, true),
       mode,
@@ -652,11 +670,15 @@ export const recordSignalSession = onCall(
       if (request.data?.session === undefined || request.data?.session === null) {
         throw new HttpsError("invalid-argument", "session is required.");
       }
-      const session = buildSessionDoc(request.data.session as Record<string, unknown>, {
-        identityKeyId: identity.identityKeyId,
-        deviceId: identity.deviceId,
-        keyVersion: identity.keyVersion,
-      });
+      const session = buildSessionDoc(
+        request.data.session as Record<string, unknown>,
+        {
+          identityKeyId: identity.identityKeyId,
+          deviceId: identity.deviceId,
+          keyVersion: identity.keyVersion,
+        },
+        uid,
+      );
       const ref = identity.ref.collection("sessions").doc(session.id);
       const existing = await ref.get();
       if (!existing.exists) {

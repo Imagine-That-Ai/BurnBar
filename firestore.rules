@@ -741,7 +741,8 @@ service cloud.firestore {
         "contentSealed",
         "sealedSchemaVersion",
         "vaultKeyID",
-        "sealedPayload"
+        "sealedPayload",
+        "signalEnvelope"
       ]);
     }
 
@@ -1218,7 +1219,8 @@ service cloud.firestore {
           "contentSealed",
           "sealedSchemaVersion",
           "vaultKeyID",
-          "sealedPayload"
+          "sealedPayload",
+          "signalEnvelope"
         ])
         && !request.resource.data.keys().hasAny([
           "projectName",
@@ -1255,14 +1257,20 @@ service cloud.firestore {
         && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload);
       }
       allow read: if ownsUserNamespace(userId);
+      // Optional additive Signal at-rest envelope, path-bound to this doc; a
+      // relocated/forged envelope fails closed (mirrors mobile_assistant_chats).
       allow create, update: if ownerWritableHostedCloudBackup(userId)
-        && validConversationMirror();
+        && validConversationMirror()
+        && (!("signalEnvelope" in request.resource.data) || validSignalAtRestEnvelope(request.resource.data.signalEnvelope, userId, "conversations", conversationId, "signalEnvelope"));
       allow delete: if false;
     }
 
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableChatThread(userId);
+      // Optional additive Signal at-rest envelope, path-bound to this doc; a
+      // relocated/forged envelope fails closed (mirrors mobile_assistant_chats).
+      allow create, update: if ownerWritableChatThread(userId)
+        && (!("signalEnvelope" in request.resource.data) || validSignalAtRestEnvelope(request.resource.data.signalEnvelope, userId, "chat_threads", threadId, "signalEnvelope"));
       allow delete: if ownsUserNamespace(userId);
     }
 
