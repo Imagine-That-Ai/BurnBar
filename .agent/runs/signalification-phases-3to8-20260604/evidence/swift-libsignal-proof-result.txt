@@ -1,0 +1,7 @@
+LibSignalClient v0.94.4 (libsignal commit 03c44901) — Swift, in-agent (Xcode 26.5, arm64 macOS):
+ATREST seal/open roundtrip OK: true
+ATREST wrong-AAD fails closed: true
+SESSION ciphertext type: 3 (PreKeySignalMessage / X3DH+PQXDH)
+SESSION X3DH+ratchet decrypt OK: true
+SAFETY NUMBER (first 20): 07197993389204430921
+LIBSIGNAL_SWIFT_FULL_PROOF_OK

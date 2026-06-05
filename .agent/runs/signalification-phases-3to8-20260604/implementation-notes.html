@@ -118,7 +118,13 @@
 
   <h2>Validation</h2>
   <ul>
-    <li>Validation is pending.</li>
+    <li><strong>Node libsignal:</strong> packages/libsignal-protocol 7/7 (real @signalapp/libsignal-client@0.94.4).</li>
+    <li><strong>Swift libsignal:</strong> built in-agent (LibSignalClient, Xcode 26.5); real seal/open + fail-closed AAD + X3DH+PQXDH+ratchet session + safety number. evidence/swift-libsignal-proof*.</li>
+    <li><strong>Kotlin/JVM libsignal:</strong> org.signal:libsignal-client:0.94.4 (Signal maven); real seal/open + fail-closed AAD. evidence/kotlin-libsignal-proof*.</li>
+    <li><strong>Cross-language KAT:</strong> Node-sealed HPKE opens in Swift AND Kotlin with byte-identical bindingToAAD info/AAD; tamper fails closed. evidence/SignalEnvelopeV1Vector.json + CROSS-LANGUAGE-KAT-RESULT.txt.</li>
+    <li><strong>P0 bindingToAAD:</strong> TS↔Swift byte-parity fixture (SHA-256-matched); pipe/CRLF guard fail-closed both sides.</li>
+    <li><strong>Server layers (flag-OFF):</strong> functions tsc clean + gateway vitest 81/81 (+9); contracts 10/10; registry non-websited (trust.generated.ts byte-unchanged); OpenBurnBarCore swift build clean.</li>
+    <li><strong>Adversarial audit:</strong> in progress (task wsvcn1xdw).</li>
   </ul>
 
   <h2>Evidence</h2>
@@ -180,6 +186,41 @@
         phase: "scope-upgrade",
         actor: "agent",
         summary: "User mandate: SOTA, no workarounds, both physical devices attached. UPGRADED scope: vendor real libsignal in Swift (LibSignalClient v0.94.4 local swift/ path) + Kotlin (org.signal:libsignal-client), write real cross-language sealers, cross-language KAT, and on-device E2E on the attached iPhone + Android. Removed the [blocked] client-ciphertext caveat — proven feasible: protoc installed, libsignal Swift builds in-agent, Android SDK installed, adb sees R3CXB0CNS0J."
+      },
+      {
+        ts: "2026-06-05T04:50:00Z",
+        status: "done",
+        phase: "stream3+5",
+        actor: "agent",
+        summary: "WF2 APPROVED + committed 5101eafc0. Stream 3 gateway v4 signalEnvelope shape accepted (PRODUCTION set EMPTY=fail-closed, capability default false), 81/81 gateway tests +9. Stream 5 registry sealingScheme (non-websited, trust.generated.ts byte-unchanged) + CloudVaultSignalEnvelope type+recognizer. OpenBurnBarCore swift build clean (the earlier SignalEnvelopeAAD SourceKit error was stale indexing)."
+      },
+      {
+        ts: "2026-06-05T04:55:00Z",
+        status: "doing",
+        phase: "real-crypto",
+        actor: "agent",
+        summary: "Real cross-language libsignal phase started. libsignal Swift builds in-agent (LibSignalClient compiled). Running a concrete Swift proof (task byqn45n8m): real PublicKey.seal/PrivateKey.open + wrong-AAD fail-closed + full X3DH+PQXDH+Double-Ratchet session round-trip + safety number. Next: Kotlin/JVM proof, cross-language KAT (Node seal -> Swift+Kotlin open), then on-device E2E + audits."
+      },
+      {
+        ts: "2026-06-05T05:20:00Z",
+        status: "validated",
+        phase: "real-crypto",
+        actor: "agent",
+        summary: "REAL libsignal crypto PROVEN in all 3 languages (evidence/): Swift = seal/open + fail-closed AAD + full X3DH+PQXDH+ratchet session + safety number; Kotlin/JVM (org.signal:libsignal-client:0.94.4 from Signal maven) = seal/open + fail-closed; Node = libsignal-protocol 7/7."
+      },
+      {
+        ts: "2026-06-05T05:30:00Z",
+        status: "validated",
+        phase: "cross-language-KAT",
+        actor: "agent",
+        summary: "GOLD-STANDARD INTEROP: a real HPKE ciphertext SEALED by Node opens byte-correctly in BOTH Swift and Kotlin using the byte-identical bindingToAAD canonical info/AAD (aad=OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|u1||pensieve|doc-42|body||1), both fail closed on tamper. Vector + openers in evidence/SignalEnvelopeV1Vector.json + *-kat-opener.*. The at-rest envelope is cross-platform interoperable with real libsignal. No stubs/workarounds."
+      },
+      {
+        ts: "2026-06-05T05:35:00Z",
+        status: "doing",
+        phase: "audit",
+        actor: "agent",
+        summary: "Intense adversarial audit running (task wsvcn1xdw): 6 dimensions (fail-closed, downgrade/replay/version, flag-off inert, Stream 6 trust, Rule-0/registry, over-claim/residual) -> per-finding refutation -> synthesis, over all new signal code on signal/phase2."
       }
     ];
 

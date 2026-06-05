@@ -1,0 +1,20 @@
+ 37 |     internal init(displayable: DisplayableFingerprint, scannable: ScannableFingerprint) {
+    |              `- note: 'init(displayable:scannable:)' declared here
+ 38 |         self.displayable = displayable
+ 39 |         self.scannable = scannable
+
+/private/tmp/lsproof/Sources/lsproof/main.swift:48:25: error: missing arguments for parameters 'displayable', 'scannable' in call
+46 | 
+47 | // 3) Safety number
+48 | let fp = try Fingerprint(iterations: 1024, scannableVersion: 1, localIdentifier: Array("alice".utf8), localKey: aStore.identityKeyPair(context: NullContext()).identityKey, remoteIdentifier: Array("bob".utf8), remoteKey: bStore.identityKeyPair(context: NullContext()).identityKey)
+   |                         `- error: missing arguments for parameters 'displayable', 'scannable' in call
+49 | print("SAFETY NUMBER:", String(try fp.displayableFingerprint().formatted.prefix(24)), "...")
+50 | print("LIBSIGNAL_SWIFT_FULL_PROOF_OK")
+
+/tmp/libsignal-src/swift/Sources/LibSignalClient/Fingerprint.swift:37:14: note: 'init(displayable:scannable:)' declared here
+ 35 |     public let displayable: DisplayableFingerprint
+ 36 | 
+ 37 |     internal init(displayable: DisplayableFingerprint, scannable: ScannableFingerprint) {
+    |              `- note: 'init(displayable:scannable:)' declared here
+ 38 |         self.displayable = displayable
+ 39 |         self.scannable = scannable
