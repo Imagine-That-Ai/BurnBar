@@ -128,9 +128,8 @@ wecom = ["defusedxml==0.7.1"]
 # the dependency explicit and lazy-loadable for installs that enable the
 # BurnBar gateway. Range (>=46) — not an exact pin — because the relay byte
 # format is stable ABI (AES-256-GCM / P-256 / HKDF-SHA256) and we want this
-# leg to track security patches; the core `dependencies` exact-pin policy
-# (top of file) deliberately does not extend to opt-in extras.
-gateway-e2ee = ["cryptography>=46"]
+# leg to track security patches; pinned with an upper bound per core policy.
+gateway-e2ee = ["cryptography>=46,<47"]
 cli = ["simple-term-menu==1.6.6"]
 tts-premium = ["elevenlabs==1.59.0"]
 voice = [
