@@ -151,7 +151,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "delete": "deleteDomainData"
     },
     "entitlementGate": "burnbar_pro",
-    "suspensionSurface": "burnbar_cloud"
+    "suspensionSurface": "burnbar_cloud",
+    "sealingScheme": "signal-hpke-identity-seal-v1"
   },
   {
     "id": "session_logs",
