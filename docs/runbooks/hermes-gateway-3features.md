@@ -417,7 +417,7 @@ bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
 | Stale status-language search | pass; no remaining stale old-device, approval-open, or cloud-log-open wording in the gateway proof docs |
 | External Hermes checkout | clean at `78b1c7244` on `ajnunezg/burnbar-gateway-e2ee` |
 | Full E2EE remediation verifier | pass; scanner, Functions contract, 96 focused Functions tests, 45 Firestore rule tests, schema drift, vector/mirror diffs, local smoke, and 211 external Hermes tests |
-| SOTA source check | pass for current claim boundary; HPKE is a good sealed-envelope primitive, while broad SOTA claims still require externally reviewed attachment/PQXDH/MLS-grade coverage documented in `docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md` |
+| SOTA source check | pass for current claim boundary; HPKE is a good sealed-envelope primitive, while broad SOTA claims still require externally reviewed attachment/PQXDH/MLS-grade coverage beyond this public runbook |
 
 No open implementation or external admin-readback gate remains for this
 remediation claim. For repeatable headless Sentry automation, create a personal

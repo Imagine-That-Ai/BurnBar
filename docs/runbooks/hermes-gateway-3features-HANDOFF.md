@@ -3,8 +3,7 @@
 > **Superseded on 2026-06-03 and refreshed on 2026-06-04:** this was the
 > pre-merge handoff checklist. For current launch status, audit evidence, and E2EE
 > remediation proof, use
-> `docs/runbooks/hermes-gateway-3features.md` §7-§8 and
-> `docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md`. Do not treat the command counts
+> `docs/runbooks/hermes-gateway-3features.md` §7-§8. Do not treat the command counts
 > or branch names below as current proof.
 
 You are picking up finished, tested server + adapter work. Your job is the part

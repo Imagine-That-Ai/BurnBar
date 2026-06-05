@@ -99,9 +99,15 @@ describe("validateSignalAtRestEnvelopeForWrite (L23 + L37 admin)", () => {
   });
 
   it("rejects mode/scope confusion (the binding can never claim transport/gateway)", () => {
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ binding: { scope: "gateway" } }), EXPECTED).ok).toBe(false);
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ binding: { mode: "transport" } }), EXPECTED).ok).toBe(false);
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ envelope: { mode: "transport" } }), EXPECTED).ok).toBe(false);
+    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ binding: { scope: "gateway" } }), EXPECTED).ok).toBe(
+      false,
+    );
+    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ binding: { mode: "transport" } }), EXPECTED).ok).toBe(
+      false,
+    );
+    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ envelope: { mode: "transport" } }), EXPECTED).ok).toBe(
+      false,
+    );
     expect(
       validateSignalAtRestEnvelopeForWrite(
         atRestEnvelope({ envelope: { relayEncryption: "signal-doubleratchet-pqxdh-v1" } }),
@@ -111,16 +117,31 @@ describe("validateSignalAtRestEnvelopeForWrite (L23 + L37 admin)", () => {
   });
 
   it("rejects forbidden-field pollution (gateway-only fields on a cloudvault binding, transport relayKeyVersion)", () => {
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ binding: { clientId: "c1" } }), EXPECTED).ok).toBe(false);
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ binding: { slotId: "s1" } }), EXPECTED).ok).toBe(false);
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ envelope: { relayKeyVersion: 4 } }), EXPECTED).ok).toBe(false);
+    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ binding: { clientId: "c1" } }), EXPECTED).ok).toBe(
+      false,
+    );
+    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ binding: { slotId: "s1" } }), EXPECTED).ok).toBe(
+      false,
+    );
+    expect(
+      validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ envelope: { relayKeyVersion: 4 } }), EXPECTED).ok,
+    ).toBe(false);
   });
 
   it("rejects deep per-wrap corruption the Firestore rules cannot iterate to see", () => {
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ wrap: { sealedContentKeyB64: "not base64 !!" } }), EXPECTED).ok).toBe(false);
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ wrap: { recipientKind: "server" } }), EXPECTED).ok).toBe(false);
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ keyDelivery: { wraps: [] } }), EXPECTED).ok).toBe(false);
-    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ keyDelivery: { contentKeyLength: 16 } }), EXPECTED).ok).toBe(false);
+    expect(
+      validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ wrap: { sealedContentKeyB64: "not base64 !!" } }), EXPECTED)
+        .ok,
+    ).toBe(false);
+    expect(
+      validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ wrap: { recipientKind: "server" } }), EXPECTED).ok,
+    ).toBe(false);
+    expect(validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ keyDelivery: { wraps: [] } }), EXPECTED).ok).toBe(
+      false,
+    );
+    expect(
+      validateSignalAtRestEnvelopeForWrite(atRestEnvelope({ keyDelivery: { contentKeyLength: 16 } }), EXPECTED).ok,
+    ).toBe(false);
   });
 
   it("STRIPS additive pollution from the persisted envelope — callers write result.envelope, never the raw input", () => {

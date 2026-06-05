@@ -132,7 +132,10 @@ function requireOptionalSignalEnvelopeForKnowledgeVector(
   if (!Object.prototype.hasOwnProperty.call(raw, "signalEnvelope")) return undefined;
   const result = validateSignalAtRestEnvelopeForWrite(raw.signalEnvelope, expected);
   if (!result.ok) {
-    throw new HttpsError("invalid-argument", `${fieldName} is not a valid path-bound Signal at-rest envelope (${result.reason}).`);
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName} is not a valid path-bound Signal at-rest envelope (${result.reason}).`,
+    );
   }
   return result.envelope;
 }
