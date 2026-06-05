@@ -1,7 +1,0 @@
-SignalEnvelopeV1 at-rest cross-language KAT (real libsignal 0.94.4):
-- SEALED by Node (@signalapp/libsignal-client) with bindingToAAD canonical:
-    aad = OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|u1||pensieve|doc-42|body||1
-    info = OpenBurnBar-Signal-AtRest-v1| + aad
-- OPENED by Swift (LibSignalClient): OK -> "cross-language interop secret — node sealed"; wrong-AAD fails closed.
-- OPENED by Kotlin/JVM (org.signal:libsignal-client): OK -> same plaintext; wrong-AAD fails closed.
-=> Real HPKE at-rest envelope is byte-interoperable across Node + Swift + Kotlin with the identical AAD canonicalizer. No stubs, no workarounds.

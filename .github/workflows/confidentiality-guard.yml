@@ -1,0 +1,45 @@
+name: Confidentiality Guard
+
+# Fails if internal-only content (pricing/COGS, GTM strategy, open-vuln working
+# notes, or anything carrying the `BurnBar-Confidential: internal` banner) is
+# present in the public tree. This complements the secret scanners in
+# security-pr.yml — it catches content that is sensitive but is not a credential.
+#
+# Policy:  scripts/security/internal-content-policy.mjs
+# Engine:  scripts/security/scan-internal-content.mjs
+# Docs:    docs/security/CONFIDENTIALITY_POLICY.md
+#
+# Branch protection should require the "Confidentiality Guard / guard" check.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: confidentiality-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+
+      - name: Run confidentiality guard (full tracked tree)
+        run: node scripts/security/scan-internal-content.mjs
+
+      - name: Self-test the guard
+        run: node --test scripts/security/__tests__/scan-internal-content.test.mjs

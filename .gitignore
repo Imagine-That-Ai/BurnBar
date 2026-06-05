@@ -105,6 +105,12 @@ tools/burnbar-mcp/.venv/
 .claude/settings.local.json
 .claude/*.lock
 
+# Internal-only material (pricing, COGS, GTM, open-vuln working notes).
+# This is the private home enforced by the confidentiality guard:
+# scripts/security/scan-internal-content.mjs — see docs/security/CONFIDENTIALITY_POLICY.md.
+# Files here stay on disk / in the private mirror but never enter the public tree.
+internal/
+
 # Generated validation logs (keep JSON reports, skip raw test logs)
 .factory/validation/**/user-testing/*.log
 
