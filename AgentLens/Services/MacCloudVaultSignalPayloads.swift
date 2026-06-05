@@ -54,12 +54,26 @@ enum MacCloudVaultSignalPayloads {
         }
         let binding = CloudVaultSignalBinding(uid: uid, collection: collection, docId: docId, field: field)
         let recipients = try await atRestRecipients(uid: uid, firestore: firestore, localIdentity: signalIdentity)
-        let envelope = try OpenBurnBarSignalAtRest.sealPayload(plaintext, recipients: recipients, binding: binding)
+        // Sender authentication: sign with THIS device's identity private key so a reader
+        // can prove the envelope was produced by a trusted device, not forged by the server.
+        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
+            plaintext,
+            recipients: recipients,
+            binding: binding,
+            senderIdentityKeyId: signalIdentity.identityKeyId,
+            senderIdentityPrivateKey: signalIdentity.privateKeyData
+        )
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
     }
 
     /// Signal-first open with a relocation guard; nil when no envelope present (caller falls
     /// back to the legacy AES-GCM opener). Throws on invalid/relocated envelope or missing identity.
+    /// `trustedSenderPublicKeys` are PINNED identity public keys (resolved out-of-band
+    /// from the trusted-device set) used to verify the envelope's sender signature. The
+    /// local identity is always added, so a self-authored doc (the common case) is fully
+    /// sender-auth-verified with no extra I/O; a cross-device doc whose sender is not in
+    /// the provided set throws `senderNotTrusted` and the caller falls back to the
+    /// (non-forgeable) legacy sealedPayload.
     static func openSignalPayloadIfPresent(
         _ data: [String: Any],
         uid: String,
@@ -67,7 +81,8 @@ enum MacCloudVaultSignalPayloads {
         docId: String,
         field: String = "signalEnvelope",
         bindingField: String? = nil,
-        signalIdentity: OpenBurnBarSignalIdentityKeypair?
+        signalIdentity: OpenBurnBarSignalIdentityKeypair?,
+        trustedSenderPublicKeys: [String: Data] = [:]
     ) throws -> Data? {
         guard data[field] != nil else { return nil }
         guard let envelope = CloudVaultCrypto.signalEnvelope(from: data[field]) else {
@@ -82,11 +97,14 @@ enum MacCloudVaultSignalPayloads {
         guard let signalIdentity else {
             throw MacCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: collection)
         }
+        var trustedSenders = trustedSenderPublicKeys
+        trustedSenders[signalIdentity.identityKeyId] = signalIdentity.atRestRecipient().publicKeyData
         return try OpenBurnBarSignalAtRest.openPayload(
             envelope,
             recipientIdentityKeyId: signalIdentity.identityKeyId,
             recipientIdentityPrivateKey: signalIdentity.privateKeyData,
-            expectedBinding: expectedBinding
+            expectedBinding: expectedBinding,
+            trustedSenderPublicKeys: trustedSenders
         )
     }
 

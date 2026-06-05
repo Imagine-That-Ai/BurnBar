@@ -247,6 +247,7 @@ function signalAtRestEnvelope({
   ciphertextLayer = {},
   keyDelivery = {},
   binding = {},
+  senderAuth = {},
 } = {}) {
   return {
     signalEnvelopeFormatVersion: 1,
@@ -280,6 +281,13 @@ function signalAtRestEnvelope({
       mode: "at-rest",
       formatVersion: 1,
       ...binding,
+    },
+    senderAuth: senderAuth === null ? undefined : {
+      senderIdentityKeyId: "device-key-1",
+      senderIdentityKeyB64: "cHVibGljLWtleQ==",
+      signatureB64: "c2lnbmF0dXJlLWZpeHR1cmU=",
+      signatureVersion: 1,
+      ...senderAuth,
     },
     ...envelope,
   };

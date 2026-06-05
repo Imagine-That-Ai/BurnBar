@@ -640,6 +640,11 @@ service cloud.firestore {
     }
 
     function validSignalAtRestEnvelope(value, expectedUid, expectedCollection, expectedDocId, expectedField) {
+      // The optional `senderAuth` block (writing-device signature over the envelope) is
+      // verified CLIENT-SIDE against the PINNED trusted-device key — the rules cannot do
+      // crypto and the block carries no plaintext, so they only bound its type. (Kept
+      // intentionally light: the per-evaluation expression budget is tight at the heaviest
+      // call site, cli_agent_mission_requests.)
       return value is map
         && value.keys().hasOnly([
           "signalEnvelopeFormatVersion",
@@ -647,13 +652,15 @@ service cloud.firestore {
           "relayEncryption",
           "ciphertextLayer",
           "keyDelivery",
-          "binding"
+          "binding",
+          "senderAuth"
         ])
         && value.signalEnvelopeFormatVersion == 1
         && value.mode == "at-rest"
         && value.relayEncryption == "signal-hpke-identity-seal-v1"
         && validSignalCiphertextLayer(value.ciphertextLayer)
         && validSignalAtRestKeyDelivery(value.keyDelivery)
+        && (!("senderAuth" in value) || value.senderAuth is map)
         && validSignalAtRestBinding(value.binding, expectedUid, expectedCollection, expectedDocId, expectedField);
     }
 

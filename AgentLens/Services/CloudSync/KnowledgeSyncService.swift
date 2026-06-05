@@ -382,7 +382,9 @@ public final class KnowledgeSyncService: @unchecked Sendable {
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
             Data(plaintext.utf8),
             recipients: context.recipients,
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: context.localIdentity.identityKeyId,
+            senderIdentityPrivateKey: context.localIdentity.privateKeyData
         )
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
     }
