@@ -544,12 +544,20 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
 
     /// Returns the bucket representing the hourly/5h window (windowKind == .rollingHours)
     var hourlyBucket: ProviderQuotaBucket? {
-        displayableQuotaBuckets.first { $0.windowKind == .rollingHours }
+        hourlyBucket(relativeTo: Date())
+    }
+
+    func hourlyBucket(relativeTo now: Date) -> ProviderQuotaBucket? {
+        displayableQuotaBuckets(relativeTo: now).first { $0.windowKind == .rollingHours }
     }
 
     /// Returns the bucket representing the weekly window (windowKind == .weekly or .rollingDays)
     var weeklyBucket: ProviderQuotaBucket? {
-        displayableQuotaBuckets.first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
+        weeklyBucket(relativeTo: Date())
+    }
+
+    func weeklyBucket(relativeTo now: Date) -> ProviderQuotaBucket? {
+        displayableQuotaBuckets(relativeTo: now).first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
     }
 
     var displayableQuotaBuckets: [ProviderQuotaBucket] {
@@ -557,7 +565,11 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
         // reports its fresh (0 used / full remaining) state. Single chokepoint
         // feeding the strip, popover, hourly/weekly accessors, customizedBuckets,
         // the primary-bucket pickers, and the cross-surface sync writer.
-        buckets.filter(\.isDisplayableQuotaSignal).map { $0.reconcilingElapsedWindow() }
+        displayableQuotaBuckets(relativeTo: Date())
+    }
+
+    func displayableQuotaBuckets(relativeTo now: Date) -> [ProviderQuotaBucket] {
+        buckets.filter(\.isDisplayableQuotaSignal).map { $0.reconcilingElapsedWindow(asOf: now) }
     }
 
     /// Returns the buckets filtered and ordered by user customization settings.
