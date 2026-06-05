@@ -1,0 +1,27 @@
+{
+  "name": "@openburnbar/libsignal-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Single BurnBar crypto boundary over the official Signal library (@signalapp/libsignal-client). Thin facade for X3DH+PQXDH session setup, Double Ratchet encrypt/decrypt, safety numbers, and HPKE at-rest sealing. Inert/flag-off: not imported by any app yet.",
+  "license": "AGPL-3.0-only",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test lib/*.test.js"
+  },
+  "dependencies": {
+    "@signalapp/libsignal-client": "0.94.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "^5.5.4"
+  }
+}
