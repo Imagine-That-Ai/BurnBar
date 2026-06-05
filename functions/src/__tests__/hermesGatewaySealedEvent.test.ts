@@ -239,6 +239,41 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
     expect(leaves).not.toContain(PLAINTEXT_THREAD);
   });
 
+  it("(R9) rejects a replayed eventId: no clobber, no sequence re-bump", async () => {
+    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const run = callableRun(enqueueHermesGatewayEvent);
+    const cursorsPath = `users/${UID}/hermes_gateway_state/cursors`;
+
+    const first = await run(
+      request({
+        targetClientId: TARGET_CLIENT_ID,
+        eventId: SEALED_EVENT_ID,
+        relayEnvelope: sealedEnvelope(),
+        senderId: "burnbar-user",
+      }),
+    );
+    expect(first).toMatchObject({ id: SEALED_EVENT_ID, sequence: 1 });
+    expect(stored.get(cursorsPath)?.eventSequence).toBe(1);
+    const storedAfterFirst = { ...storedEvent() };
+
+    // A replay of the same client-supplied eventId must FAIL closed (create-if-absent),
+    // exactly like the message + attachment-init paths — not silently clobber + re-bump.
+    await expect(
+      run(
+        request({
+          targetClientId: TARGET_CLIENT_ID,
+          eventId: SEALED_EVENT_ID,
+          relayEnvelope: sealedEnvelope(),
+          senderId: "burnbar-user",
+        }),
+      ),
+    ).rejects.toThrow(/already enqueued/i);
+
+    // The stored event was NOT clobbered and the sequence counter was NOT re-bumped.
+    expect(storedEvent()).toEqual(storedAfterFirst);
+    expect(stored.get(cursorsPath)?.eventSequence).toBe(1);
+  });
+
   it("rejects a relay-capable client that sends plaintext text with no envelope", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);

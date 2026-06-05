@@ -1,8 +1,11 @@
 package com.openburnbar.data.cloud
 
+import java.text.Normalizer
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import org.signal.libsignal.protocol.ecc.ECPrivateKey
+import org.signal.libsignal.protocol.ecc.ECPublicKey
 
 internal object CloudVaultCryptoSupport {
     private const val GCM_AUTH_TAG_BITS = 128
@@ -14,6 +17,47 @@ internal object CloudVaultCryptoSupport {
     fun encodeBase64(data: ByteArray): String = java.util.Base64.getEncoder().encodeToString(data)
 
     fun decodeBase64(value: String): ByteArray = java.util.Base64.getMimeDecoder().decode(value)
+
+    fun decodeSignalPublicKey(bytes: ByteArray): ECPublicKey = ECPublicKey(bytes)
+
+    fun decodeSignalPrivateKey(bytes: ByteArray): ECPrivateKey = ECPrivateKey(bytes)
+
+    fun bindingToAAD(binding: SignalEnvelopeBinding): String {
+        val segments =
+            listOf(
+                binding.mode,
+                binding.scope,
+                binding.uid,
+                binding.clientId ?: "",
+                binding.collection ?: "",
+                binding.docId ?: "",
+                binding.field ?: "",
+                binding.slotId ?: "",
+                binding.formatVersion.toString(),
+            ).map { Normalizer.normalize(it, Normalizer.Form.NFC) }
+        require(segments.none { it.any { ch -> ch == '|' || ch == '\r' || ch == '\n' } }) {
+            "Signal envelope binding segment contains a reserved character"
+        }
+        return "OpenBurnBar-Signal-AAD-v1|${segments.joinToString("|")}"
+    }
+
+    fun atRestSeal(plaintext: ByteArray, recipientIdentityPublicKey: ByteArray, binding: SignalEnvelopeBinding): ByteArray {
+        val canonical = bindingToAAD(binding)
+        return decodeSignalPublicKey(recipientIdentityPublicKey).seal(
+            plaintext,
+            "OpenBurnBar-Signal-AtRest-v1|$canonical".toByteArray(Charsets.UTF_8),
+            canonical.toByteArray(Charsets.UTF_8),
+        )
+    }
+
+    fun atRestOpen(ciphertext: ByteArray, recipientIdentityPrivateKey: ByteArray, binding: SignalEnvelopeBinding): ByteArray {
+        val canonical = bindingToAAD(binding)
+        return decodeSignalPrivateKey(recipientIdentityPrivateKey).open(
+            ciphertext,
+            "OpenBurnBar-Signal-AtRest-v1|$canonical".toByteArray(Charsets.UTF_8),
+            canonical.toByteArray(Charsets.UTF_8),
+        )
+    }
 
     fun openAesGcm(key: ByteArray, nonce: ByteArray, ciphertextAndTag: ByteArray, aad: ByteArray? = null): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")

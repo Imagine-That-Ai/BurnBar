@@ -18,7 +18,10 @@ jobs:
     # image's Xcode 16.4 Swift frontend crashes while lowering lazy global
     # initializers in the large OpenBurnBar SwiftUI target, before tests run.
     runs-on: macos-26
-    timeout-minutes: 120
+    # The macOS-hosted all-in-one harness now runs Swift/macOS/iOS, replay
+    # evals, Firestore, and Android on one runner. Android D8 can otherwise be
+    # killed at the 120-minute job cap after the earlier suites have passed.
+    timeout-minutes: 180
     env:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
       HAS_ASC_SECRETS: ${{ secrets.APP_STORE_ASC_KEY_ID != '' && secrets.APP_STORE_ASC_ISSUER_ID != '' && secrets.APP_STORE_ASC_KEY_P8 != '' }}
@@ -28,6 +31,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
 
       - name: Validate shell script syntax
         run: |
@@ -176,6 +181,18 @@ jobs:
           npm --prefix functions test
           END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "Functions tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
 
       - name: Run OpenBurnBar Swift tests
         # -retry-tests-on-failure: retry failing tests up to 3 times to catch flaky tests

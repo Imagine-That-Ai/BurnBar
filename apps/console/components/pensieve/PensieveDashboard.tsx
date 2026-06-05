@@ -103,7 +103,8 @@ export function PensieveDashboard() {
           <CardTitle>Quota</CardTitle>
           <CardDescription>
             Your sealed knowledge against your {tier} limits. Vectors are cloaked and text is
-            sealed — the server runs search without reading either.
+            sealed — the server runs search over those structures, though some recurrence and
+            co-occurrence patterns stay visible.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-token-4">

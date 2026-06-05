@@ -98,6 +98,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -308,6 +309,10 @@ dependencies {
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
+    // Official Signal libsignal at-rest HPKE identity seal (v0.94.4 pin).
+    implementation("org.signal:libsignal-android:0.94.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
     // Glance for Widget
     implementation("androidx.glance:glance:1.1.1")
     implementation("androidx.glance:glance-appwidget:1.1.1")
@@ -322,7 +327,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Room
-    val roomVersion = "2.6.1"
+    val roomVersion = "2.8.4"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     kapt("androidx.room:room-compiler:$roomVersion")
@@ -331,6 +336,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("org.signal:libsignal-client:0.94.4")
     // Real org.json on the JVM test classpath so parsers can run without an
     // emulator (Android's bundled JSONObject is stubbed in unit tests).
     testImplementation("org.json:json:20240303")

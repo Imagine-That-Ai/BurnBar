@@ -273,6 +273,8 @@ fi
 # contained for diagnostics. Append-only within the run.
 : > "$attempt_log_path"
 
+"$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
+
 # ---------------------------------------------------------------------------
 # Hang detection
 # ---------------------------------------------------------------------------

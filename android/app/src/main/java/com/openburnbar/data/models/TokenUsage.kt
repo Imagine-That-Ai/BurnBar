@@ -339,57 +339,68 @@ val QuotaBucket.isCreditBalance: Boolean
  * those as false `0%` values.
  */
 val QuotaBucket.displayRemainingFraction: Double?
-    get() {
-        metaNumber(
-            "usedPercent",
-            "used_percent",
-            "used_percentage",
-            "usagePercent",
-            "usage_percent",
-            "percentage",
-        )?.let { usedPercent ->
-            return ((100.0 - usedPercent) / 100.0).coerceIn(0.0, 1.0)
-        }
+    get() = displayRemainingFractionAsOf(java.time.Instant.now())
 
-        metaNumber(
-            "remainingPercent",
-            "remaining_percent",
-            "remainingPercentage",
-            "remaining_percentage",
-            "percentRemaining",
-            "percent_remaining",
-        )?.let { remainingPercent ->
-            return (remainingPercent / 100.0).coerceIn(0.0, 1.0)
-        }
+/**
+ * Remaining fraction evaluated as of [now]. A window whose `resetsAt` has
+ * already elapsed has refilled, so it reports full (1.0) regardless of the
+ * stale used value the frozen snapshot still carries — making the bar agree
+ * with the advanced reset countdown. The `now`-parameterised form keeps this
+ * deterministic for tests.
+ */
+fun QuotaBucket.displayRemainingFractionAsOf(now: java.time.Instant): Double? {
+    if (elapsedWindowReset(now) != null) return 1.0
 
-        val unit = metaString("unit")?.lowercase()
-        val limitKind = metaString("limitKind")?.lowercase()
-        if (unit == "unlimited" || limitKind == "unlimited") return 1.0
-
-        if (!used.isFinite() || !limit.isFinite() || !remaining.isFinite()) return null
-
-        if (limit > 0.0) {
-            return (maxOf(0.0, remaining) / limit).coerceIn(0.0, 1.0)
-        }
-
-        if (unit == "percent" || unit == "%") {
-            if (remaining >= 0.0) return (remaining / 100.0).coerceIn(0.0, 1.0)
-            if (used >= 0.0) return ((100.0 - used) / 100.0).coerceIn(0.0, 1.0)
-        }
-
-        if (limit < 0.0 && remaining > 0.0) {
-            // Balance-only or remaining-only signals have no known cap; they
-            // should not be marked as exhausted.
-            val syntheticLimit = remaining + maxOf(0.0, used)
-            return if (syntheticLimit > 0.0) {
-                (remaining / syntheticLimit).coerceIn(0.0, 1.0)
-            } else {
-                1.0
-            }
-        }
-
-        return null
+    metaNumber(
+        "usedPercent",
+        "used_percent",
+        "used_percentage",
+        "usagePercent",
+        "usage_percent",
+        "percentage",
+    )?.let { usedPercent ->
+        return ((100.0 - usedPercent) / 100.0).coerceIn(0.0, 1.0)
     }
+
+    metaNumber(
+        "remainingPercent",
+        "remaining_percent",
+        "remainingPercentage",
+        "remaining_percentage",
+        "percentRemaining",
+        "percent_remaining",
+    )?.let { remainingPercent ->
+        return (remainingPercent / 100.0).coerceIn(0.0, 1.0)
+    }
+
+    val unit = metaString("unit")?.lowercase()
+    val limitKind = metaString("limitKind")?.lowercase()
+    if (unit == "unlimited" || limitKind == "unlimited") return 1.0
+
+    if (!used.isFinite() || !limit.isFinite() || !remaining.isFinite()) return null
+
+    if (limit > 0.0) {
+        return (maxOf(0.0, remaining) / limit).coerceIn(0.0, 1.0)
+    }
+
+    if (unit == "percent" || unit == "%") {
+        if (remaining >= 0.0) return (remaining / 100.0).coerceIn(0.0, 1.0)
+        if (used >= 0.0) return ((100.0 - used) / 100.0).coerceIn(0.0, 1.0)
+    }
+
+    if (limit < 0.0 && remaining > 0.0) {
+        // Balance-only or remaining-only signals have no known cap; they
+        // should not be marked as exhausted.
+        val syntheticLimit = remaining + maxOf(0.0, used)
+        return if (syntheticLimit > 0.0) {
+            (remaining / syntheticLimit).coerceIn(0.0, 1.0)
+        } else {
+            1.0
+        }
+    }
+
+    return null
+}
 
 val QuotaBucket.displayRemainingPercent: Double?
     get() = displayRemainingFraction?.times(100.0)
@@ -485,20 +496,29 @@ val QuotaBucket.bucketUnit: ProviderQuotaUnit
     }
 
 val QuotaBucket.progressFraction: Double
-    get() {
-        val usedP = metaNumber("usedPercent", "used_percent", "used_percentage", "usagePercent", "usage_percent", "percentage")
-        if (usedP != null) {
-            return (usedP / 100.0).coerceIn(0.0, 1.0)
-        }
-        if (limit > 0.0) {
-            return (used / limit).coerceIn(0.0, 1.0)
-        }
-        val remainingP = displayRemainingPercent
-        if (remainingP != null) {
-            return ((100.0 - remainingP) / 100.0).coerceIn(0.0, 1.0)
-        }
-        return 0.0
+    get() = progressFractionAsOf(java.time.Instant.now())
+
+/**
+ * Used fraction evaluated as of [now]. A window whose `resetsAt` has elapsed
+ * has refilled, so it reports empty (0.0) instead of the stale capped value the
+ * frozen snapshot still carries — the fix for "the 5h clock reset but the bar
+ * stayed full." The `now`-parameterised form keeps this deterministic for tests.
+ */
+fun QuotaBucket.progressFractionAsOf(now: java.time.Instant): Double {
+    if (elapsedWindowReset(now) != null) return 0.0
+    val usedP = metaNumber("usedPercent", "used_percent", "used_percentage", "usagePercent", "usage_percent", "percentage")
+    if (usedP != null) {
+        return (usedP / 100.0).coerceIn(0.0, 1.0)
     }
+    if (limit > 0.0) {
+        return (used / limit).coerceIn(0.0, 1.0)
+    }
+    val remainingP = displayRemainingPercent
+    if (remainingP != null) {
+        return ((100.0 - remainingP) / 100.0).coerceIn(0.0, 1.0)
+    }
+    return 0.0
+}
 
 fun QuotaBucket.formatValue(value: Double): String {
     val u = this.bucketUnit
@@ -613,6 +633,21 @@ val QuotaBucket.effectiveResetsAt: java.time.Instant?
         val legacy = meta?.get("resetsAt") as? String ?: return null
         return runCatching { java.time.Instant.parse(legacy) }.getOrNull()
     }
+
+/**
+ * The fresh-window reset boundary when this bucket's window has rolled over as
+ * of [now]; `null` while the window is still active or its period is unknown
+ * (lifetime balances, custom windows). When non-null, the provider's counter
+ * has zeroed for a new window, so the usage bar reads full again — see
+ * [displayRemainingFractionAsOf] / [progressFractionAsOf]. Shares the exact
+ * gate the reset countdown uses ([QuotaResetFormatter.advancedResetIfElapsed]),
+ * so the bar and the countdown can never disagree.
+ */
+fun QuotaBucket.elapsedWindowReset(now: java.time.Instant = java.time.Instant.now()): java.time.Instant? {
+    val raw = effectiveResetsAt ?: return null
+    return com.openburnbar.util.QuotaResetFormatter
+        .advancedResetIfElapsed(raw, effectiveWindowLabel, now)
+}
 
 val QuotaBucket.effectiveWindowLabel: String
     get() = listOfNotNull(name, window).joinToString(" ")

@@ -94,7 +94,7 @@ struct RecoverySetupSheet: View {
             Text("Set up recovery")
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Text("Required before zero-knowledge mode. If you lose every trusted device, this is the only way back to your sealed data — BurnBar cannot recover it for you.")
+            Text("Required before end-to-end encrypted mode. If you lose every trusted device, this is the only way back to your sealed data — BurnBar cannot recover it for you.")
                 .font(.system(size: 12))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)

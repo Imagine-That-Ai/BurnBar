@@ -68,6 +68,19 @@ final class CloudVaultSignalEnvelopeTests: XCTestCase {
         XCTAssertEqual(decoded, envelope)
     }
 
+    func test_cloudVaultCryptoMapHelpersRoundTripSignalEnvelope() throws {
+        let envelope = makeEnvelope()
+        let raw = try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
+
+        XCTAssertNil(raw["relayKeyVersion"])
+        XCTAssertEqual(raw["mode"] as? String, "at-rest")
+        XCTAssertEqual(raw["relayEncryption"] as? String, CloudVaultCrypto.signalAtRestEncryption)
+
+        let decoded = try XCTUnwrap(CloudVaultCrypto.signalEnvelope(from: raw))
+        XCTAssertEqual(decoded, envelope)
+        XCTAssertNil(CloudVaultCrypto.signalEnvelope(from: ["mode": "at-rest"]))
+    }
+
     func test_bindingBridgesIntoTheCanonicalAADSerializer() throws {
         let binding = CloudVaultSignalBinding(
             uid: "uid-1",

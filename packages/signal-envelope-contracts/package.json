@@ -9,7 +9,6 @@
   "types": "lib/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "prepare": "npm run build",
     "test": "npm run build && node --test lib/*.test.js"
   },
   "devDependencies": {

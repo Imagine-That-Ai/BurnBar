@@ -33,8 +33,12 @@
  *     AES-256-GCM `sealedMetadata` blob (the device seals `source_path` there;
  *     see PensieveKnowledgeChunker.prepareBatch), so the cleartext column was a
  *     pure duplicate leak.
- *   - the filter key is `slugHmac` (a vault-keyed HMAC of the slug the device
- *     sends), REQUIRED, instead of the cleartext `sourceSlug`.
+ *   - the canonical per-source manifest key is `sourceManifestId` (L40). The
+ *     callable still accepts legacy request field `sourceSlug` as an alias for
+ *     older clients, but persisted manifests use `sourceManifestId`; `sourceSlug`
+ *     is defensively deleted on merge.
+ *   - the vector filter key is `slugHmac` (a vault-keyed HMAC of the slug the
+ *     device sends), REQUIRED, instead of the cleartext `sourceSlug`.
  * The dedup-v0 retirement is now COMPLETE: legacy v0 rows are unreachable by
  * recall (knowledgeSearch floors `dedupHashVersion == 1` and filters the new
  * `embeddingModelVersion` tag) and the commit idempotent-skip below treats any
@@ -74,6 +78,7 @@ import { stripUndefinedObject } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { randomBytes } from "node:crypto";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { validateSignalAtRestEnvelopeForWrite } from "../signalAtRestWrite.js";
 
 const KNOWLEDGE_VECTOR_DIM = 384;
 const MAX_CHUNK_BYTES = 64 * 1024; // generous per-chunk plaintext ceiling
@@ -118,6 +123,22 @@ const DEDUP_HASH_VERSION_VAULT_HMAC = 1;
 const RETIRED_EMBEDDING_MODEL_VERSION = "bge-small-en-v1.5";
 
 type PensieveTier = "pro" | "ultra";
+
+function requireOptionalSignalEnvelopeForKnowledgeVector(
+  raw: Record<string, unknown>,
+  expected: { uid: string; collection: string; docId: string; field: string },
+  fieldName: string,
+) {
+  if (!Object.prototype.hasOwnProperty.call(raw, "signalEnvelope")) return undefined;
+  const result = validateSignalAtRestEnvelopeForWrite(raw.signalEnvelope, expected);
+  if (!result.ok) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${fieldName} is not a valid path-bound Signal at-rest envelope (${result.reason}).`,
+    );
+  }
+  return result.envelope;
+}
 export interface PensieveLimits {
   sources: number;
   chunks: number;
@@ -240,6 +261,7 @@ export const commitKnowledgeBatch = onCall(
     "commitKnowledgeBatch",
     async (
       request: CallableRequest<{
+        sourceManifestId?: unknown;
         sourceSlug?: unknown;
         slugHmac?: unknown;
         vectors?: unknown;
@@ -250,9 +272,13 @@ export const commitKnowledgeBatch = onCall(
       const uid = requireUid(request);
       await assertActiveBurnBarCloudProEntitlement(uid);
 
-      // Opaque vault-keyed source id for the per-source manifest. Path-derived
-      // slugs are rejected; source paths live only inside sealed metadata.
-      const sourceSlug = requireHexDigest(request.data.sourceSlug, "sourceSlug");
+      // Canonical opaque source manifest id for the per-source manifest. Existing
+      // clients still send this value as `sourceSlug`; accept that as a request
+      // alias, but persist only `sourceManifestId` on the manifest doc.
+      const sourceManifestId = requireHexDigest(
+        request.data.sourceManifestId ?? request.data.sourceSlug,
+        "sourceManifestId",
+      );
       // Vault-keyed HMAC(slug) the device computes; the only slug-derived value
       // stored on each vector. REQUIRED on the write path (privacy-leak-
       // remediation-2026-06-02 §3) — a cleartext slug is no longer stored on the
@@ -278,17 +304,32 @@ export const commitKnowledgeBatch = onCall(
       // the sealed metadata blob, so we never re-accept a cleartext copy to store.
       const validated = vectors.map((raw, i) => {
         const { dedupHash, dedupHashVersion } = resolveDedupHash(raw, `vectors[${i}]`);
+        const vectorId = safeCloudDocumentID(raw.vectorId ?? dedupHash, `vectors[${i}].vectorId`);
         return {
           // Prefer an explicit device id; else the keyed dedupHash (B-SEC-2 — a
           // keyed value, not a plaintext SHA-256). `vectorId` is only an opaque
           // idempotency doc id; with v1 hashes it no longer confirms a guess.
-          vectorId: safeCloudDocumentID(raw.vectorId ?? dedupHash, `vectors[${i}].vectorId`),
+          vectorId,
           // ONLY the cloaked vector is accepted — a raw `embedding` is rejected
           // (privacy-leak-remediation-2026-06-02 §3): the server must never store
           // an uncloaked embedding it could invert.
           embedding: requireCloakedVector(raw.cloakedVector, `vectors[${i}].cloakedVector`),
           sealedCiphertext: requireSealedText(raw.sealedCiphertext ?? raw.ciphertext, `vectors[${i}].sealedCiphertext`),
           sealedMetadata: requireSealedText(raw.sealedMetadata, `vectors[${i}].sealedMetadata`),
+          // Optional-additive Signal producer seam (flag-OFF): existing AES-GCM
+          // fields remain required. If a device sends `signalEnvelope`, the Admin
+          // SDK write path enforces the same path binding as firestore.rules before
+          // persisting the sanitized envelope.
+          signalEnvelope: requireOptionalSignalEnvelopeForKnowledgeVector(
+            raw,
+            {
+              uid,
+              collection: "cloud_search_knowledge",
+              docId: vectorId,
+              field: "sealedCiphertext",
+            },
+            `vectors[${i}].signalEnvelope`,
+          ),
           dedupHash,
           dedupHashVersion,
           sourceKind: requireSourceKind(raw.sourceKind, `vectors[${i}].sourceKind`),
@@ -363,6 +404,7 @@ export const commitKnowledgeBatch = onCall(
           embeddingModelVersion,
           sealedCiphertext: v.sealedCiphertext,
           sealedMetadata: v.sealedMetadata,
+          signalEnvelope: v.signalEnvelope,
           deviceId,
           commitID,
           updatedAt: now,
@@ -387,14 +429,16 @@ export const commitKnowledgeBatch = onCall(
       }
 
       // Per-source manifest: increment counts + record sync health (no plaintext).
-      // The manifest id/sourceSlug is an opaque vault-keyed source id; source
-      // paths and labels live only inside sealed per-vector metadata.
+      // The manifest id/sourceManifestId is an opaque vault-keyed source id;
+      // source paths and labels live only inside sealed per-vector metadata.
       writes.push((batch) =>
         batch.set(
-          db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`),
+          db.doc(`users/${uid}/knowledge_sync_manifests/${sourceManifestId}`),
           stripUndefinedObject({
             uid,
-            sourceSlug,
+            sourceManifestId,
+            // L40 migration: clear any stale legacy field on merge.
+            sourceSlug: FieldValue.delete(),
             slugHmac,
             embeddingModelVersion,
             chunkCount: FieldValue.increment(creates),
@@ -415,8 +459,9 @@ export const commitKnowledgeBatch = onCall(
 
 /**
  * configureKnowledgeSource — register a knowledge source (repo docs / notes /
- * chat memory) and return its stable opaque source id. Enforces the per-tier
- * source cap for NEW sources only. Returns { sourceSlug }.
+ * chat memory) and return its stable opaque source manifest id. Enforces the
+ * per-tier source cap for NEW sources only. Returns { sourceManifestId } plus a
+ * response-only legacy { sourceSlug } alias for older clients.
  */
 export const configureKnowledgeSource = onCall(
   CALLABLE_OPTS,
@@ -428,6 +473,7 @@ export const configureKnowledgeSource = onCall(
         rootPath?: unknown;
         repoInstallId?: unknown;
         globs?: unknown;
+        sourceManifestId?: unknown;
         sourceSlug?: unknown;
       }>,
     ) => {
@@ -439,10 +485,11 @@ export const configureKnowledgeSource = onCall(
         throw new HttpsError("invalid-argument", "rootPath is private and must stay sealed on device.");
       }
       const repoInstallId = boundedTrimmedString(request.data.repoInstallId, "repoInstallId", 256, false);
-      const requested = request.data.sourceSlug ?? repoInstallId ?? randomBytes(32).toString("hex");
-      const sourceSlug = requireHexDigest(requested, "sourceSlug");
+      const requested =
+        request.data.sourceManifestId ?? request.data.sourceSlug ?? repoInstallId ?? randomBytes(32).toString("hex");
+      const sourceManifestId = requireHexDigest(requested, "sourceManifestId");
 
-      const manifestRef = db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`);
+      const manifestRef = db.doc(`users/${uid}/knowledge_sync_manifests/${sourceManifestId}`);
       const existing = await manifestRef.get();
       if (!existing.exists) {
         const tier = await resolvePensieveTier(uid);
@@ -458,7 +505,9 @@ export const configureKnowledgeSource = onCall(
       await manifestRef.set(
         stripUndefinedObject({
           uid,
-          sourceSlug,
+          sourceManifestId,
+          // L40 migration: clear any stale legacy field on merge.
+          sourceSlug: FieldValue.delete(),
           sourceKind,
           repoInstallId,
           chunkCount: existing.exists ? (existing.get("chunkCount") ?? 0) : 0,
@@ -468,7 +517,7 @@ export const configureKnowledgeSource = onCall(
         }),
         { merge: true },
       );
-      return { sourceSlug };
+      return { sourceManifestId, sourceSlug: sourceManifestId };
     },
   ),
 );
@@ -478,16 +527,19 @@ export const deleteKnowledgeSource = onCall(
   CALLABLE_OPTS,
   wrapCallableHandler(
     "deleteKnowledgeSource",
-    async (request: CallableRequest<{ sourceSlug?: unknown; slugHmac?: unknown }>) => {
+    async (request: CallableRequest<{ sourceManifestId?: unknown; sourceSlug?: unknown; slugHmac?: unknown }>) => {
       const uid = requireUid(request);
       await assertActiveBurnBarCloudProEntitlement(uid);
-      const sourceSlug = requireHexDigest(request.data.sourceSlug, "sourceSlug");
+      const sourceManifestId = requireHexDigest(
+        request.data.sourceManifestId ?? request.data.sourceSlug,
+        "sourceManifestId",
+      );
       const coll = db.collection(`users/${uid}/cloud_search_knowledge`);
 
       // B-SEC-2 rows are filter-keyed by `slugHmac` (not the cleartext slug).
       // Resolve it from the device (preferred) or the manifest, then also sweep
       // any legacy `sourceSlug`-keyed rows so pre-B-SEC-2 sources fully delete.
-      const manifestRef = db.doc(`users/${uid}/knowledge_sync_manifests/${sourceSlug}`);
+      const manifestRef = db.doc(`users/${uid}/knowledge_sync_manifests/${sourceManifestId}`);
       const slugHmac =
         request.data.slugHmac !== undefined
           ? requireHexDigest(request.data.slugHmac, "slugHmac")
@@ -497,7 +549,7 @@ export const deleteKnowledgeSource = onCall(
       if (slugHmac) {
         deleted += await deleteQueryInBatches(coll.where("slugHmac", "==", slugHmac));
       }
-      deleted += await deleteQueryInBatches(coll.where("sourceSlug", "==", sourceSlug));
+      deleted += await deleteQueryInBatches(coll.where("sourceSlug", "==", sourceManifestId));
       await manifestRef.delete();
       return { ok: true, deleted };
     },

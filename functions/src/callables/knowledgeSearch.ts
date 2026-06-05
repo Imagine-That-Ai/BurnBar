@@ -114,24 +114,30 @@ export const searchKnowledge = onCall(
         })
         .get();
 
-      const hits = snap.docs.map((doc) => ({
-        vectorId: doc.id,
-        // Sealed envelopes — opaque to the server; the client decrypts on-device.
-        // Field names match the hosted-MCP burnbar_search_knowledge hit shape AND
-        // the iOS reader (PensieveMemorySearchView): `ciphertext` + `sealedMetadata`.
-        // The real source path/slug live inside `sealedMetadata` (decrypted on
-        // device); the server returns ONLY the vault-keyed `slugHmac`/`dedupHash`
-        // so the client can correlate hits without exposing a cleartext hash/path.
-        // The cleartext `sourceSlug`/`contentHash` fallbacks are dropped now that
-        // clients are v1 (privacy-leak-remediation-2026-06-02 §3).
-        ciphertext: doc.get("sealedCiphertext"),
-        sealedMetadata: doc.get("sealedMetadata"),
-        sourceKind: doc.get("sourceKind"),
-        slugHmac: doc.get("slugHmac"),
-        dedupHash: doc.get("dedupHash"),
-        score: 1 - Number(doc.get("_distance") ?? 1), // COSINE distance -> similarity
-        decryptMode: "local_decrypt",
-      }));
+      const hits = snap.docs.map((doc) => {
+        const signalEnvelope = doc.get("signalEnvelope");
+        return {
+          vectorId: doc.id,
+          // Sealed envelopes — opaque to the server; the client decrypts on-device.
+          // Field names match the hosted-MCP burnbar_search_knowledge hit shape AND
+          // the iOS reader (PensieveMemorySearchView): `ciphertext` + `sealedMetadata`.
+          // The optional Signal envelope is additive and remains opaque; legacy
+          // ciphertext stays present while the data-domain sealing scheme is flag-OFF.
+          // The real source path/slug live inside `sealedMetadata` (decrypted on
+          // device); the server returns ONLY the vault-keyed `slugHmac`/`dedupHash`
+          // so the client can correlate hits without exposing a cleartext hash/path.
+          // The cleartext `sourceSlug`/`contentHash` fallbacks are dropped now that
+          // clients are v1 (privacy-leak-remediation-2026-06-02 §3).
+          ciphertext: doc.get("sealedCiphertext"),
+          sealedMetadata: doc.get("sealedMetadata"),
+          ...(signalEnvelope === undefined ? {} : { signalEnvelope }),
+          sourceKind: doc.get("sourceKind"),
+          slugHmac: doc.get("slugHmac"),
+          dedupHash: doc.get("dedupHash"),
+          score: 1 - Number(doc.get("_distance") ?? 1), // COSINE distance -> similarity
+          decryptMode: "local_decrypt",
+        };
+      });
 
       return { ok: true, hits, embeddingModelVersion };
     },

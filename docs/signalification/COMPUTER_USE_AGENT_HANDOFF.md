@@ -199,5 +199,6 @@ Ramp domain-by-domain (`pensieve` → `session_logs` → `conversations_chat`), 
 
 ## Pointers
 - Plan: `docs/signalification/00_ORCHESTRATION.md`, `SIGNAL_ENVELOPE_V1.md`, `DOMAIN_SIGNALIFICATION_MAP.md`, `SWARM_RUNBOOK.md`.
+- External-review package index: `docs/signalification/EXTERNAL_CRYPTO_REVIEW_PACKAGE.md`.
 - Ledger (keep `implementation-notes.html` + `progressEvents` current at each phase): `.agent/runs/signalification-phases-3to8-20260604/`.
 - Evidence + working openers + audit synthesis: `.agent/runs/signalification-phases-3to8-20260604/evidence/`.

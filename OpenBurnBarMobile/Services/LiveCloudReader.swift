@@ -199,9 +199,10 @@ final class LiveCloudReader: CloudReader {
             }
             let approvedAt = (d["approvedAt"] as? Timestamp)?.dateValue()
             let keyVersion = d["keyVersion"] as? Int
-            // Stream 6: surface the already-stored fingerprint so the trust UX
-            // can render a comparable safety code. Read-only; no crypto change.
+            // Stream 6: surface both the stored fingerprint and the published
+            // key bytes. The trust UX only enables approval when they match.
             let publicKeyFingerprint = d["publicKeyFingerprint"] as? String
+            let publicKeyData = await escrowPublicKeyData(uid: uid, deviceId: did, keyVersion: keyVersion)
 
             if let existing = deviceMap[did] {
                 deviceMap[did] = DeviceRecord(
@@ -210,7 +211,8 @@ final class LiveCloudReader: CloudReader {
                     lastSeen: existing.lastSeen ?? CloudDeviceActivityDateResolver.date(from: d),
                     trustState: trustState, approvedAt: approvedAt,
                     keyVersion: keyVersion, isCurrentDevice: existing.isCurrentDevice,
-                    publicKeyFingerprint: publicKeyFingerprint
+                    publicKeyFingerprint: publicKeyFingerprint,
+                    publicKeyData: publicKeyData
                 )
             } else {
                 deviceMap[did] = DeviceRecord(
@@ -220,12 +222,26 @@ final class LiveCloudReader: CloudReader {
                     lastSeen: CloudDeviceActivityDateResolver.date(from: d),
                     trustState: trustState, approvedAt: approvedAt,
                     keyVersion: keyVersion, isCurrentDevice: did == deviceId,
-                    publicKeyFingerprint: publicKeyFingerprint
+                    publicKeyFingerprint: publicKeyFingerprint,
+                    publicKeyData: publicKeyData
                 )
             }
         }
 
         return Array(deviceMap.values)
+    }
+
+    private func escrowPublicKeyData(uid: String, deviceId: String, keyVersion: Int?) async -> String? {
+        guard let keyVersion else { return nil }
+        do {
+            let snapshot = try await db.collection("users").document(uid)
+                .collection("escrow_public_keys")
+                .document("\(deviceId)_\(keyVersion)")
+                .getDocument()
+            return snapshot.data()?["publicKeyData"] as? String
+        } catch {
+            return nil
+        }
     }
 
     func loadAvailableEnvelopes() async throws -> [AvailableEnvelope] {

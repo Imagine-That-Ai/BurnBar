@@ -132,9 +132,7 @@ describe("Hermes Gateway Signal envelope version ladder (flag OFF)", () => {
     expect(sealed).toEqual(signalEnvelope());
     // The server only round-trips the opaque base64 ciphertext; it never holds a
     // Signal session key, so the payload is passed through verbatim.
-    expect(sealed?.ciphertextLayer.payloadCiphertextB64).toBe(
-      signalEnvelope().ciphertextLayer.payloadCiphertextB64,
-    );
+    expect(sealed?.ciphertextLayer.payloadCiphertextB64).toBe(signalEnvelope().ciphertextLayer.payloadCiphertextB64);
     expect(sealed?.relayKeyVersion).toBe(HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL);
   });
 
@@ -188,18 +186,18 @@ describe("supportsSignalEnvelope capability defaults OFF and never selects v4", 
 
   it("defaults supportsSignalEnvelope to FALSE when the field is absent", () => {
     expect(sanitizeGatewayRelayEnvelopeCapabilities(baseCaps()).supportsSignalEnvelope).toBe(false);
-    expect(sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: false }).supportsSignalEnvelope).toBe(
-      false,
-    );
+    expect(
+      sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: false }).supportsSignalEnvelope,
+    ).toBe(false);
   });
 
   it("rejects supportsSignalEnvelope=true while v4 is not negotiable (flag OFF)", () => {
-    expect(() =>
-      sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: true }),
-    ).toThrow(/not yet negotiable/);
-    expect(() =>
-      sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: "yes" }),
-    ).toThrow(/must be a boolean/);
+    expect(() => sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: true })).toThrow(
+      /not yet negotiable/,
+    );
+    expect(() => sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: "yes" })).toThrow(
+      /must be a boolean/,
+    );
   });
 
   it("negotiates supportsSignalEnvelope as the AND of both endpoints (both default false)", () => {

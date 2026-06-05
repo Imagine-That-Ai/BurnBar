@@ -19,6 +19,13 @@
   ],
   "versionGroups": [
     {
+      "label": "Local workspace packages use package-relative file: paths",
+      "packages": ["**"],
+      "dependencies": ["@openburnbar/signal-envelope-contracts"],
+      "specifierTypes": ["file"],
+      "isIgnored": true
+    },
+    {
       "label": "TypeScript — all packages must use the highest version seen in the monorepo",
       "packages": ["**"],
       "dependencies": ["typescript"],

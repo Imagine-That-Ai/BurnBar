@@ -1448,7 +1448,7 @@ extension ProviderQuotaService {
             mergedInputs = freshSnapshots
         }
 
-        let mergedBuckets = mergeBuckets(across: mergedInputs)
+        let mergedBuckets = mergeBuckets(across: mergedInputs, now: now)
         guard !mergedBuckets.isEmpty else { return nil }
 
         let fetchedAt = mergedInputs.map(\.fetchedAt).min() ?? now
@@ -1584,14 +1584,14 @@ extension ProviderQuotaService {
     /// Group inputs' displayable buckets by `(key, windowKind)` and sum
     /// them into one bucket per group. Buckets without a unit match are
     /// dropped (mismatched units would produce nonsense sums).
-    static func mergeBuckets(across snapshots: [ProviderQuotaSnapshot]) -> [ProviderQuotaBucket] {
+    static func mergeBuckets(across snapshots: [ProviderQuotaSnapshot], now: Date = Date()) -> [ProviderQuotaBucket] {
         struct GroupKey: Hashable {
             let key: String
             let windowKind: ProviderQuotaWindowKind
         }
         var groups: [GroupKey: [ProviderQuotaBucket]] = [:]
         for snapshot in snapshots {
-            for bucket in snapshot.displayableQuotaBuckets {
+            for bucket in snapshot.displayableQuotaBuckets(relativeTo: now) {
                 let groupKey = GroupKey(key: bucket.key, windowKind: bucket.windowKind)
                 groups[groupKey, default: []].append(bucket)
             }

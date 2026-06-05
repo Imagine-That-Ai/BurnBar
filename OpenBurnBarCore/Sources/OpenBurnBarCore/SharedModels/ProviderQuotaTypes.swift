@@ -207,6 +207,19 @@ public extension ProviderQuotaBucket {
         guard resetsAt <= now else { return resetsAt }
 
         let marker = "\(name) \(window ?? "")".lowercased()
+        // Recognise the canonical `ProviderQuotaWindowKind` raw values the Mac
+        // writes as `window` first. Codex syncs `window: "rollingHours"` with a
+        // bare `name: "codex-primary"`, so the digit/word markers below never
+        // match it — without these two lines a rolled-over Codex 5h window can
+        // neither advance its countdown nor reset its bar on iOS / Android.
+        // `rollingdays` must precede the generic `day` branch (it contains
+        // "day") so the weekly window advances by 7 days, not 1.
+        if marker.contains("rollinghours") {
+            return advance(resetsAt, by: 5 * 60 * 60, after: now)
+        }
+        if marker.contains("rollingdays") {
+            return advance(resetsAt, by: 7 * 24 * 60 * 60, after: now)
+        }
         if marker.contains("5") || marker.contains("five") {
             return advance(resetsAt, by: 5 * 60 * 60, after: now)
         }
@@ -243,6 +256,62 @@ public extension ProviderQuotaBucket {
         guard let pair = resetsAtDisplay else { return nil }
         return "\(pair.relative) · \(pair.absolute)"
     }
+
+    /// Returns the bucket reconciled to `now`. When a fixed-reset rolling
+    /// window's `resetsAt` has already passed, the provider's counter has
+    /// rolled into a fresh window, so the bucket reports 0 used / full
+    /// remaining with `resetsAt` advanced to the next boundary. Buckets whose
+    /// window has no known period (lifetime balances, custom windows) or whose
+    /// reset is still in the future are returned unchanged.
+    ///
+    /// This reuses the exact gate `resetsAtDisplay` uses (`displayResetDate`),
+    /// so the usage bar and the reset countdown always agree: whenever the
+    /// countdown shows a fresh future reset, the bar shows the matching fresh
+    /// window. The historical bug was that the countdown advanced past a stale
+    /// reset while the bar stayed pinned at the old window's usage — most
+    /// visible on Codex, whose snapshot freezes once the user is capped (no
+    /// new rollout events get written), but latent for every provider.
+    func reconcilingElapsedWindow(asOf now: Date = Date()) -> ProviderQuotaBucket {
+        guard let resetsAt, resetsAt <= now,
+              let nextReset = Self.displayResetDate(resetsAt, name: name, window: window, now: now)
+        else { return self }
+
+        // Full remaining for the fresh window. Percent buckets carry limit 100;
+        // value buckets carry their real cap. When the cap is unknown we leave
+        // `remaining` untouched and rely on the zeroed percent meta below.
+        let fullRemaining = (limit.isFinite && limit > 0) ? limit : remaining
+
+        // `displayRemainingFraction` reads the percent meta aliases before the
+        // used/limit/remaining triple, so zero every used-percent alias and
+        // fill every remaining-percent alias the payload actually carries.
+        var resetMeta = meta ?? [:]
+        for key in Self.usedPercentMetaKeys where resetMeta[key] != nil {
+            resetMeta[key] = "0"
+        }
+        for key in Self.remainingPercentMetaKeys where resetMeta[key] != nil {
+            resetMeta[key] = "100"
+        }
+
+        return ProviderQuotaBucket(
+            name: name,
+            used: 0,
+            limit: limit,
+            remaining: fullRemaining,
+            window: window,
+            meta: resetMeta.isEmpty ? nil : resetMeta,
+            resetsAt: nextReset
+        )
+    }
+
+    private static let usedPercentMetaKeys = [
+        "usedPercent", "used_percent", "used_percentage",
+        "usagePercent", "usage_percent", "percentage"
+    ]
+
+    private static let remainingPercentMetaKeys = [
+        "remainingPercent", "remaining_percent", "remainingPercentage",
+        "remaining_percentage", "percentRemaining", "percent_remaining"
+    ]
 
     private static func makeRelativeResetsFormatter() -> RelativeDateTimeFormatter {
         let f = RelativeDateTimeFormatter()
@@ -473,7 +542,11 @@ public extension ProviderQuotaSnapshot {
     }
 
     var displayableQuotaBuckets: [ProviderQuotaBucket] {
-        buckets.filter(\.isDisplayableQuotaSignal)
+        // Reconcile each survivor to the current moment so a rolled-over window
+        // reports its fresh (0 used / full remaining) state. This is the single
+        // chokepoint feeding the popover, customizedBuckets, the cross-surface
+        // sync writer (`filteringToDisplayableQuotaSignal`), and the iOS rows.
+        buckets.filter(\.isDisplayableQuotaSignal).map { $0.reconcilingElapsedWindow() }
     }
 
     var hasDisplayableQuotaSignal: Bool {
