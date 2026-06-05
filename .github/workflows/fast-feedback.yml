@@ -39,6 +39,9 @@ jobs:
       - name: Install functions dependencies
         run: npm ci --prefix functions
 
+      - name: Build Signal envelope contracts
+        run: bash scripts/build-signal-envelope-contracts.sh
+
       - name: TypeScript type check
         run: cd functions && npx tsc --noEmit
 
