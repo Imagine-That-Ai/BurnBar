@@ -51,6 +51,20 @@ function assertSectionNotIncludes(relativePath, startNeedle, endNeedle, needle, 
   }
 }
 
+function assertSectionNotMatches(relativePath, startNeedle, endNeedle, pattern, note) {
+  const section = sectionBetween(relativePath, startNeedle, endNeedle);
+  if (pattern.test(section)) {
+    fail(`${relativePath}: ${note ?? `section matches forbidden ${pattern.toString()}`}`);
+  }
+}
+
+function assertSectionMatches(relativePath, startNeedle, endNeedle, pattern, note) {
+  const section = sectionBetween(relativePath, startNeedle, endNeedle);
+  if (!pattern.test(section)) {
+    fail(`${relativePath}: ${note ?? `section missing required ${pattern.toString()}`}`);
+  }
+}
+
 function sectionBetween(relativePath, startNeedle, endNeedle) {
   const text = readRel(relativePath);
   const start = text.indexOf(startNeedle);
@@ -783,6 +797,67 @@ assertSectionIncludes(
   "match /users/{userId}/unified_audit_log",
   '!("repoFullName" in request.resource.data)',
   "knowledge_repos must reject client-supplied cleartext repoFullName",
+);
+assertSectionIncludes(
+  "firestore.rules",
+  "match /users/{userId}/knowledge_repos/{repoId}",
+  "match /users/{userId}/unified_audit_log",
+  '!("sourceSlug" in request.resource.data)',
+  "knowledge_repos must reject client-supplied cleartext sourceSlug",
+);
+
+// ── connectKnowledgeRepo (Admin SDK) must NOT persist a cleartext sourceSlug ──
+// firestore.rules BANS sourceSlug on client writes, but the connectKnowledgeRepo
+// callable runs with the Admin SDK and BYPASSES rules — so a rules-only check is
+// structurally blind to what the callable actually stores. Pin the callable
+// source directly: the persisted row must carry only the opaque, server-keyed
+// `sourceSlugToken` (the manifest doc-id key), never the reversible repo-name-
+// derived `sourceSlug`. The cleartext slug may be read transiently to DERIVE the
+// token and is explicitly FieldValue.delete()'d off legacy rows on re-connect.
+// (§4 slug remediation — closes the scanner's Admin-SDK blind spot.)
+const KNOWLEDGE_SYNC = "functions/src/callables/knowledgeSync.ts";
+const CONNECT_REPO_START = "export const connectKnowledgeRepo = onCall(";
+const CONNECT_REPO_END = "export const disconnectKnowledgeRepo = onCall(";
+// (a) The persisted row must include the opaque manifest token as an actual
+//     written field (object-shorthand `sourceSlugToken,`), not merely a comment.
+assertSectionMatches(
+  KNOWLEDGE_SYNC,
+  CONNECT_REPO_START,
+  CONNECT_REPO_END,
+  /\n\s*sourceSlugToken,\s*\n/u,
+  "connectKnowledgeRepo must persist the opaque server-keyed sourceSlugToken field",
+);
+// (b) The opaque token must be an HMAC of the cleartext slug (no raw store).
+assertIncludes(
+  KNOWLEDGE_SYNC,
+  "function sourceSlugTokenFor(",
+  "connectKnowledgeRepo must derive the manifest key by HMAC (sourceSlugTokenFor)",
+);
+assertIncludes(
+  KNOWLEDGE_SYNC,
+  'createHmac("sha256", secret).update(`manifest|${uid}|${sourceSlug}`',
+  "sourceSlugTokenFor must HMAC the cleartext slug under the manifest domain prefix",
+);
+// (c) The persist block must NOT write the cleartext slug as an object-shorthand
+//     field (`sourceSlug,`) — the only allowed sourceSlug write here is the
+//     defensive FieldValue.delete() that strips a stale legacy plaintext field.
+assertSectionNotMatches(
+  KNOWLEDGE_SYNC,
+  CONNECT_REPO_START,
+  CONNECT_REPO_END,
+  /\n\s*sourceSlug,\s*\n/u,
+  "connectKnowledgeRepo must NOT persist the cleartext sourceSlug as an object field (use sourceSlugToken)",
+);
+// (d) If the cleartext slug is written at all, it must be a delete sentinel
+//     (the rest of that line must contain FieldValue.delete() — never a value).
+//     The lookahead spans the whole line so greedy-whitespace backtracking can't
+//     defeat it.
+assertSectionNotMatches(
+  KNOWLEDGE_SYNC,
+  CONNECT_REPO_START,
+  CONNECT_REPO_END,
+  /\n\s*sourceSlug:(?![^\n]*FieldValue\.delete\(\))/u,
+  "connectKnowledgeRepo may only write sourceSlug as FieldValue.delete() (strip legacy), never a value",
 );
 assertIncludes(
   "functions/src/callables/knowledgeMemory.ts",

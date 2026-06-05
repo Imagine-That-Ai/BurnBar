@@ -27,9 +27,15 @@ vi.mock("../callables/shared.js", async () => {
   };
 });
 
+// Sentinel for FieldValue.delete() — the merge-set below strips any key whose
+// value is this sentinel, matching Firestore's delete-on-merge semantics so the
+// test can prove a stale cleartext slug is removed (not just absent on create).
+const FIELD_DELETE = Symbol("FieldValue.delete");
+
 vi.mock("firebase-admin/firestore", () => ({
   Timestamp: { now: () => ({ __ts: true }) },
   getFirestore: () => ({}),
+  FieldValue: { delete: () => FIELD_DELETE },
 }));
 
 const stored = new Map<string, Record<string, unknown>>();
@@ -38,7 +44,13 @@ function makeDb() {
   const docRef = (path: string) => ({
     __path: path,
     get: async () => ({ exists: stored.has(path), data: () => stored.get(path) }),
-    set: async (data: Record<string, unknown>) => void stored.set(path, { ...stored.get(path), ...data }),
+    set: async (data: Record<string, unknown>) => {
+      const merged: Record<string, unknown> = { ...stored.get(path), ...data };
+      for (const key of Object.keys(merged)) {
+        if (merged[key] === FIELD_DELETE) delete merged[key];
+      }
+      stored.set(path, merged);
+    },
     delete: async () => void stored.delete(path),
   });
   return { doc: (path: string) => docRef(path) };
@@ -90,6 +102,14 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     expect(record!.sealedRepoFullName).toEqual(sealedName);
     // The cleartext repo name is GONE from the stored row.
     expect(record).not.toHaveProperty("repoFullName");
+    // §4 slug remediation: the cleartext repo-name-derived `sourceSlug` is NOT
+    // persisted — only the opaque, server-keyed `sourceSlugToken` (HMAC of the
+    // slug) is stored as the manifest routing key.
+    expect(record).not.toHaveProperty("sourceSlug");
+    expect(typeof record!.sourceSlugToken).toBe("string");
+    expect(record!.sourceSlugToken).toMatch(/^[a-f0-9]{64}$/);
+    // The token must be a non-reversible HMAC, never the cleartext slug itself.
+    expect(record!.sourceSlugToken).not.toBe("repo-docs-secret");
     const leaves: string[] = [];
     const walk = (v: unknown) => {
       if (typeof v === "string") leaves.push(v);
@@ -99,6 +119,8 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     walk(record);
     expect(leaves).not.toContain(REPO);
     expect(leaves).not.toContain(REPO.toLowerCase());
+    // The reversible cleartext slug must not appear anywhere in the stored row.
+    expect(leaves).not.toContain("repo-docs-secret");
   });
 
   it("is case-insensitive: differently-cased full names map to the SAME token", async () => {
@@ -120,5 +142,46 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
 
     expect(a.repoId).toBe(b.repoId);
     expect(a.repoId).toBe(expectedToken("Owner/Repo"));
+  });
+
+  it("re-connect strips a pre-existing cleartext sourceSlug and re-keys to the opaque token", async () => {
+    const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    const run = (connectKnowledgeRepo as unknown as Runnable).run;
+
+    const token = expectedToken(REPO);
+    // Seed a LEGACY row in the realistic intermediate state: the repo name was
+    // already sealed by the earlier name remediation, but the row still carries
+    // the reversible cleartext `sourceSlug` written before the §4 slug fix.
+    // (Cleanup of any legacy cleartext `repoFullName` is privacyBackfill's job,
+    // not connect's — connect only owns the slug delete asserted here.)
+    stored.set(`users/userA/knowledge_repos/${token}`, {
+      repoMatchToken: token,
+      sealedRepoFullName: sealedName,
+      sourceSlug: "repo-docs-secret",
+    });
+
+    await run({
+      auth: { uid: "userA", token: {} },
+      app: { appId: "test-app" },
+      rawRequest: { headers: {} },
+      data: { repoFullName: REPO, sealedRepoFullName: sealedName, sourceSlug: "repo-docs-secret" },
+    });
+
+    const record = stored.get(`users/userA/knowledge_repos/${token}`);
+    expect(record).toBeDefined();
+    // The stale cleartext slug is DELETED on re-connect (merge + FieldValue.delete),
+    // not merely absent on a fresh create — this exercises the delete-on-merge path
+    // against a POPULATED legacy row.
+    expect(record).not.toHaveProperty("sourceSlug");
+    // Reads now route through the opaque token.
+    expect(record!.sourceSlugToken).toMatch(/^[a-f0-9]{64}$/);
+    const leaves: string[] = [];
+    const walk = (v: unknown) => {
+      if (typeof v === "string") leaves.push(v);
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object") Object.values(v).forEach(walk);
+    };
+    walk(record);
+    expect(leaves).not.toContain("repo-docs-secret");
   });
 });
