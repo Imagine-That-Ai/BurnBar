@@ -297,6 +297,59 @@ export function isSignalEnvelope(value: unknown, expectedMode?: SignalEnvelopeMo
   return sanitizeSignalEnvelope(value, expectedMode) !== undefined;
 }
 
+/**
+ * Domain-separation prefix for the v4 Signal-envelope binding canonicalization.
+ * This is a NEW, v4-only format (see {@link bindingToAAD}); legacy HPKE /
+ * CloudVault envelopes keep their own AAD via their own openers and MUST NOT be
+ * routed through this serializer.
+ */
+export const SIGNAL_BINDING_AAD_PREFIX = "OpenBurnBar-Signal-AAD-v1|";
+
+const SIGNAL_BINDING_AAD_FORBIDDEN = /[|\r\n]/u;
+
+/**
+ * Deterministic, cross-language canonical serialization of a {@link SignalBinding}
+ * for use as the HPKE `info` suffix AND the AEAD `associatedData` in the v4
+ * Signal at-rest seal/open path.
+ *
+ * The structured binding object does NOT carry `schemaVersion`/`purpose`, so this
+ * is a NEW grammar rather than a reuse of the legacy pipe format. The layout is a
+ * fixed field order joined by `|`, with absent optionals serialized as EMPTY
+ * segments so positions stay stable:
+ *
+ *   SIGNAL_BINDING_AAD_PREFIX + [mode, scope, uid, clientId, collection, docId,
+ *   field, slotId, formatVersion].join("|")
+ *
+ * Every BurnBar language (TypeScript here, Swift in
+ * `OpenBurnBarCore/.../SignalEnvelopeAAD.swift`) MUST produce the byte-identical
+ * UTF-8 string; the shared fixture `fixtures/binding-aad-vectors.json` is the
+ * byte-parity proof consumed by both test suites.
+ *
+ * Fail-closed: although the contract's `boundedText` validator already rejects
+ * any segment containing `|`, CR, or LF, this function re-asserts that invariant
+ * and THROWS on a violating segment rather than emitting an ambiguous AAD. This
+ * is production E2EE code — never silently weaken domain separation.
+ */
+export function bindingToAAD(binding: SignalBinding): string {
+  const segments = [
+    binding.mode,
+    binding.scope,
+    binding.uid,
+    binding.clientId ?? "",
+    binding.collection ?? "",
+    binding.docId ?? "",
+    binding.field ?? "",
+    binding.slotId ?? "",
+    String(binding.formatVersion),
+  ];
+  for (const segment of segments) {
+    if (SIGNAL_BINDING_AAD_FORBIDDEN.test(segment)) {
+      throw new Error("signal binding segment contains a reserved '|' or CR/LF character");
+    }
+  }
+  return SIGNAL_BINDING_AAD_PREFIX + segments.join("|");
+}
+
 export function sanitizeSignalEnvelopeForExport(
   path: string,
   envelope: Record<string, unknown>,

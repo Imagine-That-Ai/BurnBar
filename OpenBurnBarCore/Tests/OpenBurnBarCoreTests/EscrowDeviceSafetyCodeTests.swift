@@ -91,4 +91,116 @@ final class EscrowDeviceSafetyCodeTests: XCTestCase {
         defaults.set(false, forKey: EscrowDeviceTrustSafetyCheckFlag.userDefaultsKey)
         XCTAssertFalse(EscrowDeviceTrustSafetyCheckFlag.isEnabled(defaults: defaults))
     }
+
+    // MARK: - Stream 6 enablement: key-bound (load-bearing) safety code
+
+    /// A real P-256 x9.63 (65-byte) public key, base64-encoded, exactly as
+    /// `EscrowPublicKey.publicKeyData` carries it.
+    private func realPublicKeyBase64() -> String {
+        P256.KeyAgreement.PrivateKey().publicKey.x963Representation.base64EncodedString()
+    }
+
+    func testRecomputeFingerprintMatchesCanonicalSha256OfKeyBytes() throws {
+        let raw = P256.KeyAgreement.PrivateKey().publicKey.x963Representation
+        let base64 = raw.base64EncodedString()
+        let expected = Data(SHA256.hash(data: raw)).base64EncodedString()
+        XCTAssertEqual(EscrowDeviceSafetyCode.recomputeFingerprint(fromPublicKeyData: base64), expected)
+    }
+
+    func testKeyBoundCodeEqualsCodeForLocallyRecomputedFingerprint() throws {
+        let key = realPublicKeyBase64()
+        let viaKey = try XCTUnwrap(EscrowDeviceSafetyCode.format(publicKeyData: key))
+        let fingerprint = try XCTUnwrap(EscrowDeviceSafetyCode.recomputeFingerprint(fromPublicKeyData: key))
+        let viaFingerprint = try XCTUnwrap(EscrowDeviceSafetyCode.format(fingerprint: fingerprint))
+        XCTAssertEqual(viaKey, viaFingerprint)
+        // Shape parity with the legacy formatter.
+        XCTAssertEqual(viaKey.split(separator: " ").count, 8)
+    }
+
+    func testKeyBoundCodeIsStableForTheSameKeyAndDiffersAcrossKeys() throws {
+        let key = realPublicKeyBase64()
+        XCTAssertEqual(
+            EscrowDeviceSafetyCode.format(publicKeyData: key),
+            EscrowDeviceSafetyCode.format(publicKeyData: key)
+        )
+        let other = realPublicKeyBase64()
+        XCTAssertNotEqual(
+            EscrowDeviceSafetyCode.format(publicKeyData: key),
+            EscrowDeviceSafetyCode.format(publicKeyData: other)
+        )
+    }
+
+    func testKeyBoundCodeFailsClosedOnAbsentOrInvalidKey() {
+        XCTAssertNil(EscrowDeviceSafetyCode.format(publicKeyData: nil))
+        XCTAssertNil(EscrowDeviceSafetyCode.recomputeFingerprint(fromPublicKeyData: nil))
+        XCTAssertNil(EscrowDeviceSafetyCode.format(publicKeyData: ""))
+        XCTAssertNil(EscrowDeviceSafetyCode.format(publicKeyData: "   "))
+        XCTAssertNil(EscrowDeviceSafetyCode.format(publicKeyData: "not base64 !!!"))
+        // Valid base64 but wrong length (not a 65-byte x9.63 key).
+        XCTAssertNil(EscrowDeviceSafetyCode.format(publicKeyData: Data([0x04, 0x01, 0x02]).base64EncodedString()))
+        // Correct length, correct 0x04 prefix, but not on the P-256 curve —
+        // CryptoKit import must reject it (no plausible code from junk bytes).
+        let offCurve = Data([0x04] + Array(repeating: UInt8(0xAB), count: 64))
+        XCTAssertEqual(offCurve.count, 65)
+        XCTAssertNil(EscrowDeviceSafetyCode.format(publicKeyData: offCurve.base64EncodedString()))
+        XCTAssertNil(EscrowDeviceSafetyCode.recomputeFingerprint(fromPublicKeyData: offCurve.base64EncodedString()))
+    }
+
+    func testIsFingerprintBoundToAcceptsTheGenuineServerStoredFingerprint() throws {
+        // The server-stored fingerprint that legitimately matches the key bytes
+        // must verify. This is the "honest server" / honest-device case.
+        let key = realPublicKeyBase64()
+        let stored = try XCTUnwrap(EscrowDeviceSafetyCode.recomputeFingerprint(fromPublicKeyData: key))
+        XCTAssertTrue(EscrowDeviceSafetyCode.isFingerprint(stored, boundTo: key))
+        XCTAssertTrue(EscrowDeviceSafetyCode.isFingerprint("  \(stored)\n", boundTo: key))
+    }
+
+    func testIsFingerprintBoundToRejectsAServerSpoofedFingerprint() throws {
+        // The attack the binding closes: a server advertises a fingerprint that
+        // is valid base64 of a SHA-256 digest but does NOT correspond to the
+        // key bytes the device will actually use. The verifier must reject it.
+        let key = realPublicKeyBase64()
+        let attackerFingerprint = Data(SHA256.hash(data: Data("attacker-supplied-key".utf8))).base64EncodedString()
+        XCTAssertFalse(EscrowDeviceSafetyCode.isFingerprint(attackerFingerprint, boundTo: key))
+    }
+
+    func testIsFingerprintBoundToFailsClosedOnMissingInputs() throws {
+        let key = realPublicKeyBase64()
+        let stored = try XCTUnwrap(EscrowDeviceSafetyCode.recomputeFingerprint(fromPublicKeyData: key))
+        XCTAssertFalse(EscrowDeviceSafetyCode.isFingerprint(nil, boundTo: key))
+        XCTAssertFalse(EscrowDeviceSafetyCode.isFingerprint("", boundTo: key))
+        XCTAssertFalse(EscrowDeviceSafetyCode.isFingerprint(stored, boundTo: nil))
+        XCTAssertFalse(EscrowDeviceSafetyCode.isFingerprint(stored, boundTo: "not a key"))
+        // A truncated digest of the right key must not pass (length mismatch).
+        let truncated = Data(Data(base64Encoded: stored)!.prefix(16)).base64EncodedString()
+        XCTAssertFalse(EscrowDeviceSafetyCode.isFingerprint(truncated, boundTo: key))
+    }
+
+    func testRecomputeFingerprintMatchesServerGoldenVector() throws {
+        // Cross-language parity with functions/src/callables/computerUseSecurity.ts
+        // `recomputeEscrowFingerprint`. This exact (key, fingerprint) pair was
+        // produced by the Node implementation; both sides must agree byte-for-byte
+        // so a Mac/iOS reader and the server bind to the same key identity.
+        let key = "BF8kD8cxysQZYfK+E5P47VMA2Kyf7qQ8SSJh0QB3RkparBtbyeL7XrAue1wanXNo0KUc5OzpAtUWp6oWSYrKzfM="
+        let serverFingerprint = "gpX18YwBJijSAfecJvCp7Fmc5wM+uzmwJxbbGcoGoAw="
+        XCTAssertEqual(EscrowDeviceSafetyCode.recomputeFingerprint(fromPublicKeyData: key), serverFingerprint)
+        XCTAssertTrue(EscrowDeviceSafetyCode.isFingerprint(serverFingerprint, boundTo: key))
+        XCTAssertEqual(
+            EscrowDeviceSafetyCode.format(publicKeyData: key),
+            EscrowDeviceSafetyCode.format(fingerprint: serverFingerprint)
+        )
+    }
+
+    func testKeyBoundAndLegacyCodesAgreeOnTheSameDevice() throws {
+        // A device whose stored fingerprint is honestly the SHA-256 of its key
+        // shows the SAME code whether read off the stored string or recomputed
+        // from the key — so enabling the binding does not change the operator's
+        // displayed code for honest devices.
+        let key = realPublicKeyBase64()
+        let stored = try XCTUnwrap(EscrowDeviceSafetyCode.recomputeFingerprint(fromPublicKeyData: key))
+        XCTAssertEqual(
+            EscrowDeviceSafetyCode.format(fingerprint: stored),
+            EscrowDeviceSafetyCode.format(publicKeyData: key)
+        )
+    }
 }

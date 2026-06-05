@@ -8,8 +8,9 @@
 //   (2) out-of-order / skipped message keys still decrypt
 //   (3) replay of a consumed ciphertext is REJECTED
 //   (4) safety-number derivation matches between the two parties
-//   (5) at-rest seal -> open round-trips
+//   (5) at-rest seal -> open round-trips (structured v4 SignalBinding)
 //   (6) at-rest open FAILS CLOSED when info/associatedData (binding) is tampered
+//   (7) at-rest seal/open FAIL CLOSED when a binding segment injects '|'/CR/LF
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,10 +31,28 @@ import {
   CiphertextMessageType,
   type GeneratedIdentity,
   type SessionStores,
+  type SignalBinding,
 } from './index.js';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
+
+// A valid structured at-rest (cloudvault) binding for the seal/open tests. The
+// at-rest seal/open path now derives BOTH the HPKE info and the AEAD associated
+// data from `bindingToAAD(binding)`, so this object is the v4 context that pins
+// the ciphertext to a specific uid/collection/doc/field.
+function atRestBinding(overrides: Partial<SignalBinding> = {}): SignalBinding {
+  return {
+    uid: 'uid-1',
+    scope: 'cloudvault',
+    collection: 'pensieve_notes',
+    docId: 'abc-123',
+    field: 'body',
+    mode: 'at-rest',
+    formatVersion: 1,
+    ...overrides,
+  };
+}
 
 interface Party {
   identity: GeneratedIdentity;
@@ -216,7 +235,7 @@ test('(5) at-rest seal -> open round-trips', async () => {
   const recipientPub = recipient.getPublicKey();
 
   const plaintext = enc.encode('secret at-rest payload \u{1F510}');
-  const binding = 'pensieve/note/abc-123';
+  const binding = atRestBinding();
 
   const sealed = atRestSeal(plaintext, recipientPub, binding);
   assert.ok(sealed.byteLength > plaintext.byteLength, 'ciphertext should be larger than plaintext');
@@ -235,13 +254,20 @@ test('(6) at-rest open fails closed when the binding is tampered', async () => {
   const recipientPub = recipient.getPublicKey();
 
   const plaintext = enc.encode('do not leak me');
-  const binding = 'pensieve/note/abc-123';
+  const binding = atRestBinding();
   const sealed = atRestSeal(plaintext, recipientPub, binding);
 
-  // Wrong binding (changes BOTH info and associatedData) must fail closed.
+  // Wrong binding (changes BOTH info and associatedData via bindingToAAD) must
+  // fail closed — here a single field (docId) differs.
   await assert.rejects(
-    async () => atRestOpen(sealed, recipient, 'pensieve/note/WRONG'),
+    async () => atRestOpen(sealed, recipient, atRestBinding({ docId: 'WRONG' })),
     'opening with a different binding must throw',
+  );
+
+  // A different optional position (field) also re-canonicalizes and fails closed.
+  await assert.rejects(
+    async () => atRestOpen(sealed, recipient, atRestBinding({ field: 'title' })),
+    'opening with a different binding field must throw',
   );
 
   // Tampered ciphertext (flip a byte) must also fail closed.
@@ -263,4 +289,23 @@ test('(6) at-rest open fails closed when the binding is tampered', async () => {
   // Sanity: the correct binding + key still opens (so failures above are real).
   const opened = atRestOpen(sealed, recipient, binding);
   assert.equal(dec.decode(opened), 'do not leak me');
+});
+
+test('(7) at-rest seal/open fail closed on a pipe/CRLF-injected binding segment', () => {
+  const recipient = PrivateKey.generate();
+  const recipientPub = recipient.getPublicKey();
+  const plaintext = enc.encode('never sealed');
+
+  // bindingToAAD throws before any HPKE seal/open happens, so a binding that
+  // could otherwise smuggle an extra AAD segment is rejected outright.
+  assert.throws(
+    () => atRestSeal(plaintext, recipientPub, atRestBinding({ docId: 'a|b' })),
+    /reserved '\|' or CR\/LF/,
+    'seal must reject a pipe-injected binding segment',
+  );
+  assert.throws(
+    () => atRestOpen(new Uint8Array([0, 1, 2]), recipient, atRestBinding({ field: 'x\ny' })),
+    /reserved '\|' or CR\/LF/,
+    'open must reject a CRLF-injected binding segment before touching the AEAD',
+  );
 });
