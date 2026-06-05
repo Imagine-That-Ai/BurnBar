@@ -811,32 +811,34 @@ assertSectionIncludes(
 // callable runs with the Admin SDK and BYPASSES rules — so a rules-only check is
 // structurally blind to what the callable actually stores. Pin the callable
 // source directly: the persisted row must carry only the opaque, server-keyed
-// `sourceSlugToken` (the manifest doc-id key), never the reversible repo-name-
-// derived `sourceSlug`. The cleartext slug may be read transiently to DERIVE the
-// token and is explicitly FieldValue.delete()'d off legacy rows on re-connect.
+// `sourceManifestId` (the manifest doc-id key), never the reversible repo-name-
+// derived `sourceSlug` or the transitional `sourceSlugToken`. The cleartext slug
+// may be read transiently to DERIVE the token and is explicitly
+// FieldValue.delete()'d off legacy rows on re-connect.
 // (§4 slug remediation — closes the scanner's Admin-SDK blind spot.)
 const KNOWLEDGE_SYNC = "functions/src/callables/knowledgeSync.ts";
 const CONNECT_REPO_START = "export const connectKnowledgeRepo = onCall(";
 const CONNECT_REPO_END = "export const disconnectKnowledgeRepo = onCall(";
-// (a) The persisted row must include the opaque manifest token as an actual
-//     written field (object-shorthand `sourceSlugToken,`), not merely a comment.
+// (a) The persisted row must include the canonical opaque manifest id as an
+//     actual written field (object-shorthand `sourceManifestId,`), not merely a
+//     comment.
 assertSectionMatches(
   KNOWLEDGE_SYNC,
   CONNECT_REPO_START,
   CONNECT_REPO_END,
-  /\n\s*sourceSlugToken,\s*\n/u,
-  "connectKnowledgeRepo must persist the opaque server-keyed sourceSlugToken field",
+  /\n\s*sourceManifestId,\s*\n/u,
+  "connectKnowledgeRepo must persist the opaque server-keyed sourceManifestId field",
 );
 // (b) The opaque token must be an HMAC of the cleartext slug (no raw store).
 assertIncludes(
   KNOWLEDGE_SYNC,
-  "function sourceSlugTokenFor(",
-  "connectKnowledgeRepo must derive the manifest key by HMAC (sourceSlugTokenFor)",
+  "function sourceManifestIdFor(",
+  "connectKnowledgeRepo must derive the manifest key by HMAC (sourceManifestIdFor)",
 );
 assertIncludes(
   KNOWLEDGE_SYNC,
   'createHmac("sha256", secret).update(`manifest|${uid}|${sourceSlug}`',
-  "sourceSlugTokenFor must HMAC the cleartext slug under the manifest domain prefix",
+  "sourceManifestIdFor must HMAC the cleartext slug under the manifest domain prefix",
 );
 // (c) The persist block must NOT write the cleartext slug as an object-shorthand
 //     field (`sourceSlug,`) — the only allowed sourceSlug write here is the
@@ -846,7 +848,7 @@ assertSectionNotMatches(
   CONNECT_REPO_START,
   CONNECT_REPO_END,
   /\n\s*sourceSlug,\s*\n/u,
-  "connectKnowledgeRepo must NOT persist the cleartext sourceSlug as an object field (use sourceSlugToken)",
+  "connectKnowledgeRepo must NOT persist the cleartext sourceSlug as an object field (use sourceManifestId)",
 );
 // (d) If the cleartext slug is written at all, it must be a delete sentinel
 //     (the rest of that line must contain FieldValue.delete() — never a value).
@@ -1184,9 +1186,14 @@ assertNotIncludes(
   "ratchet protocol docs must not claim live text transport is relay-only",
 );
 assertNotIncludes(
-  "docs/HERMES_GATEWAY_E2EE_REMEDIATION_PLAN.md",
+  "docs/runbooks/hermes-gateway-3features.md",
   "Transport still emits/opens `relayEnvelope`",
-  "remediation docs must not claim live text transport is relay-only",
+  "gateway runbook must not claim live text transport is relay-only",
+);
+assertNotIncludes(
+  "docs/runbooks/hermes-gateway-3features-HANDOFF.md",
+  "Transport still emits/opens `relayEnvelope`",
+  "gateway handoff must not claim live text transport is relay-only",
 );
 assertNotIncludes(
   "tools/hermes-platform-burnbar/adapter.py",

@@ -78,9 +78,7 @@ const P256_COORDINATE_BYTE_LENGTH = 32;
 function isPointOnP256Curve(raw: Buffer): boolean {
   try {
     const x = raw.subarray(1, 1 + P256_COORDINATE_BYTE_LENGTH).toString("base64url");
-    const y = raw
-      .subarray(1 + P256_COORDINATE_BYTE_LENGTH, 1 + 2 * P256_COORDINATE_BYTE_LENGTH)
-      .toString("base64url");
+    const y = raw.subarray(1 + P256_COORDINATE_BYTE_LENGTH, 1 + 2 * P256_COORDINATE_BYTE_LENGTH).toString("base64url");
     createPublicKey({ key: { kty: "EC", crv: "P-256", x, y }, format: "jwk" });
     return true;
   } catch {

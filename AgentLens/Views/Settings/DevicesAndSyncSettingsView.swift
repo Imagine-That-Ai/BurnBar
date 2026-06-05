@@ -409,12 +409,9 @@ struct TrustedDevicesDetailView: View {
 // MARK: - Device Trust Safety-Code Compare
 
 /// Stream 6 — the "Compare this code on your other device" confirmation step
-/// shown before an escrow device is approved (only when the safety-code compare
-/// feature flag is ON). Renders the device's stored fingerprint as a grouped
-/// safety code using the shared formatter so the Mac and the device under
-/// approval display byte-identical codes. UX only — confirmation merely calls
-/// the same unchanged approve path; server-side fingerprint enforcement is a
-/// later PR.
+/// shown before an escrow device is approved. The displayed code is re-derived
+/// from the published escrow public key, and Approve stays disabled unless the
+/// stored fingerprint is bound to those exact key bytes.
 struct DeviceTrustSafetyCompareSheet: View {
     let device: MacTrustedDevice
     let onConfirm: () -> Void
@@ -446,7 +443,13 @@ struct DeviceTrustSafetyCompareSheet: View {
                             .textSelection(.enabled)
                             .accessibilityLabel("Safety code: \(EscrowDeviceSafetyCode.spelledOut(code))")
                     } else {
-                        Text("This device has not published a key fingerprint yet, so a safety code cannot be shown. Make sure it is signed in and on a current app version, then try again.")
+                        Text("This device has not published a verifiable escrow public key yet, so a safety code cannot be shown. Make sure it is signed in and on a current app version, then try again.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if device.safetyCode != nil && !device.hasVerifiedSafetyCode {
+                        Text("The published key does not match the stored fingerprint. Approval is disabled until this device republishes a matching key.")
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.warning)
                             .fixedSize(horizontal: false, vertical: true)
@@ -456,7 +459,7 @@ struct DeviceTrustSafetyCompareSheet: View {
                 .padding(DesignSystem.Spacing.md)
             }
 
-            if device.safetyCode != nil {
+            if device.hasVerifiedSafetyCode {
                 Toggle(isOn: $didCompare) {
                     Text("I compared this code on \(device.displayName) and it matches.")
                         .font(DesignSystem.Typography.caption)
@@ -471,7 +474,7 @@ struct DeviceTrustSafetyCompareSheet: View {
                 Spacer()
                 Button("Approve device", action: onConfirm)
                     .buttonStyle(.borderedProminent)
-                    .disabled(device.safetyCode == nil || !didCompare)
+                    .disabled(!device.hasVerifiedSafetyCode || !didCompare)
             }
         }
         .padding(DesignSystem.Spacing.lg)
@@ -670,9 +673,13 @@ struct MacTrustedDevice: Identifiable, Equatable {
     let trustState: EscrowDeviceTrustState
     let isCurrentDevice: Bool
     /// Stored `escrow_devices.publicKeyFingerprint` (base64 SHA-256 of the
-    /// device public key), surfaced read-only so the approve UX can render a
-    /// comparable safety code. Never mutated here — display/plumbing only.
+    /// device public key). The approval gate verifies this against
+    /// ``publicKeyData`` before trusting it.
     let publicKeyFingerprint: String?
+    /// Stored `escrow_public_keys/{deviceId}_{keyVersion}.publicKeyData`
+    /// (base64 P-256 X9.63 public key), used as the load-bearing safety-code
+    /// source so the server cannot spoof only a fingerprint string.
+    let publicKeyData: String?
 
     init(
         id: String,
@@ -680,7 +687,8 @@ struct MacTrustedDevice: Identifiable, Equatable {
         platform: String = "macOS",
         trustState: EscrowDeviceTrustState = .pending,
         isCurrentDevice: Bool = false,
-        publicKeyFingerprint: String? = nil
+        publicKeyFingerprint: String? = nil,
+        publicKeyData: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -688,13 +696,19 @@ struct MacTrustedDevice: Identifiable, Equatable {
         self.trustState = trustState
         self.isCurrentDevice = isCurrentDevice
         self.publicKeyFingerprint = publicKeyFingerprint
+        self.publicKeyData = publicKeyData
     }
 
-    /// Grouped, human-comparable safety code derived from the stored
-    /// fingerprint with the shared cross-device formatter, or `nil` when no
-    /// fingerprint is present.
+    /// Grouped, human-comparable safety code re-derived from the published
+    /// public key bytes, or `nil` when the key is absent/invalid.
     var safetyCode: String? {
-        EscrowDeviceSafetyCode.format(fingerprint: publicKeyFingerprint)
+        EscrowDeviceSafetyCode.format(publicKeyData: publicKeyData)
+    }
+
+    /// Load-bearing trust check for Approve: the stored fingerprint must match
+    /// the published public key bytes that produced the displayed safety code.
+    var hasVerifiedSafetyCode: Bool {
+        EscrowDeviceSafetyCode.isFingerprint(publicKeyFingerprint, boundTo: publicKeyData)
     }
 }
 
@@ -715,17 +729,36 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
 
     func trustedDevices() async throws -> [MacTrustedDevice] {
         guard let uid else { throw MacDeviceTrustError.notAuthenticated }
-        let snap = try await db.collection("users").document(uid).collection("escrow_devices").getDocuments()
-        return snap.documents.compactMap { doc in
+        let userRef = db.collection("users").document(uid)
+        let snap = try await userRef.collection("escrow_devices").getDocuments()
+        var devices: [MacTrustedDevice] = []
+        for doc in snap.documents {
             let d = doc.data()
-            return MacTrustedDevice(
-                id: doc.documentID,
+            let did = d["deviceId"] as? String ?? doc.documentID
+            let keyVersion = d["keyVersion"] as? Int
+            let publicKeyData = await escrowPublicKeyData(userRef: userRef, deviceId: did, keyVersion: keyVersion)
+            devices.append(MacTrustedDevice(
+                id: did,
                 displayName: d["deviceName"] as? String ?? "Unknown",
                 platform: d["platform"] as? String ?? "macOS",
                 trustState: EscrowDeviceTrustState(rawValue: d["trustState"] as? String ?? "") ?? .pending,
-                isCurrentDevice: doc.documentID == self.deviceId,
-                publicKeyFingerprint: d["publicKeyFingerprint"] as? String
-            )
+                isCurrentDevice: did == self.deviceId,
+                publicKeyFingerprint: d["publicKeyFingerprint"] as? String,
+                publicKeyData: publicKeyData
+            ))
+        }
+        return devices
+    }
+
+    private func escrowPublicKeyData(userRef: DocumentReference, deviceId: String, keyVersion: Int?) async -> String? {
+        guard let keyVersion else { return nil }
+        do {
+            let snapshot = try await userRef.collection("escrow_public_keys")
+                .document("\(deviceId)_\(keyVersion)")
+                .getDocument()
+            return snapshot.data()?["publicKeyData"] as? String
+        } catch {
+            return nil
         }
     }
 

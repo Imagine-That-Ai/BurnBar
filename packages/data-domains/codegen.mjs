@@ -130,6 +130,7 @@ function emitSwift(reg) {
   out.push("    public let actions: [String]");
   out.push("    public let entitlementGate: String?");
   out.push("    public let suspensionSurface: String?");
+  out.push("    public let sealingScheme: String?");
   out.push("}");
   out.push("");
   out.push("public enum DataDomains {");
@@ -142,7 +143,8 @@ function emitSwift(reg) {
     out.push(`            firestorePaths: ${swiftStringArray(d.firestorePaths)}, storagePaths: ${swiftStringArray(d.storagePaths)},`);
     out.push(`            countSource: ${d.countSource ? `"${esc(d.countSource)}"` : "nil"}, byteSource: ${d.byteSource ? `"${esc(d.byteSource)}"` : "nil"},`);
     out.push(`            retention: "${esc(d.retention)}", actions: ${swiftStringArray(d.actions)},`);
-    out.push(`            entitlementGate: ${d.entitlementGate ? `"${esc(d.entitlementGate)}"` : "nil"}, suspensionSurface: ${d.suspensionSurface ? `"${esc(d.suspensionSurface)}"` : "nil"}`);
+    out.push(`            entitlementGate: ${d.entitlementGate ? `"${esc(d.entitlementGate)}"` : "nil"}, suspensionSurface: ${d.suspensionSurface ? `"${esc(d.suspensionSurface)}"` : "nil"},`);
+    out.push(`            sealingScheme: ${d.sealingScheme ? `"${esc(d.sealingScheme)}"` : "nil"}`);
     out.push("        ),");
   }
   out.push("    ]");
@@ -179,6 +181,7 @@ function emitKotlin(reg) {
   out.push("    val actions: List<String>,");
   out.push("    val entitlementGate: String?,");
   out.push("    val suspensionSurface: String?,");
+  out.push("    val sealingScheme: String?,");
   out.push(")");
   out.push("");
   out.push("object DataDomains {");
@@ -192,6 +195,7 @@ function emitKotlin(reg) {
     out.push(`            countSource = ${d.countSource ? `"${esc(d.countSource)}"` : "null"}, byteSource = ${d.byteSource ? `"${esc(d.byteSource)}"` : "null"},`);
     out.push(`            retention = "${esc(d.retention)}", actions = ${kotlinStringList(d.actions)},`);
     out.push(`            entitlementGate = ${d.entitlementGate ? `"${esc(d.entitlementGate)}"` : "null"}, suspensionSurface = ${d.suspensionSurface ? `"${esc(d.suspensionSurface)}"` : "null"},`);
+    out.push(`            sealingScheme = ${d.sealingScheme ? `"${esc(d.sealingScheme)}"` : "null"},`);
     out.push("        ),");
   }
   out.push("    )");

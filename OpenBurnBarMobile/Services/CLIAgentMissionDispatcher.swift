@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 
 private struct CLIAgentMissionPrivatePayload: Codable {
     var title: String?
@@ -73,7 +74,58 @@ private enum CLIAgentMissionCloudSealer {
         return CloudVaultCrypto.sealedPayloadDictionary(sealed)
     }
 
-    static func openPrivatePayload(_ data: [String: Any], field: String = "sealedPayload", vaultKey: Data?) -> CLIAgentMissionPrivatePayload? {
+    static func signalEnvelopeIfEnabled(
+        from sealedData: [String: Any],
+        uid: String,
+        firestore: Firestore,
+        collection: String,
+        docId: String,
+        resolvedKey: MobileCloudVaultResolvedKey
+    ) async throws -> [String: Any]? {
+        guard MobileCloudVaultSignalPayloads.signalSealingIsEnabled(domainID: "conversations_chat") else {
+            return nil
+        }
+        guard let legacyEnvelope = CloudVaultCrypto.sealedPayload(from: sealedData["sealedPayload"]) else {
+            throw MobileCloudVaultSignalPayloadError.invalidSignalEnvelope
+        }
+        let plaintext = try CloudVaultCrypto.openPayload(legacyEnvelope, keyData: resolvedKey.keyData)
+        return try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+            domainID: "conversations_chat",
+            uid: uid,
+            firestore: firestore,
+            collection: collection,
+            docId: docId,
+            plaintext: plaintext,
+            resolvedKey: resolvedKey
+        )
+    }
+
+    static func openPrivatePayload(
+        _ data: [String: Any],
+        field: String = "sealedPayload",
+        uid: String? = nil,
+        documentID: String? = nil,
+        vaultKey: Data?,
+        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil
+    ) -> CLIAgentMissionPrivatePayload? {
+        if field == "sealedPayload", data["signalEnvelope"] != nil, let uid, let documentID {
+            do {
+                if let payload = try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                    data,
+                    uid: uid,
+                    collection: "cli_agent_mission_requests",
+                    docId: documentID,
+                    signalIdentity: signalIdentity
+                ) {
+                    return try decoder.decode(CLIAgentMissionPrivatePayload.self, from: payload)
+                }
+            } catch {
+                // Phase-C rollout keeps legacy AES-GCM `sealedPayload` alongside
+                // optional Signal envelopes. A missing local Signal identity or
+                // malformed optional envelope must not make the legacy reader lose
+                // data while activation remains flag-off.
+            }
+        }
         guard let vaultKey,
               let envelope = CloudVaultCrypto.sealedPayload(from: data[field])
         else { return nil }
@@ -147,7 +199,7 @@ final class CLIAgentMissionDispatcher {
 
         let db = firestoreProvider()
         let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
-        let payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+        var payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
             id: id,
             title: trimmedTitle,
             prompt: trimmedPrompt,
@@ -170,6 +222,16 @@ final class CLIAgentMissionDispatcher {
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
+        if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
+            from: payload,
+            uid: uid,
+            firestore: db,
+            collection: "cli_agent_mission_requests",
+            docId: id,
+            resolvedKey: resolvedKey
+        ) {
+            payload["signalEnvelope"] = signalEnvelope
+        }
         let requestRef = db
             .collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(id)
@@ -210,6 +272,13 @@ final class CLIAgentMissionDispatcher {
         } catch {
             localVaultKey = nil
         }
+        let localSignalIdentity: OpenBurnBarSignalIdentityKeypair?
+        do {
+            let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+            localSignalIdentity = try OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
+        } catch {
+            localSignalIdentity = nil
+        }
 
         let requestRef = firestoreProvider()
             .collection("users").document(uid)
@@ -224,7 +293,9 @@ final class CLIAgentMissionDispatcher {
                     documentID: requestID,
                     data: latestData,
                     eventOverride: latestEvents.isEmpty ? nil : latestEvents,
-                    vaultKey: localVaultKey
+                    vaultKey: localVaultKey,
+                    signalIdentity: localSignalIdentity,
+                    uid: uid
                   ) else { return }
             Task { @MainActor in onUpdate(mission) }
         }
@@ -402,6 +473,16 @@ final class CLIAgentMissionDispatcher {
             for (k, v) in overlay { payload[k] = v }
             if let envelope = personaScopeByRuntime[runtimeToken] {
                 payload["personaID"] = envelope.personaID
+            }
+            if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
+                from: payload,
+                uid: uid,
+                firestore: db,
+                collection: "cli_agent_mission_requests",
+                docId: missionID,
+                resolvedKey: resolvedKey
+            ) {
+                payload["signalEnvelope"] = signalEnvelope
             }
             let requestRef = db
                 .collection("users").document(uid)
@@ -1137,9 +1218,26 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         self.init(documentID: documentID, data: data, eventOverride: eventOverride, vaultKey: nil)
     }
 
-    init?(documentID: String, data: [String: Any], eventOverride: [CLIAgentMissionEvent]? = nil, vaultKey: Data?) {
-        let requestPrivate = CLIAgentMissionCloudSealer.openPrivatePayload(data, vaultKey: vaultKey)
-        let statePrivate = CLIAgentMissionCloudSealer.openPrivatePayload(data, field: "sealedStatePayload", vaultKey: vaultKey)
+    init?(
+        documentID: String,
+        data: [String: Any],
+        eventOverride: [CLIAgentMissionEvent]? = nil,
+        vaultKey: Data?,
+        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil,
+        uid: String? = nil
+    ) {
+        let requestPrivate = CLIAgentMissionCloudSealer.openPrivatePayload(
+            data,
+            uid: uid,
+            documentID: documentID,
+            vaultKey: vaultKey,
+            signalIdentity: signalIdentity
+        )
+        let statePrivate = CLIAgentMissionCloudSealer.openPrivatePayload(
+            data,
+            field: "sealedStatePayload",
+            vaultKey: vaultKey
+        )
         guard let title = requestPrivate?.title ?? data["title"] as? String,
               let status = data["status"] as? String else {
             return nil

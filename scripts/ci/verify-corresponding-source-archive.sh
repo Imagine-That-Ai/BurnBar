@@ -121,7 +121,9 @@ if (!Array.isArray(manifest.includes) || !manifest.includes.includes('official S
 }
 NODE
 
-tar -tzf "$archive" | grep -q "^OpenBurnBar-${version}-source/CORRESPONDING_SOURCE_MANIFEST.json$" \
+archive_listing="$tmpdir/archive-listing.txt"
+tar -tzf "$archive" > "$archive_listing"
+grep -q "^OpenBurnBar-${version}-source/CORRESPONDING_SOURCE_MANIFEST.json$" "$archive_listing" \
   || { echo "ERROR: archive listing is missing CORRESPONDING_SOURCE_MANIFEST.json" >&2; exit 1; }
 
 echo "PASS: corresponding source archive builds cleanly from HEAD ${commit}"

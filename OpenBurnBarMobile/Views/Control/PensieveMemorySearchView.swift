@@ -1,6 +1,7 @@
 import SwiftUI
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 
 // MARK: - Pensieve memory search
 //
@@ -252,33 +253,70 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
               let rawHits = dict["hits"] as? [[String: Any]] else {
             throw DataVaultError.malformedResponse
         }
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
+        let signalIdentity = try? OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
 
         return rawHits.compactMap { raw -> PensieveMemoryHit? in
-            guard let sealedCiphertext = Self.decodeSealed(raw["ciphertext"]),
-                  let text = try? CloudVaultCrypto.openText(sealedCiphertext, keyData: vaultKey) else {
+            Self.decodeHit(raw, uid: uid, vaultKey: vaultKey, signalIdentity: signalIdentity)
+        }
+    }
+
+    static func decodeHit(
+        _ raw: [String: Any],
+        uid: String,
+        vaultKey: Data,
+        signalIdentity: OpenBurnBarSignalIdentityKeypair?
+    ) -> PensieveMemoryHit? {
+        let stableDocumentID = (raw["vectorId"] as? String) ?? (raw["chunkId"] as? String)
+        let id = stableDocumentID ?? UUID().uuidString
+
+        let signalText = stableDocumentID.flatMap { documentID -> String? in
+            guard raw["signalEnvelope"] != nil else { return nil }
+            do {
+                guard let payload = try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                    raw,
+                    uid: uid,
+                    collection: "cloud_search_knowledge",
+                    docId: documentID,
+                    field: "signalEnvelope",
+                    bindingField: "sealedCiphertext",
+                    signalIdentity: signalIdentity
+                ) else {
+                    return nil
+                }
+                return String(data: payload, encoding: .utf8)
+            } catch {
+                // Rollout compatibility: `searchKnowledge` returns legacy AES-GCM
+                // `ciphertext` alongside the optional Signal envelope while Phase-E
+                // remains flag-off. If the local Signal identity is missing or an
+                // optional envelope is malformed, preserve legacy readability.
                 return nil
             }
-            var sourcePath: String?
-            var title: String?
-            var category: String?
-            if let sealedMetadata = Self.decodeSealed(raw["sealedMetadata"]),
-               let metadataString = try? CloudVaultCrypto.openText(sealedMetadata, keyData: vaultKey),
-               let metadata = try? JSONSerialization.jsonObject(with: Data(metadataString.utf8)) as? [String: Any] {
-                sourcePath = metadata["source_path"] as? String
-                title = metadata["page_title"] as? String
-                category = metadata["category"] as? String
-            }
-            let id = (raw["vectorId"] as? String) ?? (raw["chunkId"] as? String) ?? UUID().uuidString
-            let score = (raw["score"] as? NSNumber)?.doubleValue ?? 0
-            return PensieveMemoryHit(
-                id: id,
-                text: text,
-                sourcePath: sourcePath,
-                title: title,
-                category: category,
-                score: score
-            )
         }
+        let legacyText = Self.decodeSealed(raw["ciphertext"]).flatMap {
+            try? CloudVaultCrypto.openText($0, keyData: vaultKey)
+        }
+        guard let text = signalText ?? legacyText else { return nil }
+
+        var sourcePath: String?
+        var title: String?
+        var category: String?
+        if let sealedMetadata = Self.decodeSealed(raw["sealedMetadata"]),
+           let metadataString = try? CloudVaultCrypto.openText(sealedMetadata, keyData: vaultKey),
+           let metadata = try? JSONSerialization.jsonObject(with: Data(metadataString.utf8)) as? [String: Any] {
+            sourcePath = metadata["source_path"] as? String
+            title = metadata["page_title"] as? String
+            category = metadata["category"] as? String
+        }
+        let score = (raw["score"] as? NSNumber)?.doubleValue ?? 0
+        return PensieveMemoryHit(
+            id: id,
+            text: text,
+            sourcePath: sourcePath,
+            title: title,
+            category: category,
+            score: score
+        )
     }
 
     private static func decodeSealed(_ raw: Any?) -> CloudVaultSealedText? {

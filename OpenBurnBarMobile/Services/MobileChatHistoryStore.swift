@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 import OSLog
 
 // MARK: - Models
@@ -418,6 +419,17 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         if let assistant = thread.messages.last(where: { $0.role == "assistant" }) {
             payload["lastAssistantMessageID"] = assistant.id
         }
+        if let signalEnvelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+            domainID: "conversations_chat",
+            uid: uid,
+            firestore: db,
+            collection: "mobile_assistant_chats",
+            docId: thread.id,
+            plaintext: payloadData,
+            resolvedKey: resolvedKey
+        ) {
+            payload["signalEnvelope"] = signalEnvelope
+        }
         try await Self.collection(for: db, uid: uid).document(thread.id).setData(payload, merge: false)
     }
 
@@ -551,11 +563,41 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         let key = try await MobileCloudVaultKeyAccess.keyForReading(uid: uid, firestore: db)
 
         return snapshot.documents.compactMap { document in
-            Self.decodeThread(documentID: document.documentID, data: document.data(), vaultKey: key?.keyData)
+            Self.decodeThread(
+                documentID: document.documentID,
+                data: document.data(),
+                uid: uid,
+                vaultKey: key?.keyData,
+                signalIdentity: key?.signalIdentity
+            )
         }
     }
 
-    static func decodeThread(documentID: String, data: [String: Any], vaultKey: Data? = nil) -> MobileChatThread? {
+    static func decodeThread(
+        documentID: String,
+        data: [String: Any],
+        uid: String? = nil,
+        vaultKey: Data? = nil,
+        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil
+    ) -> MobileChatThread? {
+        if data["signalEnvelope"] != nil, let uid {
+            do {
+                if let payload = try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                    data,
+                    uid: uid,
+                    collection: "mobile_assistant_chats",
+                    docId: documentID,
+                    signalIdentity: signalIdentity
+                ) {
+                    return try cloudPayloadDecoder.decode(MobileChatThread.self, from: payload)
+                }
+            } catch {
+                // Rollout compatibility: direct client writes carry legacy AES-GCM
+                // `sealedPayload` alongside the optional Signal envelope until
+                // Phase-E activation. If Signal open is unavailable or malformed,
+                // fall through to the legacy opener instead of dropping the thread.
+            }
+        }
         if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
             guard let vaultKey,
                   let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) else {

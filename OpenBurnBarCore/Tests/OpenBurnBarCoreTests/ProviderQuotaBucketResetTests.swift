@@ -148,6 +148,154 @@ final class ProviderQuotaBucketResetTests: XCTestCase {
         XCTAssertNotNil(bucket.resetsAt)
     }
 
+    // MARK: - Elapsed-window reconciliation
+    //
+    // Regression for "Codex quota never resets after the 5h clock rolls over":
+    // the reset countdown advanced past a stale `resetsAt` while the usage bar
+    // stayed pinned at the old window's value. `reconcilingElapsedWindow` makes
+    // the bar agree with the countdown — fresh window => 0 used / full remaining.
+
+    func test_reconcile_pastFiveHourWindow_resetsUsageAndAdvancesReset() {
+        let threeDaysAgo = Date().addingTimeInterval(-3 * 24 * 3600)
+        let bucket = ProviderQuotaBucket(
+            name: "5h",
+            used: 80, limit: 100, remaining: 20,
+            window: "rollingHours",
+            meta: ["unit": "percent", "usedPercent": "80"],
+            resetsAt: threeDaysAgo
+        )
+
+        let reset = bucket.reconcilingElapsedWindow()
+
+        XCTAssertEqual(reset.used, 0, "used must zero for the fresh window")
+        XCTAssertEqual(reset.remaining, 100, "remaining must refill to the cap")
+        XCTAssertEqual(reset.meta?["usedPercent"], "0", "percent meta must zero so displayRemainingFraction reports full")
+        XCTAssertEqual(reset.displayRemainingFraction, 1.0)
+        XCTAssertNotNil(reset.resetsAt)
+        XCTAssertGreaterThan(reset.resetsAt!, Date(), "resetsAt must advance to the next future boundary")
+    }
+
+    func test_reconcile_pastWeeklyWindow_resetsUsage() {
+        let twoWeeksAgo = Date().addingTimeInterval(-14 * 24 * 3600)
+        let bucket = ProviderQuotaBucket(
+            name: "weekly", used: 47, limit: 50, remaining: 3,
+            window: "weekly", meta: ["unit": "requests"], resetsAt: twoWeeksAgo
+        )
+
+        let reset = bucket.reconcilingElapsedWindow()
+
+        XCTAssertEqual(reset.used, 0)
+        XCTAssertEqual(reset.remaining, 50)
+        XCTAssertGreaterThan(reset.resetsAt!, Date())
+    }
+
+    func test_reconcile_futureWindow_isUnchanged() {
+        let inTwoHours = Date().addingTimeInterval(2 * 3600)
+        let bucket = ProviderQuotaBucket(
+            name: "5h", used: 30, limit: 100, remaining: 70,
+            window: "rollingHours", meta: ["usedPercent": "30"], resetsAt: inTwoHours
+        )
+
+        let same = bucket.reconcilingElapsedWindow()
+
+        XCTAssertEqual(same.used, 30, "a window that has not elapsed must not be reset")
+        XCTAssertEqual(same.remaining, 70)
+        XCTAssertEqual(same.resetsAt, inTwoHours)
+    }
+
+    func test_reconcile_customWindow_isUnchanged() {
+        // No inferable period (matches resetsAtDisplay returning nil): leave the
+        // last-known usage alone rather than guessing a reset.
+        let threeDaysAgo = Date().addingTimeInterval(-3 * 24 * 3600)
+        let bucket = ProviderQuotaBucket(
+            name: "custom", used: 80, limit: 100, remaining: 20,
+            window: nil, meta: nil, resetsAt: threeDaysAgo
+        )
+
+        let same = bucket.reconcilingElapsedWindow()
+
+        XCTAssertEqual(same.used, 80)
+        XCTAssertEqual(same.resetsAt, threeDaysAgo)
+        XCTAssertNil(same.resetsAtDisplay, "gate parity: countdown is hidden, so the bar is left untouched too")
+    }
+
+    func test_reconcile_creditBalance_isUnchanged() {
+        // Lifetime balances have no reset moment and must never read as refilled.
+        let bucket = ProviderQuotaBucket(
+            name: "balance", used: 0, limit: -1, remaining: 12.5,
+            window: "lifetime", meta: ["unit": "credits"], resetsAt: nil
+        )
+        XCTAssertEqual(bucket.reconcilingElapsedWindow().remaining, 12.5)
+    }
+
+    func test_displayableQuotaBuckets_resetsElapsedWindow() {
+        let fourDaysAgo = Date().addingTimeInterval(-4 * 24 * 3600)
+        let snapshot = ProviderQuotaSnapshot(
+            id: "codex-1",
+            provider: "codex",
+            sourceKind: .localSession,
+            sourceId: "local",
+            fetchedAt: fourDaysAgo,
+            source: "local",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    name: "5-hour window", used: 100, limit: 100, remaining: 0,
+                    window: "rollingHours",
+                    meta: ["unit": "percent", "usedPercent": "100", "label": "5-hour window"],
+                    resetsAt: fourDaysAgo
+                )
+            ],
+            updatedAt: fourDaysAgo
+        )
+
+        let bucket = snapshot.displayableQuotaBuckets.first
+        XCTAssertNotNil(bucket)
+        XCTAssertEqual(bucket?.displayRemainingFraction, 1.0, "a capped Codex bucket whose 5h window elapsed must read as full again")
+    }
+
+    func test_reconcile_codexRollingHoursWindow_resetsViaWindowKindRawValue() {
+        // The exact shape the Mac sync writes for Codex: `name` is the bucket
+        // key, `window` is the windowKind raw value, and the human label lives
+        // only in meta. Neither `name` nor `window` carries a digit/word period
+        // marker, so the reset (and the countdown) must key off "rollingHours".
+        let twoDaysAgo = Date().addingTimeInterval(-2 * 24 * 3600)
+        let bucket = ProviderQuotaBucket(
+            name: "codex-primary",
+            used: 100, limit: 100, remaining: 0,
+            window: "rollingHours",
+            meta: ["unit": "percent", "usedPercent": "100", "label": "5-hour window"],
+            resetsAt: twoDaysAgo
+        )
+
+        XCTAssertNotNil(bucket.resetsAtDisplay, "rollingHours countdown must advance for synced Codex data")
+
+        let reset = bucket.reconcilingElapsedWindow()
+        XCTAssertEqual(reset.used, 0)
+        XCTAssertEqual(reset.displayRemainingFraction, 1.0)
+        XCTAssertGreaterThan(reset.resetsAt!, Date())
+    }
+
+    func test_reconcile_codexRollingDaysWindow_resetsViaWindowKindRawValue() {
+        // `rollingDays` contains "day" — it must still advance by 7 days (the
+        // Codex weekly window), not 1, because the raw-value branch runs first.
+        let tenDaysAgo = Date().addingTimeInterval(-10 * 24 * 3600)
+        let bucket = ProviderQuotaBucket(
+            name: "codex-secondary", used: 90, limit: 100, remaining: 10,
+            window: "rollingDays",
+            meta: ["unit": "percent", "usedPercent": "90", "label": "7-day window"],
+            resetsAt: tenDaysAgo
+        )
+
+        // 10 days elapsed against a 7-day window lands the next boundary ~4
+        // days out; a wrong 1-day advance would land ~1 day out. Assert >2 days
+        // to distinguish the two.
+        let reset = bucket.reconcilingElapsedWindow()
+        XCTAssertEqual(reset.used, 0)
+        XCTAssertGreaterThan(reset.resetsAt!, Date().addingTimeInterval(2 * 24 * 3600),
+                             "weekly window must advance by 7 days, not 1")
+    }
+
     /// Verifies that an empty `meta` dictionary doesn't crash the decoder
     /// and that `resetsAt` stays nil rather than being mistakenly populated.
     func test_emptyMeta_doesNotPopulateResetsAt() throws {

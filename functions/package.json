@@ -7,7 +7,7 @@
   },
   "main": "lib/index.js",
   "scripts": {
-    "prebuild": "npm run build --prefix ../packages/signal-envelope-contracts",
+    "prebuild": "../scripts/build-signal-envelope-contracts.sh",
     "build": "tsc && node scripts/copy-certs.mjs",
     "build:watch": "tsc --watch",
     "test:rollups": "npm run build && node scripts/test-rollups.mjs",
@@ -66,6 +66,7 @@
     "@openburnbar/signal-envelope-contracts": "file:../packages/signal-envelope-contracts",
     "@sentry/node": "8.55.2",
     "@simplewebauthn/server": "13.3.0",
+    "ajv-formats": "3.0.1",
     "cockatiel": "3.2.1",
     "firebase-admin": "13.10.0",
     "firebase-functions": "^7.2.5",

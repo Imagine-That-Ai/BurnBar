@@ -277,6 +277,39 @@ extension ProviderQuotaBucket {
         return (relative: relative, absolute: absolute)
     }
 
+    /// Returns the bucket reconciled to `now`. When a fixed-reset rolling
+    /// window's `resetsAt` has already passed, the provider's counter has
+    /// rolled into a fresh window, so the bucket reports 0 used / full
+    /// remaining with `resetsAt` advanced to the next boundary. Buckets whose
+    /// window has no known period (lifetime balances, custom windows) or whose
+    /// reset is still in the future are returned unchanged.
+    ///
+    /// This reuses the exact `displayResetDate` gate that `resetsAtDisplay`
+    /// uses, so the usage bar and the reset countdown always agree. The bug it
+    /// fixes: the countdown advanced past a stale reset (showing "resets in
+    /// 3h") while the bar stayed pinned at the old window's usage. Codex was
+    /// the visible victim — its snapshot freezes once the user is capped
+    /// because no new rollout events get written — but it was latent for every
+    /// rolling-window provider.
+    func reconcilingElapsedWindow(asOf now: Date = Date()) -> ProviderQuotaBucket {
+        guard let resetsAt, resetsAt <= now,
+              let nextReset = Self.displayResetDate(resetsAt, windowKind: windowKind, now: now)
+        else { return self }
+
+        return ProviderQuotaBucket(
+            key: key,
+            label: label,
+            windowKind: windowKind,
+            usedValue: usedValue.map { _ in 0 },
+            limitValue: limitValue,
+            remainingValue: limitValue ?? remainingValue,
+            usedPercent: usedPercent.map { _ in 0 },
+            resetsAt: nextReset,
+            unit: unit,
+            isEstimated: isEstimated
+        )
+    }
+
     private static func displayResetDate(
         _ resetsAt: Date?,
         windowKind: ProviderQuotaWindowKind,
@@ -437,7 +470,7 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
     }
 
     var primaryBucket: ProviderQuotaBucket? {
-        buckets.sorted {
+        buckets.map { $0.reconcilingElapsedWindow() }.sorted {
             let lhsPriority = primaryBucketPriority(for: $0)
             let rhsPriority = primaryBucketPriority(for: $1)
             if lhsPriority != rhsPriority {
@@ -511,16 +544,32 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
 
     /// Returns the bucket representing the hourly/5h window (windowKind == .rollingHours)
     var hourlyBucket: ProviderQuotaBucket? {
-        displayableQuotaBuckets.first { $0.windowKind == .rollingHours }
+        hourlyBucket(relativeTo: Date())
+    }
+
+    func hourlyBucket(relativeTo now: Date) -> ProviderQuotaBucket? {
+        displayableQuotaBuckets(relativeTo: now).first { $0.windowKind == .rollingHours }
     }
 
     /// Returns the bucket representing the weekly window (windowKind == .weekly or .rollingDays)
     var weeklyBucket: ProviderQuotaBucket? {
-        displayableQuotaBuckets.first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
+        weeklyBucket(relativeTo: Date())
+    }
+
+    func weeklyBucket(relativeTo now: Date) -> ProviderQuotaBucket? {
+        displayableQuotaBuckets(relativeTo: now).first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
     }
 
     var displayableQuotaBuckets: [ProviderQuotaBucket] {
-        buckets.filter(\.isDisplayableQuotaSignal)
+        // Reconcile each survivor to the current moment so a rolled-over window
+        // reports its fresh (0 used / full remaining) state. Single chokepoint
+        // feeding the strip, popover, hourly/weekly accessors, customizedBuckets,
+        // the primary-bucket pickers, and the cross-surface sync writer.
+        displayableQuotaBuckets(relativeTo: Date())
+    }
+
+    func displayableQuotaBuckets(relativeTo now: Date) -> [ProviderQuotaBucket] {
+        buckets.filter(\.isDisplayableQuotaSignal).map { $0.reconcilingElapsedWindow(asOf: now) }
     }
 
     /// Returns the buckets filtered and ordered by user customization settings.

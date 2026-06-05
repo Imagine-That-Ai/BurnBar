@@ -74,7 +74,7 @@ internal fun RecoverySection(
                 }
             }
             Text(
-                "Set up at least one recovery method before turning on zero-knowledge mode. " +
+                "Set up at least one recovery method before turning on end-to-end encrypted mode. " +
                     "Without it, no one — not even BurnBar — can restore your sealed data.",
                 style = AuroraType.caption,
                 color = PensieveControlTokens.textMute,
