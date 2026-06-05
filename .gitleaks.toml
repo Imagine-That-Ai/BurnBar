@@ -56,6 +56,19 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Deterministic Signal at-rest KAT private keys used only in checked-in cross-language test fixtures"
+regexTarget = "match"
+regexes = [
+  '''recipientPrivateKeyB64"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''SIGNAL_(DEVICE_)?KAT_PRIVATE_KEY_B64\s*=\s*"[A-Za-z0-9+/_=-]+"''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/SignalEnvelopeV1Vector\.json''',
+  '''android/app/src/androidTest/java/com/openburnbar/data/cloud/CloudVaultCryptoSignalInstrumentedTest\.kt''',
+  '''android/app/src/test/java/com/openburnbar/data/cloud/CloudVaultCryptoTest\.kt''',
+]
+
+[[allowlists]]
 description = "Swift UserDefaults key constants and test lookup keys, not credential material"
 regexTarget = "match"
 regexes = [

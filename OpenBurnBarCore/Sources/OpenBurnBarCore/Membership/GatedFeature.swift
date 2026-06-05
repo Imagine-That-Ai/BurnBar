@@ -17,7 +17,8 @@ import Foundation
 //   • "Agent Control" — never "Computer Use" in user copy.
 //   • The cloak is NOT described as "inversion-proof" / "fully unlinkable".
 //   • Chat / agent memory is NEVER called "end-to-end encrypted" — agent
-//     memory is "sealed on-device; the server searches without reading it".
+//     memory is "sealed on-device; the server searches over it without reading
+//     your content, though some patterns stay visible".
 //     The only feature that legitimately claims E2E is Floo (paired devices).
 
 // MARK: - CloudTier
@@ -236,7 +237,7 @@ public extension GatedFeature {
             oneLineBenefit: "A private memory your agents can recall — your repo docs, notes, and chats, sealed on your device.",
             benefitBullets: [
                 "Your agents quietly recall the repo docs, notes, and chat-derived memories that matter, mid-task",
-                "Every chunk of text is sealed on your device before it leaves — the server searches it without ever reading it",
+                "Every chunk of text is sealed on your device before it leaves — the server searches over the sealed structures, though some patterns stay visible",
                 "Nearest-neighbor recall finds the right memory by meaning, not by exposing a single word of your content",
                 "Sources, chunks, and storage you control, with one tap to delete any source or purge it all"
             ],
@@ -253,7 +254,7 @@ public extension GatedFeature {
             benefitBullets: [
                 "Jump from 3 sources to 15, from 5,000 memory chunks to 50,000, from 25 MB to 250 MB of recallable knowledge",
                 "Feed in far more repo docs, notes, and chat memories so your agents stay deeply in context across big projects",
-                "Same on-device seal and cloaked vectors — the server still searches without reading a word",
+                "Same on-device seal and cloaked vectors — the server searches over them without reading your content, though some patterns stay visible",
                 "Everything in Cloud Pro stays included: Floo, Agent Control, and the same hosted action and relay allowance"
             ],
             iconSystemName: "sparkles",

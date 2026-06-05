@@ -98,7 +98,7 @@ honesty guardrails. This is the data for the shared `GatedFeature` catalog.
 ### `dataVault` — Data Vault / agent memory — **cloud_pro**
 - **One-liner:** A private memory your agents can recall — your repo docs, notes, and chats, sealed on your device.
 - Your agents quietly recall the repo docs, notes, and chat-derived memories that matter, mid-task
-- Every chunk of text is sealed on your device before it leaves — the server searches it without ever reading it
+- Every chunk of text is sealed on your device before it leaves — the server searches over the sealed structures, though some patterns stay visible
 - Nearest-neighbor recall finds the right memory by meaning, not by exposing a single word of your content
 - Sources, chunks, and storage you control, with one tap to delete any source or purge it all
 - **Honesty:** "sealed on-device; server searches without reading it." Cloak is NOT inversion-proof/fully-unlinkable. Vault key is device-only; loss = unrecoverable. Pro tier = 10 sources / 50,000 chunks / 1 GB.

@@ -188,7 +188,7 @@ struct DataVaultSafetyPanel: View {
                     DataVaultActionRow(
                         title: "Recovery",
                         subtitle: store.recoveryMethods.isEmpty
-                            ? "Set up a recovery key or contact before zero-knowledge mode."
+                            ? "Set up a recovery key or contact before end-to-end encrypted mode."
                             : "\(store.recoveryMethods.filter(\.confirmed).count) of \(store.recoveryMethods.count) confirmed.",
                         icon: "key.horizontal.fill",
                         tint: EncryptionTier.endToEnd.tierColor

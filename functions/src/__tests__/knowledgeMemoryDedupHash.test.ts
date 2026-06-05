@@ -38,11 +38,13 @@ vi.mock("../callables/shared.js", async () => {
 
 // Minimal firebase-admin/firestore: capture the doc payloads, stub the value
 // wrappers + aggregate the loop reads.
+const FIELD_DELETE = Symbol("FieldValue.delete");
 vi.mock("firebase-admin/firestore", () => ({
   Timestamp: { now: () => ({ __ts: true }) },
   FieldValue: {
     vector: (v: number[]) => ({ __vector: v }),
     increment: (n: number) => ({ __increment: n }),
+    delete: () => FIELD_DELETE,
   },
   AggregateField: {
     count: () => ({ __count: true }),
@@ -63,7 +65,11 @@ type FakeRef = {
 };
 
 function applySet(path: string, data: Record<string, unknown>) {
-  stored.set(path, { ...stored.get(path), ...data });
+  const merged = { ...stored.get(path), ...data };
+  for (const key of Object.keys(merged)) {
+    if (merged[key] === FIELD_DELETE) delete merged[key];
+  }
+  stored.set(path, merged);
 }
 
 type WherePred = { field: string; op: string; value: unknown };
@@ -134,6 +140,12 @@ function makeDb() {
     // commit path no longer uses this (it floors `dedupHashVersion == 1`), but
     // keep it consistent with the filtered makeQuery aggregate.
     aggregate: (spec: unknown) => makeQuery(base).aggregate(spec),
+    count: () => ({
+      get: async () => {
+        const count = [...stored.keys()].filter((path) => path.startsWith(`${base}/`)).length;
+        return { data: () => ({ count }) };
+      },
+    }),
     where: (field: string, op: string, value: unknown) => makeQuery(base, [{ field, op, value }]),
   });
   return {
@@ -177,6 +189,42 @@ function sealedText(tag: string) {
   };
 }
 
+function signalEnvelopeForKnowledgeVector(uid: string, docId: string, overrides: Record<string, unknown> = {}) {
+  const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
+  return {
+    signalEnvelopeFormatVersion: 1,
+    mode: "at-rest",
+    relayEncryption: "signal-hpke-identity-seal-v1",
+    ciphertextLayer: {
+      payloadCiphertextB64: b64("signal-payload"),
+      payloadAADLabel: "cloudvault:cloud_search_knowledge/sealedCiphertext",
+      schemaVersion: 1,
+    },
+    keyDelivery: {
+      scheme: "signal-hpke-identity-seal-v1",
+      contentKeyLength: 32,
+      wraps: [
+        {
+          recipientKind: "device",
+          recipientIdentityKeyId: "device-1",
+          recipientIdentityKeyB64: b64("identity-key"),
+          sealedContentKeyB64: b64("sealed-content-key"),
+        },
+      ],
+    },
+    binding: {
+      uid,
+      scope: "cloudvault",
+      collection: "cloud_search_knowledge",
+      docId,
+      field: "sealedCiphertext",
+      mode: "at-rest",
+      formatVersion: 1,
+    },
+    ...overrides,
+  };
+}
+
 function commitRequestForUser(uid: string, vaultKey: Buffer) {
   const dedupHash = vaultKeyedHmac(vaultKey, "content", PLAINTEXT);
   const slugHmac = vaultKeyedHmac(vaultKey, "slug", SOURCE_SLUG);
@@ -185,9 +233,9 @@ function commitRequestForUser(uid: string, vaultKey: Buffer) {
     app: { appId: "test-app" },
     rawRequest: { headers: {} },
     data: {
-      // sourceSlug is now an OPAQUE vault-keyed hex source id (the cleartext slug
-      // is rejected and never stored — privacy-leak-remediation §3); it is the
-      // same HMAC(slug) the client derives for the manifest doc id.
+      // Legacy request alias: older clients still send the opaque source
+      // manifest id as `sourceSlug`. The server stores canonical
+      // `sourceManifestId` on the manifest doc.
       sourceSlug: slugHmac,
       slugHmac,
       embeddingModelVersion: "bge-small-en-v1.5-cloak-v1",
@@ -223,6 +271,14 @@ function firstKnowledgeRecord(uid: string): Record<string, unknown> {
   return found[1];
 }
 
+function manifestRecord(uid: string, sourceManifestId: string): Record<string, unknown> {
+  const record = stored.get(`users/${uid}/knowledge_sync_manifests/${sourceManifestId}`);
+  if (!record) {
+    throw new Error(`Expected manifest record for ${uid}/${sourceManifestId}`);
+  }
+  return record;
+}
+
 function vectorForMutation(req: ReturnType<typeof commitRequestForUser>): Record<string, unknown> {
   const [vector] = req.data.vectors;
   if (!vector) {
@@ -231,12 +287,16 @@ function vectorForMutation(req: ReturnType<typeof commitRequestForUser>): Record
   return vector;
 }
 
-function hitsFromResult(result: unknown): Array<{ vectorId: string }> {
+function rawHitsFromResult(result: unknown): Array<Record<string, unknown>> {
   const hits = Reflect.get(Object(result), "hits");
   if (!Array.isArray(hits)) {
     throw new Error("Expected search result hits");
   }
-  return hits.flatMap((hit) => {
+  return hits.filter((hit): hit is Record<string, unknown> => !!hit && typeof hit === "object" && !Array.isArray(hit));
+}
+
+function hitsFromResult(result: unknown): Array<{ vectorId: string }> {
+  return rawHitsFromResult(result).flatMap((hit) => {
     const vectorId = Reflect.get(Object(hit), "vectorId");
     return typeof vectorId === "string" ? [{ vectorId }] : [];
   });
@@ -303,6 +363,30 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     expect(record).not.toHaveProperty("contentHash");
     // The keyed filter column IS present.
     expect(typeof record.slugHmac).toBe("string");
+
+    const manifest = manifestRecord("userA", record.slugHmac as string);
+    expect(manifest.sourceManifestId).toBe(record.slugHmac);
+    expect(manifest.slugHmac).toBe(record.slugHmac);
+    expect(manifest).not.toHaveProperty("sourceSlug");
+  });
+
+  it("configureKnowledgeSource stores sourceManifestId and returns only a response compatibility alias", async () => {
+    const { configureKnowledgeSource } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(configureKnowledgeSource);
+    const sourceManifestId = "ab".repeat(32);
+
+    const result = (await run({
+      auth: { uid: "userConfig", token: {} },
+      app: { appId: "test-app" },
+      rawRequest: { headers: {} },
+      data: { sourceKind: "repo_docs", sourceSlug: sourceManifestId },
+    })) as { sourceManifestId: string; sourceSlug: string };
+
+    expect(result.sourceManifestId).toBe(sourceManifestId);
+    expect(result.sourceSlug).toBe(sourceManifestId);
+    const manifest = manifestRecord("userConfig", sourceManifestId);
+    expect(manifest.sourceManifestId).toBe(sourceManifestId);
+    expect(manifest).not.toHaveProperty("sourceSlug");
   });
 
   it("FLAG-DAY: a legacy client (cleartext contentHash, no dedupHash/slugHmac) is REJECTED", async () => {
@@ -337,6 +421,45 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
 
     await expect(run(req)).rejects.toThrow(/cloakedVector/);
     expect([...stored.keys()].some((k) => k.startsWith("users/userRawEmbed/cloud_search_knowledge/"))).toBe(false);
+  });
+
+  it("accepts an optional path-bound Signal envelope on a knowledge vector and stores the sanitized envelope", async () => {
+    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+
+    const req = commitRequestForUser("userSignal", Buffer.alloc(32, 0xe5));
+    const vector = vectorForMutation(req);
+    const vectorId = String(vector.dedupHash);
+    vector.signalEnvelope = signalEnvelopeForKnowledgeVector("userSignal", vectorId, {
+      plaintext: "must be stripped by the shared sanitizer before write",
+    });
+
+    await run(req);
+    const record = firstKnowledgeRecord("userSignal");
+    expect(record.signalEnvelope).toMatchObject({
+      signalEnvelopeFormatVersion: 1,
+      mode: "at-rest",
+      relayEncryption: "signal-hpke-identity-seal-v1",
+      binding: {
+        uid: "userSignal",
+        collection: "cloud_search_knowledge",
+        docId: vectorId,
+        field: "sealedCiphertext",
+      },
+    });
+    expect(record.signalEnvelope).not.toHaveProperty("plaintext");
+  });
+
+  it("rejects a relocated optional Signal envelope before any knowledge vector write", async () => {
+    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+
+    const req = commitRequestForUser("userSignalBad", Buffer.alloc(32, 0xf6));
+    const vector = vectorForMutation(req);
+    vector.signalEnvelope = signalEnvelopeForKnowledgeVector("userSignalBad", "different-doc");
+
+    await expect(run(req)).rejects.toThrow(/binding-docid-mismatch/);
+    expect([...stored.keys()].some((k) => k.startsWith("users/userSignalBad/cloud_search_knowledge/"))).toBe(false);
   });
 });
 
@@ -405,6 +528,36 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
     // The v0 oracle row is unreachable; only the v1 row surfaces.
     expect(ids).toContain("v1doc");
     expect(ids).not.toContain(KNOWN_PLAINTEXT_SHA256);
+  });
+
+  it("searchKnowledge returns an optional Signal envelope alongside the legacy sealed fields", async () => {
+    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
+    const run = callableRun(searchKnowledge);
+
+    seedVector("userSearchSignal", "v1-signal", {
+      dedupHashVersion: 1,
+      embeddingModelVersion: NEW_MODEL_TAG,
+      dedupHash: "bb".repeat(32),
+    });
+    const seeded = stored.get("users/userSearchSignal/cloud_search_knowledge/v1-signal");
+    if (!seeded) throw new Error("Expected seeded Signal row");
+    seeded.signalEnvelope = signalEnvelopeForKnowledgeVector("userSearchSignal", "v1-signal");
+
+    const hits = rawHitsFromResult(await run(searchRequest("userSearchSignal", NEW_MODEL_TAG)));
+    const hit = hits.find((h) => h.vectorId === "v1-signal");
+    expect(hit).toBeTruthy();
+    expect(hit?.ciphertext).toBeTruthy();
+    expect(hit?.sealedMetadata).toBeTruthy();
+    expect(hit?.signalEnvelope).toMatchObject({
+      signalEnvelopeFormatVersion: 1,
+      mode: "at-rest",
+      binding: {
+        uid: "userSearchSignal",
+        collection: "cloud_search_knowledge",
+        docId: "v1-signal",
+        field: "sealedCiphertext",
+      },
+    });
   });
 
   it("searchKnowledge at the new tag never returns a v0 row even on the retired tag", async () => {

@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# SOTASIGNAL Phase F / Rule-0 — ownership guard.
+#
+# The plan forbids the Signal implementation branch from touching legally/ownership
+# sensitive paths without an explicit handoff. This gate diffs the current branch
+# against a base ref and FAILS if any changed file matches a Rule-0 glob. Run it in
+# the Signal producer CI (and locally before pushing).
+#
+# Usage: scripts/ci/verify-signal-rule0.sh [base-ref]   (default: origin/main)
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+BASE="${1:-origin/main}"
+
+# Resolve a usable base; fall back to merge-base, then to a no-op (empty diff).
+if git rev-parse --verify --quiet "$BASE" >/dev/null; then
+  MERGE_BASE="$(git merge-base "$BASE" HEAD 2>/dev/null || echo "$BASE")"
+else
+  echo "note: base ref '$BASE' not found; comparing against HEAD~1 if present."
+  MERGE_BASE="$(git rev-parse --verify --quiet HEAD~1 || true)"
+fi
+
+if [[ -z "${MERGE_BASE:-}" ]]; then
+  echo "note: no base commit to diff against; treating working tree as the change set."
+  CHANGED="$(git status --porcelain | awk '{print $2}')"
+else
+  CHANGED="$(git diff --name-only "$MERGE_BASE"...HEAD; git status --porcelain | awk '{print $2}')"
+fi
+CHANGED="$(printf '%s\n' "$CHANGED" | sort -u | sed '/^$/d')"
+
+# Rule-0 protected globs (extended regex over repo-relative paths). Includes the
+# vendored AGPL libsignal submodule + its FFI binary + .gitmodules (so a branch
+# cannot repoint the submodule at a hostile fork and pass), and de-anchors the
+# license/notice/third-party names so subdirectory copies are also protected.
+#
+# Remediation R2: the Vendor paths are SLASH-OPTIONAL — `(/|$)` — because a
+# registered submodule gitlink (mode 160000) is reported by `git diff --name-only` /
+# `git status --porcelain` as the BARE path with no trailing slash. The old
+# `Vendor/libsignal/` (slash-required) form let a gitlink pointer-bump escape.
+RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi\.xcframework(/|$)|packages/libsignal-bridge/|third_party/|LICENSES/|THIRD_PARTY|REUSE\.toml|LICENSE|NOTICE|trust\.generated\.|website/src/data/trust)|(^|/)\.gitmodules$'
+
+violations=0
+while IFS= read -r f; do
+  [[ -z "$f" ]] && continue
+  if printf '%s' "$f" | grep -Eq "$RULE0"; then
+    echo "  RULE-0 VIOLATION: $f"
+    violations=$((violations + 1))
+  fi
+done <<< "$CHANGED"
+
+# Defense-in-depth (Remediation R2): diff the vendored submodule/xcframework contents
+# directly against the base. A pointer advance to a malicious commit on the SAME
+# upstream URL leaves .gitmodules untouched and changes only the bare gitlink — the
+# slash-optional regex above now catches the bare path, and this content-diff is a
+# second, path-form-independent guard. Skipped only in the degraded no-base mode.
+if [[ -n "${MERGE_BASE:-}" ]]; then
+  for sub in Vendor/libsignal Vendor/OpenBurnBarSignalFfi.xcframework; do
+    if git diff "$MERGE_BASE"...HEAD -- "$sub" 2>/dev/null | grep -q .; then
+      echo "  RULE-0 VIOLATION: $sub (submodule/vendor pointer or contents changed vs base)"
+      violations=$((violations + 1))
+    fi
+  done
+fi
+
+# License fields inside package manifests are also Rule-0; flag a changed manifest
+# whose 'license' line differs from the base (best-effort; informational hard-fail).
+for manifest in $(printf '%s\n' "$CHANGED" | grep -E 'package\.json$' || true); do
+  [[ -f "$manifest" ]] || continue
+  if [[ -n "${MERGE_BASE:-}" ]] && git show "$MERGE_BASE:$manifest" >/dev/null 2>&1; then
+    base_lic="$(git show "$MERGE_BASE:$manifest" | grep -E '"license"' || true)"
+    head_lic="$(grep -E '"license"' "$manifest" || true)"
+    if [[ "$base_lic" != "$head_lic" ]]; then
+      echo "  RULE-0 VIOLATION: license field changed in $manifest"
+      violations=$((violations + 1))
+    fi
+  fi
+done
+
+if [[ "$violations" -eq 0 ]]; then
+  echo "Rule-0 OK — no protected path modified by this branch."
+  exit 0
+fi
+echo "Rule-0 FAILED — $violations protected path(s) modified. Route through the legal/ownership owner."
+exit 1

@@ -3,7 +3,9 @@
  * §4). Proves connectKnowledgeRepo persists ONLY an opaque, server-keyed
  * `repoMatchToken` (HMAC of the normalized repo full name) plus a vault-sealed
  * display name — never the cleartext `repoFullName` — and that the doc id is
- * derived from the token, not the name. The same token is recomputable from the
+ * derived from the token, not the name. L40 also proves repo rows persist the
+ * canonical `sourceManifestId`, not the transitional `sourceSlugToken` nor the
+ * legacy cleartext `sourceSlug`. The same token is recomputable from the
  * GitHub-signed full name (the webhook's match key), which the determinism check
  * below mirrors.
  */
@@ -102,14 +104,16 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     expect(record!.sealedRepoFullName).toEqual(sealedName);
     // The cleartext repo name is GONE from the stored row.
     expect(record).not.toHaveProperty("repoFullName");
-    // §4 slug remediation: the cleartext repo-name-derived `sourceSlug` is NOT
-    // persisted — only the opaque, server-keyed `sourceSlugToken` (HMAC of the
-    // slug) is stored as the manifest routing key.
+    // §4/L40 slug remediation: neither the cleartext repo-name-derived
+    // `sourceSlug` nor the transitional `sourceSlugToken` is persisted — only
+    // the canonical opaque, server-keyed `sourceManifestId` is stored as the
+    // manifest routing key.
     expect(record).not.toHaveProperty("sourceSlug");
-    expect(typeof record!.sourceSlugToken).toBe("string");
-    expect(record!.sourceSlugToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(record).not.toHaveProperty("sourceSlugToken");
+    expect(typeof record!.sourceManifestId).toBe("string");
+    expect(record!.sourceManifestId).toMatch(/^[a-f0-9]{64}$/);
     // The token must be a non-reversible HMAC, never the cleartext slug itself.
-    expect(record!.sourceSlugToken).not.toBe("repo-docs-secret");
+    expect(record!.sourceManifestId).not.toBe("repo-docs-secret");
     const leaves: string[] = [];
     const walk = (v: unknown) => {
       if (typeof v === "string") leaves.push(v);
@@ -144,7 +148,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     expect(a.repoId).toBe(expectedToken("Owner/Repo"));
   });
 
-  it("re-connect strips a pre-existing cleartext sourceSlug and re-keys to the opaque token", async () => {
+  it("re-connect strips pre-existing sourceSlug/sourceSlugToken and re-keys to sourceManifestId", async () => {
     const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
     const run = (connectKnowledgeRepo as unknown as Runnable).run;
 
@@ -157,6 +161,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
     stored.set(`users/userA/knowledge_repos/${token}`, {
       repoMatchToken: token,
       sealedRepoFullName: sealedName,
+      sourceSlugToken: "aa".repeat(32),
       sourceSlug: "repo-docs-secret",
     });
 
@@ -169,12 +174,13 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
 
     const record = stored.get(`users/userA/knowledge_repos/${token}`);
     expect(record).toBeDefined();
-    // The stale cleartext slug is DELETED on re-connect (merge + FieldValue.delete),
-    // not merely absent on a fresh create — this exercises the delete-on-merge path
-    // against a POPULATED legacy row.
+    // The stale cleartext slug and transitional sourceSlugToken are DELETED on
+    // re-connect (merge + FieldValue.delete), not merely absent on a fresh create
+    // — this exercises delete-on-merge against a POPULATED legacy row.
     expect(record).not.toHaveProperty("sourceSlug");
-    // Reads now route through the opaque token.
-    expect(record!.sourceSlugToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(record).not.toHaveProperty("sourceSlugToken");
+    // Reads now route through the canonical opaque sourceManifestId.
+    expect(record!.sourceManifestId).toMatch(/^[a-f0-9]{64}$/);
     const leaves: string[] = [];
     const walk = (v: unknown) => {
       if (typeof v === "string") leaves.push(v);

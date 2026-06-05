@@ -1,11 +1,23 @@
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 import UIKit
 
 struct MobileCloudVaultResolvedKey: Sendable {
     let keyData: Data
     let vaultKeyID: String
+    let signalIdentity: OpenBurnBarSignalIdentityKeypair?
+
+    init(
+        keyData: Data,
+        vaultKeyID: String,
+        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil
+    ) {
+        self.keyData = keyData
+        self.vaultKeyID = vaultKeyID
+        self.signalIdentity = signalIdentity
+    }
 }
 
 enum MobileCloudVaultAccessError: LocalizedError {
@@ -29,6 +41,17 @@ enum MobileEscrowPublicKeyPublishError: LocalizedError {
         switch self {
         case .immutablePublicKeyConflict(let deviceId, let keyVersion):
             return "Escrow public key conflict for \(deviceId)_\(keyVersion)."
+        }
+    }
+}
+
+enum MobileSignalIdentityPublicKeyPublishError: LocalizedError {
+    case immutablePublicKeyConflict(deviceId: String, keyVersion: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .immutablePublicKeyConflict(let deviceId, let keyVersion):
+            return "Signal identity public key conflict for \(deviceId)_\(keyVersion)."
         }
     }
 }
@@ -92,6 +115,58 @@ enum MobileEscrowPublicKeyPublisher {
     }
 }
 
+enum MobileSignalIdentityPublicKeyPublisher {
+    static func publishIfNeeded(
+        userRef: DocumentReference,
+        deviceId: String,
+        platform: String,
+        identity: OpenBurnBarSignalIdentityKeypair
+    ) async throws {
+        let documentRef = userRef.collection("signal_identity_public_keys")
+            .document(identity.identityKeyId)
+        let existing = try await documentRef.getDocument()
+
+        if let data = existing.data() {
+            guard matchesExistingPublicKey(data, deviceId: deviceId, platform: platform, identity: identity) else {
+                throw MobileSignalIdentityPublicKeyPublishError.immutablePublicKeyConflict(
+                    deviceId: deviceId,
+                    keyVersion: identity.keyVersion
+                )
+            }
+            return
+        }
+
+        try await documentRef.setData([
+            "deviceId": deviceId,
+            "platform": platform,
+            "identityKeyId": identity.identityKeyId,
+            "publicKeyData": identity.publicKeyBase64,
+            "publicKeyFingerprint": identity.publicKeyFingerprint,
+            "keyVersion": identity.keyVersion,
+            "algorithm": CloudVaultCrypto.signalAtRestEncryption,
+            "createdAt": FieldValue.serverTimestamp()
+        ], merge: false)
+    }
+
+    private static func matchesExistingPublicKey(
+        _ data: [String: Any],
+        deviceId: String,
+        platform: String,
+        identity: OpenBurnBarSignalIdentityKeypair
+    ) -> Bool {
+        guard data["deviceId"] as? String == deviceId,
+              data["platform"] as? String == platform,
+              data["identityKeyId"] as? String == identity.identityKeyId,
+              data["publicKeyData"] as? String == identity.publicKeyBase64,
+              data["publicKeyFingerprint"] as? String == identity.publicKeyFingerprint,
+              data["keyVersion"] as? Int == identity.keyVersion,
+              data["algorithm"] as? String == CloudVaultCrypto.signalAtRestEncryption else {
+            return false
+        }
+        return true
+    }
+}
+
 enum MobileCloudVaultKeyAccess {
     static func keyForWriting(uid: String, firestore: Firestore = Firestore.firestore()) async throws -> MobileCloudVaultResolvedKey {
         let userRef = firestore.collection("users").document(uid)
@@ -101,12 +176,27 @@ enum MobileCloudVaultKeyAccess {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
             try await ensureState(userRef: userRef, uid: uid, vaultKeyID: vaultKeyID, deviceId: deviceId)
             try await publishCloudVaultKey(uid: uid, vaultKey: local, vaultKeyID: vaultKeyID, deviceId: deviceId, userRef: userRef)
-            return MobileCloudVaultResolvedKey(keyData: local, vaultKeyID: vaultKeyID)
+            return MobileCloudVaultResolvedKey(
+                keyData: local,
+                vaultKeyID: vaultKeyID,
+                signalIdentity: try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+            )
         }
 
         if let unwrapped = try await unwrapExistingKey(deviceId: deviceId, userRef: userRef) {
             try keyStore.saveKey(unwrapped.keyData, uid: uid)
-            return unwrapped
+            try await publishCloudVaultKey(
+                uid: uid,
+                vaultKey: unwrapped.keyData,
+                vaultKeyID: unwrapped.vaultKeyID,
+                deviceId: deviceId,
+                userRef: userRef
+            )
+            return MobileCloudVaultResolvedKey(
+                keyData: unwrapped.keyData,
+                vaultKeyID: unwrapped.vaultKeyID,
+                signalIdentity: try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+            )
         }
 
         let existingState = try await userRef.collection("cloud_vault_state").document("current").getDocument().data()
@@ -119,7 +209,11 @@ enum MobileCloudVaultKeyAccess {
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: created)
         try await ensureState(userRef: userRef, uid: uid, vaultKeyID: vaultKeyID, deviceId: deviceId)
         try await publishCloudVaultKey(uid: uid, vaultKey: created, vaultKeyID: vaultKeyID, deviceId: deviceId, userRef: userRef)
-        return MobileCloudVaultResolvedKey(keyData: created, vaultKeyID: vaultKeyID)
+        return MobileCloudVaultResolvedKey(
+            keyData: created,
+            vaultKeyID: vaultKeyID,
+            signalIdentity: try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+        )
     }
 
     static func keyForReading(uid: String, firestore: Firestore = Firestore.firestore()) async throws -> MobileCloudVaultResolvedKey? {
@@ -128,11 +222,19 @@ enum MobileCloudVaultKeyAccess {
         let keyStore = CloudVaultKeyStore()
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
-            return MobileCloudVaultResolvedKey(keyData: local, vaultKeyID: vaultKeyID)
+            return MobileCloudVaultResolvedKey(
+                keyData: local,
+                vaultKeyID: vaultKeyID,
+                signalIdentity: try OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
+            )
         }
         if let unwrapped = try await unwrapExistingKey(deviceId: deviceId, userRef: userRef) {
             try keyStore.saveKey(unwrapped.keyData, uid: uid)
-            return unwrapped
+            return MobileCloudVaultResolvedKey(
+                keyData: unwrapped.keyData,
+                vaultKeyID: unwrapped.vaultKeyID,
+                signalIdentity: try OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
+            )
         }
         return nil
     }
@@ -240,6 +342,13 @@ enum MobileCloudVaultKeyAccess {
             publicKeyData: keypair.publicKeyData,
             publicKeyFingerprint: keypair.publicKeyFingerprint,
             keyVersion: keypair.keyVersion
+        )
+        let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+        try await MobileSignalIdentityPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: deviceId,
+            platform: platform,
+            identity: signalIdentity
         )
         guard sourceIsTrusted else {
             return

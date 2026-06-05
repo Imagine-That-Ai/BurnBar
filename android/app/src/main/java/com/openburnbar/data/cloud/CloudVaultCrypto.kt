@@ -77,6 +77,74 @@ data class CloudVaultSealedPayload(
     val aad: String? = "OpenBurnBar-CloudVaultSealedPayload-v2",
 )
 
+data class SignalEnvelopeBinding(
+    val uid: String,
+    val scope: String,
+    val clientId: String? = null,
+    val collection: String? = null,
+    val docId: String? = null,
+    val field: String? = null,
+    val slotId: String? = null,
+    val mode: String,
+    val formatVersion: Int,
+)
+
+data class CloudVaultSignalCiphertextLayer(
+    val payloadCiphertextB64: String,
+    val payloadAADLabel: String,
+    val schemaVersion: Int,
+)
+
+data class CloudVaultSignalAtRestWrap(
+    val recipientKind: String,
+    val recipientIdentityKeyId: String,
+    val recipientIdentityKeyB64: String,
+    val sealedContentKeyB64: String,
+)
+
+data class CloudVaultSignalAtRestKeyDelivery(
+    val scheme: String = CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION,
+    val wraps: List<CloudVaultSignalAtRestWrap>,
+    val contentKeyLength: Int = CloudVaultCrypto.SIGNAL_AT_REST_CONTENT_KEY_LENGTH,
+)
+
+data class CloudVaultSignalBinding(
+    val uid: String,
+    val collection: String,
+    val docId: String,
+    val field: String,
+    val scope: String = CloudVaultCrypto.SIGNAL_AT_REST_SCOPE,
+    val mode: String = CloudVaultCrypto.SIGNAL_AT_REST_MODE,
+    val formatVersion: Int = CloudVaultCrypto.SIGNAL_ENVELOPE_FORMAT_VERSION,
+) {
+    val aadBinding: SignalEnvelopeBinding
+        get() =
+            SignalEnvelopeBinding(
+                uid = this@CloudVaultSignalBinding.uid,
+                scope = this@CloudVaultSignalBinding.scope,
+                collection = this@CloudVaultSignalBinding.collection,
+                docId = this@CloudVaultSignalBinding.docId,
+                field = this@CloudVaultSignalBinding.field,
+                mode = this@CloudVaultSignalBinding.mode,
+                formatVersion = this@CloudVaultSignalBinding.formatVersion,
+            )
+}
+
+data class CloudVaultSignalEnvelope(
+    val signalEnvelopeFormatVersion: Int = CloudVaultCrypto.SIGNAL_ENVELOPE_FORMAT_VERSION,
+    val mode: String = CloudVaultCrypto.SIGNAL_AT_REST_MODE,
+    val relayEncryption: String = CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION,
+    val ciphertextLayer: CloudVaultSignalCiphertextLayer,
+    val keyDelivery: CloudVaultSignalAtRestKeyDelivery,
+    val binding: CloudVaultSignalBinding,
+)
+
+data class CloudVaultSignalRecipient(
+    val recipientKind: String,
+    val recipientIdentityKeyId: String,
+    val publicKeyData: ByteArray,
+)
+
 object CloudVaultCrypto {
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_TAG_BYTES = 16
@@ -91,6 +159,13 @@ object CloudVaultCrypto {
     private const val WRAP_INFO = "OpenBurnBar-Escrow-v1"
     private const val BLOB_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
     private const val SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"
+    const val SIGNAL_ENVELOPE_FORMAT_VERSION: Int = 1
+    const val SIGNAL_AT_REST_MODE: String = "at-rest"
+    const val SIGNAL_AT_REST_SCOPE: String = "cloudvault"
+    const val SIGNAL_AT_REST_ENCRYPTION: String = "signal-hpke-identity-seal-v1"
+    const val SIGNAL_AT_REST_CONTENT_KEY_LENGTH: Int = 32
+    const val SIGNAL_PAYLOAD_SCHEMA_VERSION: Int = 1
+    const val SIGNAL_MAX_RECIPIENT_WRAPS: Int = 32
     const val aadContextPrefix: String = "OpenBurnBar-CloudVault-aad-v2"
     const val legacyAADContextPrefix: String = "OpenBurnBar-CloudVault-aad-v1"
     const val currentSealedTextSchemaVersion: Int = 2
@@ -240,6 +315,70 @@ object CloudVaultCrypto {
         )
     }
 
+    fun sealSignalPayload(
+        plaintext: ByteArray,
+        recipients: List<CloudVaultSignalRecipient>,
+        binding: CloudVaultSignalBinding,
+    ): CloudVaultSignalEnvelope {
+        validateSignalRecipients(recipients)
+        val contentKey = ByteArray(SIGNAL_AT_REST_CONTENT_KEY_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
+        val canonicalAAD = CloudVaultCryptoSupport.bindingToAAD(binding.aadBinding)
+        val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(contentKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        cipher.updateAAD(canonicalAAD.toByteArray(Charsets.UTF_8))
+        val payloadCiphertext = nonce + cipher.doFinal(plaintext)
+        val wraps =
+            recipients.map { recipient ->
+                val sealedContentKey = CloudVaultCryptoSupport.atRestSeal(contentKey, recipient.publicKeyData, binding.aadBinding)
+                CloudVaultSignalAtRestWrap(
+                    recipientKind = recipient.recipientKind,
+                    recipientIdentityKeyId = recipient.recipientIdentityKeyId,
+                    recipientIdentityKeyB64 = CloudVaultCryptoSupport.encodeBase64(recipient.publicKeyData),
+                    sealedContentKeyB64 = CloudVaultCryptoSupport.encodeBase64(sealedContentKey),
+                )
+            }
+        return CloudVaultSignalEnvelope(
+            ciphertextLayer =
+                CloudVaultSignalCiphertextLayer(
+                    payloadCiphertextB64 = CloudVaultCryptoSupport.encodeBase64(payloadCiphertext),
+                    payloadAADLabel = signalPayloadAadLabel(canonicalAAD),
+                    schemaVersion = SIGNAL_PAYLOAD_SCHEMA_VERSION,
+                ),
+            keyDelivery = CloudVaultSignalAtRestKeyDelivery(wraps = wraps),
+            binding = binding,
+        )
+    }
+
+    fun openSignalPayload(
+        envelope: CloudVaultSignalEnvelope,
+        recipientIdentityKeyId: String,
+        recipientIdentityPrivateKey: ByteArray,
+        expectedBinding: CloudVaultSignalBinding,
+    ): ByteArray {
+        require(envelope.signalEnvelopeFormatVersion == SIGNAL_ENVELOPE_FORMAT_VERSION) { "Invalid Signal envelope version" }
+        require(envelope.mode == SIGNAL_AT_REST_MODE) { "Invalid Signal envelope mode" }
+        require(envelope.relayEncryption == SIGNAL_AT_REST_ENCRYPTION) { "Invalid Signal envelope scheme" }
+        require(envelope.keyDelivery.scheme == SIGNAL_AT_REST_ENCRYPTION) { "Invalid Signal key-delivery scheme" }
+        require(envelope.keyDelivery.contentKeyLength == SIGNAL_AT_REST_CONTENT_KEY_LENGTH) { "Invalid Signal content-key length" }
+        require(envelope.ciphertextLayer.schemaVersion == SIGNAL_PAYLOAD_SCHEMA_VERSION) { "Invalid Signal payload schema" }
+        require(envelope.binding == expectedBinding) { "Signal envelope binding mismatch" }
+        val wrap =
+            envelope.keyDelivery.wraps.firstOrNull { it.recipientIdentityKeyId == recipientIdentityKeyId }
+                ?: error("Missing Signal recipient wrap")
+        val sealedContentKey = CloudVaultCryptoSupport.decodeBase64(wrap.sealedContentKeyB64)
+        val canonicalAAD = CloudVaultCryptoSupport.bindingToAAD(expectedBinding.aadBinding)
+        val contentKey = CloudVaultCryptoSupport.atRestOpen(sealedContentKey, recipientIdentityPrivateKey, expectedBinding.aadBinding)
+        require(contentKey.size == SIGNAL_AT_REST_CONTENT_KEY_LENGTH) { "Invalid Signal content key" }
+        val payload = CloudVaultCryptoSupport.decodeBase64(envelope.ciphertextLayer.payloadCiphertextB64)
+        return CloudVaultCryptoSupport.openAesGcm(
+            contentKey,
+            payload.copyOfRange(0, GCM_NONCE_BYTES),
+            payload.copyOfRange(GCM_NONCE_BYTES, payload.size),
+            canonicalAAD.toByteArray(Charsets.UTF_8),
+        )
+    }
+
     fun openPayload(envelope: CloudVaultSealedPayload, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): ByteArray {
         require(envelope.schemaVersion == 1 || envelope.schemaVersion == currentSealedPayloadSchemaVersion) { "Unsupported sealed payload schema" }
         require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
@@ -294,6 +433,88 @@ object CloudVaultCrypto {
             vaultKeyID = raw["vaultKeyID"] as? String ?: return null,
             sealedBoxBase64 = raw["sealedBoxBase64"] as? String ?: return null,
             aad = raw["aad"] as? String,
+        )
+    }
+
+    fun signalEnvelopeMap(envelope: CloudVaultSignalEnvelope): Map<String, Any> =
+        mapOf(
+            "signalEnvelopeFormatVersion" to envelope.signalEnvelopeFormatVersion,
+            "mode" to envelope.mode,
+            "relayEncryption" to envelope.relayEncryption,
+            "ciphertextLayer" to
+                mapOf(
+                    "payloadCiphertextB64" to envelope.ciphertextLayer.payloadCiphertextB64,
+                    "payloadAADLabel" to envelope.ciphertextLayer.payloadAADLabel,
+                    "schemaVersion" to envelope.ciphertextLayer.schemaVersion,
+                ),
+            "keyDelivery" to
+                mapOf(
+                    "scheme" to envelope.keyDelivery.scheme,
+                    "contentKeyLength" to envelope.keyDelivery.contentKeyLength,
+                    "wraps" to
+                        envelope.keyDelivery.wraps.map { wrap ->
+                            mapOf(
+                                "recipientKind" to wrap.recipientKind,
+                                "recipientIdentityKeyId" to wrap.recipientIdentityKeyId,
+                                "recipientIdentityKeyB64" to wrap.recipientIdentityKeyB64,
+                                "sealedContentKeyB64" to wrap.sealedContentKeyB64,
+                            )
+                        },
+                ),
+            "binding" to
+                mapOf(
+                    "uid" to envelope.binding.uid,
+                    "scope" to envelope.binding.scope,
+                    "collection" to envelope.binding.collection,
+                    "docId" to envelope.binding.docId,
+                    "field" to envelope.binding.field,
+                    "mode" to envelope.binding.mode,
+                    "formatVersion" to envelope.binding.formatVersion,
+                ),
+        )
+
+    fun signalEnvelopeFromMap(raw: Map<*, *>?): CloudVaultSignalEnvelope? {
+        if (raw == null) return null
+        val ciphertextLayerRaw = raw["ciphertextLayer"] as? Map<*, *> ?: return null
+        val keyDeliveryRaw = raw["keyDelivery"] as? Map<*, *> ?: return null
+        val bindingRaw = raw["binding"] as? Map<*, *> ?: return null
+        val wrapRaws = keyDeliveryRaw["wraps"] as? List<*> ?: return null
+        val wraps =
+            wrapRaws.map { rawWrap ->
+                val wrap = rawWrap as? Map<*, *> ?: return null
+                CloudVaultSignalAtRestWrap(
+                    recipientKind = wrap["recipientKind"] as? String ?: return null,
+                    recipientIdentityKeyId = wrap["recipientIdentityKeyId"] as? String ?: return null,
+                    recipientIdentityKeyB64 = wrap["recipientIdentityKeyB64"] as? String ?: return null,
+                    sealedContentKeyB64 = wrap["sealedContentKeyB64"] as? String ?: return null,
+                )
+            }
+        return CloudVaultSignalEnvelope(
+            signalEnvelopeFormatVersion = (raw["signalEnvelopeFormatVersion"] as? Number)?.toInt() ?: return null,
+            mode = raw["mode"] as? String ?: return null,
+            relayEncryption = raw["relayEncryption"] as? String ?: return null,
+            ciphertextLayer =
+                CloudVaultSignalCiphertextLayer(
+                    payloadCiphertextB64 = ciphertextLayerRaw["payloadCiphertextB64"] as? String ?: return null,
+                    payloadAADLabel = ciphertextLayerRaw["payloadAADLabel"] as? String ?: return null,
+                    schemaVersion = (ciphertextLayerRaw["schemaVersion"] as? Number)?.toInt() ?: return null,
+                ),
+            keyDelivery =
+                CloudVaultSignalAtRestKeyDelivery(
+                    scheme = keyDeliveryRaw["scheme"] as? String ?: return null,
+                    wraps = wraps,
+                    contentKeyLength = (keyDeliveryRaw["contentKeyLength"] as? Number)?.toInt() ?: return null,
+                ),
+            binding =
+                CloudVaultSignalBinding(
+                    uid = bindingRaw["uid"] as? String ?: return null,
+                    scope = bindingRaw["scope"] as? String ?: return null,
+                    collection = bindingRaw["collection"] as? String ?: return null,
+                    docId = bindingRaw["docId"] as? String ?: return null,
+                    field = bindingRaw["field"] as? String ?: return null,
+                    mode = bindingRaw["mode"] as? String ?: return null,
+                    formatVersion = (bindingRaw["formatVersion"] as? Number)?.toInt() ?: return null,
+                ),
         )
     }
 
@@ -358,6 +579,21 @@ object CloudVaultCrypto {
     fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
 
     fun sha256Base64(data: ByteArray): String = CloudVaultCryptoSupport.encodeBase64(MessageDigest.getInstance("SHA-256").digest(data))
+
+    private fun validateSignalRecipients(recipients: List<CloudVaultSignalRecipient>) {
+        require(recipients.isNotEmpty()) { "Signal envelopes require at least one recipient" }
+        require(recipients.size <= SIGNAL_MAX_RECIPIENT_WRAPS) { "Too many Signal recipients" }
+        val seen = mutableSetOf<String>()
+        recipients.forEach { recipient ->
+            require(recipient.recipientKind == "device" || recipient.recipientKind == "escrow" || recipient.recipientKind == "recovery") {
+                "Invalid Signal recipient kind"
+            }
+            require(seen.add(recipient.recipientIdentityKeyId)) { "Duplicate Signal recipient id" }
+        }
+    }
+
+    private fun signalPayloadAadLabel(canonicalAAD: String): String =
+        "bindingToAAD-sha256:${sha256Hex(canonicalAAD.toByteArray(Charsets.UTF_8)).take(32)}"
 }
 
 class AndroidCloudVaultDeviceKeypair private constructor(

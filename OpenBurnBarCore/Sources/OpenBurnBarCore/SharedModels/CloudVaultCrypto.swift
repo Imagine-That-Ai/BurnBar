@@ -181,15 +181,14 @@ public struct CloudVaultSealedPayload: Codable, Hashable, Sendable {
 /// and the content key is wrapped per-recipient (self + group members + escrow +
 /// recovery) so any trusted device can open the same ciphertext.
 ///
-/// IMPORTANT — this is a **TYPE ONLY**, additive and flag-OFF. There is NO Swift
-/// sealing/opening here: producing the `signalMessageB64`-style ciphertext and
-/// the per-recipient `sealedContentKeyB64` wraps requires the official libsignal
-/// Swift binding (an AGPL native package not yet vendored). Until that binding
-/// lands, every CloudVault write keeps using ``CloudVaultCrypto/sealPayload(_:keyData:vaultKeyID:keyVersion:aadContext:)``
-/// and ``CloudVaultCrypto/sealText(_:keyData:keyVersion:aadContext:)``; this
-/// struct only lets the server/exporter recognize and round-trip the envelope as
-/// opaque ciphertext, and lets clients model it once sealing is available. The
-/// AEAD `associatedData` / HPKE `info` derives from
+/// IMPORTANT — this remains additive and flag-OFF. Real Swift sealing/opening
+/// now lives in the separate `OpenBurnBarSignalCore` target so the base
+/// `OpenBurnBarCore` model target stays free of the native libsignal dependency.
+/// Production CloudVault writes still use
+/// ``CloudVaultCrypto/sealPayload(_:keyData:vaultKeyID:keyVersion:aadContext:)``
+/// and ``CloudVaultCrypto/sealText(_:keyData:keyVersion:aadContext:)`` until the
+/// migration flag selects Signal for a specific domain. The AEAD
+/// `associatedData` / HPKE `info` derives from
 /// ``signalEnvelopeBindingToAAD(_:)`` over ``CloudVaultSignalBinding/aadBinding``.
 public struct CloudVaultSignalCiphertextLayer: Codable, Hashable, Sendable {
     public let payloadCiphertextB64: String
@@ -327,9 +326,9 @@ public enum CloudVaultCrypto {
     public static let aesGCMAlgorithm = "AES-256-GCM"
     /// At-rest Signal-envelope constants — the Swift mirror of the shared TS
     /// contract (`SIGNAL_*` in `packages/signal-envelope-contracts`). These name
-    /// the FUTURE Signal HPKE identity seal; they describe the ``CloudVaultSignalEnvelope``
-    /// TYPE only. No CloudVault write uses this scheme yet — sealing is [blocked]
-    /// on vendoring the libsignal Swift binding, so all writes stay AES-256-GCM.
+    /// the Signal HPKE identity seal described by ``CloudVaultSignalEnvelope``.
+    /// Production CloudVault writes do not use this scheme yet; the real sealer is
+    /// isolated in `OpenBurnBarSignalCore` and remains behind migration flags.
     public static let signalEnvelopeFormatVersion = 1
     public static let signalAtRestMode = "at-rest"
     public static let signalAtRestScope = "cloudvault"
@@ -605,6 +604,23 @@ public enum CloudVaultCrypto {
             sealedBoxBase64: sealedBoxBase64,
             aad: dict["aad"] as? String
         )
+    }
+
+    public static func signalEnvelopeDictionary(_ envelope: CloudVaultSignalEnvelope) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(envelope)
+        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        return dict
+    }
+
+    public static func signalEnvelope(from raw: Any?) -> CloudVaultSignalEnvelope? {
+        guard let dict = raw as? [String: Any],
+              JSONSerialization.isValidJSONObject(dict),
+              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CloudVaultSignalEnvelope.self, from: data)
     }
 
     public static func tokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {

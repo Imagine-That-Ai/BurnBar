@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 @testable import OpenBurnBarMobile
 
 /// Verifies the privacy-leak remediation for the iOS mission write regressions:
@@ -69,6 +70,100 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         )
         XCTAssertEqual(snapshot.status, "cancelled")
         XCTAssertNil(snapshot.liveSummary)
+    }
+
+    func test_missionSnapshotFallsBackToLegacySealedPayloadWhenOptionalSignalEnvelopeCannotOpen() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        var doc = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: "mission-fallback",
+            title: "Fallback mission",
+            prompt: "Investigate the sealed rollout.",
+            missionKind: "chat",
+            requestedRuntime: "codex",
+            targetProject: "BurnBar",
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
+        doc["signalEnvelope"] = [
+            "signalEnvelopeFormatVersion": 1,
+            "mode": "at-rest",
+            "plaintext": "not a valid Signal envelope"
+        ]
+
+        let snapshot = try XCTUnwrap(
+            CLIAgentMissionSnapshot(
+                documentID: "mission-fallback",
+                data: doc,
+                vaultKey: key,
+                signalIdentity: nil,
+                uid: "mission-user-\(UUID().uuidString)"
+            )
+        )
+        XCTAssertEqual(snapshot.title, "Fallback mission")
+        XCTAssertEqual(snapshot.targetProject, "BurnBar")
+        XCTAssertEqual(snapshot.liveSummary, "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it.")
+    }
+
+    func test_missionSnapshotOpensPathBoundSignalEnvelopeAndRejectsRelocation() throws {
+        let uid = "mission-signal-user-\(UUID().uuidString)"
+        let documentID = "mission-signal"
+        let identity = try OpenBurnBarSignalIdentityKeyStore(
+            service: "com.openburnbar.tests.cli-signal-\(UUID().uuidString)"
+        ).loadOrCreate(uid: uid, deviceId: "device-1")
+        let privatePayload = Data("""
+        {
+          "title": "Signal mission",
+          "targetProject": "BurnBar",
+          "liveSummary": "Opened from Signal"
+        }
+        """.utf8)
+        let binding = CloudVaultSignalBinding(
+            uid: uid,
+            collection: "cli_agent_mission_requests",
+            docId: documentID,
+            field: "signalEnvelope"
+        )
+        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
+            privatePayload,
+            recipients: [identity.atRestRecipient()],
+            binding: binding
+        )
+        let doc: [String: Any] = [
+            "id": documentID,
+            "status": "queued",
+            "requestedRuntime": "codex",
+            "contentSealed": true,
+            "signalEnvelope": try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
+        ]
+
+        let snapshot = try XCTUnwrap(
+            CLIAgentMissionSnapshot(
+                documentID: documentID,
+                data: doc,
+                vaultKey: nil,
+                signalIdentity: identity,
+                uid: uid
+            )
+        )
+        XCTAssertEqual(snapshot.title, "Signal mission")
+        XCTAssertEqual(snapshot.targetProject, "BurnBar")
+        XCTAssertEqual(snapshot.liveSummary, "Opened from Signal")
+
+        XCTAssertNil(
+            CLIAgentMissionSnapshot(
+                documentID: "mission-relocated",
+                data: doc,
+                vaultKey: nil,
+                signalIdentity: identity,
+                uid: uid
+            ),
+            "CLI mission Signal envelopes must fail closed when moved to another Firestore document."
+        )
     }
 
     // MARK: - mergeMissionGroup

@@ -374,7 +374,15 @@ export function sanitizeSignalEnvelopeForExport(
   dropped: string[];
 } {
   const sanitized = sanitizeSignalEnvelope(envelope);
-  if (!sanitized) return { out: envelope, dropped: [] };
+  if (!sanitized) {
+    // FAIL CLOSED (export redaction default-deny / L25). The caller only routes a
+    // value here once it is signal-SHAPED (a numeric `signalEnvelopeFormatVersion`),
+    // so a value that then fails strict validation is a malformed/polluted envelope
+    // that may carry plaintext-adjacent junk. Re-emitting it raw would leak that
+    // plaintext into the export with an empty `dropped` (a redaction-integrity lie).
+    // Instead drop EVERY key: export nothing, report all keys redacted.
+    return { out: {}, dropped: Object.keys(envelope).map((key) => `${path}.${key}`) };
+  }
 
   const dropped = collectDisallowedKeys(path, envelope, SIGNAL_ENVELOPE_FIELDS);
   collectNestedDrops(path, envelope, dropped);

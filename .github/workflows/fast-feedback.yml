@@ -122,9 +122,9 @@ jobs:
       - name: Verify license metadata, libsignal pin, and source offer
         run: bash scripts/ci/verify-agpl-compliance.sh
 
-  # ── libsignal bridge: official package load proof ────────────────────────
+  # ── Signal crypto proof: package load + envelope harness ─────────────────
   libsignal-bridge:
-    name: libsignal bridge
+    name: Signal crypto proof
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -134,13 +134,25 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: packages/libsignal-bridge/package-lock.json
+          cache-dependency-path: |
+            packages/libsignal-bridge/package-lock.json
+            packages/libsignal-protocol/package-lock.json
+            packages/signal-envelope-contracts/package-lock.json
 
       - name: Install libsignal bridge dependencies
         run: npm ci --prefix packages/libsignal-bridge
 
+      - name: Install Signal envelope contract dependencies
+        run: npm ci --prefix packages/signal-envelope-contracts
+
+      - name: Install libsignal protocol dependencies
+        run: npm ci --prefix packages/libsignal-protocol
+
       - name: Test official libsignal bridge
         run: npm test --prefix packages/libsignal-bridge
+
+      - name: Run Signal envelope crypto proof harness
+        run: node scripts/ci/crypto-proof-harness.mjs
 
   # ── Shell scripts: syntax validation ────────────────────────────────────
   shell-syntax:
