@@ -419,16 +419,26 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         if let assistant = thread.messages.last(where: { $0.role == "assistant" }) {
             payload["lastAssistantMessageID"] = assistant.id
         }
-        if let signalEnvelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
-            domainID: "conversations_chat",
-            uid: uid,
-            firestore: db,
-            collection: "mobile_assistant_chats",
-            docId: thread.id,
-            plaintext: payloadData,
-            resolvedKey: resolvedKey
-        ) {
-            payload["signalEnvelope"] = signalEnvelope
+        // At-rest Signal dual-write (item 3). The legacy AES-GCM sealedPayload above is the
+        // FLOOR; the additive Signal envelope is BEST-EFFORT and gated by the
+        // conversations_chat sealingScheme. On ANY seal failure (e.g. a trusted device
+        // without a published identity) log and write legacy-only rather than abort the
+        // upsert — legacy is already end-to-end so no confidentiality is lost. (merge:false
+        // below fully overwrites the doc, so an omitted envelope is implicitly cleared.)
+        do {
+            if let signalEnvelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+                domainID: "conversations_chat",
+                uid: uid,
+                firestore: db,
+                collection: "mobile_assistant_chats",
+                docId: thread.id,
+                plaintext: payloadData,
+                resolvedKey: resolvedKey
+            ) {
+                payload["signalEnvelope"] = signalEnvelope
+            }
+        } catch {
+            logger.error("Signal at-rest seal failed; writing legacy-only: \(String(describing: error), privacy: .public)")
         }
         try await Self.collection(for: db, uid: uid).document(thread.id).setData(payload, merge: false)
     }

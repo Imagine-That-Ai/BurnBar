@@ -10,12 +10,13 @@ import kotlinx.coroutines.tasks.await
  * write paths.
  *
  * Activation gate: a domain seals with Signal only when its data-domain `sealingScheme`
+ * (from the generated DataDomains, sourced from packages/data-domains/registry.json)
  * equals `CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION` ("signal-hpke-identity-seal-v1").
- * Today every domain's sealingScheme is null or "cloudvault-aesgcm-v2", so the gate is
- * fail-closed by default (no envelopes emitted) — flipping it is the Phase-E activation
- * switch (item 5), NOT done here. `signalSealingOverrideProvider` is a TEST-ONLY hook
- * (mirrors the iOS pattern) so the producer path can be exercised before activation
- * without changing production behavior.
+ * The registry is the single source of truth — do NOT assume a hardcoded on/off state
+ * here; whether any domain carries the scheme is whatever registry.json declares. When a
+ * domain is NOT on the Signal scheme the gate is fail-closed (no envelopes emitted).
+ * `signalSealingOverrideProvider` is a TEST-ONLY hook (mirrors the iOS pattern) so the
+ * producer path can be exercised under test without changing production behavior.
  *
  * Recipient resolution from Firestore (`atRestRecipients`) is added alongside the
  * producer call-sites (AssistantChatHistoryStore / CLIAgentMissionDispatcher); the
