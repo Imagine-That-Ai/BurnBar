@@ -7,7 +7,7 @@
     "node": "22"
   },
   "scripts": {
-    "prebuild": "npm run build --prefix ../../packages/signal-envelope-contracts",
+    "prebuild": "../../scripts/build-signal-envelope-contracts.sh",
     "build": "tsc",
     "lint": "tsc --noEmit",
     "start": "node lib/server.js",
