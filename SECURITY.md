@@ -94,9 +94,13 @@ review; ✅ items have since landed):
    account, whether every trusted escrow device has a valid published Signal identity; the
    activation runbook ramps the kill switch only where readiness is 100% for the cohort. (The
    producer fail-open already prevents write loss when a peer is un-upgraded.)
-5. **Cross-language KAT + libsignal pin.** Pin `Vendor/libsignal` to a verified official
-   0.94.4 build and add a Swift↔Android sealed-vector + sender-signature known-answer test
-   before relying on cross-device opens.
+5. **Cross-language KAT + libsignal pin.** The sender-auth signed message is now length-
+   prefixed + NFC-normalized + byte-wise sorted, so it is byte-stable across languages by
+   construction; still pin `Vendor/libsignal` to a verified official 0.94.4 build and add a
+   Swift↔Android sealed-vector + sender-signature known-answer test before relying on
+   cross-device opens. (An independent cross-model adversarial review confirmed the
+   forgery hole is closed and fail-closed; the open items above are coverage/interop, not
+   forgery vectors.)
 6. **Revocation rewrap.** Revoking a device's trust flips its sessions to `revoked` but does
    NOT re-seal existing at-rest documents (rewrap is planning-only). A revoked device retains
    read access to previously-sealed content — identical to the legacy path. Do not claim a

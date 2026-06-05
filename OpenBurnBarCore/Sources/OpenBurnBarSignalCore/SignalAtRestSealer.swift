@@ -85,27 +85,47 @@ public enum OpenBurnBarSignalAtRest {
     }
 
     /// Canonical bytes the sender signs and the reader verifies. Deterministic and
-    /// byte-identical across platforms: domain separator, then the HPKE `info`
-    /// (which embeds the path binding → relocation guard), then the ciphertext, then
-    /// the recipient wraps (sorted by id) so neither the content nor the recipient
-    /// set can be tampered without breaking the signature. Unit-separator framed.
+    /// byte-identical across platforms: domain separator, then the HPKE `info` (which
+    /// embeds the path binding → relocation guard), then the ciphertext, then the
+    /// recipient wraps so neither the content nor the recipient set can be tampered
+    /// without breaking the signature.
+    ///
+    /// Framing is LENGTH-PREFIXED (4-byte big-endian length per field), not delimiter-
+    /// joined, so no field value can inject a separator (closes the framing-ambiguity
+    /// hardening item). Every string is NFC-normalized
+    /// (`precomposedStringWithCanonicalMapping`, matching `signalEnvelopeBindingToAAD`)
+    /// and wraps are ordered by the raw UTF-8 BYTES of the normalized
+    /// `recipientIdentityKeyId` (not Swift's locale/Unicode `String.<`), so a future
+    /// Kotlin port produces identical bytes even for non-ASCII device ids.
     public static func senderAuthSignedMessage(
         info: String,
         payloadCiphertextB64: String,
         wraps: [CloudVaultSignalAtRestWrap]
     ) -> Data {
-        let us = "\u{1F}"
-        let wrapsJoined = wraps
-            .sorted { $0.recipientIdentityKeyId < $1.recipientIdentityKeyId }
-            .map { "\($0.recipientIdentityKeyId)=\($0.sealedContentKeyB64)" }
-            .joined(separator: "\n")
-        let message = [
-            CloudVaultCrypto.signalAtRestSenderAuthDomain,
-            info,
-            payloadCiphertextB64,
-            wrapsJoined,
-        ].joined(separator: us)
-        return Data(message.utf8)
+        func normalizedBytes(_ s: String) -> [UInt8] {
+            Array(s.precomposedStringWithCanonicalMapping.utf8)
+        }
+        func frame(_ s: String, into out: inout Data) {
+            let bytes = normalizedBytes(s)
+            var len = UInt32(bytes.count).bigEndian
+            withUnsafeBytes(of: &len) { out.append(contentsOf: $0) }
+            out.append(contentsOf: bytes)
+        }
+        var message = Data()
+        frame(CloudVaultCrypto.signalAtRestSenderAuthDomain, into: &message)
+        frame(info, into: &message)
+        frame(payloadCiphertextB64, into: &message)
+        let sorted = wraps.sorted {
+            normalizedBytes($0.recipientIdentityKeyId)
+                .lexicographicallyPrecedes(normalizedBytes($1.recipientIdentityKeyId))
+        }
+        var count = UInt32(sorted.count).bigEndian
+        withUnsafeBytes(of: &count) { message.append(contentsOf: $0) }
+        for wrap in sorted {
+            frame(wrap.recipientIdentityKeyId, into: &message)
+            frame(wrap.sealedContentKeyB64, into: &message)
+        }
+        return message
     }
 
     public static func sealPayload(
