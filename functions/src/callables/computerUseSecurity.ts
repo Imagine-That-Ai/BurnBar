@@ -21,9 +21,10 @@ import {
   readAppIdFromCallableRequest,
 } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
-import { logInfo, wrapCallableHandler } from "../logging.js";
+import { logInfo, logWarn, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { revokeSignalSessionsForDevice } from "../signalDirectoryRuntime.js";
 
 const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 const ESCROW_WEB_PLATFORM = "Web";
@@ -459,13 +460,43 @@ export const revokeEscrowDeviceTrust = onCall(
         await batch.commit();
       }
 
+      // L41: also retire the device's Signal session-directory entries (sessions
+      // it owns + sessions where it is the peer). Best-effort — a failure here
+      // must NOT block the trust revocation itself, which already succeeded.
+      let revokedSignalSessions = 0;
+      let signalSessionRevokeFailed = false;
+      try {
+        revokedSignalSessions = await revokeSignalSessionsForDevice(uid, deviceId);
+      } catch (err) {
+        // The trust flip already committed and stands. Signal session cleanup is
+        // a separate best-effort step; surface its failure to the caller
+        // (signalSessionRevokeFailed) instead of masking it behind ok:true, and
+        // log at WARN so it reaches alerting (revokedSignalSessions stays 0 =
+        // "failed/unknown", not "no sessions existed").
+        signalSessionRevokeFailed = true;
+        logWarn({
+          event: "escrow_device_signal_session_revoke_failed",
+          device_id: deviceId,
+          error: String(err),
+        });
+      }
+
       logInfo({
         event: "callable_info",
         message: "escrow_device_trust_revoked",
         device_id: deviceId,
         revoked_grants: grants.size,
+        revoked_signal_sessions: revokedSignalSessions,
+        signal_session_revoke_failed: signalSessionRevokeFailed,
       });
-      return { ok: true, deviceId, trustState: "revoked", revokedGrants: grants.size };
+      return {
+        ok: true,
+        deviceId,
+        trustState: "revoked",
+        revokedGrants: grants.size,
+        revokedSignalSessions,
+        signalSessionRevokeFailed,
+      };
     },
   ),
 );

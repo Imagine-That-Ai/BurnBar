@@ -382,7 +382,9 @@ public final class KnowledgeSyncService: @unchecked Sendable {
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
             Data(plaintext.utf8),
             recipients: context.recipients,
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: context.localIdentity.identityKeyId,
+            senderIdentityPrivateKey: context.localIdentity.privateKeyData
         )
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
     }
@@ -449,6 +451,11 @@ public final class KnowledgeSyncService: @unchecked Sendable {
                 deviceId: deviceId,
                 keyVersion: keyVersion
             )
+            // Self-exclusion: the local recipient was already seeded above from the
+            // authoritative in-memory keypair. NEVER overwrite it with a server-fetched
+            // copy — a malicious/compromised directory could substitute our own key.
+            // (Matches Mac/iOS atRestRecipients; this pensieve copy previously missed it.)
+            if identityKeyId == localIdentity.identityKeyId { continue }
             let identityDoc = try await userRef.collection("signal_identity_public_keys")
                 .document(identityKeyId)
                 .getDocument()

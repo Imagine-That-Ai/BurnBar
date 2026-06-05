@@ -640,6 +640,11 @@ service cloud.firestore {
     }
 
     function validSignalAtRestEnvelope(value, expectedUid, expectedCollection, expectedDocId, expectedField) {
+      // The optional `senderAuth` block (writing-device signature over the envelope) is
+      // verified CLIENT-SIDE against the PINNED trusted-device key — the rules cannot do
+      // crypto and the block carries no plaintext, so they only bound its type. (Kept
+      // intentionally light: the per-evaluation expression budget is tight at the heaviest
+      // call site, cli_agent_mission_requests.)
       return value is map
         && value.keys().hasOnly([
           "signalEnvelopeFormatVersion",
@@ -647,13 +652,15 @@ service cloud.firestore {
           "relayEncryption",
           "ciphertextLayer",
           "keyDelivery",
-          "binding"
+          "binding",
+          "senderAuth"
         ])
         && value.signalEnvelopeFormatVersion == 1
         && value.mode == "at-rest"
         && value.relayEncryption == "signal-hpke-identity-seal-v1"
         && validSignalCiphertextLayer(value.ciphertextLayer)
         && validSignalAtRestKeyDelivery(value.keyDelivery)
+        && (!("senderAuth" in value) || value.senderAuth is map)
         && validSignalAtRestBinding(value.binding, expectedUid, expectedCollection, expectedDocId, expectedField);
     }
 
@@ -741,7 +748,8 @@ service cloud.firestore {
         "contentSealed",
         "sealedSchemaVersion",
         "vaultKeyID",
-        "sealedPayload"
+        "sealedPayload",
+        "signalEnvelope"
       ]);
     }
 
@@ -1218,7 +1226,8 @@ service cloud.firestore {
           "contentSealed",
           "sealedSchemaVersion",
           "vaultKeyID",
-          "sealedPayload"
+          "sealedPayload",
+          "signalEnvelope"
         ])
         && !request.resource.data.keys().hasAny([
           "projectName",
@@ -1255,14 +1264,20 @@ service cloud.firestore {
         && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload);
       }
       allow read: if ownsUserNamespace(userId);
+      // Optional additive Signal at-rest envelope, path-bound to this doc; a
+      // relocated/forged envelope fails closed (mirrors mobile_assistant_chats).
       allow create, update: if ownerWritableHostedCloudBackup(userId)
-        && validConversationMirror();
+        && validConversationMirror()
+        && (!("signalEnvelope" in request.resource.data) || validSignalAtRestEnvelope(request.resource.data.signalEnvelope, userId, "conversations", conversationId, "signalEnvelope"));
       allow delete: if false;
     }
 
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableChatThread(userId);
+      // Optional additive Signal at-rest envelope, path-bound to this doc; a
+      // relocated/forged envelope fails closed (mirrors mobile_assistant_chats).
+      allow create, update: if ownerWritableChatThread(userId)
+        && (!("signalEnvelope" in request.resource.data) || validSignalAtRestEnvelope(request.resource.data.signalEnvelope, userId, "chat_threads", threadId, "signalEnvelope"));
       allow delete: if ownsUserNamespace(userId);
     }
 

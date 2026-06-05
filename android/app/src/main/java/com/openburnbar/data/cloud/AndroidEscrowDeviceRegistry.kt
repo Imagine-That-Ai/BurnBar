@@ -43,6 +43,23 @@ class AndroidEscrowDeviceRegistry(
 
         publishPublicKeyIfNeeded(keypair = keypair, userRef = userRef)
 
+        // Eagerly publish this device's Signal identity PUBLIC key (item 3, iOS parity:
+        // MobileCloudVaultKeyAccess publishes it during keyForWriting). Publishing at escrow
+        // registration ensures every trusted device's Signal identity exists in Firestore BEFORE
+        // the at-rest sealing gate is ever flipped, so atRestRecipients never fail-closes on a
+        // peer that simply hasn't published yet (closes the activation bootstrap gap). Best-effort:
+        // a rules race during the pending window must not break escrow registration. This writes
+        // only a public key — it does NOT activate Signal sealing (sealingScheme stays default).
+        runCatching {
+            val identity = AndroidSignalIdentityKeyStore.loadOrCreate(keypair.deviceId, keypair.keyVersion)
+            AndroidSignalIdentityKeyStore.publishIfNeeded(
+                uid = uid,
+                deviceId = keypair.deviceId,
+                identity = identity,
+                firestore = firestore,
+            )
+        }
+
         return AndroidEscrowDeviceRegistration(
             deviceId = keypair.deviceId,
             trustState = trustState,
