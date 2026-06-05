@@ -54,7 +54,21 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             for record in unsynced {
                 let docId = "\(deviceId)_\(record.id)"
                 let docRef = collectionRef.document(docId)
-                let data = try Self.encodeConversation(record, deviceId: deviceId, vaultKey: vaultKey)
+                var data = try Self.encodeConversation(record, deviceId: deviceId, vaultKey: vaultKey)
+                // L41/at-rest Signal dual-write (item 3). Inert in production until the
+                // conversations_chat sealingScheme is flipped; seals the SAME plaintext bytes
+                // the legacy AES-GCM sealedPayload uses, never replacing it.
+                if let signalEnvelope = try await MacCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+                    domainID: "conversations_chat",
+                    uid: uid,
+                    firestore: Firestore.firestore(),
+                    collection: "conversations",
+                    docId: docId,
+                    plaintext: ConversationCloudSealer.encodePlaintext(ConversationCloudPrivatePayload(record: record)),
+                    resolvedKey: vaultKey
+                ) {
+                    data["signalEnvelope"] = signalEnvelope
+                }
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 

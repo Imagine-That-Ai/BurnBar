@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SOTASIGNAL items 3-5: production wiring, L41 runtime, activation prep - Implementation Notes</title>
+  <style>
+    body {
+      color: #202124;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      margin: 0 auto;
+      max-width: 920px;
+      padding: 40px 24px;
+    }
+    h1, h2 { line-height: 1.2; }
+    code {
+      background: #f1f3f4;
+      border-radius: 4px;
+      padding: 2px 5px;
+    }
+    .meta {
+      background: #f8f9fa;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .timeline {
+      background: #f8f9fa;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      max-height: 360px;
+      overflow: auto;
+      padding: 8px;
+    }
+    .timeline-note {
+      color: #5f6368;
+      margin-bottom: 10px;
+    }
+    .event {
+      background: #fff;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      margin: 8px 0;
+      padding: 12px 14px;
+    }
+    .event-head {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .event-summary {
+      margin: 0;
+    }
+    .event time {
+      color: #5f6368;
+      font-size: 13px;
+    }
+    .badge, .phase, .actor {
+      border-radius: 999px;
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 5px 8px;
+      text-transform: uppercase;
+    }
+    .badge { background: #e8f0fe; color: #174ea6; }
+    .status-done, .status-validated { background: #e6f4ea; color: #137333; }
+    .status-blocked, .status-failed { background: #fce8e6; color: #c5221f; }
+    .status-decision { background: #fef7e0; color: #b06000; }
+    .phase, .actor {
+      background: #f1f3f4;
+      color: #3c4043;
+      font-weight: 600;
+    }
+    li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <h1>SOTASIGNAL items 3-5: production wiring, L41 runtime, activation prep</h1>
+  <div class="meta">
+    <p><strong>Goal ID:</strong> <code>sotasignal-wiring-runtime-activation-20260605</code></p>
+    <p><strong>Started:</strong> 2026-06-05T14:10:47Z</p>
+    <p><strong>Parent goal:</strong> sotasignal-full-ship-20260605</p>
+    <p><strong>Mode:</strong> full</p>
+    <p><strong>Objective:</strong> Wire every real production write path (Pensieve, mobile chats, CLI missions) to produce Signal-sealed payloads; build the L41 runtime (publish/claim prekeys, session metadata, rotation, revocation/rewrap); prepare ring rollout + rollback drill WITHOUT flipping production flags</p>
+  </div>
+
+  <h2>Resume Here</h2>
+  <ul>
+    <li><strong>Status:</strong> [complete pending owner activation] ALL agent-completable work done + verified. DONE+verified: Item 4 server L41 runtime + NATIVE L41 client stores (swift test 2/2) + low-watermark; Item 3 iOS + Android (chat+CLI) + Mac (chat + conversations producer + Signal-first read + keyForReading identity, macOS xcodebuild x3); Item 5 fail-closed VERIFIED (no flip). On-device Android proof PASSED on real Galaxy SM-S921U (connectedDebugAndroidTest 2/2, BUILD SUCCESSFUL exit 0). THREE adversarial audits, 15 confirmed findings, ALL fixed + re-verified. ONLY remaining item = LIVE production activation (item 5: flip registry sealingScheme + deploy + ring rollout + live rollback drill) — owner-gated + outward-facing/irreversible + original spec "do not flip yet"; surfaced to user via AskUserQuestion, NOT auto-flipped. [blocked]: Apple on-device proof (iPhone/iPad offline to Xcode, owned by Codex item 1).</li>
+    <li><strong>Worktree:</strong> <code>/private/tmp/burnbar-signal-wiring-20260605</code> on branch <code>signal/phase2-wiring-runtime</code> (off <code>signal/phase2</code>@e543dac2). Run all commands from here. functions + signal-envelope-contracts deps installed.</li>
+    <li><strong>Current phase:</strong> Item-4 server L41 runtime landed; adversarial review of the new code next.</li>
+    <li><strong>Priority order:</strong>
+      <ol>
+        <li><b>P1 [done]</b> Item-4 server L41 callables: <code>publishSignalPrekeyBundle</code>, <code>claimSignalPrekeyBundle</code> (atomic txn), <code>recordSignalSession</code>, <code>recordSignalRotation</code> (new <code>functions/src/callables/signalPrekeyDirectory.ts</code>, registered in index.ts) + revocation cleanup (<code>functions/src/signalDirectoryRuntime.ts</code> wired into revokeEscrowDeviceTrust + panic). Evidence: <code>evidence/l41-server-runtime.md</code>.</li>
+        <li><b>P2 [done, code]</b> Item-3 Android producers: CHAT + CLI both wired (compile + full JVM suite green, regression-clean). CLI: signalEnvelope dual-write on single dispatch + fan-out child request docs (via CLISignalSealContext threaded through buildSealed/applySealedPrivatePayload + the fan-out support); Signal-first read in toMissionSnapshot; observe loads identity lazily. Group doc + event sub-docs left legacy = iOS parity. On-device instrumented proof [incomplete] (shared Galaxy). Details below.</li>
+        <li><b>P2-detail [done]</b> Item-3 Android producers. FOUNDATION + CHAT PRODUCER (compile + JVM verified, regression-clean): <code>AndroidSignalIdentityKeypair</code> + <code>AndroidCloudVaultSignalPayloads</code> (gate/seal/open/relocation + <code>atRestRecipients</code>) + persistent <code>AndroidSignalIdentityKeyStore</code> (Keystore-backed loadOrCreate/load + publishIfNeeded + rules-parity doc) + <code>AssistantChatHistoryStore</code> dual-write/Signal-first-read (inert until gate flip). Tests: identity-store 2/2, payloads 6/6, CloudVaultCrypto 10/10 regression-clean. REMAINING: CLI mission producer (CLIAgentMissionDispatcher — thread identity+recipients through static factories across ~8 sites); on-device runtime proof (instrumented; deferred — Galaxy shared with Codex agent). Plan: <code>evidence/android-producers-plan.md</code>.</li>
+        <li><b>P3 [todo / build-blocked]</b> Item-3 iOS/Mac Swift producers: Mac Signal-first readers + missing CLI event/group + Mac conversation/session producers. Native build BLOCKED on item 2 (Vendor/libsignal empty); mitigation = copy prebuilt xcframework from main checkout.</li>
+        <li><b>P4 [todo]</b> Item-5 activation tooling: add signal_at_rest_* flags to rollout.mjs + dry-run verify + rollback-drill wiring. DO NOT flip flags. (Codex built a divergent uncommitted version in its worktree — reconcile.)</li>
+        <li><b>P5 [todo]</b> Item-4 leftovers: low-watermark scheduled job (pure TS); emulator concurrency test for claim double-claim-prevention.</li>
+      </ol>
+    </li>
+    <li><strong>Blockers:</strong> Native Swift build BLOCKED on item 2 (Vendor/libsignal submodule uninitialized + no xcframework in this worktree). P3 mitigation: copy prebuilt xcframework from main checkout if present.</li>
+    <li><strong>Next action (true remaining):</strong> OWNER DECISION ONLY — LIVE production activation (item 5). The agent-side wiring/runtime/proofs are all done + verified. Activation = flip <code>registry.json</code> sealingScheme to <code>signal-hpke-identity-seal-v1</code> for the target domains + codegen DataDomains + production deploy (functions/rules/apps) + ring rollout + live rollback drill. This requires production deploy access + real devices + owner sign-off and contradicts the original "do not flip yet". Surfaced via AskUserQuestion; the agent will NOT flip autonomously. Offer to commit the changeset to <code>signal/phase2-wiring-runtime</code> on user request.</li>
+    <li><strong>Swift build-env (IMPORTANT for next session):</strong> the native Swift build needs <code>Vendor/libsignal</code> + <code>Vendor/OpenBurnBarSignalFfi.xcframework</code> + <code>Vendor/OpenBurnBarIroh.xcframework</code> symlinked from the main checkout (`/Users/albertonunez/Documents/Windsurf/BurnBar/Vendor/...`). These were REMOVED at session end (the libsignal symlink broke <code>git status</code> — the path is a registered submodule). Re-create the 3 symlinks to re-run <code>swift build</code>/<code>swift test</code>/macOS <code>xcodebuild</code>. Also copy <code>android/app/google-services.json</code> + <code>AgentLens/Resources/GoogleService-Info.plist</code> from main (gitignored; present now).</li>
+    <li><strong>HARD CONSTRAINT (item 5):</strong> Do NOT change <code>registry.json</code> sealingScheme to the signal value and do NOT set any <code>signal_at_rest_*</code> RC flag true — that IS the production activation switch. Producers stay wired-but-dormant; prove "actually producing" via tests that force the gate ON, with production fail-closed.</li>
+    <li><strong>Protected paths:</strong> Do NOT edit the Codex worktree <code>/private/tmp/burnbar-signal-phase2-continue-20260605</code> (items 1/2). Coordinate <code>signal-activation-evidence.json</code> (shared); keep my evidence under this ledger.</li>
+  </ul>
+
+  <h2>Progress Timeline</h2>
+  <p class="timeline-note">Progress is rendered directly in this file from the inline <code>progressEvents</code> array below. Append a new event to that array whenever execution reality changes meaningfully.</p>
+  <div id="progress-timeline" class="timeline"></div>
+
+  <h2>Decisions Outside The Spec</h2>
+  <ul>
+    <li><b>Isolated worktree, not the Codex worktree.</b> Two agents on the same checkout already collided once. I branched <code>signal/phase2-wiring-runtime</code> off committed <code>signal/phase2</code>@e543dac2 so my items 3/4/5 code never trambles the Codex agent's items 1/2 uncommitted work.</li>
+    <li><b>Sequence by verifiability, not by item number.</b> Item 4 (server L41, TS+emulator) and item 3 Android (Kotlin+JVM) are fully verifiable in this worktree; item 3 iOS/Mac Swift is native-build-blocked. I do the verifiable work first so progress is real, not theater.</li>
+    <li><b>"Production wiring complete" without flipping the flag.</b> The data-domain sealingScheme flip is the activation switch (item 5 says don't flip). So a producer is "wired" when the code path exists AND a test forces the gate ON and asserts a valid envelope is produced that the server validator/native opener accepts — while production stays fail-closed. Mirrors the existing iOS <code>signalSealingOverrideProvider</code> test pattern.</li>
+    <li><b>L41 server runtime as callables, not client-direct writes.</b> Firestore rules already permit client-direct writes to the prekey/session paths, but client-direct claim is racy (double-claim). The atomic fetch-and-mark must live in a server callable (Firestore runTransaction). This is the core of item 4 and needs no native libsignal.</li>
+  </ul>
+
+  <h2>Changes And Tradeoffs</h2>
+  <ul>
+    <li>Empty at start.</li>
+  </ul>
+
+  <h2>Validation</h2>
+  <ul>
+    <li><b>Item 4 server runtime (GREEN):</b> <code>npx tsc --noEmit</code> = 0 errors (whole functions project); full <code>npx vitest run</code> = <b>344 passed / 0 failed / 4 skipped</b> (incl. 19 new tests); <code>npm run test:firestore-rules</code> = <b>50/50, 0 fail</b> (L41 rules unchanged, still green); panic.test + escrowDeviceTrustFingerprint.test regression-clean after the revoke edits.</li>
+    <li><b>Rules-shape parity guard:</b> unit test asserts each admin-write builder's key set is a subset of the exact <code>keys().hasOnly([...])</code> list in firestore.rules:3600-3882 — server writes can't silently drift from rules/client-reader expectations.</li>
+    <li><b>Pending:</b> emulator concurrency test for claim double-claim-prevention (repo has no admin-SDK emulator harness; only the rules harness exists). Adversarial review of the new code is the next gate.</li>
+  </ul>
+
+  <h2>Evidence</h2>
+  <ul>
+    <li><a href="evidence/l41-server-runtime.md">evidence/l41-server-runtime.md</a> — item-4 L41 server runtime: callables, revocation cleanup, boundary, verification commands, follow-ups.</li>
+    <li>Mapping workflow result (wf_43c0554c-607): 7-reader current-state audit of items 3/4/5 across server/Mac/iOS/Android + L41 + activation. Summarized in the 2026-06-05T14:30 progress event.</li>
+  </ul>
+
+  <h2>Next Goal Candidates</h2>
+  <ul>
+    <li>Empty at start.</li>
+  </ul>
+  <script>
+    const progressEvents = [
+      {
+        ts: "2026-06-05T14:10:47Z",
+        status: "created",
+        phase: "start",
+        actor: "agent",
+        summary: "Goal ledger created."
+      },
+      {
+        ts: "2026-06-05T14:12:00Z",
+        status: "done",
+        phase: "setup",
+        actor: "agent",
+        summary: "Scope split confirmed: this goal = items 3/4/5; parallel Codex agent = items 1/2. Created isolated worktree /private/tmp/burnbar-signal-wiring-20260605 (branch signal/phase2-wiring-runtime off signal/phase2@e543dac2) to avoid the proven checkout-collision hazard. Installed functions + signal-envelope-contracts deps (npm ci + build, exit 0)."
+      },
+      {
+        ts: "2026-06-05T14:13:00Z",
+        status: "doing",
+        phase: "map",
+        actor: "agent",
+        summary: "Launched read-only mapping workflow wf_43c0554c-607: 7 parallel readers over server/Mac/iOS/Android producer wiring + L41 server/native runtime + activation tooling. Awaiting structured maps to plan implementation."
+      },
+      {
+        ts: "2026-06-05T14:30:00Z",
+        status: "done",
+        phase: "map",
+        actor: "agent",
+        summary: "Map complete (7 agents, 701k tokens). Findings: (item 3) server validator wired ONLY at commitKnowledgeBatch/pensieve (optional-additive, flag-OFF); iOS chat+CLI producers wired-but-dormant (gate false); Mac has only Pensieve write scaffold + identity publisher, missing all read-side Signal openers + conversation/session/CLI producers; ANDROID has crypto primitives but ZERO producers/identity-store/payloads-service. (item 4) L41 Firestore rules + emulator test GREEN for all 6 paths, but ZERO server callables (no publish/claim/session/rotation/rewrap); revocation does not touch L41. (item 5) registry sealingScheme is the activation switch (pensieve=cloudvault-aesgcm-v2, conversations_chat=nil); rollout.mjs in THIS committed HEAD lacks signal flags + --apply (Codex added those uncommitted in its worktree). KEY CONSTRAINT: Vendor/libsignal uninitialized here -> native Swift unbuildable; server-TS + Android-Kotlin are verifiable."
+      },
+      {
+        ts: "2026-06-05T14:32:00Z",
+        status: "doing",
+        phase: "l41-server",
+        actor: "agent",
+        summary: "Starting P1: item-4 server-side L41 runtime callables (TS, Firestore-emulator-verifiable, no native dep). Verifying the emulator test harness runs in this worktree before writing callables."
+      },
+      {
+        ts: "2026-06-05T14:45:00Z",
+        status: "done",
+        phase: "l41-server",
+        actor: "agent",
+        summary: "Implemented functions/src/callables/signalPrekeyDirectory.ts: publishSignalPrekeyBundle (admin-validated idempotent batch publish), claimSignalPrekeyBundle (ATOMIC runTransaction fetch-and-mark = single-claim guarantee), recordSignalSession (metadata-only), recordSignalRotation (append-only, mints rewrapJobId). Every callable re-validates the firestore.rules invariants admin-side (admin bypasses rules). Registered all 4 in index.ts. Added 16 vitest covering fail-closed validators, rules key-set PARITY (builder keys subset of rules hasOnly lists), and claim selection. tsc 0 err.",
+        evidence: ["evidence/l41-server-runtime.md"]
+      },
+      {
+        ts: "2026-06-05T14:52:00Z",
+        status: "done",
+        phase: "l41-revocation",
+        actor: "agent",
+        summary: "Added functions/src/signalDirectoryRuntime.ts (revokeSignalSessionsForDevice / revokeAllSignalSessions, pure sessionInvolvesDevice predicate). Wired into revokeEscrowDeviceTrust (targeted, best-effort, new revokedSignalSessions field) + panic revokeAllAccess (new safe('signal_sessions') surface). Revoked device's Signal sessions now flip active->revoked. Boundary: rewrap EXECUTION + exclude-from-future-wraps stay producer/native (item 3); recorded the rewrap-job-mint via recordSignalRotation."
+      },
+      {
+        ts: "2026-06-05T15:00:00Z",
+        status: "validated",
+        phase: "l41-server",
+        actor: "agent",
+        summary: "Verification GREEN: npx tsc --noEmit 0 errors; full functions vitest 344 passed / 0 failed / 4 skipped (incl. panic + escrowDeviceTrustFingerprint regression-clean after revoke edits); npm run test:firestore-rules 50/50 0 fail. Item 4 server-side L41 runtime COMPLETE. Next: adversarial review of the new code.",
+        evidence: ["evidence/l41-server-runtime.md"]
+      },
+      {
+        ts: "2026-06-05T15:10:00Z",
+        status: "done",
+        phase: "l41-review",
+        actor: "agent",
+        summary: "Adversarial review (12-agent workflow wf_0fe94bbd-e65): 8 findings raised, 4 confirmed (skeptic-verified), all FIXED. MAJOR: claim now re-enforces expiresAt>now (query filter + composite indexes in firestore.indexes.json) so an expired-but-available prekey can't be claimed admin-side. MINOR: claim sessionId bounded to 200 (== rules claimedBySessionId). NIT x2: FORBIDDEN_FIELDS made a true superset of rules hasNoPlaintextSecretFields (+regression test); revoke count-on-failure clarified. Re-verified: tsc 0, prekey tests 17, revoke suites green, indexes JSON valid (79).",
+        evidence: ["evidence/l41-server-runtime.md"]
+      },
+      {
+        ts: "2026-06-05T15:25:00Z",
+        status: "validated",
+        phase: "android-producers",
+        actor: "agent",
+        summary: "Started P2 (item-3 Android producers). Gradle cache warmed (compileDebugUnitTestKotlin OK) + google-services.json copied. FOUNDATION landed + verified: AndroidSignalIdentityKeypair (generate via IdentityKeyPair.generate(); ECPrivateKey.publicKey() is unresolvable from Kotlin in libsignal 0.94.4) + AndroidCloudVaultSignalPayloads (sealingScheme gate + injectable signalSealingOverrideProvider + signalEnvelopeMapIfEnabled + openSignalPayloadIfPresent with relocation guard). 6/6 JVM tests pass on real libsignal (round-trip local+peer, gate-off-default, relocation rejected). Remaining: persistent identity store + Firestore atRestRecipients + wire AssistantChatHistoryStore & CLIAgentMissionDispatcher dual-path.",
+        evidence: ["evidence/android-producers-plan.md"]
+      },
+      {
+        ts: "2026-06-05T20:00:00Z",
+        status: "validated",
+        phase: "complete-all",
+        actor: "agent",
+        summary: "Directive 'COMPLETE ALL REMAINING WORK'. Mac producers COMPLETED: added ConversationCloudSealer.encodePlaintext + ConversationSyncService dual-write (conversations) + Signal-first ConversationCloudSealer.open wired at DownloadSyncService + MacCloudVaultKeyAccess.keyForReading now populates signalIdentity (both paths). macOS xcodebuild BUILD SUCCEEDED (3rd). On-device Android proof: added AndroidSignalProducerInstrumentedTest (real libsignal ARM round-trip + Android Keystore identity persistence), running on Galaxy SM-S921U via connectedDebugAndroidTest. Re-symlinked Vendor for Swift builds. LIVE production flip NOT done — outward-facing/irreversible + original spec said 'do not flip'; will surface for explicit owner confirmation (AskUserQuestion), not auto-flip. Apple on-device [blocked] (devices offline).",
+        evidence: ["evidence/mac-producers.md"]
+      },
+      {
+        ts: "2026-06-05T19:10:00Z",
+        status: "done",
+        phase: "final-audit",
+        actor: "agent",
+        summary: "Final adversarial audit (wf_a7805973-0fb, 14 agents) over native L41 stores + Mac producer + watermark: 11 raised, 4 confirmed, ALL FIXED + re-verified. (1) OBBSignalProtocolStore.keychainWrite made atomic (Add-then-Update, no destructive delete window). (2) Added NSRecursiveLock serializing all store methods (atomic kyber replay-guard RMW + session writes). (3) MAJOR: iOS atRestRecipients was missing the self-exclusion my Mac/Android have -> overwrote local recipient with server-fetched key; added `if identityKeyId == localIdentity.identityKeyId { continue }`. (4) publishSignalPrekeyBundle post-publish count now filters expiresAt>now (parity with claim/watermark). Re-verified: swift test 2/2; tsc 0 + 18 vitest; iOS fix parity-identical 1-line. CROSS-SESSION: 15 confirmed findings total across 3 audits, all fixed. Evidence: evidence/final-audit-fixes.md.",
+        evidence: ["evidence/final-audit-fixes.md"]
+      },
+      {
+        ts: "2026-06-05T18:45:00Z",
+        status: "validated",
+        phase: "mac-producers",
+        actor: "agent",
+        summary: "Item-3 Mac (AgentLens) chat producer wired + compile-verified in the FULL macOS app build. De-risked the scout's gotchas: CloudVaultResolvedKey already has signalIdentity; KnowledgeSyncService uses Firestore.firestore() directly (no gateway blocker). Added MacCloudVaultSignalPayloads.swift (signalEnvelopeIfEnabled/openSignalPayloadIfPresent/atRestRecipients, Mac-typed, fail-closed) + ChatThreadSyncService dual-write (chat_threads, reuses payloadData, gate-inert). Copied Mac GoogleService-Info.plist; xcodegen regenerated project to include the new file. Verified: baseline `xcodebuild -scheme OpenBurnBar -destination platform=macOS` BUILD SUCCEEDED, then incremental build with my changes BUILD SUCCEEDED. Mac conversations producer [incomplete] (needs ConversationCloudSealer to expose plaintext — deeper change); Mac read openers [incomplete] (Mac doesn't read these collections; separate concern). Launched final adversarial audit wf_a7805973-0fb over native L41 stores + Mac producer + watermark.",
+        evidence: ["evidence/mac-producers.md"]
+      },
+      {
+        ts: "2026-06-05T18:10:00Z",
+        status: "validated",
+        phase: "native-l41-stores",
+        actor: "agent",
+        summary: "Directive 'continue with all remaining + use ultracode workflows'. Item-4 low-watermark callable + pure helper DONE (tsc 0, 18 vitest). Unblocked NATIVE SWIFT BUILD in worktree: symlinked Vendor/libsignal + Vendor/OpenBurnBarSignalFfi.xcframework + Vendor/OpenBurnBarIroh.xcframework from main checkout -> `swift build` Build complete (534 modules) + OpenBurnBarSignalCoreTests 5/5. Ran a SCOUT workflow (wf_137baca1-995) for exact libsignal store-protocol signatures + Mac producer spec. Implemented NATIVE L41 CLIENT STORES (item 4): OBBSignalProtocolStore (durable Keychain+file conformance of IdentityKey/PreKey/SignedPreKey/KyberPreKey/Session stores, mirroring InMemorySignalProtocolStore) + OBBSignalPreKeyGenerator (prekey gen + PreKeyBundle) + OBBSignalProtocolStoreSessionTests. swift test: 2/2 PASS on real libsignal (full X3DH+PQXDH session bidirectional encrypt/decrypt + session persistence round-trip). Item 4 now COMPLETE: server runtime + native client stores.",
+        evidence: ["evidence/native-l41-stores.md"]
+      },
+      {
+        ts: "2026-06-05T17:25:00Z",
+        status: "done",
+        phase: "android-audit",
+        actor: "agent",
+        summary: "Adversarial audit of the Android producer changeset (wf_507333cb-f6c, 21 agents): 16 raised, 7 confirmed, ALL FIXED + re-verified (full :app:testDebugUnitTest green; activation-parity still green). Fixes: (major) atRestRecipients ?: continue -> throw (fail-closed iOS parity, no silent device exclusion) + require->check uniform IllegalStateException; (major) scheduleCloudMirror catch broadened to Exception (no IO-coroutine crash); (minor) publishIfNeeded immutable-conflict check on exists; (minor) eager Signal identity publish at escrow registerSelf (closes activation bootstrap gap; benign public-key write, iOS parity, does NOT flip sealing); (nit) publishIfNeeded TOCTOU PERMISSION_DENIED handling. Evidence: evidence/android-producer-audit.md.",
+        evidence: ["evidence/android-producer-audit.md"]
+      },
+      {
+        ts: "2026-06-05T16:55:00Z",
+        status: "validated",
+        phase: "activation-fail-closed",
+        actor: "agent",
+        summary: "Item 5 fail-closed verification (no flip): scripts/ci/verify-signal-activation-parity.sh GREEN after the full Android+server changeset — HERMES_GATEWAY versions empty, NO domain carries a signal sealingScheme (12 domains all cloudvault default), no committed RC template sets a Signal flag. Confirms my producer wiring is inert/ready-not-activated and I did not accidentally flip activation. Launched final adversarial audit (wf_507333cb-f6c) over the Android producer changeset. Honest [incomplete]: Mac AgentLens producers (xcodebuild-heavy), native L41 client stores (transport/session path; at-rest producers don't need them; needs xcframework+swift), low-watermark job. [blocked]: on-device proof (shared Galaxy), live ring rollout/rollback (don't-flip, owner-gated)."
+      },
+      {
+        ts: "2026-06-05T16:40:00Z",
+        status: "validated",
+        phase: "android-producers",
+        actor: "agent",
+        summary: "Directive received: finish ALL remaining parts then adversarial audit. Android CLI mission producer wired (item 3): CLISignalSealContext threaded through buildSealed/applySealedPrivatePayload; single dispatch + fan-out child request docs dual-write signalEnvelope (gate-lazy resolveSignalContext); toMissionSnapshot Signal-first read (openSignalMissionPayload) w/ legacy fallback; observe loads identity lazily. Group doc + event sub-docs intentionally left legacy (iOS parity — avoid envelopes iOS/Mac can't read). Fix: CLISignalSealContext made public (public buildSealed can't expose internal type). Verified: full :app:testDebugUnitTest BUILD SUCCESSFUL (compile + all unit tests, regression-clean). Android mobile producers (chat+CLI) now wired. On-device instrumented proof [incomplete] (shared Galaxy)."
+      },
+      {
+        ts: "2026-06-05T16:05:00Z",
+        status: "validated",
+        phase: "android-producers",
+        actor: "agent",
+        summary: "Android persistent identity store + CHAT producer wired (item 3). Added AndroidSignalIdentityKeyStore (Keystore/AndroidLocalSecretBox + SharedPreferences loadOrCreate/load mirroring AndroidCloudVaultDeviceKeypair; publishIfNeeded client-direct to signal_identity_public_keys; pure rules-parity doc builder) + AndroidCloudVaultSignalPayloads.atRestRecipients (Firestore trusted-device resolution, throws on missing/invalid peer identity = iOS parity). Wired AssistantChatHistoryStore.upsert (dual-write signalEnvelope gated on conversations_chat, identity loaded+published LAZILY only when gate on => inert in prod) + decodeThread (Signal-first, legacy fallback, field='signalEnvelope' binding matching iOS) + fetchAll (threads uid+identity). DESIGN: lazy-in-producer (NOT resolvedKey threading) to keep production behavior 100% unchanged until the flip + minimize ripple. Verified: compileDebugKotlin OK; AndroidSignalIdentityKeyStoreTest 2/2, AndroidCloudVaultSignalPayloadsTest 6/6, CloudVaultCryptoTest 10/10 (regression-clean), assistants suite green. Instrumented runtime proof DEFERRED (Firestore+Keystore instrumented-only; Galaxy shared with Codex agent) = activation-time gate; safe because fail-closed/inert.",
+        evidence: ["evidence/android-producers-plan.md"]
+      },
+      {
+        ts: "2026-06-05T20:00:00Z",
+        status: "validated",
+        phase: "mac-producers",
+        actor: "agent",
+        summary: "Directive 'COMPLETE ALL REMAINING WORK'. Mac (AgentLens) producers DONE (item 3): new MacCloudVaultSignalPayloads (gate + signalEnvelopeIfEnabled + Signal-first open + fail-closed atRestRecipients) + dual-write in ChatThreadSyncService (chat_threads) AND ConversationSyncService (conversations, via new ConversationCloudSealer.encodePlaintext) + Signal-first conversation READ (ConversationCloudSealer.open wired at DownloadSyncService:449) + keyForReading now populates signalIdentity (load, never create). xcodegen re-included the new file. Verified: full macOS app `xcodebuild -scheme OpenBurnBar -destination platform=macOS` BUILD SUCCEEDED (x3). All inert in prod (gate fail-closed). Evidence: evidence/mac-producers.md.",
+        evidence: ["evidence/mac-producers.md"]
+      },
+      {
+        ts: "2026-06-05T20:35:00Z",
+        status: "done",
+        phase: "on-device-proof",
+        actor: "agent",
+        summary: "On-device Android proof PASSED on real Galaxy SM-S921U: connectedDebugAndroidTest 'Starting 2 tests … Finished 2 tests' + BUILD SUCCESSFUL + exit 0 (gradle fails the build on any instrumented-test failure). AndroidSignalProducerInstrumentedTest verifies (1) real libsignal Curve25519/HPKE signalEnvelope round-trip on ARM for local+peer recipients + relocation guard, and (2) AndroidSignalIdentityKeyStore loadOrCreate/load persistence via the real Android Keystore + SharedPreferences. Item 3 on-device proof = done for Android; Apple on-device remains [blocked] (iPhone/iPad offline to Xcode, owned by Codex item 1). Only remaining item = LIVE production activation (item 5), owner-gated — surfacing to user for explicit confirmation, NOT auto-flipping.",
+        evidence: ["evidence/mac-producers.md"]
+      }
+    ];
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function renderEvent(event) {
+      const status = escapeHtml(event.status || "event");
+      const phase = escapeHtml(event.phase || "general");
+      const actor = escapeHtml(event.actor || "agent");
+      const timestamp = escapeHtml(event.ts || "");
+      const summary = escapeHtml(event.summary || "");
+      return `
+        <article class="event">
+          <div class="event-head">
+            <span class="badge status-${status}">${status}</span>
+            <span class="phase">${phase}</span>
+            <span class="actor">${actor}</span>
+            <time datetime="${timestamp}">${timestamp}</time>
+          </div>
+          <p class="event-summary">${summary}</p>
+        </article>
+      `;
+    }
+
+    function renderProgressTimeline() {
+      const target = document.getElementById("progress-timeline");
+      const events = Array.isArray(progressEvents) ? progressEvents : [];
+      if (events.length === 0) {
+        target.innerHTML = "<p>No progress events recorded yet.</p>";
+        return;
+      }
+      target.innerHTML = events.map(renderEvent).join("");
+    }
+    renderProgressTimeline();
+  </script>
+</body>
+</html>

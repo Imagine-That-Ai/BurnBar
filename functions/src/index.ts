@@ -104,6 +104,13 @@ export {
   requestKnowledgeResync,
   reconcileKnowledgeMemoryDaily,
 } from "./callables/knowledgeSync.js";
+export {
+  publishSignalPrekeyBundle,
+  claimSignalPrekeyBundle,
+  recordSignalSession,
+  recordSignalRotation,
+  signalPrekeyWatermark,
+} from "./callables/signalPrekeyDirectory.js";
 export { getDataDomainUsage } from "./callables/dataDomainUsage.js";
 export { searchKnowledge } from "./callables/knowledgeSearch.js";
 export { exportUserData } from "./callables/dataExport.js";

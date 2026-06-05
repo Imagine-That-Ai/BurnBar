@@ -24,6 +24,7 @@ import { db } from "../adminRuntime.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { revokeSignalSessionsForDevice } from "../signalDirectoryRuntime.js";
 
 const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 const ESCROW_WEB_PLATFORM = "Web";
@@ -459,13 +460,39 @@ export const revokeEscrowDeviceTrust = onCall(
         await batch.commit();
       }
 
+      // L41: also retire the device's Signal session-directory entries (sessions
+      // it owns + sessions where it is the peer). Best-effort — a failure here
+      // must NOT block the trust revocation itself, which already succeeded.
+      let revokedSignalSessions = 0;
+      try {
+        revokedSignalSessions = await revokeSignalSessionsForDevice(uid, deviceId);
+      } catch (err) {
+        // On failure the returned count stays 0; the warn log below is the
+        // authoritative signal that cleanup did NOT complete (0 here means
+        // "failed/unknown", not "no sessions existed"). Per-user session counts
+        // fit in a single Firestore batch, so a partial commit is not expected.
+        logInfo({
+          event: "callable_warn",
+          message: "signal_session_revoke_failed",
+          device_id: deviceId,
+          detail: String(err),
+        });
+      }
+
       logInfo({
         event: "callable_info",
         message: "escrow_device_trust_revoked",
         device_id: deviceId,
         revoked_grants: grants.size,
+        revoked_signal_sessions: revokedSignalSessions,
       });
-      return { ok: true, deviceId, trustState: "revoked", revokedGrants: grants.size };
+      return {
+        ok: true,
+        deviceId,
+        trustState: "revoked",
+        revokedGrants: grants.size,
+        revokedSignalSessions,
+      };
     },
   ),
 );
