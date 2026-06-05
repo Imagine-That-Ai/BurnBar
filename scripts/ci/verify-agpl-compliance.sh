@@ -85,15 +85,21 @@ if (!(runtime.completedEvidence ?? []).some((evidence) => evidence.id === 'node_
 }
 NODE
 
-if rg -n 'MIT-licensed|License \*\*MIT|Licensed under the MIT License|license:\s*"MIT"' \
-  README.md website docs/OSS_LAUNCH_CHECKLIST.md docs/RELEASE_MACOS.md docs/IOS_APP_STORE_RELEASE_RUNBOOK.md \
-  --glob '!docs/pricing/gpt-pro-brief/operational-attachments/**' \
-  --glob '!website/package-lock.json' \
-  --glob '!**/node_modules/**'; then
+if grep -RInE 'MIT-licensed|License \*\*MIT|Licensed under the MIT License|license:[[:space:]]*"MIT"' \
+  --exclude='package-lock.json' \
+  --exclude-dir='node_modules' \
+  --exclude-dir='operational-attachments' \
+  README.md website docs/OSS_LAUNCH_CHECKLIST.md docs/RELEASE_MACOS.md docs/IOS_APP_STORE_RELEASE_RUNBOOK.md; then
   fail "found stale first-party MIT marketing or metadata copy"
 fi
 
-if rg -n 'license = "Apache-2\.0 OR MIT"' crates --glob 'Cargo.toml'; then
+stale_rust_license=0
+while IFS= read -r -d '' cargo_toml; do
+  if grep -nE 'license = "Apache-2\.0 OR MIT"' "$cargo_toml"; then
+    stale_rust_license=1
+  fi
+done < <(find crates -name Cargo.toml -print0)
+if [[ "$stale_rust_license" -ne 0 ]]; then
   fail "found stale Rust package license metadata"
 fi
 
