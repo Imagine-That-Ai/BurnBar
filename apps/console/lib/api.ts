@@ -64,7 +64,14 @@ export const getDataDomainUsage = () =>
 export interface KnowledgeRepoSummary {
   repoId: string;
   sealedRepoFullName: CloudVaultSealedText | null;
+  /**
+   * Legacy field kept for response-shape back-compat: ALWAYS null now. The
+   * cleartext repo-name-derived slug is no longer stored or echoed; the server
+   * routes manifests on the opaque `sourceSlugToken` instead (§4 slug remediation).
+   */
   sourceSlug: string | null;
+  /** Opaque, server-keyed manifest routing token (replaces cleartext sourceSlug). */
+  sourceSlugToken: string | null;
   installId: string | null;
   connectedAt: string | null;
   chunkCount: number;
