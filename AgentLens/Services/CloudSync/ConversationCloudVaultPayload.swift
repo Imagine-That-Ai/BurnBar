@@ -127,16 +127,20 @@ enum ConversationCloudSealer {
         keyData: Data?,
         uid: String? = nil,
         docId: String? = nil,
-        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil
+        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil,
+        trustedSenderPublicKeys: [String: Data] = [:]
     ) -> ConversationCloudPrivatePayload? {
         guard data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil || data["signalEnvelope"] != nil else {
             return nil
         }
         // Signal-first open (item 3); fall through to legacy AES-GCM on any failure (rollout
         // compatibility, matching iOS/Android). Requires uid + docId (the binding coordinates).
+        // trustedSenderPublicKeys enables CROSS-DEVICE sender-auth verification (a doc written
+        // by another trusted device); empty => only self-authored docs verify, others fall back.
         if data["signalEnvelope"] != nil, let uid, let docId {
             if let bytes = try? MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                data, uid: uid, collection: "conversations", docId: docId, signalIdentity: signalIdentity
+                data, uid: uid, collection: "conversations", docId: docId,
+                signalIdentity: signalIdentity, trustedSenderPublicKeys: trustedSenderPublicKeys
             ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) {
                 return payload
             }

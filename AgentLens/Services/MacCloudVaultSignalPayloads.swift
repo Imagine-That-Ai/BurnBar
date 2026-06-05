@@ -117,6 +117,25 @@ enum MacCloudVaultSignalPayloads {
         )
     }
 
+    /// Best-effort PINNED trusted-sender public keys for READ-time sender-auth verification:
+    /// the local identity plus every trusted escrow device's published identity. Unlike the
+    /// fail-closed producer resolver, a read is never blocked — if the trusted set cannot be
+    /// fully resolved (e.g. a peer hasn't published yet) it returns just the local identity,
+    /// so cross-device envelopes from unresolved senders fall back to the (non-forgeable)
+    /// legacy payload. After the readiness gate (every trusted device published) this returns
+    /// the full set, so cross-device sender-auth verification is active.
+    static func trustedSenderPublicKeys(
+        uid: String,
+        firestore: Firestore,
+        localIdentity: OpenBurnBarSignalIdentityKeypair
+    ) async -> [String: Data] {
+        var map: [String: Data] = [localIdentity.identityKeyId: localIdentity.atRestRecipient().publicKeyData]
+        if let recipients = try? await atRestRecipients(uid: uid, firestore: firestore, localIdentity: localIdentity) {
+            for recipient in recipients { map[recipient.recipientIdentityKeyId] = recipient.publicKeyData }
+        }
+        return map
+    }
+
     /// Local identity + every trusted escrow device's published Signal identity. Fail-closed:
     /// throws on a missing/invalid trusted-device identity (matches iOS + the Android producer).
     static func atRestRecipients(
