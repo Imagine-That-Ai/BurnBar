@@ -1,3 +1,10 @@
+export {
+  type CloudVaultSignalBinding,
+  type CloudVaultSignalEnvelope,
+  isCloudVaultSignalEnvelope,
+  sanitizeCloudVaultSignalEnvelope,
+} from "./cloudVaultSignalEnvelope.js";
+
 export const SIGNAL_ENVELOPE_FORMAT_VERSION = 1;
 export const SIGNAL_RELAY_KEY_VERSION = 4;
 export const SIGNAL_TRANSPORT_ENCRYPTION = "signal-doubleratchet-pqxdh-v1";

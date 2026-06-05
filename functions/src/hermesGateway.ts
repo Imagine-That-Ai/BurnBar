@@ -109,8 +109,25 @@ export const HERMES_GATEWAY_MAX_RATCHET_ID = 160;
 export const HERMES_GATEWAY_MAX_RATCHET_COUNTER = 1_000_000_000;
 export const HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION = SIGNAL_ENVELOPE_FORMAT_VERSION;
 export const HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION = SIGNAL_RELAY_KEY_VERSION;
+// The official-libsignal transport envelope rides relay key VERSION 4 — the next
+// rung above the bespoke HPKE-Auth v3 relay envelope. It is a SEPARATE wire family
+// (a `signalEnvelope` doc validated by the @openburnbar/signal-envelope-contracts
+// sanitizer), NOT a new shape of the v1/v2/v3 `relayEnvelope` ladder. The name is
+// surfaced for clients/tests/runbooks; the byte-exact value is pinned by the
+// contract's SIGNAL_RELAY_KEY_VERSION so the two can never drift.
+export const HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL = SIGNAL_RELAY_KEY_VERSION;
 export const HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION = SIGNAL_TRANSPORT_ENCRYPTION;
 export const HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION = SIGNAL_AT_REST_ENCRYPTION;
+// Signal-envelope version ladder, kept parallel to the relay-envelope ladder
+// (HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS / *_PRODUCTION_*). SUPPORTED is the
+// set of signal relayKeyVersions whose wire shape the BLIND relay tolerates on the
+// READ side (sanitizeGatewaySignalEnvelope / requireGatewaySignalEnvelope) so a
+// stored or staged v4 doc is recognized as sealed and passed through opaque.
+// PRODUCTION is the set a NEW write may negotiate/emit — deliberately EMPTY while
+// the libsignal cross-language runtime readiness gate is open, so v4 is read-
+// tolerant but never producible (flag OFF). Activation flips v4 into PRODUCTION.
+export const HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS = new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL]);
+export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = new Set<number>();
 export const HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64 = SIGNAL_MAX_MESSAGE_B64;
 export const HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64 = SIGNAL_MAX_KEY_WRAP_B64;
 export const HERMES_GATEWAY_MAX_SIGNAL_RECIPIENT_WRAPS = SIGNAL_MAX_RECIPIENT_WRAPS;
@@ -236,6 +253,10 @@ export interface HermesGatewayClientDoc {
   agentSupportsRelayEnvelopeVersions?: number[];
   agentPreferredRelayEnvelopeVersion?: number;
   agentSupportsHpkeV3?: boolean;
+  // Official-libsignal (relay v4) capability bit. Persisted only so the negotiated
+  // intersection round-trips; defaults to false (absent) and stays false for every
+  // shipping client until the libsignal runtime readiness gate is complete.
+  agentSupportsSignalEnvelope?: boolean;
   agentPlatform?: string;
   agentAppBuild?: string;
   phoneRelayPublicKey?: string;
@@ -244,6 +265,7 @@ export interface HermesGatewayClientDoc {
   phoneSupportsRelayEnvelopeVersions?: number[];
   phonePreferredRelayEnvelopeVersion?: number;
   phoneSupportsHpkeV3?: boolean;
+  phoneSupportsSignalEnvelope?: boolean;
   phonePlatform?: string;
   phoneAppBuild?: string;
   // Ratcheted E2EE pairing material (Phase 6). These public prekey fields let
@@ -269,6 +291,9 @@ export interface HermesGatewayClientDoc {
   supportsRelayEnvelopeVersions?: number[];
   preferredRelayEnvelopeVersion?: number;
   supportsHpkeV3?: boolean;
+  // Negotiated AND of both endpoints' supportsSignalEnvelope — false unless BOTH
+  // sides advertise it, which no shipping client does yet (flag OFF).
+  supportsSignalEnvelope?: boolean;
   // True once BOTH endpoints have published a relay public key. New gateway
   // writes require this sealed path; legacy schema-1 plaintext is read-only.
   relayCapable?: boolean;
@@ -686,11 +711,32 @@ export function requireGatewayRatchetEnvelope(raw: unknown, fieldName: string): 
   return envelope;
 }
 
+/**
+ * Non-throwing SHAPE check for an official-libsignal `signalEnvelope` (relay key
+ * version 4). Delegates to the in-tree contract's {@link sanitizeSignalEnvelope}
+ * (base64 + cap + capability validation, fully OPAQUE — the server never holds a
+ * Signal session key and can never decrypt). Mirrors {@link sanitizeGatewayRelay-
+ * Envelope}: a doc is read-tolerated ONLY when its relayKeyVersion is in
+ * {@link HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS}, so a forged/future
+ * signal version fails closed to "unreadable" (returns undefined) rather than
+ * slipping through on a permissive range check.
+ */
 export function sanitizeGatewaySignalEnvelope(
   raw: unknown,
   expectedMode?: GatewaySignalEnvelopeMode,
 ): GatewaySignalEnvelopeDoc | undefined {
-  return sanitizeSignalEnvelope(raw, expectedMode);
+  const envelope = sanitizeSignalEnvelope(raw, expectedMode);
+  if (!envelope) return undefined;
+  // A transport signal envelope pins relayKeyVersion via the contract; an at-rest
+  // envelope omits it. Read-tolerate ONLY versions in the SUPPORTED set; an at-rest
+  // (undefined) envelope is governed by its own mode/scheme checks in the contract.
+  if (
+    envelope.relayKeyVersion !== undefined &&
+    !HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS.has(envelope.relayKeyVersion)
+  ) {
+    return undefined;
+  }
+  return envelope;
 }
 
 export function requireGatewaySignalEnvelope(
@@ -708,12 +754,25 @@ export function requireGatewaySignalEnvelope(
   return envelope;
 }
 
+/**
+ * WRITE-path guard for a `signalEnvelope`. Validates the SHAPE first (so a
+ * malformed envelope is rejected as invalid-argument like every other write), then
+ * fail-closes: a relayKeyVersion that is read-SUPPORTED but NOT in
+ * {@link HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS} is rejected for new
+ * writes. That set is EMPTY while the libsignal runtime readiness gate is open, so
+ * NO client can negotiate or emit a v4 signal envelope (flag OFF). Mirrors
+ * {@link requireProductionGatewayRelayEnvelope}; activation is a one-line set edit.
+ */
 export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: string): GatewaySignalEnvelopeDoc {
-  requireGatewaySignalEnvelope(raw, fieldName, "transport");
-  throw new HttpsError(
-    "failed-precondition",
-    `${fieldName} is valid, but Signal envelope writes are disabled until the libsignal runtime readiness gate is complete.`,
-  );
+  const envelope = requireGatewaySignalEnvelope(raw, fieldName, "transport");
+  const version = envelope.relayKeyVersion ?? HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL;
+  if (!HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.has(version)) {
+    throw new HttpsError(
+      "failed-precondition",
+      `${fieldName} is valid, but Signal envelope writes are disabled until the libsignal runtime readiness gate is complete.`,
+    );
+  }
+  return envelope;
 }
 
 /**
@@ -925,6 +984,13 @@ export interface HermesGatewayRelayEnvelopeCapabilities {
   supportsRelayEnvelopeVersions: number[];
   preferredRelayEnvelopeVersion: number;
   supportsHpkeV3: boolean;
+  // Whether this endpoint can seal/open the official-libsignal `signalEnvelope`
+  // (relay key v4). Defaults FALSE and stays FALSE for every shipping client until
+  // the libsignal runtime readiness gate is complete — no negotiated pairing can
+  // become Signal-capable while either side is false, and v4 is never folded into
+  // the relay-envelope version ladder, so preferredRelayEnvelopeVersion can never
+  // become 4. Purely a forward-compat capability bit (flag OFF).
+  supportsSignalEnvelope: boolean;
   platform?: string;
   appBuild?: string;
 }
@@ -977,6 +1043,20 @@ export function sanitizeGatewayRelayEnvelopeCapabilities(
   }
   const supportsHpkeV3 = rawSupportsHpkeV3 ?? versionListIncludesV3;
 
+  // supportsSignalEnvelope is the official-libsignal (relay v4) capability bit. It
+  // defaults FALSE and stays FALSE: a client may only assert it true once v4 is in
+  // HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS (empty today), so any true
+  // value is rejected fail-closed while the runtime readiness gate is open. This
+  // keeps the flag OFF — no shipping client can become Signal-capable yet.
+  const rawSupportsSignalEnvelope = raw?.supportsSignalEnvelope;
+  if (rawSupportsSignalEnvelope != null && typeof rawSupportsSignalEnvelope !== "boolean") {
+    throwError("supportsSignalEnvelope must be a boolean.");
+  }
+  if (rawSupportsSignalEnvelope === true && HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.size === 0) {
+    throwError("supportsSignalEnvelope is not yet negotiable: Signal envelope writes are disabled.");
+  }
+  const supportsSignalEnvelope = rawSupportsSignalEnvelope === true;
+
   const rawPreferred = raw?.preferredRelayEnvelopeVersion;
   const preferredRelayEnvelopeVersion =
     rawPreferred == null
@@ -987,11 +1067,19 @@ export function sanitizeGatewayRelayEnvelopeCapabilities(
   if (!supportsRelayEnvelopeVersions.includes(preferredRelayEnvelopeVersion)) {
     throwError("preferredRelayEnvelopeVersion must be included in supportsRelayEnvelopeVersions.");
   }
+  // Defense in depth: the signal envelope (v4) is a SEPARATE wire family and is
+  // never folded into the relay-envelope ladder, so the preferred RELAY version can
+  // never be the signal version. Re-assert it so a future ladder edit can never
+  // silently let production select v4 (which has no relay-envelope wire shape).
+  if (preferredRelayEnvelopeVersion === HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL) {
+    throwError("preferredRelayEnvelopeVersion must not be the Signal envelope version.");
+  }
 
   const capabilities: HermesGatewayRelayEnvelopeCapabilities = {
     supportsRelayEnvelopeVersions,
     preferredRelayEnvelopeVersion,
     supportsHpkeV3,
+    supportsSignalEnvelope,
   };
   const platform = sanitizeGatewayCapabilityText(raw?.clientPlatform ?? raw?.platform, 80);
   const appBuild = sanitizeGatewayCapabilityText(raw?.clientAppBuild ?? raw?.appBuild, 80);
@@ -1013,11 +1101,16 @@ export function negotiateGatewayRelayEnvelopeCapabilities(
       "No shared Hermes Gateway relay envelope version exists for this pairing.",
     );
   }
+  // The shared set is an intersection of two PRODUCTION ladders (each already
+  // excludes the Signal version), so Math.max can never be v4. The Signal
+  // capability negotiates as the AND of both endpoints — false unless BOTH advertise
+  // it, which no shipping client does while the runtime readiness gate is open.
   const preferredRelayEnvelopeVersion = Math.max(...shared);
   return {
     supportsRelayEnvelopeVersions: shared,
     preferredRelayEnvelopeVersion,
     supportsHpkeV3: shared.includes(HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION),
+    supportsSignalEnvelope: agent.supportsSignalEnvelope && phone.supportsSignalEnvelope,
   };
 }
 
@@ -1060,6 +1153,7 @@ function hasValidOptionalRelayFields(record: Record<string, unknown>): boolean {
     optionalNumberArray(record.agentSupportsRelayEnvelopeVersions) &&
     optionalNumber(record.agentPreferredRelayEnvelopeVersion) &&
     optionalBoolean(record.agentSupportsHpkeV3) &&
+    optionalBoolean(record.agentSupportsSignalEnvelope) &&
     optionalString(record.agentPlatform) &&
     optionalString(record.agentAppBuild) &&
     optionalString(record.phoneRelayPublicKey) &&
@@ -1068,6 +1162,7 @@ function hasValidOptionalRelayFields(record: Record<string, unknown>): boolean {
     optionalNumberArray(record.phoneSupportsRelayEnvelopeVersions) &&
     optionalNumber(record.phonePreferredRelayEnvelopeVersion) &&
     optionalBoolean(record.phoneSupportsHpkeV3) &&
+    optionalBoolean(record.phoneSupportsSignalEnvelope) &&
     optionalString(record.phonePlatform) &&
     optionalString(record.phoneAppBuild) &&
     optionalString(record.agentRatchetIdentityPublicKey) &&
@@ -1086,6 +1181,7 @@ function hasValidOptionalRelayFields(record: Record<string, unknown>): boolean {
     optionalNumberArray(record.supportsRelayEnvelopeVersions) &&
     optionalNumber(record.preferredRelayEnvelopeVersion) &&
     optionalBoolean(record.supportsHpkeV3) &&
+    optionalBoolean(record.supportsSignalEnvelope) &&
     (typeof record.relayCapable === "boolean" || record.relayCapable === undefined)
   );
 }
@@ -1315,6 +1411,7 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     agentSupportsRelayEnvelopeVersions: client.agentSupportsRelayEnvelopeVersions,
     agentPreferredRelayEnvelopeVersion: client.agentPreferredRelayEnvelopeVersion,
     agentSupportsHpkeV3: client.agentSupportsHpkeV3,
+    agentSupportsSignalEnvelope: client.agentSupportsSignalEnvelope,
     agentPlatform: client.agentPlatform,
     agentAppBuild: client.agentAppBuild,
     phoneRelayPublicKey: client.phoneRelayPublicKey,
@@ -1323,6 +1420,7 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     phoneSupportsRelayEnvelopeVersions: client.phoneSupportsRelayEnvelopeVersions,
     phonePreferredRelayEnvelopeVersion: client.phonePreferredRelayEnvelopeVersion,
     phoneSupportsHpkeV3: client.phoneSupportsHpkeV3,
+    phoneSupportsSignalEnvelope: client.phoneSupportsSignalEnvelope,
     phonePlatform: client.phonePlatform,
     phoneAppBuild: client.phoneAppBuild,
     agentRatchetIdentityPublicKey: client.agentRatchetIdentityPublicKey,
@@ -1341,6 +1439,7 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     supportsRelayEnvelopeVersions: client.supportsRelayEnvelopeVersions,
     preferredRelayEnvelopeVersion: client.preferredRelayEnvelopeVersion,
     supportsHpkeV3: client.supportsHpkeV3,
+    supportsSignalEnvelope: client.supportsSignalEnvelope,
     relayCapable: client.relayCapable === true,
     runtimeModelId: client.runtimeModelId,
     runtimeProviderId: client.runtimeProviderId,

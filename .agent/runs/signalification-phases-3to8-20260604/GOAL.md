@@ -30,7 +30,10 @@ Wave-1 (Streams 1/6-UX/7) + envelope contracts + AGPL relicense already LANDED o
 - [todo] **Stream 8 — proof harness**: `SignalEnvelopeV1Vector.json` KAT + TS/Swift opener parity + `scripts/ci/crypto-proof-harness.mjs` skeleton; harness green.
 - [todo] **Full validation**: functions tsc + full vitest, contracts + libsignal-protocol tests, data-domains tests, schema drift, OpenBurnBarCore swift build/tests where feasible. No production behavior change (flags OFF) verified.
 - [todo] **Intense adversarial audits**: multi-agent adversarial review of all new crypto — fail-closed, downgrade/version, replay, AAD/binding cross-language byte-parity, no E2EE weakening, no "Signal-quality" over-claim. Findings triaged + fixed or logged with evidence.
-- [blocked-expected] Production ACTIVATION (flipping capability flags to PRODUCTION), live iOS/Android/macOS device E2E, and external crypto-review sign-off require real devices/humans — to be documented `[blocked]`, never faked.
+- [todo] **Real Swift libsignal integration**: vendor `LibSignalClient` (libsignal v0.94.4, local `swift/` path; build_ffi via cargo+protoc — confirmed buildable in-agent) + Swift sealer (`PublicKey.seal`/session) + round-trip tests + **on-device iPhone E2E** (attached device `00008150-00180C661EF0401C`).
+- [todo] **Real Kotlin/Android libsignal integration**: `org.signal:libsignal-client` + Kotlin sealer + JVM round-trip + **on-device Android E2E** (attached device `R3CXB0CNS0J`; SDK being installed).
+- [todo] **Cross-language KAT** `SignalEnvelopeV1Vector.json` opened byte-identically by Node + Swift + Kotlin.
+- [todo] **Wire real ciphertext** through client paths (Swift FunctionsRepository, Android repo, Mac); activation proven on real devices (full-SOTA, no stubs/workarounds). External crypto-review remains a human sign-off.
 - [todo] Keep `implementation-notes.html` current (Resume Here + progressEvents) at every phase checkpoint; link bulky proof under `evidence/`.
 
 ## Escape Hatch

@@ -168,8 +168,173 @@ public struct CloudVaultSealedPayload: Codable, Hashable, Sendable {
     }
 }
 
+/// The at-rest Signal seal of a CloudVault payload — a self/group HPKE identity
+/// seal carried **alongside** the existing ``CloudVaultSealedText`` /
+/// ``CloudVaultSealedPayload`` fields (additive, never a replacement).
+///
+/// This is the Swift mirror of the at-rest variant of the shared TypeScript
+/// `SignalEnvelope` (`packages/signal-envelope-contracts/src/index.ts`) and the
+/// at-rest `CloudVaultSignalEnvelope` TS mirror
+/// (`packages/signal-envelope-contracts/src/cloudVaultSignalEnvelope.ts`). It is
+/// a pure **at-rest** envelope: `mode == "at-rest"`, `binding.scope ==
+/// "cloudvault"`, `relayEncryption == ``CloudVaultCrypto.signalAtRestEncryption``,
+/// and the content key is wrapped per-recipient (self + group members + escrow +
+/// recovery) so any trusted device can open the same ciphertext.
+///
+/// IMPORTANT — this is a **TYPE ONLY**, additive and flag-OFF. There is NO Swift
+/// sealing/opening here: producing the `signalMessageB64`-style ciphertext and
+/// the per-recipient `sealedContentKeyB64` wraps requires the official libsignal
+/// Swift binding (an AGPL native package not yet vendored). Until that binding
+/// lands, every CloudVault write keeps using ``CloudVaultCrypto/sealPayload(_:keyData:vaultKeyID:keyVersion:aadContext:)``
+/// and ``CloudVaultCrypto/sealText(_:keyData:keyVersion:aadContext:)``; this
+/// struct only lets the server/exporter recognize and round-trip the envelope as
+/// opaque ciphertext, and lets clients model it once sealing is available. The
+/// AEAD `associatedData` / HPKE `info` derives from
+/// ``signalEnvelopeBindingToAAD(_:)`` over ``CloudVaultSignalBinding/aadBinding``.
+public struct CloudVaultSignalCiphertextLayer: Codable, Hashable, Sendable {
+    public let payloadCiphertextB64: String
+    public let payloadAADLabel: String
+    public let schemaVersion: Int
+
+    public init(payloadCiphertextB64: String, payloadAADLabel: String, schemaVersion: Int) {
+        self.payloadCiphertextB64 = payloadCiphertextB64
+        self.payloadAADLabel = payloadAADLabel
+        self.schemaVersion = schemaVersion
+    }
+}
+
+/// One per-recipient wrap of the symmetric content key. `recipientKind` is
+/// `"device" | "escrow" | "recovery"`; `sealedContentKeyB64` is the HPKE seal of
+/// the 32-byte content key to `recipientIdentityKeyB64`. Mirrors the contract's
+/// `SignalAtRestWrap`.
+public struct CloudVaultSignalAtRestWrap: Codable, Hashable, Sendable {
+    public let recipientKind: String
+    public let recipientIdentityKeyId: String
+    public let recipientIdentityKeyB64: String
+    public let sealedContentKeyB64: String
+
+    public init(
+        recipientKind: String,
+        recipientIdentityKeyId: String,
+        recipientIdentityKeyB64: String,
+        sealedContentKeyB64: String
+    ) {
+        self.recipientKind = recipientKind
+        self.recipientIdentityKeyId = recipientIdentityKeyId
+        self.recipientIdentityKeyB64 = recipientIdentityKeyB64
+        self.sealedContentKeyB64 = sealedContentKeyB64
+    }
+}
+
+/// At-rest key delivery: the content key wrapped to every trusted recipient.
+/// Mirrors the contract's `SignalAtRestKeyDelivery` (`scheme`, `wraps`,
+/// `contentKeyLength == 32`).
+public struct CloudVaultSignalAtRestKeyDelivery: Codable, Hashable, Sendable {
+    public let scheme: String
+    public let wraps: [CloudVaultSignalAtRestWrap]
+    public let contentKeyLength: Int
+
+    public init(
+        scheme: String = CloudVaultCrypto.signalAtRestEncryption,
+        wraps: [CloudVaultSignalAtRestWrap],
+        contentKeyLength: Int = CloudVaultCrypto.signalAtRestContentKeyLength
+    ) {
+        self.scheme = scheme
+        self.wraps = wraps
+        self.contentKeyLength = contentKeyLength
+    }
+}
+
+/// The structured binding of an at-rest CloudVault Signal envelope. For the
+/// `cloudvault` scope the document coordinates (`collection`/`docId`/`field`) are
+/// present and the gateway-only `clientId`/`slotId` are absent. Mirrors the
+/// contract's `SignalBinding`.
+public struct CloudVaultSignalBinding: Codable, Hashable, Sendable {
+    public let uid: String
+    public let scope: String
+    public let collection: String
+    public let docId: String
+    public let field: String
+    public let mode: String
+    public let formatVersion: Int
+
+    public init(
+        uid: String,
+        collection: String,
+        docId: String,
+        field: String,
+        scope: String = CloudVaultCrypto.signalAtRestScope,
+        mode: String = CloudVaultCrypto.signalAtRestMode,
+        formatVersion: Int = CloudVaultCrypto.signalEnvelopeFormatVersion
+    ) {
+        self.uid = uid
+        self.scope = scope
+        self.collection = collection
+        self.docId = docId
+        self.field = field
+        self.mode = mode
+        self.formatVersion = formatVersion
+    }
+
+    /// Bridge into ``SignalEnvelopeAAD/Binding`` so the canonical AAD/HPKE-info
+    /// string comes from the single byte-parity serializer
+    /// ``signalEnvelopeBindingToAAD(_:)`` — never re-derived here.
+    public var aadBinding: SignalEnvelopeAAD.Binding {
+        SignalEnvelopeAAD.Binding(
+            uid: uid,
+            scope: .cloudvault,
+            clientId: nil,
+            collection: collection,
+            docId: docId,
+            field: field,
+            slotId: nil,
+            mode: .atRest,
+            formatVersion: formatVersion
+        )
+    }
+}
+
+/// At-rest Signal envelope for a CloudVault payload (the Swift mirror of the
+/// shared TS `SignalEnvelope` at-rest variant). TYPE ONLY — see the doc comment
+/// on ``CloudVaultSignalCiphertextLayer``. `relayKeyVersion` is intentionally
+/// absent for at-rest envelopes (the contract rejects it on `at-rest`).
+public struct CloudVaultSignalEnvelope: Codable, Hashable, Sendable {
+    public let signalEnvelopeFormatVersion: Int
+    public let mode: String
+    public let relayEncryption: String
+    public let ciphertextLayer: CloudVaultSignalCiphertextLayer
+    public let keyDelivery: CloudVaultSignalAtRestKeyDelivery
+    public let binding: CloudVaultSignalBinding
+
+    public init(
+        ciphertextLayer: CloudVaultSignalCiphertextLayer,
+        keyDelivery: CloudVaultSignalAtRestKeyDelivery,
+        binding: CloudVaultSignalBinding,
+        signalEnvelopeFormatVersion: Int = CloudVaultCrypto.signalEnvelopeFormatVersion,
+        mode: String = CloudVaultCrypto.signalAtRestMode,
+        relayEncryption: String = CloudVaultCrypto.signalAtRestEncryption
+    ) {
+        self.signalEnvelopeFormatVersion = signalEnvelopeFormatVersion
+        self.mode = mode
+        self.relayEncryption = relayEncryption
+        self.ciphertextLayer = ciphertextLayer
+        self.keyDelivery = keyDelivery
+        self.binding = binding
+    }
+}
+
 public enum CloudVaultCrypto {
     public static let aesGCMAlgorithm = "AES-256-GCM"
+    /// At-rest Signal-envelope constants — the Swift mirror of the shared TS
+    /// contract (`SIGNAL_*` in `packages/signal-envelope-contracts`). These name
+    /// the FUTURE Signal HPKE identity seal; they describe the ``CloudVaultSignalEnvelope``
+    /// TYPE only. No CloudVault write uses this scheme yet — sealing is [blocked]
+    /// on vendoring the libsignal Swift binding, so all writes stay AES-256-GCM.
+    public static let signalEnvelopeFormatVersion = 1
+    public static let signalAtRestMode = "at-rest"
+    public static let signalAtRestScope = "cloudvault"
+    public static let signalAtRestEncryption = "signal-hpke-identity-seal-v1"
+    public static let signalAtRestContentKeyLength = 32
     public static let aadContextPrefix = "OpenBurnBar-CloudVault-aad-v2"
     public static let legacyAADContextPrefix = "OpenBurnBar-CloudVault-aad-v1"
     public static let currentSealedTextSchemaVersion = 2
