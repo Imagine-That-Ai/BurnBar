@@ -199,6 +199,9 @@ final class LiveCloudReader: CloudReader {
             }
             let approvedAt = (d["approvedAt"] as? Timestamp)?.dateValue()
             let keyVersion = d["keyVersion"] as? Int
+            // Stream 6: surface the already-stored fingerprint so the trust UX
+            // can render a comparable safety code. Read-only; no crypto change.
+            let publicKeyFingerprint = d["publicKeyFingerprint"] as? String
 
             if let existing = deviceMap[did] {
                 deviceMap[did] = DeviceRecord(
@@ -206,7 +209,8 @@ final class LiveCloudReader: CloudReader {
                     platform: existing.platform, appVersion: existing.appVersion,
                     lastSeen: existing.lastSeen ?? CloudDeviceActivityDateResolver.date(from: d),
                     trustState: trustState, approvedAt: approvedAt,
-                    keyVersion: keyVersion, isCurrentDevice: existing.isCurrentDevice
+                    keyVersion: keyVersion, isCurrentDevice: existing.isCurrentDevice,
+                    publicKeyFingerprint: publicKeyFingerprint
                 )
             } else {
                 deviceMap[did] = DeviceRecord(
@@ -215,7 +219,8 @@ final class LiveCloudReader: CloudReader {
                     appVersion: d["appVersion"] as? String,
                     lastSeen: CloudDeviceActivityDateResolver.date(from: d),
                     trustState: trustState, approvedAt: approvedAt,
-                    keyVersion: keyVersion, isCurrentDevice: did == deviceId
+                    keyVersion: keyVersion, isCurrentDevice: did == deviceId,
+                    publicKeyFingerprint: publicKeyFingerprint
                 )
             }
         }

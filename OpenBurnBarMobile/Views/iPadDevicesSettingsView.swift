@@ -12,6 +12,14 @@ struct iPadDevicesSettingsView: View {
     @State private var deviceToRevoke: DeviceRecord?
     @State private var isReprobingHermes = false
     @State private var showSmartHubWizard = false
+    /// Stream 6 (flag-OFF default): when the safety-code compare step is enabled,
+    /// the "Approve This Device" action first opens a sheet showing this device's
+    /// safety code so the operator can confirm it matches the approving device.
+    @State private var showSafetyCompareSheet = false
+
+    private var safetyCompareEnabled: Bool {
+        EscrowDeviceTrustSafetyCheckFlag.isEnabled()
+    }
 
     /// External `HermesService` so the relay status card reflects the
     /// same connection state the rest of the app uses. Optional — when
@@ -64,6 +72,16 @@ struct iPadDevicesSettingsView: View {
         .task { await refreshAll() }
         .sheet(isPresented: $showRenameSheet) {
             renameSheet
+        }
+        .sheet(isPresented: $showSafetyCompareSheet) {
+            DeviceTrustSafetyCompareSheet(
+                device: store.currentDevice,
+                onConfirm: {
+                    showSafetyCompareSheet = false
+                    Task { await store.bootstrapApproveSelf() }
+                },
+                onCancel: { showSafetyCompareSheet = false }
+            )
         }
         .alert("Revoke Device?", isPresented: $showRevokeConfirmation) {
             Button("Cancel", role: .cancel) { deviceToRevoke = nil }
@@ -140,7 +158,13 @@ struct iPadDevicesSettingsView: View {
 
                 if store.bootstrapEligible {
                     Button("Approve This Device") {
-                        Task { await store.bootstrapApproveSelf() }
+                        // Flag-OFF default: approve immediately (existing behavior).
+                        // Flag-ON: gate on the safety-code compare confirmation.
+                        if safetyCompareEnabled {
+                            showSafetyCompareSheet = true
+                        } else {
+                            Task { await store.bootstrapApproveSelf() }
+                        }
                     }
                     .foregroundStyle(MobileTheme.Colors.accent)
                 }
@@ -503,5 +527,69 @@ struct iPadDevicesSettingsView: View {
                 .foregroundStyle(MobileTheme.whimsy)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Device Trust Safety-Code Compare
+
+/// Stream 6 — the "Compare this code on your other device" confirmation step
+/// shown before a device is approved (only when the safety-code compare feature
+/// flag is ON). Renders the device's stored fingerprint as a grouped safety code
+/// using the shared formatter so this device and the approving device display
+/// byte-identical codes. UX only — confirmation calls the same unchanged approve
+/// path; server-side fingerprint enforcement is a later PR.
+struct DeviceTrustSafetyCompareSheet: View {
+    let device: DeviceRecord?
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    @State private var didCompare = false
+
+    private var safetyCode: String? { device?.safetyCode }
+    private var deviceName: String { device?.displayName ?? "this device" }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Open OpenBurnBar on your other device and confirm the safety code below matches exactly. Approve only if both codes are identical.")
+                        .font(.callout)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                }
+
+                Section("Safety code") {
+                    if let safetyCode {
+                        Text(safetyCode)
+                            .font(.system(.title3, design: .monospaced))
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .accessibilityLabel("Safety code: \(EscrowDeviceSafetyCode.spelledOut(safetyCode))")
+                    } else {
+                        Text("This device has not published a key fingerprint yet, so a safety code cannot be shown. Make sure it is signed in and on a current app version, then try again.")
+                            .font(.caption)
+                            .foregroundStyle(MobileTheme.Colors.warning)
+                    }
+                }
+
+                if safetyCode != nil {
+                    Section {
+                        Toggle("I compared this code on my other device and it matches.", isOn: $didCompare)
+                            .font(.callout)
+                    }
+                }
+            }
+            .navigationTitle("Verify \(deviceName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Approve", action: onConfirm)
+                        .disabled(safetyCode == nil || !didCompare)
+                }
+            }
+        }
     }
 }

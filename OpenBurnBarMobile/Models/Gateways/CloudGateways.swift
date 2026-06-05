@@ -88,12 +88,24 @@ public struct DeviceRecord: Sendable, Equatable, Identifiable {
     public let approvedAt: Date?
     public let keyVersion: Int?
     public let isCurrentDevice: Bool
+    /// Stored `escrow_devices.publicKeyFingerprint` (base64 SHA-256 of the
+    /// device public key), surfaced read-only so the trust UX can render a
+    /// comparable safety code. Plumbing only — never mutated here.
+    public let publicKeyFingerprint: String?
 
-    public init(id: String, displayName: String, platform: String, appVersion: String? = nil, lastSeen: Date? = nil, trustState: DeviceTrustState, approvedAt: Date? = nil, keyVersion: Int? = nil, isCurrentDevice: Bool = false) {
+    public init(id: String, displayName: String, platform: String, appVersion: String? = nil, lastSeen: Date? = nil, trustState: DeviceTrustState, approvedAt: Date? = nil, keyVersion: Int? = nil, isCurrentDevice: Bool = false, publicKeyFingerprint: String? = nil) {
         self.id = id; self.displayName = displayName; self.platform = platform
         self.appVersion = appVersion; self.lastSeen = lastSeen
         self.trustState = trustState; self.approvedAt = approvedAt
         self.keyVersion = keyVersion; self.isCurrentDevice = isCurrentDevice
+        self.publicKeyFingerprint = publicKeyFingerprint
+    }
+
+    /// Grouped, human-comparable safety code derived from the stored
+    /// fingerprint with the shared cross-device formatter, or `nil` when no
+    /// fingerprint is present.
+    public var safetyCode: String? {
+        EscrowDeviceSafetyCode.format(fingerprint: publicKeyFingerprint)
     }
 }
 
