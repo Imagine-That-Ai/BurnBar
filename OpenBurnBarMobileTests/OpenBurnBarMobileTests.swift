@@ -1328,7 +1328,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
             modelId: "anthropic/claude-opus",
             targetClient: client,
             uid: uid,
-            pinStore: store
+            pinStore: store,
+            kind: "model_switch"
         )
         XCTAssertNil(payload["modelId"], "Sealed model_switch must not leak modelId in cleartext")
         guard
@@ -1364,6 +1365,160 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(opened["replayCounter"] as? Int, 1)
         XCTAssertEqual(opened["threadId"] as? String, "burnbar-ios-e2e")
         XCTAssertEqual(opened["senderDisplayName"] as? String, "iPhone")
+        XCTAssertEqual(opened["kind"] as? String, "model_switch")
+    }
+
+    func testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload() throws {
+        let store = freshPinStore()
+        let uid = "uid_approval"
+        let clientId = "hgw_approval_\(UUID().uuidString)"
+        let agentPrivate = HermesRelayCrypto.generatePrivateKey()
+        let client = try sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        var payload: [String: Any] = [
+            "destinationId": "burnbar:home",
+            "senderId": "burnbar-ios"
+        ]
+        let approvalId = "hga_test_123"
+        let extra: [String: Any] = [
+            "actionId": approvalId,
+            "choice": "approve",
+            "senderId": "burnbar-ios"
+        ]
+        try FunctionsRepository.sealGatewayEventPayload(
+            into: &payload,
+            text: "",
+            senderDisplayName: "iPhone",
+            threadId: "burnbar-ios-approval",
+            modelId: nil,
+            targetClient: client,
+            uid: uid,
+            pinStore: store,
+            kind: "approval_decision",
+            extraSealedFields: extra
+        )
+        XCTAssertNil(payload["text"])
+        guard
+            let eventId = payload["eventId"] as? String,
+            let envelope = payload["relayEnvelope"] as? [String: Any],
+            let payloadCiphertext = envelope["payloadCiphertext"] as? String,
+            let wrappedKey = envelope["wrappedKey"] as? String
+        else {
+            return XCTFail("Sealed approval decision missing envelope")
+        }
+
+        let phoneGatewayPub = try XCTUnwrap(envelope["senderPublicKey"] as? String)
+        let symmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
+            wrappedKey,
+            privateKey: agentPrivate,
+            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
+            senderPublicKeyBase64: phoneGatewayPub
+        )
+        let openedData = try HermesRelayCrypto.openBase64(
+            ciphertext: payloadCiphertext,
+            keyData: symmetricKey,
+            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
+        )
+        let opened = try XCTUnwrap(try JSONSerialization.jsonObject(with: openedData) as? [String: Any])
+        XCTAssertEqual(opened["kind"] as? String, "approval_decision")
+        XCTAssertEqual(opened["actionId"] as? String, approvalId)
+        XCTAssertEqual(opened["choice"] as? String, "approve")
+        XCTAssertEqual(opened["destinationId"] as? String, "burnbar:home")
+        // A chat message whose text value contains a control json must NOT surface kind at root.
+        // (The caller for normal text never passes kind or extra kind-bearing fields.)
+    }
+
+    func testSealedOversightModeCarriesKindAndModeAtRootOfSealedPayload() throws {
+        let store = freshPinStore()
+        let uid = "uid_oversight"
+        let clientId = "hgw_oversight_\(UUID().uuidString)"
+        let agentPrivate = HermesRelayCrypto.generatePrivateKey()
+        let client = try sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        var payload: [String: Any] = [
+            "destinationId": "burnbar:home",
+            "senderId": "burnbar-ios"
+        ]
+        try FunctionsRepository.sealGatewayEventPayload(
+            into: &payload,
+            text: "",
+            senderDisplayName: "iPhone",
+            threadId: "burnbar-ios-oversight",
+            modelId: nil,
+            targetClient: client,
+            uid: uid,
+            pinStore: store,
+            kind: "oversight_mode",
+            extraSealedFields: [
+                "mode": "autonomous",
+                "senderId": "burnbar-ios"
+            ]
+        )
+        XCTAssertNil(payload["text"])
+        guard
+            let eventId = payload["eventId"] as? String,
+            let envelope = payload["relayEnvelope"] as? [String: Any],
+            let payloadCiphertext = envelope["payloadCiphertext"] as? String,
+            let wrappedKey = envelope["wrappedKey"] as? String
+        else {
+            return XCTFail("Sealed oversight mode missing envelope")
+        }
+
+        let phoneGatewayPub = try XCTUnwrap(envelope["senderPublicKey"] as? String)
+        let symmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
+            wrappedKey,
+            privateKey: agentPrivate,
+            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
+            senderPublicKeyBase64: phoneGatewayPub
+        )
+        let openedData = try HermesRelayCrypto.openBase64(
+            ciphertext: payloadCiphertext,
+            keyData: symmetricKey,
+            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
+        )
+        let opened = try XCTUnwrap(try JSONSerialization.jsonObject(with: openedData) as? [String: Any])
+        XCTAssertEqual(opened["kind"] as? String, "oversight_mode")
+        XCTAssertEqual(opened["mode"] as? String, "autonomous")
+        XCTAssertEqual(opened["destinationId"] as? String, "burnbar:home")
+        XCTAssertEqual(opened["threadId"] as? String, "burnbar-ios-oversight")
+    }
+
+    func testSealedControlExtraFieldsCannotOverrideReservedPayloadShape() throws {
+        let store = freshPinStore()
+        let uid = "uid_reserved"
+        let clientId = "hgw_reserved_\(UUID().uuidString)"
+        let agentPrivate = HermesRelayCrypto.generatePrivateKey()
+        let client = try sealableGatewayClient(id: clientId, agentPublicKey: agentPrivate.publicKeyBase64)
+        defer { store.clearPin(uid: uid, clientId: clientId) }
+
+        var payload: [String: Any] = [
+            "destinationId": "burnbar:home",
+            "senderId": "burnbar-ios"
+        ]
+
+        XCTAssertThrowsError(
+            try FunctionsRepository.sealGatewayEventPayload(
+                into: &payload,
+                text: "",
+                senderDisplayName: "iPhone",
+                threadId: "burnbar-ios-approval",
+                modelId: nil,
+                targetClient: client,
+                uid: uid,
+                pinStore: store,
+                kind: "approval_decision",
+                extraSealedFields: [
+                    "destinationId": "attacker-controlled",
+                    "actionId": "hga_test_123"
+                ]
+            )
+        ) { error in
+            XCTAssertEqual(error as? FunctionsError, .gatewayInvalidSealedControlPayload)
+        }
+        XCTAssertNil(payload["relayEnvelope"])
+        XCTAssertNil(payload["ratchetEnvelope"])
     }
 
     // MARK: Gateway reply chat-render (BLOCKER + HIGH undecryptable UX)
@@ -3342,7 +3497,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         )
     }
 
-    func setHermesGatewayOversightMode(clientId: String, mode: String) async throws {
+    func setHermesGatewayOversightMode(clientId: String, mode: String, targetClient: HermesGatewayClientRecord?) async throws {
         oversightModeChanges.append(OversightModeChange(clientId: clientId, mode: mode))
     }
 

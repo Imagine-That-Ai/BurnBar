@@ -1305,7 +1305,7 @@ struct HermesSettingsView: View {
         Button {
             guard !isOn else { return }
             HapticBus.toggle()
-            Task { await gatewayStore.setOversight(clientId: client.id, mode: mode) }
+            Task { await gatewayStore.setOversight(clientId: client.id, mode: mode, targetClient: client) }
         } label: {
             Text(title)
                 .font(.caption2.weight(.semibold))
@@ -2632,7 +2632,7 @@ final class HermesGatewaySettingsStore {
 
     /// Flip a gateway client between supervised (every action gated) and
     /// autonomous oversight. `mode` must be "supervised" or "autonomous".
-    func setOversight(clientId: String, mode: String) async {
+    func setOversight(clientId: String, mode: String, targetClient: HermesGatewayClientRecord? = nil) async {
         let trimmedClientId = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedClientId.isEmpty else { return }
         guard settingOversightClientId == nil else { return }
@@ -2640,7 +2640,7 @@ final class HermesGatewaySettingsStore {
         defer { settingOversightClientId = nil }
 
         do {
-            try await repository.setHermesGatewayOversightMode(clientId: trimmedClientId, mode: mode)
+            try await repository.setHermesGatewayOversightMode(clientId: trimmedClientId, mode: mode, targetClient: targetClient)
             setNotice(
                 mode == "autonomous"
                     ? "Autonomous mode on. This Hermes will run without per-action approval."

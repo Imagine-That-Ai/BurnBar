@@ -560,3 +560,72 @@ Use these externally with the current verified implementation and proof gate:
   explicit legacy opt-in and audited key lifecycle."
 - Acceptable only after externally reviewed attachment/PQ/MLS-grade coverage:
   "State-of-the-art E2EE with forward secrecy and post-compromise recovery."
+
+## Launch-Readiness Review Addendum (2026-06-04 post-implementation audit)
+
+During uncompromising principal review (correctness, architecture, UX, state, edges,
+testing, docs, SOTA, completeness), the following gaps were identified and fixed:
+
+### Correctness gap closed
+- Phone-to-agent control events (model_switch, approval_decision, oversight_mode) for
+  E2E links must carry `kind` (and control-specific fields) at the *root* of the sealed
+  payload JSON so the agent's authenticated open path can dispatch to the special
+  handlers (`_handle_sealed_*`) rather than falling through to chat-text handling.
+- Prior emission put control JSON inside the `text` slot (for approval) or omitted `kind`
+  entirely (for model_switch), causing:
+  - model_switch commands from iOS on paired E2E links to be dropped (empty text after
+    open, `if not text: return`).
+  - approval_decisions to surface as opaque JSON chat text instead of resolving the
+    pending confirm and executing the action.
+  - oversight changes on E2E to have no effect on the agent (state poll skipped, no
+    sealed delivery path).
+- Fixed by:
+  - Extending `applyGatewayEventSeal` / `sealGatewayEventPayload` (v2 + ratchet) with
+    `kind: String?` and `extraSealedFields: [String:Any]` (defaults preserve all
+    existing call sites and vector tests).
+  - Updated high-level `enqueueHermesGatewayModelSwitch` (E2E branch) to pass
+    `kind: "model_switch"`.
+  - Rewrote `enqueueHermesGatewayApprovalDecision` to emit root-level control fields
+    (no more json-in-text).
+  - Added symmetric E2E delivery for `setHermesGatewayOversightMode`: after server
+    doc write, also enqueue a sealed `oversight_mode` event when `canSealToAgent`.
+  - Updated view/store wiring and test mocks for the new optional `targetClient`
+    param on oversight setter (protocol decl without default; impl + mock + call
+    sites supply the value or nil).
+  - Strengthened `testSealedModelSwitch...` to pass+assert `kind` at sealed root.
+  - Added `testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload`
+    exercising the extraFields path and root-kind invariant (chat-text-embedded
+    control JSON remains chat-only because `kind` is never at outer dict for normal
+    text seals).
+
+All prior verifier gates, focused Functions Hermes tests (67), Firestore rules (45),
+external 211 pytest, adapter smoke, vector mirrors, and schema drift remain green.
+Mobile test target builds cleanly; the new/updated seal tests exercise the control
+emission paths.
+
+### Other review findings (no further code changes required)
+- Architecture: clean separation (server shape-only, clients own sealing/open with
+  pinned keys, ratchet vs relay boundary explicit). The `extraSealedFields` is
+  intentionally narrow (not a general "any sealed body" factory) to avoid new
+  abstraction surface for this remediation.
+- No plaintext siblings, ID round-tripping, replay-after-auth, pin immutability,
+  production v2/v3 gates, and ratchet preference all verified in source + runtime
+  readbacks cited in plan.
+- Edge/failure: malformed throttle, bounded seen-ID + persisted high-water (global
+  per paired link by documented contract), fail-closed on bad pins/cipher, AAD
+  binding, destination/replay checks inside authed — all present and tested.
+- State: ratchet sessions and replay ledger persisted to OS keychain + disk file
+  with rollback on persist failure for E2E.
+- Testing/docs: meaningful negative vectors, interop fixtures mirrored, protocol
+  doc, CI proof gate. Added one unit + assertions during review.
+- Completeness: no remaining TODO/FIXME in the changed surfaces. The plan's own
+  "do not claim SOTA/full forward secrecy" language remains accurate.
+- Polish/UX: control delivery is silent (correct for E2EE); oversight/approval UI
+  flows unchanged and already exercised in live iPad E2E approval tests cited in plan.
+- SOTA: this is solid sealed+ratchet-v1 for the paired gateway lane (better than
+  most app+desktop pairings); full Signal/PQXDH/MLS + attachment ratchet + external
+  review remain future per the taxonomy.
+
+The implementation now satisfies the original mission at the "holy shit, that's done"
+bar for the paired Hermes Gateway E2EE scope. All dangling control-dispatch threads
+tied off. Ship.
