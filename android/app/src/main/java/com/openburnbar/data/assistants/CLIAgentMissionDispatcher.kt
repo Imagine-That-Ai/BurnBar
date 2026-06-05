@@ -1,5 +1,6 @@
 package com.openburnbar.data.assistants
 
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -369,20 +370,29 @@ class CLIAgentMissionDispatcher(
      */
     private suspend fun resolveSignalContext(uid: String, docId: String): CLISignalSealContext? {
         if (!AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CLI_DOMAIN)) return null
-        val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
-        val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
-        AndroidSignalIdentityKeyStore.publishIfNeeded(
-            uid = uid, deviceId = escrow.deviceId, identity = identity, firestore = firestore,
-        )
-        val recipients =
-            AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
-        return CLISignalSealContext(
-            uid = uid,
-            collection = "cli_agent_mission_requests",
-            docId = docId,
-            localIdentity = identity,
-            otherRecipients = recipients,
-        )
+        // BEST-EFFORT at-rest Signal sealing. The legacy AES-GCM sealedPayload is the FLOOR
+        // (buildSealed always writes it); the additive signalEnvelope is added only when this
+        // context resolves. On ANY failure (e.g. a trusted device without a published
+        // identity) return null so the mission writes legacy-only rather than failing the
+        // whole dispatch — legacy is already end-to-end so no confidentiality is lost.
+        return runCatching {
+            val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+            val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
+            AndroidSignalIdentityKeyStore.publishIfNeeded(
+                uid = uid, deviceId = escrow.deviceId, identity = identity, firestore = firestore,
+            )
+            val recipients =
+                AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
+            CLISignalSealContext(
+                uid = uid,
+                collection = "cli_agent_mission_requests",
+                docId = docId,
+                localIdentity = identity,
+                otherRecipients = recipients,
+            )
+        }.onFailure {
+            Log.w("CLIAgentMissionDispatcher", "Signal at-rest seal context failed; CLI mission writes legacy-only", it)
+        }.getOrNull()
     }
 
     fun observe(requestID: String): Flow<CLIAgentMissionSnapshot> = callbackFlow {

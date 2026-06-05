@@ -35,6 +35,7 @@
       "serverSees": ["provider/runtime identifiers", "message counts", "status/routing metadata", "timestamps", "device ids"],
       "deviceOnly": ["chat titles", "chat previews", "message bodies", "CLI transcripts", "mission prompts/results", "saved text snippets", "project/file/command labels", "rollback scope paths", "rollback error diagnostics", "approval policy labels/globs/projects", "agent persona text", "subscription graph edges and display text"],
       "firestorePaths": ["conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets", "rollback_requests", "approval_policies", "agent_identities", "subscription_topics"],
+      "signalSealedCollections": ["conversations", "chat_threads", "mobile_assistant_chats", "cli_agent_mission_requests"],
       "storagePaths": [],
       "countSource": "chat_threads",
       "byteSource": null,

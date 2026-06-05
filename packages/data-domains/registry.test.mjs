@@ -354,6 +354,43 @@ test("sealingScheme: self-encryption guard — only end_to_end domains may carry
   }
 });
 
+// Producer-coverage honesty: the at-rest gate is keyed by DOMAIN id but producers are
+// per-collection. signalSealedCollections records the EXACT subset of a domain's
+// firestorePaths that actually emit a signalEnvelope, so the registry can never silently
+// over-claim that an unwired collection is Signal-sealed. (Mirrors the parity guard.)
+test("signalSealedCollections: when present, is a non-empty subset of firestorePaths", () => {
+  for (const d of registry.domains) {
+    if (d.signalSealedCollections === undefined) continue;
+    assert.ok(Array.isArray(d.signalSealedCollections), `${d.id} signalSealedCollections must be an array`);
+    assert.ok(d.signalSealedCollections.length > 0, `${d.id} signalSealedCollections must be non-empty when present`);
+    const paths = new Set(d.firestorePaths ?? []);
+    for (const c of d.signalSealedCollections) {
+      assert.ok(paths.has(c), `${d.id} signalSealedCollections lists "${c}" which is not in firestorePaths`);
+    }
+  }
+});
+
+test("signalSealedCollections: conversations_chat declares exactly the wired+proven producer set", () => {
+  const cc = registry.domains.find((d) => d.id === "conversations_chat");
+  assert.ok(cc, "expected the conversations_chat domain");
+  assert.deepEqual(
+    [...(cc.signalSealedCollections ?? [])].sort(),
+    ["chat_threads", "cli_agent_mission_requests", "conversations", "mobile_assistant_chats"],
+    "conversations_chat must document the 4 collections that actually have Signal producers (the other 6 paths stay legacy-only)",
+  );
+});
+
+test("signalSealedCollections: every domain carrying the Signal scheme must declare it", () => {
+  for (const d of registry.domains) {
+    if (d.sealingScheme === "signal-hpke-identity-seal-v1") {
+      assert.ok(
+        Array.isArray(d.signalSealedCollections) && d.signalSealedCollections.length > 0,
+        `${d.id} carries the Signal scheme but does not declare signalSealedCollections — the activation would over-claim coverage`,
+      );
+    }
+  }
+});
+
 test("sealingScheme: NON-WEBSITED — the scheme codename never reaches the public trust surface", () => {
   const trust = emitWebsiteTrust(registry, loadTierColors());
   // The field key and every scheme value must be absent from the generated

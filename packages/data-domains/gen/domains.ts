@@ -30,6 +30,14 @@ export interface DataDomain {
    * CloudVault sealing; it never changes the encryptionTier.
    */
   sealingScheme?: string;
+  /**
+   * Optional EXACT subset of firestorePaths that actually emit a Signal at-rest
+   * envelope when sealingScheme is the Signal scheme. The gate is domain-keyed but
+   * producers are per-collection; this records which collections are truly wired so
+   * the registry never over-claims coverage (enforced by registry.test + the
+   * activation-parity guard). Absent == none / not applicable.
+   */
+  signalSealedCollections?: string[];
 }
 
 export const ENCRYPTION_TIERS = {
@@ -122,6 +130,12 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "approval_policies",
       "agent_identities",
       "subscription_topics"
+    ],
+    "signalSealedCollections": [
+      "conversations",
+      "chat_threads",
+      "mobile_assistant_chats",
+      "cli_agent_mission_requests"
     ],
     "storagePaths": [],
     "countSource": "chat_threads",

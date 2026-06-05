@@ -501,29 +501,32 @@ internal class AssistantChatFirestoreMirror(
         if (thread.priorityOrder != null) {
             payload["priorityOrder"] = thread.priorityOrder
         }
-        // L41/at-rest Signal dual-write (item 3). Inert in production: the gate is
-        // fail-closed until the conversations_chat sealingScheme is flipped (item 5),
-        // so this whole block is skipped today. When on, it adds a "signalEnvelope"
-        // sibling field alongside the legacy AES-GCM "sealedPayload" (never replaces it),
-        // sealed to this device + every trusted device's published Signal identity.
-        if (AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CHAT_DOMAIN)) {
-            val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
-            val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
-            AndroidSignalIdentityKeyStore.publishIfNeeded(
-                uid = uid, deviceId = escrow.deviceId, identity = identity, firestore = firestore,
-            )
-            val recipients =
-                AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
-            AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
-                domainID = SIGNAL_CHAT_DOMAIN,
-                uid = uid,
-                collection = "mobile_assistant_chats",
-                docId = thread.id,
-                plaintext = plaintextBytes,
-                localIdentity = identity,
-                otherRecipients = recipients,
-            )?.let { payload["signalEnvelope"] = it }
-        }
+        // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM "sealedPayload" already
+        // in `payload` is the FLOOR; the additive "signalEnvelope" is gated by the
+        // conversations_chat sealingScheme and is BEST-EFFORT. On ANY seal failure (e.g. a
+        // trusted device without a published identity) log and write legacy-only rather than
+        // abort the whole write — legacy is already end-to-end so no confidentiality is lost.
+        // (.set() below fully overwrites the doc, so an omitted envelope is implicitly cleared.)
+        runCatching {
+            if (AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CHAT_DOMAIN)) {
+                val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+                val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
+                AndroidSignalIdentityKeyStore.publishIfNeeded(
+                    uid = uid, deviceId = escrow.deviceId, identity = identity, firestore = firestore,
+                )
+                val recipients =
+                    AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
+                AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
+                    domainID = SIGNAL_CHAT_DOMAIN,
+                    uid = uid,
+                    collection = "mobile_assistant_chats",
+                    docId = thread.id,
+                    plaintext = plaintextBytes,
+                    localIdentity = identity,
+                    otherRecipients = recipients,
+                )?.let { payload["signalEnvelope"] = it }
+            }
+        }.onFailure { Log.w("AssistantChatFirestoreMirror", "Signal at-rest seal failed; writing chat legacy-only", it) }
         collection(uid).document(thread.id).set(payload).await()
     }
 
