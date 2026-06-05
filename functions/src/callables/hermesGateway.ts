@@ -2000,10 +2000,18 @@ export const enqueueHermesGatewayEvent = onCall(
           ? requireSafeGatewayEventId(request.data.eventId)
           : `evt_${randomBytes(12).toString("hex")}`;
       const now = nowISO();
+      const eventRef = db.doc(`users/${uid}/hermes_gateway_events/${eventId}`);
       let sequence = 0;
       await db.runTransaction(async (tx) => {
         const stateRef = db.doc(`users/${uid}/hermes_gateway_state/cursors`);
         const stateSnap = await tx.get(stateRef);
+        // (Remediation R9) Mirror the message-path create-if-absent 409 guard: a
+        // replayed client-supplied eventId must not clobber a stored event or
+        // re-bump the sequence counter. Reads precede writes in a transaction.
+        const existingEvent = await tx.get(eventRef);
+        if (existingEvent.exists) {
+          throw new HttpsError("already-exists", "Hermes Gateway event already enqueued.");
+        }
         const current = Number(stateSnap.get("eventSequence") ?? 0);
         sequence = Number.isFinite(current) ? current + 1 : 1;
         tx.set(
@@ -2012,7 +2020,7 @@ export const enqueueHermesGatewayEvent = onCall(
           { merge: true },
         );
         tx.set(
-          db.doc(`users/${uid}/hermes_gateway_events/${eventId}`),
+          eventRef,
           stripUndefinedObject({
             id: eventId,
             sequence,

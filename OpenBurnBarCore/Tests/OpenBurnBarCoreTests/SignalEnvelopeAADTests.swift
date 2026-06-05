@@ -179,6 +179,7 @@ final class SignalEnvelopeAADTests: XCTestCase {
     func test_throwsFailClosedOnReservedCharacterInSegment() {
         let injections: [SignalEnvelopeAAD.Binding] = [
             SignalEnvelopeAAD.Binding(uid: "a|b", scope: .gateway, mode: .transport, formatVersion: 1),
+            SignalEnvelopeAAD.Binding(uid: "a|\u{0301}b", scope: .gateway, mode: .transport, formatVersion: 1),
             SignalEnvelopeAAD.Binding(uid: "line\r", scope: .gateway, mode: .transport, formatVersion: 1),
             SignalEnvelopeAAD.Binding(uid: "line\n", scope: .gateway, mode: .transport, formatVersion: 1),
             SignalEnvelopeAAD.Binding(

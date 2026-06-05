@@ -172,6 +172,8 @@ targets:
         product: OpenBurnBarMedia
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarSignalCore
       - package: GRDB
         product: GRDB
       - package: Firebase
@@ -580,6 +582,8 @@ targets:
         product: OpenBurnBarMedia
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarSignalCore
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -625,6 +629,8 @@ targets:
       - target: OpenBurnBarMobile
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarSignalCore
 
   OpenBurnBarMobileUITests:
     type: bundle.ui-testing

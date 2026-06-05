@@ -11,7 +11,6 @@ let hasIrohXCFramework = FileManager.default.fileExists(
         .standardizedFileURL
         .path
 )
-
 let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarCore",
@@ -48,6 +47,10 @@ let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarFirestoreModels",
         targets: ["OpenBurnBarFirestoreModels"]
+    ),
+    .library(
+        name: "OpenBurnBarSignalCore",
+        targets: ["OpenBurnBarSignalCore"]
     )
 ] + (hasIrohXCFramework ? [
     .library(
@@ -79,11 +82,17 @@ let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
     )
 ] : []
 
+let signalCoreDependencies: [Target.Dependency] = [
+    "OpenBurnBarCore",
+    .product(name: "LibSignalClient", package: "LibSignalClient")
+]
+
 let package = Package(
     name: "OpenBurnBarCore",
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: packageProducts,
     dependencies: [
+        .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift"),
         .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
     ],
     targets: irohBinaryTargets + [
@@ -125,6 +134,11 @@ let package = Package(
             dependencies: ["OpenBurnBarCore"],
             path: "Sources/OpenBurnBarFirestoreModels"
         ),
+        .target(
+            name: "OpenBurnBarSignalCore",
+            dependencies: signalCoreDependencies,
+            path: "Sources/OpenBurnBarSignalCore"
+        ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
             dependencies: [
@@ -150,6 +164,17 @@ let package = Package(
                 "OpenBurnBarComputerUseCore",
                 "OpenBurnBarCore",
                 "OpenBurnBarMedia"
+            ]
+        ),
+        .testTarget(
+            name: "OpenBurnBarSignalCoreTests",
+            dependencies: [
+                "OpenBurnBarSignalCore",
+                "OpenBurnBarCore",
+                .product(name: "LibSignalClient", package: "LibSignalClient")
+            ],
+            resources: [
+                .process("Fixtures")
             ]
         )
     ]

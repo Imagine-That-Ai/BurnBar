@@ -252,7 +252,7 @@ struct DataVaultControlView: View {
 
     private var recoverySubtitle: String {
         if store.recoveryMethods.isEmpty {
-            return "Set up a recovery key or contact before zero-knowledge mode."
+            return "Set up a recovery key or contact before end-to-end encrypted mode."
         }
         let confirmed = store.recoveryMethods.filter(\.confirmed).count
         return "\(confirmed) of \(store.recoveryMethods.count) recovery method\(store.recoveryMethods.count == 1 ? "" : "s") confirmed."

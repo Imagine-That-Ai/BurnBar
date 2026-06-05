@@ -1,0 +1,3 @@
+[submodule "Vendor/libsignal"]
+	path = Vendor/libsignal
+	url = https://github.com/Ajnunezg/libsignal.git

@@ -337,7 +337,7 @@ struct DataControlCenterView: View {
             } label: {
                 Label("Recovery", systemImage: "key.horizontal.fill")
             }
-            .help("Set up recovery before zero-knowledge mode")
+            .help("Set up recovery before end-to-end encrypted mode")
 
             Button(role: .destructive) {
                 showPanicSheet = true

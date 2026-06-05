@@ -225,19 +225,20 @@ struct TextExpansionSettingsView: View {
                 .frame(maxWidth: .infinity)
             } else {
                 ScrollView {
-                    VStack(spacing: 8) {
+                    LazyVStack(spacing: 8) {
                         ForEach(filteredSnippets) { snippet in
                             let isSelected = snippet.id == selectedID
                             SnippetCardView(
                                 snippet: snippet,
                                 isSelected: isSelected,
                                 onSelect: {
-                                    selectedID = snippet.id
+                                    selectSnippet(snippet.id)
                                 },
                                 onToggle: {
                                     toggleSnippet(snippet)
                                 }
                             )
+                            .equatable()
                         }
                     }
                     .padding(.horizontal, DesignSystem.Spacing.md)
@@ -641,7 +642,7 @@ struct TextExpansionSettingsView: View {
                                     .italic()
                             }
                         } else {
-                            Text(snippetBody.isEmpty ? "Type snippet content above to view expansion..." : snippetBody)
+                            Text(previewText)
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundStyle(snippetBody.isEmpty ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textPrimary)
                                 .lineLimit(3)
@@ -818,14 +819,23 @@ struct TextExpansionSettingsView: View {
             if selectFirst, selectedID == nil {
                 selectedID = snippets.first { $0.deletedAt == nil }?.id
             }
-            loadSelectedSnippet()
+            hydrateSelectedSnippet()
             exportSnapshotIfNeeded()
         } catch {
             showToast("Could not load snippets: \(error.localizedDescription)")
         }
     }
 
+    private func selectSnippet(_ id: String) {
+        guard selectedID != id else { return }
+        selectedID = id
+    }
+
     private func loadSelectedSnippet() {
+        hydrateSelectedSnippet()
+    }
+
+    private func hydrateSelectedSnippet() {
         guard let snippet = selectedSnippet else { return }
         title = snippet.title
         trigger = snippet.activationToken.replacingOccurrences(of: "&&", with: "")
@@ -836,12 +846,16 @@ struct TextExpansionSettingsView: View {
 
     private func createDraft() {
         selectedID = nil
+        clearEditor()
+        focusedField = .title
+    }
+
+    private func clearEditor() {
         title = ""
         trigger = ""
         snippetBody = ""
         mode = .staticText
         isEnabled = true
-        focusedField = .title
     }
 
     private func saveSnippet() {
@@ -908,6 +922,16 @@ struct TextExpansionSettingsView: View {
         let canonical = TextExpansionTrigger.canonicalName(trigger)
         guard !canonical.isEmpty else { return "&&confident" }
         return TextExpansionTrigger.activationToken(for: canonical)
+    }
+
+    private var previewText: String {
+        guard !snippetBody.isEmpty else {
+            return "Type snippet content above to view expansion..."
+        }
+        let maxPreviewLength = 600
+        guard snippetBody.count > maxPreviewLength else { return snippetBody }
+        let end = snippetBody.index(snippetBody.startIndex, offsetBy: maxPreviewLength)
+        return String(snippetBody[..<end]) + "..."
     }
 
     private var sandboxMatcherSnippets: [TextExpansionSnippet] {
@@ -993,13 +1017,17 @@ struct TextExpansionSettingsView: View {
 
 // MARK: - Subviews forRedesign
 
-struct SnippetCardView: View {
+struct SnippetCardView: View, Equatable {
     let snippet: TextExpansionSnippet
     let isSelected: Bool
     let onSelect: () -> Void
     let onToggle: () -> Void
 
     @State private var isHovered = false
+
+    static func == (lhs: SnippetCardView, rhs: SnippetCardView) -> Bool {
+        lhs.snippet == rhs.snippet && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         Button(action: onSelect) {
