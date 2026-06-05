@@ -21,6 +21,9 @@ require_file REUSE.toml
 require_file third_party/libsignal/manifest.json
 require_file third_party/libsignal/runtime-readiness.json
 require_file scripts/require-agpl-store-legal-review.sh
+require_file scripts/generate-sbom.py
+require_file scripts/supply-chain/generate-vex.py
+require_file scripts/supply-chain/run-ecosystem-deny-checks.sh
 require_file scripts/ci/verify-corresponding-source-archive.sh
 require_file scripts/ci/verify-libsignal-pin.sh
 require_file scripts/ci/verify-libsignal-runtime-readiness.sh
@@ -109,8 +112,38 @@ bash -n scripts/ci/verify-libsignal-pin.sh
 bash -n scripts/ci/verify-libsignal-runtime-readiness.sh
 bash -n scripts/build-macos-website-release.sh
 bash -n scripts/upload-macos-downloads-r2.sh
+python3 -m py_compile scripts/generate-sbom.py scripts/supply-chain/generate-vex.py
 
 bash scripts/ci/verify-libsignal-pin.sh
 bash scripts/ci/verify-corresponding-source-archive.sh --version compliance-test
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+sbom="$tmpdir/openburnbar-compliance-test.spdx.json"
+vex="$tmpdir/openburnbar-compliance-test.vex.json"
+python3 scripts/generate-sbom.py --version compliance-test --repo-root . --output "$sbom" >/dev/null
+python3 scripts/supply-chain/generate-vex.py --sbom "$sbom" --output "$vex" --product-version compliance-test >/dev/null
+python3 - "$sbom" "$vex" <<'PY'
+import json
+import sys
+
+sbom_path, vex_path = sys.argv[1:3]
+sbom = json.load(open(sbom_path, encoding="utf-8"))
+vex = json.load(open(vex_path, encoding="utf-8"))
+refs = []
+for package in sbom.get("packages", []):
+    for ref in package.get("externalRefs") or []:
+        locator = ref.get("referenceLocator") or ""
+        if locator.startswith("pkg:"):
+            refs.append(locator)
+required = ("pkg:npm/", "pkg:swift/", "pkg:cargo/", "pkg:maven/")
+missing = [prefix for prefix in required if not any(ref.startswith(prefix) for ref in refs)]
+if missing:
+    raise SystemExit(f"SBOM is missing dependency ecosystems: {', '.join(missing)}")
+if not any("libsignal-client" in ref for ref in refs):
+    raise SystemExit("SBOM is missing @signalapp/libsignal-client")
+if vex.get("@context") is None or not vex.get("statements"):
+    raise SystemExit("OpenVEX sidecar did not generate statements")
+PY
 
 echo "PASS: AGPL compliance gate"
