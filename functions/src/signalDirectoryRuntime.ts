@@ -43,10 +43,7 @@ export async function revokeAllSignalSessions(uid: string): Promise<number> {
  * which is small per user; revocation is rare and security-critical, so the
  * extra reads are acceptable.
  */
-async function revokeSignalSessionsMatching(
-  uid: string,
-  predicate: (data: DocumentData) => boolean,
-): Promise<number> {
+async function revokeSignalSessionsMatching(uid: string, predicate: (data: DocumentData) => boolean): Promise<number> {
   const identities = await db.collection(`users/${uid}/signal_identity_public_keys`).get();
   const writes: Array<(batch: WriteBatch) => void> = [];
   for (const identity of identities.docs) {
@@ -54,11 +51,7 @@ async function revokeSignalSessionsMatching(
     for (const session of sessions.docs) {
       if (predicate(session.data())) {
         writes.push((batch) =>
-          batch.set(
-            session.ref,
-            { status: "revoked", updatedAt: FieldValue.serverTimestamp() },
-            { merge: true },
-          ),
+          batch.set(session.ref, { status: "revoked", updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
         );
       }
     }
