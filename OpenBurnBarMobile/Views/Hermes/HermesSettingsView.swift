@@ -125,13 +125,13 @@ struct HermesSettingsView: View {
         } message: {
             Text(showDeleteConfirm?.displayName ?? "")
         }
-        .alert("Remove stale Hermes clients?", isPresented: $showPruneGatewayClientsConfirm) {
+        .alert("Remove older Hermes entries?", isPresented: $showPruneGatewayClientsConfirm) {
             Button("Cancel", role: .cancel) {}
-            Button("Remove stale", role: .destructive) {
+            Button("Remove older entries", role: .destructive) {
                 Task { await gatewayStore.pruneStaleClients() }
             }
         } message: {
-            Text("This revokes older duplicate Hermes gateway clients for the same device and keeps the newest active client visible.")
+            Text("This revokes older gateway entries that appear to belong to the same device and keeps the newest active entry visible.")
         }
         .task(id: authStore.currentIdentity?.uid) {
             gatewayStore.startGatewayListening(uid: authStore.currentIdentity?.uid)
@@ -510,14 +510,13 @@ struct HermesSettingsView: View {
     private func gatewayReplyHero(_ reply: HermesGatewayMessageRecord) -> some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
-                ZStack {
-                    Circle()
-                        .fill(MobileTheme.success.opacity(0.16))
-                        .frame(width: 46, height: 46)
-                    Image(systemName: "checkmark.message.fill")
-                        .font(.system(size: 19, weight: .bold))
-                        .foregroundStyle(MobileTheme.success)
-                }
+                HarnessModelBadge(
+                    harness: AssistantRuntimeID.hermes.agentProvider,
+                    model: gatewayReplyModelProvider(),
+                    size: 46,
+                    modelScale: 0.36,
+                    ringStroke: MobileTheme.success
+                )
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Hermes replied")
@@ -966,7 +965,7 @@ struct HermesSettingsView: View {
                 .foregroundStyle(MobileTheme.warning)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(gatewayStore.hiddenDuplicateClientCount) older duplicate \(gatewayStore.hiddenDuplicateClientCount == 1 ? "client is" : "clients are") hidden.")
+                Text("\(gatewayStore.hiddenDuplicateClientCount) older reconnect \(gatewayStore.hiddenDuplicateClientCount == 1 ? "entry is" : "entries are") hidden.")
                     .font(.caption)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -979,7 +978,7 @@ struct HermesSettingsView: View {
                             ProgressView()
                                 .controlSize(.mini)
                         }
-                        Text("Remove stale clients")
+                        Text("Remove older entries")
                             .font(.caption.weight(.semibold))
                     }
                 }
@@ -2106,8 +2105,45 @@ struct HermesSettingsView: View {
             }
         }
     }
+
+    private func gatewayReplyModelID() -> String {
+        hermesGatewayNonBlank(service.selectedModelID)
+            ?? hermesGatewayNonBlank(gatewayStore.runtimeModelId)
+            ?? hermesGatewayNonBlank(service.selectedConnection.advertisedModel)
+            ?? "hermes"
+    }
+
+    private func gatewayReplyModelProvider() -> AgentProvider? {
+        hermesGatewayReplyModelProvider(
+            providerID: hermesGatewayNonBlank(gatewayStore.selectedClient?.runtimeProviderId),
+            modelID: gatewayReplyModelID()
+        )
+    }
 }
 
+private func hermesGatewayNonBlank(_ value: String?) -> String? {
+    guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+        return nil
+    }
+    return trimmed
+}
+
+private func hermesGatewayReplyModelProvider(providerID: String?, modelID: String) -> AgentProvider? {
+    let normalizedProviderID = hermesGatewayNonBlank(providerID)
+    if let providerID = normalizedProviderID,
+       let provider = AgentProvider.fromCatalogProviderID(providerID) {
+        return provider
+    }
+    let provider = hermesAgentProvider(
+        for: [
+            normalizedProviderID,
+            hermesGatewayNonBlank(modelID),
+        ]
+        .compactMap(\.self)
+        .joined(separator: " ")
+    )
+    return provider == AssistantRuntimeID.hermes.agentProvider ? nil : provider
+}
 
 /// A native inset-grouped-style card. Replaces `AuroraGlassCard` on the Hermes
 /// settings surface so it reads like Apple's stock Settings — grouped cards on
@@ -2258,10 +2294,7 @@ final class HermesGatewaySettingsStore {
     }
 
     var connectedClientCountText: String {
-        let visibleCount = displayClients.count
-        let hiddenCount = hiddenDuplicateClientCount
-        guard hiddenCount > 0 else { return "\(visibleCount)" }
-        return "\(visibleCount)+\(hiddenCount)"
+        "\(displayClients.count)"
     }
 
     var onlineClients: [HermesGatewayClientRecord] {
@@ -2352,9 +2385,37 @@ final class HermesGatewaySettingsStore {
     }
 
     private static func gatewayClientDuplicateKey(_ client: HermesGatewayClientRecord) -> String {
-        let displayName = normalizedNonEmpty(client.displayName, lowercase: true) ?? "unknown-device"
-        let homeDestination = normalizedNonEmpty(client.homeDestinationId, lowercase: true) ?? "burnbar:home"
-        return "\(displayName)|\(homeDestination)"
+        // The gateway can accumulate multiple active grants when the same
+        // device is re-paired during local testing. There is no stronger
+        // device identifier in this record, so collapse only by a normalized
+        // display name plus home destination and keep the freshest usable
+        // entry visible.
+        let homeDestination = gatewayClientDestinationKey(client.homeDestinationId)
+        let displayName = gatewayClientDisplayNameKey(client.displayName)
+        if displayName != "unknown-device" {
+            return "name|\(displayName)|\(homeDestination)"
+        }
+        if let agentRelayKey = normalizedNonEmpty(client.relayPublicKey, lowercase: false) {
+            return "agent|\(agentRelayKey)|\(homeDestination)"
+        }
+        return "name|\(displayName)|\(homeDestination)"
+    }
+
+    private static func gatewayClientDisplayNameKey(_ value: String?) -> String {
+        guard let value = normalizedNonEmpty(value, lowercase: true) else {
+            return "unknown-device"
+        }
+        return value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private static func gatewayClientDestinationKey(_ value: String?) -> String {
+        let destination = normalizedNonEmpty(value, lowercase: true) ?? "burnbar:home"
+        switch destination {
+        case "home", "burnbar/home", "burnbar:home":
+            return "burnbar:home"
+        default:
+            return destination
+        }
     }
 
     private static func shouldPreferGatewayClient(
@@ -2654,10 +2715,13 @@ final class HermesGatewaySettingsStore {
             )
             return client
         } catch {
-            if isConsumedPairingCodeError(error),
-               let existingClient = await refreshAfterConsumedPairingCode() {
-                setNotice("Hermes is already connected.", style: .success)
-                return existingClient
+            if isConsumedPairingCodeError(error) {
+                await refreshClientsAfterPairingFailure()
+                setNotice(
+                    "That Hermes code has already been used or has expired. Generate a new code on your Mac, then enter it here.",
+                    style: .warning
+                )
+                return nil
             }
             setNotice(error.localizedDescription, style: .error)
             return nil
@@ -2686,7 +2750,7 @@ final class HermesGatewaySettingsStore {
         guard !isPruningStaleClients, revokingClientId == nil else { return }
         let staleClients = hiddenDuplicateClients
         guard !staleClients.isEmpty else {
-            setNotice("No stale Hermes clients to remove.", style: .info)
+            setNotice("There are no older Hermes gateway entries to remove.", style: .info)
             return
         }
 
@@ -2716,12 +2780,12 @@ final class HermesGatewaySettingsStore {
         repairSelectedClientIfNeeded()
         if let firstError {
             setNotice(
-                "Removed \(removedCount) stale Hermes client\(removedCount == 1 ? "" : "s"); one or more failed: \(firstError.localizedDescription)",
+                "Removed \(removedCount) older Hermes gateway entr\(removedCount == 1 ? "y" : "ies"); one or more could not be removed: \(firstError.localizedDescription)",
                 style: .warning
             )
         } else {
             setNotice(
-                "Removed \(removedCount) stale Hermes client\(removedCount == 1 ? "" : "s").",
+                "Removed \(removedCount) older Hermes gateway entr\(removedCount == 1 ? "y" : "ies").",
                 style: .success
             )
         }
@@ -2997,6 +3061,7 @@ final class HermesGatewaySettingsStore {
             Task { @MainActor in
                 let hydrated = await hydrateGatewayAttachments(for: reply)
                 latestReply = hydrated
+                recordReplyInHermesThread(hydrated)
                 self.pendingTestEvent = nil
                 pendingEventSentAt = nil
                 setNotice("Hermes replied. The gateway is working end to end.", style: .success)
@@ -3015,6 +3080,7 @@ final class HermesGatewaySettingsStore {
             let hydrated = await hydrateGatewayAttachments(for: reply)
             let isNewReply = latestReply?.id != hydrated.id
             latestReply = hydrated
+            recordReplyInHermesThread(hydrated)
             if isNewReply,
                HermesGatewayMessageResolver.wasCreatedWhileListening(
                     hydrated,
@@ -3128,6 +3194,7 @@ final class HermesGatewaySettingsStore {
     private func presentReplyNotification(_ reply: HermesGatewayMessageRecord) {
         guard lastNotifiedMessageID != reply.id else { return }
         lastNotifiedMessageID = reply.id
+        let modelID = gatewayReplyModelID()
         AgentReplyNotificationService.shared.presentLocalReply(
             id: reply.id,
             title: "Hermes replied",
@@ -3135,7 +3202,30 @@ final class HermesGatewaySettingsStore {
             // open surfaces the calm re-pair line, never an empty preview.
             preview: reply.chatRenderText(emptyFallback: "Hermes sent a reply through BurnBar Cloud."),
             runtime: AssistantRuntimeID.hermes.rawValue,
-            threadID: reply.threadId ?? gatewayThreadID
+            threadID: reply.threadId ?? gatewayThreadID,
+            provider: gatewayReplyModelProvider(modelID: modelID)
+        )
+    }
+
+    private func recordReplyInHermesThread(_ reply: HermesGatewayMessageRecord) {
+        let modelID = gatewayReplyModelID()
+        HermesService.shared.recordBurnBarGatewayReply(
+            reply,
+            threadID: reply.threadId ?? gatewayThreadID,
+            modelID: modelID,
+            modelName: modelID
+        )
+    }
+
+    private func gatewayReplyModelID() -> String {
+        nonEmpty(runtimeModelId)
+            ?? "hermes"
+    }
+
+    private func gatewayReplyModelProvider(modelID: String) -> AgentProvider? {
+        hermesGatewayReplyModelProvider(
+            providerID: nonEmpty(selectedClient?.runtimeProviderId),
+            modelID: modelID
         )
     }
 
@@ -3162,14 +3252,12 @@ final class HermesGatewaySettingsStore {
         error.localizedDescription.localizedCaseInsensitiveContains("pairing code was not found")
     }
 
-    private func refreshAfterConsumedPairingCode() async -> HermesGatewayClientRecord? {
+    private func refreshClientsAfterPairingFailure() async {
         do {
             clients = try await repository.listHermesGatewayClients()
             statusNow = Date()
             repairSelectedClientIfNeeded()
-            return selectedClient ?? displayClients.first
         } catch {
-            return nil
         }
     }
 

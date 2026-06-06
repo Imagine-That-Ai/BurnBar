@@ -60,6 +60,23 @@ private final class InMemoryGatewayPrivateKeyStorage: HermesGatewayPrivateKeySto
     }
 }
 
+private final class InMemoryMobileChatLocalStore: MobileChatLocalStoring {
+    private var partitions: [String: MobileChatHistorySnapshot] = [:]
+    private var activePartition: String = "local"
+
+    func setActivePartition(_ key: String) {
+        activePartition = key
+    }
+
+    func load() throws -> MobileChatHistorySnapshot {
+        partitions[activePartition] ?? MobileChatHistorySnapshot()
+    }
+
+    func save(_ snapshot: MobileChatHistorySnapshot) throws {
+        partitions[activePartition] = snapshot
+    }
+}
+
 @MainActor
 final class OpenBurnBarMobileTests: XCTestCase {
     override func setUp() {
@@ -118,6 +135,68 @@ final class OpenBurnBarMobileTests: XCTestCase {
         HermesGatewayPairingDeepLink.open(code: "  SQKV-AP5R  ")
         XCTAssertEqual(HermesGatewayPairingDeepLink.consumePendingCode(), "SQKV-AP5R")
         XCTAssertNil(HermesGatewayPairingDeepLink.consumePendingCode())
+    }
+
+    @MainActor
+    func testAssistantPendingThreadStoresExactRuntimeThreadTarget() {
+        AssistantPendingThread.shared.clear(.hermes)
+        AssistantPendingThread.shared.clear(.pi)
+
+        AssistantPendingThread.shared.stash(assistant: .hermes, threadID: " burnbar-ios-e2e ")
+        AssistantPendingThread.shared.stash(assistant: .pi, threadID: "pi-thread")
+
+        XCTAssertEqual(AssistantPendingThread.shared.consume(.hermes), "burnbar-ios-e2e")
+        XCTAssertNil(AssistantPendingThread.shared.consume(.hermes))
+        XCTAssertEqual(AssistantPendingThread.shared.consume(.pi), "pi-thread")
+    }
+
+    func testBurnBarGatewayReplyStoresExactHermesThreadForDeepLink() throws {
+        let local = InMemoryMobileChatLocalStore()
+        let history = MobileChatHistoryStore(local: local, cloud: nil)
+        let defaultsName = "HermesGatewayReplyThread.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+
+        let service = HermesService(defaults: defaults, history: history)
+        let threadID = "burnbar-ios-e2e-\(UUID().uuidString)"
+        let reply = try XCTUnwrap(hermesGatewayMessage(
+            id: "msg_gateway_reply",
+            threadId: threadID,
+            text: "Gateway online — Hermes is back and ready.",
+            createdAt: "2026-06-06T20:19:50.000Z"
+        ))
+
+        service.recordBurnBarGatewayReply(
+            reply,
+            threadID: "fallback-thread",
+            modelID: "minimax/abab6.5-chat",
+            modelName: "MiniMax"
+        )
+
+        let stored = try XCTUnwrap(history.thread(id: threadID))
+        XCTAssertEqual(stored.runtime, AssistantRuntimeID.hermes.rawValue)
+        XCTAssertEqual(stored.preview, "Gateway online — Hermes is back and ready.")
+        XCTAssertEqual(stored.modelName, "MiniMax")
+        XCTAssertEqual(stored.messages.map(\.id), ["msg_gateway_reply"])
+        XCTAssertEqual(stored.messages.first?.role, "assistant")
+        XCTAssertEqual(stored.messages.first?.text, "Gateway online — Hermes is back and ready.")
+        XCTAssertEqual(stored.messages.first?.hermes?.responseModelID, "minimax/abab6.5-chat")
+    }
+
+    @MainActor
+    func testHermesGatewayReplyPendingThreadBuildsSquareInboxRoute() {
+        AssistantPendingThread.shared.clear(.hermes)
+
+        XCTAssertNil(HermesSquarePendingThreadRoute.hermesInboxID(for: nil))
+        XCTAssertNil(HermesSquarePendingThreadRoute.hermesInboxID(for: "   "))
+        XCTAssertEqual(
+            HermesSquarePendingThreadRoute.hermesInboxID(for: " burnbar-ios-e2e "),
+            "hermes:burnbar-ios-e2e"
+        )
+
+        AssistantPendingThread.shared.stash(assistant: .hermes, threadID: " gateway-thread-123 ")
+        XCTAssertEqual(HermesSquarePendingThreadRoute.consumeHermesInboxID(), "hermes:gateway-thread-123")
+        XCTAssertNil(HermesSquarePendingThreadRoute.consumeHermesInboxID())
     }
 
     func testHermesGatewayApprovalDecoderPreservesServerTimestampStrings() throws {
@@ -1983,6 +2062,34 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNotNil(Data(base64Encoded: ratchetBundle.signedPreKeySignatureBase64))
     }
 
+    func testHermesGatewayPairingCodeNotFoundDoesNotPretendExistingClientIsNew() async throws {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(id: "hgw_stale", displayName: "Old Hermes", lastSeenAt: now)
+        ]
+        repository.approvalError = NSError(
+            domain: "Functions",
+            code: 404,
+            userInfo: [NSLocalizedDescriptionKey: "Hermes Gateway pairing code was not found."]
+        )
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+
+        let client = await store.approve(userCode: "DEAD-BEEF", displayName: "iPhone")
+
+        XCTAssertNil(client)
+        XCTAssertEqual(store.selectedClient?.id, "hgw_stale")
+        XCTAssertEqual(
+            store.noticeText,
+            "That Hermes code has already been used or has expired. Generate a new code on your Mac, then enter it here."
+        )
+        XCTAssertTrue(repository.approvalGrants.isEmpty)
+    }
+
     func testHermesGatewayQueuedEventParsesTargetClientId() throws {
         let data = try JSONSerialization.data(withJSONObject: [
             "id": "evt_123",
@@ -2169,6 +2276,52 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "hermesGateway.selectedClientId"), "hgw_online")
     }
 
+    func testHermesGatewaySettingsStoreCollapsesAndPrunesDuplicateGatewayClients() async {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.set("hgw_stale_home_alias", forKey: "hermesGateway.selectedClientId")
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(
+                id: "hgw_stale_home_alias",
+                displayName: "Alberto Nunez-Garcia's iPhone",
+                lastSeenAt: "2026-06-01T08:00:00Z",
+                homeDestinationId: "home"
+            ),
+            hermesGatewayClient(
+                id: "hgw_stale_whitespace",
+                displayName: "  Alberto Nunez-Garcia's   iPhone  ",
+                lastSeenAt: "2026-06-02T08:00:00Z",
+                homeDestinationId: "burnbar/home"
+            ),
+            hermesGatewayClient(
+                id: "hgw_current",
+                displayName: "Alberto Nunez-Garcia's iPhone",
+                lastSeenAt: now,
+                homeDestinationId: "burnbar:home"
+            )
+        ]
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+
+        XCTAssertEqual(store.activeClients.count, 3)
+        XCTAssertEqual(store.displayClients.map(\.id), ["hgw_current"])
+        XCTAssertEqual(store.hiddenDuplicateClientCount, 2)
+        XCTAssertEqual(store.connectedClientCountText, "1")
+        XCTAssertEqual(defaults.string(forKey: "hermesGateway.selectedClientId"), "hgw_current")
+
+        await store.pruneStaleClients()
+
+        XCTAssertEqual(Set(repository.revokedClientIds), ["hgw_stale_home_alias", "hgw_stale_whitespace"])
+        XCTAssertEqual(store.displayClients.map(\.id), ["hgw_current"])
+        XCTAssertEqual(store.hiddenDuplicateClientCount, 0)
+        XCTAssertEqual(store.noticeText, "Removed 2 older Hermes gateway entries.")
+    }
+
     func testHermesGatewaySettingsStoreRepairsSelectionAfterRevokingSelectedClient() async {
         let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -2200,6 +2353,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         displayName: String = "Hermes Agent",
         status: String = "active",
         lastSeenAt: String?,
+        homeDestinationId: String = "burnbar:home",
         canSealToAgent: Bool = true
     ) -> HermesGatewayClientRecord {
         let relayKey = canSealToAgent ? HermesRelayCrypto.generatePrivateKey().publicKeyBase64 : nil
@@ -2213,7 +2367,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 "hermes.gateway.write",
                 "hermes.gateway.manage"
             ],
-            homeDestinationId: "burnbar:home",
+            homeDestinationId: homeDestinationId,
             lastSeenAt: lastSeenAt,
             revokedAt: nil,
             createdAt: "2026-06-01T08:00:00Z",
@@ -3396,6 +3550,7 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
     private(set) var approvalResponses: [ApprovalResponse] = []
     private(set) var approvalDecisionEvents: [ApprovalDecisionEvent] = []
     private(set) var approvalGrants: [ApprovalGrant] = []
+    var approvalError: Error?
     private var sequence = 0
 
     func approveHermesGatewayDeviceGrant(
@@ -3408,6 +3563,9 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
         phoneRelayEncryption: String?,
         phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
     ) async throws -> HermesGatewayClientRecord {
+        if let approvalError {
+            throw approvalError
+        }
         approvalGrants.append(
             ApprovalGrant(
                 userCode: userCode,

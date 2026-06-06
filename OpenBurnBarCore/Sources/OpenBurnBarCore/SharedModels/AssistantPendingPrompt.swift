@@ -64,3 +64,56 @@ public final class AssistantPendingPrompt {
         return value
     }
 }
+
+// MARK: - AssistantPendingThread
+
+/// Process-local thread target for notification/deep-link navigation.
+///
+/// `AssistantPendingPrompt` carries text that should be sent. This separate
+/// store carries the existing conversation that should open, so notification
+/// taps can route to the exact assistant thread without accidentally treating a
+/// reply notification as a new prompt.
+@MainActor
+@Observable
+public final class AssistantPendingThread {
+    public static let shared = AssistantPendingThread()
+
+    /// Per-runtime pending thread slots. Keep the storage private so callers
+    /// use the trim/clear semantics below instead of mutating raw state.
+    private var slots: [AssistantRuntimeID: String] = [:]
+
+    // Convenience accessors used by SwiftUI `.task(id:)` route consumers.
+    public var hermes: String? {
+        get { slots[.hermes] }
+        set { slots[.hermes] = newValue }
+    }
+
+    public var pi: String? {
+        get { slots[.pi] }
+        set { slots[.pi] = newValue }
+    }
+
+    private init() {}
+
+    /// Stash an existing thread target for the named assistant. Empty /
+    /// whitespace-only strings clear the slot.
+    public func stash(assistant: AssistantRuntimeID, threadID: String?) {
+        let trimmed = threadID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+            slots[assistant] = trimmed
+        } else {
+            slots[assistant] = nil
+        }
+    }
+
+    public func clear(_ assistant: AssistantRuntimeID) {
+        slots[assistant] = nil
+    }
+
+    /// Read and clear in one shot so one deep-link tap opens one thread once.
+    public func consume(_ assistant: AssistantRuntimeID) -> String? {
+        let value = slots[assistant]
+        slots[assistant] = nil
+        return value
+    }
+}
