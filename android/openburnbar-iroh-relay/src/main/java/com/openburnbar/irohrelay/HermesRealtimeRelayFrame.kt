@@ -31,6 +31,8 @@ data class HermesRealtimeRelayFrame(
     val payload: HermesRealtimeRelayPayload? = null,
     val media: HermesRealtimeRelayMediaPayload? = null,
     val control: HermesRealtimeRelayControlPayload? = null,
+    val signalSessionCiphertextB64: String? = null,
+    val signalMessageType: Int? = null,
 )
 
 @Serializable
@@ -61,6 +63,12 @@ enum class HermesRealtimeRelayFrameType {
 
     @SerialName("pong")
     PONG,
+
+    // Device-to-device Signal Double Ratchet ciphertext carried over the
+    // existing iroh relay stream. The transport moves opaque bytes and
+    // dispatches by the top-level message-type integer.
+    @SerialName("signal.session.message")
+    SIGNAL_SESSION_MESSAGE,
 
     // Mercury media. Older peers skip unknown frame types on the chat
     // stream so adding cases here is forward-compatible with iOS.
