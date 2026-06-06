@@ -2464,7 +2464,7 @@ class TestSendViaAdapterStandaloneFallback:
     """
 
     @staticmethod
-    def _make_entry(send_fn):
+    def _make_entry(send_fn, *, max_message_length=0, supports_standalone_media=False):
         from gateway.platform_registry import PlatformEntry
 
         return PlatformEntry(
@@ -2473,6 +2473,8 @@ class TestSendViaAdapterStandaloneFallback:
             adapter_factory=lambda cfg: None,
             check_fn=lambda: True,
             standalone_sender_fn=send_fn,
+            max_message_length=max_message_length,
+            supports_standalone_media=supports_standalone_media,
         )
 
     @pytest.mark.asyncio
@@ -2555,7 +2557,7 @@ class TestSendViaAdapterStandaloneFallback:
             recorded["force_document"] = force_document
             return {"success": True, "message_id": "x"}
 
-        platform_registry.register(self._make_entry(fake_send))
+        platform_registry.register(self._make_entry(fake_send, supports_standalone_media=True))
         try:
             monkeypatch.setattr("gateway.run._gateway_runner_ref", lambda: None)
 
@@ -2648,6 +2650,176 @@ class TestSendViaAdapterStandaloneFallback:
         assert result["success"] is True
         assert result["message_id"] == "abc-123"
         assert result["extra_field"] == "preserved"
+
+    @pytest.mark.asyncio
+    async def test_send_to_platform_media_only_plugin_requires_media_capability(self, monkeypatch):
+        """A cron-only standalone hook is not enough to claim attachment support."""
+        from gateway.platform_registry import platform_registry
+
+        async def fake_send(pconfig, chat_id, message, **kwargs):
+            return {"success": True, "message_id": "should-not-send"}
+
+        platform_registry.register(self._make_entry(fake_send))
+        try:
+            monkeypatch.setattr("gateway.run._gateway_runner_ref", lambda: None)
+            result = await _send_to_platform(
+                _FakePlatform("fakeplatform"),
+                SimpleNamespace(extra={}),
+                "chat-1",
+                "",
+                media_files=[("/tmp/artifact.png", False)],
+            )
+        finally:
+            platform_registry.unregister("fakeplatform")
+
+        assert "error" in result
+        assert "MEDIA delivery is currently only supported" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_send_to_platform_text_media_plugin_omits_unsupported_media(self, monkeypatch):
+        """Cron-only standalone hooks receive text, not undeclared attachments."""
+        from gateway.platform_registry import platform_registry
+
+        recorded = {}
+
+        async def fake_send(pconfig, chat_id, message, *, media_files=None, **kwargs):
+            recorded["chat_id"] = chat_id
+            recorded["message"] = message
+            recorded["media_files"] = media_files
+            return {"success": True, "message_id": "text-only"}
+
+        platform_registry.register(self._make_entry(fake_send))
+        try:
+            monkeypatch.setattr("gateway.run._gateway_runner_ref", lambda: None)
+            result = await _send_to_platform(
+                _FakePlatform("fakeplatform"),
+                SimpleNamespace(extra={}),
+                "chat-1",
+                "hello",
+                media_files=[("/tmp/artifact.png", False)],
+            )
+        finally:
+            platform_registry.unregister("fakeplatform")
+
+        assert result["success"] is True
+        assert result["message_id"] == "text-only"
+        assert recorded == {
+            "chat_id": "chat-1",
+            "message": "hello",
+            "media_files": [],
+        }
+        assert result["warnings"] == [
+            "MEDIA attachments were omitted for fakeplatform; "
+            "send_message media delivery is currently only supported for "
+            "telegram, discord, matrix, weixin, signal, yuanbao, feishu, "
+            "or plugin platforms that explicitly declare standalone media support"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_send_to_platform_media_only_plugin_uses_declared_media_sender(self, monkeypatch):
+        """Plugin platforms with an explicit media-capable sender can own media-only sends."""
+        from gateway.platform_registry import platform_registry
+
+        recorded = {}
+
+        async def fake_send(pconfig, chat_id, message, *, thread_id=None,
+                            media_files=None, force_document=False):
+            recorded["chat_id"] = chat_id
+            recorded["message"] = message
+            recorded["thread_id"] = thread_id
+            recorded["media_files"] = media_files
+            recorded["force_document"] = force_document
+            return {"success": True, "message_id": "media-1"}
+
+        platform_registry.register(self._make_entry(fake_send, supports_standalone_media=True))
+        try:
+            monkeypatch.setattr("gateway.run._gateway_runner_ref", lambda: None)
+            media = [("/tmp/artifact.png", False)]
+
+            result = await _send_to_platform(
+                _FakePlatform("fakeplatform"),
+                SimpleNamespace(extra={}),
+                "chat-1",
+                "",
+                thread_id="thread-1",
+                media_files=media,
+                force_document=True,
+            )
+        finally:
+            platform_registry.unregister("fakeplatform")
+
+        assert result == {"success": True, "message_id": "media-1"}
+        assert recorded == {
+            "chat_id": "chat-1",
+            "message": "",
+            "thread_id": "thread-1",
+            "media_files": media,
+            "force_document": True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_send_to_platform_plugin_media_attaches_only_to_final_chunk(self, monkeypatch):
+        """Long plugin sends should not duplicate attachments on every chunk."""
+        from gateway.platform_registry import platform_registry
+
+        calls = []
+
+        async def fake_send(pconfig, chat_id, message, *, media_files=None, **kwargs):
+            calls.append({"message": message, "media_files": media_files})
+            return {"success": True, "message_id": f"chunk-{len(calls)}"}
+
+        platform_registry.register(
+            self._make_entry(fake_send, max_message_length=40, supports_standalone_media=True)
+        )
+        try:
+            monkeypatch.setattr("gateway.run._gateway_runner_ref", lambda: None)
+
+            result = await _send_to_platform(
+                _FakePlatform("fakeplatform"),
+                SimpleNamespace(extra={}),
+                "chat-1",
+                "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+                media_files=[("/tmp/artifact.png", False)],
+            )
+        finally:
+            platform_registry.unregister("fakeplatform")
+
+        assert result["success"] is True
+        assert len(calls) > 1
+        assert all(call["media_files"] == [] for call in calls[:-1])
+        assert calls[-1]["media_files"] == [("/tmp/artifact.png", False)]
+
+    @pytest.mark.asyncio
+    async def test_live_adapter_not_bypassed_for_cron_only_standalone_media(self, monkeypatch):
+        """Media on a live plugin platform still uses the live adapter unless the
+        plugin explicitly declares standalone media support."""
+        from gateway.platform_registry import platform_registry
+        from gateway.platforms.base import SendResult
+        from tools.send_message_tool import _send_via_adapter
+
+        standalone = AsyncMock(return_value={"success": True, "message_id": "standalone"})
+        live_adapter = SimpleNamespace(
+            send=AsyncMock(return_value=SendResult(success=True, message_id="live"))
+        )
+        runner = SimpleNamespace(adapters={_FakePlatform("fakeplatform"): live_adapter})
+        platform = next(iter(runner.adapters.keys()))
+
+        platform_registry.register(self._make_entry(standalone))
+        try:
+            monkeypatch.setattr("gateway.run._gateway_runner_ref", lambda: runner)
+            result = await _send_via_adapter(
+                platform,
+                SimpleNamespace(extra={}),
+                "chat-1",
+                "text",
+                media_files=[("/tmp/artifact.png", False)],
+            )
+        finally:
+            platform_registry.unregister("fakeplatform")
+
+        assert result == {"success": True, "message_id": "live"}
+        live_adapter.send.assert_awaited_once()
+        standalone.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
