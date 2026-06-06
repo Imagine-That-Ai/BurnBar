@@ -53,13 +53,16 @@ class QuotaBucketElapsedResetTest {
     fun `elapsed codex 5h window reads full remaining and empty progress`() {
         val bucket = codexBucket(window = "rollingHours", resetsAtIso = pastReset, usedPercent = "100")
 
-        assertNotNull("rollingHours window must be recognised as rolled over", bucket.elapsedWindowReset(now))
-        assertTrue("the rolled-over reset is advanced to a future boundary", bucket.elapsedWindowReset(now)!!.isAfter(now))
-        assertEquals(1.0, bucket.displayRemainingFractionAsOf(now)!!, 0.0001)
+        val elapsedReset = requireNotNull(bucket.elapsedWindowReset(now)) {
+            "rollingHours window must be recognised as rolled over"
+        }
+        assertTrue("the rolled-over reset is advanced to a future boundary", elapsedReset.isAfter(now))
+        val remainingFraction = requireNotNull(bucket.displayRemainingFractionAsOf(now))
+        assertEquals(1.0, remainingFraction, 0.0001)
         assertEquals(0.0, bucket.progressFractionAsOf(now), 0.0001)
         // effectiveResetsAt is the raw resolved value (contract preserved); only
         // the reset-detection / countdown advance past it.
-        assertTrue("raw effectiveResetsAt stays in the past", bucket.effectiveResetsAt!!.isBefore(now))
+        assertTrue("raw effectiveResetsAt stays in the past", requireNotNull(bucket.effectiveResetsAt).isBefore(now))
     }
 
     @Test
@@ -73,12 +76,13 @@ class QuotaBucketElapsedResetTest {
             label = "7-day window",
         )
 
-        assertEquals(1.0, bucket.displayRemainingFractionAsOf(now)!!, 0.0001)
+        assertEquals(1.0, requireNotNull(bucket.displayRemainingFractionAsOf(now)), 0.0001)
         // 10 days elapsed against a 7-day window lands ~4 days out; a wrong
         // 1-day advance would land ~1 day out.
+        val elapsedReset = requireNotNull(bucket.elapsedWindowReset(now))
         assertTrue(
             "weekly window must advance by 7 days, not 1",
-            bucket.elapsedWindowReset(now)!!.isAfter(now.plusSeconds(2 * 24 * 3600)),
+            elapsedReset.isAfter(now.plusSeconds(2 * 24 * 3600)),
         )
     }
 
@@ -87,7 +91,7 @@ class QuotaBucketElapsedResetTest {
         val bucket = codexBucket(window = "rollingHours", resetsAtIso = futureReset, usedPercent = "40")
 
         assertNull(bucket.elapsedWindowReset(now))
-        assertEquals(0.60, bucket.displayRemainingFractionAsOf(now)!!, 0.0001)
+        assertEquals(0.60, requireNotNull(bucket.displayRemainingFractionAsOf(now)), 0.0001)
         assertEquals(0.40, bucket.progressFractionAsOf(now), 0.0001)
     }
 
@@ -104,6 +108,6 @@ class QuotaBucketElapsedResetTest {
         )
 
         assertNull(bucket.elapsedWindowReset(now))
-        assertEquals(0.20, bucket.displayRemainingFractionAsOf(now)!!, 0.0001)
+        assertEquals(0.20, requireNotNull(bucket.displayRemainingFractionAsOf(now)), 0.0001)
     }
 }

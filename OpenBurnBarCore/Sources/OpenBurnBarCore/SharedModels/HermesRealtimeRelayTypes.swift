@@ -19,6 +19,11 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case responseError = "response.error"
     case ping
     case pong
+    // Device-to-device Signal Double Ratchet ciphertext carried over the
+    // existing iroh relay stream. The opaque ciphertext bytes stay in the
+    // top-level signalSessionCiphertextB64 field so the transport remains
+    // protocol-aware but crypto-agnostic.
+    case signalSessionMessage = "signal.session.message"
     // Mercury media rollout — see plans/2026-05-15-mercury-media-master-plan.md
     // and docs/HERMES_MEDIA_TRANSPORT.md. Older peers skip unknown frame types
     // on the chat stream so adding cases here is forward-compatible.
@@ -93,6 +98,8 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
     // control-plane metadata. Encoded only when non-nil so pre-Computer
     // Use traffic stays byte-identical to the existing wire form.
     public var control: HermesRealtimeRelayControlPayload?
+    public var signalSessionCiphertextB64: String?
+    public var signalMessageType: Int?
 
     public init(
         type: HermesRealtimeRelayFrameType,
@@ -103,7 +110,9 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
         runtime: String? = nil,
         payload: HermesRealtimeRelayPayload? = nil,
         media: HermesRealtimeRelayMediaPayload? = nil,
-        control: HermesRealtimeRelayControlPayload? = nil
+        control: HermesRealtimeRelayControlPayload? = nil,
+        signalSessionCiphertextB64: String? = nil,
+        signalMessageType: Int? = nil
     ) {
         self.type = type
         self.uid = uid
@@ -114,6 +123,8 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
         self.payload = payload
         self.media = media
         self.control = control
+        self.signalSessionCiphertextB64 = signalSessionCiphertextB64
+        self.signalMessageType = signalMessageType
     }
 }
 

@@ -111,6 +111,32 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                     data["sealedSchemaVersion"] = 2
                     data["vaultKeyID"] = resolvedKey.vaultKeyID
                     data["sealedPayload"] = CloudVaultCrypto.sealedPayloadDictionary(sealedPayload)
+                    // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM sealedPayload
+                    // above is the FLOOR; the additive Signal envelope is BEST-EFFORT and gated
+                    // by the conversations_chat sealingScheme. On ANY seal failure we log and
+                    // write legacy-only (legacy is already E2EE) rather than abort the record or
+                    // batch, and clear a stale envelope so it can never outlive its sealedPayload.
+                    do {
+                        if let signalEnvelope = try await MacCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+                            domainID: "conversations_chat",
+                            uid: uid,
+                            firestore: Firestore.firestore(),
+                            collection: "chat_threads",
+                            docId: docId,
+                            plaintext: payloadData,
+                            resolvedKey: resolvedKey
+                        ) {
+                            data["signalEnvelope"] = signalEnvelope
+                        } else {
+                            data["signalEnvelope"] = FieldValue.delete()
+                        }
+                    } catch {
+                        AppLogger.sync.error(
+                            "chat_thread_signal_seal_failed_legacy_only",
+                            metadata: ["accountUid": uid, "docId": docId, "error": String(describing: error)]
+                        )
+                        data["signalEnvelope"] = FieldValue.delete()
+                    }
                     data["title"] = FieldValue.delete()
                     data["preview"] = FieldValue.delete()
                     data["messages"] = FieldValue.delete()
@@ -121,6 +147,9 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                     data["sealedPayload"] = FieldValue.delete()
                     data["vaultKeyID"] = FieldValue.delete()
                     data["contentSealed"] = false
+                    // Content is being UN-sealed; the at-rest Signal envelope must not survive
+                    // its sealedPayload (a Signal-first reader would otherwise prefer stale text).
+                    data["signalEnvelope"] = FieldValue.delete()
                 }
                 batch.setData(data, forDocument: docRef, merge: true)
                 progress?.recordChatThreadProcessed(label: label)

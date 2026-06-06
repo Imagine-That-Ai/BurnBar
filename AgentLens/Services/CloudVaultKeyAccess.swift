@@ -203,13 +203,18 @@ enum MacCloudVaultKeyAccess {
     static func keyForReading(uid: String, deviceId: String, firestore: Firestore) async throws -> CloudVaultResolvedKey? {
         let userRef = firestore.collection("users").document(uid)
         let keyStore = CloudVaultKeyStore()
+        // Local-only load (reading never creates) so Mac read paths can open at-rest Signal
+        // envelopes; nil until the device has a Signal identity (item 3 read side).
+        let signalIdentity = try? OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
-            return CloudVaultResolvedKey(keyData: local, vaultKeyID: vaultKeyID)
+            return CloudVaultResolvedKey(keyData: local, vaultKeyID: vaultKeyID, signalIdentity: signalIdentity)
         }
         if let unwrapped = try await unwrapExistingKey(uid: uid, deviceId: deviceId, userRef: userRef) {
             try keyStore.saveKey(unwrapped.keyData, uid: uid)
-            return unwrapped
+            return CloudVaultResolvedKey(
+                keyData: unwrapped.keyData, vaultKeyID: unwrapped.vaultKeyID, signalIdentity: signalIdentity
+            )
         }
         return nil
     }

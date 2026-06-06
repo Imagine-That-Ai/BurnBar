@@ -2,6 +2,7 @@ import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 
 protocol ConversationCloudVaultKeyProviding: Sendable {
     func keyForWriting(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey
@@ -115,8 +116,35 @@ enum ConversationCloudSealer {
         return CloudVaultCrypto.sealedPayloadDictionary(sealed)
     }
 
-    static func open(_ data: [String: Any], keyData: Data?) -> ConversationCloudPrivatePayload? {
-        guard data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil else { return nil }
+    /// The exact plaintext bytes `seal` encrypts — exposed so the producer can also at-rest
+    /// Signal-seal the SAME payload (item 3 dual-write) without re-deriving the encoding.
+    static func encodePlaintext(_ payload: ConversationCloudPrivatePayload) throws -> Data {
+        try encoder.encode(payload)
+    }
+
+    static func open(
+        _ data: [String: Any],
+        keyData: Data?,
+        uid: String? = nil,
+        docId: String? = nil,
+        signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil,
+        trustedSenderPublicKeys: [String: Data] = [:]
+    ) -> ConversationCloudPrivatePayload? {
+        guard data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil || data["signalEnvelope"] != nil else {
+            return nil
+        }
+        // Signal-first open (item 3); fall through to legacy AES-GCM on any failure (rollout
+        // compatibility, matching iOS/Android). Requires uid + docId (the binding coordinates).
+        // trustedSenderPublicKeys enables CROSS-DEVICE sender-auth verification (a doc written
+        // by another trusted device); empty => only self-authored docs verify, others fall back.
+        if data["signalEnvelope"] != nil, let uid, let docId {
+            if let bytes = try? MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                data, uid: uid, collection: "conversations", docId: docId,
+                signalIdentity: signalIdentity, trustedSenderPublicKeys: trustedSenderPublicKeys
+            ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) {
+                return payload
+            }
+        }
         guard let keyData,
               let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]),
               let payloadData = try? CloudVaultCrypto.openPayload(envelope, keyData: keyData) else {

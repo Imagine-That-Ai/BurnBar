@@ -129,3 +129,30 @@ paths = [
   '''launch-evidence/android-play-v25-ultra-live-proof-20260603T115300Z\.json''',
   '''launch-evidence/paid-proof-google_play_ultra-v25-20260603T115132Z\.out''',
 ]
+
+[[allowlists]]
+description = "Signal prekey directory algorithm identifiers are public protocol labels, not credentials"
+regexTarget = "match"
+regexes = [
+  '''signal-pqxdh-(signed|kyber|one-time)-prekey-v1''',
+]
+paths = [
+  '''functions/src/callables/signalPrekeyDirectory\.ts''',
+]
+
+[[allowlists]]
+description = "Signal prekey directory tests and denylist literals intentionally name forbidden secret fields"
+regexTarget = "match"
+regexes = [
+  '''privateKeyData''',
+  '''privateKeyB64''',
+  '''serializedSession''',
+  '''sessionState''',
+  '''ratchetState''',
+  '''apiKey''',
+  '''secret''',
+]
+paths = [
+  '''functions/src/callables/signalPrekeyDirectory\.ts''',
+  '''functions/src/__tests__/signalPrekeyDirectory\.test\.ts''',
+]

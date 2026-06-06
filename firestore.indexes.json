@@ -655,6 +655,22 @@
         {"fieldPath": "status", "order": "ASCENDING"},
         {"fieldPath": "retryAt", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "one_time_prekeys",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "expiresAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "kyber_prekeys",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "expiresAt", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": [

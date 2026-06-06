@@ -40,6 +40,27 @@ if (activated.length === 0) {
   fail(`domains already on a signal sealingScheme: ${activated.map((d) => `${d.id}=${d.sealingScheme}`).join(", ")}`);
 }
 
+// (2b) Producer-coverage honesty gate: the gate is keyed by DOMAIN id but producers
+// are per-collection. A domain that carries the Signal scheme MUST declare
+// signalSealedCollections — the EXACT subset of its firestorePaths that actually emit a
+// signalEnvelope — so the registry can never silently over-claim that an unwired
+// collection is Signal-sealed. (Pure documentation today; once the runtime gate is made
+// collection-aware it becomes the source of truth. No-op until a domain is flipped.)
+for (const d of activated) {
+  const sealed = d.signalSealedCollections;
+  if (!Array.isArray(sealed) || sealed.length === 0) {
+    fail(`${d.id} carries the Signal scheme but does not declare a non-empty signalSealedCollections`);
+    continue;
+  }
+  const paths = new Set(d.firestorePaths ?? []);
+  const stray = sealed.filter((c) => !paths.has(c));
+  if (stray.length) {
+    fail(`${d.id} signalSealedCollections lists collections not in its firestorePaths: ${stray.join(", ")}`);
+  } else {
+    ok(`${d.id} declares signalSealedCollections (${sealed.length}/${paths.size} collections Signal-sealed): ${sealed.join(", ")}`);
+  }
+}
+
 // (3) No committed Remote Config template may set a Signal flag true.
 const SIGNAL_RC_KEYS = /(signal_envelope_v4_enabled|signal_at_rest_[a-z_]+_enabled|escrow_fingerprint_enforcement)/;
 function scan(dir) {

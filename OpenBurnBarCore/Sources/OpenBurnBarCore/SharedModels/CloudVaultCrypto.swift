@@ -293,6 +293,32 @@ public struct CloudVaultSignalBinding: Codable, Hashable, Sendable {
     }
 }
 
+/// Sender authentication for an at-rest Signal envelope. The writing device signs
+/// the envelope (binding + ciphertext + recipient wraps) with its identity PRIVATE
+/// key; a reader verifies the signature against the sender's PINNED public key from
+/// the trusted-device set (NOT the wire `senderIdentityKeyB64`). Because the server
+/// holds only PUBLIC identity keys it cannot forge a valid signature, which closes
+/// the at-rest forgery hole (a Base-mode HPKE seal alone has no sender auth).
+/// Mirrors the contract's at-rest `senderIdentityKeyId` + `senderSignatureB64`.
+public struct CloudVaultSignalSenderAuth: Codable, Hashable, Sendable {
+    public let senderIdentityKeyId: String
+    public let senderIdentityKeyB64: String
+    public let signatureB64: String
+    public let signatureVersion: Int
+
+    public init(
+        senderIdentityKeyId: String,
+        senderIdentityKeyB64: String,
+        signatureB64: String,
+        signatureVersion: Int = CloudVaultCrypto.signalAtRestSenderAuthVersion
+    ) {
+        self.senderIdentityKeyId = senderIdentityKeyId
+        self.senderIdentityKeyB64 = senderIdentityKeyB64
+        self.signatureB64 = signatureB64
+        self.signatureVersion = signatureVersion
+    }
+}
+
 /// At-rest Signal envelope for a CloudVault payload (the Swift mirror of the
 /// shared TS `SignalEnvelope` at-rest variant). TYPE ONLY — see the doc comment
 /// on ``CloudVaultSignalCiphertextLayer``. `relayKeyVersion` is intentionally
@@ -304,11 +330,17 @@ public struct CloudVaultSignalEnvelope: Codable, Hashable, Sendable {
     public let ciphertextLayer: CloudVaultSignalCiphertextLayer
     public let keyDelivery: CloudVaultSignalAtRestKeyDelivery
     public let binding: CloudVaultSignalBinding
+    /// Optional on the wire (legacy envelopes predate it), but REQUIRED for a
+    /// reader to accept an at-rest envelope — `OpenBurnBarSignalAtRest.openPayload`
+    /// rejects an envelope without verified sender auth and the caller falls back to
+    /// the (non-forgeable) legacy sealedPayload.
+    public let senderAuth: CloudVaultSignalSenderAuth?
 
     public init(
         ciphertextLayer: CloudVaultSignalCiphertextLayer,
         keyDelivery: CloudVaultSignalAtRestKeyDelivery,
         binding: CloudVaultSignalBinding,
+        senderAuth: CloudVaultSignalSenderAuth? = nil,
         signalEnvelopeFormatVersion: Int = CloudVaultCrypto.signalEnvelopeFormatVersion,
         mode: String = CloudVaultCrypto.signalAtRestMode,
         relayEncryption: String = CloudVaultCrypto.signalAtRestEncryption
@@ -319,6 +351,7 @@ public struct CloudVaultSignalEnvelope: Codable, Hashable, Sendable {
         self.ciphertextLayer = ciphertextLayer
         self.keyDelivery = keyDelivery
         self.binding = binding
+        self.senderAuth = senderAuth
     }
 }
 
@@ -334,6 +367,11 @@ public enum CloudVaultCrypto {
     public static let signalAtRestScope = "cloudvault"
     public static let signalAtRestEncryption = "signal-hpke-identity-seal-v1"
     public static let signalAtRestContentKeyLength = 32
+    /// Version of the at-rest sender-authentication signature construction
+    /// (``CloudVaultSignalSenderAuth``). The signed message + domain separator are
+    /// defined in `OpenBurnBarSignalAtRest`; bump only on a breaking change.
+    public static let signalAtRestSenderAuthVersion = 1
+    public static let signalAtRestSenderAuthDomain = "OpenBurnBar-Signal-AtRest-SenderAuth-v1"
     public static let aadContextPrefix = "OpenBurnBar-CloudVault-aad-v2"
     public static let legacyAADContextPrefix = "OpenBurnBar-CloudVault-aad-v1"
     public static let currentSealedTextSchemaVersion = 2
