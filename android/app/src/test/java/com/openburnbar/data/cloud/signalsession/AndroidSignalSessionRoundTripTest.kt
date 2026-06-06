@@ -46,7 +46,10 @@ class AndroidSignalSessionRoundTripTest {
         val bobPrekeys = AndroidSignalPreKeyGenerator.generatePreKeys(bob.getIdentityKeyPair(), 31337, 22, 8, now)
         AndroidSignalPreKeyGenerator.storePreKeys(bobPrekeys, bob)
         val bobBundle = AndroidSignalPreKeyGenerator.buildPreKeyBundle(
-            bob.getIdentityKeyPair(), bob.getLocalRegistrationId(), bobAddress.deviceId, bobPrekeys,
+            bob.getIdentityKeyPair(),
+            bob.getLocalRegistrationId(),
+            bobAddress.deviceId,
+            bobPrekeys,
         )
 
         // Alice establishes the session — SessionBuilder(store, REMOTE, LOCAL).
@@ -84,7 +87,10 @@ class AndroidSignalSessionRoundTripTest {
         val bobPrekeys = AndroidSignalPreKeyGenerator.generatePreKeys(bob.getIdentityKeyPair(), 4242, 7, 3, now)
         AndroidSignalPreKeyGenerator.storePreKeys(bobPrekeys, bob)
         val bobBundle = AndroidSignalPreKeyGenerator.buildPreKeyBundle(
-            bob.getIdentityKeyPair(), bob.getLocalRegistrationId(), bobAddress.deviceId, bobPrekeys,
+            bob.getIdentityKeyPair(),
+            bob.getLocalRegistrationId(),
+            bobAddress.deviceId,
+            bobPrekeys,
         )
         SessionBuilder(alice, bobAddress, aliceAddress).process(bobBundle)
         val first = SessionCipher(alice, aliceAddress, bobAddress).encrypt("first".toByteArray())
