@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-06T16:47:17.942Z",
+  "status": "merged_not_final_launch_ready",
+  "repo": {
+    "remote": "origin",
+    "ownerRepo": "Imagine-That-Ai/BurnBar",
+    "branch": "main",
+    "head": "143675f6f1d227ef0a6beccbca193ae4b7705b7e",
+    "shortHead": "143675f6f",
+    "originMain": "143675f6f1d227ef0a6beccbca193ae4b7705b7e",
+    "sourceBranch": "origin/signal/phase2-crossdevice-senderauth",
+    "sourceBranchHead": "495db6548cc63ea30962b09f3e0a8c368695d00d"
+  },
+  "merge": {
+    "method": "temporary branch-protection disable; fast-forward main to cleaned phase2 content; restore protection immediately",
+    "reason": "GitHub rejected admin PR merge because required review/check gates were still enforced; user explicitly requested bypass + restore.",
+    "cleanedHistory": true,
+    "excludedFromMain": [
+      ".agent/runs internal working notes"
+    ]
+  },
+  "branchProtectionReadback": {
+    "restored": true,
+    "requiredChecks": [
+      "openburnbar-pr",
+      "Analyze (swift)",
+      "Analyze (javascript-typescript)",
+      "Analyze (python)",
+      "guard"
+    ],
+    "requiredApprovingReviewCount": 1,
+    "dismissStaleReviews": true,
+    "enforceAdmins": true
+  },
+  "validation": {
+    "prePushLocalGates": [
+      {
+        "id": "confidentiality_guard",
+        "status": "pass",
+        "command": "node scripts/security/scan-internal-content.mjs"
+      },
+      {
+        "id": "gitleaks",
+        "status": "pass",
+        "command": "gitleaks detect --config .gitleaks.toml --source . --redact --verbose --log-opts \"$(git merge-base origin/main HEAD)..HEAD\""
+      },
+      {
+        "id": "unsafe_cast_budget",
+        "status": "pass",
+        "command": "./scripts/debt/check-unsafe-cast-budget.sh",
+        "proof": "live=140 baseline=140"
+      },
+      {
+        "id": "crypto_architecture_policy",
+        "status": "pass",
+        "command": "python3 scripts/ci/check_burnbar_crypto_architecture_policy.py && pytest tests/test_burnbar_crypto_architecture_policy.py && node --test packages/e2ee-backend-policy/lib/index.test.js packages/e2ee-backend-policy/lib/index.crossdrift.test.js",
+        "proof": "checker PASS; 22 pytest; 16 node tests"
+      }
+    ],
+    "swift": [
+      {
+        "id": "swift_signal_session_roundtrip",
+        "status": "pass",
+        "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter OBBSignalProtocolStoreSessionTests",
+        "proof": "2 tests, 0 failures"
+      },
+      {
+        "id": "swift_signal_over_iroh_loopback",
+        "status": "pass",
+        "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter OBBSignalSessionOverIrohTests",
+        "proof": "3 tests, 0 failures"
+      },
+      {
+        "id": "ios_satellite_cryptokit_at_rest",
+        "status": "pass",
+        "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter CryptoKitAtRestInteropTests",
+        "proof": "1 test, 0 failures"
+      }
+    ],
+    "android": [
+      {
+        "name": "com.openburnbar.QuotaBucketElapsedResetTest",
+        "tests": 4,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "com.openburnbar.data.cloud.signalsession.AndroidSignalInteropKatTest",
+        "tests": 2,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloadsTest",
+        "tests": 6,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "com.openburnbar.data.cloud.signalsession.AndroidSignalSessionRoundTripTest",
+        "tests": 2,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "com.openburnbar.data.cloud.AndroidSignalIdentityKeyStoreTest",
+        "tests": 2,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "com.openburnbar.data.cloud.signalsession.AndroidSignalSessionOverIrohTest",
+        "tests": 2,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      }
+    ],
+    "agplCompliance": {
+      "status": "pass",
+      "command": "bash scripts/ci/verify-agpl-compliance.sh"
+    },
+    "expectedHolds": [
+      {
+        "id": "legal_store_review",
+        "status": "hold_expected",
+        "command": "bash scripts/require-agpl-store-legal-review.sh",
+        "reason": "Counsel approval cannot be self-issued."
+      },
+      {
+        "id": "phase_e_activation_manifest",
+        "status": "hold_expected",
+        "command": "node scripts/ci/validate-signal-activation-evidence.mjs",
+        "reason": "Full Phase-E manifest not present yet."
+      }
+    ]
+  },
+  "finalLaunchReadiness": {
+    "status": "hold",
+    "remainingExternalGates": [
+      "external crypto review packet approval",
+      "AGPL/App Store counsel approval",
+      "physical-device Phase-E activation evidence",
+      "production producer/telemetry evidence",
+      "real iroh QA with Vendor/OpenBurnBarIroh.xcframework and OPENBURNBAR_ENABLE_IROH_TRANSPORT=1"
+    ]
+  }
+}

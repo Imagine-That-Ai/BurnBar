@@ -1,12 +1,12 @@
 {
   "status": "not_ready",
-  "runtimeCryptoCore": "legacy_hpke_cloudvault_and_openburnbar_hermes_ratchet",
+  "runtimeCryptoCore": "official_libsignal_device_to_device_and_at_rest_proofs_merged; gateway_cutover_migration_telemetry_and_counsel_pending",
   "officialLibsignalPin": {
     "tag": "v0.94.4",
     "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
     "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f"
   },
-  "blockingReason": "Official libsignal is pinned and load-tested for Node, but OpenBurnBar private-domain writes still use the existing HPKE/CloudVault and OpenBurnBar Hermes ratchet runtime implementations.",
+  "blockingReason": "Signal phase2 is merged to main and Swift/Kotlin/CryptoKit proof tests pass, but final launch readiness still requires gateway write cutover evidence, migration telemetry, physical-device Phase-E activation evidence, real iroh QA, and counsel approval.",
   "completedEvidence": [
     {
       "id": "node_protocol_harness",
@@ -25,6 +25,24 @@
       "status": "complete",
       "proof": "Functions, hosted MCP, Hermes realtime relay, and the shared @openburnbar/signal-envelope-contracts package validate official-libsignal Signal envelope v1 transport/at-rest shapes, strip plaintext siblings on export, reject downgrade/mode confusion/non-canonical base64, and keep production writes fail-closed until runtime crypto gates are complete.",
       "command": "npm test --prefix packages/signal-envelope-contracts && npm run build --prefix functions && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/dataExport.test.ts src/__tests__/hermesGatewaySealedEvent.test.ts --reporter=verbose && npm run test:hermes-gateway --prefix ../functions && npm test --prefix ../services/hosted-mcp && npm test --prefix ../services/hermes-realtime-relay"
+    },
+    {
+      "id": "swift_round_trips",
+      "status": "complete",
+      "proof": "Merged main passes Swift official-libsignal X3DH/PQXDH session round-trip, persistence reload, iroh loopback session transport, and CryptoKit-opens-libsignal HPKE at-rest KAT.",
+      "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter OBBSignalProtocolStoreSessionTests && swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter OBBSignalSessionOverIrohTests && swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter CryptoKitAtRestInteropTests"
+    },
+    {
+      "id": "kotlin_round_trips",
+      "status": "complete",
+      "proof": "Merged main passes Android official-libsignal session round-trip, Swift-to-Android interop KAT, iroh frame-path session test, identity key store, and CloudVault Signal payload tests.",
+      "command": "ANDROID_HOME=\"$HOME/Library/Android/sdk\" ./gradlew :app:testDebugUnitTest --tests \"*AndroidSignalSession*\" --tests \"*AndroidSignalInteropKatTest\" --tests \"*AndroidCloudVaultSignalPayloadsTest\" --tests \"*AndroidSignalIdentityKeyStoreTest\""
+    },
+    {
+      "id": "phase2_main_merge",
+      "status": "complete",
+      "proof": "origin/main fast-forwarded to 143675f6f; branch protection restored with required checks/review/admin enforcement.",
+      "command": "git push origin HEAD:main; gh api repos/Imagine-That-Ai/BurnBar/branches/main/protection"
     }
   ],
   "requiredGates": [
@@ -35,12 +53,12 @@
     },
     {
       "id": "swift_round_trips",
-      "status": "pending",
+      "status": "complete",
       "proof": "Swift/macOS/iOS libsignal identity, prekey, session, encrypt, decrypt, replay, skipped-key, and safety-number tests."
     },
     {
       "id": "kotlin_round_trips",
-      "status": "pending",
+      "status": "complete",
       "proof": "Android/Kotlin libsignal identity, prekey, session, encrypt, decrypt, replay, skipped-key, and safety-number tests."
     },
     {
@@ -73,5 +91,7 @@
       "status": "pending",
       "proof": "Counsel signs off before public app-store, direct-download, extension, npm, Docker, or hosted-service release that links libsignal."
     }
-  ]
+  ],
+  "generatedAt": "2026-06-06T16:47:17.942Z",
+  "mergedMainEvidence": "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
 }
