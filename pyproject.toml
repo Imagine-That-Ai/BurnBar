@@ -1,4 +1,4 @@
-# PEP 639 SPDX license expression (`license = "MIT"` below) requires
+# PEP 639 SPDX license expression (`license = "AGPL-3.0-only"` below) requires
 # setuptools>=77. Keep this floor in lockstep with the `license` form in
 # [project]; an older build backend rejects the string form.
 [build-system]
@@ -19,7 +19,7 @@ readme = "README.md"
 # build. Raise the ceiling once our Rust transitives ship cp314 wheels.
 requires-python = ">=3.11,<3.14"
 authors = [{ name = "Nous Research" }]
-license = "MIT"
+license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
 dependencies = [
   # Core — every direct dep is exact-pinned to ==X.Y.Z (no ranges).
@@ -110,7 +110,7 @@ edge-tts = ["edge-tts==7.2.7"]
 modal = ["modal==1.3.4"]
 daytona = ["daytona==0.155.0"]
 hindsight = ["hindsight-client==0.6.1"]
-dev = ["debugpy==1.8.20", "pytest==9.0.2", "pytest-asyncio==1.3.0", "pytest-timeout==2.4.0", "mcp==1.26.0", "starlette==1.0.1", "ty==0.0.21", "ruff==0.15.10", "setuptools==82.0.1"]  # starlette: CVE-2026-48710
+dev = ["debugpy==1.8.20", "pytest==9.0.2", "pytest-asyncio==1.3.0", "pytest-timeout==2.4.0", "mcp==1.26.0", "starlette==1.0.1", "ty==0.0.21", "ruff==0.15.10", "setuptools==82.0.1", "defusedxml==0.7.1"]  # starlette: CVE-2026-48710
 messaging = ["python-telegram-bot[webhooks]==22.6", "discord.py[voice]==2.7.1", "aiohttp==3.13.3", "brotlicffi==1.2.0.1", "slack-bolt==1.27.0", "slack-sdk==3.40.1", "qrcode==7.4.2"]
 cron = []  # croniter is now a core dependency; this extra kept for back-compat
 slack = ["slack-bolt==1.27.0", "slack-sdk==3.40.1", "aiohttp==3.13.3"]
@@ -118,8 +118,9 @@ matrix = ["mautrix[encryption]==0.21.0", "aiosqlite==0.22.1", "asyncpg==0.31.0",
 # WeCom callback-mode adapter — parses untrusted XML POST bodies from
 # WeCom-controlled callback endpoints, so we use defusedxml (drop-in
 # replacement for stdlib xml.etree.ElementTree) to block billion-laughs
-# and XXE. aiohttp/httpx are already in [messaging]; defusedxml lands
-# here to keep the dependency local to wecom_callback's threat model.
+# and XXE. aiohttp/httpx are already in [messaging]; defusedxml lives in
+# this extra for runtime installs and in [dev] so the gateway test suite
+# exercises the secure parser instead of skipping the callback path.
 wecom = ["defusedxml==0.7.1"]
 # Gateway end-to-end relay encryption. Keep cryptography behind an opt-in extra
 # for installs that enable encrypted gateway links, and pin it with an upper

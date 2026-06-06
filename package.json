@@ -5,6 +5,7 @@
   "private": true,
   "workspaces": [
     "apps/*",
+    "packages/*",
     "ui-tui",
     "ui-tui/packages/*",
     "web"
@@ -16,7 +17,7 @@
     "type": "git",
     "url": "git+https://github.com/NousResearch/Hermes-Agent.git"
   },
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "bugs": {
     "url": "https://github.com/NousResearch/Hermes-Agent/issues"
   },
@@ -29,6 +30,6 @@
     "lodash": "4.18.1"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   }
 }
