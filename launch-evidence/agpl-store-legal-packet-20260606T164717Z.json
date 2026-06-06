@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-06T16:47:17.942Z",
+  "status": "requires_counsel_review",
+  "repo": {
+    "remote": "origin",
+    "ownerRepo": "Imagine-That-Ai/BurnBar",
+    "branch": "main",
+    "head": "143675f6f1d227ef0a6beccbca193ae4b7705b7e",
+    "shortHead": "143675f6f",
+    "originMain": "143675f6f1d227ef0a6beccbca193ae4b7705b7e",
+    "sourceBranch": "origin/signal/phase2-crossdevice-senderauth",
+    "sourceBranchHead": "495db6548cc63ea30962b09f3e0a8c368695d00d"
+  },
+  "purpose": "Counsel packet for AGPL/libsignal release posture after Signal phase2 merge to main.",
+  "counselMustDecide": [
+    "Whether the AGPL corresponding-source offer is sufficient for each release channel.",
+    "Whether Mac App Store / iOS App Store distribution is approved, excluded, or requires channel-specific changes.",
+    "Whether bundling/linking official Signal libsignal v0.94.4 in Mac/Android/backend lanes is acceptable for the intended launch.",
+    "Whether public marketing/release copy accurately separates official libsignal lanes from homegrown gateway crypto lanes."
+  ],
+  "includedArtifacts": [
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/legal/agpl-compliance.md",
+    "third_party/libsignal/manifest.json",
+    "third_party/libsignal/runtime-readiness.json",
+    "scripts/create-corresponding-source.sh",
+    "scripts/ci/verify-corresponding-source-archive.sh",
+    "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
+  ],
+  "commandEvidence": [
+    {
+      "id": "agpl_compliance",
+      "status": "pass",
+      "command": "bash scripts/ci/verify-agpl-compliance.sh",
+      "proof": "PASS: AGPL compliance gate; corresponding source archive builds cleanly from HEAD 143675f6f"
+    },
+    {
+      "id": "legal_release_gate",
+      "status": "hold_expected",
+      "command": "bash scripts/require-agpl-store-legal-review.sh",
+      "proof": "Fails until OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved is set after counsel approval."
+    }
+  ],
+  "explicitNonApproval": "This packet is evidence for counsel. It is not legal approval and must not be treated as launch authorization."
+}
