@@ -6,7 +6,8 @@ description: >
   BurnBar Cloud gateway adapter for Hermes Agent. Connects Hermes to BurnBar
   Cloud through the BurnBar Hermes Gateway API, using device-code auth, scoped
   bearer tokens, event polling with durable cursor persistence, typing state,
-  message delivery, and signed attachment upload initiation.
+  message delivery, signed attachment upload initiation, and opt-in relay E2EE
+  when paired with an E2EE-capable BurnBar client.
 author: BurnBar contributors
 requires_env:
   - name: BURNBAR_ACCESS_TOKEN
@@ -34,3 +35,16 @@ optional_env:
     description: "Allow any BurnBar sender from this account to talk to Hermes"
     prompt: "Allow all BurnBar senders? (true/false)"
     password: false
+  - name: BURNBAR_OVERSIGHT_MODE
+    description: "Human-in-the-loop mode on an E2E-paired link: supervised (default) or autonomous"
+    prompt: "BurnBar oversight mode (supervised/autonomous)"
+    password: false
+  - name: BURNBAR_ALLOW_PLAINTEXT
+    description: "Set to 1 to opt back into the legacy plaintext relay path after this agent holds an E2E relay identity"
+    prompt: "Allow legacy plaintext relay path? (1 to opt in)"
+    password: false
+  # The E2E pairing material (BURNBAR_RELAY_PRIVATE_KEY, BURNBAR_RELAY_PEER_PUBLIC_KEY,
+  # BURNBAR_RELAY_UID, BURNBAR_RELAY_CLIENT_ID, BURNBAR_RELAY_E2E) is written to
+  # the active Hermes home .env automatically by the device-code pairing flow; it is
+  # intentionally not prompted here, because the relay private key is sensitive and
+  # machine-generated.

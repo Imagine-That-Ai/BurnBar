@@ -129,6 +129,10 @@ matrix = ["mautrix[encryption]==0.21.0", "aiosqlite==0.22.1", "asyncpg==0.31.0",
 # and XXE. aiohttp/httpx are already in [messaging]; defusedxml lands
 # here to keep the dependency local to wecom_callback's threat model.
 wecom = ["defusedxml==0.7.1"]
+# BurnBar relay E2EE. Keep cryptography explicit and bounded: a paired encrypted
+# link should fail before gateway startup if the backend is missing, not trigger
+# a mid-session lazy install from relay-delivered traffic.
+gateway-e2ee = ["cryptography>=46.0.7,<47"]
 cli = ["simple-term-menu==1.6.6"]
 tts-premium = ["elevenlabs==1.59.0"]
 voice = [

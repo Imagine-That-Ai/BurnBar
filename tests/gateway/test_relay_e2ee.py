@@ -1,0 +1,560 @@
+"""Known-answer tests for ``plugins.platforms.burnbar.relay_e2ee``.
+
+Python opens the committed wire vector
+(``tests/gateway/fixtures/HermesRelayWireVector.json``) and the v2 gateway vector
+(``HermesGatewayWireVector.json``), pinning the Python implementation against a
+fixed target. Both vectors are regenerated and byte-verified in-tree by
+``tests/gateway/vectors/generate_wire_vectors.py`` (see
+``tests/gateway/test_wire_vectors_reproducible.py``), so they are reproducible
+from this repo alone with no non-Python toolchain. The same wire format is
+implemented by the BurnBar iOS/Android clients; cross-language parity is
+maintained in those client repositories and is not re-proven here. Each vector's
+``revision`` is asserted as the contract key.
+
+``cryptography`` is imported lazily inside the module under test; if it is
+unavailable the whole module skips (matching the optional extra's lazy-import
+policy).
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("cryptography")
+
+from plugins.platforms.burnbar import relay_e2ee  # noqa: E402
+from tests.gateway._plugin_adapter_loader import load_plugin_adapter  # noqa: E402
+
+# The BurnBar adapter owns the production gateway AAD helpers
+# (``_gateway_event_aad`` / ``_gateway_event_key_aad`` / ``_gateway_message_aad``
+# / ``_gateway_message_key_aad``). The gateway tests below open the committed
+# gateway vector with exactly these helpers, so a label drift on either
+# side fails the GCM tag (and the explicit byte-string assertions).
+_burnbar = load_plugin_adapter("burnbar")
+
+_FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "HermesRelayWireVector.json"
+_GATEWAY_FIXTURE_PATH = (
+    Path(__file__).resolve().parent / "fixtures" / "HermesGatewayWireVector.json"
+)
+
+
+@pytest.fixture(scope="module")
+def vector() -> dict:
+    with _FIXTURE_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+@pytest.fixture(scope="module")
+def gateway_vector() -> dict:
+    with _GATEWAY_FIXTURE_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+@pytest.fixture(scope="module")
+def symmetric_key(vector) -> bytes:
+    return base64.b64decode(vector["symmetricKey"])
+
+
+@pytest.fixture(scope="module")
+def recipient_private_key(vector) -> relay_e2ee.RelayPrivateKey:
+    return relay_e2ee.RelayPrivateKey.from_base64(vector["recipientPrivateKey"])
+
+
+def _request_aad(vector) -> bytes:
+    return relay_e2ee.request_aad(
+        vector["uid"], vector["connectionId"], vector["requestId"]
+    )
+
+
+def _key_aad(vector) -> bytes:
+    return relay_e2ee.key_aad(
+        vector["uid"], vector["connectionId"], vector["requestId"]
+    )
+
+
+def _chunk_aad(vector) -> bytes:
+    return relay_e2ee.chunk_aad(
+        vector["uid"],
+        vector["connectionId"],
+        vector["requestId"],
+        vector["chunkSequence"],
+        vector["chunkKind"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contract / fixture sanity
+# ---------------------------------------------------------------------------
+
+
+def test_fixture_revision_is_the_contract_key(vector):
+    assert vector["revision"] == "v1"
+    assert vector["algorithm"] == relay_e2ee.ALGORITHM
+
+
+# ---------------------------------------------------------------------------
+# A. AAD strings byte-match the fixture
+# ---------------------------------------------------------------------------
+
+
+def test_aad_strings_byte_match_fixture(vector):
+    assert _request_aad(vector) == vector["requestAAD"].encode("utf-8")
+    assert _key_aad(vector) == vector["keyAAD"].encode("utf-8")
+    assert _chunk_aad(vector) == vector["chunkAAD"].encode("utf-8")
+
+
+def test_aad_prefixes_are_namespaced():
+    assert (
+        relay_e2ee.request_aad("u", "c", "r")
+        == b"OpenBurnBar-HermesRelay-v1|request|u|c|r"
+    )
+    assert relay_e2ee.key_aad("u", "c", "r") == b"OpenBurnBar-HermesRelay-v1|key|u|c|r"
+    assert (
+        relay_e2ee.chunk_aad("u", "c", "r", 0, "sse")
+        == b"OpenBurnBar-HermesRelay-v1|chunk|u|c|r|0|sse"
+    )
+
+
+def test_custom_namespace_swaps_prefix():
+    namespace = relay_e2ee.RelayNamespace("ExampleRelay")
+    assert (
+        relay_e2ee.request_aad("u", "c", "r", namespace=namespace)
+        == b"ExampleRelay-v1|request|u|c|r"
+    )
+    assert (
+        relay_e2ee.key_aad("u", "c", "r", namespace=namespace)
+        == b"ExampleRelay-v1|key|u|c|r"
+    )
+
+
+# ---------------------------------------------------------------------------
+# B. Python opens the committed wire vector (the core direction)
+# ---------------------------------------------------------------------------
+
+
+def test_python_unwraps_vector_wrapped_key(vector, recipient_private_key, symmetric_key):
+    unwrapped = relay_e2ee.unwrap_symmetric_key(
+        vector["wrappedKey"], recipient_private_key, _key_aad(vector)
+    )
+    assert unwrapped == symmetric_key
+
+
+def test_python_unwraps_vector_wrapped_key_from_raw_bytes(
+    vector, symmetric_key
+):
+    raw = base64.b64decode(vector["recipientPrivateKey"])
+    unwrapped = relay_e2ee.unwrap_symmetric_key(
+        vector["wrappedKey"], raw, _key_aad(vector)
+    )
+    assert unwrapped == symmetric_key
+
+
+def test_python_opens_vector_payload_ciphertext(vector, symmetric_key):
+    plaintext = relay_e2ee.open_base64(
+        vector["payloadCiphertext"], symmetric_key, _request_aad(vector)
+    )
+    # Byte-for-byte equal to the committed vector plaintext.
+    assert plaintext == base64.b64decode(vector["encodedPlaintext"])
+    decoded = json.loads(plaintext.decode("utf-8"))
+    assert decoded["path"] == vector["plaintextPath"]
+    assert decoded["sessionId"] == vector["plaintextSessionId"]
+    assert decoded["body"] == vector["plaintextBody"]
+
+
+def test_python_opens_vector_chunk_ciphertext(vector, symmetric_key):
+    plaintext = relay_e2ee.open_base64(
+        vector["chunkCiphertext"], symmetric_key, _chunk_aad(vector)
+    )
+    assert plaintext.decode("utf-8") == vector["chunkPlaintext"]
+
+
+def test_recipient_public_key_matches_fixture(vector, recipient_private_key):
+    assert recipient_private_key.public_key_base64() == vector["recipientPublicKey"]
+
+
+# ---------------------------------------------------------------------------
+# C. Python reseal / round-trip (checks Python emits valid wire format)
+# ---------------------------------------------------------------------------
+
+
+def test_python_reseal_round_trip_with_unwrapped_vector_key(
+    vector, recipient_private_key
+):
+    symmetric_key = relay_e2ee.unwrap_symmetric_key(
+        vector["wrappedKey"], recipient_private_key, _key_aad(vector)
+    )
+    aad = relay_e2ee.chunk_aad(
+        vector["uid"], vector["connectionId"], vector["requestId"], 1, "sse"
+    )
+    plaintext = b"data: reply from python"
+    sealed = relay_e2ee.seal_to_base64(plaintext, symmetric_key, aad)
+    assert relay_e2ee.open_base64(sealed, symmetric_key, aad) == plaintext
+
+
+def test_python_wrap_then_python_unwrap_round_trip():
+    private_key = relay_e2ee.generate_private_key()
+    symmetric_key = relay_e2ee.generate_symmetric_key()
+    aad = relay_e2ee.key_aad("u", "c", "r")
+
+    wrapped = relay_e2ee.wrap_symmetric_key(
+        symmetric_key, private_key.public_key_base64(), aad
+    )
+    raw = base64.b64decode(wrapped)
+    # Envelope shape: ephPub(65) || nonce(12) || ct(32) || tag(16) == 125 bytes.
+    assert len(raw) == 125
+    assert raw[0] == 0x04
+
+    unwrapped = relay_e2ee.unwrap_symmetric_key(wrapped, private_key, aad)
+    assert unwrapped == symmetric_key
+
+
+def test_combined_shape_for_sixteen_byte_plaintext():
+    symmetric_key = relay_e2ee.generate_symmetric_key()
+    aad = relay_e2ee.request_aad("u", "c", "r")
+    sealed = relay_e2ee.seal_to_base64(b"0123456789abcdef", symmetric_key, aad)
+    raw = base64.b64decode(sealed)
+    # nonce(12) || ct(16) || tag(16) == 44 bytes.
+    assert len(raw) == 44
+
+
+# ---------------------------------------------------------------------------
+# D. Adversarial / invariants
+# ---------------------------------------------------------------------------
+
+
+def test_open_with_wrong_aad_raises_invalid_tag(vector, symmetric_key):
+    from cryptography.exceptions import InvalidTag
+
+    wrong_aad = relay_e2ee.request_aad("u-other", vector["connectionId"], vector["requestId"])
+    with pytest.raises(InvalidTag):
+        relay_e2ee.open_base64(vector["payloadCiphertext"], symmetric_key, wrong_aad)
+
+
+def test_unwrap_with_wrong_aad_raises_invalid_tag(vector, recipient_private_key):
+    from cryptography.exceptions import InvalidTag
+
+    wrong_aad = relay_e2ee.key_aad("u-other", vector["connectionId"], vector["requestId"])
+    with pytest.raises(InvalidTag):
+        relay_e2ee.unwrap_symmetric_key(vector["wrappedKey"], recipient_private_key, wrong_aad)
+
+
+def test_unwrap_with_wrong_recipient_key_fails(vector):
+    from cryptography.exceptions import InvalidTag
+
+    other = relay_e2ee.generate_private_key()
+    with pytest.raises(InvalidTag):
+        relay_e2ee.unwrap_symmetric_key(vector["wrappedKey"], other, _key_aad(vector))
+
+
+def test_two_wraps_of_same_key_are_distinct_but_both_unwrap():
+    private_key = relay_e2ee.generate_private_key()
+    symmetric_key = relay_e2ee.generate_symmetric_key()
+    aad = relay_e2ee.key_aad("u", "c", "r")
+    pub = private_key.public_key_base64()
+
+    first = relay_e2ee.wrap_symmetric_key(symmetric_key, pub, aad)
+    second = relay_e2ee.wrap_symmetric_key(symmetric_key, pub, aad)
+
+    assert first != second  # ephemeral randomization
+    assert relay_e2ee.unwrap_symmetric_key(first, private_key, aad) == symmetric_key
+    assert relay_e2ee.unwrap_symmetric_key(second, private_key, aad) == symmetric_key
+
+
+def test_seal_with_short_key_raises():
+    with pytest.raises(relay_e2ee.InvalidSymmetricKeyError):
+        relay_e2ee.seal_to_base64(b"hi", b"\x00" * 16, b"aad")
+
+
+def test_open_with_short_key_raises():
+    with pytest.raises(relay_e2ee.InvalidSymmetricKeyError):
+        relay_e2ee.open_base64("AAAA", b"\x00" * 16, b"aad")
+
+
+def test_unwrap_too_short_envelope_raises(vector, recipient_private_key):
+    short = base64.b64encode(b"\x04" + b"\x00" * 10).decode("ascii")
+    with pytest.raises(relay_e2ee.InvalidCiphertextError):
+        relay_e2ee.unwrap_symmetric_key(short, recipient_private_key, _key_aad(vector))
+
+
+def test_wrap_with_invalid_public_key_raises():
+    symmetric_key = relay_e2ee.generate_symmetric_key()
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.wrap_symmetric_key(symmetric_key, "not-a-key!!!", b"aad")
+
+
+def test_public_key_parser_requires_valid_base64_and_p256_point():
+    private_key = relay_e2ee.generate_private_key()
+    public_key = private_key.public_key_base64()
+    raw = relay_e2ee.public_key_x963_from_base64(public_key)
+    assert raw == base64.b64decode(public_key)
+    assert len(raw) == 65 and raw[0] == 0x04
+
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.public_key_x963_from_base64(public_key + "!!")
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.public_key_x963_from_base64(
+            base64.b64encode(b"\x04" + b"\x00" * 64).decode("ascii")
+        )
+
+
+def test_base64_inputs_are_canonical():
+    private_key = relay_e2ee.generate_private_key()
+    symmetric_key = relay_e2ee.generate_symmetric_key()
+    aad = b"aad"
+    wrapped = relay_e2ee.wrap_symmetric_key(
+        symmetric_key, private_key.public_key_base64(), aad
+    )
+
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.RelayPrivateKey.from_base64(private_key.raw_base64() + "!!")
+    with pytest.raises(relay_e2ee.InvalidPublicKeyError):
+        relay_e2ee.wrap_symmetric_key(
+            symmetric_key, private_key.public_key_base64() + "!!", aad
+        )
+    with pytest.raises(relay_e2ee.InvalidCiphertextError):
+        relay_e2ee.unwrap_symmetric_key(wrapped + "!!", private_key, aad)
+    with pytest.raises(relay_e2ee.InvalidCiphertextError):
+        relay_e2ee.open_base64("AAAA" + "!!", symmetric_key, aad)
+
+
+# ---------------------------------------------------------------------------
+# E. AgentRelayIdentity persistence
+# ---------------------------------------------------------------------------
+
+
+def test_agent_relay_identity_loads_existing_key_from_env():
+    private_key = relay_e2ee.generate_private_key()
+    environ = {relay_e2ee.RELAY_PRIVATE_KEY_ENV: private_key.raw_base64()}
+    identity = relay_e2ee.AgentRelayIdentity.load_or_create(environ=environ)
+    assert identity.private_key == private_key
+    assert identity.public_key_base64 == private_key.public_key_base64()
+    assert identity.key_version == relay_e2ee.KEY_VERSION
+    assert identity.algorithm == relay_e2ee.ALGORITHM
+
+
+def test_agent_relay_identity_creates_and_persists_when_missing():
+    persisted: dict[str, str] = {}
+
+    def persist(env_var: str, value: str) -> None:
+        persisted[env_var] = value
+
+    identity = relay_e2ee.AgentRelayIdentity.load_or_create(environ={}, persist=persist)
+    assert relay_e2ee.RELAY_PRIVATE_KEY_ENV in persisted
+    # The persisted value round-trips back to the same identity.
+    reloaded = relay_e2ee.AgentRelayIdentity.load_or_create(
+        environ={relay_e2ee.RELAY_PRIVATE_KEY_ENV: persisted[relay_e2ee.RELAY_PRIVATE_KEY_ENV]}
+    )
+    assert reloaded.private_key == identity.private_key
+
+
+def test_agent_relay_identity_fails_closed_on_corrupt_env():
+    with pytest.raises(relay_e2ee.CorruptIdentityError):
+        relay_e2ee.AgentRelayIdentity.load_or_create(
+            environ={relay_e2ee.RELAY_PRIVATE_KEY_ENV: "not-base64-!!"}
+        )
+
+
+def test_minted_key_is_written_back_into_environ_for_stable_reload():
+    """A minted key lands in the provided environ so an in-process reload is stable."""
+    environ: dict[str, str] = {}
+    first = relay_e2ee.AgentRelayIdentity.load_or_create(environ=environ)
+    # The minted key was written back into the live environ map.
+    assert environ.get(relay_e2ee.RELAY_PRIVATE_KEY_ENV) == first.private_key.raw_base64()
+    # A second load from the same environ returns the same identity (no rotation).
+    second = relay_e2ee.AgentRelayIdentity.load_or_create(environ=environ)
+    assert second.private_key == first.private_key
+
+
+def test_persist_failure_is_non_fatal_and_key_kept_in_process():
+    """A throwing persist callback never loses the minted key (fail-stable)."""
+
+    def boom(env_var: str, value: str) -> None:
+        raise RuntimeError("disk is read-only")
+
+    environ: dict[str, str] = {}
+    identity = relay_e2ee.AgentRelayIdentity.load_or_create(environ=environ, persist=boom)
+    assert isinstance(identity.private_key, relay_e2ee.RelayPrivateKey)
+    # Despite the persist failure the key is still available for this run.
+    assert environ.get(relay_e2ee.RELAY_PRIVATE_KEY_ENV) == identity.private_key.raw_base64()
+
+
+# ===========================================================================
+# F. GATEWAY cross-language interop (THE GATE)
+# ===========================================================================
+#
+# This is the regression test whose ABSENCE let the gateway payload-vs-key-wrap
+# AAD divergence ship green: every prior gateway test round-tripped one language
+# against itself, and the only shared fixture (HermesRelayWireVector.json) had
+# zero gateway labels. Here Python opens the committed gateway wire vector
+# (HermesGatewayWireVector.json, regenerated and byte-verified in-tree by
+# tests/gateway/vectors/generate_wire_vectors.py) using the BurnBar adapter's
+# production AAD helpers: the same code path used on a real phone-to-agent link.
+#
+# Wire contract (the BurnBar relay wire format):
+#   * phone-to-agent event:   payload AAD = gatewayEvent,   key-wrap AAD = gatewayEventKey
+#   * agent-to-phone message: payload AAD = gatewayMessage,  key-wrap AAD = gatewayMessageKey
+#   * model_switch:        reuses the EVENT AADs (gatewayEvent / gatewayEventKey);
+#                          there is NO separate gatewayModelSwitch label.
+#
+# seal uses the PAYLOAD AAD; wrap/unwrap use the distinct KEY AAD. If the labels
+# are wrong (for example, if one AAD is reused for both slots), these tests
+# fail with InvalidTag.
+
+
+def _gw_event_payload_aad(node: dict) -> bytes:
+    return _burnbar._gateway_event_aad(node["uid"], node["clientId"], node["eventId"])
+
+
+def _gw_event_key_aad(node: dict) -> bytes:
+    return _burnbar._gateway_event_key_aad(node["uid"], node["clientId"], node["eventId"])
+
+
+def _gw_message_payload_aad(node: dict) -> bytes:
+    return _burnbar._gateway_message_aad(node["uid"], node["clientId"], node["messageId"])
+
+
+def _gw_message_key_aad(node: dict) -> bytes:
+    return _burnbar._gateway_message_key_aad(node["uid"], node["clientId"], node["messageId"])
+
+
+def test_gateway_fixture_revision_is_the_contract_key(gateway_vector):
+    assert gateway_vector["revision"] == "v2"
+    assert gateway_vector["algorithm"] == relay_e2ee.ALGORITHM
+    assert gateway_vector["keyVersion"] == 2
+
+
+def test_gateway_aad_helpers_match_fixture_byte_strings(gateway_vector):
+    """The Python helpers reproduce the EXACT AAD byte-strings in the committed vector.
+
+    This is the drift tripwire: if a future rename moves one side's label, the
+    helper output no longer equals the fixture string and this fails before any
+    GCM tag check, naming the exact diverged label.
+    """
+    event = gateway_vector["event"]
+    assert _gw_event_payload_aad(event) == event["payloadAAD"].encode("utf-8")
+    assert _gw_event_key_aad(event) == event["keyAAD"].encode("utf-8")
+
+    message = gateway_vector["message"]
+    assert _gw_message_payload_aad(message) == message["payloadAAD"].encode("utf-8")
+    assert _gw_message_key_aad(message) == message["keyAAD"].encode("utf-8")
+
+    # model_switch reuses the event labels: gatewayEvent / gatewayEventKey,
+    # not a separate gatewayModelSwitch label.
+    model_switch = gateway_vector["modelSwitch"]
+    assert _gw_event_payload_aad(model_switch) == model_switch["payloadAAD"].encode("utf-8")
+    assert _gw_event_key_aad(model_switch) == model_switch["keyAAD"].encode("utf-8")
+    assert b"gatewayEvent|" in model_switch["payloadAAD"].encode("utf-8")
+    assert b"gatewayEventKey|" in model_switch["keyAAD"].encode("utf-8")
+    assert b"gatewayModelSwitch" not in model_switch["keyAAD"].encode("utf-8")
+
+
+def test_gateway_aad_labels_are_distinct_payload_vs_key(gateway_vector):
+    """The shipped bug reused ONE AAD for payload+wrap. Pin the split."""
+    for node in (gateway_vector["event"], gateway_vector["message"], gateway_vector["modelSwitch"]):
+        assert node["payloadAAD"] != node["keyAAD"]
+
+
+def test_gateway_event_vector_opens_in_python(gateway_vector):
+    """Phone-to-agent event: the agent unwraps under gatewayEventKey, opens under
+    gatewayEvent, and recovers the exact vector plaintext."""
+    event = gateway_vector["event"]
+    agent_private = relay_e2ee.RelayPrivateKey.from_base64(event["recipientPrivateKey"])
+    # Sanity: the embedded public key is the one the vector wrapped to.
+    assert agent_private.public_key_base64() == event["recipientPublicKey"]
+
+    sym = relay_e2ee.unwrap_symmetric_key(
+        event["wrappedKey"],
+        agent_private,
+        _gw_event_key_aad(event),
+        sender_public_base64=event["senderPublicKey"],
+    )
+    assert sym == base64.b64decode(event["symmetricKey"])
+
+    plaintext = relay_e2ee.open_base64(
+        event["payloadCiphertext"], sym, _gw_event_payload_aad(event)
+    )
+    assert plaintext == base64.b64decode(event["encodedPlaintext"])
+    assert plaintext.decode("utf-8") == event["plaintext"]
+    assert json.loads(plaintext.decode("utf-8"))["text"] == "open the BurnBar gateway"
+
+
+def test_gateway_message_vector_opens_in_python(gateway_vector):
+    """Agent-to-phone message: the phone unwraps under gatewayMessageKey, opens
+    under gatewayMessage, and recovers the exact vector reply text."""
+    message = gateway_vector["message"]
+    phone_private = relay_e2ee.RelayPrivateKey.from_base64(message["recipientPrivateKey"])
+    assert phone_private.public_key_base64() == message["recipientPublicKey"]
+
+    sym = relay_e2ee.unwrap_symmetric_key(
+        message["wrappedKey"],
+        phone_private,
+        _gw_message_key_aad(message),
+        sender_public_base64=message["senderPublicKey"],
+    )
+    assert sym == base64.b64decode(message["symmetricKey"])
+
+    plaintext = relay_e2ee.open_base64(
+        message["payloadCiphertext"], sym, _gw_message_payload_aad(message)
+    )
+    assert plaintext == base64.b64decode(message["encodedPlaintext"])
+    assert plaintext.decode("utf-8") == message["plaintext"]
+    decoded = json.loads(plaintext.decode("utf-8"))
+    assert decoded["text"] == "Hermes replied over the encrypted gateway."
+
+
+def test_gateway_model_switch_vector_opens_under_event_aads(gateway_vector):
+    """model_switch is sealed as a normal EVENT (payload gatewayEvent + wrap
+    gatewayEventKey) with modelId inside the payload; the agent opens it on the
+    event path. This pins model_switch to the event sealer and confirms that
+    gatewayModelSwitch is not part of the wire contract."""
+    model_switch = gateway_vector["modelSwitch"]
+    agent_private = relay_e2ee.RelayPrivateKey.from_base64(model_switch["recipientPrivateKey"])
+
+    sym = relay_e2ee.unwrap_symmetric_key(
+        model_switch["wrappedKey"],
+        agent_private,
+        _gw_event_key_aad(model_switch),
+        sender_public_base64=model_switch["senderPublicKey"],
+    )
+    plaintext = relay_e2ee.open_base64(
+        model_switch["payloadCiphertext"], sym, _gw_event_payload_aad(model_switch)
+    )
+    decoded = json.loads(plaintext.decode("utf-8"))
+    assert decoded["modelId"] == "claude-opus-4-8"
+    # Strict E2E schema: a sealed control event now carries an authenticated
+    # destinationId + replayCounter are the exact fields the production open path
+    # (`_handle_burnbar_event`) requires before acting. The committed vector pins them so
+    # the test covers the enforced schema, not just the crypto envelope.
+    assert decoded["destinationId"] == "burnbar:home"
+    assert decoded["replayCounter"] == 2
+
+
+def test_gateway_event_unwrap_with_payload_aad_fails_invalid_tag(gateway_vector):
+    """The EXACT shipped divergence: unwrapping the per-event key with the
+    PAYLOAD aad (gatewayEvent) instead of the KEY aad (gatewayEventKey) must
+    raise InvalidTag. This is the assertion that would have caught the bug."""
+    from cryptography.exceptions import InvalidTag
+
+    event = gateway_vector["event"]
+    agent_private = relay_e2ee.RelayPrivateKey.from_base64(event["recipientPrivateKey"])
+    with pytest.raises(InvalidTag):
+        relay_e2ee.unwrap_symmetric_key(
+            event["wrappedKey"], agent_private, _gw_event_payload_aad(event)
+        )
+
+
+def test_gateway_message_unwrap_with_payload_aad_fails_invalid_tag(gateway_vector):
+    """Symmetric to the event case: unwrapping the per-message key under the
+    gatewayMessage payload aad (the shipped iOS↔Python mismatch) is rejected."""
+    from cryptography.exceptions import InvalidTag
+
+    message = gateway_vector["message"]
+    phone_private = relay_e2ee.RelayPrivateKey.from_base64(message["recipientPrivateKey"])
+    with pytest.raises(InvalidTag):
+        relay_e2ee.unwrap_symmetric_key(
+            message["wrappedKey"], phone_private, _gw_message_payload_aad(message)
+        )
