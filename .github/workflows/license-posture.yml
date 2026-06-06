@@ -1,0 +1,98 @@
+name: License Posture
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_mit_upstream_scan:
+        description: "Run the Nous/Hermes MIT upstream cleanliness scan"
+        required: false
+        default: "false"
+      mit_base_ref:
+        description: "Base ref for the MIT upstream cleanliness scan"
+        required: false
+        default: "origin/main"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: license-posture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  burnbar-product-license:
+    name: BurnBar AGPL product posture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Detect BurnBar AGPL product tree
+        id: product-tree
+        run: |
+          if grep -q "GNU AFFERO GENERAL PUBLIC LICENSE" LICENSE && \
+             test -f third_party/libsignal/runtime-readiness.json && \
+             test -f Vendor/libsignal/LICENSE; then
+            echo "run_product_checks=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping BurnBar product AGPL checks in this MIT upstream checkout."
+            echo "run_product_checks=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.product-tree.outputs.run_product_checks == 'true'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify BurnBar AGPL product posture
+        if: steps.product-tree.outputs.run_product_checks == 'true'
+        run: python scripts/ci/check_burnbar_license_posture.py
+
+      - name: Verify libsignal runtime readiness gate
+        if: steps.product-tree.outputs.run_product_checks == 'true'
+        run: python scripts/ci/check_libsignal_runtime_readiness.py
+
+      - name: Verify crypto architecture policy
+        if: steps.product-tree.outputs.run_product_checks == 'true'
+        run: python scripts/ci/check_burnbar_crypto_architecture_policy.py
+
+      - name: Verify JS crypto matrix binding (no JS<->JSON drift)
+        if: steps.product-tree.outputs.run_product_checks == 'true'
+        run: node --test packages/e2ee-backend-policy/lib/index.test.js packages/e2ee-backend-policy/lib/index.crossdrift.test.js
+
+      - name: Verify source provenance inputs
+        if: steps.product-tree.outputs.run_product_checks == 'true'
+        run: python scripts/ci/write_burnbar_source_provenance.py --check
+
+  nous-mit-upstream-boundary:
+    name: Nous/Hermes MIT upstream boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.base.repo.full_name == 'NousResearch/hermes-agent') ||
+        (github.event_name == 'workflow_dispatch' &&
+         inputs.run_mit_upstream_scan == 'true')
+      }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify MIT upstream boundary
+        run: |
+          BASE_REF="${{ github.event_name == 'workflow_dispatch' && inputs.mit_base_ref || format('origin/{0}', github.base_ref) }}"
+          python scripts/verify_burnbar_mit_pr_clean.py --base "$BASE_REF" --include-working-tree
