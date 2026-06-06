@@ -51,6 +51,10 @@ let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarSignalCore",
         targets: ["OpenBurnBarSignalCore"]
+    ),
+    .library(
+        name: "OpenBurnBarSignalSessionTransport",
+        targets: ["OpenBurnBarSignalSessionTransport"]
     )
 ] + (hasIrohXCFramework ? [
     .library(
@@ -139,6 +143,16 @@ let package = Package(
             dependencies: signalCoreDependencies,
             path: "Sources/OpenBurnBarSignalCore"
         ),
+        .target(
+            name: "OpenBurnBarSignalSessionTransport",
+            dependencies: [
+                "OpenBurnBarCore",
+                "OpenBurnBarIrohRelay",
+                "OpenBurnBarSignalCore",
+                .product(name: "LibSignalClient", package: "LibSignalClient")
+            ],
+            path: "Sources/OpenBurnBarSignalSessionTransport"
+        ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
             dependencies: [
@@ -175,6 +189,16 @@ let package = Package(
             ],
             resources: [
                 .process("Fixtures")
+            ]
+        ),
+        .testTarget(
+            name: "OpenBurnBarSignalSessionTransportTests",
+            dependencies: [
+                "OpenBurnBarSignalSessionTransport",
+                "OpenBurnBarSignalCore",
+                "OpenBurnBarIrohRelay",
+                "OpenBurnBarCore",
+                .product(name: "LibSignalClient", package: "LibSignalClient")
             ]
         )
     ]

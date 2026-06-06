@@ -1,4 +1,5 @@
 import FirebaseFirestore
+import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
@@ -53,14 +54,21 @@ enum MobileCloudVaultSignalPayloads {
             firestore: firestore,
             localIdentity: signalIdentity
         )
+        // Sender authentication: sign with THIS device's identity private key.
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
             plaintext,
             recipients: recipients,
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: signalIdentity.identityKeyId,
+            senderIdentityPrivateKey: signalIdentity.privateKeyData
         )
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
     }
 
+    /// `trustedSenderPublicKeys` are PINNED identity public keys used to verify the
+    /// envelope's sender signature. The local identity is always added, so a self-authored
+    /// doc is fully verified with no extra I/O; an envelope whose sender is not in the set
+    /// throws and the caller falls back to the non-forgeable legacy sealedPayload.
     static func openSignalPayloadIfPresent(
         _ data: [String: Any],
         uid: String,
@@ -68,7 +76,8 @@ enum MobileCloudVaultSignalPayloads {
         docId: String,
         field: String = "signalEnvelope",
         bindingField: String? = nil,
-        signalIdentity: OpenBurnBarSignalIdentityKeypair?
+        signalIdentity: OpenBurnBarSignalIdentityKeypair?,
+        trustedSenderPublicKeys: [String: Data] = [:]
     ) throws -> Data? {
         guard data[field] != nil else { return nil }
         guard let envelope = CloudVaultCrypto.signalEnvelope(from: data[field]) else {
@@ -86,16 +95,46 @@ enum MobileCloudVaultSignalPayloads {
         guard let signalIdentity else {
             throw MobileCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: collection)
         }
+        var trustedSenders = trustedSenderPublicKeys
+        trustedSenders[signalIdentity.identityKeyId] = signalIdentity.atRestRecipient().publicKeyData
         return try OpenBurnBarSignalAtRest.openPayload(
             envelope,
             recipientIdentityKeyId: signalIdentity.identityKeyId,
             recipientIdentityPrivateKey: signalIdentity.privateKeyData,
-            expectedBinding: expectedBinding
+            expectedBinding: expectedBinding,
+            trustedSenderPublicKeys: trustedSenders
         )
     }
 
     static func signalSealingIsEnabled(domainID: String) -> Bool {
-        DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption
+        guard DataDomains.domain(domainID)?.sealingScheme == CloudVaultCrypto.signalAtRestEncryption else {
+            return false
+        }
+        // Kill switch: even when the registry scheme is set, at-rest sealing stays OFF until
+        // the per-domain Remote Config flag is enabled — enabling staged % rollout and an
+        // instant server-side revert without an app release. Defaults false (RC boolValue
+        // default), so a deployed-but-unramped flip is inert.
+        return RemoteConfig.remoteConfig()
+            .configValue(forKey: "signal_at_rest_\(domainID)_enabled")
+            .boolValue
+    }
+
+    /// Best-effort PINNED trusted-sender public keys for READ-time sender-auth verification:
+    /// local identity + every trusted escrow device's published identity. Never blocks a read
+    /// — if the full set cannot resolve it returns just the local identity, so cross-device
+    /// envelopes from unresolved senders fall back to the legacy payload. After the readiness
+    /// gate (all trusted devices published) this returns the full set, activating cross-device
+    /// sender-auth verification.
+    static func trustedSenderPublicKeys(
+        uid: String,
+        firestore: Firestore,
+        localIdentity: OpenBurnBarSignalIdentityKeypair
+    ) async -> [String: Data] {
+        var map: [String: Data] = [localIdentity.identityKeyId: localIdentity.atRestRecipient().publicKeyData]
+        if let recipients = try? await atRestRecipients(uid: uid, firestore: firestore, localIdentity: localIdentity) {
+            for recipient in recipients { map[recipient.recipientIdentityKeyId] = recipient.publicKeyData }
+        }
+        return map
     }
 
     private static func atRestRecipients(
@@ -132,6 +171,10 @@ enum MobileCloudVaultSignalPayloads {
                 deviceId: deviceId,
                 keyVersion: keyVersion
             )
+            // Self-exclusion (parity with Mac/Android): the local recipient is already seeded
+            // from the in-memory keypair above; skip the Firestore round-trip + avoid overwriting
+            // the authoritative local public key with a server-fetched copy.
+            if identityKeyId == localIdentity.identityKeyId { continue }
             let identityDoc = try await userRef.collection("signal_identity_public_keys")
                 .document(identityKeyId)
                 .getDocument()

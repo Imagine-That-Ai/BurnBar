@@ -738,7 +738,7 @@ object AndroidCloudVaultKeyAccess {
     }
 }
 
-private object AndroidLocalSecretBox {
+internal object AndroidLocalSecretBox {
     private const val ALIAS = "openburnbar-cloud-vault-device-secret"
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_NONCE_BYTES = 12
