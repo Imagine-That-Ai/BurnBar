@@ -25,6 +25,12 @@ if [[ -x "tools/qa/inject-app-check-debug-token.sh" ]]; then
   tools/qa/inject-app-check-debug-token.sh >/dev/null
 fi
 
+if [[ -x "scripts/lib/prepare-signal-ffi-xcframework.sh" ]]; then
+  echo "▶ Ensuring libsignal FFI XCFramework is available…"
+  SIGNAL_FFI_BUILD_TARGETS="${SIGNAL_FFI_BUILD_TARGETS:-aarch64-apple-ios}" \
+    scripts/lib/prepare-signal-ffi-xcframework.sh
+fi
+
 echo "▶ Building ${SCHEME} for ${XCODE_DESTINATION}…"
 xcodebuild \
   -project OpenBurnBar.xcodeproj \

@@ -3923,7 +3923,8 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                 ))))
             case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong:
                 break
-            case .mediaClassify,
+            case .signalSessionMessage,
+                 .mediaClassify,
                  .mediaBlobAdvertise,
                  .mediaBlobAck,
                  .mediaMirrorRequest,
