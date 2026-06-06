@@ -2287,19 +2287,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
         repository.clients = [
             hermesGatewayClient(
                 id: "hgw_stale_home_alias",
-                displayName: "Alberto Nunez-Garcia's iPhone",
+                displayName: "Primary iPhone",
                 lastSeenAt: "2026-06-01T08:00:00Z",
                 homeDestinationId: "home"
             ),
             hermesGatewayClient(
                 id: "hgw_stale_whitespace",
-                displayName: "  Alberto Nunez-Garcia's   iPhone  ",
+                displayName: "  Primary   iPhone  ",
                 lastSeenAt: "2026-06-02T08:00:00Z",
                 homeDestinationId: "burnbar/home"
             ),
             hermesGatewayClient(
                 id: "hgw_current",
-                displayName: "Alberto Nunez-Garcia's iPhone",
+                displayName: "Primary iPhone",
                 lastSeenAt: now,
                 homeDestinationId: "burnbar:home"
             )
