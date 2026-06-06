@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-06T16:10:16Z",
+  "privacy": "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers",
+  "runtime": "cloudvault_at_rest",
+  "proofs": {
+    "signal_envelope_contracts": {
+      "status": "passed",
+      "command": "node --test packages/signal-envelope-contracts/lib/index.test.js packages/signal-envelope-contracts/lib/cloudVaultSignalEnvelope.test.js",
+      "artifactPaths": [
+        "packages/signal-envelope-contracts/lib/index.test.js",
+        "packages/signal-envelope-contracts/lib/cloudVaultSignalEnvelope.test.js",
+        "packages/signal-envelope-contracts/fixtures/binding-aad-vectors.json"
+      ],
+      "notes": "Signal envelope contract tests passed for transport and CloudVault at-rest envelopes."
+    },
+    "libsignal_at_rest_roundtrip": {
+      "status": "passed",
+      "command": "node --test packages/libsignal-protocol/lib/index.test.js",
+      "artifactPaths": [
+        "packages/libsignal-protocol/lib/index.test.js"
+      ],
+      "notes": "Libsignal protocol at-rest roundtrip and tamper-failure tests passed."
+    },
+    "functions_admin_write_guard": {
+      "status": "passed",
+      "command": "node scripts/ci/check_functions_cloudvault_runtime.js --signal-at-rest-write && source .venv/bin/activate && python3 -m pytest tests/test_signal_envelope_contracts_cjs_exports.py",
+      "artifactPaths": [
+        "scripts/ci/check_functions_cloudvault_runtime.js",
+        "functions/lib/signalAtRestWrite.js",
+        "functions/lib/__tests__/signalAtRestWrite.test.js",
+        "tests/test_signal_envelope_contracts_cjs_exports.py"
+      ],
+      "notes": "Functions at-rest write guard smoke and CJS export pytest passed."
+    },
+    "privacy_backfill_guard": {
+      "status": "passed",
+      "command": "node scripts/ci/check_functions_cloudvault_runtime.js --privacy-backfill",
+      "artifactPaths": [
+        "scripts/ci/check_functions_cloudvault_runtime.js",
+        "functions/lib/callables/privacyBackfill.js",
+        "functions/lib/__tests__/privacyBackfill.test.js"
+      ],
+      "notes": "Functions privacy backfill smoke passed."
+    }
+  }
+}

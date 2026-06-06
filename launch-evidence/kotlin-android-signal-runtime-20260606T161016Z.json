@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-06T16:10:16Z",
+  "privacy": "proof_only_no_plaintext_keys_or_user_data",
+  "runtime": "kotlin_android_signal_runtime",
+  "platform": "kotlin_android",
+  "proofs": {
+    "native_build_tests": {
+      "status": "passed",
+      "command": "cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalPrekeyDirectoryTest*' --tests '*AndroidCloudVaultSignalPayloadsTest*'",
+      "artifactPaths": [
+        "android/gradlew",
+        "android/gradle/wrapper/gradle-wrapper.properties",
+        "android/settings.gradle.kts",
+        "android/build.gradle.kts",
+        "android/app/build.gradle.kts",
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidSignalPrekeyDirectoryTest.kt"
+      ],
+      "notes": "Gradle debug unit tests passed for Android Signal prekey and CloudVault Signal binding coverage."
+    },
+    "libsignal_prekey_publication": {
+      "status": "passed",
+      "command": "cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalPrekeyDirectoryTest*'",
+      "artifactPaths": [
+        "android/app/src/main/java/com/openburnbar/data/cloud/AndroidSignalPrekeyDirectory.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidSignalPrekeyDirectoryTest.kt"
+      ],
+      "notes": "Android Signal prekey directory tests passed."
+    },
+    "cloudvault_signal_binding": {
+      "status": "passed",
+      "command": "cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidCloudVaultSignalPayloadsTest*'",
+      "artifactPaths": [
+        "android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloads.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt"
+      ],
+      "notes": "Android CloudVault Signal payload binding tests passed."
+    },
+    "binding_aad_vectors": {
+      "status": "passed",
+      "command": "cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidCloudVaultSignalPayloadsTest*'",
+      "artifactPaths": [
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
+        "packages/signal-envelope-contracts/fixtures/binding-aad-vectors.json"
+      ],
+      "notes": "Android binding AAD fixture coverage passed through the CloudVault Signal payload tests."
+    }
+  }
+}

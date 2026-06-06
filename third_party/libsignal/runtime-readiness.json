@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "status": "not_ready",
+  "reason": "Node Signal envelope and protocol contracts are verified, Signal SPQR source is vendored, Swift native runtime evidence, Android/Kotlin native runtime evidence, CloudVault at-rest runtime evidence, source-provenance coverage, a guarded Signal-required rollout operator, a validated live Hermes Gateway Signal-required write-path/drain artifact, and a counsel-facing AGPL review packet/template are retained. The hosted burnbarhermesgateway/enqueuehermesgatewayevent write-path services are now serving ready Signal-required revisions and the guarded legacy gateway drain has validated clean aggregate counts, but full BurnBar Signal runtime shipping still requires external-counsel legal-release approval evidence.",
+  "gates": {
+    "node_contracts": {
+      "status": "complete",
+      "evidence": [
+        "packages/e2ee-backend-policy/lib/index.test.js",
+        "packages/libsignal-bridge/lib/index.test.js",
+        "packages/libsignal-bridge/lib/protocolHarness.test.js",
+        "packages/libsignal-protocol/lib/index.test.js",
+        "packages/signal-envelope-contracts/lib/index.test.js",
+        "packages/signal-envelope-contracts/lib/cloudVaultSignalEnvelope.test.js",
+        "tests/test_signal_envelope_contracts_cjs_exports.py"
+      ]
+    },
+    "signal_spqr_vendor_source": {
+      "status": "complete",
+      "evidence": [
+        "Vendor/libsignal/Cargo.toml",
+        "Vendor/libsignal/rust/protocol/src/triple_ratchet.rs"
+      ]
+    },
+    "swift_runtime": {
+      "status": "complete",
+      "evidence": [
+        "launch-evidence/swift-signal-runtime-20260606T161016Z.json"
+      ]
+    },
+    "kotlin_android_runtime": {
+      "status": "complete",
+      "evidence": [
+        "launch-evidence/kotlin-android-signal-runtime-20260606T161016Z.json"
+      ]
+    },
+    "hermes_gateway_write_path": {
+      "status": "complete",
+      "evidence": [
+        "launch-evidence/hermes-gateway-migration-drain-final-20260606T160940Z.json",
+        "launch-evidence/hermes-gateway-migration-drain-signal-required-v2-20260606T160940Z.json",
+        "launch-evidence/hermes-gateway-legacy-drain-dry-run-20260606T160940Z.json",
+        "launch-evidence/hermes-gateway-legacy-drain-execute-20260606T160940Z.json",
+        "launch-evidence/hermes-gateway-signal-required-rollout-plan-20260606T160940Z.json"
+      ]
+    },
+    "cloudvault_at_rest_runtime": {
+      "status": "complete",
+      "evidence": [
+        "launch-evidence/cloudvault-at-rest-runtime-20260606T161016Z.json"
+      ]
+    },
+    "source_bundle_provenance": {
+      "status": "complete",
+      "evidence": [
+        "scripts/ci/write_burnbar_source_provenance.py",
+        "scripts/ci/check_hermes_gateway_migration_drain.py",
+        "scripts/ci/write_hermes_gateway_migration_drain_evidence.js",
+        "scripts/ci/drain_hermes_gateway_legacy_records.js",
+        "scripts/ci/rollout_hermes_gateway_signal_required.js",
+        "functions/lib/hermesGateway.js",
+        "functions/lib/callables/hermesGateway.js",
+        "functions/lib/__tests__/hermesGatewaySignalEnvelope.test.js",
+        "tests/test_hermes_gateway_signal_required_mode.py",
+        "tests/test_hermes_gateway_legacy_drain.py",
+        "scripts/ci/check_agpl_legal_release_review.py",
+        "scripts/ci/check_cloudvault_at_rest_runtime.py",
+        "scripts/ci/check_native_signal_runtime_evidence.py",
+        "tests/test_burnbar_source_provenance.py",
+        "tests/test_hermes_gateway_migration_drain_collector.py",
+        "tests/test_hermes_gateway_signal_required_rollout.py",
+        "tests/test_hermes_gateway_signal_required_rollout_runbook.py",
+        "tests/test_native_signal_runtime_evidence.py",
+        "docs/legal/SOURCE_AVAILABILITY.md",
+        "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md",
+        "docs/legal/agpl-release-review.evidence.template.json",
+        "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md"
+      ]
+    },
+    "legal_release_review": {
+      "status": "not_ready",
+      "evidence": [
+        "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md",
+        "docs/legal/agpl-release-review.evidence.template.json"
+      ]
+    }
+  }
+}

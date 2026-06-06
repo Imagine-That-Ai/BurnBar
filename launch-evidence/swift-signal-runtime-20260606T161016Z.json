@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-06T16:10:16Z",
+  "privacy": "proof_only_no_plaintext_keys_or_user_data",
+  "runtime": "swift_signal_runtime",
+  "platform": "swift",
+  "proofs": {
+    "native_build_tests": {
+      "status": "passed",
+      "command": "swift test --package-path OpenBurnBarCore --disable-swift-testing --filter OpenBurnBarSignalCoreTests",
+      "artifactPaths": [
+        "OpenBurnBarCore/Package.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalPrekeyPublicationTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalEnvelopeAADTests.swift"
+      ],
+      "notes": "Ran the committed OpenBurnBarSignalCoreTests Swift package test surface successfully."
+    },
+    "libsignal_prekey_publication": {
+      "status": "passed",
+      "command": "swift test --package-path OpenBurnBarCore --disable-swift-testing --filter SignalPrekeyPublicationTests",
+      "artifactPaths": [
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalPrekeyPublication.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalPrekeyPublicationStore.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalPrekeyPublicationTests.swift"
+      ],
+      "notes": "Signal prekey publication tests passed and kept secret state local-only."
+    },
+    "secret_state_local_only": {
+      "status": "passed",
+      "command": "swift test --package-path OpenBurnBarCore --disable-swift-testing --filter SignalPrekeyPublicationTests",
+      "artifactPaths": [
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalPrekeyPublicationTests.swift"
+      ],
+      "notes": "The prekey publication test surface validates private records are not exported."
+    },
+    "binding_aad_vectors": {
+      "status": "passed",
+      "command": "swift test --package-path OpenBurnBarCore --disable-swift-testing --filter SignalEnvelopeAADTests",
+      "artifactPaths": [
+        "OpenBurnBarCore/Package.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalEnvelopeAAD.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalEnvelopeAADTests.swift",
+        "packages/signal-envelope-contracts/fixtures/binding-aad-vectors.json"
+      ],
+      "notes": "Swift AAD vector tests passed against the shared cross-language fixture."
+    }
+  }
+}

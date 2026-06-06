@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-06T16:09:49.077Z",
+  "privacy": "aggregate_counts_only_no_document_values_or_identifiers",
+  "release": {
+    "deployedCommit": "73d66048bd7a67c137a3d1896f809c299f798ac6",
+    "sourceLocation": "https://github.com/Imagine-That-Ai/BurnBar/tree/73d66048bd7a67c137a3d1896f809c299f798ac6",
+    "sourceAvailability": "docs/legal/SOURCE_AVAILABILITY.md",
+    "dependencyLocks": [
+      "package-lock.json",
+      "pyproject.toml"
+    ]
+  },
+  "writePath": {
+    "signalRequired": true,
+    "signalEnvelopeWritesEnabled": true,
+    "legacyRelayWritesEnabled": false,
+    "legacyRatchetWritesEnabled": false,
+    "legacyPlaintextWritesEnabled": false,
+    "modeSource": "gcloud run services describe burnbarhermesgateway,enqueuehermesgatewayevent --project burnbar --region us-central1",
+    "services": [
+      {
+        "service": "burnbarhermesgateway",
+        "latestReadyRevision": "burnbarhermesgateway-00016-wiw",
+        "url": "https://burnbarhermesgateway-cjrjb5ckqq-uc.a.run.app",
+        "signalRequired": true
+      },
+      {
+        "service": "enqueuehermesgatewayevent",
+        "latestReadyRevision": "enqueuehermesgatewayevent-00012-fiq",
+        "url": "https://enqueuehermesgatewayevent-cjrjb5ckqq-uc.a.run.app",
+        "signalRequired": true
+      }
+    ]
+  },
+  "collections": {
+    "events": {
+      "collectionGroup": "hermes_gateway_events",
+      "sampleLimit": 50000,
+      "sampled": 0,
+      "truncated": false,
+      "counts": {
+        "total": 0,
+        "signalRead": 0,
+        "legacyHermesRelayRead": 0,
+        "legacyHermesRatchetRead": 0,
+        "legacyPlaintextRead": 0,
+        "unreadable": 0
+      }
+    },
+    "messages": {
+      "collectionGroup": "hermes_gateway_messages",
+      "sampleLimit": 50000,
+      "sampled": 0,
+      "truncated": false,
+      "counts": {
+        "total": 0,
+        "signalRead": 0,
+        "legacyHermesRelayRead": 0,
+        "legacyHermesRatchetRead": 0,
+        "legacyPlaintextRead": 0,
+        "unreadable": 0
+      }
+    },
+    "attachments": {
+      "collectionGroup": "hermes_gateway_attachments",
+      "sampleLimit": 50000,
+      "sampled": 0,
+      "truncated": false,
+      "counts": {
+        "total": 0,
+        "signalRead": 0,
+        "legacyHermesRelayRead": 0,
+        "legacyHermesRatchetRead": 0,
+        "legacyPlaintextRead": 0,
+        "unreadable": 0
+      }
+    }
+  }
+}
