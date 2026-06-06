@@ -1,13 +1,13 @@
 package com.openburnbar.data.cloud
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.util.UUID
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.UUID
 
 /**
  * ON-DEVICE proof (item 3) for the Android Signal producer + persistent identity store:
@@ -40,22 +40,31 @@ class AndroidSignalProducerInstrumentedTest {
             assertArrayEquals(
                 plaintext,
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                    data, uid = "user-on-device", collection = "mobile_assistant_chats",
-                    docId = "thread-on-device", localIdentity = local,
+                    data,
+                    uid = "user-on-device",
+                    collection = "mobile_assistant_chats",
+                    docId = "thread-on-device",
+                    localIdentity = local,
                 ),
             )
             assertArrayEquals(
                 plaintext,
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                    data, uid = "user-on-device", collection = "mobile_assistant_chats",
-                    docId = "thread-on-device", localIdentity = peer,
+                    data,
+                    uid = "user-on-device",
+                    collection = "mobile_assistant_chats",
+                    docId = "thread-on-device",
+                    localIdentity = peer,
                 ),
             )
             // Relocation guard holds on device too.
             assertThrows(IllegalArgumentException::class.java) {
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                    data, uid = "user-on-device", collection = "mobile_assistant_chats",
-                    docId = "thread-relocated", localIdentity = local,
+                    data,
+                    uid = "user-on-device",
+                    collection = "mobile_assistant_chats",
+                    docId = "thread-relocated",
+                    localIdentity = local,
                 )
             }
         } finally {
