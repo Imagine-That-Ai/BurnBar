@@ -115,7 +115,9 @@ final class PensieveMemorySearchSignalTests: XCTestCase {
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
             Data(plaintext.utf8),
             recipients: [identity.atRestRecipient()],
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: identity.identityKeyId,
+            senderIdentityPrivateKey: identity.privateKeyData
         )
         return try CloudVaultCrypto.signalEnvelopeDictionary(envelope)
     }
