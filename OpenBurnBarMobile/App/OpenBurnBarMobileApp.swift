@@ -155,6 +155,7 @@ struct OpenBurnBarMobileApp: App {
             // with the Hermes runtime selected. An optional `?prompt=` is
             // stashed for the Hermes auto-submit hook.
             AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: promptTrimmed)
+            AssistantPendingThread.shared.stash(assistant: .hermes, threadID: threadTrimmed)
             NotificationCenter.default.post(name: .init("ShowHermesChat"), object: nil)
             var userInfo: [AnyHashable: Any] = ["runtime": AssistantRuntimeID.hermes.rawValue]
             if let promptTrimmed { userInfo["prompt"] = promptTrimmed }
@@ -167,8 +168,10 @@ struct OpenBurnBarMobileApp: App {
         case "pi":
             // Direct Pi entry point — symmetry with `burnbar://hermes`.
             AssistantPendingPrompt.shared.stash(assistant: .pi, prompt: promptTrimmed)
+            AssistantPendingThread.shared.stash(assistant: .pi, threadID: threadTrimmed)
             var userInfo: [AnyHashable: Any] = ["runtime": AssistantRuntimeID.pi.rawValue]
             if let promptTrimmed { userInfo["prompt"] = promptTrimmed }
+            if let threadTrimmed { userInfo["threadId"] = threadTrimmed }
             NotificationCenter.default.post(
                 name: .init("ShowAssistantsTab"),
                 object: nil,
@@ -180,6 +183,7 @@ struct OpenBurnBarMobileApp: App {
                 ?? url.pathComponents.dropFirst().first
             let runtime = AssistantRuntimeID(rawValue: runtimeRaw ?? "") ?? .hermes
             AssistantPendingPrompt.shared.stash(assistant: runtime, prompt: promptTrimmed)
+            AssistantPendingThread.shared.stash(assistant: runtime, threadID: threadTrimmed)
             var userInfo: [AnyHashable: Any] = ["runtime": runtime.rawValue]
             if let promptTrimmed { userInfo["prompt"] = promptTrimmed }
             if let threadTrimmed { userInfo["threadId"] = threadTrimmed }

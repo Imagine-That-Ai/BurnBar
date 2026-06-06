@@ -1528,6 +1528,57 @@ final class HermesService {
         persistCurrentThread()
     }
 
+    func recordBurnBarGatewayReply(
+        _ reply: HermesGatewayMessageRecord,
+        threadID explicitThreadID: String = HermesGatewayMessageResolver.defaultThreadID,
+        modelID: String? = nil,
+        modelName: String? = nil
+    ) {
+        let threadID = reply.threadId?.nilIfBlank ?? explicitThreadID
+        let finalText = reply.chatRenderText(emptyFallback: "Hermes sent a reply through BurnBar Cloud.")
+        let timestamp = Self.gatewayReplyDate(from: reply.createdAt) ?? Date()
+        let resolvedModelName = modelName?.nilIfBlank ?? modelID?.nilIfBlank
+        let message = HermesChatMessage(
+            id: reply.id,
+            role: .assistant,
+            text: finalText,
+            attachments: reply.openedAttachments,
+            requestedModelID: modelID?.nilIfBlank,
+            responseModelID: modelID?.nilIfBlank,
+            modelName: resolvedModelName,
+            timestamp: timestamp,
+            responseStartedAt: timestamp,
+            responseCompletedAt: timestamp
+        )
+        guard let storedMessage = Self.convertToStore(message) else { return }
+
+        let existing = history.thread(id: threadID)
+        var messages = existing?.messages ?? []
+        if let index = messages.firstIndex(where: { $0.id == storedMessage.id }) {
+            messages[index] = storedMessage
+        } else {
+            messages.append(storedMessage)
+        }
+        var thread = MobileChatThread(
+            id: threadID,
+            runtime: AssistantRuntimeID.hermes.rawValue,
+            title: existing?.title.nilIfBlank ?? "Hermes Gateway",
+            preview: finalText,
+            modelName: resolvedModelName ?? existing?.modelName,
+            createdAt: existing?.createdAt ?? timestamp,
+            updatedAt: Date(),
+            messages: messages
+        )
+        thread.customTitle = existing?.customTitle
+        thread.labelColorHex = existing?.labelColorHex
+        thread.isPinned = existing?.isPinned
+        thread.priorityOrder = existing?.priorityOrder
+        history.upsert(thread)
+        if selectedSessionID == threadID {
+            loadMobileThread(id: threadID)
+        }
+    }
+
     func failBurnBarGatewayTurn(placeholderID: String?, message: String) {
         let now = Date()
         let errorMessage = HermesChatMessage(
@@ -1550,6 +1601,14 @@ final class HermesService {
         isStreaming = false
         lastError = message
         persistCurrentThread()
+    }
+
+    private static func gatewayReplyDate(from raw: String?) -> Date? {
+        guard let raw = raw?.nilIfBlank else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) { return date }
+        return ISO8601DateFormatter().date(from: raw)
     }
 
     func sendVisibleCLIMessage(_ text: String, context: String? = nil, attachments: [HermesAttachment] = []) {

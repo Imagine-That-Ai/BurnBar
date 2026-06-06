@@ -15,6 +15,7 @@ struct AgentReplyNotificationBanner: Identifiable, Equatable {
     let preview: String
     let runtime: String
     let threadID: String
+    let provider: AgentProvider?
     let deepLink: URL?
 }
 
@@ -25,6 +26,7 @@ private struct AgentReplyNotificationPayload: Sendable {
     let threadID: String
     let title: String
     let preview: String
+    let provider: AgentProvider?
     let deepLink: String?
 
     init?(userInfo: [AnyHashable: Any]) {
@@ -35,6 +37,7 @@ private struct AgentReplyNotificationPayload: Sendable {
         threadID = Self.string(userInfo["thread_id"]) ?? ""
         title = Self.string(userInfo["title"]) ?? "Agent replied"
         preview = Self.string(userInfo["preview"]) ?? ""
+        provider = Self.string(userInfo["provider"]).flatMap(AgentProvider.init(rawValue:))
         deepLink = Self.string(userInfo["deep_link"])
     }
 
@@ -123,6 +126,9 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
 
     func open(_ banner: AgentReplyNotificationBanner) {
         self.banner = nil
+        if let runtime = AssistantRuntimeID(rawValue: banner.runtime) {
+            AssistantPendingThread.shared.stash(assistant: runtime, threadID: banner.threadID)
+        }
         guard let deepLink = banner.deepLink else { return }
         UIApplication.shared.open(deepLink)
     }
@@ -137,6 +143,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         preview: String,
         runtime: String = AssistantRuntimeID.hermes.rawValue,
         threadID: String,
+        provider: AgentProvider? = nil,
         deepLink: URL? = nil
     ) {
         let resolvedDeepLink = deepLink ?? URL(
@@ -148,6 +155,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             preview: preview,
             runtime: runtime,
             threadID: threadID,
+            provider: provider,
             deepLink: resolvedDeepLink
         )
 
@@ -156,15 +164,21 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         content.body = preview
         content.sound = .default
         content.categoryIdentifier = "AGENT_REPLY"
-        content.userInfo = [
+        var userInfo: [String: String] = [
             "type": "agent_reply",
             "event_id": id,
             "runtime": runtime,
             "thread_id": threadID,
             "title": title,
-            "preview": preview,
-            "deep_link": resolvedDeepLink?.absoluteString ?? ""
+            "preview": preview
         ]
+        if let provider {
+            userInfo["provider"] = provider.rawValue
+        }
+        if let deepLink = resolvedDeepLink?.absoluteString {
+            userInfo["deep_link"] = deepLink
+        }
+        content.userInfo = userInfo
         let request = UNNotificationRequest(
             identifier: "burnbar.agent.local.\(id)",
             content: content,
@@ -227,6 +241,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             preview: payload.preview,
             runtime: payload.runtime,
             threadID: payload.threadID,
+            provider: payload.provider,
             deepLink: payload.url
         )
         return foreground ? [] : [.banner, .sound]
@@ -247,6 +262,9 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             return
         }
 
+        if let runtime = AssistantRuntimeID(rawValue: payload.runtime) {
+            AssistantPendingThread.shared.stash(assistant: runtime, threadID: payload.threadID)
+        }
         if let deepLink = payload.url {
             await UIApplication.shared.open(deepLink)
         }
@@ -302,9 +320,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         switch runtime {
         case AssistantRuntimeID.hermes.rawValue:
             HermesService.shared.loadMobileThread(id: threadID)
-            if HermesService.shared.selectedSessionID == nil {
-                HermesService.shared.selectedSessionID = threadID
-            }
+            HermesService.shared.selectedSessionID = threadID
             HermesService.shared.sendMessage(replyText)
         case AssistantRuntimeID.pi.rawValue, "piagent", "pi_agent":
             let history = MobileChatHistoryStore.shared
@@ -386,40 +402,69 @@ struct AgentReplyNotificationBannerView: View {
     var body: some View {
         VStack {
             HStack(spacing: 12) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.accentColor))
+                Button(action: onOpen) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.14))
+                                .frame(width: 36, height: 36)
+                            if let runtimeProvider = banner.runtimeProvider {
+                                HarnessModelBadge(
+                                    harness: runtimeProvider,
+                                    model: banner.provider,
+                                    size: 30,
+                                    modelScale: 0.36
+                                )
+                            } else if let provider = banner.provider {
+                                UnifiedProviderLogoView(provider: provider, size: 24, useFallbackColor: true)
+                            } else {
+                                Image(systemName: "bubble.left.and.bubble.right.fill")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(banner.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text(banner.preview)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(banner.title)
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text(banner.preview)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
                 }
-
-                Spacer(minLength: 8)
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(banner.title). \(banner.preview)")
+                .accessibilityHint("Opens the reply thread.")
 
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 13, weight: .semibold))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss reply notification")
             }
             .padding(14)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .shadow(color: .black.opacity(0.16), radius: 24, x: 0, y: 12)
             .padding(.horizontal, 16)
             .padding(.top, 12)
-            .onTapGesture(perform: onOpen)
 
             Spacer()
         }
         .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+private extension AgentReplyNotificationBanner {
+    var runtimeProvider: AgentProvider? {
+        AssistantRuntimeID(rawValue: runtime)?.agentProvider
     }
 }
 

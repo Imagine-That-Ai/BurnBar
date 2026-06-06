@@ -240,6 +240,9 @@ struct HermesSquareRoot: View {
             mercuryPeerSource.start()
             syncMercuryPeer(mercuryPeerSource.peer)
         }
+        .task(id: AssistantPendingThread.shared.hermes) {
+            consumePendingHermesThread()
+        }
         .onChange(of: inbox.items) { _, _ in
             Task { await reindexSearch() }
         }
@@ -320,6 +323,8 @@ struct HermesSquareRoot: View {
         }
         .navigationDestination(item: $navTarget) { target in
             switch target {
+            case .thread(let id):
+                threadDetailView(id: id)
             case .brandZone(let uri):
                 brandZoneView(uri: uri)
             case .runtimeNative(let runtime):
@@ -1135,6 +1140,7 @@ struct HermesSquareRoot: View {
     // MARK: Navigation
 
     enum NavTarget: Hashable, Identifiable {
+        case thread(String)           // thread inbox id, e.g. "hermes:<threadID>"
         case brandZone(String)        // agent URI
         case runtimeNative(AssistantRuntimeID)
         case runtimeThread(AssistantRuntimeID)
@@ -1224,6 +1230,12 @@ struct HermesSquareRoot: View {
         }
     }
 
+    @MainActor
+    private func consumePendingHermesThread() {
+        guard let inboxID = HermesSquarePendingThreadRoute.consumeHermesInboxID() else { return }
+        setNavTarget(.thread(inboxID))
+    }
+
     private func ensureMercuryLive(connectionID: String) async {
         guard bootingMercuryConnectionID != connectionID else { return }
         #if DEBUG
@@ -1309,6 +1321,22 @@ struct HermesSquareRoot: View {
     }
 
     @ViewBuilder
+    private func threadDetailView(id: String) -> some View {
+        let rawID = rawThreadID(from: id)
+        if id.hasPrefix("hermes:") {
+            HermesChatView(service: hermesService, dashboardSnapshot: nil, route: .existing(sessionID: rawID))
+        } else if id.hasPrefix("pi:") {
+            PiChatThreadView(service: piService, route: .existing(threadID: rawID))
+        } else {
+            runtimeNativeView(for: .hermes)
+        }
+    }
+
+    private func rawThreadID(from inboxID: String) -> String {
+        inboxID.split(separator: ":", maxSplits: 1).last.map(String.init) ?? inboxID
+    }
+
+    @ViewBuilder
     private func runtimeNativeView(for runtime: AssistantRuntimeID) -> some View {
         // No inner NavigationStack — these views are already pushed as
         // destinations of the outer NavigationStack (from RootTabView or
@@ -1383,6 +1411,20 @@ struct HermesSquareRoot: View {
                 .padding(.top, 80)
             }
         }
+    }
+}
+
+enum HermesSquarePendingThreadRoute {
+    static func hermesInboxID(for threadID: String?) -> String? {
+        guard let trimmed = threadID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return "hermes:\(trimmed)"
+    }
+
+    @MainActor
+    static func consumeHermesInboxID() -> String? {
+        hermesInboxID(for: AssistantPendingThread.shared.consume(.hermes))
     }
 }
 
