@@ -25,6 +25,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared.js";
+import { revokeAllSignalSessions } from "../signalDirectoryRuntime.js";
 import { revokeAllRemoteMcpGrantsForUser } from "../remoteMcpGrant.js";
 import { providerAccountSecretRefPath } from "../quota.js";
 import { destroyCredential } from "../secrets.js";
@@ -181,7 +182,7 @@ export const revokeAllAccess = onCall(
       }
     };
 
-    const [mcp, hermes, hermesGateway, pi, escrowDevices] = await Promise.all([
+    const [mcp, hermes, hermesGateway, pi, escrowDevices, signalSessions] = await Promise.all([
       safe("mcp", () => revokeAllRemoteMcpGrantsForUser(db, uid, REVOKE_REASON), {
         clientsRevoked: 0,
         grantsRevoked: 0,
@@ -190,6 +191,7 @@ export const revokeAllAccess = onCall(
       safe("hermes_gateway", () => revokeConnectionCollection(uid, "hermes_gateway_clients"), 0),
       safe("pi_agent", () => revokeConnectionCollection(uid, "pi_agent_connections"), 0),
       safe("escrow_devices", () => revokeEscrowDevices(uid), 0),
+      safe("signal_sessions", () => revokeAllSignalSessions(uid), 0),
     ]);
 
     const providerResult =
@@ -204,6 +206,7 @@ export const revokeAllAccess = onCall(
       mcpClients: mcp.clientsRevoked,
       devices: hermes + hermesGateway + pi,
       escrowDevices,
+      signalSessions,
       providers: providerResult.revoked,
     };
 

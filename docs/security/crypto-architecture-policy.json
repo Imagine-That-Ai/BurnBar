@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "status": "active",
+  "adr": "docs/security/ADR-001-crypto-architecture.md",
+  "summary": "BurnBar uses official libsignal Double Ratchet for device-to-device and libsignal HPKE sealing at-rest on Mac/Android/daemon/backend, a homegrown Double Ratchet on every phone-to-AI-gateway lane, and an App-Store-clean libsignal-free iOS satellite that reads at-rest via CryptoKit HPKE.",
+  "platforms": {
+    "macos": {
+      "device_to_device": "libsignal-double-ratchet",
+      "at_rest": "libsignal-hpke-seal",
+      "ai_gateway": "homegrown-double-ratchet"
+    },
+    "android": {
+      "device_to_device": "libsignal-double-ratchet",
+      "at_rest": "libsignal-hpke-seal",
+      "ai_gateway": "homegrown-double-ratchet"
+    },
+    "daemon": {
+      "device_to_device": "libsignal-double-ratchet",
+      "at_rest": "libsignal-hpke-seal",
+      "ai_gateway": "homegrown-double-ratchet"
+    },
+    "backend": {
+      "at_rest": "libsignal-hpke-seal",
+      "ai_gateway": "homegrown-double-ratchet"
+    },
+    "ios": {
+      "device_to_device": "none-satellite",
+      "at_rest": "cryptokit-hpke-atrest",
+      "ai_gateway": "homegrown-double-ratchet"
+    }
+  },
+  "libsignalBearingModels": [
+    "libsignal-double-ratchet",
+    "libsignal-hpke-seal"
+  ],
+  "claims": {
+    "libsignal-double-ratchet": "Signal Protocol",
+    "libsignal-hpke-seal": "Signal at-rest sealing",
+    "cryptokit-hpke-atrest": "At-rest HPKE sealing (CryptoKit, RFC 9180, interoperable with the libsignal seal, no libsignal link)",
+    "homegrown-double-ratchet": "Hardened encrypted gateway (homegrown Double Ratchet, forward secrecy)",
+    "none-satellite": "secure satellite (transport-encrypted)"
+  },
+  "invariants": [
+    "iOS never uses a libsignal-bearing model on any channel; its at-rest is cryptokit-hpke-atrest (CryptoKit RFC-9180 interop, no libsignal link) — the App-Store-clean hard rule.",
+    "device_to_device for macos/android/daemon must be libsignal-double-ratchet (official Signal Protocol); ios.device_to_device must be none-satellite; backend has no device_to_device channel.",
+    "ai_gateway must be homegrown-double-ratchet for every platform — never libsignal — because the gateway decrypts plaintext to run the model and the homegrown ratchet already provides forward secrecy and post-compromise security.",
+    "Marketing claims map strictly by model; iOS must never map to the 'Signal Protocol' claim."
+  ],
+  "evidence": [
+    "packages/e2ee-backend-policy/lib/index.js",
+    "scripts/ci/check_burnbar_crypto_architecture_policy.py",
+    "docs/security/ADR-001-crypto-architecture.md"
+  ]
+}

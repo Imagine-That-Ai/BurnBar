@@ -4,6 +4,9 @@ import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
+import os
+
+private let cliMissionSignalLogger = Logger(subsystem: "com.openburnbar.mobile", category: "CLIAgentMissionDispatcher")
 
 private struct CLIAgentMissionPrivatePayload: Codable {
     var title: String?
@@ -222,15 +225,21 @@ final class CLIAgentMissionDispatcher {
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
-        if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
-            from: payload,
-            uid: uid,
-            firestore: db,
-            collection: "cli_agent_mission_requests",
-            docId: id,
-            resolvedKey: resolvedKey
-        ) {
-            payload["signalEnvelope"] = signalEnvelope
+        // BEST-EFFORT at-rest Signal seal; legacy sealedPayload (already in payload) is the
+        // FLOOR. On any failure log and write legacy-only rather than abort the dispatch.
+        do {
+            if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
+                from: payload,
+                uid: uid,
+                firestore: db,
+                collection: "cli_agent_mission_requests",
+                docId: id,
+                resolvedKey: resolvedKey
+            ) {
+                payload["signalEnvelope"] = signalEnvelope
+            }
+        } catch {
+            cliMissionSignalLogger.error("Signal at-rest seal failed; writing CLI mission legacy-only: \(String(describing: error), privacy: .public)")
         }
         let requestRef = db
             .collection("users").document(uid)
@@ -474,15 +483,21 @@ final class CLIAgentMissionDispatcher {
             if let envelope = personaScopeByRuntime[runtimeToken] {
                 payload["personaID"] = envelope.personaID
             }
-            if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
-                from: payload,
-                uid: uid,
-                firestore: db,
-                collection: "cli_agent_mission_requests",
-                docId: missionID,
-                resolvedKey: resolvedKey
-            ) {
-                payload["signalEnvelope"] = signalEnvelope
+            // BEST-EFFORT at-rest Signal seal; legacy sealedPayload is the FLOOR. On any
+            // failure log and write legacy-only rather than abort the fan-out child.
+            do {
+                if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
+                    from: payload,
+                    uid: uid,
+                    firestore: db,
+                    collection: "cli_agent_mission_requests",
+                    docId: missionID,
+                    resolvedKey: resolvedKey
+                ) {
+                    payload["signalEnvelope"] = signalEnvelope
+                }
+            } catch {
+                cliMissionSignalLogger.error("Signal at-rest seal failed; writing CLI mission child legacy-only: \(String(describing: error), privacy: .public)")
             }
             let requestRef = db
                 .collection("users").document(uid)
