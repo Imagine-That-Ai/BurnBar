@@ -129,7 +129,9 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
             privatePayload,
             recipients: [identity.atRestRecipient()],
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: identity.identityKeyId,
+            senderIdentityPrivateKey: identity.privateKeyData
         )
         let doc: [String: Any] = [
             "id": documentID,
