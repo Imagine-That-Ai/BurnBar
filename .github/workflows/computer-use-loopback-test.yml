@@ -2,6 +2,7 @@ name: computer-use-loopback-test
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/**"
@@ -9,20 +10,38 @@ on:
       - "OpenBurnBarDaemon/Resources/PlaywrightBridge/**"
       - ".github/workflows/computer-use-loopback-test.yml"
       - "scripts/install-playwright.sh"
+      - "scripts/test-openburnbar-swift.sh"
       - "scripts/test-computer-use-loopback.sh"
       - "scripts/test-computer-use-browser-scenarios.mjs"
+      - "scripts/lib/prepare-signal-ffi-xcframework.sh"
+      - "scripts/build-signal-ffi-xcframework.sh"
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
   workflow_dispatch:
 
 jobs:
   swiftpm-tests:
     name: SwiftPM — OpenBurnBarComputerUseCoreTests
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
-      - name: Build + test
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+      - name: Install protobuf for libsignal Swift FFI
         run: |
-          cd OpenBurnBarCore
-          swift test --filter 'OpenBurnBarComputerUseCoreTests/'
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+      - name: Prepare Signal FFI XCFramework
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+      - name: Build + test
+        run: OPENBURNBAR_CORE_SWIFT_FILTER='OpenBurnBarComputerUseCoreTests/' OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
       - name: Build daemon
         run: |
           cd OpenBurnBarDaemon
@@ -30,7 +49,7 @@ jobs:
 
   loopback-smoke:
     name: Playwright bridge — loopback smoke
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

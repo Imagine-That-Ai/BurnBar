@@ -16,6 +16,10 @@ name: PR Security Gate
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -38,12 +42,13 @@ jobs:
 
       - name: Run gitleaks
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           "$HOME/go/bin/gitleaks" detect --config .gitleaks.toml --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
 
   dependency-review:
     name: Dependency Review (CVE check)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
