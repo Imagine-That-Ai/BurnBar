@@ -3980,7 +3980,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                     connectionId: payload.connectionID,
                     requestId: requestID
                 ))))
-            case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong:
+            case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong, .signalSessionMessage:  // cov:ignore
                 break
             case .signalSessionMessage,
                  .mediaClassify,

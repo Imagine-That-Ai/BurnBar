@@ -5,6 +5,7 @@ permissions:
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
@@ -14,6 +15,9 @@ on:
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
 
 jobs:
   actionlint:
