@@ -73,7 +73,12 @@ def required_file_entry(rel_path: str, *, repo_root: Path) -> dict[str, Any]:
 def load_runtime_readiness(repo_root: Path) -> dict[str, Any]:
     sys.path.insert(0, str(repo_root))
     try:
-        from scripts.ci.check_libsignal_runtime_readiness import DEFAULT_MANIFEST, check_manifest, load_manifest
+        from scripts.ci.check_libsignal_runtime_readiness import (
+            DEFAULT_MANIFEST,
+            check_manifest,
+            incomplete_gate_details,
+            load_manifest,
+        )
     finally:
         sys.path.pop(0)
     errors = check_manifest(DEFAULT_MANIFEST, repo_root=repo_root)
@@ -83,6 +88,7 @@ def load_runtime_readiness(repo_root: Path) -> dict[str, Any]:
         "status": data.get("status"),
         "completeGates": sorted(gate_id for gate_id, gate in gates.items() if gate.get("status") == "complete"),
         "incompleteGates": sorted(gate_id for gate_id, gate in gates.items() if gate.get("status") != "complete"),
+        "incompleteGateDetails": incomplete_gate_details(data),
         "validatorErrors": errors,
     }
 
@@ -125,6 +131,15 @@ def release_preflight_blockers(manifest: dict[str, Any]) -> list[str]:
     incomplete = readiness.get("incompleteGates") or []
     if incomplete:
         blockers.append("runtimeReadiness has incomplete gate(s): " + ", ".join(str(gate) for gate in incomplete))
+        for detail in readiness.get("incompleteGateDetails") or []:
+            prefixes = ", ".join(detail.get("artifactPathPrefixes") or []) or "n/a"
+            validators = ", ".join(detail.get("validatorFragments") or []) or "n/a"
+            required_args = " ".join(detail.get("validatorRequiredArgs") or []) or "n/a"
+            blockers.append(
+                f"runtimeReadiness gate {detail.get('id')} required action: {detail.get('requiredAction')} "
+                f"(proof: {detail.get('proof')}; artifact prefixes: {prefixes}; "
+                f"validator: {validators}; required args: {required_args})"
+            )
     return blockers
 
 

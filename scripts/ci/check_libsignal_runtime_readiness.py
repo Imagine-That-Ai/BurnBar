@@ -80,6 +80,42 @@ GATE_ARTIFACT_PATH_PREFIXES: dict[str, tuple[str, ...]] = {
     "store_and_counsel_approval": ("launch-evidence/",),
 }
 
+GATE_RELEASE_ACTIONS: dict[str, str] = {
+    "rust_core_bridge": (
+        "produce Rust bridge runtime evidence and validate it with "
+        "check_native_signal_runtime_evidence.py --gate rust_core_bridge"
+    ),
+    "swift_round_trips": (
+        "produce Swift/macOS/iOS round-trip evidence and validate it with "
+        "check_native_signal_runtime_evidence.py --gate swift_round_trips"
+    ),
+    "kotlin_round_trips": (
+        "produce Android/Kotlin round-trip evidence and validate it with "
+        "check_native_signal_runtime_evidence.py --gate kotlin_round_trips"
+    ),
+    "node_contracts": "run the signal-envelope contract package tests and attach the test report",
+    "hermes_gateway_writes": (
+        "produce Hermes Gateway migration-drain evidence proving new gateway writes are Signal-backed "
+        "and legacy records are drained or retained read-only"
+    ),
+    "hermes_attachment_writes": (
+        "produce Hermes attachment migration-drain evidence proving new attachment writes are Signal-backed "
+        "and legacy records are drained or retained read-only"
+    ),
+    "cloudvault_private_domains": (
+        "produce CloudVault/private-domain runtime evidence proving new private writes use the reviewed "
+        "Signal-backed path"
+    ),
+    "migration_telemetry": (
+        "produce migration telemetry evidence proving legacy envelope reads are compatible and no unknown "
+        "records are deleted"
+    ),
+    "store_and_counsel_approval": (
+        "produce signed external-counsel approval and validate it with "
+        "check_agpl_legal_release_review.py without --allow-pending"
+    ),
+}
+
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -109,6 +145,30 @@ def load_manifest(manifest: Path | str, repo_root: Path | str | None = None) -> 
             gates[gate["id"]] = gate
     data["gates"] = gates
     return data
+
+
+def gate_release_detail(gate_id: str, gate: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return the release-manager remediation detail for one runtime gate."""
+
+    gate = gate or {}
+    return {
+        "id": gate_id,
+        "status": gate.get("status"),
+        "proof": gate.get("proof"),
+        "artifactPathPrefixes": list(GATE_ARTIFACT_PATH_PREFIXES.get(gate_id, ())),
+        "validatorFragments": list(GATE_VALIDATOR_FRAGMENTS.get(gate_id, ())),
+        "validatorRequiredArgs": list(GATE_VALIDATOR_REQUIRED_ARGS.get(gate_id, ())),
+        "requiredAction": GATE_RELEASE_ACTIONS.get(gate_id, "produce validated launch evidence for this gate"),
+    }
+
+
+def incomplete_gate_details(data: dict[str, Any]) -> list[dict[str, Any]]:
+    gates: dict[str, Any] = data.get("gates", {})
+    return [
+        gate_release_detail(gate_id, gates.get(gate_id) or {})
+        for gate_id in REQUIRED_GATE_IDS
+        if (gates.get(gate_id) or {}).get("status") != "complete"
+    ]
 
 
 def _validator_result_passed(value: Any) -> bool:
@@ -332,10 +392,16 @@ def main(argv: list[str] | None = None) -> int:
         print("HOLD: official libsignal is not yet the OpenBurnBar runtime crypto core.", file=sys.stderr)
         print(f"Current runtime core: {data.get('runtimeCryptoCore')}", file=sys.stderr)
         print(f"Blocking reason: {data.get('blockingReason')}", file=sys.stderr)
-        incomplete = [gate_id for gate_id, gate in data["gates"].items() if gate.get("status") != "complete"]
         print("Incomplete gates:", file=sys.stderr)
-        for gate_id in incomplete:
-            print(f"- {gate_id}: {data['gates'][gate_id].get('proof')}", file=sys.stderr)
+        for detail in incomplete_gate_details(data):
+            validators = ", ".join(detail["validatorFragments"]) or "n/a"
+            prefixes = ", ".join(detail["artifactPathPrefixes"]) or "n/a"
+            required_args = " ".join(detail["validatorRequiredArgs"]) or "n/a"
+            print(
+                f"- {detail['id']}: {detail['proof']} | action: {detail['requiredAction']} | "
+                f"artifact prefixes: {prefixes} | validator: {validators} | required args: {required_args}",
+                file=sys.stderr,
+            )
         return 1
 
     if status == "ready":

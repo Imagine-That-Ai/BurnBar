@@ -19,7 +19,11 @@ def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
     assert result.returncode != 0
     assert "HOLD: BurnBar product release preflight is not ready" in result.stderr
     assert "runtimeReadiness.status must be 'ready'" in result.stderr
+    assert "runtimeReadiness gate rust_core_bridge required action:" in result.stderr
+    assert "check_native_signal_runtime_evidence.py --gate rust_core_bridge" in result.stderr
     assert "legal release review is not approved" in result.stderr
+    assert "legal release review required action:" in result.stderr
+    assert "check_agpl_legal_release_review.py --evidence launch-evidence/latest-agpl-store-legal-packet.json" in result.stderr
 
 
 def test_release_preflight_rejects_pending_legal_template_as_release_approval():

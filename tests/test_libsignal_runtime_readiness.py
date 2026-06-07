@@ -1,5 +1,6 @@
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 from scripts.ci.check_libsignal_runtime_readiness import check_manifest
@@ -171,3 +172,21 @@ def test_ready_manifest_rust_gate_requires_gate_specific_native_validator(tmp_pa
     errors = check_manifest(manifest, repo_root=tmp_path, run_validators=False)
 
     assert any("ready gate rust_core_bridge validatorCommand must include --gate rust_core_bridge" in error for error in errors)
+
+
+def test_launch_gate_reports_actionable_incomplete_gate_details():
+    result = subprocess.run(
+        ["python3", "scripts/ci/check_libsignal_runtime_readiness.py", "--launch-gate"],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "HOLD: official libsignal is not yet the OpenBurnBar runtime crypto core." in result.stderr
+    assert "rust_core_bridge:" in result.stderr
+    assert "action: produce Rust bridge runtime evidence" in result.stderr
+    assert "validator: check_native_signal_runtime_evidence.py" in result.stderr
+    assert "required args: --gate rust_core_bridge" in result.stderr

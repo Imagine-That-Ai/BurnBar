@@ -16,7 +16,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_LEGAL_EVIDENCE = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
+DEFAULT_LEGAL_EVIDENCE_REL = Path("launch-evidence/latest-agpl-store-legal-packet.json")
+DEFAULT_LEGAL_EVIDENCE = ROOT / DEFAULT_LEGAL_EVIDENCE_REL
+LEGAL_TEMPLATE = Path("docs/legal/agpl-release-review.evidence.template.json")
+LEGAL_VALIDATOR = "python3 scripts/ci/check_agpl_legal_release_review.py --evidence launch-evidence/latest-agpl-store-legal-packet.json"
 
 
 def source_provenance_blockers(repo_root: Path) -> list[str]:
@@ -44,7 +47,14 @@ def legal_review_blockers(evidence_path: Path, repo_root: Path) -> list[str]:
         sys.path.pop(0)
 
     if not evidence_path.is_file():
-        return [f"legal release review evidence is missing: {evidence_path}"]
+        return [
+            f"legal release review evidence is missing: {evidence_path}",
+            (
+                "legal release review required action: create a signed external_counsel approval packet at "
+                f"{DEFAULT_LEGAL_EVIDENCE_REL} using {LEGAL_TEMPLATE}; validate with "
+                f"{LEGAL_VALIDATOR} (without --allow-pending)"
+            ),
+        ]
 
     try:
         data = json.loads(evidence_path.read_text(encoding="utf-8"))
@@ -57,6 +67,10 @@ def legal_review_blockers(evidence_path: Path, repo_root: Path) -> list[str]:
         non_approval = data.get("explicitNonApproval", "")
         if "not legal approval" not in non_approval:
             blockers.append("legal release review pending evidence must explicitly say it is not legal approval")
+        blockers.append(
+            "legal release review required action: replace pending evidence with an approved external_counsel "
+            f"packet signed over the review document hash; validate with {LEGAL_VALIDATOR} (without --allow-pending)"
+        )
         return blockers
 
     return [f"legal release review: {error}" for error in validate_legal_release_review(data, require_approved=True)]
