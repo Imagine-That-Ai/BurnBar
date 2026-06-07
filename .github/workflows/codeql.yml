@@ -63,7 +63,14 @@ jobs:
 
     steps:
       - name: Checkout
+        if: matrix.language != 'swift'
         uses: actions/checkout@v4
+
+      - name: Checkout with Swift submodules
+        if: matrix.language == 'swift'
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       # init must run BEFORE the manual Swift build so CodeQL's tracer
       # observes the compiler invocations. Without this, the database
