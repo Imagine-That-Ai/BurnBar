@@ -371,7 +371,9 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
             payloadData,
             recipients: [identity.atRestRecipient()],
-            binding: binding
+            binding: binding,
+            senderIdentityKeyId: identity.identityKeyId,
+            senderIdentityPrivateKey: identity.privateKeyData
         )
         let data: [String: Any] = [
             "id": documentID,

@@ -129,8 +129,20 @@ struct HermesSquareSplitLayout: View {
             }
             mercuryPeerSource.start()
         }
+        .task(id: AssistantPendingThread.shared.hermes) {
+            consumePendingHermesThread()
+        }
         .onDisappear {
             mercuryPeerSource.stop()
+        }
+    }
+
+    @MainActor
+    private func consumePendingHermesThread() {
+        guard let inboxID = HermesSquarePendingThreadRoute.consumeHermesInboxID() else { return }
+        selectedDetail = .thread(inboxID)
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            sidebarMode = .history(.hermes)
         }
     }
 

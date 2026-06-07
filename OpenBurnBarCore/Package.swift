@@ -11,6 +11,12 @@ let hasIrohXCFramework = FileManager.default.fileExists(
         .standardizedFileURL
         .path
 )
+let hasSignalFfiXCFramework = FileManager.default.fileExists(
+    atPath: packageRoot
+        .appendingPathComponent("../Vendor/OpenBurnBarSignalFfi.xcframework")
+        .standardizedFileURL
+        .path
+)
 let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarCore",
@@ -61,6 +67,11 @@ let packageProducts: [Product] = [
         name: "OpenBurnBarIrohFFI",
         targets: ["OpenBurnBarIrohFFI"]
     )
+] : []) + (hasSignalFfiXCFramework ? [
+    .library(
+        name: "OpenBurnBarSignalFfi",
+        targets: ["OpenBurnBarSignalFfi"]
+    )
 ] : [])
 
 let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
@@ -89,7 +100,14 @@ let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
 let signalCoreDependencies: [Target.Dependency] = [
     "OpenBurnBarCore",
     .product(name: "LibSignalClient", package: "LibSignalClient")
-]
+] + (hasSignalFfiXCFramework ? ["OpenBurnBarSignalFfi"] : [])
+
+let signalBinaryTargets: [Target] = hasSignalFfiXCFramework ? [
+    .binaryTarget(
+        name: "OpenBurnBarSignalFfi",
+        path: "../Vendor/OpenBurnBarSignalFfi.xcframework"
+    )
+] : []
 
 let package = Package(
     name: "OpenBurnBarCore",
@@ -99,7 +117,7 @@ let package = Package(
         .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift"),
         .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
     ],
-    targets: irohBinaryTargets + [
+    targets: irohBinaryTargets + signalBinaryTargets + [
         .target(
             name: "OpenBurnBarCore",
             resources: [

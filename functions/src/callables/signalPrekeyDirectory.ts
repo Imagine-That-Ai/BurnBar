@@ -73,13 +73,7 @@ const TRUSTED_DEVICE_STATES = new Set(["pending", "trusted"]);
 // extension and must NOT be accepted until that feature ships with its own
 // cross-user authorization checks.
 const SESSION_MODES = new Set(["same-user-device"]);
-const ROTATION_REASONS = new Set([
-  "scheduled",
-  "suspected_compromise",
-  "device_repair",
-  "revocation_rewrap",
-  "manual",
-]);
+const ROTATION_REASONS = new Set(["scheduled", "suspected_compromise", "device_repair", "revocation_rewrap", "manual"]);
 
 const MAX_INT32 = 2147483647;
 // Per-call batch ceilings. Kyber bundles are large (PQXDH) so they are smaller.
@@ -148,10 +142,7 @@ export function parseSignalBase64(raw: unknown, fieldName: string, maxLen: numbe
 export function assertNoForbiddenFields(raw: Record<string, unknown>, fieldName: string): void {
   for (const forbidden of FORBIDDEN_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(raw, forbidden)) {
-      throw new HttpsError(
-        "invalid-argument",
-        `${fieldName} must not contain private or secret field "${forbidden}".`,
-      );
+      throw new HttpsError("invalid-argument", `${fieldName} must not contain private or secret field "${forbidden}".`);
     }
   }
 }
@@ -293,7 +284,10 @@ export function buildSessionDoc(
   // an accepted mode yet — see SESSION_MODES).
   const peerUid = boundedTrimmedString(raw.peerUid, "session.peerUid", 160, true);
   if (peerUid && peerUid !== ownerUid) {
-    throw new HttpsError("invalid-argument", "session.peerUid must be the same account (same-user multi-device scope).");
+    throw new HttpsError(
+      "invalid-argument",
+      "session.peerUid must be the same account (same-user multi-device scope).",
+    );
   }
   return {
     id: sessionId,
@@ -358,9 +352,7 @@ export function buildRotationEventDoc(
  * single-claim selection is unit-testable independent of the transaction. Picks
  * the lowest numericId for deterministic, gap-free consumption.
  */
-export function selectPrekeyToClaim<T extends { numericId: number; id: string }>(
-  candidates: T[],
-): T | undefined {
+export function selectPrekeyToClaim<T extends { numericId: number; id: string }>(candidates: T[]): T | undefined {
   if (candidates.length === 0) return undefined;
   return [...candidates].sort((a, b) => a.numericId - b.numericId || a.id.localeCompare(b.id))[0];
 }
@@ -455,11 +447,7 @@ export const publishSignalPrekeyBundle = onCall(
         "oneTimePreKeys",
         MAX_ONE_TIME_PREKEYS_PER_CALL,
       );
-      const kyberRaw = requireRecordArray(
-        request.data?.kyberPreKeys ?? [],
-        "kyberPreKeys",
-        MAX_KYBER_PREKEYS_PER_CALL,
-      );
+      const kyberRaw = requireRecordArray(request.data?.kyberPreKeys ?? [], "kyberPreKeys", MAX_KYBER_PREKEYS_PER_CALL);
       const oneTime = oneTimeRaw.map((r) => buildOneTimePreKeyDoc(r, ctx, nowMs));
       const kyber = kyberRaw.map((r) => buildKyberPreKeyDoc(r, ctx, nowMs));
 
@@ -548,9 +536,7 @@ export const claimSignalPrekeyBundle = onCall(
   CALLABLE_OPTS,
   wrapCallableHandler(
     "claimSignalPrekeyBundle",
-    async (
-      request: CallableRequest<{ identityKeyId?: unknown; sessionId?: unknown }>,
-    ) => {
+    async (request: CallableRequest<{ identityKeyId?: unknown; sessionId?: unknown }>) => {
       const uid = requireUid(request);
       // Cross-checks (identity exists, device trusted) before opening the txn.
       const identity = await resolveTrustedIdentity(uid, request.data?.identityKeyId);
@@ -596,10 +582,20 @@ export const claimSignalPrekeyBundle = onCall(
 
         // --- deterministic single selection (lowest numericId) ---
         const kyberPick = selectPrekeyToClaim(
-          kyberSnap.docs.map((d) => ({ id: d.id, numericId: Number(d.data().kyberPreKeyNumericId), ref: d.ref, data: d.data() })),
+          kyberSnap.docs.map((d) => ({
+            id: d.id,
+            numericId: Number(d.data().kyberPreKeyNumericId),
+            ref: d.ref,
+            data: d.data(),
+          })),
         )!;
         const oneTimePick = selectPrekeyToClaim(
-          oneTimeSnap.docs.map((d) => ({ id: d.id, numericId: Number(d.data().oneTimePreKeyNumericId), ref: d.ref, data: d.data() })),
+          oneTimeSnap.docs.map((d) => ({
+            id: d.id,
+            numericId: Number(d.data().oneTimePreKeyNumericId),
+            ref: d.ref,
+            data: d.data(),
+          })),
         );
 
         // --- writes: mark claimed ---
@@ -712,11 +708,15 @@ export const recordSignalRotation = onCall(
       const raw = request.data.rotation as Record<string, unknown>;
       const rewrapRequired = raw.rewrapRequired === true;
       const rewrapJobId = rewrapRequired ? `rewrap_${randomBytes(12).toString("hex")}` : undefined;
-      const rotation = buildRotationEventDoc(raw, {
-        identityKeyId: identity.identityKeyId,
-        deviceId: identity.deviceId,
-        keyVersion: identity.keyVersion,
-      }, rewrapJobId);
+      const rotation = buildRotationEventDoc(
+        raw,
+        {
+          identityKeyId: identity.identityKeyId,
+          deviceId: identity.deviceId,
+          keyVersion: identity.keyVersion,
+        },
+        rewrapJobId,
+      );
       const ref = identity.ref.collection("rotation_events").doc(rotation.id);
       const existing = await ref.get();
       if (existing.exists) {
@@ -761,40 +761,37 @@ export function prekeyReplenishStatus(
  */
 export const signalPrekeyWatermark = onCall(
   CALLABLE_OPTS,
-  wrapCallableHandler(
-    "signalPrekeyWatermark",
-    async (request: CallableRequest<{ identityKeyId?: unknown }>) => {
-      const uid = requireUid(request);
-      const identity = await resolveTrustedIdentity(uid, request.data?.identityKeyId);
-      const now = Timestamp.now();
-      const [oneTime, kyber] = await Promise.all([
-        identity.ref
-          .collection("one_time_prekeys")
-          .where("status", "==", "available")
-          .where("expiresAt", ">", now)
-          .count()
-          .get(),
-        identity.ref
-          .collection("kyber_prekeys")
-          .where("status", "==", "available")
-          .where("expiresAt", ">", now)
-          .count()
-          .get(),
-      ]);
-      const availableOneTimePreKeys = oneTime.data().count;
-      const availableKyberPreKeys = kyber.data().count;
-      const status = prekeyReplenishStatus(availableOneTimePreKeys, availableKyberPreKeys);
-      return {
-        ok: true as const,
-        identityKeyId: identity.identityKeyId,
-        availableOneTimePreKeys,
-        availableKyberPreKeys,
-        minOneTimePreKeys: MIN_AVAILABLE_ONE_TIME_PREKEYS,
-        minKyberPreKeys: MIN_AVAILABLE_KYBER_PREKEYS,
-        ...status,
-      };
-    },
-  ),
+  wrapCallableHandler("signalPrekeyWatermark", async (request: CallableRequest<{ identityKeyId?: unknown }>) => {
+    const uid = requireUid(request);
+    const identity = await resolveTrustedIdentity(uid, request.data?.identityKeyId);
+    const now = Timestamp.now();
+    const [oneTime, kyber] = await Promise.all([
+      identity.ref
+        .collection("one_time_prekeys")
+        .where("status", "==", "available")
+        .where("expiresAt", ">", now)
+        .count()
+        .get(),
+      identity.ref
+        .collection("kyber_prekeys")
+        .where("status", "==", "available")
+        .where("expiresAt", ">", now)
+        .count()
+        .get(),
+    ]);
+    const availableOneTimePreKeys = oneTime.data().count;
+    const availableKyberPreKeys = kyber.data().count;
+    const status = prekeyReplenishStatus(availableOneTimePreKeys, availableKyberPreKeys);
+    return {
+      ok: true as const,
+      identityKeyId: identity.identityKeyId,
+      availableOneTimePreKeys,
+      availableKyberPreKeys,
+      minOneTimePreKeys: MIN_AVAILABLE_ONE_TIME_PREKEYS,
+      minKyberPreKeys: MIN_AVAILABLE_KYBER_PREKEYS,
+      ...status,
+    };
+  }),
 );
 
 export const __testing__ = {

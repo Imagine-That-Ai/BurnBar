@@ -64,8 +64,25 @@ if [[ ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
   libsignal_linker_flags=(-Xlinker "-L${repo_root}/Vendor/libsignal/target/debug")
 fi
 
-# `set -u` + the empty-array expansion `${coverage_flags[@]}` triggers
-# "unbound variable" on bash 3.2 (macOS default). Use the empty-safe
-# `${coverage_flags[@]+"${coverage_flags[@]}"}` idiom instead.
-swift test --package-path "$repo_root/OpenBurnBarCore" ${coverage_flags[@]+"${coverage_flags[@]}"} ${libsignal_linker_flags[@]+"${libsignal_linker_flags[@]}"}
-swift test --package-path "$repo_root/OpenBurnBarDaemon" ${coverage_flags[@]+"${coverage_flags[@]}"} ${libsignal_linker_flags[@]+"${libsignal_linker_flags[@]}"}
+run_swift_tests() {
+  local package_path="$1"
+  local filter="${2:-}"
+  local args=(--package-path "$package_path")
+
+  if ((${#coverage_flags[@]})); then
+    args+=("${coverage_flags[@]}")
+  fi
+  if ((${#libsignal_linker_flags[@]})); then
+    args+=("${libsignal_linker_flags[@]}")
+  fi
+  if [[ -n "$filter" ]]; then
+    args+=(--filter "$filter")
+  fi
+
+  swift test "${args[@]}"
+}
+
+run_swift_tests "$repo_root/OpenBurnBarCore" "${OPENBURNBAR_CORE_SWIFT_FILTER:-}"
+if [[ "${OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS:-}" != "1" ]]; then
+  run_swift_tests "$repo_root/OpenBurnBarDaemon" "${OPENBURNBAR_DAEMON_SWIFT_FILTER:-}"
+fi

@@ -8,12 +8,11 @@ import com.openburnbar.data.models.displayRemainingFractionAsOf
 import com.openburnbar.data.models.effectiveResetsAt
 import com.openburnbar.data.models.elapsedWindowReset
 import com.openburnbar.data.models.progressFractionAsOf
+import java.time.Instant
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.Instant
 
 /**
  * Regression for "Codex quota never resets after the 5h clock rolls over."
@@ -34,20 +33,15 @@ class QuotaBucketElapsedResetTest {
     private val pastReset = "2026-06-02T00:00:00Z" // 3 days before `now`
     private val futureReset = "2026-06-05T02:00:00Z" // 2 hours after `now`
 
-    private fun codexBucket(
-        window: String,
-        resetsAtIso: String,
-        usedPercent: String,
-        name: String = "codex-primary",
-        label: String = "5-hour window",
-    ) = QuotaBucket(
-        name = name,
-        used = usedPercent.toDouble(),
-        limit = 100.0,
-        remaining = 100.0 - usedPercent.toDouble(),
-        window = window,
-        meta = mapOf("unit" to "percent", "usedPercent" to usedPercent, "label" to label, "resetsAt" to resetsAtIso),
-    )
+    private fun codexBucket(window: String, resetsAtIso: String, usedPercent: String, name: String = "codex-primary", label: String = "5-hour window") =
+        QuotaBucket(
+            name = name,
+            used = usedPercent.toDouble(),
+            limit = 100.0,
+            remaining = 100.0 - usedPercent.toDouble(),
+            window = window,
+            meta = mapOf("unit" to "percent", "usedPercent" to usedPercent, "label" to label, "resetsAt" to resetsAtIso),
+        )
 
     @Test
     fun `elapsed codex 5h window reads full remaining and empty progress`() {
