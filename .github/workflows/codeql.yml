@@ -93,6 +93,28 @@ jobs:
         if: matrix.language == 'swift'
         run: cp AgentLens/Resources/GoogleService-Info.plist.example AgentLens/Resources/GoogleService-Info.plist
 
+      - name: Install Rust toolchain for libsignal Swift FFI
+        if: matrix.language == 'swift'
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        if: matrix.language == 'swift'
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Prepare Signal FFI for Swift CodeQL
+        if: matrix.language == 'swift'
+        run: |
+          SIGNAL_FFI_BUILD_TARGETS=x86_64-apple-darwin \
+          SIGNAL_FFI_BUILD_PROFILE=debug \
+          CARGO_BUILD_JOBS=2 \
+            ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
       # Binary SwiftPM targets, especially Sentry's XCFramework artifacts, can
       # timeout on a cold macOS runner. Resolve packages with a bounded retry
       # before the traced build so transient CDN failures do not mask real
@@ -104,7 +126,7 @@ jobs:
             if xcodebuild -project OpenBurnBar.xcodeproj \
               -scheme OpenBurnBar \
               -configuration Debug \
-              -destination 'platform=macOS,arch=arm64' \
+              -destination 'platform=macOS,arch=x86_64' \
               -derivedDataPath .codeql-derived-data \
               -resolvePackageDependencies; then
               exit 0
@@ -125,9 +147,9 @@ jobs:
           xcodebuild -project OpenBurnBar.xcodeproj \
             -scheme OpenBurnBar \
             -configuration Debug \
-            -destination 'platform=macOS,arch=arm64' \
+            -destination 'platform=macOS,arch=x86_64' \
             -derivedDataPath .codeql-derived-data \
-            ARCHS=arm64 \
+            ARCHS=x86_64 \
             ONLY_ACTIVE_ARCH=YES \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
