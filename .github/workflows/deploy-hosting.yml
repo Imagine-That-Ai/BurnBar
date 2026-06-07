@@ -50,8 +50,8 @@ jobs:
           node-version: 24
 
       # Install deps for both sites so the firebase.json predeploy hooks
-      # (`npm --prefix website run build`, `npm --prefix apps/console run build`)
-      # can build during `firebase deploy`.
+      # (`npm --prefix website run verify`, `npm --prefix apps/console run build`)
+      # can validate and build during `firebase deploy`.
       - name: Install hosting dependencies
         run: |
           npm ci --prefix website
@@ -93,9 +93,9 @@ jobs:
       - name: Dry-run skip deploy
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
-          npm run build --prefix website
+          npm run verify --prefix website
           npm run build --prefix apps/console
-          echo "dry_run=true — built hosting bundles, skipped firebase deploy"
+          echo "dry_run=true — verified marketing, built console, skipped firebase deploy"
 
       - name: Deployment summary
         if: always()
