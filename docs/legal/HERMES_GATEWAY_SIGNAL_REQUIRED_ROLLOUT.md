@@ -48,7 +48,15 @@ node scripts/ci/write_hermes_gateway_migration_drain_evidence.js \
   --output launch-evidence/hermes-gateway-drain.json
 python scripts/ci/check_hermes_gateway_migration_drain.py \
   launch-evidence/hermes-gateway-drain.json
+python3 scripts/ci/write_cloudvault_at_rest_runtime_evidence.py \
+  --output launch-evidence/cloudvault-at-rest-runtime.json \
+  --check
 ```
+
+The CloudVault writer runs the real compiled Functions/contract checks and stores
+only privacy-preserving command-output hashes. `--check` must remain a HOLD until
+the data-domain registry actually enables a Signal at-rest sealing scheme; do not
+hand-edit `signalAtRestWritesEnabled` to clear the gate.
 
 ## Drain
 

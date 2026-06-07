@@ -81,12 +81,7 @@ def _passed_commands(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _assertions(data: dict[str, Any]) -> set[str]:
     present: set[str] = set()
-    top_level = data.get("assertions")
-    if isinstance(top_level, list):
-        present.update(item for item in top_level if isinstance(item, str))
-    for entry in data.get("commandEvidence", []):
-        if not isinstance(entry, dict):
-            continue
+    for entry in _passed_commands(data):
         entry_assertions = entry.get("assertions")
         if isinstance(entry_assertions, list):
             present.update(item for item in entry_assertions if isinstance(item, str))
