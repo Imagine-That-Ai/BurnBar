@@ -10,8 +10,8 @@ import javax.crypto.spec.SecretKeySpec
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,7 +19,9 @@ private const val SHA256_DIGEST_BYTES = 32
 private const val VAL_24 = 24
 private const val SIGNAL_KAT_PRIVATE_KEY_B64 = "yGZ5zfds7ljkjsopcLya1ayDbjV+TCL6/b4BQBpqfV0="
 private const val SIGNAL_KAT_PUBLIC_KEY_B64_CANONICAL = "BVw7AC8duGgSdz/wLmMLMe+ymSUCcMkOcoJ+E6Eb+RhO"
-private const val SIGNAL_KAT_CIPHERTEXT_B64 = "AQt/WxZMem2jpwxChzbQuzg/yMY5kdPdzuOmgLoJwoIZOFUfdEr33hTkLyIzwQTD7J2uShoruECN2ty8j1QlSe2siO6trszlngaJe7Zhb7liPArb1x/A+J/nrS5GNw=="
+private const val SIGNAL_KAT_CIPHERTEXT_B64 =
+    "AQt/WxZMem2jpwxChzbQuzg/yMY5kdPdzuOmgLoJwoIZOFUfdEr33hTkLyIzwQTD7J2uShoruECN2ty8j1QlSe2siO6" +
+        "trszlngaJe7Zhb7liPArb1x/A+J/nrS5GNw=="
 private const val SIGNAL_KAT_PLAINTEXT_B64 = "Y3Jvc3MtbGFuZ3VhZ2UgaW50ZXJvcCBzZWNyZXQg4oCUIG5vZGUgc2VhbGVk"
 
 class CloudVaultCryptoTest {
@@ -268,10 +270,10 @@ class CloudVaultCryptoTest {
             CloudVaultCrypto.sealSignalPayload(
                 plaintext,
                 recipients =
-                    listOf(
-                        CloudVaultSignalRecipient("device", "device-key-1", publicKey),
-                        CloudVaultSignalRecipient("escrow", "escrow-key-1", publicKey),
-                    ),
+                listOf(
+                    CloudVaultSignalRecipient("device", "device-key-1", publicKey),
+                    CloudVaultSignalRecipient("escrow", "escrow-key-1", publicKey),
+                ),
                 binding = binding,
             )
 
@@ -301,9 +303,9 @@ class CloudVaultCryptoTest {
         val tampered =
             envelope.copy(
                 ciphertextLayer =
-                    envelope.ciphertextLayer.copy(
-                        payloadCiphertextB64 = envelope.ciphertextLayer.payloadCiphertextB64.dropLast(1) + "A",
-                    ),
+                envelope.ciphertextLayer.copy(
+                    payloadCiphertextB64 = envelope.ciphertextLayer.payloadCiphertextB64.dropLast(1) + "A",
+                ),
             )
         assertTrue(runCatching { CloudVaultCrypto.openSignalPayload(tampered, "device-key-1", privateKey, expectedBinding = binding) }.isFailure)
         assertTrue(runCatching { CloudVaultCrypto.openSignalPayload(envelope, "missing-key", privateKey, expectedBinding = binding) }.isFailure)
@@ -317,12 +319,12 @@ class CloudVaultCryptoTest {
                 "android cloudvault signal map payload".toByteArray(),
                 recipients = listOf(CloudVaultSignalRecipient("device", "device-key-1", publicKey)),
                 binding =
-                    CloudVaultSignalBinding(
-                        uid = "uid-1",
-                        collection = "pensieve",
-                        docId = "doc-42",
-                        field = "body",
-                    ),
+                CloudVaultSignalBinding(
+                    uid = "uid-1",
+                    collection = "pensieve",
+                    docId = "doc-42",
+                    field = "body",
+                ),
             )
         val raw = CloudVaultCrypto.signalEnvelopeMap(envelope)
 

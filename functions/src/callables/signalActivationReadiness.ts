@@ -95,10 +95,7 @@ export const signalActivationReadiness = onCall(
     const uid = requireUid(request);
     const userRef = db.collection("users").doc(uid);
 
-    const trustedSnap = await userRef
-      .collection("escrow_devices")
-      .where("trustState", "==", "trusted")
-      .get();
+    const trustedSnap = await userRef.collection("escrow_devices").where("trustState", "==", "trusted").get();
 
     const trusted: ReadinessTrustedDevice[] = trustedSnap.docs.map((doc) => {
       const data = doc.data();

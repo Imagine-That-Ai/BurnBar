@@ -430,8 +430,12 @@ targets:
           - "**/.DS_Store"
           - "Tests/**"
           - "Resources/Mermaid/**"
+          - "Resources/GoogleService-Info.plist"
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
+      - path: OpenBurnBarMobile/Resources/GoogleService-Info.plist
+        buildPhase: resources
+        optional: true
       # Mermaid is shipped as a folder reference so `index.html` and
       # `mermaid.min.js` keep their relative paths inside the bundle.
       - path: OpenBurnBarMobile/Resources/Mermaid

@@ -19,12 +19,18 @@ const {
 
 describe("prekeyReplenishStatus", () => {
   it("flags replenish when one-time or kyber prekeys run low", () => {
-    expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS, MIN_AVAILABLE_KYBER_PREKEYS).needsReplenish).toBe(false);
+    expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS, MIN_AVAILABLE_KYBER_PREKEYS).needsReplenish).toBe(
+      false,
+    );
     expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS - 1, MIN_AVAILABLE_KYBER_PREKEYS)).toEqual({
-      needsReplenish: true, lowOneTime: true, lowKyber: false,
+      needsReplenish: true,
+      lowOneTime: true,
+      lowKyber: false,
     });
     expect(prekeyReplenishStatus(MIN_AVAILABLE_ONE_TIME_PREKEYS, MIN_AVAILABLE_KYBER_PREKEYS - 1)).toEqual({
-      needsReplenish: true, lowOneTime: false, lowKyber: true,
+      needsReplenish: true,
+      lowOneTime: false,
+      lowKyber: true,
     });
     expect(prekeyReplenishStatus(0, 0)).toEqual({ needsReplenish: true, lowOneTime: true, lowKyber: true });
   });
@@ -42,24 +48,81 @@ const KYBER_PUB = "A".repeat(2000); // large but valid kyber public key
 // the callable at write time and claimed* only on the claim update.
 const RULES_KEYS = {
   signed: new Set([
-    "signedPreKeyId", "signedPreKeyNumericId", "identityKeyId", "deviceId", "keyVersion",
-    "publicKeyB64", "signatureB64", "algorithm", "status", "createdAt", "updatedAt", "expiresAt",
+    "signedPreKeyId",
+    "signedPreKeyNumericId",
+    "identityKeyId",
+    "deviceId",
+    "keyVersion",
+    "publicKeyB64",
+    "signatureB64",
+    "algorithm",
+    "status",
+    "createdAt",
+    "updatedAt",
+    "expiresAt",
   ]),
   oneTime: new Set([
-    "oneTimePreKeyId", "oneTimePreKeyNumericId", "identityKeyId", "deviceId", "keyVersion",
-    "publicKeyB64", "algorithm", "status", "claimedBySessionId", "claimedAt", "createdAt", "updatedAt", "expiresAt",
+    "oneTimePreKeyId",
+    "oneTimePreKeyNumericId",
+    "identityKeyId",
+    "deviceId",
+    "keyVersion",
+    "publicKeyB64",
+    "algorithm",
+    "status",
+    "claimedBySessionId",
+    "claimedAt",
+    "createdAt",
+    "updatedAt",
+    "expiresAt",
   ]),
   kyber: new Set([
-    "kyberPreKeyId", "kyberPreKeyNumericId", "identityKeyId", "deviceId", "keyVersion",
-    "publicKeyB64", "signatureB64", "algorithm", "status", "claimedBySessionId", "claimedAt", "createdAt", "updatedAt", "expiresAt",
+    "kyberPreKeyId",
+    "kyberPreKeyNumericId",
+    "identityKeyId",
+    "deviceId",
+    "keyVersion",
+    "publicKeyB64",
+    "signatureB64",
+    "algorithm",
+    "status",
+    "claimedBySessionId",
+    "claimedAt",
+    "createdAt",
+    "updatedAt",
+    "expiresAt",
   ]),
   session: new Set([
-    "sessionId", "identityKeyId", "deviceId", "keyVersion", "peerUid", "peerDeviceId", "peerIdentityKeyId",
-    "mode", "stateStorage", "status", "createdAt", "updatedAt", "lastMessageAt", "archivedAt",
+    "sessionId",
+    "identityKeyId",
+    "deviceId",
+    "keyVersion",
+    "peerUid",
+    "peerDeviceId",
+    "peerIdentityKeyId",
+    "mode",
+    "stateStorage",
+    "status",
+    "createdAt",
+    "updatedAt",
+    "lastMessageAt",
+    "archivedAt",
   ]),
   rotation: new Set([
-    "rotationId", "identityKeyId", "deviceId", "keyVersion", "fromKeyVersion", "toKeyVersion", "reason",
-    "status", "rewrapRequired", "rewrapJobId", "revokedIdentityKeyId", "createdAt", "updatedAt", "completedAt",
+    "rotationId",
+    "identityKeyId",
+    "deviceId",
+    "keyVersion",
+    "fromKeyVersion",
+    "toKeyVersion",
+    "reason",
+    "status",
+    "rewrapRequired",
+    "rewrapJobId",
+    "revokedIdentityKeyId",
+    "createdAt",
+    "updatedAt",
+    "completedAt",
   ]),
 };
 
@@ -85,7 +148,15 @@ describe("parseSignalBase64", () => {
 
 describe("assertNoForbiddenFields", () => {
   it("rejects private-key and session-state fields (rules signalDirectoryDocumentLimits)", () => {
-    for (const field of ["privateKeyData", "privateKeyB64", "serializedSession", "sessionState", "ratchetState", "apiKey", "secret"]) {
+    for (const field of [
+      "privateKeyData",
+      "privateKeyB64",
+      "serializedSession",
+      "sessionState",
+      "ratchetState",
+      "apiKey",
+      "secret",
+    ]) {
       expect(() => assertNoForbiddenFields({ [field]: "x" }, "doc"), field).toThrow();
     }
   });
@@ -127,10 +198,18 @@ describe("buildSignedPreKeyDoc", () => {
   });
   it("rejects forbidden fields and out-of-range numeric id", () => {
     expect(() =>
-      buildSignedPreKeyDoc({ signedPreKeyId: "x", signedPreKeyNumericId: 1, publicKeyB64: PUB, signatureB64: SIG, privateKeyB64: "z" }, CTX, NOW),
+      buildSignedPreKeyDoc(
+        { signedPreKeyId: "x", signedPreKeyNumericId: 1, publicKeyB64: PUB, signatureB64: SIG, privateKeyB64: "z" },
+        CTX,
+        NOW,
+      ),
     ).toThrow();
     expect(() =>
-      buildSignedPreKeyDoc({ signedPreKeyId: "x", signedPreKeyNumericId: 0, publicKeyB64: PUB, signatureB64: SIG }, CTX, NOW),
+      buildSignedPreKeyDoc(
+        { signedPreKeyId: "x", signedPreKeyNumericId: 0, publicKeyB64: PUB, signatureB64: SIG },
+        CTX,
+        NOW,
+      ),
     ).toThrow();
   });
 });
@@ -157,7 +236,13 @@ describe("buildOneTimePreKeyDoc", () => {
 describe("buildKyberPreKeyDoc", () => {
   it("builds an available kyber prekey with large base64 bounds", () => {
     const { data } = buildKyberPreKeyDoc(
-      { kyberPreKeyId: "kpk-1", kyberPreKeyNumericId: 2, publicKeyB64: KYBER_PUB, signatureB64: SIG, expiresAt: FUTURE },
+      {
+        kyberPreKeyId: "kpk-1",
+        kyberPreKeyNumericId: 2,
+        publicKeyB64: KYBER_PUB,
+        signatureB64: SIG,
+        expiresAt: FUTURE,
+      },
       CTX,
       NOW,
     );
@@ -171,7 +256,10 @@ describe("buildSessionDoc", () => {
   it("builds device-local-only session metadata and rejects serialized state", () => {
     const { data } = buildSessionDoc(
       {
-        sessionId: "sess-1", peerUid: "user", peerDeviceId: "device-b", peerIdentityKeyId: "device-b_1",
+        sessionId: "sess-1",
+        peerUid: "user",
+        peerDeviceId: "device-b",
+        peerIdentityKeyId: "device-b_1",
         mode: "same-user-device",
       },
       CTX,
@@ -182,7 +270,14 @@ describe("buildSessionDoc", () => {
     assertKeysWithin(data, RULES_KEYS.session);
     expect(() =>
       buildSessionDoc(
-        { sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "same-user-device", serializedSession: "leak" },
+        {
+          sessionId: "s",
+          peerUid: "u",
+          peerDeviceId: "d",
+          peerIdentityKeyId: "d_1",
+          mode: "same-user-device",
+          serializedSession: "leak",
+        },
         CTX,
         "u",
       ),
@@ -190,18 +285,32 @@ describe("buildSessionDoc", () => {
   });
   it("rejects an unknown session mode", () => {
     expect(() =>
-      buildSessionDoc({ sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "broadcast" }, CTX, "u"),
+      buildSessionDoc(
+        { sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "broadcast" },
+        CTX,
+        "u",
+      ),
     ).toThrow();
   });
   it("rejects the not-yet-shipped cross-user gateway-transport mode (fail-closed scope)", () => {
     expect(() =>
-      buildSessionDoc({ sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "gateway-transport" }, CTX, "u"),
+      buildSessionDoc(
+        { sessionId: "s", peerUid: "u", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "gateway-transport" },
+        CTX,
+        "u",
+      ),
     ).toThrow();
   });
   it("rejects a peerUid that names a DIFFERENT account (same-user multi-device scope)", () => {
     expect(() =>
       buildSessionDoc(
-        { sessionId: "s", peerUid: "someone-else", peerDeviceId: "d", peerIdentityKeyId: "d_1", mode: "same-user-device" },
+        {
+          sessionId: "s",
+          peerUid: "someone-else",
+          peerDeviceId: "d",
+          peerIdentityKeyId: "d_1",
+          mode: "same-user-device",
+        },
         CTX,
         "owner",
       ),
@@ -237,10 +346,18 @@ describe("buildRotationEventDoc", () => {
     );
     expect(data.rewrapJobId).toBeUndefined();
     expect(() =>
-      buildRotationEventDoc({ rotationId: "rot-3", fromKeyVersion: 2, toKeyVersion: 2, reason: "manual", rewrapRequired: false }, CTX, undefined),
+      buildRotationEventDoc(
+        { rotationId: "rot-3", fromKeyVersion: 2, toKeyVersion: 2, reason: "manual", rewrapRequired: false },
+        CTX,
+        undefined,
+      ),
     ).toThrow();
     expect(() =>
-      buildRotationEventDoc({ rotationId: "rot-4", fromKeyVersion: 1, toKeyVersion: 2, reason: "bogus", rewrapRequired: false }, CTX, undefined),
+      buildRotationEventDoc(
+        { rotationId: "rot-4", fromKeyVersion: 1, toKeyVersion: 2, reason: "bogus", rewrapRequired: false },
+        CTX,
+        undefined,
+      ),
     ).toThrow();
   });
 });

@@ -18,11 +18,12 @@ struct HarnessModelBadge: View {
     let model: AgentProvider?
     var size: CGFloat = 44
     var availability: RuntimeStatus? = nil
+    var modelScale: CGFloat = 0.52
     /// When true, applies an accent ring around the harness logo. Used in
     /// the Hermes Square pinned grid where each tile gets a brand halo.
     var ringStroke: Color? = nil
 
-    private var modelBadgeSize: CGFloat { size * 0.52 }
+    private var modelBadgeSize: CGFloat { size * min(max(modelScale, 0.28), 0.60) }
     /// Outer chrome footprint so callers can size containers correctly —
     /// the badge sticks ~22% past the harness logo's bottom-right corner.
     static func totalSize(harnessSize: CGFloat) -> CGSize {
@@ -102,11 +103,13 @@ extension HarnessModelBadge {
          modelSnapshot: AssistantModelLens.ModelSnapshot?,
          size: CGFloat = 44,
          availability: RuntimeStatus? = nil,
+         modelScale: CGFloat = 0.52,
          ringStroke: Color? = nil) {
         self.harness = runtime.agentProvider
         self.model = modelSnapshot?.provider
         self.size = size
         self.availability = availability
+        self.modelScale = modelScale
         self.ringStroke = ringStroke
     }
 }

@@ -672,11 +672,12 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                  .remoteUnlockDenied:
                 continue
             case .mediaClassify,
-                    .mediaBlobAdvertise,
-                    .mediaBlobAck,
-                    .mediaMirrorRequest,
-                    .mediaMirrorAck,
-                    .mediaMirrorStop,
+                 .mediaBlobAdvertise,
+                 .mediaBlobAck,
+                 .signalSessionMessage,
+                 .mediaMirrorRequest,
+                 .mediaMirrorAck,
+                 .mediaMirrorStop,
                     .mediaMirrorDisplaySelect,
                     .mediaPresenceHeartbeat,
                     .mediaLongTermReferenceAck,
