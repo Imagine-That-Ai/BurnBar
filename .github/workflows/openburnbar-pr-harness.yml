@@ -434,7 +434,9 @@ jobs:
   ios-mobile:
     name: iOS Mobile
     runs-on: macos-26
-    timeout-minutes: 25
+    # Cold macOS runners can spend more than 25 minutes compiling Firebase
+    # before the mobile tests start; keep this lane bounded without false timeouts.
+    timeout-minutes: 45
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     env:
       INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
