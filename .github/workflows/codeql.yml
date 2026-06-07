@@ -72,19 +72,6 @@ jobs:
         with:
           submodules: recursive
 
-      # init must run BEFORE the manual Swift build so CodeQL's tracer
-      # observes the compiler invocations. Without this, the database
-      # finalizer reports "no source seen" and fails with exit 32.
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-          # security-extended = strong security coverage without the
-          # quality/lint noise that security-and-quality adds (unused-var,
-          # dead-store, etc.). Those are handled by eslint in the PR harness.
-          queries: security-extended
-
       # The app target references this plist as a bundle resource, but the real
       # Firebase config is intentionally gitignored. CodeQL only needs the Swift
       # build graph, so use the checked-in placeholder rather than requiring
@@ -114,6 +101,19 @@ jobs:
           SIGNAL_FFI_BUILD_PROFILE=debug \
           CARGO_BUILD_JOBS=2 \
             ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      # init must run BEFORE the manual Swift build so CodeQL's tracer
+      # observes the compiler invocations. Without this, the database
+      # finalizer reports "no source seen" and fails with exit 32.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # security-extended = strong security coverage without the
+          # quality/lint noise that security-and-quality adds (unused-var,
+          # dead-store, etc.). Those are handled by eslint in the PR harness.
+          queries: security-extended
 
       # Binary SwiftPM targets, especially Sentry's XCFramework artifacts, can
       # timeout on a cold macOS runner. Resolve packages with a bounded retry
