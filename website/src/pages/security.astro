@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
+import { LIBSIGNAL_ROLLOUT_STATUS } from "@data/crypto-claims.generated";
 ---
 
 <BaseLayout
@@ -131,6 +132,26 @@ import { SITE } from "@data/site";
     </div>
   </section>
 
+  <section class="cryptoroad">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Encryption roadmap</span>
+        <h2>Where the encryption is headed — and where it is today.</h2>
+      </header>
+      <p>
+        We pinned Signal's official open-source library for device-to-device lanes and at-rest
+        sealing. Today it is {LIBSIGNAL_ROLLOUT_STATUS} — per-domain flag, default off, staged rollout,
+        instant revert. The phone ⇄ gateway lane already runs our own hardened encrypted seal with pinned
+        keys and forward secrecy; at the gateway that seal is opened to run the model — it protects the
+        path, not the prompt from us. The claim-by-claim version, including what we don't claim, lives
+        on the trust page.
+      </p>
+      <p class="cryptoroad__link">
+        <a href="/trust">Read it. Don't just trust it. → burnbar.ai/trust</a>
+      </p>
+    </div>
+  </section>
+
   <section class="releasechain">
     <div class="container">
       <header class="sec-head">
@@ -244,10 +265,25 @@ import { SITE } from "@data/site";
     color: var(--text-base);
   }
   .notpretend,
+  .cryptoroad,
   .releasechain,
   .report {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
+  }
+  .cryptoroad p {
+    color: var(--text-base);
+    max-width: 64ch;
+    line-height: 1.55;
+  }
+  .cryptoroad__link {
+    margin-top: var(--s-4);
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+  }
+  .cryptoroad a {
+    color: var(--ember-bright);
+    text-decoration: underline;
   }
   .notpretend__list,
   .releasechain__list {

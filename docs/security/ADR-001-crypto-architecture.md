@@ -156,6 +156,16 @@ libsignal opens — and that vector MUST run in CI. Until that vector exists and
 interop is an assumption, not a fact, and a silent ciphersuite drift could break iOS reads in
 the field.
 
+**Status (2026-06-06): RESOLVED — the vector exists and runs in CI, both directions.**
+`OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/CryptoKitAtRestInteropVector.json`
+commits both cases (libsignal-sealed → CryptoKit-opened; CryptoKit-sealed → libsignal-opened),
+regenerable via `scripts/ci/generate-cryptokit-interop-vector.mjs --emit` (which re-proves both
+directions live before writing). CI legs: the script's check mode (libsignal side + tamper
+fail-closed) runs in `fast-feedback.yml`; `CryptoKitAtRestInteropTests.swift` opens both
+committed cases (CryptoKit side) plus fresh-key round-trips in both directions in the macOS PR
+harness. The website's crypto-claims generator fails closed if the vector, the Swift suite, or
+the CI step disappears.
+
 ### 7.3 iOS 17 minimum for the CryptoKit at-rest read path
 
 The CryptoKit HPKE APIs used to open at-rest envelopes require **iOS 17+**. On **iOS 16** the
