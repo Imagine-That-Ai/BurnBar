@@ -50,11 +50,17 @@ const files = execFileSync('git', [
   .trim()
   .split('\n')
   .filter(Boolean);
+// packages/e2ee-backend-policy is the deliberate MIT seam package — it is
+// reusable in the Nous/Hermes MIT upstream (documented in
+// THIRD_PARTY_NOTICES.md "MIT upstream seam"); everything else in the
+// product tree must stay AGPL-3.0-only.
+const MIT_SEAM_PACKAGES = new Set(['packages/e2ee-backend-policy/package.json']);
 const failures = [];
 for (const file of files) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (json.license !== 'AGPL-3.0-only') {
-    failures.push(`${file}: expected license AGPL-3.0-only, got ${json.license ?? '<missing>'}`);
+  const expected = MIT_SEAM_PACKAGES.has(file) ? 'MIT' : 'AGPL-3.0-only';
+  if (json.license !== expected) {
+    failures.push(`${file}: expected license ${expected}, got ${json.license ?? '<missing>'}`);
   }
 }
 if (failures.length) {
