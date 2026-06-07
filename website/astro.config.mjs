@@ -1,7 +1,11 @@
 import { defineConfig } from "astro/config";
 import mdx from "@astrojs/mdx";
-import sentry from "@sentry/astro";
 
+// No Sentry, no PostHog, nothing: the footer says "No analytics, no trackers"
+// and the claim is enforced by absence — scripts/test-trust-copy.mjs fails the
+// build if any tracker or third-party script ever lands in dist/. (The old
+// Sentry browser SDK was dead weight anyway: the marketing CSP is
+// connect-src 'self', so it could never deliver an event.)
 export default defineConfig({
   site: "https://burnbar.ai",
   trailingSlash: "ignore",
@@ -9,23 +13,7 @@ export default defineConfig({
     inlineStylesheets: "auto",
     assets: "_assets"
   },
-  integrations: [
-    mdx(),
-    sentry({
-      dsn: import.meta.env.PUBLIC_SENTRY_DSN,
-      // Only enable in production builds; keeps local dev noise-free.
-      enabled: import.meta.env.PROD,
-      environment: import.meta.env.PROD ? "production" : "development",
-      tracesSampleRate: 0.1,
-      // Replay 5% of sessions in production for UX debugging.
-      replaysSessionSampleRate: 0.05,
-      replaysOnErrorSampleRate: 1.0,
-      sourceMapsUploadOptions: {
-        project: "burnbar-website",
-        authToken: import.meta.env.SENTRY_AUTH_TOKEN,
-      },
-    }),
-  ],
+  integrations: [mdx()],
   compressHTML: true,
   prefetch: {
     prefetchAll: true,

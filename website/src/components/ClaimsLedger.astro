@@ -1,0 +1,287 @@
+---
+/**
+ * ClaimsLedger — the forensic register on the public trust surface.
+ *
+ * Renders one ledger row per data domain: what our servers see on the left,
+ * what only your devices see on the right. Every factual string here is
+ * interpolated from trust.generated.ts (codegen from the registry, guarded by
+ * the CI drift gate) — this component contributes labels and rules only, never
+ * claims. Flat on the page by design: a printed register, not a marketing card.
+ */
+import TrustTierBadge from "@components/TrustTierBadge.astro";
+import { TRUST_TIER_BY_ID, TRUST_DOMAINS } from "@data/trust.generated";
+
+interface Props {
+  class?: string;
+}
+
+const { class: className = "" } = Astro.props;
+
+// Group the register by tier (best → broadest, matching /privacy's order) so the
+// spine color changes once per group and twelve rows read as three chapters.
+// Order and grouping are presentation; every string stays generated.
+const TIER_ORDER = ["end_to_end", "zero_access", "server_readable"] as const;
+const groups = TIER_ORDER.map((tierId) => ({
+  tier: TRUST_TIER_BY_ID[tierId],
+  domains: TRUST_DOMAINS.filter((d) => d.tier === tierId)
+})).filter((g) => g.domains.length > 0);
+---
+
+<div class:list={["ledger", className]}>
+  <p class="ledger__strip">
+    <span class="ledger__strip-label">// CI-gated · registry drift gate · build-verified</span>
+    <span class="ledger__strip-rule" aria-hidden="true"></span>
+  </p>
+
+  {
+    groups.map((group) => (
+      <section class="ledger__group" aria-label={group.tier.label}>
+        <header class:list={["ledger__group-head", `ledger__group-head--${group.tier.id}`]}>
+          <TrustTierBadge tier={group.tier} size="sm" />
+          <span class="ledger__group-line">{group.tier.serverLine}</span>
+        </header>
+        {group.domains.map((domain) => (
+          <article class:list={["ledger__row", `ledger__row--${domain.tier}`]}>
+            <header class="ledger__head">
+              <h3 class="ledger__title">{domain.title}</h3>
+            </header>
+            <p class="ledger__blurb">{domain.blurb}</p>
+
+            <dl class="ledger__split">
+              <div class="ledger__col ledger__col--server">
+                <dt class="ledger__dt ledger__dt--server">Our servers see</dt>
+                {domain.serverSees.length > 0 ? (
+                  domain.serverSees.map((facet) => <dd class="ledger__dd">{facet}</dd>)
+                ) : (
+                  <dd class="ledger__dd ledger__dd--empty">—</dd>
+                )}
+              </div>
+              <div class="ledger__col ledger__col--device">
+                <dt class="ledger__dt ledger__dt--device">Only your devices</dt>
+                {domain.deviceOnly.length > 0 ? (
+                  domain.deviceOnly.map((facet) => <dd class="ledger__dd">{facet}</dd>)
+                ) : (
+                  <dd class="ledger__dd ledger__dd--empty">—</dd>
+                )}
+              </div>
+            </dl>
+
+            {domain.caveat !== null && (
+              <p class="ledger__note bracket">
+                <span class="ledger__note-tag">NOTE</span>
+                {domain.caveat}
+              </p>
+            )}
+          </article>
+        ))}
+      </section>
+    ))
+  }
+</div>
+
+<style>
+  .ledger {
+    width: 100%;
+  }
+
+  /* ---------- header strip ---------- */
+
+  .ledger__strip {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    margin: 0 0 var(--s-4);
+  }
+
+  .ledger__strip-label {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    letter-spacing: 0.05em;
+    color: var(--text-mute);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .ledger__strip-rule {
+    flex: 1;
+    height: 1px;
+    background: var(--ink-line-soft);
+  }
+
+  /* ---------- tier groups ---------- */
+
+  .ledger__group + .ledger__group {
+    margin-top: var(--s-7);
+  }
+
+  .ledger__group-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-4);
+    padding-bottom: var(--s-3);
+    border-bottom: 1px solid var(--ink-line);
+  }
+
+  .ledger__group-line {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    letter-spacing: 0.03em;
+    color: var(--text-mute);
+  }
+
+  /* ---------- ledger rows ---------- */
+
+  .ledger__row {
+    padding: var(--s-6) 0 var(--s-6) var(--s-5);
+    border-left: 2px solid var(--ink-line);
+  }
+
+  .ledger__row + .ledger__row {
+    border-top: 1px solid var(--ink-line-soft);
+  }
+
+  /* Tier accent: the 2px spine carries each row's encryption tier. */
+  .ledger__row--server_readable {
+    border-left-color: var(--tier-server);
+  }
+
+  .ledger__row--zero_access {
+    border-left-color: var(--tier-zero);
+  }
+
+  .ledger__row--end_to_end {
+    border-left-color: var(--tier-e2e);
+  }
+
+  /* ---------- row header ---------- */
+
+  .ledger__head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-3);
+  }
+
+  .ledger__title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 540;
+    font-size: var(--t-h4);
+    letter-spacing: -0.014em;
+    line-height: var(--leading-tight);
+    color: var(--text-bright);
+  }
+
+  .ledger__blurb {
+    margin: var(--s-2) 0 0;
+    font-size: 0.92rem;
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+    max-width: 72ch;
+  }
+
+  /* ---------- two-column claims split ---------- */
+
+  .ledger__split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-5);
+    margin: var(--s-4) 0 0;
+  }
+
+  .ledger__dt {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin: 0 0 var(--s-2);
+  }
+
+  .ledger__dt--device {
+    color: var(--tier-e2e);
+  }
+
+  .ledger__dd {
+    position: relative;
+    margin: 0 0 var(--s-1);
+    padding-left: calc(3px + 0.6em);
+    font-size: 0.88rem;
+    line-height: var(--leading-snug);
+    color: var(--text-base);
+  }
+
+  /* 3px square leading swatch, optically centered on the first line. */
+  .ledger__dd::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.65em;
+    width: 3px;
+    height: 3px;
+    background: var(--text-dim);
+  }
+
+  .ledger__col--device .ledger__dd::before {
+    background: var(--tier-e2e);
+  }
+
+  .ledger__dd--empty {
+    color: var(--text-mute);
+    padding-left: 0;
+  }
+
+  .ledger__dd--empty::before {
+    content: none;
+  }
+
+  /* ---------- caveat note (always visible, never behind a toggle) ---------- */
+
+  /* Body face for the prose (long caveats stay readable); mono is reserved
+     for the NOTE tag so the register still reads forensic. */
+  .ledger__note {
+    margin: var(--s-4) 0 0;
+    padding: var(--s-3) var(--s-4);
+    font-size: 0.84rem;
+    letter-spacing: 0;
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+    background: var(--ink-surface);
+    max-width: 78ch;
+  }
+
+  .ledger__note-tag {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+  }
+
+  .ledger__note-tag {
+    color: var(--ember-bright);
+    letter-spacing: 0.06em;
+    margin-right: 0.6em;
+    font-variation-settings: "wght" 560;
+  }
+
+  /* ---------- responsive ---------- */
+
+  @media (max-width: 560px) {
+    .ledger__split {
+      grid-template-columns: 1fr;
+      gap: var(--s-4);
+    }
+
+    .ledger__row {
+      padding-left: var(--s-4);
+    }
+  }
+
+  /*
+   * Light theme: every color above is a token (tokens flip via
+   * :root[data-theme="light"]) — no dark-canvas text-shadows or
+   * rgba(255, …) highlights were used, so no overrides are needed.
+   * No animations: a ledger doesn't dance.
+   */
+</style>

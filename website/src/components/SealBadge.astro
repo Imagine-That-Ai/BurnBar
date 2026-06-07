@@ -1,0 +1,281 @@
+---
+/**
+ * SealBadge — the trust surface's signature motif: an engraved notary seal /
+ * foil-stamp disc pressed into the page. Cooled-steel register: currentColor
+ * hairlines over the `--seal-ember-wash` disc, one accent hue per instance.
+ *
+ * Color comes exclusively from tokens — the root sets `color: var(--ember-core)`
+ * by default, or a tier hue (`--tier-server|--tier-zero|--tier-e2e`) via a
+ * modifier class; every stroke and fill inside inherits currentColor. The SVG
+ * is decorative (aria-hidden); the visible <figcaption> carries the meaning.
+ */
+interface Props {
+  variant: "agpl" | "sealed" | "pinned" | "fail-closed";
+  /** Disc diameter in px. Default 96. */
+  size?: number;
+  /** Optional encryption-tier tint; default is the cooled-ember register. */
+  tier?: "server" | "zero" | "e2e";
+  /** Visible caption under the disc. Defaults per variant. */
+  label?: string;
+  class?: string;
+}
+
+const { variant, size = 96, tier, label, class: className = "" } = Astro.props;
+
+type Variant = Props["variant"];
+
+const DEFAULT_LABELS: Record<Variant, string> = {
+  agpl: "AGPL-3.0-only",
+  sealed: "Sealed in transit",
+  pinned: "Keys pinned",
+  "fail-closed": "Fails closed"
+};
+
+const RING_TEXT: Record<Variant, string> = {
+  agpl: "FREE AS IN FREEDOM · NETWORK COPYLEFT ·",
+  sealed: "SEALED ON DEVICE · OPENED AT THE GATEWAY ·",
+  pinned: "KEYS PINNED · SAFETY-CODE PAIRED ·",
+  "fail-closed": "ON FAILURE: REFUSE · NEVER DOWNGRADE ·"
+};
+
+const caption = label ?? DEFAULT_LABELS[variant];
+const ringText = RING_TEXT[variant];
+
+// Deterministic per-instance <defs> id — djb2 over the props, so several seals
+// on one page never collide. No randomness, no clocks (build-time stable).
+const seed = `${variant}|${size}|${tier ?? "ember"}|${caption}`;
+let hash = 5381;
+for (let i = 0; i < seed.length; i++) {
+  hash = ((hash << 5) + hash + seed.charCodeAt(i)) >>> 0;
+}
+const ringPathId = `seal-arc-${hash.toString(36)}`;
+
+// 48 stamp teeth just inside the rim, computed once at build time.
+const TOOTH_COUNT = 48;
+const teeth = Array.from({ length: TOOTH_COUNT }, (_, i) => {
+  const a = (i / TOOTH_COUNT) * Math.PI * 2;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  return {
+    x1: (60 + 55 * cos).toFixed(2),
+    y1: (60 + 55 * sin).toFixed(2),
+    x2: (60 + 57.8 * cos).toFixed(2),
+    y2: (60 + 57.8 * sin).toFixed(2)
+  };
+});
+---
+
+<figure
+  class:list={[
+    "seal",
+    `seal--${variant}`,
+    tier && `seal--${tier}`,
+    size < 120 && "seal--small",
+    className
+  ]}
+  style={`--seal-size: ${size}px`}
+>
+  <svg
+    class="seal__svg"
+    viewBox="0 0 120 120"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    role="presentation"
+    focusable="false"
+  >
+    <defs>
+      <!-- Ring-text baseline: full circle starting at the left equator, sweeping
+           over the upper arc first, so short legends sit across the top. -->
+      <path id={ringPathId} d="M 13.5 60 A 46.5 46.5 0 1 1 106.5 60 A 46.5 46.5 0 1 1 13.5 60"
+      ></path>
+    </defs>
+
+    <!-- Disc + subtle inner-depth rim -->
+    <circle class="seal__disc" cx="60" cy="60" r="58"></circle>
+    <circle class="seal__depth" cx="60" cy="60" r="58"></circle>
+
+    <!-- Toothed stamp edge -->
+    <g class="seal__teeth">
+      {teeth.map((t) => <line x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} />)}
+    </g>
+
+    <!-- Concentric engraved hairlines -->
+    <circle class="seal__ring seal__ring--outer" cx="60" cy="60" r="54"></circle>
+    <circle class="seal__ring seal__ring--inner" cx="60" cy="60" r="40"></circle>
+
+    <!-- Curved micro-legend between the rings -->
+    <text class="seal__ringtext">
+      <textPath href={`#${ringPathId}`} startOffset="0">{ringText}</textPath>
+    </text>
+
+    <!-- Center glyph (36×36 box centered at 60,60) -->
+    {
+      variant === "agpl" && (
+        <g class="seal__glyph">
+          <circle cx="60" cy="60" r="16" />
+          {/* Reversed C — the arc opens to the LEFT (copyleft, mirrored copyright) */}
+          <path d="M 53.68 54.31 A 8.5 8.5 0 1 1 53.68 65.69" />
+        </g>
+      )
+    }
+    {
+      variant === "sealed" && (
+        <g class="seal__glyph">
+          <rect x="44" y="50" width="32" height="21" rx="2" />
+          <path d="M 44 52.5 L 60 63.5 L 76 52.5" />
+          {/* Wax dot at the flap point — the one allowed fill */}
+          <circle class="seal__wax" cx="60" cy="63.5" r="2.6" />
+        </g>
+      )
+    }
+    {
+      variant === "pinned" && (
+        <g class="seal__glyph">
+          <path d="M 60 77 C 60 77 49 65 49 56 A 11 11 0 1 1 71 56 C 71 65 60 77 60 77 Z" />
+          <circle cx="60" cy="56" r="4" />
+        </g>
+      )
+    }
+    {
+      variant === "fail-closed" && (
+        <g class="seal__glyph">
+          <path d="M 44 77 L 44 58 A 16 16 0 0 1 76 58 L 76 77" />
+          <path d="M 52 45.5 L 52 77" />
+          <path d="M 60 42.5 L 60 77" />
+          <path d="M 68 45.5 L 68 77" />
+          {/* The dropped bar — gate unmistakably closed */}
+          <path class="seal__bar" d="M 42 70 L 78 70" />
+        </g>
+      )
+    }
+  </svg>
+
+  <figcaption class="seal__label">{caption}</figcaption>
+</figure>
+
+<style>
+  .seal {
+    /* Hook with in-rule fallback; inline style overrides per instance. */
+    --seal-size: 96px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--s-2);
+    margin: 0;
+    color: var(--ember-core);
+  }
+
+  /* Encryption-tier register — hue carries the signal, never inline hex. */
+  .seal--server {
+    color: var(--tier-server);
+  }
+  .seal--zero {
+    color: var(--tier-zero);
+  }
+  .seal--e2e {
+    color: var(--tier-e2e);
+  }
+
+  .seal__svg {
+    display: block;
+    width: var(--seal-size, 96px);
+    height: var(--seal-size, 96px);
+    transform-origin: center;
+  }
+
+  .seal__disc {
+    fill: var(--seal-ember-wash);
+  }
+  /* Tiered seals tint the wash from their own hue (still token-derived). */
+  .seal--server .seal__disc,
+  .seal--zero .seal__disc,
+  .seal--e2e .seal__disc {
+    fill: color-mix(in oklab, currentColor 9%, transparent);
+  }
+
+  /* Inner-depth rim: text-bright flips with the theme, so this highlight
+     reads as emboss on dark and deboss on light without an override. */
+  .seal__depth {
+    fill: none;
+    stroke: color-mix(in oklab, var(--text-bright) 14%, transparent);
+    stroke-width: 1;
+  }
+
+  .seal__teeth {
+    stroke: currentColor;
+    stroke-width: 1;
+    opacity: 0.5;
+  }
+
+  .seal__ring {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 0.75;
+  }
+  .seal__ring--outer {
+    opacity: 0.55;
+  }
+  .seal__ring--inner {
+    opacity: 0.3;
+  }
+
+  .seal__ringtext {
+    font-family: var(--font-mono);
+    font-size: 6px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    fill: currentColor;
+    opacity: 0.7;
+  }
+
+  /* Below ~120px the ring legend renders under 5px — words become noise.
+     Keep the engraving rings, drop the unreadable text. */
+  .seal--small .seal__ringtext {
+    display: none;
+  }
+
+  .seal__glyph {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .seal__wax {
+    fill: currentColor;
+    stroke: none;
+  }
+  .seal__bar {
+    stroke-width: 3;
+  }
+
+  /* Caption: no text-shadow anywhere in this block, so the light theme
+     needs nothing undone — both themes ride the flipped tokens. */
+  .seal__label {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    text-align: center;
+  }
+
+  /* One-shot stamp-settle entrance — pressed in, then sharp. No loops.
+     `backwards` (not `both`) so the element returns to its unfiltered base
+     state after the run — no lingering blur(0) rasterization layer. */
+  @media (prefers-reduced-motion: no-preference) {
+    .seal__svg {
+      animation: seal-settle 480ms var(--ease) backwards;
+    }
+    @keyframes seal-settle {
+      from {
+        transform: scale(1.04);
+        filter: blur(1px);
+      }
+      to {
+        transform: scale(1);
+        filter: blur(0);
+      }
+    }
+  }
+</style>
