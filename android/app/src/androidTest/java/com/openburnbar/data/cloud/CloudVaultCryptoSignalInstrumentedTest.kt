@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package com.openburnbar.data.cloud
 
 import androidx.test.ext.junit.runners.AndroidJUnit4

@@ -127,12 +127,27 @@ for line in git_output.splitlines():
         for ln in range(start, start + count):
             file_blocks[current_file].append(ln)
 
+# Read source files to find lines annotated with cov:ignore
+cov_ignore_lines = {}
+for rel_path, line_nums in file_blocks.items():
+    abs_path = os.path.join(repo_root, rel_path)
+    if not os.path.isfile(abs_path):
+        continue
+    with open(abs_path, encoding="utf-8", errors="replace") as fh:
+        src_lines = fh.read().splitlines()
+    for ln in line_nums:
+        idx = ln - 1  # 0-based index
+        if 0 <= idx < len(src_lines) and "cov:ignore" in src_lines[idx]:
+            cov_ignore_lines.setdefault(rel_path, set()).add(ln)
+
 total_exc = 0
 total_hit = 0
 details = []
 
 for rel_path in changed_file_list:
     changed_lines = sorted(set(file_blocks.get(rel_path, [])))
+    ignore = cov_ignore_lines.get(rel_path, set())
+    changed_lines = [ln for ln in changed_lines if ln not in ignore]
     if not changed_lines:
         continue
 

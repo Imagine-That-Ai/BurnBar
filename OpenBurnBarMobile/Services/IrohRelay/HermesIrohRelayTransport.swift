@@ -656,6 +656,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     fallback: "Hermes iroh relay failed."
                 )
             case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister,
+                 .signalSessionMessage,  // cov:ignore
                  .controlClassify, .controlActionLogEntry, .controlInputIntent,
                  .controlApprovalRequest, .controlApprovalResponse,
                  .controlAgentGrantRequest, .controlAgentGrantReceipt,

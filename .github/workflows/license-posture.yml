@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       run_mit_upstream_scan:
@@ -20,8 +24,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: license-posture-${{ github.ref }}
-  cancel-in-progress: true
+  group: license-posture-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   burnbar-product-license:
