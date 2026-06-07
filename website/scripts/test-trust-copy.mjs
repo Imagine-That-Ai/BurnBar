@@ -60,6 +60,10 @@ const NOT_READY_RUNTIME_CLAIMS = [
   /\bnever reads? message text\b/i,
   /\bnever receives readable message text\b/i,
   /\bboth directions are end-to-end encrypted\b/i,
+  /\bend-to-end[- ]encrypted WebSocket\b/i,
+  /\beverything between them is end-to-end encrypted\b/i,
+  /\bno one in the middle can read it\b/i,
+  /\bservers? never see(?:s)? the content or the key\b/i,
 ];
 
 function walk(dir, out = []) {
@@ -139,9 +143,8 @@ function runtimeReadinessStatus() {
   return JSON.parse(readFileSync(RUNTIME_READINESS, "utf8")).status;
 }
 
-function assertNoUnreadyRuntimeClaims() {
+function assertNoUnreadyRuntimeClaims(claimFiles) {
   if (runtimeReadinessStatus() === "ready") return;
-  const claimFiles = [...TRUST_ROUTES, TRUST_GENERATED, join(ROOT, "src", "pages", "privacy.astro")];
   for (const file of claimFiles) {
     const label = relative(REPO_ROOT, file);
     const body = htmlDecode(readFileSync(file, "utf8"));
@@ -225,6 +228,6 @@ for (const line of parseGeneratedStrings()) {
   assert.ok(trustHtml.includes(line), `/trust does not render generated trust line: ${line}`);
 }
 
-assertNoUnreadyRuntimeClaims();
+assertNoUnreadyRuntimeClaims([...builtFiles, TRUST_GENERATED]);
 
 console.log(`PASS: trust copy scan checked ${builtFiles.length} built HTML/CSS/JS/SVG/XML/manifest files with no external network refs.`);

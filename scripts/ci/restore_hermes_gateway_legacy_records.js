@@ -114,6 +114,10 @@ function validateRestorableRecord(record, index) {
   }
 }
 
+function queueRestoreRecord(writer, db, record) {
+  writer.create(db.doc(record.path), record.data);
+}
+
 async function restore(options) {
   const data = loadPredeleteExport(options.exportPath);
   const records = data.predeleteRecords;
@@ -144,7 +148,7 @@ async function restore(options) {
   const { db } = initializeFirestore(options);
   const writer = db.bulkWriter();
   for (const record of records) {
-    writer.set(db.doc(record.path), record.data, { merge: false });
+    queueRestoreRecord(writer, db, record);
   }
   await writer.close();
   console.log(`RESTORED: ${records.length} Hermes Gateway record(s) from private pre-delete export`);
@@ -157,4 +161,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgs, loadPredeleteExport, validateRestorableRecord };
+module.exports = { parseArgs, loadPredeleteExport, validateRestorableRecord, queueRestoreRecord };

@@ -151,6 +151,103 @@ def test_migration_drain_evidence_rejects_truncated_or_missing_collection(tmp_pa
     assert "collections.messages is required" in result.stderr
 
 
+def test_live_collectors_mark_truncated_when_scan_hits_cap():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            r"""
+const assert = require("node:assert/strict");
+const writer = require("./scripts/ci/write_hermes_gateway_migration_drain_evidence.js");
+const drain = require("./scripts/ci/drain_hermes_gateway_legacy_records.js");
+
+class Query {
+  constructor(rows, start = 0, queryLimit = rows.length) {
+    this.rows = rows;
+    this.start = start;
+    this.queryLimit = queryLimit;
+  }
+  orderBy() { return this; }
+  limit(n) { return new Query(this.rows, this.start, n); }
+  startAfter(cursor) { return new Query(this.rows, cursor.__index + 1, this.queryLimit); }
+  async get() {
+    const docs = this.rows.slice(this.start, this.start + this.queryLimit).map((data, offset) => ({
+      __index: this.start + offset,
+      data: () => data,
+      ref: { path: `users/u/hermes_gateway_events/doc-${this.start + offset}` },
+    }));
+    return { empty: docs.length === 0, size: docs.length, docs };
+  }
+}
+
+const rows = [
+  { relayEnvelope: { ciphertext: "a" } },
+  { relayEnvelope: { ciphertext: "b" } },
+  { relayEnvelope: { ciphertext: "c" } },
+];
+const db = { collectionGroup: () => new Query(rows) };
+const admin = { firestore: { FieldPath: { documentId: () => "__name__" } } };
+const collection = writer.COLLECTIONS[0];
+
+(async () => {
+  const evidenceSummary = await writer.collectCollection(db, admin, collection, {
+    pageSize: 500,
+    maxDocsPerCollection: 2,
+  });
+  assert.equal(evidenceSummary.sampled, 2);
+  assert.equal(evidenceSummary.truncated, true);
+
+  const drainSummary = await drain.drainCollection(db, admin, collection, {
+    pageSize: 500,
+    maxDocsPerCollection: 2,
+  });
+  assert.equal(drainSummary.scanned, 2);
+  assert.equal(drainSummary.truncated, true);
+})();
+""",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_live_execute_rejects_truncated_runtime_evidence_before_firestore(tmp_path):
+    runtime = tmp_path / "runtime.json"
+    predelete = tmp_path / "predelete.json"
+    data = release_ready_drain_evidence()
+    data["collections"]["events"]["truncated"] = True
+    runtime.write_text(json.dumps(data), encoding="utf-8")
+    result = subprocess.run(
+        [
+            "node",
+            "scripts/ci/drain_hermes_gateway_legacy_records.js",
+            "--execute",
+            "--confirm",
+            "delete-legacy-hermes-gateway-records",
+            "--project-id",
+            "burnbar",
+            "--live-production-acknowledgement",
+            "mutate-production-hermes-gateway-records-in-burnbar",
+            "--runtime-mode-evidence",
+            str(runtime),
+            "--predelete-export",
+            str(predelete),
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "events.truncated must be false" in result.stderr
+    assert not predelete.exists()
+
+
 def test_signal_shaped_but_invalid_records_are_blocking_malformed(tmp_path):
     fixture = tmp_path / "fixture.json"
     fixture.write_text(
@@ -497,3 +594,37 @@ def test_restore_utility_execute_requires_project_ack(tmp_path):
     )
     assert result.returncode != 0
     assert "--live-production-acknowledgement" in result.stderr
+
+
+def test_restore_utility_queues_create_not_overwrite():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            r"""
+const assert = require("node:assert/strict");
+const restore = require("./scripts/ci/restore_hermes_gateway_legacy_records.js");
+const calls = [];
+const writer = {
+  create: (doc, data) => calls.push({ method: "create", path: doc.path, data }),
+  set: () => calls.push({ method: "set" }),
+};
+const db = { doc: (path) => ({ path }) };
+restore.queueRestoreRecord(writer, db, {
+  path: "users/u/hermes_gateway_messages/m1",
+  data: { relayEnvelope: { ciphertext: "legacy" } },
+});
+assert.deepEqual(calls, [{
+  method: "create",
+  path: "users/u/hermes_gateway_messages/m1",
+  data: { relayEnvelope: { ciphertext: "legacy" } },
+}]);
+""",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

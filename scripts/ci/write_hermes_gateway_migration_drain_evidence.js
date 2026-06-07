@@ -256,8 +256,14 @@ async function collectCollection(db, admin, collection, { pageSize, maxDocsPerCo
   const documents = [];
   let cursor;
   let truncated = false;
-  while (documents.length < maxDocsPerCollection) {
-    let query = db.collectionGroup(collection.collectionGroup).orderBy(admin.firestore.FieldPath.documentId()).limit(pageSize);
+  while (documents.length <= maxDocsPerCollection) {
+    const remainingWithSentinel = maxDocsPerCollection - documents.length + 1;
+    if (remainingWithSentinel <= 0) {
+      truncated = true;
+      break;
+    }
+    const queryLimit = Math.min(pageSize, remainingWithSentinel);
+    let query = db.collectionGroup(collection.collectionGroup).orderBy(admin.firestore.FieldPath.documentId()).limit(queryLimit);
     if (cursor) query = query.startAfter(cursor);
     const snap = await query.get();
     if (snap.empty) break;
@@ -268,8 +274,9 @@ async function collectCollection(db, admin, collection, { pageSize, maxDocsPerCo
       }
       documents.push(doc.data());
     }
+    if (truncated) break;
     cursor = snap.docs[snap.docs.length - 1];
-    if (snap.size < pageSize) break;
+    if (snap.size < queryLimit) break;
   }
   return summarizeDocuments(documents, collection, { sampleLimit: maxDocsPerCollection, truncated });
 }
@@ -390,6 +397,7 @@ module.exports = {
   classifyGatewayDocument,
   isValidGatewaySignalEnvelope,
   collectLiveEvidence,
+  collectCollection,
   summarizeDocuments,
   buildEvidence,
 };

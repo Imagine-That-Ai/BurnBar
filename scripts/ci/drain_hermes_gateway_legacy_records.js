@@ -105,6 +105,9 @@ function validateRuntimeModeEvidence(filePath, { requireLiveEvidence = false } =
       }
       const collections = raw.collections ?? {};
       for (const [name, summary] of Object.entries(collections)) {
+        if (summary?.truncated === true) {
+          errors.push(`runtime mode evidence ${name}.truncated must be false before live execute`);
+        }
         const counts = summary.counts ?? summary.classifications ?? {};
         for (const field of BLOCKERS) {
           if (Number(counts[field] ?? 0) !== 0) {
@@ -186,12 +189,23 @@ async function drainCollection(db, admin, collection, options) {
   let scanned = 0;
   let blocked = 0;
   let cursor;
-  while (scanned < options.maxDocsPerCollection) {
-    let query = db.collectionGroup(collection.collectionGroup).orderBy(admin.firestore.FieldPath.documentId()).limit(options.pageSize);
+  let truncated = false;
+  while (scanned <= options.maxDocsPerCollection) {
+    const remainingWithSentinel = options.maxDocsPerCollection - scanned + 1;
+    if (remainingWithSentinel <= 0) {
+      truncated = true;
+      break;
+    }
+    const queryLimit = Math.min(options.pageSize, remainingWithSentinel);
+    let query = db.collectionGroup(collection.collectionGroup).orderBy(admin.firestore.FieldPath.documentId()).limit(queryLimit);
     if (cursor) query = query.startAfter(cursor);
     const snap = await query.get();
     if (snap.empty) break;
     for (const doc of snap.docs) {
+      if (scanned >= options.maxDocsPerCollection) {
+        truncated = true;
+        break;
+      }
       const classification = classifyGatewayDocument(doc.data(), collection.plaintextFields);
       counts[classification] = (counts[classification] ?? 0) + 1;
       scanned += 1;
@@ -224,12 +238,15 @@ async function drainCollection(db, admin, collection, options) {
         }
       }
     }
+    if (truncated) break;
     cursor = snap.docs[snap.docs.length - 1];
-    if (snap.size < options.pageSize) break;
+    if (snap.size < queryLimit) break;
   }
   return {
     collectionGroup: collection.collectionGroup,
     scanned,
+    sampleLimit: options.maxDocsPerCollection,
+    truncated,
     counts,
     eligible: [...DELETABLE].reduce((total, field) => total + (counts[field] ?? 0), 0),
     blocked,
@@ -271,6 +288,12 @@ function markExecuted(preview) {
     eligible: preview.eligible,
     blocked: preview.blocked,
   };
+}
+
+function truncatedCollections(preview) {
+  return Object.entries(preview.collections ?? {})
+    .filter(([, summary]) => summary?.truncated === true)
+    .map(([name]) => name);
 }
 
 async function deleteCapturedCandidates(options, deleteCandidates) {
@@ -409,6 +432,12 @@ async function main(argv = process.argv.slice(2)) {
     if (privateExport.blockedRecords.length > 0 && options.quarantineOutput) {
       writePrivateExport(privateExport, options.quarantineOutput);
     }
+    const truncated = truncatedCollections(preview);
+    if (truncated.length > 0) {
+      throw new Error(
+        `refusing --execute because the scan reached maxDocsPerCollection before exhausting collection group(s): ${truncated.join(", ")}`,
+      );
+    }
     if (preview.blocked > 0) {
       throw new Error(
         "refusing --execute because unreadable/malformed/unknown records are present; preserve them with --quarantine-output and investigate manually",
@@ -447,6 +476,7 @@ module.exports = {
   runtimeModeEvidenceErrors,
   validateRuntimeModeEvidence,
   summarizeFixture,
+  drainCollection,
   DELETABLE,
   BLOCKERS,
   parseArgs,

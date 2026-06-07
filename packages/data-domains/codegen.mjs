@@ -282,7 +282,8 @@ const TIER_DISPLAY = {
     label: "End-to-end",
     badge: "Only your devices",
     icon: "lock",
-    serverLine: "Sealed on your device. Our servers never see the content or the key.",
+    serverLine:
+      "Designed for device-sealed content; public launch stays gated until runtime-readiness evidence proves servers only hold ciphertext.",
     cssVar: "--color-tier-end-to-end",
   },
 };

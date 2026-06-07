@@ -147,7 +147,7 @@ export const SURFACES: Surface[] = [
       "Local Python MCP — 26 tools over your OpenBurnBar SQLite, read-mostly by default",
       "Hosted Remote MCP — live at https://mcp.burnbar.ai/mcp, 8 tools, BurnBar Pro entitlement",
       "Local stdio shim — bridges stdio-only clients to the hosted endpoint, decrypts on-device",
-      "Default privacy mode is local_decrypt_shim — server never sees plaintext queries or bodies"
+      "Default privacy mode is local_decrypt_shim — public rollout stays gated until runtime-readiness evidence proves servers cannot read plaintext queries or bodies"
     ],
     cta: { href: "/mcp", label: "See the MCP page" }
   }

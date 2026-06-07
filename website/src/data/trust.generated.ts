@@ -67,8 +67,8 @@ export const TRUST_TIERS: readonly TrustTier[] = [
     "id": "end_to_end",
     "label": "End-to-end",
     "badge": "Only your devices",
-    "definition": "Sealed on-device with the vault key; BurnBar never sees plaintext or the key. Deletion is genuine ciphertext deletion.",
-    "serverLine": "Sealed on your device. Our servers never see the content or the key.",
+    "definition": "Designed to be sealed on-device with the vault key; public launch stays gated until runtime-readiness evidence proves BurnBar cannot read plaintext or keys.",
+    "serverLine": "Designed for device-sealed content; public launch stays gated until runtime-readiness evidence proves servers only hold ciphertext.",
     "colorHex": "#3cd6c0",
     "cssVar": "--color-tier-end-to-end",
     "icon": "lock"
@@ -100,8 +100,8 @@ export const TRUST_TIER_BY_ID: Record<TrustTierId, TrustTier> = {
     "id": "end_to_end",
     "label": "End-to-end",
     "badge": "Only your devices",
-    "definition": "Sealed on-device with the vault key; BurnBar never sees plaintext or the key. Deletion is genuine ciphertext deletion.",
-    "serverLine": "Sealed on your device. Our servers never see the content or the key.",
+    "definition": "Designed to be sealed on-device with the vault key; public launch stays gated until runtime-readiness evidence proves BurnBar cannot read plaintext or keys.",
+    "serverLine": "Designed for device-sealed content; public launch stays gated until runtime-readiness evidence proves servers only hold ciphertext.",
     "colorHex": "#3cd6c0",
     "cssVar": "--color-tier-end-to-end",
     "icon": "lock"

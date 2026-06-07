@@ -43,7 +43,7 @@ export interface DataDomain {
 export const ENCRYPTION_TIERS = {
   "server_readable": "Stored as plaintext; BurnBar's servers can read it (operational metadata, telemetry, billing).",
   "zero_access": "Encrypted at rest; BurnBar cannot read the content but holds the wrapped key escrow path under user-controlled device trust.",
-  "end_to_end": "Sealed on-device with the vault key; BurnBar never sees plaintext or the key. Deletion is genuine ciphertext deletion."
+  "end_to_end": "Designed to be sealed on-device with the vault key; public launch stays gated until runtime-readiness evidence proves BurnBar cannot read plaintext or keys."
 } as const;
 
 export const DATA_DOMAINS: readonly DataDomain[] = [

@@ -81,7 +81,7 @@ export const FLOO_CAPABILITIES: Capability[] = [
     id: "unlock",
     title: "Unlock your Mac from your phone",
     blurb:
-      "Walk up to a locked Mac and unlock it from your phone with Face ID or Touch ID. Your password is sealed end to end — it never appears in a log, a server, or anywhere you didn't put it.",
+      "Walk up to a locked Mac and unlock it from your phone with Face ID or Touch ID. Public rollout stays gated on runtime evidence, and the flow is designed so passwords never belong in logs or server-side storage.",
     evidence: "RemoteUnlock* (sealed credential, biometric-gated)"
   }
 ];
@@ -89,7 +89,7 @@ export const FLOO_CAPABILITIES: Capability[] = [
 /** Floo's safety promises — the part that earns the feature. */
 export const FLOO_PROMISES: string[] = [
   "It only ever connects your own devices — the ones you've paired and trust.",
-  "Everything between them is end-to-end encrypted. No one in the middle can read it, and that includes us.",
+  "Public rollout stays gated until runtime evidence proves the paired-device encryption boundary.",
   "Every connection asks first. Decline and it backs off.",
   "One tap ends it — the screen view, the call, the control, all of it, instantly."
 ];
