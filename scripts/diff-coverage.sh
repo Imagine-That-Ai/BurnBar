@@ -38,8 +38,11 @@ if [[ -z "$lines_json" && -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.
   "$repo_root/scripts/extract-coverage-lines.sh" "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json" 2>/dev/null || lines_json=""
 fi
 
+# Coverage is a production-code gate: test sources and CI tooling scripts are
+# never coverage targets (the app XCTest scheme does not even run package
+# tests, so they would always read 0% here while passing in their own lane).
 changed_files=""
-if ! changed_files="$(git diff --name-only "$base_ref" HEAD -- '*.swift' 2>/dev/null)"; then
+if ! changed_files="$(git diff --name-only "$base_ref" HEAD -- '*.swift' ':(exclude)*Tests*' ':(exclude)scripts/*' 2>/dev/null)"; then
   changed_files=""
 fi
 
@@ -95,7 +98,7 @@ for item in cov.get("targets", []):
     file_map_by_base[os.path.basename(rel)] = item
 
 changed_file_list = subprocess.check_output(
-    ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.swift"],
+    ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.swift", ":(exclude)*Tests*", ":(exclude)scripts/*"],
     cwd=repo_root,
     text=True,
 ).splitlines()
