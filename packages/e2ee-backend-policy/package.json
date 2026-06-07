@@ -1,0 +1,22 @@
+{
+  "name": "@openburnbar/e2ee-backend-policy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MIT-compatible E2EE backend selection policy shared by the gateway seam and BurnBar product lane.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test lib/index.test.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

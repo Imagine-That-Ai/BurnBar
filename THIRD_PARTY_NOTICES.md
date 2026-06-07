@@ -1,42 +1,91 @@
 # Third-Party Notices
 
-This file records third-party components and notices that must travel with
-OpenBurnBar source releases, binary releases, and hosted-service source offers.
-It complements `THIRD_PARTY.md`, which covers bundled brand/logo assets and
-operational dependency risk notes.
+BurnBar's main shipped product is licensed under AGPL-3.0-only. This notice
+preserves attribution for third-party and upstream components that BurnBar
+includes, adapts, vendors, or builds against.
 
-## Official Signal libsignal
+This file is not a replacement for the referenced license texts. When a
+component ships with its own `LICENSE`, `NOTICE`, acknowledgments, or source
+offer, keep that material with the distribution.
 
-- Upstream: `https://github.com/signalapp/libsignal`
-- Pinned tag: `v0.94.4`
-- Pinned tag object: `03c449017b57eccbda715b8b018dce5dff603ac6`
-- Pinned source commit: `46d867c986f66201e34e7ae20ce423eec742bf3f`
-- License: `AGPL-3.0-only`
-- Node artifact: `@signalapp/libsignal-client@0.94.4`
-- Node integrity: `sha512-ZkZN3Vy+yK4X+qx13nrW+Ve4ofIvxW9QQ22YS7uL76Cls5y2tcrXWQJc5l8lFVOZ7zctsGHp38ikbcJOMeHwxg==`
-- Android artifacts: `org.signal:libsignal-client:0.94.4` and
-  `org.signal:libsignal-android:0.94.4` from
-  `https://build-artifacts.signal.org/libraries/maven/`
+## BurnBar Product Code
 
-OpenBurnBar uses the official Signal-maintained libsignal distribution for the
-Signal Protocol adoption path. The repository-wide AGPL-3.0-only license means
-future libsignal-linked BurnBar artifacts do not require a separate scoped
-license boundary. Legal approval is still required before shipping public
-libsignal-linked binaries or hosted services. Runtime adoption is tracked
-separately in `third_party/libsignal/runtime-readiness.json`; do not treat this
-notice as proof that all private-domain writes already use libsignal.
+- License: AGPL-3.0-only.
+- Scope: the main shipped BurnBar product tree, including Signal/libsignal-backed
+  E2EE integrations and BurnBar product packaging.
+- License text: [LICENSE](LICENSE).
 
-## Dependency License Reports
+## Nous Hermes / MIT-Origin Code
 
-Release builds must include dependency license evidence for the ecosystems they
-ship:
+- License: MIT.
+- Copyright: Copyright (c) 2025 Nous Research, where present in upstream
+  Hermes files.
+- Scope: Hermes-origin agent, gateway, plugin, CLI, and supporting code that
+  BurnBar carries forward or modifies.
+- Notice: MIT-origin copyright and permission notices must be preserved in
+  source distributions and any generated third-party notice bundle.
 
-- npm packages: package lockfiles plus generated SBOM/license report
-- Swift Package Manager packages: `Package.resolved` plus generated SBOM/license
-  report
-- Cargo crates: `Cargo.lock` plus generated SBOM/license report
-- Android Gradle packages: Gradle lock/dependency report where applicable
-- Extension packages: package lockfiles plus generated SBOM/license report
+## OpenBurnBar MIT-Compatible Helper Packages
 
-Do not remove upstream license files, acknowledgement files, or attribution
-comments from vendored artifacts.
+- `packages/e2ee-backend-policy/`: first-party MIT-compatible backend selection
+  policy. It names the gateway v5 and BurnBar Signal backend IDs and enforces
+  fail-closed selection rules, but it does not import, link, or depend on
+  libsignal. This package is safe to reuse in the MIT upstream seam.
+
+## Signal / libsignal / Sparse Post-Quantum Ratchet
+
+- License: AGPL-3.0-only.
+- Copyright: Signal Messenger LLC and contributors, as recorded by upstream
+  Signal source files and acknowledgments.
+- Vendored source: `Vendor/libsignal/`.
+- Pinned tag: `v0.94.4` (commit `46d867c986f66201e34e7ae20ce423eec742bf3f`).
+- Upstream project: https://github.com/signalapp/libsignal
+- SPQR dependency: `SparsePostQuantumRatchet`, referenced by Signal's
+  `Vendor/libsignal/Cargo.toml`.
+- Product role: official Signal/libsignal-backed E2EE and post-quantum ratchet
+  implementation path for BurnBar product builds.
+
+## OpenBurnBar Signal Facades
+
+- `packages/libsignal-bridge/`: AGPL-backed wrapper around
+  `@signalapp/libsignal-client`.
+- `packages/libsignal-protocol/`: BurnBar Signal-protocol facade and tests.
+- `packages/signal-envelope-contracts/`: BurnBar Signal-envelope schemas and
+  canonicalization helpers used by product services.
+
+These packages are part of the BurnBar AGPL product lane and must not be copied
+into the MIT-only Nous/Hermes upstream PR path.
+
+The machine-readable runtime readiness gate lives at
+`third_party/libsignal/runtime-readiness.json`. Keep it fail-closed until every
+native/runtime, hosted write-path, source-provenance, and legal-release gate has
+current evidence.
+
+Generate the release provenance record with
+`python scripts/ci/write_burnbar_source_provenance.py --output <release-artifact>.json`
+when preparing a Signal-enabled build or hosted-gateway release.
+
+## Apache / MIT / BSD Dependencies
+
+BurnBar also depends on permissively licensed dependencies across Python, Node,
+Swift, Kotlin/Android, and Rust build surfaces. Preserve their upstream notices,
+license files, and acknowledgments in generated distribution bundles.
+
+Known examples in this tree include:
+
+- `plugins/security-guidance/`: Apache-2.0, with its own `LICENSE` and `NOTICE`.
+- `plugins/hermes-achievements/`: MIT, with its own `LICENSE`.
+- Swift Package Manager, Gradle, npm, and Python dependencies resolved during
+  platform builds.
+
+## Compliance Rule For Upstream Contributions
+
+The Nous/Hermes upstream PR lane is MIT-only. It must not include:
+
+- `Vendor/libsignal/`
+- `@signalapp/libsignal-client`
+- `org.signal:libsignal-client` or `org.signal:libsignal-android`
+- `SparsePostQuantumRatchet`
+- first-party BurnBar libsignal bridge packages
+
+Use `scripts/verify_burnbar_mit_pr_clean.py` before preparing a Nous/Hermes PR.

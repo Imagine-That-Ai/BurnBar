@@ -2,10 +2,13 @@
 /**
  * Encryption-tier badge for the public trust surface (burnbar.ai/trust).
  *
- * The color comes straight from the generated `tier.colorHex` — which codegen
- * sources from packages/design-tokens/tokens/pensieve.tokens.json — so the badge
- * matches the in-app Data & Privacy Control Center byte-for-byte. Do not hardcode
- * tier colors here; pass a TrustTier from trust.generated.ts.
+ * Tier hue: the theme-flipping tokens (--tier-server/--tier-zero/--tier-e2e in
+ * tokens.css) drive the badge so it holds AA in both themes; in the dark theme
+ * those tokens equal the generated `tier.colorHex` byte-for-byte (codegen from
+ * packages/design-tokens/tokens/pensieve.tokens.json — asserted by the
+ * registry tests), so the badge still matches the in-app Data & Privacy
+ * Control Center. `tier.colorHex` stays as the fallback for unknown tier ids.
+ * Do not hardcode tier colors here; pass a TrustTier from trust.generated.ts.
  */
 import type { TrustTier } from "@data/trust.generated";
 
@@ -17,7 +20,10 @@ interface Props {
 const { tier, size = "sm" } = Astro.props;
 ---
 
-<span class:list={["tierbadge", `tierbadge--${size}`]} style={`--tier-c: ${tier.colorHex}`}>
+<span
+  class:list={["tierbadge", `tierbadge--${size}`, `tierbadge--${tier.id}`]}
+  style={`--tier-c-fallback: ${tier.colorHex}`}
+>
   <span class="tierbadge__ico" aria-hidden="true">
     {
       tier.icon === "eye" && (
@@ -71,7 +77,7 @@ const { tier, size = "sm" } = Astro.props;
 
 <style>
   .tierbadge {
-    --tier-c: var(--text-mute);
+    --tier-c: var(--tier-c-fallback, var(--text-mute));
     display: inline-flex;
     align-items: center;
     gap: 0.4em;
@@ -82,11 +88,27 @@ const { tier, size = "sm" } = Astro.props;
     padding: 0.4em 0.7em 0.4em 0.55em;
     border-radius: var(--r-pill);
     color: var(--tier-c);
-    /* AA-safe: full-saturation tier hue on a low-alpha tint of itself. */
+    /* AA-safe: full-saturation tier hue on a low-alpha tint of itself over the
+       theme canvas (ink on dark, paper on light). */
     border: 1px solid color-mix(in oklab, var(--tier-c) 45%, transparent);
-    background: color-mix(in oklab, var(--tier-c) 12%, rgba(8, 8, 12, 0.85));
+    background: color-mix(in oklab, var(--tier-c) 12%, var(--ink-base));
     white-space: nowrap;
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Known tiers ride the theme-flipping tokens (AA-darkened on paper). */
+  .tierbadge.tierbadge--server_readable {
+    --tier-c: var(--tier-server);
+  }
+  .tierbadge.tierbadge--zero_access {
+    --tier-c: var(--tier-zero);
+  }
+  .tierbadge.tierbadge--end_to_end {
+    --tier-c: var(--tier-e2e);
+  }
+
+  :root[data-theme="light"] .tierbadge {
+    text-shadow: none;
   }
   .tierbadge--lg {
     font-size: 0.82rem;

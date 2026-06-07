@@ -1,0 +1,32 @@
+{
+  "name": "CryptoKitAtRestInteropVector",
+  "version": 1,
+  "description": "Committed cross-implementation at-rest seal vectors (ADR-001 §7.2): official libsignal (Rust core via Node bindings) and Apple CryptoKit must open each other's seals. Suite: HPKE Base mode, X25519-HKDF-SHA256 / HKDF-SHA256 / AES-256-GCM (libsignal Base_X25519_HkdfSha256_Aes256Gcm == CryptoKit Curve25519_HKDF_SHA256 + AES_GCM_256). Framing: 0x01 type byte || 32-byte X25519 encapsulated key || AES-256-GCM ciphertext. The recipient private key is a fixed PUBLIC test key (KAT material only).",
+  "recipientPrivateKeyB64": "sPE8uL/ZPWVT0jB5aJzMPAV9f9jSMPPDlgEJsSRrMVw=",
+  "recipientPublicKeyB64": "BUgRMxAlrv3fZbcOGw+onqeH/XUISP6VZs7a5Z1iw9cz",
+  "infoB64": "T3BlbkJ1cm5CYXItQXRSZXN0LUludGVyb3AtS0FULXYx",
+  "aadB64": "YmluZGluZ3xpbnRlcm9wLWthdHxjcnlwdG9raXQtbGlic2lnbmFs",
+  "cases": [
+    {
+      "id": "libsignal-seals-cryptokit-opens",
+      "sealer": "official libsignal v0.94.4 (@signalapp/libsignal-client PublicKey.seal)",
+      "opener": "Apple CryptoKit HPKE.Recipient (CryptoKitAtRestInteropTests.swift) + libsignal (this script)",
+      "plaintextB64": "T3BlbkJ1cm5CYXIgYXQtcmVzdCBpbnRlcm9wIEtBVDogc2VhbGVkIGJ5IG9mZmljaWFsIGxpYnNpZ25hbCwgb3BlbmVkIGJ5IEFwcGxlIENyeXB0b0tpdC4=",
+      "sealedB64": "AUoJfNZUqUuppN81gOJg2ffnlhUGF2zgMPzOn62YgIg3jLyXFvoDmr/wSdnrDaoLGLPCcRIIDIt6qtJg5JqArUO7jmADg8/qNed0yXUAyUZ0ZT3BKmLKUIaOpvPYKoqqoGWUYUPg5Hl4r/6Z+kUEKIpV9YB5fmm9F91O3o0NNTQ4vxsPD+bUwi7r"
+    },
+    {
+      "id": "cryptokit-seals-libsignal-opens",
+      "sealer": "Apple CryptoKit HPKE.Sender (scripts/ci/cryptokit-hpke-cli.swift, zero libsignal)",
+      "opener": "official libsignal PrivateKey.open (this script + CryptoKitAtRestInteropTests.swift)",
+      "plaintextB64": "T3BlbkJ1cm5CYXIgYXQtcmVzdCBpbnRlcm9wIEtBVDogc2VhbGVkIGJ5IEFwcGxlIENyeXB0b0tpdCwgb3BlbmVkIGJ5IG9mZmljaWFsIGxpYnNpZ25hbC4=",
+      "sealedB64": "AZHFkWTNuQnuBo0dMNUBekvkbbYy+5omHXKQkvZbIr0ItCcP5rb4cyw6awC3G0soUJ0OwFg+m8vUrN3U7JMMG6qup3OWDv5rlStFkCl03fWK6lJXHxUe7ksNJw/EEQ8S5h5MLzTTn/SbmwlJOHlGRIGzIqSyXDAA6QLz021AzZnhB9OEY+IHq5/g"
+    }
+  ],
+  "provenance": {
+    "generator": "scripts/ci/generate-cryptokit-interop-vector.mjs --emit",
+    "verifiedAtEmit": [
+      "libsignal sealed case 1; pure CryptoKit opened it (live)",
+      "pure CryptoKit sealed case 2; libsignal opened it (live)"
+    ]
+  }
+}
