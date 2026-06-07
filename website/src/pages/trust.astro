@@ -1,0 +1,701 @@
+---
+/**
+ * /trust — the flagship trust surface: the license, the seal, and the
+ * machine-checked claims behind both.
+ *
+ * Every factual sentence on this page is either approved verbatim copy or an
+ * interpolation from the licensing / crypto / trust data modules. The crypto
+ * claims and tier data are codegen outputs guarded by CI drift gates, so this
+ * page cannot quietly drift from the architecture it describes. This file
+ * contributes structure and rhythm only — never new claims.
+ */
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { SITE } from "@data/site";
+import { LICENSING, HORCRUX, CLAIM_PAIRS } from "@data/licensing";
+import {
+  CRYPTO_CLAIMS,
+  CRYPTO_NOT_CLAIMS,
+  LIBSIGNAL_PIN,
+  LIBSIGNAL_ROLLOUT_STATUS
+} from "@data/crypto-claims.generated";
+import { TRUST_TIERS } from "@data/trust.generated";
+import SealBadge from "@components/SealBadge.astro";
+import TrustBoundaryMap from "@components/TrustBoundaryMap.astro";
+import ClaimsLedger from "@components/ClaimsLedger.astro";
+import LicenseFeatureCard from "@components/LicenseFeatureCard.astro";
+import TrustTierBadge from "@components/TrustTierBadge.astro";
+---
+
+<BaseLayout
+  title="Trust"
+  description="OpenBurnBar's trust architecture — AGPL-3.0 source you can read, sealed envelopes with pinned keys, and encryption claims machine-checked against the crypto registry in CI."
+>
+  <!-- ────────────────────────────── hero ────────────────────────────── -->
+  <section class="pagehead trusthero">
+    <div class="container container--wide">
+      <div class="trusthero__grid">
+        <div class="trusthero__copy">
+          <span class="eyebrow">Open source · Encrypted · Verifiable</span>
+          <h1 class="trusthero__h">
+            This page fact-checks itself.
+            <span class="trusthero__em">Every claim comes straight from our code.</span>
+          </h1>
+          <p class="lead">
+            We don't hand-write the encryption claims below. They're generated straight from the
+            real system that runs them, and re-checked every time we ship. If the words and the code
+            ever disagree, the build fails and this page can't go out. So don't just trust it — read
+            it, and check it yourself.
+          </p>
+
+          <ol class="howhonest" aria-label="How this page stays honest">
+            <li class="howhonest__step">
+              <span class="howhonest__n" aria-hidden="true">1</span>
+              <span class="howhonest__t">Our code records what it actually does.</span>
+            </li>
+            <li class="howhonest__step">
+              <span class="howhonest__n" aria-hidden="true">2</span>
+              <span class="howhonest__t">That record becomes the claims on this page.</span>
+            </li>
+            <li class="howhonest__step howhonest__step--gate">
+              <span class="howhonest__n" aria-hidden="true">3</span>
+              <span class="howhonest__t">If the two ever disagree, the build breaks.</span>
+            </li>
+          </ol>
+
+          <div class="trusthero__ctas">
+            <a class="btn btn--ember" href={SITE.github} target="_blank" rel="noopener noreferrer">
+              Read the source
+            </a>
+            <a class="btn btn--ghost" href="/privacy">Privacy model</a>
+          </div>
+        </div>
+
+        <div class="trusthero__visual">
+          <div class="trusthero__stamp">
+            <SealBadge variant="agpl" size={148} />
+          </div>
+          <div class="trusthero__map">
+            <TrustBoundaryMap view="relay" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────────────── A · the license ───────────────────────── -->
+  <section class="lic">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">The license</span>
+        <h2>We moved from MIT to AGPL. On purpose.</h2>
+        <p class="lead">
+          AGPL is the license that keeps network software honest: if anyone — including us — serves
+          you this software over a network, you're entitled to the source that's running. For a tool
+          that watches your spend and relays your screen between your devices, source access isn't a
+          nicety. It's the audit mechanism.
+        </p>
+      </header>
+
+      <LicenseFeatureCard />
+
+      <div class="lic__pairs">
+        <div class="lic__pairs-head">
+          <span class="lic__pairs-h">WE CLAIM</span>
+          <span class="lic__pairs-h">WE DON'T</span>
+        </div>
+        {
+          CLAIM_PAIRS.map((pair) => (
+            <div class="lic__pair">
+              <p class="lic__pair-claim">
+                <span class="lic__pair-tag" aria-hidden="true">
+                  We claim
+                </span>
+                <span class="sr-only">We claim: </span>
+                {pair.claim}
+              </p>
+              <p class="lic__pair-not">
+                <span class="lic__pair-tag" aria-hidden="true">
+                  We don't
+                </span>
+                <span class="sr-only">We don't claim: </span>
+                {pair.not}
+              </p>
+            </div>
+          ))
+        }
+      </div>
+
+      <p class="lic__facts">
+        <span class="lic__fact">{LICENSING.spdx} at HEAD</span>
+        <span class="lic__fact">{LICENSING.mitHistoryLine}</span>
+        <span class="lic__fact"><a href="/legal/terms">Terms</a></span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── B · the crypto core ────────────────────── -->
+  <section class="cryptocore">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">The crypto core</span>
+        <h2>We're putting the real Signal library where it belongs — carefully.</h2>
+      </header>
+
+      <p class="cryptocore__body">
+        We pinned Signal's official open-source library — the exact code, not a reimplementation —
+        for device-to-device lanes and at-rest sealing. Today it is {LIBSIGNAL_ROLLOUT_STATUS}: a
+        per-domain flag, default off, staged rollout, instant revert.
+      </p>
+      <p class="cryptocore__body">
+        The iPhone and iPad app is libsignal-free by design. It reads the same sealed envelopes
+        through Apple's CryptoKit — and that interop isn't a design promise: it's locked by
+        committed cross-implementation test vectors that run in CI, sealed by each library and
+        opened by the other. No Signal code ships in the App Store binary.
+      </p>
+
+      <div class="cryptocore__group">
+        <p class="cryptocore__strip">
+          <span class="cryptocore__strip-label">WHAT WE CLAIM</span>
+          <span class="cryptocore__strip-rule" aria-hidden="true"></span>
+        </p>
+        <ul class="cryptocore__list cryptocore__list--claim">
+          {CRYPTO_CLAIMS.map((c) => <li>{c.publicLine}</li>)}
+        </ul>
+      </div>
+
+      <div class="cryptocore__group">
+        <p class="cryptocore__strip">
+          <span class="cryptocore__strip-label">WHAT WE DON'T</span>
+          <span class="cryptocore__strip-rule" aria-hidden="true"></span>
+        </p>
+        <ul class="cryptocore__list cryptocore__list--not">
+          {CRYPTO_NOT_CLAIMS.map((line) => <li>{line}</li>)}
+        </ul>
+      </div>
+
+      <p class="cryptocore__prov bracket">
+        Generated from the crypto registry · pinned at v{LIBSIGNAL_PIN} · drift fails the build
+      </p>
+    </div>
+  </section>
+
+  <!-- ──────────────────────── C · our own seal ──────────────────────── -->
+  <section class="horcrux">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">{HORCRUX.name}</span>
+        <h2>So our open upstreams stay clean, we built our own seal.</h2>
+      </header>
+
+      <p class="horcrux__body">
+        Parts of our assistant stack live in open upstreams that must stay MIT-clean — code we share
+        back to communities that license their work permissively. Signal's library is AGPL; pulling
+        it into those lanes would close doors we want open. So every phone-to-gateway lane runs {
+          HORCRUX.name
+        }, {HORCRUX.descriptiveFallback}.
+      </p>
+      <p class="horcrux__body">
+        A CI job stands at that boundary: every contribution headed upstream is scanned so the MIT
+        lane stays MIT. Not an honor system — a gate.
+      </p>
+
+      <blockquote class="horcrux__boundary">
+        <p>{HORCRUX.honestBoundary}</p>
+        <footer class="horcrux__attr">— the part most pages leave out</footer>
+      </blockquote>
+
+      <p class="horcrux__aside">
+        {HORCRUX.name}: “{HORCRUX.expansionWhimsical}.” We checked — it's even true.
+      </p>
+
+      <div class="horcrux__motifs">
+        <SealBadge variant="sealed" size={96} />
+        <SealBadge variant="fail-closed" size={96} tier="zero" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── D · the wired ledger ───────────────────── -->
+  <section class="ledgersec">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Why believe this</span>
+        <h2>Our marketing is wired to our crypto registry.</h2>
+        <p class="lead">
+          Anyone can write a privacy page. Ours is compiled. The tier of every domain below is
+          generated from the registry our apps run on. Every claim line above is keyed to a model in
+          the crypto registry, its platform list comes straight from the policy matrix, and a
+          fail-closed gate rejects the copy the moment the registry — or the rollout state — stops
+          backing it. The wording is human; the facts behind it are machine-checked, and drift turns
+          the build red.
+        </p>
+      </header>
+
+      <div class="ledgersec__tiers">
+        {TRUST_TIERS.map((t) => <TrustTierBadge tier={t} size="lg" />)}
+      </div>
+
+      <ClaimsLedger />
+
+      <div class="ledgersec__ctas">
+        <a class="btn btn--ghost" href="/privacy#data-domains">Every data domain</a>
+        <a class="btn btn--ghost" href="/security">Security model</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* ────────────────────────────── hero ────────────────────────────── */
+
+  .pagehead {
+    padding-block: var(--s-10) var(--s-8);
+  }
+
+  .trusthero__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 10fr) minmax(0, 11fr);
+    gap: var(--s-8);
+    align-items: center;
+  }
+
+  .trusthero__h {
+    margin-top: var(--s-4);
+    font-size: clamp(2.9rem, 6.4vw, 5.5rem);
+    line-height: 1;
+    color: var(--text-bright);
+    /* Fraunces at display size needs air: a tight -0.04em collides short words
+       like "If our". Looser tracking + heavier weight keeps it crisp. */
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 540;
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+  }
+
+  .trusthero__em {
+    display: block;
+    margin-top: 0.08em;
+    color: var(--ember-bright);
+    /* font-style alone selects Fraunces' separate italic face (full-italic.css);
+       there is no "ital" variation axis. */
+    font-style: italic;
+    font-variation-settings:
+      "opsz" 144,
+      "wght" 440;
+    letter-spacing: -0.018em;
+  }
+
+  .trusthero .lead {
+    margin-top: var(--s-5);
+    max-width: 54ch;
+  }
+
+  /* "How this page stays honest" — the mechanism, in three plain beats.
+     Mono/forensic register; the build-breaks step carries the one ember accent. */
+  .howhonest {
+    list-style: none;
+    margin: var(--s-6) 0 0;
+    padding: 0;
+    display: grid;
+    gap: 1px;
+    background: var(--ink-line-soft);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    overflow: hidden;
+  }
+  .howhonest__step {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    background: var(--ink-surface);
+  }
+  .howhonest__n {
+    flex-shrink: 0;
+    width: 1.6em;
+    height: 1.6em;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--ink-line-bright);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-mute);
+  }
+  .howhonest__t {
+    font-size: 0.95rem;
+    color: var(--text-base);
+  }
+  .howhonest__step--gate {
+    background: var(--seal-ember-wash);
+  }
+  .howhonest__step--gate .howhonest__n {
+    border-color: var(--ember-core);
+    color: var(--ember-bright);
+  }
+  .howhonest__step--gate .howhonest__t {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 480;
+  }
+
+  .trusthero__ctas {
+    margin-top: var(--s-6);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+  }
+
+  /* The seal stamps the map's top-right corner: in-flow with a negative
+     margin so the overlap scales with the column, z-index keeps the stamp
+     above the boundary map. Light-theme safe by construction — both pieces
+     draw exclusively from theme-flipping tokens (no text-shadows, no
+     rgba-white highlights authored here). */
+  .trusthero__visual {
+    min-width: 0;
+  }
+
+  .trusthero__stamp {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: flex-end;
+    padding-inline-end: var(--s-5);
+    margin-bottom: calc(-1 * var(--s-5));
+    pointer-events: none;
+  }
+
+  .trusthero__map {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ─────────────────────── shared section rhythm ──────────────────── */
+
+  .lic,
+  .cryptocore,
+  .horcrux,
+  .ledgersec {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin-bottom: var(--s-6);
+    max-width: 64ch;
+  }
+
+  /* Section headings at the documented section scale. */
+  .lic h2,
+  .cryptocore h2,
+  .horcrux h2,
+  .ledgersec h2 {
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 480;
+    letter-spacing: -0.022em;
+  }
+
+  /* ─────────────────────── A · the license ────────────────────────── */
+
+  .lic__pairs {
+    margin-top: var(--s-7);
+  }
+
+  .lic__pairs-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-6);
+    padding-bottom: var(--s-3);
+    border-bottom: 1px solid var(--ink-line);
+  }
+
+  .lic__pairs-h {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    color: var(--text-mute);
+  }
+
+  /* Per-cell labels: screen readers always get the sr-only prefix; the visible
+     mono tag appears only when the header row is hidden (mobile stack). */
+  .lic__pair-tag {
+    display: none;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: var(--s-1);
+  }
+
+  .lic__pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-6);
+    padding-block: var(--s-5);
+    border-bottom: 1px solid var(--ink-line-soft);
+  }
+
+  .lic__pair:last-of-type {
+    border-bottom: 0;
+  }
+
+  .lic__pair p {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: var(--leading-base);
+  }
+
+  .lic__pair-claim {
+    color: var(--text-base);
+  }
+
+  .lic__pair-not {
+    position: relative;
+    padding-left: 1.1em;
+    color: var(--text-mute);
+  }
+
+  .lic__pair-not::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--text-dim);
+  }
+
+  .lic__facts {
+    margin-top: var(--s-6);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    row-gap: var(--s-2);
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    letter-spacing: 0.03em;
+    color: var(--text-mute);
+  }
+
+  .lic__fact {
+    padding-inline: var(--s-4);
+    border-left: 1px solid var(--ink-line-soft);
+  }
+
+  .lic__fact:first-child {
+    padding-inline-start: 0;
+    border-left: 0;
+  }
+
+  .lic__facts a {
+    color: var(--ember-bright);
+    text-decoration: underline;
+  }
+
+  /* ─────────────────────── B · the crypto core ────────────────────── */
+
+  .cryptocore__body {
+    margin: 0 0 var(--s-4);
+    color: var(--text-base);
+    line-height: var(--leading-base);
+    max-width: 62ch;
+  }
+
+  .cryptocore__group {
+    margin-top: var(--s-7);
+  }
+
+  .cryptocore__strip {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    margin: 0 0 var(--s-4);
+  }
+
+  .cryptocore__strip-label {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    letter-spacing: 0.06em;
+    color: var(--text-mute);
+    white-space: nowrap;
+  }
+
+  .cryptocore__strip-rule {
+    flex: 1;
+    height: 1px;
+    background: var(--ink-line-soft);
+  }
+
+  .cryptocore__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  .cryptocore__list li {
+    position: relative;
+    padding-left: 1.1em;
+    color: var(--text-base);
+    line-height: var(--leading-base);
+  }
+
+  .cryptocore__list li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+  }
+
+  .cryptocore__list--claim li::before {
+    color: var(--ember-bright);
+  }
+
+  .cryptocore__list--not li::before {
+    color: var(--text-dim);
+  }
+
+  /* Provenance: the corner-tick frame comes from the global .bracket. */
+  .cryptocore__prov {
+    display: inline-block;
+    margin-top: var(--s-7);
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    letter-spacing: 0.04em;
+    color: var(--text-mute);
+  }
+
+  /* ─────────────────────── C · our own seal ───────────────────────── */
+
+  .horcrux__body {
+    margin: 0 0 var(--s-4);
+    color: var(--text-base);
+    line-height: var(--leading-base);
+    max-width: 62ch;
+  }
+
+  .horcrux__boundary {
+    margin: var(--s-7) 0 0;
+    border-left: 2px solid var(--ember-bright);
+    padding: var(--s-6);
+    border-radius: 0 var(--r-4) var(--r-4) 0;
+  }
+
+  .horcrux__boundary p {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    line-height: 1.35;
+    color: var(--text-bright);
+    font-variation-settings:
+      "opsz" 36,
+      "wght" 420;
+    letter-spacing: -0.014em;
+  }
+
+  .horcrux__attr {
+    margin-top: var(--s-4);
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    letter-spacing: 0.04em;
+    color: var(--text-mute);
+  }
+
+  .horcrux__aside {
+    margin: var(--s-5) 0 0;
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    letter-spacing: 0.02em;
+    color: var(--text-mute);
+    max-width: 62ch;
+  }
+
+  .horcrux__motifs {
+    margin-top: var(--s-7);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-6) var(--s-8);
+  }
+
+  /* ─────────────────────── D · the wired ledger ───────────────────── */
+
+  .ledgersec__tiers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    margin-bottom: var(--s-6);
+  }
+
+  .ledgersec__ctas {
+    margin-top: var(--s-7);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+  }
+
+  /* ───────────────────────── responsive ───────────────────────────── */
+
+  @media (max-width: 960px) {
+    .trusthero__grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-7);
+    }
+  }
+
+  @media (max-width: 720px) {
+    .pagehead {
+      padding-block: var(--s-8) var(--s-7);
+    }
+
+    .lic,
+    .cryptocore,
+    .horcrux,
+    .ledgersec {
+      padding-block: var(--s-7);
+    }
+
+    .lic__pairs-head {
+      display: none;
+    }
+
+    .lic__pair {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-3);
+    }
+
+    .lic__pair-tag {
+      display: block;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .lic__facts {
+      flex-direction: column;
+      gap: var(--s-2);
+    }
+
+    .lic__fact {
+      padding-inline: 0;
+      border-left: 0;
+    }
+
+    .horcrux__boundary {
+      padding: var(--s-5);
+    }
+
+    .trusthero__stamp {
+      padding-inline-end: var(--s-3);
+      /* no overlap at phone widths — the seal would land on the map's pin labels */
+      margin-bottom: var(--s-3);
+    }
+  }
+
+  /*
+   * Light theme: every color above routes through theme-flipping tokens —
+   * no text-shadows, no rgba(255, …) highlights, no hardcoded hex — so
+   * :root[data-theme="light"] needs no overrides here. The page authors no
+   * animations of its own; motion (and its reduced-motion handling) lives
+   * inside SealBadge and TrustBoundaryMap.
+   */
+</style>

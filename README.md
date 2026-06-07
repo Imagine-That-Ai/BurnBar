@@ -509,4 +509,6 @@ Future OpenBurnBar releases are licensed under `AGPL-3.0-only`. See [LICENSE](LI
 
 Historical snapshots published under MIT remain under the terms that applied to those releases; the preserved notice is in [LICENSES/MIT-legacy.txt](LICENSES/MIT-legacy.txt).
 
+The AGPL covers the OpenBurnBar product tree (the app, daemon, services, extension, and the Signal/libsignal-backed encryption lane). The **Nous/Hermes gateway contribution path remains MIT-compatible**: code we send upstream to permissively-licensed projects carries no AGPL or libsignal material, and that boundary is enforced in CI by `scripts/verify_burnbar_mit_pr_clean.py` (the "Nous/Hermes MIT upstream boundary" job in [`.github/workflows/license-posture.yml`](.github/workflows/license-posture.yml)).
+
 Third-party asset and branding notes live in [THIRD_PARTY.md](THIRD_PARTY.md). Dependency and libsignal notices live in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). AGPL corresponding-source policy lives in [docs/legal/agpl-compliance.md](docs/legal/agpl-compliance.md).

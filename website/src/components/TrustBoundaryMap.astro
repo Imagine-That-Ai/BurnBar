@@ -1,0 +1,539 @@
+---
+/**
+ * TrustBoundaryMap — the "where the seal holds" diagram for the public trust surface.
+ *
+ * Two honest views:
+ *   - "relay" (default): your Mac and your phone as solid trusted islands; the relay as a
+ *     dashed untrusted cloud between them; a sealed envelope that crosses the cloud without
+ *     ever opening. The single ember accent is the fail-closed gate on the device boundary.
+ *   - "tiers": the three encryption tiers as horizontal lanes, tinted by their tier tokens
+ *     and carrying the exact tier sentences — no stronger wording than we can defend.
+ *
+ * Every color routes through tokens.css custom properties (or color-mix over them), so both
+ * themes hold without per-theme overrides. Motion is CSS-only and reduced-motion safe: with
+ * reduced motion the envelope pins mid-cloud, which still tells the story — a sealed envelope
+ * sitting inside untrusted territory.
+ */
+
+import { TRUST_TIERS } from "@data/trust.generated";
+
+interface Props {
+  /** "relay": devices + untrusted relay between them. "tiers": the three encryption tiers as lanes. */
+  view?: "relay" | "tiers";
+  /** Tighter height + fewer labels for in-page bands. */
+  compact?: boolean;
+  class?: string;
+}
+
+const { view = "relay", compact = false, class: className = "" } = Astro.props;
+
+// Deterministic per-instance id suffix: djb2 over the props. Never random, never clock-based,
+// so server and client renders (and repeat builds) agree byte-for-byte.
+const seed = `${view}|${compact ? "c" : "f"}|${className}`;
+let hash = 5381;
+for (let i = 0; i < seed.length; i += 1) hash = ((hash * 33) ^ seed.charCodeAt(i)) >>> 0;
+const uid = `tbm-${hash.toString(36)}`;
+
+// Tier lanes render straight from the generated trust surface — label, sentence,
+// and icon all come from trust.generated.ts (drift-gated), never hand-typed; only
+// the theme-flipping token per tier id lives here.
+const TIER_TOKEN: Record<string, string> = {
+  server_readable: "--tier-server",
+  zero_access: "--tier-zero",
+  end_to_end: "--tier-e2e"
+};
+const lanes = TRUST_TIERS.map((tier) => ({
+  token: TIER_TOKEN[tier.id] ?? "--text-mute",
+  label: tier.label.toUpperCase(),
+  line: tier.serverLine,
+  icon: tier.icon
+}));
+---
+
+<figure class:list={["tbm", `tbm--${view}`, compact && "tbm--compact", className]}>
+  {
+    view === "relay" && (
+      <div class="tbm__stage">
+        <svg
+          class="tbm__svg"
+          viewBox="0 0 920 360"
+          xmlns="http://www.w3.org/2000/svg"
+          role="img"
+          aria-labelledby={`${uid}-title ${uid}-desc`}
+        >
+          <title id={`${uid}-title`}>
+            Trust boundary map: your devices and the untrusted relay
+          </title>
+          <desc id={`${uid}-desc`}>
+            Two islands marked Your Mac and Your Phone sit inside solid trust boundaries with pinned
+            keys. Between them, a dashed cloud marked untrusted relay carries a sealed envelope that
+            crosses without being opened. Where the lane meets the device boundary, a gate marked
+            fails closed refuses anything that tries to downgrade.
+          </desc>
+
+          {/* left island: your Mac (solid boundary = trusted) */}
+          <g>
+            <rect
+              x="40"
+              y="70"
+              width="230"
+              height="220"
+              rx="16"
+              fill="var(--glass-bg)"
+              stroke="var(--text-mute)"
+              stroke-opacity="0.7"
+              stroke-width="1.5"
+            />
+            <rect
+              x="103"
+              y="118"
+              width="104"
+              height="66"
+              rx="7"
+              fill="none"
+              stroke="var(--text-mute)"
+              stroke-width="1.5"
+            />
+            <line x1="104" y1="131" x2="206" y2="131" stroke="var(--text-dim)" stroke-width="1.2" />
+            <text class="tbm-label" x="155" y="217" text-anchor="middle">
+              YOUR MAC
+            </text>
+            <path d="M155 70l-5 -9a6 6 0 1 1 10 0Z" fill="var(--text-mute)" />
+            <circle cx="155" cy="58.5" r="1.7" fill="var(--ink-base)" />
+            {!compact && (
+              <text class="tbm-micro" x="155" y="48" text-anchor="middle">
+                KEYS PINNED
+              </text>
+            )}
+          </g>
+
+          {/* right island: your phone (solid boundary = trusted) */}
+          <g>
+            <rect
+              x="650"
+              y="70"
+              width="230"
+              height="220"
+              rx="16"
+              fill="var(--glass-bg)"
+              stroke="var(--text-mute)"
+              stroke-opacity="0.7"
+              stroke-width="1.5"
+            />
+            <rect
+              x="741"
+              y="112"
+              width="58"
+              height="84"
+              rx="10"
+              fill="none"
+              stroke="var(--text-mute)"
+              stroke-width="1.5"
+            />
+            <line x1="761" y1="124" x2="779" y2="124" stroke="var(--text-dim)" stroke-width="1.2" />
+            <text class="tbm-label" x="770" y="217" text-anchor="middle">
+              YOUR PHONE
+            </text>
+            <path d="M765 70l-5 -9a6 6 0 1 1 10 0Z" fill="var(--text-mute)" />
+            <circle cx="765" cy="58.5" r="1.7" fill="var(--ink-base)" />
+            {!compact && (
+              <text class="tbm-micro" x="765" y="48" text-anchor="middle">
+                KEYS PINNED
+              </text>
+            )}
+          </g>
+
+          {/* untrusted relay: dashed cloud */}
+          <path
+            class="tbm-cloud"
+            d="M352 214h176c24 0 44 -19 44 -43c0 -21 -15 -38 -35 -42c1 -4 2 -9 2 -13c0 -28 -23 -51 -51 -51c-20 0 -37 11 -45 28c-6 -4 -14 -7 -22 -7c-22 0 -40 18 -40 40c0 2 0 4 1 6c-19 5 -33 22 -33 42c0 22 18 40 41 40Z"
+            fill="color-mix(in oklab, var(--text-dim) 6%, transparent)"
+            stroke="var(--text-dim)"
+            stroke-width="1.2"
+            stroke-dasharray="6 5"
+          />
+          <text class="tbm-cloud-label" x="460" y="136" text-anchor="middle">
+            UNTRUSTED RELAY
+          </text>
+          {!compact && (
+            <text class="tbm-sub" x="460" y="156" text-anchor="middle">
+              sees ciphertext · routes bytes
+            </text>
+          )}
+
+          {/* the lane: through the cloud, island to island */}
+          <line
+            x1="270"
+            y1="190"
+            x2="650"
+            y2="190"
+            stroke="var(--ink-line-bright)"
+            stroke-width="1.5"
+          />
+
+          {/* fail-closed gate: the one ember accent */}
+          <g>
+            <circle cx="270" cy="192" r="15" fill="var(--seal-ember-wash)" />
+            <path
+              d="M262 200v-8a8 8 0 0 1 16 0v8"
+              fill="none"
+              stroke="var(--ember-core)"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+            <line
+              x1="266.5"
+              y1="190"
+              x2="266.5"
+              y2="200"
+              stroke="var(--ember-core)"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+            <line
+              x1="270"
+              y1="187"
+              x2="270"
+              y2="200"
+              stroke="var(--ember-core)"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+            <line
+              x1="273.5"
+              y1="190"
+              x2="273.5"
+              y2="200"
+              stroke="var(--ember-core)"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+            <line
+              x1="258"
+              y1="200"
+              x2="282"
+              y2="200"
+              stroke="var(--ember-core)"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </g>
+          <text class="tbm-gate-label" x="270" y="222" text-anchor="middle">
+            FAILS CLOSED
+          </text>
+
+          {/* the sealed envelope: crosses the relay, never opens */}
+          <g class="tbm__envelope">
+            <rect
+              x="-17"
+              y="-12"
+              width="34"
+              height="24"
+              rx="3"
+              fill="var(--ink-base)"
+              stroke="var(--text-base)"
+              stroke-width="1.5"
+            />
+            <path
+              d="M-17 -12L0 3L17 -12"
+              fill="none"
+              stroke="var(--text-base)"
+              stroke-width="1.5"
+              stroke-linejoin="round"
+            />
+            <circle cx="0" cy="3" r="2.6" fill="var(--text-base)" />
+          </g>
+        </svg>
+      </div>
+    )
+  }
+  {
+    view === "relay" && !compact && (
+      <figcaption class="tbm__legend">
+        <span class="tbm__legend-item">
+          <span class="tbm__legend-swatch" aria-hidden="true">
+            <svg role="presentation" focusable="false" viewBox="0 0 28 8" width="28" height="8">
+              <line x1="1" y1="4" x2="27" y2="4" stroke="var(--text-mute)" stroke-width="1.5" />
+            </svg>
+          </span>
+          trusted boundary
+        </span>
+        <span class="tbm__legend-item">
+          <span class="tbm__legend-swatch" aria-hidden="true">
+            <svg role="presentation" focusable="false" viewBox="0 0 28 8" width="28" height="8">
+              <line
+                x1="1"
+                y1="4"
+                x2="27"
+                y2="4"
+                stroke="var(--text-dim)"
+                stroke-width="1.5"
+                stroke-dasharray="4 3"
+              />
+            </svg>
+          </span>
+          untrusted
+        </span>
+        <span class="tbm__legend-item">
+          <span class="tbm__legend-swatch" aria-hidden="true">
+            <svg role="presentation" focusable="false" viewBox="0 0 20 16" width="20" height="16">
+              <rect
+                x="1.5"
+                y="2"
+                width="17"
+                height="12"
+                rx="2"
+                fill="none"
+                stroke="var(--text-mute)"
+                stroke-width="1.2"
+              />
+              <path
+                d="M1.5 2L10 9L18.5 2"
+                fill="none"
+                stroke="var(--text-mute)"
+                stroke-width="1.2"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+          sealed in transit
+        </span>
+      </figcaption>
+    )
+  }
+  {
+    view === "tiers" && (
+      <ul role="list" class="tbm__lanes">
+        {lanes.map((lane) => (
+          <li class="tbm__lane" style={`--lane-c: var(${lane.token})`}>
+            <span class="tbm__lane-ico" aria-hidden="true">
+              <svg
+                role="presentation"
+                focusable="false"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                {lane.icon === "eye" && (
+                  <Fragment>
+                    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </Fragment>
+                )}
+                {lane.icon === "shield" && (
+                  <Fragment>
+                    <path d="M12 3 5 6v5.5c0 4.2 2.9 7.4 7 9 4.1-1.6 7-4.8 7-9V6l-7-3Z" />
+                    <path d="m9 12 2 2 4-4.5" />
+                  </Fragment>
+                )}
+                {lane.icon === "lock" && (
+                  <Fragment>
+                    <rect x="4.5" y="10.5" width="15" height="10" rx="2.2" />
+                    <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+                    <circle cx="12" cy="15" r="1.3" />
+                  </Fragment>
+                )}
+              </svg>
+            </span>
+            <span class="tbm__lane-copy">
+              <span class="tbm__lane-label">{lane.label}</span>
+              <span class="tbm__lane-line">{lane.line}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</figure>
+
+<style>
+  /* No content-visibility here: the SVG keeps its intrinsic aspect from the
+     viewBox, and skipped off-screen rendering caused layout jumps (and blank
+     full-page captures) for a diagram that appears at most twice per page. */
+  .tbm {
+    width: 100%;
+    margin: 0;
+  }
+
+  /* ------------------------------ relay view ------------------------------ */
+
+  .tbm__stage {
+    width: 100%;
+  }
+  .tbm__svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 480px;
+    margin-inline: auto;
+  }
+  .tbm--compact .tbm__svg {
+    max-height: 300px;
+  }
+
+  /* mono labels inside the svg */
+  .tbm :global(.tbm-label) {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    fill: var(--text-base);
+  }
+  .tbm :global(.tbm-cloud-label) {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    fill: var(--text-mute);
+  }
+  .tbm :global(.tbm-sub) {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    fill: var(--text-dim);
+  }
+  .tbm :global(.tbm-micro) {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    fill: var(--text-mute);
+  }
+  .tbm :global(.tbm-gate-label) {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    fill: var(--ember-bright);
+  }
+
+  /* SVG text is in viewBox user units, so it shrinks with the container; at
+     phone widths (container ~320px, scale ≈ 0.35) the labels would render at
+     ~4px. Bumping the user-unit sizes below 640px keeps them legible. */
+  @media (max-width: 640px) {
+    .tbm :global(.tbm-label) {
+      font-size: 24px;
+      letter-spacing: 0.08em;
+    }
+    .tbm :global(.tbm-cloud-label) {
+      font-size: 21px;
+      letter-spacing: 0.1em;
+    }
+    .tbm :global(.tbm-sub) {
+      font-size: 17px;
+    }
+    .tbm :global(.tbm-micro) {
+      font-size: 16px;
+    }
+    .tbm :global(.tbm-gate-label) {
+      font-size: 17px;
+    }
+  }
+
+  /* the envelope's resting state is mid-cloud: sealed, inside untrusted territory */
+  .tbm :global(.tbm__envelope) {
+    transform: translate(460px, 190px);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .tbm :global(.tbm__envelope) {
+      animation: tbm-carry 9s var(--ease) infinite alternate;
+    }
+  }
+  @keyframes tbm-carry {
+    from {
+      /* clears the fail-closed gate art (gate base ends at x=282, envelope half-width 17) */
+      transform: translate(302px, 190px);
+    }
+    to {
+      transform: translate(632px, 190px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tbm :global(.tbm__envelope) {
+      animation: none !important;
+      transform: translate(460px, 190px) !important;
+      opacity: 1 !important;
+    }
+  }
+
+  /* ------------------------------- legend --------------------------------- */
+
+  .tbm__legend {
+    margin-top: var(--s-4);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2) var(--s-5);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    color: var(--text-mute);
+  }
+  .tbm__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .tbm__legend-item + .tbm__legend-item::before {
+    content: "·";
+    color: var(--text-dim);
+  }
+  .tbm__legend-swatch {
+    display: inline-flex;
+  }
+  .tbm__legend-swatch svg {
+    display: block;
+  }
+
+  /* ------------------------------ tiers view ------------------------------ */
+
+  .tbm__lanes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
+  .tbm__lane {
+    --lane-c: var(--text-mute);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-4);
+    padding: var(--s-4) var(--s-5);
+    border-left: 3px solid var(--lane-c);
+    border-radius: 0 var(--r-md) var(--r-md) 0;
+    background: color-mix(in oklab, var(--lane-c) 7%, transparent);
+  }
+  .tbm--compact .tbm__lane {
+    padding: var(--s-3) var(--s-4);
+  }
+  .tbm__lane-ico {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--lane-c);
+  }
+  .tbm__lane-ico svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .tbm__lane-copy {
+    display: block;
+    min-width: 0;
+  }
+  .tbm__lane-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--lane-c);
+    font-variation-settings: "wght" 540;
+  }
+  .tbm__lane-line {
+    display: block;
+    margin-top: var(--s-1);
+    font-size: var(--t-caption);
+    line-height: var(--leading-snug);
+    color: var(--text-mute);
+  }
+</style>

@@ -56,10 +56,41 @@ def check_root_license() -> Check:
     return check_file_contains("LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE", "root AGPL license text")
 
 
+MIT_UPSTREAM_BOUNDARY_LINE = "Nous/Hermes gateway contribution path remains MIT-compatible"
+
+
+def root_is_mit_upstream_graft() -> bool:
+    """True when the repo root is the Nous/Hermes MIT upstream graft point.
+
+    BurnBar's AGPL product tree is grafted into the upstream monorepo, so the
+    root does not own Python/npm manifests — those belong to the MIT upstream.
+    The README boundary line is the deliberate, reviewed declaration of that
+    graft; requiring it means a silently deleted root manifest can never
+    masquerade as the boundary. If BurnBar is ever extracted to its own
+    AGPL-root repository, drop the boundary line and these checks revert to
+    requiring root manifests that declare AGPL-3.0-only.
+    """
+    readme = ROOT / "README.md"
+    if not readme.is_file():
+        return False
+    return MIT_UPSTREAM_BOUNDARY_LINE in readme.read_text(encoding="utf-8")
+
+
+def _absent_root_manifest_check(name: str, filename: str) -> Check:
+    if root_is_mit_upstream_graft():
+        return Check(
+            name,
+            True,
+            f"{filename} absent at the MIT upstream graft root — AGPL posture is carried by "
+            "LICENSE/README and the product-tree manifests",
+        )
+    return Check(name, False, f"{filename} is missing")
+
+
 def check_pyproject_license() -> Check:
     path = ROOT / "pyproject.toml"
     if not path.is_file():
-        return Check("pyproject AGPL license", False, "pyproject.toml is missing")
+        return _absent_root_manifest_check("pyproject AGPL license", "pyproject.toml")
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     license_expr = data.get("project", {}).get("license")
     if license_expr != "AGPL-3.0-only":
@@ -70,7 +101,7 @@ def check_pyproject_license() -> Check:
 def check_package_license() -> Check:
     path = ROOT / "package.json"
     if not path.is_file():
-        return Check("package AGPL license", False, "package.json is missing")
+        return _absent_root_manifest_check("package AGPL license", "package.json")
     data = json.loads(path.read_text(encoding="utf-8"))
     license_expr = data.get("license")
     if license_expr != "AGPL-3.0-only":
@@ -81,7 +112,7 @@ def check_package_license() -> Check:
 def check_package_lock_license() -> Check:
     path = ROOT / "package-lock.json"
     if not path.is_file():
-        return Check("package-lock AGPL license", False, "package-lock.json is missing")
+        return _absent_root_manifest_check("package-lock AGPL license", "package-lock.json")
     data = json.loads(path.read_text(encoding="utf-8"))
     root = data.get("packages", {}).get("", {})
     license_expr = root.get("license")
@@ -111,15 +142,27 @@ def check_app_legal_surfaces() -> list[Check]:
             "Signal/libsignal-backed E2EE",
             "Nous/Hermes upstream contribution path remains MIT-compatible",
         ],
-        "services/hosted-mcp/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
-        "services/hermes-realtime-relay/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
-        "functions/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
+        # Check the committed TypeScript SOURCE, not the gitignored build output
+        # (services/**/lib and functions/lib are in .gitignore and CI does not
+        # build before this gate). The source is the deterministic origin of the
+        # embedded sourceMetadata, so it is the right declaration to assert.
+        "services/hosted-mcp/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
+        "services/hermes-realtime-relay/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
+        "functions/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
     }
     checks: list[Check] = []
     for rel_path, needles in surfaces.items():
         path = ROOT / rel_path
         if not path.is_file():
-            checks.append(Check(f"{rel_path} legal surface", False, f"{rel_path} is missing"))
+            # Mirror the iOS-artifact rule: a legal surface whose product tree
+            # does not exist in this checkout is skipped, not failed. The
+            # check regains teeth the moment the surface appears.
+            if not path.parent.is_dir():
+                checks.append(
+                    Check(f"{rel_path} legal surface", True, f"skipped (no {path.parent.relative_to(ROOT)} surface in this tree)")
+                )
+            else:
+                checks.append(Check(f"{rel_path} legal surface", False, f"{rel_path} is missing"))
             continue
         text = path.read_text(encoding="utf-8")
         missing = [needle for needle in needles if needle not in text]

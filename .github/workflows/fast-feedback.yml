@@ -157,6 +157,13 @@ jobs:
       - name: Run Signal envelope crypto proof harness
         run: node scripts/ci/crypto-proof-harness.mjs
 
+      # ADR-001 §7.2: the committed CryptoKit ⇄ libsignal at-rest interop
+      # vectors must keep opening. This (Linux) leg verifies the libsignal
+      # side + tamper fail-closed; the CryptoKit side runs in
+      # CryptoKitAtRestInteropTests.swift on the macOS PR harness.
+      - name: Verify committed CryptoKit-libsignal interop vectors
+        run: node scripts/ci/generate-cryptokit-interop-vector.mjs
+
   # ── Shell scripts: syntax validation ────────────────────────────────────
   shell-syntax:
     name: Shell syntax validation
@@ -278,9 +285,23 @@ jobs:
       # end-to-end encrypted, now gated for the website too.
       - name: Website trust copy is in sync (no drift)
         run: |
+          # ls-files guard: a PR that DELETES the generated file must fail too —
+          # `git diff --exit-code` alone is blind to untracked regenerations.
+          git ls-files --error-unmatch website/src/data/trust.generated.ts
           node packages/data-domains/codegen.mjs
           git diff --exit-code -- website/src/data/trust.generated.ts \
             || { echo "::error::website/src/data/trust.generated.ts is stale — run 'node packages/data-domains/codegen.mjs' and commit the result."; exit 1; }
+
+      # Same mechanism for the encryption-architecture claims: burnbar.ai/trust
+      # renders its crypto claim/not-claim copy from
+      # website/src/data/crypto-claims.generated.ts, which the generator emits
+      # from docs/security/crypto-architecture-policy.json + the CI-enforced
+      # libsignal pin + the fail-closed runtime-readiness gate. `--check` fails
+      # on a stale, hand-edited, or DELETED file — and the generator itself
+      # fails when runtime readiness flips, so "not activated in production"
+      # copy cannot outlive the rollout it describes.
+      - name: Website crypto-claims copy is in sync (no drift)
+        run: node website/scripts/generate-crypto-claims.mjs --check
 
   # ── Web console (app.burnbar.ai): lint + types + tests + static build ──────
   console-web:
@@ -413,6 +434,10 @@ jobs:
       - agents-md-fast
       - rust-deny-fast
       - functions-security-fast
+      # The registry/token drift gates (incl. the burnbar.ai trust + crypto-claims
+      # copy gates) must BLOCK, not advise — the trust page's whole pitch is that
+      # drifted copy cannot ship.
+      - control-center-foundations
     runs-on: ubuntu-latest
     if: always()
     steps:
