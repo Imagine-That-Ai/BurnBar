@@ -38,6 +38,7 @@ offer, keep that material with the distribution.
 - Copyright: Signal Messenger LLC and contributors, as recorded by upstream
   Signal source files and acknowledgments.
 - Vendored source: `Vendor/libsignal/`.
+- Pinned tag: `v0.94.4` (commit `46d867c986f66201e34e7ae20ce423eec742bf3f`).
 - Upstream project: https://github.com/signalapp/libsignal
 - SPQR dependency: `SparsePostQuantumRatchet`, referenced by Signal's
   `Vendor/libsignal/Cargo.toml`.
