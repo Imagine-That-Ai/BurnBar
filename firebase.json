@@ -209,11 +209,6 @@
       ],
       "redirects": [
         {
-          "source": "/trust",
-          "destination": "/privacy#data-domains",
-          "type": 301
-        },
-        {
           "source": "/downloads",
           "destination": "/download",
           "type": 301
