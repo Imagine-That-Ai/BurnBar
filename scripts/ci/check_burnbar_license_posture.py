@@ -111,9 +111,13 @@ def check_app_legal_surfaces() -> list[Check]:
             "Signal/libsignal-backed E2EE",
             "Nous/Hermes upstream contribution path remains MIT-compatible",
         ],
-        "services/hosted-mcp/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
-        "services/hermes-realtime-relay/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
-        "functions/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
+        # Check the committed TypeScript SOURCE, not the gitignored build output
+        # (services/**/lib and functions/lib are in .gitignore and CI does not
+        # build before this gate). The source is the deterministic origin of the
+        # embedded sourceMetadata, so it is the right declaration to assert.
+        "services/hosted-mcp/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
+        "services/hermes-realtime-relay/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
+        "functions/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
     }
     checks: list[Check] = []
     for rel_path, needles in surfaces.items():

@@ -125,6 +125,28 @@ test("website tier badge colors come from the design-token source of truth", () 
   assert.equal(colors.end_to_end, "#3cd6c0", "end-to-end tier color drifted from design tokens");
 });
 
+test("website tokens.css dark-theme tier vars mirror the design tokens", () => {
+  // The site's theme-flipping --tier-* custom properties (tokens.css) drive
+  // SealBadge tints, TrustBoundaryMap lanes, ClaimsLedger spines, and the
+  // TrustTierBadge. Their DARK values must equal the generated colorHex so the
+  // public trust surface and the in-app control center can never diverge on
+  // the same page. (Light-theme values are deliberately AA-darkened.)
+  const colors = loadTierColors();
+  const tokensCss = readFileSync(
+    join(HERE, "..", "..", "website", "src", "styles", "tokens.css"),
+    "utf8"
+  );
+  const darkBlock = tokensCss.slice(0, tokensCss.indexOf('[data-theme="light"]'));
+  const varValue = (name) => {
+    const m = darkBlock.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`));
+    assert.ok(m, `tokens.css is missing ${name} in the dark :root block`);
+    return m[1].toLowerCase();
+  };
+  assert.equal(varValue("--tier-server"), colors.server_readable, "--tier-server drifted from design tokens");
+  assert.equal(varValue("--tier-zero"), colors.zero_access, "--tier-zero drifted from design tokens");
+  assert.equal(varValue("--tier-e2e"), colors.end_to_end, "--tier-e2e drifted from design tokens");
+});
+
 test("HONEST CLAIMS: the public trust copy never overstates the product", () => {
   const trust = emitWebsiteTrust(registry, loadTierColors());
 

@@ -4,6 +4,13 @@
 
 @import "@fontsource-variable/geist/index.css";
 @import "@fontsource-variable/jetbrains-mono/index.css";
+/* Fraunces drives every heading via --font-display. The `full` files carry the
+   complete variable axes (opsz / SOFT / WONK / wght) — index.css ships a
+   wght-only face that would silently no-op the site's "opsz"/"SOFT"
+   font-variation-settings. Italic is a separate @font-face (font-style:
+   italic), needed wherever display type goes italic (hero second line). */
+@import "@fontsource-variable/fraunces/full.css";
+@import "@fontsource-variable/fraunces/full-italic.css";
 
 @import "./tokens.css";
 @import "./reset.css";
@@ -31,7 +38,13 @@ body::before {
   pointer-events: none;
   z-index: 0;
   opacity: 0.45;
-  animation: furnacePulse var(--dur-slow) ease-in-out infinite alternate;
+}
+
+/* Ambient loops respect reduced motion — the static first frame is the resting state. */
+@media (prefers-reduced-motion: no-preference) {
+  body::before {
+    animation: furnacePulse var(--dur-slow) ease-in-out infinite alternate;
+  }
 }
 
 /* subtle overlay grain for physical texture */
@@ -192,7 +205,7 @@ h3,
 h4 {
   font-family: var(--font-display);
   color: var(--text-bright);
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: var(--tracking-display);
   line-height: var(--leading-tight);
   text-wrap: balance;
   overflow-wrap: anywhere;
@@ -529,13 +542,19 @@ section {
     var(--core-red) 100%
   );
   background-size: 200% auto;
-  animation: emberFlow 6s linear infinite;
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.18);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   box-shadow:
     0 4px 20px -2px rgba(238, 24, 3, 0.35),
     inset 0 1px 0 0 rgba(255, 255, 255, 0.3);
+}
+
+/* The flowing-gradient loop respects reduced motion; the gradient itself stays. */
+@media (prefers-reduced-motion: no-preference) {
+  .btn--ember {
+    animation: emberFlow 6s linear infinite;
+  }
 }
 
 @keyframes emberFlow {
@@ -758,8 +777,11 @@ section {
     0 24px 48px -30px rgba(22, 19, 14, 0.4);
 }
 
-/* the default (glass) button is built for a black canvas — relight it */
-:root[data-theme="light"] .btn {
+/* the default (glass) button is built for a black canvas — relight it.
+   .btn--ember opts out: its token-driven fire gradient already flips to the
+   AA-darkened core colors, and this higher-specificity relight would
+   otherwise bleach it to white-on-white. */
+:root[data-theme="light"] .btn:not(.btn--ember) {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.6) 100%);
   color: var(--text-base);
   border-color: var(--ink-line-bright);
@@ -767,8 +789,8 @@ section {
     0 4px 16px -6px rgba(22, 19, 14, 0.2),
     inset 0 1px 0 0 rgba(255, 255, 255, 0.7);
 }
-:root[data-theme="light"] .btn:hover,
-:root[data-theme="light"] .btn:focus-visible {
+:root[data-theme="light"] .btn:not(.btn--ember):hover,
+:root[data-theme="light"] .btn:not(.btn--ember):focus-visible {
   color: var(--text-bright);
   background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.85) 100%);
   border-color: color-mix(in oklab, var(--core-fire) 40%, var(--ink-line-bright));

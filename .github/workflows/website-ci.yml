@@ -8,12 +8,20 @@ on:
     paths:
       - "website/**"
       - ".github/workflows/website-ci.yml"
+      # Inputs of website/scripts/generate-crypto-claims.mjs — a change to any
+      # of these can make the committed crypto-claims copy stale.
+      - "docs/security/crypto-architecture-policy.json"
+      - "packages/libsignal-bridge/package.json"
+      - "third_party/libsignal/runtime-readiness.json"
   push:
     branches:
       - main
     paths:
       - "website/**"
       - ".github/workflows/website-ci.yml"
+      - "docs/security/crypto-architecture-policy.json"
+      - "packages/libsignal-bridge/package.json"
+      - "third_party/libsignal/runtime-readiness.json"
 
 jobs:
   website:

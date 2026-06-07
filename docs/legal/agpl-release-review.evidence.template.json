@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "reviewStatus": "pending",
+  "reviewedAt": "",
+  "reviewer": "",
+  "reviewerRole": "external_counsel",
+  "scope": [
+    "AGPL-3.0-only product license",
+    "Signal/libsignal/SPQR product dependency",
+    "corresponding source for shipped apps",
+    "hosted gateway network source obligations",
+    "app store and commercial distribution terms",
+    "MIT-compatible Nous/Hermes upstream boundary"
+  ],
+  "distributionChannels": [
+    "Apple App Store and TestFlight",
+    "Google Play",
+    "direct download",
+    "hosted gateway network service",
+    "commercial distribution"
+  ],
+  "reviewedArtifacts": [
+    ".github/workflows/license-posture.yml",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/legal/SOURCE_AVAILABILITY.md",
+    "docs/legal/DEPENDENCY_LICENSE_MANIFEST.md",
+    "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md",
+    "docs/legal/agpl-release-review.evidence.template.json",
+    "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
+    "package.json",
+    "pyproject.toml",
+    "scripts/ci/check_burnbar_license_posture.py",
+    "scripts/ci/check_libsignal_runtime_readiness.py",
+    "scripts/ci/write_burnbar_source_provenance.py",
+    "scripts/verify_burnbar_mit_pr_clean.py",
+    "third_party/libsignal/runtime-readiness.json"
+  ],
+  "notes": ""
+}
