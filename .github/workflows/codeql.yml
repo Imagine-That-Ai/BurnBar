@@ -104,6 +104,7 @@ jobs:
             if xcodebuild -project OpenBurnBar.xcodeproj \
               -scheme OpenBurnBar \
               -configuration Debug \
+              -destination 'platform=macOS,arch=arm64' \
               -derivedDataPath .codeql-derived-data \
               -resolvePackageDependencies; then
               exit 0
@@ -124,8 +125,10 @@ jobs:
           xcodebuild -project OpenBurnBar.xcodeproj \
             -scheme OpenBurnBar \
             -configuration Debug \
-            -destination 'platform=macOS' \
+            -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath .codeql-derived-data \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             SWIFT_ENABLE_EXPLICIT_MODULES=NO \
