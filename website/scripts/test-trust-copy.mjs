@@ -60,10 +60,39 @@ const NOT_READY_RUNTIME_CLAIMS = [
   /\bnever reads? message text\b/i,
   /\bnever receives readable message text\b/i,
   /\bboth directions are end-to-end encrypted\b/i,
+  /\bend-to-end encrypted\b/i,
   /\bend-to-end[- ]encrypted WebSocket\b/i,
+  /\bencrypted end-to-end\b/i,
+  /\bencrypted end to end\b/i,
+  /\bprivate end to end\b/i,
   /\beverything between them is end-to-end encrypted\b/i,
   /\bno one in the middle can read it\b/i,
+  /\bcouldn['’]t peek\b/i,
+  /\bwe can['’]t read\b/i,
   /\bservers? never see(?:s)? the content or the key\b/i,
+  /\bserver runs (?:nearest-neighbor search|ANN)[^.]{0,160}without reading your content\b/i,
+  /\bhosted server never sees\b/i,
+  /\bwhat the server never sees\b/i,
+];
+
+const ALLOWED_SCRIPT_URL_HOSTS = new Set([
+  "accounts.google.com",
+  "apis.google.com",
+  "firebaseinstallations.googleapis.com",
+  "identitytoolkit.googleapis.com",
+  "localhost",
+  "securetoken.googleapis.com",
+  "www.google.com",
+  "www.googleapis.com",
+  "www.gstatic.com",
+  "127.0.0.1",
+  "::1",
+]);
+
+const ALLOWED_SCRIPT_URL_SUFFIXES = [
+  ".cloudfunctions.net",
+  ".firebaseio.com",
+  ".googleapis.com",
 ];
 
 function walk(dir, out = []) {
@@ -122,9 +151,51 @@ function assertNoExternalNetworkBody(label, body) {
   assert.equal(tracker, null, `${label} contains tracker token ${JSON.stringify(tracker?.[0])}`);
 }
 
+function trimUrlLiteral(raw) {
+  return raw.replace(/[\\'"),.;]+$/g, "");
+}
+
+function isFirebaseClientAsset(file) {
+  return /(^|[/\\])firebaseClient(?:\.|\.js$)/.test(file);
+}
+
+function isAllowedScriptUrlLiteral(raw, file) {
+  if (
+    isFirebaseClientAsset(file) &&
+    (
+      /^https:\/\/\$\{[^}]+\.(?:config\.)?authDomain\}/.test(raw) ||
+      /^https:\/\/\$\{[^}]+\.region\}-\$\{[^}]+\}\.cloudfunctions\.net\//.test(raw) ||
+      /^http:\/\/\$\{[^}]+\}$/.test(raw)
+    )
+  ) {
+    return true;
+  }
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (ALLOWED_SCRIPT_URL_HOSTS.has(host)) return true;
+  return ALLOWED_SCRIPT_URL_SUFFIXES.some((suffix) => host.endsWith(suffix));
+}
+
+function assertNoDisallowedScriptUrlLiterals(file, body) {
+  if (!/\.(?:js|mjs)$/.test(file)) return;
+  for (const match of body.matchAll(/https?:\/\/[^\s"'`<>()]+/g)) {
+    const url = trimUrlLiteral(match[0]);
+    assert.ok(
+      isAllowedScriptUrlLiteral(url, file),
+      `${relative(ROOT, file)} contains disallowed external URL literal ${JSON.stringify(url)}`
+    );
+  }
+}
+
 function assertNoExternalNetwork(file) {
   const body = readFileSync(file, "utf8");
   assertNoExternalNetworkBody(relative(ROOT, file), body);
+  assertNoDisallowedScriptUrlLiterals(file, body);
   if (file.endsWith(".webmanifest")) {
     assertNoWebManifestNetworkBody(relative(ROOT, file), body);
   }
@@ -196,6 +267,19 @@ function runScannerSelfTests() {
   ]) {
     assertBlocked(label, body);
   }
+  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", 'fetch("https://identitytoolkit.googleapis.com/v1/accounts")');
+  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", "const authUrl = `https://${app.config.authDomain}/__/auth`;");
+  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", "const authUrl = `https://${app.authDomain}/__/auth`;");
+  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", "const fnUrl = `https://${this.region}-${project}.cloudfunctions.net/callable`;");
+  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", "const emulatorUrl = `http://${host}`;");
+  assert.throws(
+    () => assertNoDisallowedScriptUrlLiterals("feature.js", "const dynamicUrl = `http://${host}`;"),
+    /disallowed external URL literal/
+  );
+  assert.throws(
+    () => assertNoDisallowedScriptUrlLiterals("bad.js", 'const sdk = "https://esm.sh/@chenglou/pretext";'),
+    /disallowed external URL literal/
+  );
   assert.throws(
     () => assertNoWebManifestNetworkBody("external webmanifest icon", '{"icons":[{"src":"https://cdn.example/icon.png"}]}'),
     /external/
@@ -230,4 +314,4 @@ for (const line of parseGeneratedStrings()) {
 
 assertNoUnreadyRuntimeClaims([...builtFiles, TRUST_GENERATED]);
 
-console.log(`PASS: trust copy scan checked ${builtFiles.length} built HTML/CSS/JS/SVG/XML/manifest files with no external network refs.`);
+console.log(`PASS: trust copy scan checked ${builtFiles.length} built HTML/CSS/JS/SVG/XML/manifest files with no disallowed external network refs.`);

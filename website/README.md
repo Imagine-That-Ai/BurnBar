@@ -119,18 +119,19 @@ If you need the exact Namecheap clicks or a TXT record copy/paste, ping Alberto.
 
 ## Security headers
 
-`firebase.json` already ships a hardened header set on every HTML response:
+`firebase.json` ships route-specific hardened headers. Marketing pages use a
+hash-based CSP with `unsafe-inline` absent, while auth/link routes allow the
+Firebase/Google endpoints they need:
 
-- `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
+- `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; style-src-elem 'self' <hashes>; style-src-attr 'unsafe-hashes' <hashes>; script-src 'self' <hashes>; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
 - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Permissions-Policy` denies camera, geolocation, mic, payment, USB, etc.
 
-`'unsafe-inline'` for `style-src` is the one concession — Astro scopes
-component styles via small inline tags. If you want to remove it, switch all
-component `<style>` blocks to external `import "./*.css"` and adjust.
+Run `npm run csp:update --prefix website` after copy or component changes, then
+`npm run csp:check --prefix website` to verify the hashes.
 
 ## Data files
 

@@ -917,7 +917,7 @@ const slo = [
     <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Privacy mode · local_decrypt_shim</span>
-        <h2 id="priv-h">The hosted server never sees your queries or your bodies in the clear.</h2>
+        <h2 id="priv-h">Designed for local decryption before hosted search.</h2>
       </header>
 
       <div class="priv__grid">
@@ -950,11 +950,11 @@ const slo = [
 
         <article class="priv__col priv__col--never">
           <header>
-            <span class="priv__tag mono priv__tag--ember">What the server NEVER sees</span>
+            <span class="priv__tag mono priv__tag--ember">Gated no-plaintext boundary</span>
           </header>
           <ul class="priv__list">
-            <li>raw query text</li>
-            <li>plaintext titles, snippets, bodies</li>
+            <li>Public no-read claims remain gated until runtime-readiness evidence proves the boundary</li>
+            <li>Local shim mode is designed to keep raw query text and bodies off the hosted server</li>
             <li>signed-URL markers or vault keys</li>
             <li>provider credentials of any kind</li>
             <li>Firebase ID tokens — those never become MCP bearers</li>

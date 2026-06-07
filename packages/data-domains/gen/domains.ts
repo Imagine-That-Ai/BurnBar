@@ -208,7 +208,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Pensieve Knowledge",
     "icon": "brain.head.profile",
     "encryptionTier": "end_to_end",
-    "summary": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN over them without reading your content, though these structures still reveal some recurrence/co-occurrence patterns. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
+    "summary": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Designed for cloaked vectors + sealed text; public no-read claims stay gated until CloudVault private-domain runtime evidence is complete, and these structures can still reveal some recurrence/co-occurrence patterns. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
     "serverSees": [
       "cloaked 384-dim vectors",
       "sourceKind",
