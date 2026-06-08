@@ -292,6 +292,7 @@ def check_source_provenance_process() -> list[Check]:
         "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md": [
             "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED=true",
             "rollout_hermes_gateway_signal_required.js",
+            "deploy-hermes-gateway-functions.sh",
             "enable-hermes-gateway-signal-required",
             "rollback-hermes-gateway-signal-required",
             "--deployed-commit",
@@ -311,6 +312,15 @@ def check_source_provenance_process() -> list[Check]:
             "validatorResult",
             "node_contracts",
             "aggregate_counts_only_no_document_values_or_identifiers",
+        ],
+        "scripts/ops/deploy-hermes-gateway-functions.sh": [
+            "OPENBURNBAR_SOURCE_COMMIT",
+            "OPENBURNBAR_CORRESPONDING_SOURCE_URL",
+            "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED",
+            "SIGNAL_ENVELOPE_V4_DISABLED",
+            "functions:burnBarHermesGateway,functions:enqueueHermesGatewayEvent",
+            "rollout_hermes_gateway_signal_required.js",
+            "SOURCE_COMMIT",
         ],
         "scripts/ci/rollout_hermes_gateway_signal_required.js": [
             "enable-hermes-gateway-signal-required",

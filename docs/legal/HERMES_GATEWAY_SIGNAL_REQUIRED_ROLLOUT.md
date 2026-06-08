@@ -30,7 +30,17 @@ node scripts/ci/rollout_hermes_gateway_signal_required.js \
   --dry-run
 ```
 
-Then update Cloud Run services only after approval. The helper writes the
+Then deploy the Hermes Gateway functions from the exact reviewed commit. The
+deploy helper writes the Signal-required flag, source-provenance environment
+variables, and rollback kill-switch default into the Functions env file before
+deploying only `burnBarHermesGateway` and `enqueueHermesGatewayEvent`:
+
+```bash
+scripts/ops/deploy-hermes-gateway-functions.sh
+```
+
+If the functions are already deployed from the reviewed commit, update Cloud Run
+services only after approval. The rollout helper writes the
 Signal-required flag and the source-provenance environment variables
 (`OPENBURNBAR_SOURCE_COMMIT` and `OPENBURNBAR_CORRESPONDING_SOURCE_URL`)
 together; do not use a flag-only `gcloud run services update` because the drain
