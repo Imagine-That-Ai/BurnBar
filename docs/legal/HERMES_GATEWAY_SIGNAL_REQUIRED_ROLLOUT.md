@@ -65,6 +65,48 @@ python3 scripts/ci/write_cloudvault_at_rest_runtime_evidence.py \
   --check
 ```
 
+Attach generated evidence to the runtime-readiness manifest only through the
+manifest attachment tool:
+
+```bash
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate swift_round_trips \
+  --artifact launch-evidence/native-signal-swift-runtime.json \
+  --replay-native-commands
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate kotlin_round_trips \
+  --artifact launch-evidence/native-signal-kotlin-runtime.json \
+  --replay-native-commands
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate rust_core_bridge \
+  --artifact launch-evidence/native-signal-rust-runtime.json \
+  --replay-native-commands
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate hermes_gateway_writes \
+  --artifact launch-evidence/hermes-gateway-drain.json
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate hermes_attachment_writes \
+  --artifact launch-evidence/hermes-gateway-drain.json
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate migration_telemetry \
+  --artifact launch-evidence/hermes-gateway-drain.json
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate cloudvault_private_domains \
+  --artifact launch-evidence/cloudvault-at-rest-runtime.json
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate store_and_counsel_approval \
+  --artifact launch-evidence/latest-agpl-store-legal-packet.json
+```
+
+Use `--check` first when reviewing a packet; it runs the validator and manifest
+post-check without writing. The tool writes only typed evidence with an
+`artifactPath`, `artifactType`, `sha256`, `validatorCommand`, and structured
+`validatorResult`; it replaces stale same-gate evidence, refuses legal
+`--allow-pending`, refuses `node_contracts` until that gate has a dedicated
+artifact validator, and keeps `status` as `not_ready`. Final `ready` promotion
+is a separate release-manager action after `check_burnbar_release_preflight.py`
+passes and counsel approval is real.
+
 The CloudVault writer runs the real compiled Functions/contract checks and stores
 only privacy-preserving command-output hashes. `--check` must remain a HOLD until
 the data-domain registry actually enables a Signal at-rest sealing scheme; do not

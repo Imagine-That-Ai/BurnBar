@@ -246,6 +246,16 @@ def check_source_provenance_process() -> list[Check]:
             "requiredSourceFiles",
             "runtimeReadiness",
         ],
+        "scripts/ci/attach_libsignal_runtime_evidence.py": [
+            "attach_runtime_evidence",
+            "validatorResult",
+            "sha256",
+            "--allow-pending",
+            "node_contracts cannot be attached",
+            "write_manifest_atomic",
+            "check_manifest",
+            "run_validators=postcheck_validators",
+        ],
         "scripts/ci/check_hermes_gateway_migration_drain.py": [
             "validate_drain_evidence",
             "aggregate_counts_only_no_document_values_or_identifiers",
@@ -285,6 +295,9 @@ def check_source_provenance_process() -> list[Check]:
             "--predelete-export",
             "--quarantine-output",
             "check_hermes_gateway_migration_drain.py",
+            "attach_libsignal_runtime_evidence.py",
+            "validatorResult",
+            "node_contracts",
             "aggregate_counts_only_no_document_values_or_identifiers",
         ],
         "scripts/ci/rollout_hermes_gateway_signal_required.js": [
@@ -365,7 +378,14 @@ def check_source_provenance_process() -> list[Check]:
         ],
         "tests/test_burnbar_source_provenance.py": [
             "test_source_provenance_manifest_covers_agpl_signal_release_inputs",
+            "scripts/ci/attach_libsignal_runtime_evidence.py",
             "third_party/libsignal/runtime-readiness.json",
+        ],
+        "tests/test_libsignal_runtime_evidence_attach.py": [
+            "test_attach_replaces_legacy_self_reported_gate_with_typed_evidence",
+            "test_attach_refuses_failed_validator_without_mutating_manifest",
+            "test_attach_rejects_legal_allow_pending_validator_before_running",
+            "test_attach_refuses_node_contracts_until_artifact_validator_exists",
         ],
         "docs/legal/SOURCE_AVAILABILITY.md": [
             "write_burnbar_source_provenance.py --output",
