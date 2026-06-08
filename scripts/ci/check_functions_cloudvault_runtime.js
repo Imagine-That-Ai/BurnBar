@@ -2,10 +2,11 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { existsSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const { join, resolve } = require("node:path");
 
 const ROOT = resolve(__dirname, "..", "..");
+const SIGNAL_AT_REST_SCHEME = "signal-hpke-identity-seal-v1";
 const EXPECTED_AAD =
   "OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|uid-1||mobile_assistant_chats|thread-1|signalEnvelope||1";
 
@@ -13,7 +14,7 @@ function requireBuiltFunctionsModule(relativePath) {
   const absolute = join(ROOT, relativePath);
   assert.ok(
     existsSync(absolute),
-    `${relativePath} is missing; run npm run build --prefix functions before this runtime check`
+    `${relativePath} is missing; run npm run build --prefix functions before this runtime check`,
   );
   return require(absolute);
 }
@@ -73,26 +74,98 @@ function expectedBinding(overrides = {}) {
 }
 
 function loadRuntime() {
-  const contracts = requireBuiltFunctionsModule("functions/node_modules/@openburnbar/signal-envelope-contracts");
-  const writeGuard = requireBuiltFunctionsModule("functions/lib/signalAtRestWrite.js");
+  const contracts = requireBuiltFunctionsModule(
+    "functions/node_modules/@openburnbar/signal-envelope-contracts",
+  );
+  const writeGuard = requireBuiltFunctionsModule(
+    "functions/lib/signalAtRestWrite.js",
+  );
   assert.equal(typeof contracts.sanitizeCloudVaultSignalEnvelope, "function");
   assert.equal(typeof contracts.bindingToAAD, "function");
-  assert.equal(typeof writeGuard.validateSignalAtRestEnvelopeForWrite, "function");
-  assert.equal(typeof writeGuard.assertSignalAtRestEnvelopeForWrite, "function");
-  assert.equal(writeGuard.SIGNAL_AT_REST_SCHEME, "signal-hpke-identity-seal-v1");
+  assert.equal(
+    typeof writeGuard.validateSignalAtRestEnvelopeForWrite,
+    "function",
+  );
+  assert.equal(
+    typeof writeGuard.assertSignalAtRestEnvelopeForWrite,
+    "function",
+  );
+  assert.equal(writeGuard.SIGNAL_AT_REST_SCHEME, SIGNAL_AT_REST_SCHEME);
+  assert.ok(Array.isArray(writeGuard.SIGNAL_AT_REST_ENABLED_DOMAINS));
   assert.ok(Array.isArray(writeGuard.SIGNAL_AT_REST_REQUIRED_COLLECTIONS));
-  assert.equal(typeof writeGuard.isSignalAtRestRequiredForCollection, "function");
+  assert.equal(
+    typeof writeGuard.isSignalAtRestRequiredForCollection,
+    "function",
+  );
   return { contracts, writeGuard };
+}
+
+function sortedStrings(value, label) {
+  assert.ok(Array.isArray(value), `${label} must be an array`);
+  for (const item of value)
+    assert.equal(typeof item, "string", `${label} entries must be strings`);
+  return [...new Set(value)].sort();
+}
+
+function registrySignalAtRestPolicy() {
+  const registryPath = join(ROOT, "packages/data-domains/registry.json");
+  const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+  assert.ok(
+    Array.isArray(registry.domains),
+    "data-domain registry must contain domains[]",
+  );
+  const signalDomains = registry.domains.filter(
+    (domain) => domain && domain.sealingScheme === SIGNAL_AT_REST_SCHEME,
+  );
+  return {
+    enabledDomains: sortedStrings(
+      signalDomains
+        .map((domain) => domain.id)
+        .filter((id) => typeof id === "string" && id.length > 0),
+      "registry enabled domains",
+    ),
+    requiredCollections: sortedStrings(
+      signalDomains.flatMap((domain) => domain.signalSealedCollections || []),
+      "registry required collections",
+    ),
+  };
 }
 
 function runSignalAtRestWriteSmoke() {
   const { contracts, writeGuard } = loadRuntime();
-  const envelope = strictCloudVaultEnvelope({ envelope: { plaintext: "must be dropped by sanitizer" } });
-  const result = writeGuard.validateSignalAtRestEnvelopeForWrite(envelope, expectedBinding());
+  const registryPolicy = registrySignalAtRestPolicy();
+  assert.deepEqual(
+    sortedStrings(
+      writeGuard.SIGNAL_AT_REST_ENABLED_DOMAINS,
+      "runtime enabled domains",
+    ),
+    registryPolicy.enabledDomains,
+  );
+  assert.deepEqual(
+    sortedStrings(
+      writeGuard.SIGNAL_AT_REST_REQUIRED_COLLECTIONS,
+      "runtime required collections",
+    ),
+    registryPolicy.requiredCollections,
+  );
+
+  const envelope = strictCloudVaultEnvelope({
+    envelope: { plaintext: "must be dropped by sanitizer" },
+  });
+  const result = writeGuard.validateSignalAtRestEnvelopeForWrite(
+    envelope,
+    expectedBinding(),
+  );
   assert.equal(result.ok, true);
   assert.equal(result.aad, EXPECTED_AAD);
-  assert.equal(Object.prototype.hasOwnProperty.call(result.envelope, "plaintext"), false);
-  assert.equal(contracts.sanitizeCloudVaultSignalEnvelope(envelope).binding.scope, "cloudvault");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(result.envelope, "plaintext"),
+    false,
+  );
+  assert.equal(
+    contracts.sanitizeCloudVaultSignalEnvelope(envelope).binding.scope,
+    "cloudvault",
+  );
 
   for (const [field, expected] of [
     ["uid", expectedBinding({ uid: "other-user" })],
@@ -100,29 +173,59 @@ function runSignalAtRestWriteSmoke() {
     ["docId", expectedBinding({ docId: "other-thread" })],
     ["field", expectedBinding({ field: "otherField" })],
   ]) {
-    const mismatch = writeGuard.validateSignalAtRestEnvelopeForWrite(envelope, expected);
+    const mismatch = writeGuard.validateSignalAtRestEnvelopeForWrite(
+      envelope,
+      expected,
+    );
     assert.equal(mismatch.ok, false);
-    assert.equal(mismatch.reason, `binding-${field.toLowerCase()}-mismatch`.replace("docid", "docid"));
+    assert.equal(
+      mismatch.reason,
+      `binding-${field.toLowerCase()}-mismatch`.replace("docid", "docid"),
+    );
   }
 
   assert.equal(
-    writeGuard.validateSignalAtRestEnvelopeForWrite(strictCloudVaultEnvelope({ binding: { scope: "gateway" } }), expectedBinding()).ok,
-    false
+    writeGuard.validateSignalAtRestEnvelopeForWrite(
+      strictCloudVaultEnvelope({ binding: { scope: "gateway" } }),
+      expectedBinding(),
+    ).ok,
+    false,
   );
   assert.equal(
-    writeGuard.validateSignalAtRestEnvelopeForWrite(strictCloudVaultEnvelope({ binding: { mode: "transport" } }), expectedBinding()).ok,
-    false
+    writeGuard.validateSignalAtRestEnvelopeForWrite(
+      strictCloudVaultEnvelope({ binding: { mode: "transport" } }),
+      expectedBinding(),
+    ).ok,
+    false,
   );
   assert.equal(
-    writeGuard.validateSignalAtRestEnvelopeForWrite(strictCloudVaultEnvelope({ wrap: { sealedContentKeyB64: "not base64 !!" } }), expectedBinding()).ok,
-    false
+    writeGuard.validateSignalAtRestEnvelopeForWrite(
+      strictCloudVaultEnvelope({
+        wrap: { sealedContentKeyB64: "not base64 !!" },
+      }),
+      expectedBinding(),
+    ).ok,
+    false,
   );
-  assert.equal(writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge"), false);
   assert.equal(
-    writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge", ["cloud_search_knowledge"]),
-    true
+    writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge"),
+    false,
   );
-  return [
+  assert.equal(
+    writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge", [
+      "cloud_search_knowledge",
+    ]),
+    true,
+  );
+
+  for (const collection of registryPolicy.requiredCollections) {
+    assert.equal(
+      writeGuard.isSignalAtRestRequiredForCollection(collection),
+      true,
+    );
+  }
+
+  const assertions = [
     "compiled_functions_imports_signal_at_rest_write",
     "admin_write_validator_accepts_strict_cloudvault_envelope",
     "admin_write_validator_derives_canonical_aad",
@@ -130,19 +233,27 @@ function runSignalAtRestWriteSmoke() {
     "contract_sanitizer_rejects_gateway_transport_as_cloudvault",
     "sanitized_envelope_drops_plaintext_siblings",
     "signal_at_rest_policy_mirrors_registry",
-    "signal_at_rest_policy_requires_enabled_collection",
   ];
+  assertions.push(
+    registryPolicy.requiredCollections.length > 0
+      ? "signal_at_rest_policy_requires_enabled_collection"
+      : "signal_at_rest_policy_evaluates_future_required_collection",
+  );
+  return assertions;
 }
 
 function runPrivacyBackfillSmoke() {
   const { writeGuard } = loadRuntime();
   const plaintext = writeGuard.validateSignalAtRestEnvelopeForWrite(
     { plaintext: "secret", signalEnvelopeFormatVersion: 1 },
-    expectedBinding()
+    expectedBinding(),
   );
   assert.equal(plaintext.ok, false);
   assert.equal(plaintext.reason, "invalid-envelope-shape");
-  const notObject = writeGuard.validateSignalAtRestEnvelopeForWrite("plaintext", expectedBinding());
+  const notObject = writeGuard.validateSignalAtRestEnvelopeForWrite(
+    "plaintext",
+    expectedBinding(),
+  );
   assert.equal(notObject.ok, false);
   assert.equal(notObject.reason, "not-an-object");
   return [
@@ -152,7 +263,10 @@ function runPrivacyBackfillSmoke() {
 }
 
 function main() {
-  const assertions = [...runSignalAtRestWriteSmoke(), ...runPrivacyBackfillSmoke()];
+  const assertions = [
+    ...runSignalAtRestWriteSmoke(),
+    ...runPrivacyBackfillSmoke(),
+  ];
   assert.equal(new Set(assertions).size, assertions.length);
   console.log("PASS: compiled Functions CloudVault runtime smoke passed");
   for (const assertion of assertions) {

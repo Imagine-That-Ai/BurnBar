@@ -37,6 +37,7 @@ def make_repo(tmp_path: Path, *, signal_enabled: bool) -> Path:
                         "sealingScheme": (
                             "signal-hpke-identity-seal-v1" if signal_enabled else "cloudvault-aesgcm-v2"
                         ),
+                        "signalSealedCollections": ["cloud_search_knowledge"] if signal_enabled else [],
                     }
                 ]
             }
@@ -51,7 +52,9 @@ def enablement(*, enabled: bool, source_sha: str = "0" * 64):
         "scheme": "signal-hpke-identity-seal-v1",
         "enabledDomainCount": 1 if enabled else 0,
         "enabledDomains": ["pensieve"] if enabled else [],
-        "source": "packages/data-domains/registry.json sealingScheme",
+        "requiredCollectionCount": 1 if enabled else 0,
+        "requiredCollections": ["cloud_search_knowledge"] if enabled else [],
+        "source": "packages/data-domains/registry.json sealingScheme + signalSealedCollections",
         "sourceSha256": source_sha,
     }
 

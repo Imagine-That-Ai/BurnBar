@@ -79,6 +79,7 @@ def test_functions_runtime_can_require_signal_envelope_contracts() -> None:
         assert.equal(typeof contracts.bindingToAAD, "function");
         assert.equal(typeof writeGuard.validateSignalAtRestEnvelopeForWrite, "function");
         assert.equal(writeGuard.SIGNAL_AT_REST_SCHEME, "signal-hpke-identity-seal-v1");
+        assert.ok(Array.isArray(writeGuard.SIGNAL_AT_REST_ENABLED_DOMAINS));
         assert.ok(Array.isArray(writeGuard.SIGNAL_AT_REST_REQUIRED_COLLECTIONS));
         assert.equal(typeof writeGuard.isSignalAtRestRequiredForCollection, "function");
         assert.equal(

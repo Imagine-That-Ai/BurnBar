@@ -23,6 +23,7 @@ def make_repo(tmp_path: Path, *, signal_enabled: bool) -> Path:
                         "sealingScheme": (
                             "signal-hpke-identity-seal-v1" if signal_enabled else "cloudvault-aesgcm-v2"
                         ),
+                        "signalSealedCollections": ["cloud_search_knowledge"] if signal_enabled else [],
                     },
                     {"id": "usage_spend", "encryptionTier": "pseudonymous"},
                 ]
@@ -65,6 +66,7 @@ def test_detects_signal_at_rest_enablement_from_registry(tmp_path):
     enabled = detect_signal_at_rest_enablement(enabled_repo)
     assert enabled["enabledDomainCount"] == 1
     assert enabled["enabledDomains"] == ["pensieve"]
+    assert enabled["requiredCollections"] == ["cloud_search_knowledge"]
 
 
 def test_writer_generates_release_ready_shape_when_commands_pass_and_signal_is_enabled(tmp_path):

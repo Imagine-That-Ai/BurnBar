@@ -34,9 +34,10 @@ REQUIRED_ASSERTIONS = (
     "contract_sanitizer_rejects_gateway_transport_as_cloudvault",
     "sanitized_envelope_drops_plaintext_siblings",
     "signal_at_rest_policy_mirrors_registry",
-    "signal_at_rest_policy_requires_enabled_collection",
     "cjs_runtime_import_validates_signal_at_rest_write",
 )
+REQUIRED_ASSERTIONS_WHEN_SIGNAL_ENABLED = ("signal_at_rest_policy_requires_enabled_collection",)
+REQUIRED_ASSERTIONS_WHEN_SIGNAL_DISABLED = ("signal_at_rest_policy_evaluates_future_required_collection",)
 FORBIDDEN_EVIDENCE_KEYS = {
     "plaintext",
     "ciphertext",
@@ -128,17 +129,28 @@ def _registry_signal_at_rest_enablement(repo_root: Path) -> dict[str, Any]:
     registry_path = repo_root / "packages" / "data-domains" / "registry.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     domains = registry.get("domains", [])
-    enabled = [
-        domain.get("id")
+    signal_domains = [
+        domain
         for domain in domains
         if isinstance(domain, dict) and domain.get("sealingScheme") == SIGNAL_AT_REST_SCHEME
     ]
+    enabled = [domain.get("id") for domain in signal_domains]
     enabled_domains = sorted(domain_id for domain_id in enabled if isinstance(domain_id, str))
+    required_collections = sorted(
+        {
+            collection
+            for domain in signal_domains
+            for collection in domain.get("signalSealedCollections", [])
+            if isinstance(collection, str)
+        }
+    )
     return {
         "scheme": SIGNAL_AT_REST_SCHEME,
         "enabledDomainCount": len(enabled_domains),
         "enabledDomains": enabled_domains,
-        "source": "packages/data-domains/registry.json sealingScheme",
+        "requiredCollectionCount": len(required_collections),
+        "requiredCollections": required_collections,
+        "source": "packages/data-domains/registry.json sealingScheme + signalSealedCollections",
         "sourceSha256": _sha256_file(registry_path),
     }
 
@@ -152,14 +164,24 @@ def _validate_enablement(data: dict[str, Any], errors: list[str], *, repo_root: 
         errors.append(f"signalAtRestEnablement.scheme must be {SIGNAL_AT_REST_SCHEME}")
     enabled_count = enablement.get("enabledDomainCount")
     enabled_domains = enablement.get("enabledDomains")
+    required_count = enablement.get("requiredCollectionCount")
+    required_collections = enablement.get("requiredCollections")
     if not isinstance(enabled_count, int) or enabled_count < 0:
         errors.append("signalAtRestEnablement.enabledDomainCount must be a non-negative integer")
     if not isinstance(enabled_domains, list) or not all(isinstance(item, str) for item in enabled_domains):
         errors.append("signalAtRestEnablement.enabledDomains must be a list of domain ids")
     elif isinstance(enabled_count, int) and enabled_count != len(enabled_domains):
         errors.append("signalAtRestEnablement.enabledDomainCount must match enabledDomains length")
-    if enablement.get("source") != "packages/data-domains/registry.json sealingScheme":
-        errors.append("signalAtRestEnablement.source must name the data-domain registry sealingScheme")
+    if not isinstance(required_count, int) or required_count < 0:
+        errors.append("signalAtRestEnablement.requiredCollectionCount must be a non-negative integer")
+    if not isinstance(required_collections, list) or not all(isinstance(item, str) for item in required_collections):
+        errors.append("signalAtRestEnablement.requiredCollections must be a list of collection ids")
+    elif isinstance(required_count, int) and required_count != len(required_collections):
+        errors.append("signalAtRestEnablement.requiredCollectionCount must match requiredCollections length")
+    if isinstance(enabled_count, int) and enabled_count > 0 and isinstance(required_count, int) and required_count <= 0:
+        errors.append("Signal at-rest enabled domains must declare requiredCollections")
+    if enablement.get("source") != "packages/data-domains/registry.json sealingScheme + signalSealedCollections":
+        errors.append("signalAtRestEnablement.source must name the data-domain registry sealingScheme and signalSealedCollections")
     source_sha = enablement.get("sourceSha256")
     if not isinstance(source_sha, str) or not SHA256_RE.fullmatch(source_sha):
         errors.append("signalAtRestEnablement.sourceSha256 must be a lowercase SHA-256 hex digest")
@@ -172,7 +194,15 @@ def _validate_enablement(data: dict[str, Any], errors: list[str], *, repo_root: 
         except (OSError, json.JSONDecodeError) as exc:
             errors.append(f"unable to recompute Signal at-rest enablement from registry: {exc}")
             return
-        comparable_keys = ("scheme", "enabledDomainCount", "enabledDomains", "source", "sourceSha256")
+        comparable_keys = (
+            "scheme",
+            "enabledDomainCount",
+            "enabledDomains",
+            "requiredCollectionCount",
+            "requiredCollections",
+            "source",
+            "sourceSha256",
+        )
         expected = {key: actual[key] for key in comparable_keys}
         observed = {key: enablement.get(key) for key in comparable_keys}
         if observed != expected:
@@ -216,6 +246,16 @@ def validate_cloudvault_at_rest_evidence(
         if assertion not in present_assertions:
             errors.append(f"missing proof assertion: {assertion}")
     _validate_enablement(data, errors, repo_root=repo_root)
+    enablement = data.get("signalAtRestEnablement")
+    required_count = enablement.get("requiredCollectionCount") if isinstance(enablement, dict) else None
+    if isinstance(required_count, int) and required_count > 0:
+        for assertion in REQUIRED_ASSERTIONS_WHEN_SIGNAL_ENABLED:
+            if assertion not in present_assertions:
+                errors.append(f"missing proof assertion: {assertion}")
+    elif isinstance(required_count, int):
+        for assertion in REQUIRED_ASSERTIONS_WHEN_SIGNAL_DISABLED:
+            if assertion not in present_assertions:
+                errors.append(f"missing proof assertion: {assertion}")
     if data.get("signalAtRestWritesEnabled") is not True:
         errors.append("signalAtRestWritesEnabled must be true for release-ready evidence")
     return errors

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertSignalAtRestEnvelopeForWrite,
   isSignalAtRestRequiredForCollection,
+  SIGNAL_AT_REST_ENABLED_DOMAINS,
   SIGNAL_AT_REST_REQUIRED_COLLECTIONS,
   SIGNAL_AT_REST_SCHEME,
   SignalAtRestWriteError,
@@ -76,15 +77,22 @@ describe("validateSignalAtRestEnvelopeForWrite (L23 + L37 admin)", () => {
       readFileSync(join(process.cwd(), "..", "packages", "data-domains", "registry.json"), "utf8"),
     ) as {
       domains: Array<{
+        id?: string;
         sealingScheme?: string;
         signalSealedCollections?: string[];
       }>;
     };
+    const registryEnabledDomains = registry.domains
+      .filter((domain) => domain.sealingScheme === SIGNAL_AT_REST_SCHEME)
+      .map((domain) => domain.id)
+      .filter((id): id is string => typeof id === "string")
+      .sort();
     const registryRequiredCollections = registry.domains
       .filter((domain) => domain.sealingScheme === SIGNAL_AT_REST_SCHEME)
       .flatMap((domain) => domain.signalSealedCollections ?? [])
       .sort();
 
+    expect([...SIGNAL_AT_REST_ENABLED_DOMAINS].sort()).toEqual(registryEnabledDomains);
     expect([...SIGNAL_AT_REST_REQUIRED_COLLECTIONS].sort()).toEqual(registryRequiredCollections);
   });
 

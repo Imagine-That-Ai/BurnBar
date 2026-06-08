@@ -27,18 +27,22 @@ import {
   sanitizeCloudVaultSignalEnvelope,
   type CloudVaultSignalEnvelope,
 } from "@openburnbar/signal-envelope-contracts";
+import {
+  GENERATED_SIGNAL_AT_REST_SCHEME,
+  SIGNAL_AT_REST_ENABLED_DOMAINS,
+  SIGNAL_AT_REST_REQUIRED_COLLECTIONS,
+} from "./generated/signalAtRestRequiredCollections.js";
 
-export const SIGNAL_AT_REST_SCHEME = "signal-hpke-identity-seal-v1";
+export const SIGNAL_AT_REST_SCHEME = GENERATED_SIGNAL_AT_REST_SCHEME;
 
 /**
- * Functions-local mirror of packages/data-domains/registry.json for collections
- * whose writes are required to carry a path-bound Signal at-rest envelope. Keep
- * this empty while the registry still has no domain on SIGNAL_AT_REST_SCHEME.
- *
- * A unit test compares this value against the canonical registry so flipping the
- * product registry cannot silently leave Admin-SDK producers optional.
+ * Generated from packages/data-domains/registry.json for collections whose
+ * writes are required to carry a path-bound Signal at-rest envelope. Keep the
+ * registry as the only hand-edited source: packages/data-domains/codegen.mjs
+ * updates this list, and registry.test.mjs fails if the checked-in artifact
+ * drifts from the product data-domain registry.
  */
-export const SIGNAL_AT_REST_REQUIRED_COLLECTIONS = [] as const satisfies readonly string[];
+export { SIGNAL_AT_REST_ENABLED_DOMAINS, SIGNAL_AT_REST_REQUIRED_COLLECTIONS };
 
 export function isSignalAtRestRequiredForCollection(
   collection: string,

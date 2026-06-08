@@ -36,24 +36,8 @@ FUNCTIONS_ASSERTIONS = [
     "contract_sanitizer_rejects_gateway_transport_as_cloudvault",
     "sanitized_envelope_drops_plaintext_siblings",
     "signal_at_rest_policy_mirrors_registry",
-    "signal_at_rest_policy_requires_enabled_collection",
 ]
 CJS_ASSERTIONS = ["cjs_runtime_import_validates_signal_at_rest_write"]
-
-COMMAND_SPECS = [
-    {
-        "argv": ["npm", "run", "build", "--prefix", "functions"],
-        "assertions": [],
-    },
-    {
-        "argv": ["node", "scripts/ci/check_functions_cloudvault_runtime.js"],
-        "assertions": FUNCTIONS_ASSERTIONS,
-    },
-    {
-        "argv": ["python3", "-m", "pytest", "tests/test_signal_envelope_contracts_cjs_exports.py", "-q"],
-        "assertions": CJS_ASSERTIONS,
-    },
-]
 
 
 class CommandResult(dict):
@@ -97,17 +81,28 @@ def detect_signal_at_rest_enablement(repo_root: Path) -> dict[str, Any]:
     registry_path = repo_root / "packages/data-domains/registry.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     domains = registry.get("domains", [])
-    enabled = [
-        domain.get("id")
+    signal_domains = [
+        domain
         for domain in domains
         if isinstance(domain, dict) and domain.get("sealingScheme") == SIGNAL_AT_REST_SCHEME
     ]
+    enabled = [domain.get("id") for domain in signal_domains]
     enabled = sorted(domain_id for domain_id in enabled if isinstance(domain_id, str))
+    required_collections = sorted(
+        {
+            collection
+            for domain in signal_domains
+            for collection in domain.get("signalSealedCollections", [])
+            if isinstance(collection, str)
+        }
+    )
     return {
         "scheme": SIGNAL_AT_REST_SCHEME,
         "enabledDomainCount": len(enabled),
         "enabledDomains": enabled,
-        "source": "packages/data-domains/registry.json sealingScheme",
+        "requiredCollectionCount": len(required_collections),
+        "requiredCollections": required_collections,
+        "source": "packages/data-domains/registry.json sealingScheme + signalSealedCollections",
         "sourceSha256": _sha256_file(registry_path),
     }
 
@@ -120,14 +115,41 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _function_assertions(enablement: dict[str, Any]) -> list[str]:
+    assertions = list(FUNCTIONS_ASSERTIONS)
+    if int(enablement.get("requiredCollectionCount", 0)) > 0:
+        assertions.append("signal_at_rest_policy_requires_enabled_collection")
+    else:
+        assertions.append("signal_at_rest_policy_evaluates_future_required_collection")
+    return assertions
+
+
+def _command_specs(enablement: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "argv": ["npm", "run", "build", "--prefix", "functions"],
+            "assertions": [],
+        },
+        {
+            "argv": ["node", "scripts/ci/check_functions_cloudvault_runtime.js"],
+            "assertions": _function_assertions(enablement),
+        },
+        {
+            "argv": ["python3", "-m", "pytest", "tests/test_signal_envelope_contracts_cjs_exports.py", "-q"],
+            "assertions": CJS_ASSERTIONS,
+        },
+    ]
+
+
 def build_cloudvault_at_rest_runtime_evidence(
     *,
     repo_root: Path = ROOT,
     command_runner: CommandRunner = run_command,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
+    enablement = detect_signal_at_rest_enablement(repo_root)
     command_evidence: list[dict[str, Any]] = []
-    for spec in COMMAND_SPECS:
+    for spec in _command_specs(enablement):
         argv = list(spec["argv"])
         result = command_runner(argv, repo_root)
         exit_code = int(result.get("exitCode", 1))
@@ -144,7 +166,6 @@ def build_cloudvault_at_rest_runtime_evidence(
             entry["assertions"] = assertions
         command_evidence.append(entry)
 
-    enablement = detect_signal_at_rest_enablement(repo_root)
     return {
         "schemaVersion": 1,
         "generatedAt": generated_at or _iso_now(),

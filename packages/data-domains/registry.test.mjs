@@ -9,6 +9,8 @@ import {
   validateRegistry,
   generateAll,
   emitWebsiteTrust,
+  emitFunctionsSignalAtRestRequiredCollections,
+  FUNCTIONS_SIGNAL_AT_REST_PATH,
   loadTierColors,
   WEBSITE_TRUST_PATH,
 } from "./codegen.mjs";
@@ -51,6 +53,16 @@ test("generated files on disk are up to date with registry (run `npm run build` 
     const onDisk = readFileSync(join(HERE, rel), "utf8");
     assert.equal(onDisk, content, `${rel} is stale — regenerate with: node codegen.mjs`);
   }
+});
+
+test("functions Signal-at-rest policy matches the registry (run `node codegen.mjs`)", () => {
+  const generated = emitFunctionsSignalAtRestRequiredCollections(registry);
+  const onDisk = readFileSync(FUNCTIONS_SIGNAL_AT_REST_PATH, "utf8");
+  assert.equal(
+    onDisk,
+    generated,
+    "functions/src/generated/signalAtRestRequiredCollections.ts is stale — regenerate with: node packages/data-domains/codegen.mjs",
+  );
 });
 
 // Apple consumes gen/DataDomains.swift directly via project.yml source paths,
