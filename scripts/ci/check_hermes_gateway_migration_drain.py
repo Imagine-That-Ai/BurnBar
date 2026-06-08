@@ -7,6 +7,7 @@ import argparse
 from datetime import UTC, datetime, timedelta
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,31 @@ REQUIRED_SERVICES = ("burnbarhermesgateway", "enqueuehermesgatewayevent")
 MAX_EVIDENCE_AGE = timedelta(hours=24)
 MAX_CLOCK_SKEW = timedelta(minutes=5)
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+PRODUCTION_SIGNAL_SET_RE = re.compile(
+    r"HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set(?:<number>)?\(\s*\[\s*"
+    r"(?:HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL|4)\s*\]\s*\)"
+)
+
+
+def _git_show(repo_root: Path, commit: str, path: str) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "show", f"{commit}:{path}"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def _commit_exists(repo_root: Path, commit: str) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "cat-file", "-e", f"{commit}^{{commit}}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
 
 
 def _as_non_negative_int(value: Any, field: str, errors: list[str]) -> int:
@@ -56,8 +82,47 @@ def _validate_generated_at(value: Any, errors: list[str]) -> None:
         errors.append("generatedAt must be within the last 24 hours")
 
 
-def validate_drain_evidence(data: dict[str, Any]) -> list[str]:
+def _validate_deployed_source(data: dict[str, Any], errors: list[str], *, repo_root: Path) -> None:
+    release = data.get("release") or {}
+    deployed_commit = release.get("deployedCommit")
+    if not isinstance(deployed_commit, str) or not GIT_SHA_RE.fullmatch(deployed_commit):
+        return
+    if not _commit_exists(repo_root, deployed_commit):
+        errors.append("release.deployedCommit must exist as a commit in --repo-root")
+        return
+
+    gateway_source = _git_show(repo_root, deployed_commit, "functions/src/hermesGateway.ts")
+    if gateway_source is None:
+        errors.append("deployed source is missing functions/src/hermesGateway.ts")
+    else:
+        if "requireProductionGatewaySignalEnvelope" not in gateway_source:
+            errors.append("deployed source functions/src/hermesGateway.ts is missing requireProductionGatewaySignalEnvelope")
+        if not PRODUCTION_SIGNAL_SET_RE.search(gateway_source):
+            errors.append(
+                "deployed source functions/src/hermesGateway.ts must enable "
+                "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS for v4 Signal writes"
+            )
+
+    callable_source = _git_show(repo_root, deployed_commit, "functions/src/callables/hermesGateway.ts")
+    if callable_source is None:
+        errors.append("deployed source is missing functions/src/callables/hermesGateway.ts")
+    else:
+        required_tokens = (
+            "signalEnvelope?: unknown",
+            "request.data.signalEnvelope",
+            "resolveGatewayWriteBody",
+        )
+        missing = [token for token in required_tokens if token not in callable_source]
+        if missing:
+            errors.append(
+                "deployed source functions/src/callables/hermesGateway.ts is missing signalEnvelope write plumbing: "
+                + ", ".join(missing)
+            )
+
+
+def validate_drain_evidence(data: dict[str, Any], *, repo_root: Path | None = None) -> list[str]:
     errors: list[str] = []
+    repo_root = repo_root or Path.cwd()
     if data.get("schemaVersion") != 1:
         errors.append("schemaVersion must be 1")
     _validate_generated_at(data.get("generatedAt"), errors)
@@ -73,6 +138,7 @@ def validate_drain_evidence(data: dict[str, Any]) -> list[str]:
         errors.append("release.deployedCommit must be the 40-character git commit deployed to the live services")
     if not isinstance(source_location, str) or not source_location.startswith(("https://", "git@")):
         errors.append("release.sourceLocation must be an https:// or git@ source URL")
+    _validate_deployed_source(data, errors, repo_root=repo_root)
     write_path = data.get("writePath") or {}
     if write_path.get("signalRequired") is not True:
         errors.append("writePath.signalRequired must be true")
@@ -154,6 +220,7 @@ def validate_drain_evidence(data: dict[str, Any]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("evidence", type=Path)
     args = parser.parse_args(argv)
     try:
@@ -161,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"FAIL: unreadable Hermes Gateway migration drain evidence: {exc}", file=sys.stderr)
         return 1
-    errors = validate_drain_evidence(data)
+    errors = validate_drain_evidence(data, repo_root=args.repo_root)
     if errors:
         print("FAIL: Hermes Gateway migration drain evidence is not release-ready", file=sys.stderr)
         for error in errors:

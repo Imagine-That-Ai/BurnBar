@@ -101,9 +101,69 @@ def release_ready_drain_evidence(collections=None):
     }
 
 
-def run_drain_checker(evidence):
+def make_deployed_source_repo(tmp_path: Path, *, production_signal_enabled: bool = True):
+    repo = tmp_path / "source-repo"
+    (repo / "functions/src/callables").mkdir(parents=True)
+    production_set = (
+        "new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL])"
+        if production_signal_enabled
+        else "new Set<number>()"
+    )
+    (repo / "functions/src/hermesGateway.ts").write_text(
+        f"""
+export const HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL = 4;
+export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = {production_set};
+export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: string) {{
+  return {{ raw, fieldName }};
+}}
+""",
+        encoding="utf-8",
+    )
+    (repo / "functions/src/callables/hermesGateway.ts").write_text(
+        """
+type RequestData = { signalEnvelope?: unknown };
+function enqueue(request: { data: RequestData }) {
+  return resolveGatewayWriteBody(
+    undefined,
+    undefined,
+    request.data.signalEnvelope,
+    undefined,
+    {},
+    "events",
+  );
+}
+function resolveGatewayWriteBody() {}
+""",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "test deployed source",
+        ],
+        cwd=repo,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    return repo, commit
+
+
+def run_drain_checker(evidence, *, repo_root=None):
+    command = ["python3", "scripts/ci/check_hermes_gateway_migration_drain.py"]
+    if repo_root is not None:
+        command.extend(["--repo-root", str(repo_root)])
+    command.append(str(evidence))
     return subprocess.run(
-        ["python3", "scripts/ci/check_hermes_gateway_migration_drain.py", str(evidence)],
+        command,
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -140,12 +200,32 @@ def test_root_drain_wrapper_runs_the_self_test():
 
 def test_migration_drain_evidence_accepts_full_live_zero_state(tmp_path):
     evidence = tmp_path / "drain-evidence.json"
-    evidence.write_text(json.dumps(release_ready_drain_evidence()), encoding="utf-8")
+    source_repo, deployed_commit = make_deployed_source_repo(tmp_path)
+    data = release_ready_drain_evidence()
+    data["release"]["deployedCommit"] = deployed_commit
+    for service in data["writePath"]["services"]:
+        service["sourceCommit"] = deployed_commit
+    evidence.write_text(json.dumps(data), encoding="utf-8")
 
-    result = run_drain_checker(evidence)
+    result = run_drain_checker(evidence, repo_root=source_repo)
 
     assert result.returncode == 0, result.stderr
     assert "release-ready" in result.stdout
+
+
+def test_migration_drain_evidence_rejects_source_commit_with_signal_writes_still_disabled(tmp_path):
+    evidence = tmp_path / "drain-evidence.json"
+    source_repo, deployed_commit = make_deployed_source_repo(tmp_path, production_signal_enabled=False)
+    data = release_ready_drain_evidence()
+    data["release"]["deployedCommit"] = deployed_commit
+    for service in data["writePath"]["services"]:
+        service["sourceCommit"] = deployed_commit
+    evidence.write_text(json.dumps(data), encoding="utf-8")
+
+    result = run_drain_checker(evidence, repo_root=source_repo)
+
+    assert result.returncode != 0
+    assert "must enable HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS for v4 Signal writes" in result.stderr
 
 
 def test_migration_drain_evidence_requires_live_service_source_provenance(tmp_path):

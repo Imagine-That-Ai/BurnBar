@@ -7,7 +7,9 @@ approval before a public release.
 ## Preconditions
 
 - `OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED=true` has been approved for the target
-  services.
+  services, and the deployed commit has been verified to contain the production
+  Signal-envelope write path (`HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS`
+  includes v4).
 - `scripts/ci/rollout_hermes_gateway_signal_required.js` has been reviewed.
 - `scripts/ci/write_hermes_gateway_migration_drain_evidence.js` has produced
   aggregate_counts_only_no_document_values_or_identifiers evidence.
@@ -22,16 +24,25 @@ Use the dry-run first:
 
 ```bash
 node scripts/ci/rollout_hermes_gateway_signal_required.js \
-  enable-hermes-gateway-signal-required --dry-run
+  enable-hermes-gateway-signal-required \
+  --deployed-commit "$GIT_SHA" \
+  --source-location "$SOURCE_LOCATION" \
+  --dry-run
 ```
 
-Then update Cloud Run services only after approval:
+Then update Cloud Run services only after approval. The helper writes the
+Signal-required flag and the source-provenance environment variables
+(`OPENBURNBAR_SOURCE_COMMIT` and `OPENBURNBAR_CORRESPONDING_SOURCE_URL`)
+together; do not use a flag-only `gcloud run services update` because the drain
+validator must bind the live revision to the exact source commit it is proving.
 
 ```bash
-gcloud run services update burnbarhermesgateway \
-  --update-env-vars OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED=true
-gcloud run services update enqueuehermesgatewayevent \
-  --update-env-vars OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED=true
+node scripts/ci/rollout_hermes_gateway_signal_required.js \
+  enable-hermes-gateway-signal-required \
+  --project-id burnbar \
+  --region us-central1 \
+  --deployed-commit "$GIT_SHA" \
+  --source-location "$SOURCE_LOCATION"
 ```
 
 Cloud Functions gen2 source redeploy must use the same source commit.
@@ -59,6 +70,7 @@ node scripts/ci/write_hermes_gateway_migration_drain_evidence.js \
   --runtime-mode-from-gcloud \
   --output launch-evidence/hermes-gateway-drain.json
 python scripts/ci/check_hermes_gateway_migration_drain.py \
+  --repo-root . \
   launch-evidence/hermes-gateway-drain.json
 python3 scripts/ci/write_cloudvault_at_rest_runtime_evidence.py \
   --output launch-evidence/cloudvault-at-rest-runtime.json \
