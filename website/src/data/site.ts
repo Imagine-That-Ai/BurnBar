@@ -135,6 +135,7 @@ export const NAV_FOOTER = {
     { href: "/faq", label: "FAQ" }
   ],
   trust: [
+    { href: "/trust?v=20260607", label: "Trust center" },
     { href: "/privacy", label: "Privacy model" },
     { href: "/privacy#data-domains", label: "What we can see" },
     { href: "/security", label: "Security model" },

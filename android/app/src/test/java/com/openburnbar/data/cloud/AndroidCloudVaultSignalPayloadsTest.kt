@@ -54,13 +54,21 @@ class AndroidCloudVaultSignalPayloadsTest {
             assertArrayEquals(
                 plaintext,
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                    data, uid = "user-1", collection = "mobile_assistant_chats", docId = "thread-1", localIdentity = local,
+                    data,
+                    uid = "user-1",
+                    collection = "mobile_assistant_chats",
+                    docId = "thread-1",
+                    localIdentity = local,
                 ),
             )
             assertArrayEquals(
                 plaintext,
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                    data, uid = "user-1", collection = "mobile_assistant_chats", docId = "thread-1", localIdentity = peer,
+                    data,
+                    uid = "user-1",
+                    collection = "mobile_assistant_chats",
+                    docId = "thread-1",
+                    localIdentity = peer,
                 ),
             )
         } finally {
@@ -108,7 +116,11 @@ class AndroidCloudVaultSignalPayloadsTest {
             // A different docId is a relocation — the binding guard must reject it.
             assertThrows(IllegalArgumentException::class.java) {
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                    data, uid = "user-1", collection = "mobile_assistant_chats", docId = "thread-2", localIdentity = local,
+                    data,
+                    uid = "user-1",
+                    collection = "mobile_assistant_chats",
+                    docId = "thread-2",
+                    localIdentity = local,
                 )
             }
         } finally {
@@ -121,7 +133,11 @@ class AndroidCloudVaultSignalPayloadsTest {
         val local = AndroidSignalIdentityKeypair.generate("device-a", 1)
         assertNull(
             AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                emptyMap(), uid = "u", collection = "c", docId = "d", localIdentity = local,
+                emptyMap(),
+                uid = "u",
+                collection = "c",
+                docId = "d",
+                localIdentity = local,
             ),
         )
     }

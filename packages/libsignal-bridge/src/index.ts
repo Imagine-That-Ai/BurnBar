@@ -1,5 +1,6 @@
 import * as libsignal from "@signalapp/libsignal-client";
 
+export * from "@signalapp/libsignal-client";
 export * from "./protocolHarness.js";
 
 export const LIBSIGNAL_PIN = {

@@ -758,7 +758,7 @@ private struct AgentBrandForwardSheet: View {
                     Section(header: Text("Source context")) {
                         Text(context.title)
                             .font(.callout.bold())
-                        Text(context.preview)
+                        Text(HermesAtomParser.plainText(context.preview))
                             .font(.caption)
                             .foregroundStyle(DesignSystemColors.textMuted)
                         Text("Updated \(MissionConsoleFormatting.relativeTime(context.updatedAt))")

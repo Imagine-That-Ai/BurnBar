@@ -9,14 +9,9 @@
 // `@signalapp/libsignal-client` directly. Centralising the boundary keeps the
 // crypto surface auditable and lets us swap the underlying provider in one place.
 //
-// PROVENANCE / TODO (AGPL re-point):
-//   GATE 0 introduces an in-repo AGPL wrapper package `packages/libsignal-bridge/`
-//   published as `@openburnbar/libsignal-bridge`. That package is NOT present in
-//   this worktree, so for now we depend DIRECTLY on the upstream npm package
-//   `@signalapp/libsignal-client@0.94.4`. Once the AGPL bridge lands, change the
-//   import below from "@signalapp/libsignal-client" to "@openburnbar/libsignal-bridge"
-//   (which re-exports the same symbols) and update package.json's dependency.
-//   See the residual filed for STREAM 1.
+// PROVENANCE:
+//   This package imports `@openburnbar/libsignal-bridge`, the single in-repo
+//   bridge that imports official `@signalapp/libsignal-client`.
 //
 // STATUS: inert / flag-off. Nothing in the existing app imports this module, so
 // introducing it changes no production behavior.
@@ -57,7 +52,7 @@ import {
   signalDecryptPreKey,
   // Safety number
   Fingerprint,
-} from '@signalapp/libsignal-client';
+} from '@openburnbar/libsignal-bridge';
 import { bindingToAAD, type SignalBinding } from '@openburnbar/signal-envelope-contracts';
 import { randomInt } from 'node:crypto';
 

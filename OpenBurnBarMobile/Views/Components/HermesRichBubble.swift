@@ -93,9 +93,15 @@ struct HermesRichBubble: View {
         if fragment.itemIndex < runs.count {
             let run = runs[fragment.itemIndex]
             switch run.kind {
-            case .body:
+            case .body(let style):
                 Text(fragment.text)
-                    .font(.system(size: baseSize, weight: .regular, design: .rounded))
+                    .font(.system(
+                        size: baseSize,
+                        weight: style.contains(.bold) ? .semibold : .regular,
+                        design: .rounded
+                    ))
+                    .italic(style.contains(.italic))
+                    .strikethrough(style.contains(.strikethrough))
                     .foregroundStyle(baseColor)
                     .padding(.leading, fragment.gapBefore)
 
@@ -164,10 +170,21 @@ struct HermesRichBubble: View {
 
     private func nsAttributes(for kind: HermesRichRunKind) -> [NSAttributedString.Key: Any] {
         switch kind {
-        case .body:
-            return [
+        case .body(let style):
+            var attributes: [NSAttributedString.Key: Any] = [
                 .foregroundColor: UIColor(baseColor)
             ]
+            if !style.isDisjoint(with: [.bold, .italic]) {
+                attributes[.font] = Self.roundedUIFont(
+                    size: baseSize,
+                    weight: style.contains(.bold) ? .semibold : .regular,
+                    italic: style.contains(.italic)
+                )
+            }
+            if style.contains(.strikethrough) {
+                attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+            }
+            return attributes
         case .atom(_, _):
             return [
                 .foregroundColor: UIColor(MobileTheme.hermesAureate),
@@ -186,10 +203,13 @@ struct HermesRichBubble: View {
         }
     }
 
-    private static func roundedUIFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
+    private static func roundedUIFont(size: CGFloat, weight: UIFont.Weight, italic: Bool = false) -> UIFont {
         let base = UIFont.systemFont(ofSize: size, weight: weight)
-        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else {
-            return base
+        var descriptor = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+        if italic, let italicDescriptor = descriptor.withSymbolicTraits(
+            descriptor.symbolicTraits.union(.traitItalic)
+        ) {
+            descriptor = italicDescriptor
         }
         return UIFont(descriptor: descriptor, size: size)
     }
@@ -228,10 +248,14 @@ struct HermesRichBubble: View {
         baseSize: CGFloat
     ) -> PretextRichInlineItem {
         switch run.kind {
-        case .body:
+        case .body(let style):
+            // Mirror the rendered weight/slant so wrap math equals visual
+            // reality — semibold glyphs run wider than regular ones.
+            let weight = style.contains(.bold) ? 600 : 400
+            let slant = style.contains(.italic) ? "italic " : ""
             return PretextRichInlineItem(
                 text: run.text,
-                font: "400 \(Int(baseSize))px -apple-system"
+                font: "\(slant)\(weight) \(Int(baseSize))px -apple-system"
             )
         case .atom:
             return PretextRichInlineItem(

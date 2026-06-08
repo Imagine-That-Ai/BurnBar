@@ -465,7 +465,14 @@ private struct ChatLimitedProseTextView: View {
                 )
             }
         } else {
-            Text(display)
+            // Non-Hermes assistant turns (mirrored CLI agents, Pi, …) arrive
+            // as markdown too — resolve inline emphasis instead of showing
+            // raw `**` markers. User turns stay verbatim.
+            Text(
+                isUser
+                    ? AttributedString(display)
+                    : HermesInlineMarkdown.attributedString(display)
+            )
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)

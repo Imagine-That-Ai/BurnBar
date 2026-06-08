@@ -5,7 +5,13 @@ OpenBurnBar source releases, binary releases, and hosted-service source offers.
 It complements `THIRD_PARTY.md`, which covers bundled brand/logo assets and
 operational dependency risk notes.
 
-## Official Signal libsignal
+## Nous Hermes / MIT-Origin Code
+
+The Hermes Agent upstream contribution lane remains MIT-compatible. BurnBar
+product-only AGPL/libsignal release materials must not be included in Nous/Hermes
+MIT PRs.
+
+## Signal / libsignal / Sparse Post-Quantum Ratchet
 
 - Upstream: `https://github.com/signalapp/libsignal`
 - Pinned tag: `v0.94.4`

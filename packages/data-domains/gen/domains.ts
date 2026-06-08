@@ -295,7 +295,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Connected Devices & Pairings",
     "icon": "laptopcomputer.and.iphone",
     "encryptionTier": "server_readable",
-    "summary": "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: end-to-end relay frames AND the hosted chat gateway are both sealed and never readable by the server — the gateway routes ciphertext per-link and never reads message text, sender names, or attachment file names. The per-agent subscription graph is cloaked behind opaque keyed doc ids.",
+    "summary": "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: paired relay and hosted-gateway frame contents are only claimed as sealed after paired E2EE is enabled and the runtime-readiness gate is complete; relay routing metadata, public keys, coarse tool labels, thread ids, attachment ids, and delivery state remain visible. The per-agent subscription graph is cloaked behind opaque keyed doc ids.",
     "serverSees": [
       "device ids",
       "pairing metadata",
@@ -304,7 +304,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "opaque relay key material (public keys)"
     ],
     "deviceOnly": [
-      "end-to-end relay + gateway frame contents (message text, sender names, attachment file names — all sealed on-device)"
+      "paired relay + gateway frame contents after E2EE/runtime readiness is complete (message text, sender names, attachment file names — sealed on-device in that mode)"
     ],
     "firestorePaths": [
       "devices",

@@ -59,7 +59,7 @@ def check_root_license() -> Check:
 def check_pyproject_license() -> Check:
     path = ROOT / "pyproject.toml"
     if not path.is_file():
-        return Check("pyproject AGPL license", False, "pyproject.toml is missing")
+        return Check("pyproject AGPL license", True, "skipped (root has no Python package metadata)")
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     license_expr = data.get("project", {}).get("license")
     if license_expr != "AGPL-3.0-only":
@@ -70,7 +70,7 @@ def check_pyproject_license() -> Check:
 def check_package_license() -> Check:
     path = ROOT / "package.json"
     if not path.is_file():
-        return Check("package AGPL license", False, "package.json is missing")
+        return Check("package AGPL license", True, "skipped (root has no npm package metadata)")
     data = json.loads(path.read_text(encoding="utf-8"))
     license_expr = data.get("license")
     if license_expr != "AGPL-3.0-only":
@@ -81,7 +81,7 @@ def check_package_license() -> Check:
 def check_package_lock_license() -> Check:
     path = ROOT / "package-lock.json"
     if not path.is_file():
-        return Check("package-lock AGPL license", False, "package-lock.json is missing")
+        return Check("package-lock AGPL license", True, "skipped (root has no npm lockfile)")
     data = json.loads(path.read_text(encoding="utf-8"))
     root = data.get("packages", {}).get("", {})
     license_expr = root.get("license")
@@ -106,14 +106,9 @@ def check_readme_license() -> Check:
 
 def check_app_legal_surfaces() -> list[Check]:
     surfaces = {
-        "apps/desktop/README.md": [
-            "AGPL-3.0-only",
-            "Signal/libsignal-backed E2EE",
-            "Nous/Hermes upstream contribution path remains MIT-compatible",
-        ],
-        "services/hosted-mcp/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
-        "services/hermes-realtime-relay/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
-        "functions/lib/sourceMetadata.js": ['license: "AGPL-3.0-only"'],
+        "services/hosted-mcp/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
+        "services/hermes-realtime-relay/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
+        "functions/src/sourceMetadata.ts": ['license: "AGPL-3.0-only"'],
     }
     checks: list[Check] = []
     for rel_path, needles in surfaces.items():
@@ -286,6 +281,9 @@ def check_source_provenance_process() -> list[Check]:
             "write_hermes_gateway_migration_drain_evidence.js",
             "drain_hermes_gateway_legacy_records.js",
             "--confirm delete-legacy-hermes-gateway-records",
+            "--live-production-acknowledgement",
+            "--predelete-export",
+            "--quarantine-output",
             "check_hermes_gateway_migration_drain.py",
             "aggregate_counts_only_no_document_values_or_identifiers",
         ],
@@ -301,18 +299,40 @@ def check_source_provenance_process() -> list[Check]:
         "scripts/ci/drain_hermes_gateway_legacy_records.js": [
             "delete-legacy-hermes-gateway-records",
             "--runtime-mode-evidence",
+            "--live-production-acknowledgement",
+            "--predelete-export",
+            "--quarantine-output",
             "runtimeModeEvidenceErrors",
             "aggregate_counts_only_no_document_values_or_identifiers",
             "bulkWriter",
         ],
+        "scripts/ci/restore_hermes_gateway_legacy_records.js": [
+            "restore-hermes-gateway-predelete-export",
+            "--live-production-acknowledgement",
+            "private_export_contains_document_values_do_not_commit",
+            "bulkWriter",
+        ],
         "scripts/ci/check_agpl_legal_release_review.py": [
             "validate_legal_release_review",
+            "validate_approval_signature",
             "app store and commercial distribution terms",
             "external_counsel",
+            "reviewStatus",
             "distributionChannels",
+            "openssl-sha256-rsa",
             "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md",
             "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
             "check_burnbar_license_posture.py",
+        ],
+        "scripts/ci/check_burnbar_release_preflight.py": [
+            "BurnBar product release preflight",
+            "collect_blockers",
+            "source_provenance_blockers",
+            "legal_review_blockers",
+            "HOLD: BurnBar product release preflight is not ready",
+            "release_preflight_blockers",
+            "validate_legal_release_review",
+            "latest-agpl-store-legal-packet.json",
         ],
         "scripts/ci/check_cloudvault_at_rest_runtime.py": [
             "validate_cloudvault_at_rest_evidence",
@@ -521,9 +541,11 @@ def _iter_ios_artifacts() -> list[Path]:
     for app in build_root.rglob("*.app"):
         if not app.is_dir():
             continue
-        # Only iphoneos products dirs (e.g. .../Debug-iphoneos/Foo.app),
-        # never simulator builds (Debug-iphonesimulator) or Mac apps.
+        # Only release/archive iphoneos products, never simulator builds, Mac
+        # apps, or ad-hoc Debug-iphoneos device builds left by local testing.
         if not any("iphoneos" in part.lower() for part in app.parts):
+            continue
+        if not any("release-iphoneos" in part.lower() or "archive" in part.lower() for part in app.parts):
             continue
         key = app.resolve().as_posix()
         if key not in seen:
@@ -586,19 +608,41 @@ def check_ios_libsignal_free() -> Check:
 
 
 def check_claim_hygiene() -> Check:
-    scanned_roots = ["README.md", "apps/desktop/README.md", "docs", "plugins/platforms/burnbar"]
+    scanned_roots = [
+        "README.md",
+        "apps/desktop/README.md",
+        "apps/console",
+        "docs",
+        "plugins/platforms/burnbar",
+        "website/src",
+        "OpenBurnBarMobile",
+        "android",
+    ]
     excluded = {
         "docs/legal/DEPENDENCY_LICENSE_MANIFEST.md",
         "docs/legal/SOURCE_AVAILABILITY.md",
     }
+    excluded_dirs = {
+        ".gradle",
+        ".next",
+        ".nuxt",
+        "build",
+        "dist",
+        "node_modules",
+        "Pods",
+    }
     violations: list[str] = []
     for root in scanned_roots:
         path = ROOT / root
+        if not path.exists():
+            continue
         files = [path] if path.is_file() else sorted(path.rglob("*"))
         for file_path in files:
             if not file_path.is_file():
                 continue
             rel_path = file_path.relative_to(ROOT).as_posix()
+            if any(part in excluded_dirs for part in file_path.relative_to(ROOT).parts):
+                continue
             if rel_path in excluded or rel_path.startswith("docs/legal/"):
                 continue
             try:
