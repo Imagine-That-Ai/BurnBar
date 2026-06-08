@@ -1,12 +1,12 @@
 /**
  * Hermes Gateway E2EE (schema 2) — enqueueHermesGatewayEvent must FORWARD a
- * sealed relayEnvelope opaquely and persist NO plaintext body. This proves:
- *   1. A sealed event writes only routing fields + relayEnvelope — text,
+ * sealed envelopes opaquely and persist NO plaintext body. This proves:
+ *   1. A sealed event writes only routing fields + relay/ratchet/Signal envelope — text,
  *      senderDisplayName and threadId never touch the stored doc.
  *   2. A relay-capable client that supplies a plaintext `text` (no envelope) is
  *      rejected with `ciphertext_required` (fail toward privacy when sealed).
  *   3. A model_switch on a relay-capable client is itself SEALED: the server
- *      requires the relayEnvelope (the "/model …" command body is private),
+ *      requires a sealed envelope (the "/model …" command body is private),
  *      forwards it opaquely, and stores NO cleartext model command, text,
  *      senderDisplayName, or threadId. An unsealed model_switch to a relay-
  *      capable client is rejected (Codex finding: MODEL_SWITCH SEALED).
@@ -112,7 +112,7 @@ function sealedEnvelope() {
   };
 }
 
-function signalEnvelope() {
+function signalEnvelope(slotId = "evt_signal_disabled") {
   return {
     signalEnvelopeFormatVersion: 1,
     mode: "transport",
@@ -133,7 +133,7 @@ function signalEnvelope() {
       uid: UID,
       scope: "gateway",
       clientId: TARGET_CLIENT_ID,
-      slotId: "evt_signal_disabled",
+      slotId,
       mode: "transport",
       formatVersion: 1,
     },
@@ -192,6 +192,30 @@ function storedEvent(): Record<string, unknown> {
     throw new Error("Expected Hermes gateway event document to be stored");
   }
   return event;
+}
+
+async function withSignalWritesEnabled<T>(fn: () => Promise<T>): Promise<T> {
+  const gateway = await import("../hermesGateway.js");
+  const previous = [...gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS];
+  gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+  gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(gateway.HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL);
+  try {
+    return await fn();
+  } finally {
+    gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+    for (const version of previous) gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(version);
+  }
+}
+
+function stringLeaves(value: unknown): string[] {
+  const leaves: string[] = [];
+  const walk = (v: unknown) => {
+    if (typeof v === "string") leaves.push(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  walk(value);
+  return leaves;
 }
 
 describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
@@ -321,7 +345,42 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
     expect(leaked).toBe(false);
   });
 
-  it("requires a sealed relayEnvelope for a model_switch on a relay-capable client", async () => {
+  it("activation candidate: persists a Signal-sealed event with NO plaintext body", async () => {
+    await withSignalWritesEnabled(async () => {
+      const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+      const run = callableRun(enqueueHermesGatewayEvent);
+      const envelope = signalEnvelope("evt_signal_enabled");
+
+      const res = await run(
+        request({
+          targetClientId: TARGET_CLIENT_ID,
+          eventId: "evt_signal_enabled",
+          signalEnvelope: envelope,
+          senderId: "burnbar-user",
+          text: PLAINTEXT_TEXT,
+          senderDisplayName: PLAINTEXT_NAME,
+          threadId: PLAINTEXT_THREAD,
+        }),
+      );
+      expect(res).toMatchObject({ id: "evt_signal_enabled", sequence: 1 });
+
+      const event = storedEvent();
+      expect(event.signalEnvelope).toEqual(envelope);
+      expect(event.relayEnvelope).toBeUndefined();
+      expect(event.ratchetEnvelope).toBeUndefined();
+      expect(event.schemaVersion).toBe(2);
+      expect(event.targetClientId).toBe(TARGET_CLIENT_ID);
+      expect(event.senderId).toBe("burnbar-user");
+      expect(event).not.toHaveProperty("text");
+      expect(event).not.toHaveProperty("senderDisplayName");
+      expect(event).not.toHaveProperty("threadId");
+      expect(stringLeaves(event)).not.toContain(PLAINTEXT_TEXT);
+      expect(stringLeaves(event)).not.toContain(PLAINTEXT_NAME);
+      expect(stringLeaves(event)).not.toContain(PLAINTEXT_THREAD);
+    });
+  });
+
+  it("requires a sealed envelope for a model_switch on a relay-capable client", async () => {
     const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
     // An unsealed model_switch (plaintext command, no envelope) is rejected: the
@@ -334,7 +393,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
           text: "/model minimax-m2.7",
         }),
       ),
-    ).rejects.toThrow(/relay envelope|relayEnvelope/);
+    ).rejects.toThrow(/relayEnvelope, ratchetEnvelope, or signalEnvelope/);
     const leaked = [...stored.keys()].some((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
     expect(leaked).toBe(false);
   });
@@ -392,5 +451,39 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
     expect(leaves).not.toContain(PLAINTEXT_NAME);
     expect(leaves).not.toContain(PLAINTEXT_THREAD);
     expect(leaves).not.toContain("/model minimax-m2.7");
+  });
+
+  it("activation candidate: stores a Signal-sealed model_switch without relay-visible command details", async () => {
+    await withSignalWritesEnabled(async () => {
+      const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+      const run = callableRun(enqueueHermesGatewayEvent);
+      const envelope = signalEnvelope("evt_signal_switch");
+
+      await run(
+        request({
+          targetClientId: TARGET_CLIENT_ID,
+          eventKind: "model_switch",
+          eventId: "evt_signal_switch",
+          signalEnvelope: envelope,
+          senderDisplayName: PLAINTEXT_NAME,
+          threadId: PLAINTEXT_THREAD,
+          text: "/model minimax-m2.7",
+        }),
+      );
+
+      const event = storedEvent();
+      expect(event.kind).toBe("model_switch");
+      expect(event.signalEnvelope).toEqual(envelope);
+      expect(event.relayEnvelope).toBeUndefined();
+      expect(event.ratchetEnvelope).toBeUndefined();
+      expect(event).not.toHaveProperty("modelId");
+      expect(event).not.toHaveProperty("text");
+      expect(event).not.toHaveProperty("senderDisplayName");
+      expect(event).not.toHaveProperty("threadId");
+      const leaves = stringLeaves(event);
+      expect(leaves).not.toContain(PLAINTEXT_NAME);
+      expect(leaves).not.toContain(PLAINTEXT_THREAD);
+      expect(leaves).not.toContain("/model minimax-m2.7");
+    });
   });
 });

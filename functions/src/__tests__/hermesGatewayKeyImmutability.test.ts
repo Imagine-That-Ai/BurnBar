@@ -57,6 +57,7 @@ const stored = new Map<string, Record<string, unknown>>();
 function snapFor(path: string) {
   return {
     id: path.split("/").pop(),
+    ref: docRef(path),
     exists: stored.has(path),
     data: () => stored.get(path),
     get: (field: string) => stored.get(path)?.[field],
@@ -77,7 +78,45 @@ function docRef(path: string) {
 
 const dbMock = {
   doc: (path: string) => docRef(path),
-  collection: () => ({ doc: (id: string) => docRef(id), get: async () => ({ docs: [], empty: true }) }),
+  runTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+    const tx = {
+      get: async (ref: { __path: string }) => snapFor(ref.__path),
+      set: (ref: { __path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) => {
+        if (opts?.merge === false) stored.set(ref.__path, { ...data });
+        else stored.set(ref.__path, { ...stored.get(ref.__path), ...data });
+      },
+    };
+    return fn(tx);
+  },
+  collection: (path: string) => {
+    const filters: Array<{ field: string; value: unknown }> = [];
+    let limitCount = Number.POSITIVE_INFINITY;
+    const query = {
+      doc: (id: string) => docRef(`${path}/${id}`),
+      where(field: string, op: string, value: unknown) {
+        if (op !== "==") throw new Error(`Unsupported fake Firestore operator ${op}`);
+        filters.push({ field, value });
+        return query;
+      },
+      limit(count: number) {
+        limitCount = count;
+        return query;
+      },
+      get: async () => {
+        const prefix = `${path}/`;
+        const docs = [...stored.entries()]
+          .filter(([docPath, data]) => {
+            if (!docPath.startsWith(prefix)) return false;
+            if (docPath.slice(prefix.length).includes("/")) return false;
+            return filters.every(({ field, value }) => data[field] === value);
+          })
+          .slice(0, limitCount)
+          .map(([docPath]) => snapFor(docPath));
+        return { docs, empty: docs.length === 0, size: docs.length };
+      },
+    };
+    return query;
+  },
 };
 
 vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
@@ -153,6 +192,10 @@ function devicePollRequest(body: Record<string, unknown>) {
   return postRequest("/device/poll", body);
 }
 
+function deviceStartRequest(body: Record<string, unknown>) {
+  return postRequest("/device/start", body, { "x-forwarded-for": "127.0.0.1" });
+}
+
 function record(value: unknown, label = "value"): Record<string, unknown> {
   expect(value, `${label} must be an object`).toEqual(expect.any(Object));
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -168,6 +211,42 @@ async function runHttpHandler(handler: unknown, req: ReturnType<typeof postReque
     throw new Error("Expected HTTP handler to be callable");
   }
   await callable(req, res);
+}
+
+function callableRequest(data: Record<string, unknown>) {
+  return { auth: { uid: UID, token: {} }, app: { appId: "test-app" }, rawRequest: { headers: {} }, data };
+}
+
+function callableRun(callable: unknown): (request: unknown) => Promise<unknown> {
+  const run = Reflect.get(Object(callable), "run");
+  if (typeof run !== "function") {
+    throw new Error("Expected callable to expose run()");
+  }
+  return run;
+}
+
+async function withSignalWritesEnabled<T>(fn: () => Promise<T>): Promise<T> {
+  const gateway = await import("../hermesGateway.js");
+  const previous = [...gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS];
+  gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+  gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(gateway.HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL);
+  try {
+    return await fn();
+  } finally {
+    gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+    for (const version of previous) gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(version);
+  }
+}
+
+function signalCapabilities(platform: string, appBuild: string): Record<string, unknown> {
+  return {
+    supportsRelayEnvelopeVersions: [2, 3],
+    preferredRelayEnvelopeVersion: 3,
+    supportsHpkeV3: true,
+    supportsSignalEnvelope: true,
+    clientPlatform: platform,
+    clientAppBuild: appBuild,
+  };
 }
 
 function storedClient(): Record<string, unknown> {
@@ -258,6 +337,89 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     expect(client.agentRelayPublicKey).toBe(PINNED_AGENT_KEY);
   });
 
+  it("activation candidate: /runtime persists negotiated Signal support only when both endpoints advertise it", async () => {
+    await withSignalWritesEnabled(async () => {
+      const { burnBarHermesGateway } = await import("../callables/hermesGateway.js");
+      const { hashHermesGatewayBearerToken } = await import("../hermesGateway.js");
+      const tokenHash = hashHermesGatewayBearerToken(TOKEN);
+      await seedPairedClient(tokenHash, PINNED_AGENT_KEY);
+      stored.set(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}`, {
+        ...storedClient(),
+        phoneSupportsRelayEnvelopeVersions: [2, 3],
+        phonePreferredRelayEnvelopeVersion: 3,
+        phoneSupportsHpkeV3: true,
+        phoneSupportsSignalEnvelope: true,
+      });
+
+      const res = fakeRes();
+      await runHttpHandler(
+        burnBarHermesGateway,
+        runtimeRequest({
+          agentRelayPublicKey: PINNED_AGENT_KEY,
+          ...signalCapabilities("python", "hermes-agent-signal"),
+        }),
+        res,
+      );
+
+      expect(res._status).toBe(200);
+      let client = storedClient();
+      expect(client.agentSupportsSignalEnvelope).toBe(true);
+      expect(client.phoneSupportsSignalEnvelope).toBe(true);
+      expect(client.supportsSignalEnvelope).toBe(true);
+      expect(client.supportsRelayEnvelopeVersions).toEqual([2, 3]);
+      expect(client.preferredRelayEnvelopeVersion).toBe(3);
+
+      stored.set(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}`, {
+        ...client,
+        phoneSupportsSignalEnvelope: false,
+      });
+      const legacyPhoneRes = fakeRes();
+      await runHttpHandler(
+        burnBarHermesGateway,
+        runtimeRequest({
+          agentRelayPublicKey: PINNED_AGENT_KEY,
+          ...signalCapabilities("python", "hermes-agent-signal"),
+        }),
+        legacyPhoneRes,
+      );
+
+      expect(legacyPhoneRes._status).toBe(200);
+      client = storedClient();
+      expect(client.agentSupportsSignalEnvelope).toBe(true);
+      expect(client.phoneSupportsSignalEnvelope).toBe(false);
+      expect(client.supportsSignalEnvelope).toBe(false);
+    });
+  });
+
+  it("activation candidate: /device/start stores agent Signal capability on the pending session", async () => {
+    await withSignalWritesEnabled(async () => {
+      const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+
+      const res = fakeRes();
+      await dispatchHermesGatewayRequest(
+        deviceStartRequest({
+          clientName: "Hermes Agent Signal",
+          agentRelayPublicKey: PINNED_AGENT_KEY,
+          ...signalCapabilities("python", "hermes-agent-signal"),
+        }),
+        res,
+      );
+
+      expect(res._status).toBe(200);
+      const body = record(res._body, "device start response body");
+      const deviceCode = body.deviceCode;
+      expect(typeof deviceCode).toBe("string");
+      const session = stored.get(`hermes_gateway_device_sessions/${deviceCode}`);
+      expect(session?.agentRelayPublicKey).toBe(PINNED_AGENT_KEY);
+      expect(session?.agentSupportsRelayEnvelopeVersions).toEqual([2, 3]);
+      expect(session?.agentPreferredRelayEnvelopeVersion).toBe(3);
+      expect(session?.agentSupportsHpkeV3).toBe(true);
+      expect(session?.agentSupportsSignalEnvelope).toBe(true);
+      expect(session?.agentPlatform).toBe("python");
+      expect(session?.agentAppBuild).toBe("hermes-agent-signal");
+    });
+  });
+
   it("returns pairing-rooted uid/clientId and phone E2EE material from approved device polls", async () => {
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
     const { Timestamp } = await import("firebase-admin/firestore");
@@ -318,5 +480,77 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
     expect(client.id).toBe(CLIENT_ID);
     expect(client.uid).toBeUndefined();
     expect(stored.has(`hermes_gateway_device_sessions/${deviceCode}`)).toBe(false);
+  });
+
+  it("activation candidate: approval persists Signal capabilities and /device/poll returns them", async () => {
+    await withSignalWritesEnabled(async () => {
+      const { approveHermesGatewayDeviceGrant, dispatchHermesGatewayRequest } =
+        await import("../callables/hermesGateway.js");
+      const { Timestamp } = await import("firebase-admin/firestore");
+      const { hashHermesGatewayDeviceSecret } = await import("../hermesGateway.js");
+      const deviceCode = "hgd_signal_approval";
+      const deviceSecret = "signal-approval-secret";
+      const userCode = "SIG1-2345";
+
+      stored.set(`hermes_gateway_device_sessions/${deviceCode}`, {
+        deviceCode,
+        userCode,
+        deviceSecretHash: hashHermesGatewayDeviceSecret(deviceSecret),
+        status: "pending",
+        clientName: "Hermes Agent Signal",
+        requestedScopes: ["hermes.gateway.read", "hermes.gateway.write"],
+        agentRelayPublicKey: PINNED_AGENT_KEY,
+        agentRelayKeyVersion: 1,
+        agentRelayEncryption: "p256-hkdf-sha256-aesgcm",
+        agentSupportsRelayEnvelopeVersions: [2, 3],
+        agentPreferredRelayEnvelopeVersion: 3,
+        agentSupportsHpkeV3: true,
+        agentSupportsSignalEnvelope: true,
+        agentPlatform: "python",
+        agentAppBuild: "hermes-agent-signal",
+        expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
+      });
+
+      const runApprove = callableRun(approveHermesGatewayDeviceGrant);
+      const approveResult = record(
+        await runApprove(
+          callableRequest({
+            userCode,
+            displayName: "Hermes Agent Signal",
+            destinationId: "burnbar:home",
+            phoneRelayPublicKey: PHONE_KEY,
+            phoneRelayKeyVersion: 1,
+            phoneRelayEncryption: "p256-hkdf-sha256-aesgcm",
+            ...signalCapabilities("ios", "openburnbar-signal"),
+          }),
+        ),
+        "approval result",
+      );
+      const approvedClient = record(approveResult.client, "approved client");
+      const clientId = String(approvedClient.id);
+      expect(approvedClient.agentSupportsSignalEnvelope).toBe(true);
+      expect(approvedClient.phoneSupportsSignalEnvelope).toBe(true);
+      expect(approvedClient.supportsSignalEnvelope).toBe(true);
+      expect(approvedClient.supportsRelayEnvelopeVersions).toEqual([2, 3]);
+      expect(approvedClient.preferredRelayEnvelopeVersion).toBe(3);
+
+      const persistedClient = stored.get(`users/${UID}/hermes_gateway_clients/${clientId}`);
+      expect(persistedClient?.agentSupportsSignalEnvelope).toBe(true);
+      expect(persistedClient?.phoneSupportsSignalEnvelope).toBe(true);
+      expect(persistedClient?.supportsSignalEnvelope).toBe(true);
+
+      const pollRes = fakeRes();
+      await dispatchHermesGatewayRequest(devicePollRequest({ deviceCode, deviceSecret }), pollRes);
+      expect(pollRes._status).toBe(200);
+      const pollBody = record(pollRes._body, "device poll response body");
+      expect(pollBody.status).toBe("approved");
+      expect(pollBody.clientId).toBe(clientId);
+      expect(pollBody.phoneSupportsSignalEnvelope).toBe(true);
+      const pollClient = record(pollBody.client, "device poll client");
+      expect(pollClient.agentSupportsSignalEnvelope).toBe(true);
+      expect(pollClient.phoneSupportsSignalEnvelope).toBe(true);
+      expect(pollClient.supportsSignalEnvelope).toBe(true);
+      expect(stored.has(`hermes_gateway_device_sessions/${deviceCode}`)).toBe(false);
+    });
   });
 });

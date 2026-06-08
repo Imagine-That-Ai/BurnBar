@@ -19,7 +19,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hashHermesGatewayBearerToken } from "../hermesGateway.js";
+import {
+  HERMES_GATEWAY_SCHEMA_VERSION,
+  HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
+  HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
+  HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
+  hashHermesGatewayBearerToken,
+  type GatewaySignalEnvelopeDoc,
+} from "../hermesGateway.js";
 
 // All imports of ../callables/hermesGateway.js are LAZY (await import inside a
 // test) so the vi.mock factories below (which capture the in-memory doubles) are
@@ -150,6 +157,59 @@ function sealedEnvelope() {
   };
 }
 
+function signalEnvelope(slotId = "att_signal_enabled"): GatewaySignalEnvelopeDoc {
+  return {
+    signalEnvelopeFormatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
+    mode: "transport",
+    relayKeyVersion: HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
+    relayEncryption: HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
+    ciphertextLayer: {
+      payloadCiphertextB64: Buffer.from("signal-sealed-payload").toString("base64"),
+      payloadAADLabel: "gatewayAttachment",
+      schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
+    },
+    keyDelivery: {
+      scheme: HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
+      signalMessageType: 3,
+      signalMessageB64: Buffer.from("serialized-prekey-signal-message").toString("base64"),
+      senderIdentityKeyId: "agent-signal-identity",
+      ratchetEpochHint: 1,
+    },
+    binding: {
+      uid: UID,
+      scope: "gateway",
+      clientId: CLIENT_ID,
+      slotId,
+      mode: "transport",
+      formatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
+    },
+  };
+}
+
+async function withSignalWritesEnabled<T>(fn: () => Promise<T>): Promise<T> {
+  const gateway = await import("../hermesGateway.js");
+  const previous = [...gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS];
+  gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+  gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(gateway.HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL);
+  try {
+    return await fn();
+  } finally {
+    gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+    for (const version of previous) gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(version);
+  }
+}
+
+function stringLeaves(value: unknown): string[] {
+  const leaves: string[] = [];
+  const walk = (v: unknown) => {
+    if (typeof v === "string") leaves.push(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  walk(value);
+  return leaves;
+}
+
 interface CapturedResponse {
   status: number;
   body: unknown;
@@ -247,6 +307,61 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
     // The doc was persisted at the per-client-namespaced storage path.
     expect(manifest.storagePath).toBe(`users/${UID}/hermes_gateway_attachments/${CLIENT_ID}/att_happy_path_0001`);
     expect(stored.has(`users/${UID}/hermes_gateway_attachments/att_happy_path_0001`)).toBe(true);
+  });
+
+  it("activation candidate: persists a Signal-sealed attachment manifest with NO plaintext name", async () => {
+    await withSignalWritesEnabled(async () => {
+      const envelope = signalEnvelope();
+      const res = await callGateway("/attachments/init", {
+        attachmentId: "att_signal_enabled",
+        signalEnvelope: envelope,
+        fileName: "private-photo.png",
+        byteCount: 2048,
+        contentType: "image/png",
+      });
+
+      expect(res.status).toBe(200);
+      const manifest = record(record(res.body, "init response body").attachment, "attachment manifest");
+      expect(manifest.id).toBe("att_signal_enabled");
+      expect(manifest.signalEnvelope).toEqual(envelope);
+      expect(manifest.relayEnvelope).toBeUndefined();
+      expect(manifest.ratchetEnvelope).toBeUndefined();
+      expect(manifest.fileName).toBeUndefined();
+      expect(manifest.contentType).toBe("application/octet-stream");
+      expect(manifest.byteCount).toBe(2048);
+      expect(stringLeaves(manifest)).not.toContain("private-photo.png");
+      expect(stringLeaves(manifest)).not.toContain("image/png");
+    });
+  });
+
+  it("activation candidate: persists a Signal-sealed message with NO plaintext body", async () => {
+    await withSignalWritesEnabled(async () => {
+      const envelope = signalEnvelope("msg_signal_enabled");
+      const res = await callGateway("/messages", {
+        destinationId: "burnbar:home",
+        messageId: "msg_signal_enabled",
+        signalEnvelope: envelope,
+        text: "plaintext reply body",
+        threadId: "private-thread",
+        replyToEventId: "evt-private-reply",
+      });
+
+      expect(res.status).toBe(200);
+      const body = record(res.body, "message response body");
+      const message = record(body.message, "message doc");
+      expect(message.id).toBe("msg_signal_enabled");
+      expect(message.signalEnvelope).toEqual(envelope);
+      expect(message.relayEnvelope).toBeUndefined();
+      expect(message.ratchetEnvelope).toBeUndefined();
+      expect(message.text).toBeUndefined();
+      expect(message.threadId).toBeUndefined();
+      expect(message.replyToEventId).toBeUndefined();
+      const storedMessage = stored.get(`users/${UID}/hermes_gateway_messages/msg_signal_enabled`);
+      expect(storedMessage?.signalEnvelope).toEqual(envelope);
+      expect(stringLeaves(storedMessage)).not.toContain("plaintext reply body");
+      expect(stringLeaves(storedMessage)).not.toContain("private-thread");
+      expect(stringLeaves(storedMessage)).not.toContain("evt-private-reply");
+    });
   });
 
   it("REJECTS a second init of the same attachmentId with 409 and does NOT re-mint the URL", async () => {

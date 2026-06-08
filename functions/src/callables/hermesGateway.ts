@@ -358,8 +358,8 @@ interface ResolvedGatewayWriteBody {
 /**
  * Decide whether a phone/agent write carries a sealed body and enforce the
  * privacy gate. Precedence:
- *   1. A present relayEnvelope is validated (shape only) and ALWAYS used; any
- *      plaintext text supplied alongside it is ignored (the sealed body wins).
+ *   1. A present Signal, ratchet, or relay envelope is validated and ALWAYS
+ *      used; any plaintext text supplied alongside it is ignored (the sealed body wins).
  *   2. With no envelope, plaintext is rejected. The legacy plaintext output is
  *      retained only as dead-code-compatible shape for old test fixtures and
  *      read paths; gatewayPlaintextWriteAllowed() now always returns false.
@@ -395,7 +395,7 @@ function resolveGatewayWriteBody(
   if (!gatewayPlaintextWriteAllowed(client.relayCapable)) {
     throw new HttpsError(
       "invalid-argument",
-      "ciphertext_required: a relayEnvelope or ratchetEnvelope is required for Hermes Gateway message bodies.",
+      "ciphertext_required: a relayEnvelope, ratchetEnvelope, or signalEnvelope is required for Hermes Gateway message bodies.",
     );
   }
   logInfo({
@@ -852,7 +852,7 @@ async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<v
     kind: "agent_message",
     destinationId,
     // threadId/replyToEventId are private conversation-routing metadata. For new
-    // sealed messages they must live inside relayEnvelope, not as top-level
+    // sealed messages they must live inside the sealed envelope, not as top-level
     // Firestore fields.
     threadId: sealed.legacyText ? boundedTrimmedString(body.threadId, "threadId", 160, false) : undefined,
     replyToEventId: sealed.legacyText
@@ -1110,8 +1110,8 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
   const body = requestBody(req);
   // Sealed attachments (schema 2+): the agent seals the BYTES before uploading,
-  // and seals {fileName,byteCount,contentType} into either relayEnvelope or the
-  // Phase 6 ratchetEnvelope. The server never sees the plaintext name or bytes.
+  // and seals {fileName,byteCount,contentType} into relayEnvelope,
+  // ratchetEnvelope, or signalEnvelope. The server never sees the plaintext name or bytes.
   // byteCount is the CIPHERTEXT length (≈ plaintext + 28B GCM overhead); the
   // stored object is opaque (application/octet-stream).
   const providedEnvelopeCount = [body.relayEnvelope, body.ratchetEnvelope, body.signalEnvelope].filter(
@@ -1135,7 +1135,7 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   if (!sealed && !gatewayPlaintextWriteAllowed(grant.client.relayCapable)) {
     throw new HttpsError(
       "invalid-argument",
-      "ciphertext_required: a relayEnvelope or ratchetEnvelope (with the sealed fileName) is required for Hermes Gateway attachments.",
+      "ciphertext_required: a relayEnvelope, ratchetEnvelope, or signalEnvelope (with the sealed fileName) is required for Hermes Gateway attachments.",
     );
   }
   // Plaintext fileName is never accepted for new writes; the name lives inside
@@ -1268,7 +1268,7 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
     throw httpError(400, "attachment_size_mismatch");
   }
   // For a sealed upload the bytes are ciphertext: the real media type is sealed
-  // inside relayEnvelope/ratchetEnvelope and the stored object is opaque, so the
+  // inside the sealed envelope and the stored object is opaque, so the
   // server neither matches nor safety-sniffs the content type (the sha256 below
   // is the integrity gate on the ciphertext). Legacy plaintext uploads validate.
   if (!sealed) {
@@ -1475,6 +1475,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
         supportsRelayEnvelopeVersions?: unknown;
         preferredRelayEnvelopeVersion?: unknown;
         supportsHpkeV3?: unknown;
+        supportsSignalEnvelope?: unknown;
         clientPlatform?: unknown;
         clientAppBuild?: unknown;
         phoneRatchetIdentityPublicKey?: unknown;
@@ -1932,7 +1933,7 @@ export const enqueueHermesGatewayEvent = onCall(
       // The phone seals the event body before this call; the server forwards the
       // opaque envelope and never reads it. A model_switch on a relay-capable
       // target ALSO travels sealed: the model command ("/model …") is private, so
-      // the server REQUIRES the relayEnvelope and forwards it blindly. The agent
+      // the server REQUIRES a sealed envelope and forwards it blindly. The agent
       // opens it and validates the requested model against its own catalog AFTER
       // decrypting — the server keeps no plaintext clientAdvertisesModel gate that
       // would force it to read the (sealed) command or leak the catalog decision.
