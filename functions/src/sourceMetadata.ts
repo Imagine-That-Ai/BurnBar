@@ -13,11 +13,5 @@ export function sourceMetadata() {
 }
 
 function sourceCommit(): string {
-  return (
-    process.env.OPENBURNBAR_SOURCE_COMMIT ??
-    process.env.SOURCE_COMMIT ??
-    process.env.GIT_SHA ??
-    process.env.FUNCTION_VERSION ??
-    "unknown"
-  );
+  return process.env.OPENBURNBAR_SOURCE_COMMIT ?? process.env.SOURCE_COMMIT ?? process.env.GIT_SHA ?? "unknown";
 }
