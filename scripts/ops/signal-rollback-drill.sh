@@ -9,21 +9,23 @@
 #
 # Steps rehearsed (in order):
 #   1. RC disable signal_envelope_v4_enabled
-#   2. RC disable per-domain at-rest Signal flags
+#   2. Verify per-domain at-rest Signal rollback boundary
 #   3. Set SIGNAL_ENVELOPE_V4_DISABLED for agents/clients/server capability
 #   4. Keep dual-read OPEN (never delete Signal rows on rollback)
 #   5. Re-run export/delete + rules tests to prove read-tolerance survived
 #
-# Usage: scripts/ops/signal-rollback-drill.sh [--live] [--evidence <dir>]
+# Usage: scripts/ops/signal-rollback-drill.sh [--live] [--evidence <dir>] [--cloudvault-evidence <path>]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 LIVE="false"
 EVIDENCE=""
+CLOUDVAULT_EVIDENCE="${CLOUDVAULT_AT_REST_EVIDENCE:-launch-evidence/cloudvault-at-rest-runtime.json}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --live) LIVE="true"; shift ;;
     --evidence) EVIDENCE="$2"; shift 2 ;;
+    --cloudvault-evidence) CLOUDVAULT_EVIDENCE="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -62,16 +64,21 @@ fi
 assert_code "empty HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS (REAL current lever)" \
   "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS *= *new Set<number>\\(\\)" functions/src/hermesGateway.ts
 
-log "Step 2/5 — disable per-domain at-rest Signal (registry sealingScheme stays cloudvault)"
-if [[ "$LIVE" == "true" ]]; then
-  note "revert any domain sealingScheme back to cloudvault default + redeploy rules"
-else
-  note "[dry-run] would assert no domain has a 'signal' sealingScheme"
-fi
+log "Step 2/5 — verify per-domain at-rest Signal rollback boundary"
 if grep -Eq '"sealingScheme"\s*:\s*"[^"]*signal' packages/data-domains/registry.json 2>/dev/null; then
-  note "MISS a domain is on a signal sealingScheme (would need revert)"; fail=$((fail + 1))
+  if python3 scripts/ci/check_cloudvault_at_rest_runtime.py "$CLOUDVAULT_EVIDENCE" --repo-root . >/tmp/signal-rollback-cloudvault.log 2>&1; then
+    note "OK   at-rest Signal domains are evidence-backed by $CLOUDVAULT_EVIDENCE"
+    if [[ "$LIVE" == "true" ]]; then
+      note "operator must revert the registry sealingScheme + redeploy rules for a full at-rest rollback"
+    else
+      note "[dry-run] full at-rest rollback would revert the registry sealingScheme + redeploy rules; transport rollback leaves existing Signal rows readable"
+    fi
+  else
+    note "MISS registry has Signal at-rest domains but CloudVault evidence did not validate (see /tmp/signal-rollback-cloudvault.log)"
+    fail=$((fail + 1))
+  fi
 else
-  note "OK   no domain is on a signal sealingScheme"
+  note "OK   no domain is on a Signal at-rest sealingScheme"
 fi
 
 log "Step 3/5 — set SIGNAL_ENVELOPE_V4_DISABLED for agents/clients/server capability"

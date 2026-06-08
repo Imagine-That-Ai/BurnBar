@@ -1,0 +1,66 @@
+{
+  "commandEvidence": [
+    {
+      "command": "npm run build --prefix functions",
+      "durationMs": 5171,
+      "exitCode": 0,
+      "status": "pass",
+      "stderrNormalizedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutNormalizedSha256": "825f5c21d7b07dba4a95d415b7f07f257f82b7ea02431987bb75fa41e7df53b4",
+      "stdoutSha256": "825f5c21d7b07dba4a95d415b7f07f257f82b7ea02431987bb75fa41e7df53b4"
+    },
+    {
+      "assertions": [
+        "compiled_functions_imports_signal_at_rest_write",
+        "admin_write_validator_accepts_strict_cloudvault_envelope",
+        "admin_write_validator_derives_canonical_aad",
+        "admin_write_validator_rejects_wrong_binding",
+        "admin_write_validator_rejects_plaintext",
+        "contract_sanitizer_rejects_gateway_transport_as_cloudvault",
+        "sanitized_envelope_drops_plaintext_siblings",
+        "signal_at_rest_policy_mirrors_registry",
+        "signal_at_rest_policy_requires_enabled_collection"
+      ],
+      "command": "node scripts/ci/check_functions_cloudvault_runtime.js",
+      "durationMs": 24,
+      "exitCode": 0,
+      "status": "pass",
+      "stderrNormalizedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutNormalizedSha256": "b991b3b6b0ba609dd2923f62f085f4e269f843fc17e4b50cfcffcf4f582e5afd",
+      "stdoutSha256": "b991b3b6b0ba609dd2923f62f085f4e269f843fc17e4b50cfcffcf4f582e5afd"
+    },
+    {
+      "assertions": [
+        "cjs_runtime_import_validates_signal_at_rest_write"
+      ],
+      "command": "python3 -m pytest tests/test_signal_envelope_contracts_cjs_exports.py -q",
+      "durationMs": 183,
+      "exitCode": 0,
+      "status": "pass",
+      "stderrNormalizedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutNormalizedSha256": "08012d48ba103cade1ef63c9d3d05e311eba69801f290983def895e33bd66e89",
+      "stdoutSha256": "35d86279d96ed65491ba8ff0748e1c8e7891711531404dc5d4b9cd6ae33de3ec"
+    }
+  ],
+  "generatedAt": "2026-06-08T15:22:39.825437Z",
+  "generatedBy": "scripts/ci/write_cloudvault_at_rest_runtime_evidence.py",
+  "privacy": "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers",
+  "schemaVersion": 1,
+  "signalAtRestEnablement": {
+    "enabledDomainCount": 1,
+    "enabledDomains": [
+      "pensieve"
+    ],
+    "requiredCollectionCount": 1,
+    "requiredCollections": [
+      "cloud_search_knowledge"
+    ],
+    "scheme": "signal-hpke-identity-seal-v1",
+    "source": "packages/data-domains/registry.json sealingScheme + signalSealedCollections",
+    "sourceSha256": "711cd6cdbff48404d701212cf34217154cbc022bdf197767fcadd54328b3012b"
+  },
+  "signalAtRestWritesEnabled": true
+}

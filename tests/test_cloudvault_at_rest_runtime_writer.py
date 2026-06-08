@@ -82,6 +82,7 @@ def test_writer_generates_release_ready_shape_when_commands_pass_and_signal_is_e
     assert validate_cloudvault_at_rest_evidence(evidence, repo_root=repo) == []
     assert evidence["signalAtRestEnablement"]["sourceSha256"]
     assert "stdoutSha256" in json.dumps(evidence)
+    assert "stdoutNormalizedSha256" in json.dumps(evidence)
     assert "stdoutText" not in json.dumps(evidence)
     assert "stderrText" not in json.dumps(evidence)
 

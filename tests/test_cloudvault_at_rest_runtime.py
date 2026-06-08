@@ -3,7 +3,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from scripts.ci.check_cloudvault_at_rest_runtime import validate_cloudvault_at_rest_evidence
+from scripts.ci.check_cloudvault_at_rest_runtime import (
+    _normalize_command_output,
+    validate_cloudvault_at_rest_evidence,
+)
 
 
 REQUIRED_ASSERTIONS = [
@@ -51,6 +54,10 @@ def make_repo(tmp_path: Path, *, signal_enabled: bool) -> Path:
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def enablement(*, enabled: bool, source_sha: str = "0" * 64):
@@ -198,6 +205,29 @@ def test_replay_commands_rejects_forged_command_output_hash(tmp_path):
     )
 
     assert any("replayed command stdoutSha256 mismatch for node scripts/ci/check_functions_cloudvault_runtime.js" in error for error in errors)
+
+
+def test_replay_commands_accepts_normalized_pytest_timing_drift(tmp_path):
+    repo = make_repo(tmp_path, signal_enabled=True)
+    evidence = valid_evidence(source_sha=sha256_file(repo / "packages/data-domains/registry.json"))
+    command = "python3 -m pytest tests/test_signal_envelope_contracts_cjs_exports.py -q"
+    normalized = _normalize_command_output(".                                                                        [100%]\n1 passed in 0.03s\n")
+    evidence["commandEvidence"][2]["stdoutSha256"] = "0" * 64
+    evidence["commandEvidence"][2]["stdoutNormalizedSha256"] = sha256_text(normalized)
+
+    def timing_runner(argv: list[str], repo_root: Path):
+        if " ".join(argv) == command:
+            return 0, ".                                                                        [100%]\n1 passed in 0.91s\n", ""
+        return 0, "", ""
+
+    errors = validate_cloudvault_at_rest_evidence(
+        evidence,
+        repo_root=repo,
+        replay_commands=True,
+        command_runner=timing_runner,
+    )
+
+    assert errors == []
 
 
 def test_replay_commands_rejects_unapproved_shell_command(tmp_path):

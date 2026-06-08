@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 import hashlib
 import json
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -55,6 +56,13 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
 
 
+def _normalize_command_output(value: str) -> str:
+    normalized = re.sub(r"\b\d+\.\d+s\b", "<duration>s", value)
+    normalized = re.sub(r"\b\d+s\b", "<duration>s", normalized)
+    normalized = re.sub(r"\(\d+:\d{2}:\d{2}\)", "(<duration>)", normalized)
+    return normalized
+
+
 def _command_string(argv: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in argv)
 
@@ -69,11 +77,15 @@ def run_command(argv: list[str], repo_root: Path) -> CommandResult:
         stderr=subprocess.PIPE,
         check=False,
     )
+    stdout = result.stdout
+    stderr = result.stderr
     return CommandResult(
         exitCode=result.returncode,
         durationMs=max(0, int((time.monotonic() - started) * 1000)),
-        stdoutSha256=_sha256_text(result.stdout),
-        stderrSha256=_sha256_text(result.stderr),
+        stdoutSha256=_sha256_text(stdout),
+        stderrSha256=_sha256_text(stderr),
+        stdoutNormalizedSha256=_sha256_text(_normalize_command_output(stdout)),
+        stderrNormalizedSha256=_sha256_text(_normalize_command_output(stderr)),
     )
 
 
@@ -160,6 +172,8 @@ def build_cloudvault_at_rest_runtime_evidence(
             "durationMs": int(result.get("durationMs", 0)),
             "stdoutSha256": str(result.get("stdoutSha256", "")),
             "stderrSha256": str(result.get("stderrSha256", "")),
+            "stdoutNormalizedSha256": str(result.get("stdoutNormalizedSha256", result.get("stdoutSha256", ""))),
+            "stderrNormalizedSha256": str(result.get("stderrNormalizedSha256", result.get("stderrSha256", ""))),
         }
         assertions = list(spec["assertions"])
         if assertions:

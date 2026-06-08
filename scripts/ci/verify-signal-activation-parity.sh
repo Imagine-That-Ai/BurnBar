@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # SOTASIGNAL Phase F / L11 / L34 — activation parity & fail-closed default gate.
 #
-# The Signal feature has several independent activation levers (compile-time
-# constants, the data-domains registry sealingScheme, and — at Phase E — a Remote
-# Config template). They MUST agree. By default they MUST all read "OFF / empty /
-# fail-closed"; Phase-E activation is allowed only when the strict activation
-# evidence bundle validates first. This script is a drift gate: accidental
-# activation fails CI, but a signed-off activation is not blocked by an
-# always-off assertion.
+# The Signal feature has several independent activation levers. Gateway
+# transport remains OFF / empty / fail-closed by default. Signal at-rest domains
+# may be on only when CloudVault runtime evidence validates against the current
+# registry. Full Phase-E transport activation is allowed only when the strict
+# activation evidence bundle validates first.
 #
 # Usage:
 #   scripts/ci/verify-signal-activation-parity.sh
+#   scripts/ci/verify-signal-activation-parity.sh --cloudvault-evidence launch-evidence/cloudvault-at-rest-runtime.json
 #   scripts/ci/verify-signal-activation-parity.sh --mode activation --activation-evidence path/to/signal-activation-evidence.json
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -20,6 +19,8 @@ const { spawnSync } = require("node:child_process");
 const { readFileSync, existsSync, readdirSync, statSync } = require("node:fs");
 const { join } = require("node:path");
 
+const DEFAULT_CLOUDVAULT_EVIDENCE = "launch-evidence/cloudvault-at-rest-runtime.json";
+
 let failures = 0;
 const fail = (m) => { console.error(`  FAIL ${m}`); failures += 1; };
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -27,15 +28,21 @@ const ok = (m) => console.log(`  ok   ${m}`);
 function usage() {
   return `Usage:
   scripts/ci/verify-signal-activation-parity.sh
+  scripts/ci/verify-signal-activation-parity.sh --cloudvault-evidence launch-evidence/cloudvault-at-rest-runtime.json
   scripts/ci/verify-signal-activation-parity.sh --mode activation --activation-evidence path/to/signal-activation-evidence.json
 
 Modes:
-  default     Require every Signal activation lever to stay OFF/fail-closed.
-  activation  Allow ON levers only after validate-signal-activation-evidence.mjs passes.`;
+  default     Require Gateway transport OFF; allow Signal at-rest only with validated CloudVault evidence.
+  activation  Allow Gateway transport ON only after validate-signal-activation-evidence.mjs passes.`;
 }
 
 function parseArgs(argv) {
-  const out = { mode: "default", activationEvidence: process.env.SIGNAL_ACTIVATION_EVIDENCE || "" };
+  const out = {
+    mode: "default",
+    activationEvidence: process.env.SIGNAL_ACTIVATION_EVIDENCE || "",
+    cloudvaultEvidence: process.env.CLOUDVAULT_AT_REST_EVIDENCE || DEFAULT_CLOUDVAULT_EVIDENCE,
+    cloudvaultReplay: true,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--help" || arg === "-h") {
@@ -56,6 +63,18 @@ function parseArgs(argv) {
     }
     if (arg.startsWith("--activation-evidence=")) {
       out.activationEvidence = arg.slice("--activation-evidence=".length);
+      continue;
+    }
+    if (arg === "--cloudvault-evidence") {
+      out.cloudvaultEvidence = argv[++i] || "";
+      continue;
+    }
+    if (arg.startsWith("--cloudvault-evidence=")) {
+      out.cloudvaultEvidence = arg.slice("--cloudvault-evidence=".length);
+      continue;
+    }
+    if (arg === "--skip-cloudvault-replay") {
+      out.cloudvaultReplay = false;
       continue;
     }
     fail(`unknown argument: ${arg}`);
@@ -83,6 +102,27 @@ function validateActivationEvidence(path) {
   return false;
 }
 
+function validateCloudVaultEvidence(path, { replayCommands }) {
+  if (!path) {
+    fail("--cloudvault-evidence or CLOUDVAULT_AT_REST_EVIDENCE is required when registry Signal at-rest domains are present");
+    return false;
+  }
+  const command = ["scripts/ci/check_cloudvault_at_rest_runtime.py", path, "--repo-root", "."];
+  if (replayCommands) command.push("--replay-commands");
+  const result = spawnSync("python3", command, {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  if (result.status === 0) {
+    ok(`CloudVault at-rest evidence validated: ${path}${replayCommands ? " (commands replayed)" : ""}`);
+    return true;
+  }
+  fail(`CloudVault at-rest evidence did not validate: ${path}`);
+  const detail = `${result.stdout || ""}${result.stderr || ""}`.trim();
+  if (detail) console.error(detail.split("\n").map((line) => `       ${line}`).join("\n"));
+  return false;
+}
+
 const args = parseArgs(process.argv.slice(2));
 const activationMode = args.mode === "activation";
 const activationEvidenceOK = activationMode ? validateActivationEvidence(args.activationEvidence) : false;
@@ -102,17 +142,21 @@ if (!activationMode && productionSignalEmpty) {
   fail("activation mode requires HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS to enable v4");
 }
 
-// (2) Data-domains registry: default mode has no Signal sealingScheme; activation
-// mode permits it only after the evidence bundle validates.
+// (2) Data-domains registry: Signal at-rest is a separate CloudVault lane from
+// Gateway transport. Default mode permits registry Signal at-rest only when the
+// current evidence validates against the checked-out registry; Phase-E transport
+// activation is governed by validate-signal-activation-evidence.mjs above.
 const registry = JSON.parse(readFileSync("packages/data-domains/registry.json", "utf8"));
 const domains = registry.domains ?? [];
 const activated = domains.filter(
   (d) => typeof d.sealingScheme === "string" && /signal/i.test(d.sealingScheme),
 );
 if (!activationMode && activated.length === 0) {
-  ok(`no domain carries a 'signal' sealingScheme (${domains.length} domains, all cloudvault default)`);
+  ok(`no domain carries a Signal at-rest sealingScheme (${domains.length} domains)`);
 } else if (!activationMode) {
-  fail(`domains already on a signal sealingScheme: ${activated.map((d) => `${d.id}=${d.sealingScheme}`).join(", ")}`);
+  if (validateCloudVaultEvidence(args.cloudvaultEvidence, { replayCommands: args.cloudvaultReplay })) {
+    ok(`Signal at-rest domains match validated CloudVault evidence: ${activated.map((d) => `${d.id}=${d.sealingScheme}`).join(", ")}`);
+  }
 } else if (activationEvidenceOK && activated.length > 0) {
   ok(`Signal sealingScheme active with validated evidence: ${activated.map((d) => d.id).join(", ")}`);
 } else {

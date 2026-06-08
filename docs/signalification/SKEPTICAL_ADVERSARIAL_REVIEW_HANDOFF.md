@@ -90,7 +90,7 @@ All additive, **flag-OFF**, no production behavior change. Every claim has a rep
 
 ### 1c. Phase F — proof/ops scripts, CI wiring, and external-review package
 - `scripts/ci/crypto-proof-harness.mjs` → **18/18**: real libsignal 0.94.4 at-rest HPKE seal/open round-trip + relocation/tamper/wrong-key negatives + `bindingToAAD` NFC byte-parity vs the cross-language fixture + contract-recognizer negatives + fixture sha pinning. Emits a manifest (node/libsignal/Maven/fixture-sha256). Repro: `node scripts/ci/crypto-proof-harness.mjs`.
-- `scripts/ci/verify-signal-activation-parity.sh` → **GREEN**: asserts `HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS` is empty, no domain has a `signal` `sealingScheme`, no committed RC template flips a signal flag ON.
+- `scripts/ci/verify-signal-activation-parity.sh` -> **GREEN**: asserts `HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS` is empty, any Signal at-rest domain matches validated CloudVault runtime evidence, and no committed RC template flips a Signal flag ON.
 - `scripts/ci/verify-signal-rule0.sh` → **INTENTIONAL FAIL in this dirty tree**: flags `.gitmodules`, `Vendor/libsignal/`, and `website/src/data/trust.generated.ts`. That is correct: AGPL vendoring and generated public trust copy require legal/ownership/copy-owner ratification before landing.
 - `scripts/ci/verify-signal-honesty-copy.sh` (+ `signal-honesty-allowlist.txt`) → **GREEN** baseline (see L21 below).
 - `scripts/ops/signal-rollback-drill.sh` → dry-run kill-path rehearsal; asserts the kill levers exist in code; times the locally-verifiable steps.
@@ -179,7 +179,7 @@ npx tsc --noEmit && npx vitest run src/__tests__/signalAtRestWrite.test.ts   # t
 
 # proof + gates (from repo root)
 node scripts/ci/crypto-proof-harness.mjs                      # 18/18, real libsignal seal/open
-bash  scripts/ci/verify-signal-activation-parity.sh           # GREEN (fail-closed defaults)
+bash  scripts/ci/verify-signal-activation-parity.sh           # GREEN (Gateway transport fail-closed; CloudVault at-rest evidence validated)
 bash  scripts/ci/verify-signal-rule0.sh                       # INTENTIONAL FAIL in this tree: AGPL/legal + generated trust copy owner gates
 bash  scripts/ci/verify-signal-honesty-copy.sh                # GREEN baseline
 RUN_TESTS=false bash scripts/ops/signal-rollback-drill.sh     # dry-run kill-path rehearsal

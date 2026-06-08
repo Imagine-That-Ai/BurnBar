@@ -65,6 +65,13 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
 
 
+def _normalize_command_output(value: str) -> str:
+    normalized = re.sub(r"\b\d+\.\d+s\b", "<duration>s", value)
+    normalized = re.sub(r"\b\d+s\b", "<duration>s", normalized)
+    normalized = re.sub(r"\(\d+:\d{2}:\d{2}\)", "(<duration>)", normalized)
+    return normalized
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -161,15 +168,19 @@ def _replay_command_evidence(
             errors.append(
                 f"replayed command exitCode mismatch for {command}: {exit_code} != {entry.get('exitCode')}"
             )
-        stdout_sha = _sha256_text(stdout)
-        if stdout_sha != entry.get("stdoutSha256"):
+        stdout_field = "stdoutNormalizedSha256" if entry.get("stdoutNormalizedSha256") else "stdoutSha256"
+        stdout_value = _normalize_command_output(stdout) if stdout_field == "stdoutNormalizedSha256" else stdout
+        stdout_sha = _sha256_text(stdout_value)
+        if stdout_sha != entry.get(stdout_field):
             errors.append(
-                f"replayed command stdoutSha256 mismatch for {command}: {stdout_sha} != {entry.get('stdoutSha256')}"
+                f"replayed command {stdout_field} mismatch for {command}: {stdout_sha} != {entry.get(stdout_field)}"
             )
-        stderr_sha = _sha256_text(stderr)
-        if stderr_sha != entry.get("stderrSha256"):
+        stderr_field = "stderrNormalizedSha256" if entry.get("stderrNormalizedSha256") else "stderrSha256"
+        stderr_value = _normalize_command_output(stderr) if stderr_field == "stderrNormalizedSha256" else stderr
+        stderr_sha = _sha256_text(stderr_value)
+        if stderr_sha != entry.get(stderr_field):
             errors.append(
-                f"replayed command stderrSha256 mismatch for {command}: {stderr_sha} != {entry.get('stderrSha256')}"
+                f"replayed command {stderr_field} mismatch for {command}: {stderr_sha} != {entry.get(stderr_field)}"
             )
 
 
@@ -188,6 +199,10 @@ def _validate_command_entry(entry: dict[str, Any], errors: list[str]) -> None:
         value = entry.get(field)
         if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
             errors.append(f"command evidence {field} must be a lowercase SHA-256 hex digest")
+    for field in ("stdoutNormalizedSha256", "stderrNormalizedSha256"):
+        value = entry.get(field)
+        if value is not None and (not isinstance(value, str) or not SHA256_RE.fullmatch(value)):
+            errors.append(f"command evidence {field} must be a lowercase SHA-256 hex digest when present")
 
 
 def _assertions(data: dict[str, Any]) -> set[str]:
