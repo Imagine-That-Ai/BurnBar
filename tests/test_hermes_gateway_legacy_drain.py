@@ -407,6 +407,59 @@ assert.equal(mode.correspondingSourceUrl, "{SOURCE_LOCATION}");
     assert result.returncode == 0, result.stderr
 
 
+def test_signal_required_rollout_rejects_commit_with_signal_writes_disabled(tmp_path):
+    source_repo, deployed_commit = make_deployed_source_repo(tmp_path, production_signal_enabled=False)
+
+    result = subprocess.run(
+        [
+            "node",
+            str(ROOT / "scripts/ci/rollout_hermes_gateway_signal_required.js"),
+            "enable-hermes-gateway-signal-required",
+            "--deployed-commit",
+            deployed_commit,
+            "--source-location",
+            SOURCE_LOCATION,
+            "--dry-run",
+        ],
+        cwd=source_repo,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "must enable HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS for v4 Signal writes" in result.stderr
+    assert "[dry_run] gcloud" not in result.stdout
+
+
+def test_signal_required_rollout_allows_commit_with_signal_writes_enabled(tmp_path):
+    source_repo, deployed_commit = make_deployed_source_repo(tmp_path, production_signal_enabled=True)
+
+    result = subprocess.run(
+        [
+            "node",
+            str(ROOT / "scripts/ci/rollout_hermes_gateway_signal_required.js"),
+            "enable-hermes-gateway-signal-required",
+            "--deployed-commit",
+            deployed_commit,
+            "--source-location",
+            SOURCE_LOCATION,
+            "--dry-run",
+        ],
+        cwd=source_repo,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED=true" in result.stdout
+    assert f"OPENBURNBAR_SOURCE_COMMIT={deployed_commit}" in result.stdout
+    assert f"OPENBURNBAR_CORRESPONDING_SOURCE_URL={SOURCE_LOCATION}" in result.stdout
+
+
 def test_live_execute_rejects_truncated_runtime_evidence_before_firestore(tmp_path):
     runtime = tmp_path / "runtime.json"
     predelete = tmp_path / "predelete.json"

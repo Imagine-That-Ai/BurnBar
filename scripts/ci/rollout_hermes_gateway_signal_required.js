@@ -8,6 +8,8 @@ const SOURCE_COMMIT_ENV = "OPENBURNBAR_SOURCE_COMMIT";
 const SOURCE_URL_ENV = "OPENBURNBAR_CORRESPONDING_SOURCE_URL";
 const SERVICES = ["burnbarhermesgateway", "enqueuehermesgatewayevent"];
 const GIT_SHA_RE = /^[0-9a-f]{40}$/;
+const PRODUCTION_SIGNAL_SET_RE =
+  /HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set(?:<number>)?\(\s*\[\s*(?:HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL|4)\s*\]\s*\)/;
 
 function parseArgs(argv) {
   const options = {
@@ -49,6 +51,46 @@ function parseArgs(argv) {
   return options;
 }
 
+function git(args) {
+  return spawnSync("git", args, { encoding: "utf8" });
+}
+
+function gitShow(commit, filePath) {
+  const result = git(["show", `${commit}:${filePath}`]);
+  if (result.status !== 0) return undefined;
+  return result.stdout;
+}
+
+function requireDeployedSourceReady(deployedCommit) {
+  const commitResult = git(["cat-file", "-e", `${deployedCommit}^{commit}`]);
+  if (commitResult.status !== 0) {
+    throw new Error("--deployed-commit must exist as a commit in the current repo before mutating Cloud Run");
+  }
+
+  const gatewaySource = gitShow(deployedCommit, "functions/src/hermesGateway.ts");
+  if (!gatewaySource) {
+    throw new Error("deployed source is missing functions/src/hermesGateway.ts");
+  }
+  if (!gatewaySource.includes("requireProductionGatewaySignalEnvelope")) {
+    throw new Error("deployed source functions/src/hermesGateway.ts is missing requireProductionGatewaySignalEnvelope");
+  }
+  if (!PRODUCTION_SIGNAL_SET_RE.test(gatewaySource)) {
+    throw new Error(
+      "deployed source functions/src/hermesGateway.ts must enable HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS for v4 Signal writes",
+    );
+  }
+
+  const callableSource = gitShow(deployedCommit, "functions/src/callables/hermesGateway.ts");
+  if (!callableSource) {
+    throw new Error("deployed source is missing functions/src/callables/hermesGateway.ts");
+  }
+  for (const token of ["signalEnvelope?: unknown", "request.data.signalEnvelope", "resolveGatewayWriteBody"]) {
+    if (!callableSource.includes(token)) {
+      throw new Error(`deployed source functions/src/callables/hermesGateway.ts is missing signalEnvelope write plumbing: ${token}`);
+    }
+  }
+}
+
 function gcloud(args, options) {
   const command = ["run", "services", "update", ...args, "--region", options.region];
   if (options.projectId) command.push("--project", options.projectId);
@@ -63,6 +105,7 @@ function gcloud(args, options) {
 function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   if (options.action === "enable-hermes-gateway-signal-required") {
+    requireDeployedSourceReady(options.deployedCommit);
     const envVars = [
       SIGNAL_ENV,
       `${SOURCE_COMMIT_ENV}=${options.deployedCommit}`,
