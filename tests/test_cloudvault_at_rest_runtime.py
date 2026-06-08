@@ -1,4 +1,6 @@
 from datetime import UTC, datetime, timedelta
+import json
+from pathlib import Path
 
 from scripts.ci.check_cloudvault_at_rest_runtime import validate_cloudvault_at_rest_evidence
 
@@ -19,6 +21,39 @@ def generated_at_now():
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def make_repo(tmp_path: Path, *, signal_enabled: bool) -> Path:
+    repo = tmp_path / "repo"
+    registry = repo / "packages/data-domains/registry.json"
+    registry.parent.mkdir(parents=True)
+    registry.write_text(
+        json.dumps(
+            {
+                "domains": [
+                    {
+                        "id": "pensieve",
+                        "encryptionTier": "end_to_end",
+                        "sealingScheme": (
+                            "signal-hpke-identity-seal-v1" if signal_enabled else "cloudvault-aesgcm-v2"
+                        ),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return repo
+
+
+def enablement(*, enabled: bool, source_sha: str = "0" * 64):
+    return {
+        "scheme": "signal-hpke-identity-seal-v1",
+        "enabledDomainCount": 1 if enabled else 0,
+        "enabledDomains": ["pensieve"] if enabled else [],
+        "source": "packages/data-domains/registry.json sealingScheme",
+        "sourceSha256": source_sha,
+    }
+
+
 def valid_evidence():
     return {
         "schemaVersion": 1,
@@ -26,17 +61,24 @@ def valid_evidence():
         "generatedBy": "tests",
         "privacy": "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers",
         "signalAtRestWritesEnabled": True,
+        "signalAtRestEnablement": enablement(enabled=True),
         "commandEvidence": [
             {
                 "command": "npm run build --prefix functions && node scripts/ci/check_functions_cloudvault_runtime.js",
                 "status": "pass",
                 "exitCode": 0,
+                "durationMs": 1,
+                "stdoutSha256": "0" * 64,
+                "stderrSha256": "0" * 64,
                 "assertions": REQUIRED_ASSERTIONS[:-1],
             },
             {
                 "command": "python3 -m pytest tests/test_signal_envelope_contracts_cjs_exports.py -q",
                 "status": "pass",
                 "exitCode": 0,
+                "durationMs": 1,
+                "stdoutSha256": "0" * 64,
+                "stderrSha256": "0" * 64,
                 "assertions": [REQUIRED_ASSERTIONS[-1]],
             },
         ],
@@ -54,6 +96,15 @@ def test_rejects_command_evidence_that_only_names_a_command():
     errors = validate_cloudvault_at_rest_evidence(evidence)
 
     assert "missing passing command evidence for scripts/ci/check_functions_cloudvault_runtime.js" in errors
+
+
+def test_rejects_command_evidence_without_hashes():
+    evidence = valid_evidence()
+    evidence["commandEvidence"][0].pop("stdoutSha256")
+
+    errors = validate_cloudvault_at_rest_evidence(evidence)
+
+    assert "command evidence stdoutSha256 must be a lowercase SHA-256 hex digest" in errors
 
 
 def test_rejects_missing_required_assertion():
@@ -82,3 +133,22 @@ def test_rejects_stale_cloudvault_runtime_evidence():
     errors = validate_cloudvault_at_rest_evidence(evidence)
 
     assert "generatedAt must be within the last 24 hours" in errors
+
+
+def test_rejects_forged_signal_enablement_against_current_registry(tmp_path):
+    repo = make_repo(tmp_path, signal_enabled=False)
+    evidence = valid_evidence()
+
+    errors = validate_cloudvault_at_rest_evidence(evidence, repo_root=repo)
+
+    assert "signalAtRestEnablement must match packages/data-domains/registry.json" in errors
+
+
+def test_rejects_signal_enablement_boolean_that_disagrees_with_domains():
+    evidence = valid_evidence()
+    evidence["signalAtRestWritesEnabled"] = True
+    evidence["signalAtRestEnablement"] = enablement(enabled=False)
+
+    errors = validate_cloudvault_at_rest_evidence(evidence)
+
+    assert "signalAtRestWritesEnabled must match signalAtRestEnablement.enabledDomainCount > 0" in errors

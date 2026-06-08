@@ -106,7 +106,16 @@ def detect_signal_at_rest_enablement(repo_root: Path) -> dict[str, Any]:
         "enabledDomainCount": len(enabled),
         "enabledDomains": enabled,
         "source": "packages/data-domains/registry.json sealingScheme",
+        "sourceSha256": _sha256_file(registry_path),
     }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def build_cloudvault_at_rest_runtime_evidence(
@@ -155,12 +164,12 @@ def write_evidence(evidence: dict[str, Any], output: Path | None) -> None:
     print(f"wrote CloudVault at-rest runtime evidence: {output}")
 
 
-def validate_if_requested(evidence: dict[str, Any]) -> int:
+def validate_if_requested(evidence: dict[str, Any], *, repo_root: Path) -> int:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
     from scripts.ci.check_cloudvault_at_rest_runtime import validate_cloudvault_at_rest_evidence
 
-    errors = validate_cloudvault_at_rest_evidence(evidence)
+    errors = validate_cloudvault_at_rest_evidence(evidence, repo_root=repo_root)
     if errors:
         print("HOLD: generated CloudVault at-rest runtime evidence is not release-ready", file=sys.stderr)
         for error in errors:
@@ -180,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     evidence = build_cloudvault_at_rest_runtime_evidence(repo_root=args.repo_root)
     write_evidence(evidence, args.output)
     if args.check:
-        return validate_if_requested(evidence)
+        return validate_if_requested(evidence, repo_root=args.repo_root)
     return 0
 
 

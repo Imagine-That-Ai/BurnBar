@@ -351,6 +351,9 @@ def check_source_provenance_process() -> list[Check]:
         ],
         "scripts/ci/check_cloudvault_at_rest_runtime.py": [
             "validate_cloudvault_at_rest_evidence",
+            "_registry_signal_at_rest_enablement",
+            "signalAtRestEnablement",
+            "sourceSha256",
             "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers",
             "REQUIRED_COMMAND_FRAGMENTS",
             "scripts/ci/check_functions_cloudvault_runtime.js",
@@ -360,6 +363,7 @@ def check_source_provenance_process() -> list[Check]:
             "build_cloudvault_at_rest_runtime_evidence",
             "detect_signal_at_rest_enablement",
             "signalAtRestWritesEnabled",
+            "sourceSha256",
             "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers",
             "scripts/ci/check_functions_cloudvault_runtime.js",
         ],
@@ -426,6 +430,10 @@ def check_source_provenance_process() -> list[Check]:
         "tests/test_signal_envelope_contract_runtime_writer.py": [
             "test_writer_generates_release_ready_shape_when_commands_pass",
             "test_writer_failed_command_does_not_count_assertions_as_proof",
+        ],
+        "tests/test_cloudvault_at_rest_runtime.py": [
+            "test_rejects_forged_signal_enablement_against_current_registry",
+            "signalAtRestEnablement",
         ],
         "docs/legal/SOURCE_AVAILABILITY.md": [
             "write_burnbar_source_provenance.py --output",

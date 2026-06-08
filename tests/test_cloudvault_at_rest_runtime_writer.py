@@ -77,7 +77,8 @@ def test_writer_generates_release_ready_shape_when_commands_pass_and_signal_is_e
     )
 
     assert evidence["signalAtRestWritesEnabled"] is True
-    assert validate_cloudvault_at_rest_evidence(evidence) == []
+    assert validate_cloudvault_at_rest_evidence(evidence, repo_root=repo) == []
+    assert evidence["signalAtRestEnablement"]["sourceSha256"]
     assert "stdoutSha256" in json.dumps(evidence)
     assert "stdoutText" not in json.dumps(evidence)
     assert "stderrText" not in json.dumps(evidence)
@@ -93,7 +94,7 @@ def test_writer_keeps_release_gate_closed_when_signal_is_not_enabled(tmp_path):
     )
 
     assert evidence["signalAtRestWritesEnabled"] is False
-    errors = validate_cloudvault_at_rest_evidence(evidence)
+    errors = validate_cloudvault_at_rest_evidence(evidence, repo_root=repo)
     assert "signalAtRestWritesEnabled must be true for release-ready evidence" in errors
 
 
@@ -106,6 +107,6 @@ def test_writer_failed_command_does_not_count_assertions_as_proof(tmp_path):
         generated_at=generated_at_now(),
     )
 
-    errors = validate_cloudvault_at_rest_evidence(evidence)
+    errors = validate_cloudvault_at_rest_evidence(evidence, repo_root=repo)
     assert "missing passing command evidence for scripts/ci/check_functions_cloudvault_runtime.js" in errors
     assert "missing proof assertion: admin_write_validator_rejects_plaintext" in errors

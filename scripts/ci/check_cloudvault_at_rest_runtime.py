@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-"""Validate CloudVault at-rest runtime evidence for Signal-backed private data."""
+"""Validate CloudVault at-rest runtime evidence for Signal-backed private data.
+
+The validator intentionally recomputes product enablement from the checked-out
+data-domain registry when run from CI/release tooling. A packet that merely
+claims Signal at-rest writes are enabled is not release evidence.
+"""
 
 from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime, timedelta
+import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 
 PRIVACY_MARKER = "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers"
+SIGNAL_AT_REST_SCHEME = "signal-hpke-identity-seal-v1"
 MAX_EVIDENCE_AGE = timedelta(hours=24)
 REQUIRED_COMMAND_FRAGMENTS = (
     "scripts/ci/check_functions_cloudvault_runtime.js",
@@ -38,6 +46,15 @@ FORBIDDEN_EVIDENCE_KEYS = {
     "uid",
     "userId",
 }
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _iter_keys(value: Any):
@@ -79,6 +96,23 @@ def _passed_commands(data: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _validate_command_entry(entry: dict[str, Any], errors: list[str]) -> None:
+    status = entry.get("status")
+    if status not in {"pass", "fail"}:
+        errors.append("command evidence status must be pass or fail")
+    if not isinstance(entry.get("command"), str) or not entry.get("command"):
+        errors.append("command evidence is missing command")
+    if not isinstance(entry.get("exitCode"), int):
+        errors.append("command evidence is missing numeric exitCode")
+    duration_ms = entry.get("durationMs")
+    if not isinstance(duration_ms, int) or duration_ms < 0:
+        errors.append("command evidence is missing non-negative durationMs")
+    for field in ("stdoutSha256", "stderrSha256"):
+        value = entry.get(field)
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            errors.append(f"command evidence {field} must be a lowercase SHA-256 hex digest")
+
+
 def _assertions(data: dict[str, Any]) -> set[str]:
     present: set[str] = set()
     for entry in _passed_commands(data):
@@ -88,7 +122,66 @@ def _assertions(data: dict[str, Any]) -> set[str]:
     return present
 
 
-def validate_cloudvault_at_rest_evidence(data: dict[str, Any]) -> list[str]:
+def _registry_signal_at_rest_enablement(repo_root: Path) -> dict[str, Any]:
+    registry_path = repo_root / "packages" / "data-domains" / "registry.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    domains = registry.get("domains", [])
+    enabled = [
+        domain.get("id")
+        for domain in domains
+        if isinstance(domain, dict) and domain.get("sealingScheme") == SIGNAL_AT_REST_SCHEME
+    ]
+    enabled_domains = sorted(domain_id for domain_id in enabled if isinstance(domain_id, str))
+    return {
+        "scheme": SIGNAL_AT_REST_SCHEME,
+        "enabledDomainCount": len(enabled_domains),
+        "enabledDomains": enabled_domains,
+        "source": "packages/data-domains/registry.json sealingScheme",
+        "sourceSha256": _sha256_file(registry_path),
+    }
+
+
+def _validate_enablement(data: dict[str, Any], errors: list[str], *, repo_root: Path | None) -> None:
+    enablement = data.get("signalAtRestEnablement")
+    if not isinstance(enablement, dict):
+        errors.append("signalAtRestEnablement is required")
+        return
+    if enablement.get("scheme") != SIGNAL_AT_REST_SCHEME:
+        errors.append(f"signalAtRestEnablement.scheme must be {SIGNAL_AT_REST_SCHEME}")
+    enabled_count = enablement.get("enabledDomainCount")
+    enabled_domains = enablement.get("enabledDomains")
+    if not isinstance(enabled_count, int) or enabled_count < 0:
+        errors.append("signalAtRestEnablement.enabledDomainCount must be a non-negative integer")
+    if not isinstance(enabled_domains, list) or not all(isinstance(item, str) for item in enabled_domains):
+        errors.append("signalAtRestEnablement.enabledDomains must be a list of domain ids")
+    elif isinstance(enabled_count, int) and enabled_count != len(enabled_domains):
+        errors.append("signalAtRestEnablement.enabledDomainCount must match enabledDomains length")
+    if enablement.get("source") != "packages/data-domains/registry.json sealingScheme":
+        errors.append("signalAtRestEnablement.source must name the data-domain registry sealingScheme")
+    source_sha = enablement.get("sourceSha256")
+    if not isinstance(source_sha, str) or not SHA256_RE.fullmatch(source_sha):
+        errors.append("signalAtRestEnablement.sourceSha256 must be a lowercase SHA-256 hex digest")
+    if data.get("signalAtRestWritesEnabled") != (isinstance(enabled_count, int) and enabled_count > 0):
+        errors.append("signalAtRestWritesEnabled must match signalAtRestEnablement.enabledDomainCount > 0")
+
+    if repo_root is not None:
+        try:
+            actual = _registry_signal_at_rest_enablement(repo_root)
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"unable to recompute Signal at-rest enablement from registry: {exc}")
+            return
+        comparable_keys = ("scheme", "enabledDomainCount", "enabledDomains", "source", "sourceSha256")
+        expected = {key: actual[key] for key in comparable_keys}
+        observed = {key: enablement.get(key) for key in comparable_keys}
+        if observed != expected:
+            errors.append("signalAtRestEnablement must match packages/data-domains/registry.json")
+
+
+def validate_cloudvault_at_rest_evidence(
+    data: dict[str, Any],
+    *,
+    repo_root: Path | None = None,
+) -> list[str]:
     errors: list[str] = []
     if data.get("schemaVersion") != 1:
         errors.append("schemaVersion must be 1")
@@ -103,6 +196,15 @@ def validate_cloudvault_at_rest_evidence(data: dict[str, Any]) -> list[str]:
             "evidence must not contain plaintext, ciphertext, keys, or document identifiers: "
             + ", ".join(leaked_keys)
         )
+    raw_commands = data.get("commandEvidence", [])
+    if not isinstance(raw_commands, list):
+        errors.append("commandEvidence must be a list")
+        raw_commands = []
+    for entry in raw_commands:
+        if isinstance(entry, dict):
+            _validate_command_entry(entry, errors)
+        else:
+            errors.append("commandEvidence entries must be objects")
     commands = [entry.get("command", "") for entry in _passed_commands(data)]
     for fragment in REQUIRED_COMMAND_FRAGMENTS:
         if not any(fragment in command for command in commands):
@@ -111,6 +213,7 @@ def validate_cloudvault_at_rest_evidence(data: dict[str, Any]) -> list[str]:
     for assertion in REQUIRED_ASSERTIONS:
         if assertion not in present_assertions:
             errors.append(f"missing proof assertion: {assertion}")
+    _validate_enablement(data, errors, repo_root=repo_root)
     if data.get("signalAtRestWritesEnabled") is not True:
         errors.append("signalAtRestWritesEnabled must be true for release-ready evidence")
     return errors
@@ -119,13 +222,14 @@ def validate_cloudvault_at_rest_evidence(data: dict[str, Any]) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path)
+    parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.evidence.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"FAIL: unreadable CloudVault evidence: {exc}", file=sys.stderr)
         return 1
-    errors = validate_cloudvault_at_rest_evidence(data)
+    errors = validate_cloudvault_at_rest_evidence(data, repo_root=args.repo_root)
     if errors:
         print("FAIL: CloudVault at-rest runtime evidence is not release-ready", file=sys.stderr)
         for error in errors:
