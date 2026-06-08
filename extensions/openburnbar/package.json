@@ -260,7 +260,7 @@
   },
   "dependencies": {
     "@sentry/node": "8.55.2",
-    "globals": "^17.4.0"
+    "globals": "^17.6.0"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
