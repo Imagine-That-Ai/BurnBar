@@ -78,7 +78,7 @@ import { stripUndefinedObject } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { randomBytes } from "node:crypto";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
-import { validateSignalAtRestEnvelopeForWrite } from "../signalAtRestWrite.js";
+import { isSignalAtRestRequiredForCollection, validateSignalAtRestEnvelopeForWrite } from "../signalAtRestWrite.js";
 
 const KNOWLEDGE_VECTOR_DIM = 384;
 const MAX_CHUNK_BYTES = 64 * 1024; // generous per-chunk plaintext ceiling
@@ -124,12 +124,20 @@ const RETIRED_EMBEDDING_MODEL_VERSION = "bge-small-en-v1.5";
 
 type PensieveTier = "pro" | "ultra";
 
-function requireOptionalSignalEnvelopeForKnowledgeVector(
+function requireSignalEnvelopeForKnowledgeVector(
   raw: Record<string, unknown>,
   expected: { uid: string; collection: string; docId: string; field: string },
   fieldName: string,
 ) {
-  if (!Object.prototype.hasOwnProperty.call(raw, "signalEnvelope")) return undefined;
+  if (!Object.prototype.hasOwnProperty.call(raw, "signalEnvelope")) {
+    if (isSignalAtRestRequiredForCollection(expected.collection)) {
+      throw new HttpsError(
+        "invalid-argument",
+        `${fieldName} is required because ${expected.collection} is Signal at-rest enabled.`,
+      );
+    }
+    return undefined;
+  }
   const result = validateSignalAtRestEnvelopeForWrite(raw.signalEnvelope, expected);
   if (!result.ok) {
     throw new HttpsError(
@@ -316,11 +324,12 @@ export const commitKnowledgeBatch = onCall(
           embedding: requireCloakedVector(raw.cloakedVector, `vectors[${i}].cloakedVector`),
           sealedCiphertext: requireSealedText(raw.sealedCiphertext ?? raw.ciphertext, `vectors[${i}].sealedCiphertext`),
           sealedMetadata: requireSealedText(raw.sealedMetadata, `vectors[${i}].sealedMetadata`),
-          // Optional-additive Signal producer seam (flag-OFF): existing AES-GCM
-          // fields remain required. If a device sends `signalEnvelope`, the Admin
-          // SDK write path enforces the same path binding as firestore.rules before
-          // persisting the sanitized envelope.
-          signalEnvelope: requireOptionalSignalEnvelopeForKnowledgeVector(
+          // Policy-gated Signal producer seam: while the registry is flag-OFF,
+          // existing AES-GCM fields remain required and `signalEnvelope` is
+          // optional-additive. Once the collection enters
+          // SIGNAL_AT_REST_REQUIRED_COLLECTIONS, this same helper flips fail-closed
+          // and rejects missing envelopes before any Admin SDK write.
+          signalEnvelope: requireSignalEnvelopeForKnowledgeVector(
             raw,
             {
               uid,

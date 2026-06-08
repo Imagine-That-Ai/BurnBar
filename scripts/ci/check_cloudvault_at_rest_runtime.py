@@ -33,6 +33,8 @@ REQUIRED_ASSERTIONS = (
     "admin_write_validator_rejects_plaintext",
     "contract_sanitizer_rejects_gateway_transport_as_cloudvault",
     "sanitized_envelope_drops_plaintext_siblings",
+    "signal_at_rest_policy_mirrors_registry",
+    "signal_at_rest_policy_requires_enabled_collection",
     "cjs_runtime_import_validates_signal_at_rest_write",
 )
 FORBIDDEN_EVIDENCE_KEYS = {

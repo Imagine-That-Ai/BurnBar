@@ -79,6 +79,9 @@ function loadRuntime() {
   assert.equal(typeof contracts.bindingToAAD, "function");
   assert.equal(typeof writeGuard.validateSignalAtRestEnvelopeForWrite, "function");
   assert.equal(typeof writeGuard.assertSignalAtRestEnvelopeForWrite, "function");
+  assert.equal(writeGuard.SIGNAL_AT_REST_SCHEME, "signal-hpke-identity-seal-v1");
+  assert.ok(Array.isArray(writeGuard.SIGNAL_AT_REST_REQUIRED_COLLECTIONS));
+  assert.equal(typeof writeGuard.isSignalAtRestRequiredForCollection, "function");
   return { contracts, writeGuard };
 }
 
@@ -114,6 +117,11 @@ function runSignalAtRestWriteSmoke() {
     writeGuard.validateSignalAtRestEnvelopeForWrite(strictCloudVaultEnvelope({ wrap: { sealedContentKeyB64: "not base64 !!" } }), expectedBinding()).ok,
     false
   );
+  assert.equal(writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge"), false);
+  assert.equal(
+    writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge", ["cloud_search_knowledge"]),
+    true
+  );
   return [
     "compiled_functions_imports_signal_at_rest_write",
     "admin_write_validator_accepts_strict_cloudvault_envelope",
@@ -121,6 +129,8 @@ function runSignalAtRestWriteSmoke() {
     "admin_write_validator_rejects_wrong_binding",
     "contract_sanitizer_rejects_gateway_transport_as_cloudvault",
     "sanitized_envelope_drops_plaintext_siblings",
+    "signal_at_rest_policy_mirrors_registry",
+    "signal_at_rest_policy_requires_enabled_collection",
   ];
 }
 

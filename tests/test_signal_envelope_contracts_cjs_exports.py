@@ -8,7 +8,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def require_built_artifacts(*relative_paths: str) -> None:
     missing = [path for path in relative_paths if not (REPO_ROOT / path).exists()]
-    if missing:
+    stale = []
+    source_to_output = {
+        "functions/src/signalAtRestWrite.ts": "functions/lib/signalAtRestWrite.js",
+    }
+    for source, output in source_to_output.items():
+        source_path = REPO_ROOT / source
+        output_path = REPO_ROOT / output
+        if output_path.exists() and source_path.exists() and source_path.stat().st_mtime > output_path.stat().st_mtime:
+            stale.append(output)
+    if missing or stale:
         if not (REPO_ROOT / "functions/node_modules/.bin/tsc").exists():
             subprocess.run(["npm", "ci", "--prefix", "functions"], cwd=REPO_ROOT, check=True)
         subprocess.run(["npm", "run", "build", "--prefix", "functions"], cwd=REPO_ROOT, check=True)
@@ -69,6 +78,13 @@ def test_functions_runtime_can_require_signal_envelope_contracts() -> None:
         assert.equal(typeof contracts.sanitizeCloudVaultSignalEnvelope, "function");
         assert.equal(typeof contracts.bindingToAAD, "function");
         assert.equal(typeof writeGuard.validateSignalAtRestEnvelopeForWrite, "function");
+        assert.equal(writeGuard.SIGNAL_AT_REST_SCHEME, "signal-hpke-identity-seal-v1");
+        assert.ok(Array.isArray(writeGuard.SIGNAL_AT_REST_REQUIRED_COLLECTIONS));
+        assert.equal(typeof writeGuard.isSignalAtRestRequiredForCollection, "function");
+        assert.equal(
+          writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge", ["cloud_search_knowledge"]),
+          true,
+        );
         const result = writeGuard.validateSignalAtRestEnvelopeForWrite(envelope, expected);
         assert.equal(result.ok, true);
         assert.equal(

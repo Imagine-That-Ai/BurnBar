@@ -28,6 +28,25 @@ import {
   type CloudVaultSignalEnvelope,
 } from "@openburnbar/signal-envelope-contracts";
 
+export const SIGNAL_AT_REST_SCHEME = "signal-hpke-identity-seal-v1";
+
+/**
+ * Functions-local mirror of packages/data-domains/registry.json for collections
+ * whose writes are required to carry a path-bound Signal at-rest envelope. Keep
+ * this empty while the registry still has no domain on SIGNAL_AT_REST_SCHEME.
+ *
+ * A unit test compares this value against the canonical registry so flipping the
+ * product registry cannot silently leave Admin-SDK producers optional.
+ */
+export const SIGNAL_AT_REST_REQUIRED_COLLECTIONS = [] as const satisfies readonly string[];
+
+export function isSignalAtRestRequiredForCollection(
+  collection: string,
+  requiredCollections: readonly string[] = SIGNAL_AT_REST_REQUIRED_COLLECTIONS,
+): boolean {
+  return requiredCollections.includes(collection);
+}
+
 /**
  * Nominal "this value came out of the validator" brand (Remediation R7). A raw
  * `CloudVaultSignalEnvelope` — or unknown user input — is NOT assignable to

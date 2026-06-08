@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
   assertSignalAtRestEnvelopeForWrite,
+  isSignalAtRestRequiredForCollection,
+  SIGNAL_AT_REST_REQUIRED_COLLECTIONS,
+  SIGNAL_AT_REST_SCHEME,
   SignalAtRestWriteError,
   validateSignalAtRestEnvelopeForWrite,
   type SignalAtRestExpectedBinding,
@@ -66,6 +71,29 @@ function atRestEnvelope(overrides: Overrides = {}): Record<string, unknown> {
 }
 
 describe("validateSignalAtRestEnvelopeForWrite (L23 + L37 admin)", () => {
+  it("mirrors the canonical registry's Signal-at-rest collection enablement", () => {
+    const registry = JSON.parse(
+      readFileSync(join(process.cwd(), "..", "packages", "data-domains", "registry.json"), "utf8"),
+    ) as {
+      domains: Array<{
+        sealingScheme?: string;
+        signalSealedCollections?: string[];
+      }>;
+    };
+    const registryRequiredCollections = registry.domains
+      .filter((domain) => domain.sealingScheme === SIGNAL_AT_REST_SCHEME)
+      .flatMap((domain) => domain.signalSealedCollections ?? [])
+      .sort();
+
+    expect([...SIGNAL_AT_REST_REQUIRED_COLLECTIONS].sort()).toEqual(registryRequiredCollections);
+  });
+
+  it("can evaluate a future Signal-at-rest collection policy without changing current registry state", () => {
+    expect(isSignalAtRestRequiredForCollection("cloud_search_knowledge")).toBe(false);
+    expect(isSignalAtRestRequiredForCollection("cloud_search_knowledge", ["cloud_search_knowledge"])).toBe(true);
+    expect(isSignalAtRestRequiredForCollection("knowledge_sync_manifests", ["cloud_search_knowledge"])).toBe(false);
+  });
+
   it("accepts a strict at-rest envelope bound to the expected path and derives the canonical AAD", () => {
     const result = validateSignalAtRestEnvelopeForWrite(atRestEnvelope(), EXPECTED);
     expect(result.ok).toBe(true);

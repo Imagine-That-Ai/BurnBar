@@ -36,6 +36,16 @@ vi.mock("../callables/shared.js", async () => {
   };
 });
 
+const signalAtRestPolicy = vi.hoisted(() => ({ requiredCollections: new Set<string>() }));
+
+vi.mock("../signalAtRestWrite.js", async () => {
+  const actual = await vi.importActual<typeof import("../signalAtRestWrite.js")>("../signalAtRestWrite.js");
+  return {
+    ...actual,
+    isSignalAtRestRequiredForCollection: (collection: string) => signalAtRestPolicy.requiredCollections.has(collection),
+  };
+});
+
 // Minimal firebase-admin/firestore: capture the doc payloads, stub the value
 // wrappers + aggregate the loop reads.
 const FIELD_DELETE = Symbol("FieldValue.delete");
@@ -311,7 +321,10 @@ function purgeCounts(result: unknown): { deletedByVersion: unknown; deletedByRet
 }
 
 describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side channels", () => {
-  beforeEach(() => stored.clear());
+  beforeEach(() => {
+    stored.clear();
+    signalAtRestPolicy.requiredCollections.clear();
+  });
   afterEach(() => vi.clearAllMocks());
 
   it("two users + same plaintext -> different stored dedupHash (vault-keyed)", async () => {
@@ -448,6 +461,42 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
       },
     });
     expect(record.signalEnvelope).not.toHaveProperty("plaintext");
+  });
+
+  it("future Signal-at-rest registry activation rejects a missing knowledge vector signalEnvelope", async () => {
+    signalAtRestPolicy.requiredCollections.add("cloud_search_knowledge");
+    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+
+    const req = commitRequestForUser("userSignalRequired", Buffer.alloc(32, 0xe6));
+
+    await expect(run(req)).rejects.toThrow(/signalEnvelope is required/);
+    expect([...stored.keys()].some((k) => k.startsWith("users/userSignalRequired/cloud_search_knowledge/"))).toBe(
+      false,
+    );
+  });
+
+  it("future Signal-at-rest registry activation accepts a required path-bound signalEnvelope", async () => {
+    signalAtRestPolicy.requiredCollections.add("cloud_search_knowledge");
+    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+
+    const req = commitRequestForUser("userSignalRequiredOk", Buffer.alloc(32, 0xe7));
+    const vector = vectorForMutation(req);
+    const vectorId = String(vector.dedupHash);
+    vector.signalEnvelope = signalEnvelopeForKnowledgeVector("userSignalRequiredOk", vectorId);
+
+    await run(req);
+    const record = firstKnowledgeRecord("userSignalRequiredOk");
+    expect(record.signalEnvelope).toMatchObject({
+      signalEnvelopeFormatVersion: 1,
+      binding: {
+        uid: "userSignalRequiredOk",
+        collection: "cloud_search_knowledge",
+        docId: vectorId,
+        field: "sealedCiphertext",
+      },
+    });
   });
 
   it("rejects a relocated optional Signal envelope before any knowledge vector write", async () => {
