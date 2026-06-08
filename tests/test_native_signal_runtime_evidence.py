@@ -44,6 +44,14 @@ RUST_ASSERTIONS = [
     "no_plaintext_keys_or_user_data",
 ]
 
+RUST_COMMAND = (
+    "cargo test --manifest-path Vendor/libsignal/Cargo.toml --locked "
+    "-p libsignal-ffi -p libsignal-ffi-native_swift "
+    "-p libsignal-jni-impl -p libsignal-jni-native_kt "
+    "-p libsignal-node -p libsignal-node-native_ts "
+    "--features libsignal-ffi/metadata"
+)
+
 
 def test_validates_swift_native_runtime_evidence():
     errors = validate_native_signal_runtime_evidence(
@@ -147,9 +155,7 @@ def test_rust_core_bridge_gate_accepts_rust_evidence():
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
                 "rust": {
-                    "commandEvidence": [
-                        command_evidence("cargo test -p openburnbar-libsignal-ffi", RUST_ASSERTIONS)
-                    ],
+                    "commandEvidence": [command_evidence(RUST_COMMAND, RUST_ASSERTIONS)],
                 },
             },
         },
@@ -167,9 +173,7 @@ def test_rust_core_bridge_rejects_self_report_without_assertions():
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
                 "rust": {
-                    "commandEvidence": [
-                        command_evidence("cargo test -p openburnbar-libsignal-ffi", [])
-                    ]
+                    "commandEvidence": [command_evidence(RUST_COMMAND, [])]
                 },
             },
         },
@@ -213,7 +217,7 @@ def test_native_evidence_rejects_raw_key_or_user_data_fields():
             "platforms": {
                 "rust": {
                     "commandEvidence": [
-                        command_evidence("cargo test -p openburnbar-libsignal-ffi", RUST_ASSERTIONS)
+                        command_evidence(RUST_COMMAND, RUST_ASSERTIONS)
                     ],
                     "privateKey": "not allowed",
                 },
@@ -234,7 +238,7 @@ def test_native_evidence_rejects_stale_packets():
             "platforms": {
                 "rust": {
                     "commandEvidence": [
-                        command_evidence("cargo test -p openburnbar-libsignal-ffi", RUST_ASSERTIONS)
+                        command_evidence(RUST_COMMAND, RUST_ASSERTIONS)
                     ],
                 },
             },
@@ -266,22 +270,24 @@ def test_native_evidence_rejects_self_reported_platform_status_without_command_e
     assert "missing passing command evidence for rust runtime" in errors
 
 
-def test_native_evidence_rejects_echo_command_with_assertion_strings():
-    errors = validate_native_signal_runtime_evidence(
-        {
-            "schemaVersion": 1,
-            "generatedAt": generated_at_now(),
-            "generatedBy": "tests",
-            "privacy": "proof_only_no_plaintext_keys_or_user_data",
-            "platforms": {
-                "rust": {
-                    "commandEvidence": [
-                        command_evidence("echo forged-rust-proof", RUST_ASSERTIONS),
-                    ]
+def test_native_evidence_rejects_unapproved_commands_with_assertion_strings():
+    for command in ("echo forged-rust-proof", "cargo test -p openburnbar-libsignal-ffi"):
+        errors = validate_native_signal_runtime_evidence(
+            {
+                "schemaVersion": 1,
+                "generatedAt": generated_at_now(),
+                "generatedBy": "tests",
+                "privacy": "proof_only_no_plaintext_keys_or_user_data",
+                "platforms": {
+                    "rust": {
+                        "commandEvidence": [
+                            command_evidence(command, RUST_ASSERTIONS),
+                        ]
+                    },
                 },
             },
-        },
-        gate="rust_core_bridge",
-    )
+            gate="rust_core_bridge",
+        )
 
-    assert "missing passing command evidence for rust approved runtime command: cargo test" in errors
+        assert any("missing passing command evidence for rust approved runtime command" in error for error in errors)
+        assert any("libsignal-ffi-native_swift" in error for error in errors)

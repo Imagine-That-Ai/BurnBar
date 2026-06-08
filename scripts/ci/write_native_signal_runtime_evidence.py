@@ -52,7 +52,27 @@ GATE_PLATFORM = {
 COMMAND_SPECS = {
     "rust": [
         {
-            "argv": ["cargo", "test", "-p", "openburnbar-libsignal-ffi"],
+            "argv": [
+                "cargo",
+                "test",
+                "--manifest-path",
+                "Vendor/libsignal/Cargo.toml",
+                "--locked",
+                "-p",
+                "libsignal-ffi",
+                "-p",
+                "libsignal-ffi-native_swift",
+                "-p",
+                "libsignal-jni-impl",
+                "-p",
+                "libsignal-jni-native_kt",
+                "-p",
+                "libsignal-node",
+                "-p",
+                "libsignal-node-native_ts",
+                "--features",
+                "libsignal-ffi/metadata",
+            ],
             "assertions": PLATFORM_ASSERTIONS["rust"],
         },
     ],

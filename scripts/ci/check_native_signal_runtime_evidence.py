@@ -47,7 +47,23 @@ REQUIRED_PLATFORM_ASSERTIONS = {
     ),
 }
 REQUIRED_PLATFORM_COMMAND_FRAGMENTS = {
-    "rust": (("cargo", "test"),),
+    "rust": (
+        (
+            "cargo",
+            "test",
+            "--manifest-path",
+            "Vendor/libsignal/Cargo.toml",
+            "--locked",
+            "-p libsignal-ffi",
+            "-p libsignal-ffi-native_swift",
+            "-p libsignal-jni-impl",
+            "-p libsignal-jni-native_kt",
+            "-p libsignal-node",
+            "-p libsignal-node-native_ts",
+            "--features",
+            "libsignal-ffi/metadata",
+        ),
+    ),
     "swift": (
         ("swift", "test", "--package-path", "OpenBurnBarCore"),
         ("scripts/test-openburnbar-swift.sh", "OPENBURNBAR_CORE_SWIFT_FILTER"),
