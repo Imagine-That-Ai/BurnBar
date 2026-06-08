@@ -17,7 +17,11 @@ def test_source_provenance_manifest_covers_agpl_signal_release_inputs():
     paths = {entry["path"] for entry in manifest["requiredSourceFiles"]}
     assert "third_party/libsignal/runtime-readiness.json" in paths
     assert "scripts/ci/attach_libsignal_runtime_evidence.py" in paths
+    assert "scripts/ci/check_signal_envelope_contract_runtime.py" in paths
+    assert "scripts/ci/write_signal_envelope_contract_runtime_evidence.py" in paths
     assert "tests/test_libsignal_runtime_evidence_attach.py" in paths
+    assert "tests/test_signal_envelope_contract_runtime.py" in paths
+    assert "tests/test_signal_envelope_contract_runtime_writer.py" in paths
     assert "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md" in paths
     assert manifest["runtimeReadiness"]["status"] in {"ready", "not_ready"}
     assert manifest["runtimeReadiness"]["validatorErrors"] == []

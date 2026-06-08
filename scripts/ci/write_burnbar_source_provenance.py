@@ -36,6 +36,8 @@ REQUIRED_SOURCE_FILES = [
     "scripts/ci/write_hermes_gateway_migration_drain_evidence.js",
     "scripts/ci/check_cloudvault_at_rest_runtime.py",
     "scripts/ci/check_functions_cloudvault_runtime.js",
+    "scripts/ci/check_signal_envelope_contract_runtime.py",
+    "scripts/ci/write_signal_envelope_contract_runtime_evidence.py",
     "scripts/ci/check_native_signal_runtime_evidence.py",
     "scripts/ci/write_native_signal_runtime_evidence.py",
     "scripts/ci/write_cloudvault_at_rest_runtime_evidence.py",
@@ -47,6 +49,8 @@ REQUIRED_SOURCE_FILES = [
     "tests/test_libsignal_runtime_readiness.py",
     "tests/test_native_signal_runtime_evidence.py",
     "tests/test_native_signal_runtime_evidence_writer.py",
+    "tests/test_signal_envelope_contract_runtime.py",
+    "tests/test_signal_envelope_contract_runtime_writer.py",
     "tests/test_signal_envelope_contracts_cjs_exports.py",
 ]
 

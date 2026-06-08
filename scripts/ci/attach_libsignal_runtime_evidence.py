@@ -135,6 +135,8 @@ def _default_validator_command(
         return ["python3", "scripts/ci/check_cloudvault_at_rest_runtime.py", artifact_rel_path]
     if gate_id == "store_and_counsel_approval":
         return ["python3", "scripts/ci/check_agpl_legal_release_review.py", "--evidence", artifact_rel_path]
+    if gate_id == "node_contracts":
+        return ["python3", "scripts/ci/check_signal_envelope_contract_runtime.py", artifact_rel_path]
     raise AttachError(f"{gate_id} cannot be attached until it has a dedicated artifact validator")
 
 
@@ -145,8 +147,6 @@ def _parse_validator_command(
     *,
     replay_native_commands: bool,
 ) -> list[str]:
-    if gate_id == "node_contracts":
-        raise AttachError("node_contracts cannot be attached until it has a dedicated artifact validator")
     if command is None:
         return _default_validator_command(
             gate_id,

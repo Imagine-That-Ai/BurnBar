@@ -246,24 +246,20 @@ def test_attach_cli_runs_validator_and_writes_manifest(tmp_path):
     assert evidence["artifactPath"] == "launch-evidence/hermes-drain.json"
 
 
-def test_attach_refuses_node_contracts_until_artifact_validator_exists(tmp_path):
+def test_attach_node_contracts_uses_dedicated_artifact_validator(tmp_path):
     manifest = _write_manifest(tmp_path)
-    _write_artifact(tmp_path, "launch-evidence/node-contracts.json")
+    artifact = _write_artifact(tmp_path, "launch-evidence/node-contracts.json")
 
-    try:
-        attach_runtime_evidence(
-            gate_id="node_contracts",
-            artifact=Path("launch-evidence/node-contracts.json"),
-            manifest=manifest,
-            repo_root=tmp_path,
-            validator_command=(
-                "npm test --prefix packages/signal-envelope-contracts "
-                "-- --outputFile launch-evidence/node-contracts.json"
-            ),
-            postcheck_validators=False,
-            runner=_passing_runner,
-        )
-    except AttachError as exc:
-        assert "node_contracts cannot be attached" in str(exc)
-    else:
-        raise AssertionError("node contracts should require a dedicated artifact validator first")
+    updated = attach_runtime_evidence(
+        gate_id="node_contracts",
+        artifact=Path("launch-evidence/node-contracts.json"),
+        manifest=manifest,
+        repo_root=tmp_path,
+        postcheck_validators=False,
+        runner=_passing_runner,
+    )
+
+    evidence = next(item for item in updated["completedEvidence"] if item.get("id") == "node_contracts")
+    assert evidence["artifactType"] == "signal_envelope_contract_test_report"
+    assert evidence["sha256"] == hashlib.sha256(artifact.read_bytes()).hexdigest()
+    assert "check_signal_envelope_contract_runtime.py launch-evidence/node-contracts.json" in evidence["validatorCommand"]

@@ -129,6 +129,12 @@ export function hostControlChannel(
   return `${runtime}:ctrl:${uid}:${connectionId}`;
 }
 
+function frameBuffer(raw: Buffer | ArrayBuffer | Buffer[]): Buffer {
+  if (Array.isArray(raw)) return Buffer.concat(raw);
+  if (raw instanceof ArrayBuffer) return Buffer.from(new Uint8Array(raw));
+  return Buffer.from(raw);
+}
+
 export function parseFrame(
   raw: Buffer | ArrayBuffer | Buffer[],
   maxFrameBytes: number = DEFAULT_MAX_FRAME_BYTES
@@ -140,9 +146,7 @@ export function parseFrame(
     throw new Error("Frame exceeds realtime relay size limit.");
   }
 
-  const text = Array.isArray(raw)
-    ? Buffer.concat(raw).toString("utf8")
-    : Buffer.from(raw).toString("utf8");
+  const text = frameBuffer(raw).toString("utf8");
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);

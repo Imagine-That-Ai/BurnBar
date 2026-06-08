@@ -54,7 +54,7 @@ GATE_VALIDATOR_FRAGMENTS: dict[str, tuple[str, ...]] = {
     "rust_core_bridge": ("check_native_signal_runtime_evidence.py",),
     "swift_round_trips": ("check_native_signal_runtime_evidence.py",),
     "kotlin_round_trips": ("check_native_signal_runtime_evidence.py",),
-    "node_contracts": ("npm test --prefix packages/signal-envelope-contracts",),
+    "node_contracts": ("check_signal_envelope_contract_runtime.py",),
     "hermes_gateway_writes": ("check_hermes_gateway_migration_drain.py",),
     "hermes_attachment_writes": ("check_hermes_gateway_migration_drain.py",),
     "cloudvault_private_domains": ("check_cloudvault_at_rest_runtime.py",),
@@ -93,7 +93,10 @@ GATE_RELEASE_ACTIONS: dict[str, str] = {
         "produce Android/Kotlin round-trip evidence and validate it with "
         "check_native_signal_runtime_evidence.py --gate kotlin_round_trips"
     ),
-    "node_contracts": "run the signal-envelope contract package tests and attach the test report",
+    "node_contracts": (
+        "produce Node Signal-envelope contract runtime evidence and validate it with "
+        "check_signal_envelope_contract_runtime.py"
+    ),
     "hermes_gateway_writes": (
         "produce Hermes Gateway migration-drain evidence proving new gateway writes are Signal-backed "
         "and legacy records are drained or retained read-only"
