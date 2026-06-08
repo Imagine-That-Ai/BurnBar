@@ -352,19 +352,19 @@ def check_manifest(
         errors.append("complete gates missing completed evidence: " + ", ".join(unevidenced))
 
     incomplete = [gate_id for gate_id in REQUIRED_GATE_IDS if gates.get(gate_id, {}).get("status") != "complete"]
-    if status == "ready":
-        if incomplete:
-            errors.append("manifest says ready but gates are incomplete: " + ", ".join(incomplete))
-        for gate_id in REQUIRED_GATE_IDS:
-            if gates.get(gate_id, {}).get("status") == "complete":
-                errors.extend(
-                    _validate_ready_evidence(
-                        gate_id,
-                        evidence_by_id.get(gate_id),
-                        repo_root=root,
-                        run_validators=True,
-                    )
+    for gate_id in REQUIRED_GATE_IDS:
+        if gates.get(gate_id, {}).get("status") == "complete":
+            errors.extend(
+                _validate_ready_evidence(
+                    gate_id,
+                    evidence_by_id.get(gate_id),
+                    repo_root=root,
+                    run_validators=status == "ready" or run_validators,
                 )
+            )
+
+    if status == "ready" and incomplete:
+        errors.append("manifest says ready but gates are incomplete: " + ", ".join(incomplete))
 
     return errors
 

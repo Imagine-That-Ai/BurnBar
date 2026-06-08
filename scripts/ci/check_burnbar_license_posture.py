@@ -356,6 +356,12 @@ def check_source_provenance_process() -> list[Check]:
         "scripts/ci/check_native_signal_runtime_evidence.py": [
             "validate_native_signal_runtime_evidence",
             "proof_only_no_plaintext_keys_or_user_data",
+            "commandEvidence",
+        ],
+        "scripts/ci/write_native_signal_runtime_evidence.py": [
+            "build_native_signal_runtime_evidence",
+            "proof_only_no_plaintext_keys_or_user_data",
+            "commandEvidence",
         ],
         "tests/test_burnbar_source_provenance.py": [
             "test_source_provenance_manifest_covers_agpl_signal_release_inputs",
@@ -369,6 +375,11 @@ def check_source_provenance_process() -> list[Check]:
         "tests/test_native_signal_runtime_evidence.py": [
             "test_validates_swift_native_runtime_evidence",
             "test_validates_kotlin_android_native_runtime_evidence",
+            "test_native_evidence_rejects_self_reported_platform_status_without_command_evidence",
+        ],
+        "tests/test_native_signal_runtime_evidence_writer.py": [
+            "test_swift_writer_generates_release_ready_shape_when_commands_pass",
+            "test_rust_writer_failed_command_does_not_count_assertions_as_proof",
         ],
         "tests/test_cloudvault_at_rest_runtime_writer.py": [
             "test_writer_keeps_release_gate_closed_when_signal_is_not_enabled",

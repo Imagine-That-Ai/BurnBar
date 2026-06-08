@@ -22,6 +22,7 @@ REQUIRED_COLLECTIONS = {
 }
 REQUIRED_SERVICES = ("burnbarhermesgateway", "enqueuehermesgatewayevent")
 MAX_EVIDENCE_AGE = timedelta(hours=24)
+MAX_CLOCK_SKEW = timedelta(minutes=5)
 
 
 def _as_non_negative_int(value: Any, field: str, errors: list[str]) -> int:
@@ -45,7 +46,11 @@ def _validate_generated_at(value: Any, errors: list[str]) -> None:
         return
     if generated_at.tzinfo is None:
         generated_at = generated_at.replace(tzinfo=UTC)
-    if datetime.now(UTC) - generated_at.astimezone(UTC) > MAX_EVIDENCE_AGE:
+    now = datetime.now(UTC)
+    generated_at = generated_at.astimezone(UTC)
+    if generated_at - now > MAX_CLOCK_SKEW:
+        errors.append("generatedAt must not be in the future")
+    if now - generated_at > MAX_EVIDENCE_AGE:
         errors.append("generatedAt must be within the last 24 hours")
 
 
@@ -98,11 +103,22 @@ def validate_drain_evidence(data: dict[str, Any]) -> list[str]:
             errors.append(f"{name}.collectionGroup must be {expected_group}")
         if summary.get("truncated") is True:
             errors.append(f"{name}.truncated must be false; release evidence must cover the full collection group")
-        _as_non_negative_int(summary.get("sampleLimit"), f"{name}.sampleLimit", errors)
-        _as_non_negative_int(summary.get("sampled"), f"{name}.sampled", errors)
+        sample_limit = _as_non_negative_int(summary.get("sampleLimit"), f"{name}.sampleLimit", errors)
+        sampled = _as_non_negative_int(summary.get("sampled"), f"{name}.sampled", errors)
+        if sampled > sample_limit:
+            errors.append(f"{name}.sampled must be <= {name}.sampleLimit")
         counts = summary.get("counts") or summary.get("classifications") or {}
+        if not isinstance(counts, dict):
+            errors.append(f"{name}.counts must be an object")
+            counts = {}
+        unknown_count_keys = sorted(str(field) for field in counts if field not in ALL_CLASSIFICATIONS)
+        if unknown_count_keys:
+            errors.append(f"{name}.counts has unknown classification(s): " + ", ".join(unknown_count_keys))
         for field in ALL_CLASSIFICATIONS:
             _as_non_negative_int(counts.get(field, 0), f"{name}.{field}", errors)
+        counted_total = sum(_as_non_negative_int(counts.get(field, 0), f"{name}.{field}", errors) for field in ALL_CLASSIFICATIONS)
+        if counted_total != sampled:
+            errors.append(f"{name}.sampled must equal the sum of classification counts ({counted_total})")
         for field in BLOCKING_CLASSIFICATIONS:
             if _as_non_negative_int(counts.get(field, 0), f"{name}.{field}", errors) != 0:
                 errors.append(

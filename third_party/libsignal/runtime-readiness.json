@@ -1,12 +1,12 @@
 {
   "status": "not_ready",
-  "runtimeCryptoCore": "official_libsignal_device_to_device_and_at_rest_proofs_merged; gateway_cutover_migration_telemetry_and_counsel_pending",
+  "runtimeCryptoCore": "official_libsignal_paths_implemented; typed_runtime_evidence_gateway_cutover_migration_telemetry_and_counsel_pending",
   "officialLibsignalPin": {
     "tag": "v0.94.4",
     "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
     "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f"
   },
-  "blockingReason": "Signal phase2 is merged to main and Swift/Kotlin/CryptoKit proof tests pass, but final launch readiness still requires gateway write cutover evidence, migration telemetry, physical-device Phase-E activation evidence, real iroh QA, and counsel approval.",
+  "blockingReason": "Signal phase2 implementation work is merged, but release readiness still requires fresh typed runtime evidence for native and Node gates, gateway write cutover evidence, migration telemetry, physical-device Phase-E activation evidence, real iroh QA, and counsel approval.",
   "completedEvidence": [
     {
       "id": "node_protocol_harness",
@@ -53,17 +53,17 @@
     },
     {
       "id": "swift_round_trips",
-      "status": "complete",
+      "status": "pending",
       "proof": "Swift/macOS/iOS libsignal identity, prekey, session, encrypt, decrypt, replay, skipped-key, and safety-number tests."
     },
     {
       "id": "kotlin_round_trips",
-      "status": "complete",
+      "status": "pending",
       "proof": "Android/Kotlin libsignal identity, prekey, session, encrypt, decrypt, replay, skipped-key, and safety-number tests."
     },
     {
       "id": "node_contracts",
-      "status": "complete",
+      "status": "pending",
       "proof": "Shared @openburnbar/signal-envelope-contracts package consumed by Functions, hosted MCP, and Hermes realtime relay with schema, export-sanitization, downgrade, and malformed-base64 tests."
     },
     {

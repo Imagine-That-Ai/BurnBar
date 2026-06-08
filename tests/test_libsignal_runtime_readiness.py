@@ -37,6 +37,16 @@ def _ready_manifest(evidence):
     }
 
 
+def _not_ready_manifest(evidence, completed_gate="swift_round_trips"):
+    manifest = _ready_manifest(evidence)
+    manifest["status"] = "not_ready"
+    manifest["runtimeCryptoCore"] = "official_libsignal_pending_release_evidence"
+    manifest["blockingReason"] = "release evidence pending"
+    for gate in manifest["requiredGates"]:
+        gate["status"] = "complete" if gate["id"] == completed_gate else "pending"
+    return manifest
+
+
 def _hashed_artifact(tmp_path, rel_path="launch-evidence/proof.json"):
     artifact = tmp_path / rel_path
     artifact.parent.mkdir(parents=True, exist_ok=True)
@@ -85,6 +95,30 @@ def test_ready_manifest_rejects_arbitrary_hash_matching_artifacts(tmp_path):
     errors = check_manifest(manifest, repo_root=tmp_path)
 
     assert any("artifactPath must live under" in error for error in errors)
+
+
+def test_not_ready_manifest_still_rejects_self_reported_completed_gate_evidence(tmp_path):
+    manifest = tmp_path / "runtime-readiness.json"
+    manifest.write_text(
+        json.dumps(
+            _not_ready_manifest(
+                [
+                    {
+                        "id": "swift_round_trips",
+                        "status": "complete",
+                        "proof": "self-reported",
+                        "command": "swift test",
+                    }
+                ]
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    errors = check_manifest(manifest, repo_root=tmp_path)
+
+    assert any("ready gate swift_round_trips evidence is missing artifactPath" in error for error in errors)
+    assert not any("complete gates missing completed evidence" in error for error in errors)
 
 
 def test_ready_manifest_always_replays_validators(tmp_path):

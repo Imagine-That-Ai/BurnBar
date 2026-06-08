@@ -41,6 +41,18 @@ Cloud Functions gen2 source redeploy must use the same source commit.
 Collect runtime evidence:
 
 ```bash
+python3 scripts/ci/write_native_signal_runtime_evidence.py \
+  --gate swift_round_trips \
+  --output launch-evidence/native-signal-swift-runtime.json \
+  --check
+python3 scripts/ci/write_native_signal_runtime_evidence.py \
+  --gate kotlin_round_trips \
+  --output launch-evidence/native-signal-kotlin-runtime.json \
+  --check
+python3 scripts/ci/write_native_signal_runtime_evidence.py \
+  --gate rust_core_bridge \
+  --output launch-evidence/native-signal-rust-runtime.json \
+  --check
 node scripts/ci/write_hermes_gateway_migration_drain_evidence.js \
   --deployed-commit "$GIT_SHA" \
   --source-location "$SOURCE_LOCATION" \
@@ -58,6 +70,14 @@ only privacy-preserving command-output hashes. `--check` must remain a HOLD unti
 the data-domain registry actually enables a Signal at-rest sealing scheme; do not
 hand-edit `signalAtRestWritesEnabled` to clear the gate.
 
+The native Signal writer uses the same privacy-preserving command-evidence
+shape. It records command status, exit code, duration, stdout/stderr hashes, and
+named assertions only on the command entry that produced them. A runtime gate in
+`third_party/libsignal/runtime-readiness.json` may be marked `complete` only
+after its generated artifact is referenced by `artifactPath`, `sha256`,
+`validatorCommand`, and passing `validatorResult`; do not hand-edit platform
+status fields or assertion strings.
+
 ## Drain
 
 Dry-run first:
@@ -71,22 +91,25 @@ node scripts/ci/drain_hermes_gateway_legacy_records.js \
 Execute only known legacy records, never unknown/private data:
 
 ```bash
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 node scripts/ci/drain_hermes_gateway_legacy_records.js \
   --execute \
   --confirm delete-legacy-hermes-gateway-records \
   --project-id burnbar \
   --live-production-acknowledgement mutate-production-hermes-gateway-records-in-burnbar \
   --runtime-mode-evidence launch-evidence/hermes-gateway-drain.json \
-  --predelete-export launch-evidence/private/hermes-gateway-predelete-private.json \
-  --quarantine-output launch-evidence/private/hermes-gateway-quarantine-private.json \
+  --predelete-export "launch-evidence/private/hermes-gateway-predelete-${RUN_ID}-private.json" \
+  --quarantine-output "launch-evidence/private/hermes-gateway-quarantine-${RUN_ID}-private.json" \
   --output launch-evidence/hermes-gateway-drain-execute.json
 ```
 
 The `private/` outputs contain document paths and values. Keep them out of git,
-logs, public evidence bundles, and support tickets. If the quarantine file is
-created, the execute run failed before deleting records and release remains
-blocked until those records are classified or explicitly retained by a signed
-release-owner review.
+logs, public evidence bundles, and support tickets. The script writes these
+files with exclusive-create semantics; if a path already exists, stop and choose
+a new timestamped path rather than overwriting a recovery artifact. If the
+quarantine file is created, the execute run failed before deleting records and
+release remains blocked until those records are classified or explicitly
+retained by a signed release-owner review.
 
 ## Rollback
 

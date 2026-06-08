@@ -3,7 +3,11 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { COLLECTIONS, classifyGatewayDocument } = require("./write_hermes_gateway_migration_drain_evidence.js");
+const {
+  COLLECTIONS,
+  classifyGatewayDocument,
+  isAllowedGatewayDocumentPath,
+} = require("./write_hermes_gateway_migration_drain_evidence.js");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const PRIVATE_EXPORT_MARKER = "private_export_contains_document_values_do_not_commit";
@@ -88,7 +92,7 @@ function validateRestorableRecord(record, index) {
   }
   const collectionGroup = collectionGroupFromDocumentPath(record.path);
   const collection = COLLECTION_BY_GROUP.get(collectionGroup);
-  if (!collection) {
+  if (!collection || !isAllowedGatewayDocumentPath(record.path, collection.collectionGroup)) {
     throw new Error(`predeleteRecords[${index}].path is not an allowed Hermes Gateway document path`);
   }
   if (record.collection && record.collection !== collection.id) {
@@ -115,7 +119,7 @@ function validateRestorableRecord(record, index) {
 }
 
 function queueRestoreRecord(writer, db, record) {
-  writer.create(db.doc(record.path), record.data);
+  return writer.create(db.doc(record.path), record.data);
 }
 
 async function restore(options) {
@@ -147,10 +151,17 @@ async function restore(options) {
 
   const { db } = initializeFirestore(options);
   const writer = db.bulkWriter();
-  for (const record of records) {
-    queueRestoreRecord(writer, db, record);
-  }
+  const writes = records.map((record) => queueRestoreRecord(writer, db, record));
   await writer.close();
+  const settled = await Promise.allSettled(writes);
+  const failed = settled.filter((result) => result.status === "rejected");
+  if (failed.length > 0) {
+    const details = failed
+      .slice(0, 3)
+      .map((result) => result.reason?.message ?? String(result.reason))
+      .join("; ");
+    throw new Error(`bulk restore failed for ${failed.length}/${writes.length} pre-delete record(s): ${details}`);
+  }
   console.log(`RESTORED: ${records.length} Hermes Gateway record(s) from private pre-delete export`);
 }
 

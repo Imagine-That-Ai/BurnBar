@@ -84,7 +84,7 @@ def release_ready_drain_evidence(collections=None):
                 "sampleLimit": 50000,
                 "sampled": 0,
                 "truncated": False,
-                "counts": COUNTS,
+                "counts": {**COUNTS},
             },
         },
     }
@@ -149,6 +149,25 @@ def test_migration_drain_evidence_rejects_truncated_or_missing_collection(tmp_pa
     assert result.returncode != 0
     assert "events.truncated must be false" in result.stderr
     assert "collections.messages is required" in result.stderr
+
+
+def test_migration_drain_evidence_rejects_future_or_inconsistent_aggregates(tmp_path):
+    evidence = tmp_path / "drain-evidence.json"
+    data = release_ready_drain_evidence()
+    data["generatedAt"] = "2999-01-01T00:00:00Z"
+    data["collections"]["events"]["sampled"] = 37
+    data["collections"]["messages"]["sampleLimit"] = 1
+    data["collections"]["messages"]["sampled"] = 2
+    data["collections"]["attachments"]["counts"]["mystery"] = 1
+    evidence.write_text(json.dumps(data), encoding="utf-8")
+
+    result = run_drain_checker(evidence)
+
+    assert result.returncode != 0
+    assert "generatedAt must not be in the future" in result.stderr
+    assert "events.sampled must equal the sum of classification counts" in result.stderr
+    assert "messages.sampled must be <= messages.sampleLimit" in result.stderr
+    assert "attachments.counts has unknown classification(s): mystery" in result.stderr
 
 
 def test_live_collectors_mark_truncated_when_scan_hits_cap():
@@ -279,6 +298,106 @@ def test_signal_shaped_but_invalid_records_are_blocking_malformed(tmp_path):
     assert evidence["collections"]["events"]["counts"]["malformed"] == 2
 
 
+def test_versioned_plaintext_shaped_records_are_unknown_not_delete_eligible():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            r"""
+const assert = require("node:assert/strict");
+const writer = require("./scripts/ci/write_hermes_gateway_migration_drain_evidence.js");
+assert.equal(
+  writer.classifyGatewayDocument({ schemaVersion: 99, threadId: "future-thread" }, writer.COLLECTIONS[0].plaintextFields),
+  "unknownSchema",
+);
+assert.equal(
+  writer.classifyGatewayDocument({ schemaVersion: 99, replyToEventId: "future-reply" }, writer.COLLECTIONS[1].plaintextFields),
+  "unknownSchema",
+);
+assert.equal(
+  writer.classifyGatewayDocument({ schemaVersion: 99, contentType: "image/png" }, writer.COLLECTIONS[2].plaintextFields),
+  "unknownSchema",
+);
+assert.equal(
+  writer.classifyGatewayDocument({ threadId: "legacy-thread" }, writer.COLLECTIONS[0].plaintextFields),
+  "knownLegacyPlaintext",
+);
+""",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_live_collection_group_out_of_scope_paths_block_without_deleting():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            r"""
+const assert = require("node:assert/strict");
+const writer = require("./scripts/ci/write_hermes_gateway_migration_drain_evidence.js");
+const drain = require("./scripts/ci/drain_hermes_gateway_legacy_records.js");
+
+class Query {
+  constructor(done = false) { this.done = done; }
+  orderBy() { return this; }
+  limit() { return this; }
+  startAfter() { return new Query(true); }
+  async get() {
+    if (this.done) return { empty: true, size: 0, docs: [] };
+    return {
+      empty: false,
+      size: 1,
+      docs: [{
+        data: () => ({ relayEnvelope: { ciphertext: "legacy" } }),
+        ref: { path: "tenants/t/hermes_gateway_events/doc-1" },
+      }],
+    };
+  }
+}
+
+const db = { collectionGroup: () => new Query() };
+const admin = { firestore: { FieldPath: { documentId: () => "__name__" } } };
+const collection = writer.COLLECTIONS[0];
+
+(async () => {
+  const evidenceSummary = await writer.collectCollection(db, admin, collection, {
+    pageSize: 500,
+    maxDocsPerCollection: 10,
+  });
+  assert.equal(evidenceSummary.counts.unknownSchema, 1);
+  assert.equal(evidenceSummary.counts.knownLegacyRelay, 0);
+
+  const privateExport = { blockedRecords: [], predeleteRecords: [] };
+  const deleteCandidates = [];
+  const drainSummary = await drain.drainCollection(db, admin, collection, {
+    pageSize: 500,
+    maxDocsPerCollection: 10,
+    privateExport,
+    capturePredelete: true,
+    deleteCandidates,
+  });
+  assert.equal(drainSummary.blocked, 1);
+  assert.equal(drainSummary.eligible, 0);
+  assert.equal(privateExport.blockedRecords[0].outOfScopePath, true);
+  assert.equal(deleteCandidates.length, 0);
+})();
+""",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_execute_requires_predelete_export(tmp_path):
     fixture = tmp_path / "fixture.json"
     runtime = tmp_path / "runtime.json"
@@ -304,6 +423,36 @@ def test_execute_requires_predelete_export(tmp_path):
     )
     assert result.returncode != 0
     assert "--predelete-export" in result.stderr
+
+
+def test_live_execute_requires_quarantine_output_for_fresh_valid_runtime_evidence(tmp_path):
+    runtime = tmp_path / "runtime.json"
+    predelete = tmp_path / "predelete.json"
+    runtime.write_text(json.dumps(release_ready_drain_evidence()), encoding="utf-8")
+    result = subprocess.run(
+        [
+            "node",
+            "scripts/ci/drain_hermes_gateway_legacy_records.js",
+            "--execute",
+            "--confirm",
+            "delete-legacy-hermes-gateway-records",
+            "--project-id",
+            "burnbar",
+            "--live-production-acknowledgement",
+            "mutate-production-hermes-gateway-records-in-burnbar",
+            "--runtime-mode-evidence",
+            str(runtime),
+            "--predelete-export",
+            str(predelete),
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "--quarantine-output" in result.stderr
 
 
 def test_live_execute_requires_project_id_before_firestore(tmp_path):
@@ -474,6 +623,44 @@ def test_execute_exports_predelete_records_before_fixture_delete(tmp_path):
     assert public_evidence["collections"]["messages"]["deleted"] == 1
 
 
+def test_execute_refuses_to_overwrite_existing_private_predelete_export(tmp_path):
+    fixture = tmp_path / "fixture.json"
+    runtime = tmp_path / "runtime.json"
+    predelete = tmp_path / "predelete.json"
+    output = tmp_path / "evidence.json"
+    fixture.write_text(json.dumps({"events": [{"relayEnvelope": {"ciphertext": "legacy"}}]}), encoding="utf-8")
+    runtime.write_text(json.dumps(runtime_evidence_payload()), encoding="utf-8")
+    predelete.write_text("existing recovery artifact\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "node",
+            "scripts/ci/drain_hermes_gateway_legacy_records.js",
+            "--fixture",
+            str(fixture),
+            "--execute",
+            "--confirm",
+            "delete-legacy-hermes-gateway-records",
+            "--runtime-mode-evidence",
+            str(runtime),
+            "--predelete-export",
+            str(predelete),
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "EEXIST" in result.stderr
+    assert predelete.read_text(encoding="utf-8") == "existing recovery artifact\n"
+    assert not output.exists()
+
+
 def test_restore_utility_dry_run_requires_private_export(tmp_path):
     export = tmp_path / "predelete.json"
     export.write_text(
@@ -555,6 +742,48 @@ def test_restore_utility_rejects_non_gateway_paths(tmp_path):
     assert "not an allowed Hermes Gateway document path" in result.stderr
 
 
+def test_restore_utility_rejects_nested_or_tenant_gateway_paths(tmp_path):
+    for document_path in (
+        "tenants/t/hermes_gateway_events/e1",
+        "users/u/sessions/s1/hermes_gateway_events/e1",
+    ):
+        export = tmp_path / f"{document_path.replace('/', '_')}.json"
+        export.write_text(
+            json.dumps(
+                {
+                    "privacy": "private_export_contains_document_values_do_not_commit",
+                    "predeleteRecords": [
+                        {
+                            "collection": "events",
+                            "collectionGroup": "hermes_gateway_events",
+                            "path": document_path,
+                            "classification": "knownLegacyRelay",
+                            "data": {"relayEnvelope": {"ciphertext": "legacy"}},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                "node",
+                "scripts/ci/restore_hermes_gateway_legacy_records.js",
+                "--export",
+                str(export),
+                "--project-id",
+                "burnbar",
+            ],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        assert result.returncode != 0
+        assert "not an allowed Hermes Gateway document path" in result.stderr
+
+
 def test_restore_utility_execute_requires_project_ack(tmp_path):
     export = tmp_path / "predelete.json"
     export.write_text(
@@ -619,6 +848,79 @@ assert.deepEqual(calls, [{
   path: "users/u/hermes_gateway_messages/m1",
   data: { relayEnvelope: { ciphertext: "legacy" } },
 }]);
+""",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_bulk_delete_failure_is_reported_before_execute_success():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            r"""
+const assert = require("node:assert/strict");
+const Module = require("node:module");
+const originalLoad = Module._load;
+Module._load = function(request, parent, isMain) {
+  if (request.endsWith("functions/node_modules/firebase-admin")) {
+    return {
+      apps: [{}],
+      firestore: () => ({
+        doc: (path) => ({ path }),
+        bulkWriter: () => ({
+          onWriteError: () => {},
+          delete: () => Promise.reject(new Error("permission denied")),
+          close: async () => {},
+        }),
+      }),
+    };
+  }
+  return originalLoad.apply(this, arguments);
+};
+const drain = require("./scripts/ci/drain_hermes_gateway_legacy_records.js");
+(async () => {
+  await assert.rejects(
+    () => drain.deleteCapturedCandidates({ projectId: "burnbar" }, [{ path: "users/u/hermes_gateway_events/e1" }]),
+    /bulk delete failed/,
+  );
+})();
+""",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_restore_queue_returns_create_promise_so_failures_can_be_counted():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            r"""
+const assert = require("node:assert/strict");
+const restore = require("./scripts/ci/restore_hermes_gateway_legacy_records.js");
+const writer = { create: () => Promise.reject(new Error("already exists")) };
+const db = { doc: (path) => ({ path }) };
+(async () => {
+  const write = restore.queueRestoreRecord(writer, db, {
+    path: "users/u/hermes_gateway_messages/m1",
+    data: { relayEnvelope: { ciphertext: "legacy" } },
+  });
+  assert.equal(typeof write.then, "function");
+  const settled = await Promise.allSettled([write]);
+  assert.equal(settled[0].status, "rejected");
+})();
 """,
         ],
         cwd=ROOT,

@@ -7,6 +7,18 @@ def generated_at_now():
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def command_evidence(command: str, assertions: list[str], *, status: str = "pass", exit_code: int = 0):
+    return {
+        "command": command,
+        "status": status,
+        "exitCode": exit_code,
+        "durationMs": 1,
+        "stdoutSha256": "0" * 64,
+        "stderrSha256": "0" * 64,
+        "assertions": assertions,
+    }
+
+
 SWIFT_ASSERTIONS = [
     "official_libsignal_session_round_trip",
     "persistence_reload_round_trip",
@@ -41,8 +53,19 @@ def test_validates_swift_native_runtime_evidence():
             "generatedBy": "tests",
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
-                "swift": {"status": "pass", "command": "swift test", "assertions": SWIFT_ASSERTIONS},
-                "kotlin": {"status": "pass", "command": "./gradlew test", "assertions": KOTLIN_ASSERTIONS},
+                "swift": {
+                    "commandEvidence": [
+                        command_evidence(
+                            "swift test --package-path OpenBurnBarCore --filter OBBSignalProtocolStoreSessionTests",
+                            SWIFT_ASSERTIONS,
+                        )
+                    ]
+                },
+                "kotlin": {
+                    "commandEvidence": [
+                        command_evidence("./gradlew :app:testDebugUnitTest --tests *AndroidSignal*", KOTLIN_ASSERTIONS)
+                    ]
+                },
             },
         }
     )
@@ -57,12 +80,28 @@ def test_validates_kotlin_android_native_runtime_evidence():
             "generatedBy": "tests",
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
-                "swift": {"status": "pass", "command": "swift test", "assertions": SWIFT_ASSERTIONS},
-                "kotlin": {"status": "fail", "command": "./gradlew test", "assertions": KOTLIN_ASSERTIONS},
+                "swift": {
+                    "commandEvidence": [
+                        command_evidence(
+                            "swift test --package-path OpenBurnBarCore --filter OBBSignalProtocolStoreSessionTests",
+                            SWIFT_ASSERTIONS,
+                        )
+                    ]
+                },
+                "kotlin": {
+                    "commandEvidence": [
+                        command_evidence(
+                            "./gradlew :app:testDebugUnitTest --tests *AndroidSignal*",
+                            KOTLIN_ASSERTIONS,
+                            status="fail",
+                            exit_code=1,
+                        )
+                    ]
+                },
             },
         }
     )
-    assert "kotlin runtime evidence must be pass" in errors
+    assert "missing passing command evidence for kotlin runtime" in errors
 
 
 def test_rust_core_bridge_gate_requires_rust_evidence():
@@ -73,8 +112,19 @@ def test_rust_core_bridge_gate_requires_rust_evidence():
             "generatedBy": "tests",
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
-                "swift": {"status": "pass", "command": "swift test", "assertions": SWIFT_ASSERTIONS},
-                "kotlin": {"status": "pass", "command": "./gradlew test", "assertions": KOTLIN_ASSERTIONS},
+                "swift": {
+                    "commandEvidence": [
+                        command_evidence(
+                            "swift test --package-path OpenBurnBarCore --filter OBBSignalProtocolStoreSessionTests",
+                            SWIFT_ASSERTIONS,
+                        )
+                    ]
+                },
+                "kotlin": {
+                    "commandEvidence": [
+                        command_evidence("./gradlew :app:testDebugUnitTest --tests *AndroidSignal*", KOTLIN_ASSERTIONS)
+                    ]
+                },
             },
         },
         gate="rust_core_bridge",
@@ -91,9 +141,9 @@ def test_rust_core_bridge_gate_accepts_rust_evidence():
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
                 "rust": {
-                    "status": "pass",
-                    "command": "cargo test -p openburnbar-libsignal-ffi",
-                    "assertions": RUST_ASSERTIONS,
+                    "commandEvidence": [
+                        command_evidence("cargo test -p openburnbar-libsignal-ffi", RUST_ASSERTIONS)
+                    ],
                 },
             },
         },
@@ -110,7 +160,11 @@ def test_rust_core_bridge_rejects_self_report_without_assertions():
             "generatedBy": "tests",
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
-                "rust": {"status": "pass", "command": "cargo test -p openburnbar-libsignal-ffi"},
+                "rust": {
+                    "commandEvidence": [
+                        command_evidence("cargo test -p openburnbar-libsignal-ffi", [])
+                    ]
+                },
             },
         },
         gate="rust_core_bridge",
@@ -128,9 +182,9 @@ def test_native_evidence_rejects_raw_key_or_user_data_fields():
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
                 "rust": {
-                    "status": "pass",
-                    "command": "cargo test -p openburnbar-libsignal-ffi",
-                    "assertions": RUST_ASSERTIONS,
+                    "commandEvidence": [
+                        command_evidence("cargo test -p openburnbar-libsignal-ffi", RUST_ASSERTIONS)
+                    ],
                     "privateKey": "not allowed",
                 },
             },
@@ -149,12 +203,55 @@ def test_native_evidence_rejects_stale_packets():
             "privacy": "proof_only_no_plaintext_keys_or_user_data",
             "platforms": {
                 "rust": {
-                    "status": "pass",
-                    "command": "cargo test -p openburnbar-libsignal-ffi",
-                    "assertions": RUST_ASSERTIONS,
+                    "commandEvidence": [
+                        command_evidence("cargo test -p openburnbar-libsignal-ffi", RUST_ASSERTIONS)
+                    ],
                 },
             },
         },
         gate="rust_core_bridge",
     )
     assert "generatedAt must be within the last 24 hours" in errors
+
+
+def test_native_evidence_rejects_self_reported_platform_status_without_command_evidence():
+    errors = validate_native_signal_runtime_evidence(
+        {
+            "schemaVersion": 1,
+            "generatedAt": generated_at_now(),
+            "generatedBy": "tests",
+            "privacy": "proof_only_no_plaintext_keys_or_user_data",
+            "platforms": {
+                "rust": {
+                    "status": "pass",
+                    "command": "echo forged-rust-proof",
+                    "assertions": RUST_ASSERTIONS,
+                },
+            },
+        },
+        gate="rust_core_bridge",
+    )
+
+    assert "rust runtime evidence is missing commandEvidence" in errors
+    assert "missing passing command evidence for rust runtime" in errors
+
+
+def test_native_evidence_rejects_echo_command_with_assertion_strings():
+    errors = validate_native_signal_runtime_evidence(
+        {
+            "schemaVersion": 1,
+            "generatedAt": generated_at_now(),
+            "generatedBy": "tests",
+            "privacy": "proof_only_no_plaintext_keys_or_user_data",
+            "platforms": {
+                "rust": {
+                    "commandEvidence": [
+                        command_evidence("echo forged-rust-proof", RUST_ASSERTIONS),
+                    ]
+                },
+            },
+        },
+        gate="rust_core_bridge",
+    )
+
+    assert "missing passing command evidence for rust approved runtime command: cargo test" in errors

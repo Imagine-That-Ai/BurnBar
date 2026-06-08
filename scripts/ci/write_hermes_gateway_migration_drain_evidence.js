@@ -54,6 +54,23 @@ function hasOwn(data, field) {
   return Object.prototype.hasOwnProperty.call(data, field) && data[field] !== undefined && data[field] !== null;
 }
 
+function hasSchemaVersion(data) {
+  return Object.prototype.hasOwnProperty.call(data, "schemaVersion") && data.schemaVersion !== undefined && data.schemaVersion !== null;
+}
+
+function isKnownLegacyPlaintextDocument(data, plaintextFields = []) {
+  if (hasSchemaVersion(data)) return false;
+  return plaintextFields.some((field) => hasOwn(data, field));
+}
+
+function isAllowedGatewayDocumentPath(documentPath, collectionGroup) {
+  const segments = String(documentPath ?? "").split("/");
+  if (segments.length !== 4 || segments.some((segment) => segment.length === 0)) return false;
+  if (segments[0] !== "users") return false;
+  if (collectionGroup && segments[2] !== collectionGroup) return false;
+  return COLLECTIONS.some((collection) => collection.collectionGroup === segments[2]);
+}
+
 function recordOrUndefined(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
 }
@@ -145,7 +162,7 @@ function classifyGatewayDocument(data, plaintextFields = []) {
   if (hasOwn(data, "ratchetEnvelope") || hasOwn(data, "legacyRatchetEnvelope")) {
     return "knownLegacyRatchet";
   }
-  if (plaintextFields.some((field) => hasOwn(data, field))) {
+  if (isKnownLegacyPlaintextDocument(data, plaintextFields)) {
     return "knownLegacyPlaintext";
   }
   return "unknownSchema";
@@ -272,7 +289,11 @@ async function collectCollection(db, admin, collection, { pageSize, maxDocsPerCo
         truncated = true;
         break;
       }
-      documents.push(doc.data());
+      if (isAllowedGatewayDocumentPath(doc.ref?.path, collection.collectionGroup)) {
+        documents.push(doc.data());
+      } else {
+        documents.push({ __outOfScopePath: true });
+      }
     }
     if (truncated) break;
     cursor = snap.docs[snap.docs.length - 1];
@@ -400,6 +421,7 @@ module.exports = {
   collectCollection,
   summarizeDocuments,
   buildEvidence,
+  isAllowedGatewayDocumentPath,
 };
 
 if (require.main === module) {

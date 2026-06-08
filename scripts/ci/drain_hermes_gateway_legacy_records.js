@@ -8,6 +8,7 @@ const {
   COLLECTIONS,
   PRIVACY_MARKER,
   classifyGatewayDocument,
+  isAllowedGatewayDocumentPath,
   summarizeDocuments,
 } = require("./write_hermes_gateway_migration_drain_evidence.js");
 
@@ -17,6 +18,8 @@ const LIVE_PRODUCTION_ACK_PREFIX = "mutate-production-hermes-gateway-records-in-
 const DELETABLE = new Set(["knownLegacyRelay", "knownLegacyRatchet", "knownLegacyPlaintext"]);
 const BLOCKERS = new Set(["unreadable", "malformed", "unknownSchema", "parserMisses"]);
 const REQUIRED_SERVICES = new Set(["burnbarhermesgateway", "enqueuehermesgatewayevent"]);
+const MAX_EVIDENCE_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 // Output privacy contract: aggregate_counts_only_no_document_values_or_identifiers.
 // Private quarantine/export outputs intentionally break that public evidence
 // contract and must not be committed or published.
@@ -72,6 +75,59 @@ function runtimeModeEvidenceErrors(raw) {
   return errors;
 }
 
+function nonNegativeInteger(value) {
+  return Number.isInteger(value) && value >= 0 && !Number.isNaN(value);
+}
+
+function validateRuntimeCollectionSummary(name, summary, errors) {
+  const collection = COLLECTIONS.find((item) => item.id === name);
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    errors.push(`runtime mode evidence collections.${name} must be an object`);
+    return;
+  }
+  if (collection && summary.collectionGroup !== collection.collectionGroup) {
+    errors.push(`runtime mode evidence ${name}.collectionGroup must be ${collection.collectionGroup}`);
+  }
+  if (summary.truncated === true) {
+    errors.push(`runtime mode evidence ${name}.truncated must be false before live execute`);
+  }
+  if (!nonNegativeInteger(summary.sampleLimit)) {
+    errors.push(`runtime mode evidence ${name}.sampleLimit must be a non-negative integer`);
+  }
+  if (!nonNegativeInteger(summary.sampled)) {
+    errors.push(`runtime mode evidence ${name}.sampled must be a non-negative integer`);
+  } else if (nonNegativeInteger(summary.sampleLimit) && summary.sampled > summary.sampleLimit) {
+    errors.push(`runtime mode evidence ${name}.sampled must be <= ${name}.sampleLimit`);
+  }
+  const counts = summary.counts ?? summary.classifications ?? {};
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) {
+    errors.push(`runtime mode evidence ${name}.counts must be an object`);
+    return;
+  }
+  const known = new Set([...DELETABLE, ...BLOCKERS, "signalRead"]);
+  const unknown = Object.keys(counts).filter((field) => !known.has(field));
+  if (unknown.length > 0) {
+    errors.push(`runtime mode evidence ${name}.counts has unknown classification(s): ${unknown.sort().join(", ")}`);
+  }
+  let counted = 0;
+  for (const field of known) {
+    const value = counts[field] ?? 0;
+    if (!nonNegativeInteger(value)) {
+      errors.push(`runtime mode evidence ${name}.${field} must be a non-negative integer`);
+    } else {
+      counted += value;
+    }
+  }
+  if (nonNegativeInteger(summary.sampled) && counted !== summary.sampled) {
+    errors.push(`runtime mode evidence ${name}.sampled must equal the sum of classification counts (${counted})`);
+  }
+  for (const field of BLOCKERS) {
+    if (Number(counts[field] ?? 0) !== 0) {
+      errors.push(`runtime mode evidence ${name}.${field} must be 0 before live execute`);
+    }
+  }
+}
+
 function validateRuntimeModeEvidence(filePath, { requireLiveEvidence = false } = {}) {
   if (!filePath) return ["--runtime-mode-evidence is required when --execute is set"];
   try {
@@ -88,8 +144,14 @@ function validateRuntimeModeEvidence(filePath, { requireLiveEvidence = false } =
       const generatedAt = Date.parse(raw.generatedAt ?? "");
       if (!Number.isFinite(generatedAt)) {
         errors.push("runtime mode evidence generatedAt must be an ISO timestamp");
-      } else if (Date.now() - generatedAt > 24 * 60 * 60 * 1000) {
-        errors.push("runtime mode evidence must be generated within the last 24 hours");
+      } else {
+        const now = Date.now();
+        if (generatedAt - now > MAX_CLOCK_SKEW_MS) {
+          errors.push("runtime mode evidence generatedAt must not be in the future");
+        }
+        if (now - generatedAt > MAX_EVIDENCE_AGE_MS) {
+          errors.push("runtime mode evidence must be generated within the last 24 hours");
+        }
       }
       if (!String(raw.writePath?.modeSource ?? "").includes("gcloud run services describe")) {
         errors.push("runtime mode evidence writePath.modeSource must come from gcloud service/revision inspection");
@@ -104,14 +166,14 @@ function validateRuntimeModeEvidence(filePath, { requireLiveEvidence = false } =
         }
       }
       const collections = raw.collections ?? {};
-      for (const [name, summary] of Object.entries(collections)) {
-        if (summary?.truncated === true) {
-          errors.push(`runtime mode evidence ${name}.truncated must be false before live execute`);
-        }
-        const counts = summary.counts ?? summary.classifications ?? {};
-        for (const field of BLOCKERS) {
-          if (Number(counts[field] ?? 0) !== 0) {
-            errors.push(`runtime mode evidence ${name}.${field} must be 0 before live execute`);
+      if (!collections || typeof collections !== "object" || Array.isArray(collections)) {
+        errors.push("runtime mode evidence collections must be an object");
+      } else {
+        for (const collection of COLLECTIONS) {
+          if (!collections[collection.id]) {
+            errors.push(`runtime mode evidence collections.${collection.id} is required`);
+          } else {
+            validateRuntimeCollectionSummary(collection.id, collections[collection.id], errors);
           }
         }
       }
@@ -206,7 +268,9 @@ async function drainCollection(db, admin, collection, options) {
         truncated = true;
         break;
       }
-      const classification = classifyGatewayDocument(doc.data(), collection.plaintextFields);
+      const data = doc.data();
+      const inScope = isAllowedGatewayDocumentPath(doc.ref?.path, collection.collectionGroup);
+      const classification = inScope ? classifyGatewayDocument(data, collection.plaintextFields) : "unknownSchema";
       counts[classification] = (counts[classification] ?? 0) + 1;
       scanned += 1;
       if (BLOCKERS.has(classification)) blocked += 1;
@@ -216,7 +280,8 @@ async function drainCollection(db, admin, collection, options) {
           collectionGroup: collection.collectionGroup,
           path: doc.ref.path,
           classification,
-          data: doc.data(),
+          outOfScopePath: !inScope,
+          data,
         });
       }
       if (options.privateExport && options.capturePredelete && DELETABLE.has(classification)) {
@@ -227,7 +292,7 @@ async function drainCollection(db, admin, collection, options) {
           path: doc.ref.path,
           classification,
           updateTime: updateTime?.toDate ? updateTime.toDate().toISOString() : undefined,
-          data: doc.data(),
+          data,
         });
         if (options.deleteCandidates) {
           options.deleteCandidates.push({
@@ -297,15 +362,26 @@ function truncatedCollections(preview) {
 }
 
 async function deleteCapturedCandidates(options, deleteCandidates) {
-  if (deleteCandidates.length === 0) return;
+  if (deleteCandidates.length === 0) return { attempted: 0, succeeded: 0, failed: 0 };
   const { db } = initializeFirestore(options);
   const writer = db.bulkWriter();
   writer.onWriteError(() => false);
+  const writes = [];
   for (const candidate of deleteCandidates) {
     const precondition = candidate.updateTime ? { lastUpdateTime: candidate.updateTime } : undefined;
-    writer.delete(db.doc(candidate.path), precondition);
+    writes.push(writer.delete(db.doc(candidate.path), precondition));
   }
   await writer.close();
+  const settled = await Promise.allSettled(writes);
+  const failed = settled.filter((result) => result.status === "rejected");
+  if (failed.length > 0) {
+    const details = failed
+      .slice(0, 3)
+      .map((result) => result.reason?.message ?? String(result.reason))
+      .join("; ");
+    throw new Error(`bulk delete failed for ${failed.length}/${writes.length} captured legacy record(s): ${details}`);
+  }
+  return { attempted: writes.length, succeeded: writes.length, failed: 0 };
 }
 
 function parseArgs(argv) {
@@ -360,6 +436,9 @@ function parseArgs(argv) {
     if (!options.predeleteExport) {
       throw new Error("--execute requires --predelete-export so known legacy records are exported before deletion");
     }
+    if (!options.fixture && !options.quarantineOutput) {
+      throw new Error("--execute against live Firestore requires --quarantine-output for unidentified-record preservation");
+    }
   }
   return options;
 }
@@ -378,7 +457,7 @@ function writePrivateExport(privateExport, output) {
   if (!output) return;
   const body = `${JSON.stringify(privateExport, null, 2)}\n`;
   fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true });
-  fs.writeFileSync(output, body, { encoding: "utf8", mode: 0o600 });
+  fs.writeFileSync(output, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
 }
 
 function runSelfTest() {
@@ -477,6 +556,7 @@ module.exports = {
   validateRuntimeModeEvidence,
   summarizeFixture,
   drainCollection,
+  deleteCapturedCandidates,
   DELETABLE,
   BLOCKERS,
   parseArgs,
