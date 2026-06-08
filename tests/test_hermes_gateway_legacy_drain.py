@@ -112,6 +112,9 @@ def make_deployed_source_repo(tmp_path: Path, *, production_signal_enabled: bool
     (repo / "functions/src/hermesGateway.ts").write_text(
         f"""
 export const HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL = 4;
+export function signalEnvelopeV4DisabledFromEnv(raw = process.env.SIGNAL_ENVELOPE_V4_DISABLED) {{
+  return ["1", "true", "yes", "on"].includes(String(raw ?? "").trim().toLowerCase());
+}}
 export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = {production_set};
 export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: string) {{
   return {{ raw, fieldName }};

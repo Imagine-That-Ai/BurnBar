@@ -207,6 +207,17 @@ async function withSignalWritesEnabled<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+async function withSignalWritesDisabled<T>(fn: () => Promise<T>): Promise<T> {
+  const gateway = await import("../hermesGateway.js");
+  const previous = [...gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS];
+  gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+  try {
+    return await fn();
+  } finally {
+    for (const version of previous) gateway.HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(version);
+  }
+}
+
 function stringLeaves(value: unknown): string[] {
   const leaves: string[] = [];
   const walk = (v: unknown) => {
@@ -329,20 +340,22 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
     ).rejects.toThrow(/relayEncryption/);
   });
 
-  it("rejects staged Signal envelopes until the libsignal runtime readiness gate is complete", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
-    const run = callableRun(enqueueHermesGatewayEvent);
-    await expect(
-      run(
-        request({
-          targetClientId: TARGET_CLIENT_ID,
-          eventId: "evt_signal_disabled",
-          signalEnvelope: signalEnvelope(),
-        }),
-      ),
-    ).rejects.toThrow(/runtime readiness gate/);
-    const leaked = [...stored.keys()].some((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
-    expect(leaked).toBe(false);
+  it("rejects Signal envelopes while the rollback gate has emptied the production set", async () => {
+    await withSignalWritesDisabled(async () => {
+      const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+      const run = callableRun(enqueueHermesGatewayEvent);
+      await expect(
+        run(
+          request({
+            targetClientId: TARGET_CLIENT_ID,
+            eventId: "evt_signal_disabled",
+            signalEnvelope: signalEnvelope(),
+          }),
+        ),
+      ).rejects.toThrow(/rollback gate/);
+      const leaked = [...stored.keys()].some((p) => p.startsWith(`users/${UID}/hermes_gateway_events/`));
+      expect(leaked).toBe(false);
+    });
   });
 
   it("activation candidate: persists a Signal-sealed event with NO plaintext body", async () => {

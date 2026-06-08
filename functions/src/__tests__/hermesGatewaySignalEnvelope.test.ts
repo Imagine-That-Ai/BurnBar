@@ -12,11 +12,13 @@ import {
   HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
   HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS,
   negotiateGatewayRelayEnvelopeCapabilities,
+  productionSignalEnvelopeVersionsFromEnv,
   requireGatewaySignalEnvelope,
   requireProductionGatewaySignalEnvelope,
   sanitizeGatewayRelayEnvelopeCapabilities,
   sanitizeGatewaySignalEnvelope,
   serializeHermesGatewayEvent,
+  signalEnvelopeV4DisabledFromEnv,
   type GatewaySignalEnvelopeDoc,
 } from "../hermesGateway.js";
 
@@ -80,10 +82,16 @@ describe("Hermes Gateway Signal envelope contract", () => {
     ).toBeUndefined();
   });
 
-  it("keeps production Signal writes disabled until the libsignal runtime readiness gate is complete", () => {
-    expect(() => requireProductionGatewaySignalEnvelope(signalEnvelope(), "signalEnvelope")).toThrow(
-      /runtime readiness gate/,
-    );
+  it("rejects production Signal writes while the rollback gate has emptied the production set", () => {
+    const previous = [...HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS];
+    HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+    try {
+      expect(() => requireProductionGatewaySignalEnvelope(signalEnvelope(), "signalEnvelope")).toThrow(
+        /rollback gate/,
+      );
+    } finally {
+      for (const version of previous) HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(version);
+    }
   });
 
   it("passes a Signal-sealed schema-2 event through with NO plaintext siblings", () => {
@@ -111,16 +119,16 @@ describe("Hermes Gateway Signal envelope contract", () => {
   });
 });
 
-describe("Hermes Gateway Signal envelope version ladder (flag OFF)", () => {
-  it("rides relay key VERSION 4 — read-SUPPORTED but NOT in any PRODUCTION set", () => {
+describe("Hermes Gateway Signal envelope version ladder (activated)", () => {
+  it("rides relay key VERSION 4 — read-SUPPORTED and explicitly production-enabled", () => {
     // The Signal transport envelope is the next rung (v4) above the bespoke
-    // HPKE-Auth v3 relay envelope. Reads tolerate it; production never emits it.
+    // HPKE-Auth v3 relay envelope. Reads tolerate it; production may emit it
+    // only through the separate signalEnvelope family.
     expect(HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL).toBe(4);
     expect(HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION).toBe(4);
     expect(HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS.has(4)).toBe(true);
-    // Flag OFF: the production signal-envelope set is EMPTY (no client can emit v4).
-    expect([...HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS]).toEqual([]);
-    expect(HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.has(4)).toBe(false);
+    expect([...HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS]).toEqual([4]);
+    expect(HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.has(4)).toBe(true);
     // v4 is a SEPARATE wire family — never folded into the relay-envelope ladder,
     // which stays {2,3} for production. preferred relay version can never be 4.
     expect(HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS.has(4)).toBe(false);
@@ -145,11 +153,8 @@ describe("Hermes Gateway Signal envelope version ladder (flag OFF)", () => {
     );
   });
 
-  it("rejects a v4 signalEnvelope for production writes while the flag is OFF", () => {
-    // Shape is valid, but v4 is not in the PRODUCTION set — fail-closed write guard.
-    expect(() => requireProductionGatewaySignalEnvelope(signalEnvelope(), "signalEnvelope")).toThrow(
-      /runtime readiness gate/,
-    );
+  it("accepts a v4 signalEnvelope for production writes once activation is explicit", () => {
+    expect(requireProductionGatewaySignalEnvelope(signalEnvelope(), "signalEnvelope")).toEqual(signalEnvelope());
     // A malformed v4 is rejected as invalid-argument BEFORE the production gate.
     expect(() =>
       requireProductionGatewaySignalEnvelope(
@@ -157,6 +162,18 @@ describe("Hermes Gateway Signal envelope version ladder (flag OFF)", () => {
         "signalEnvelope",
       ),
     ).toThrow(/Signal envelope v1/);
+  });
+
+  it("supports an environment kill switch for rollback without weakening read tolerance", () => {
+    expect(signalEnvelopeV4DisabledFromEnv("1")).toBe(true);
+    expect(signalEnvelopeV4DisabledFromEnv("true")).toBe(true);
+    expect(signalEnvelopeV4DisabledFromEnv("yes")).toBe(true);
+    expect(signalEnvelopeV4DisabledFromEnv("on")).toBe(true);
+    expect(signalEnvelopeV4DisabledFromEnv("0")).toBe(false);
+    expect(signalEnvelopeV4DisabledFromEnv(undefined)).toBe(false);
+    expect([...productionSignalEnvelopeVersionsFromEnv("1")]).toEqual([]);
+    expect([...productionSignalEnvelopeVersionsFromEnv(undefined)]).toEqual([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL]);
+    expect(HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS.has(HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL)).toBe(true);
   });
 
   it("plaintext-on-v4 is dropped: a Signal-sealed doc never surfaces a plaintext sibling", () => {
@@ -179,7 +196,7 @@ describe("Hermes Gateway Signal envelope version ladder (flag OFF)", () => {
   });
 });
 
-describe("supportsSignalEnvelope capability defaults OFF and never selects v4", () => {
+describe("supportsSignalEnvelope capability defaults false and never folds v4 into the relay ladder", () => {
   function baseCaps(): Record<string, unknown> {
     return { supportsRelayEnvelopeVersions: [2, 3], preferredRelayEnvelopeVersion: 3, supportsHpkeV3: true };
   }
@@ -191,10 +208,11 @@ describe("supportsSignalEnvelope capability defaults OFF and never selects v4", 
     ).toBe(false);
   });
 
-  it("rejects supportsSignalEnvelope=true while v4 is not negotiable (flag OFF)", () => {
-    expect(() => sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: true })).toThrow(
-      /not yet negotiable/,
-    );
+  it("accepts supportsSignalEnvelope=true only as the separate Signal-family capability", () => {
+    const caps = sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: true });
+    expect(caps.supportsSignalEnvelope).toBe(true);
+    expect(caps.supportsRelayEnvelopeVersions).toEqual([2, 3]);
+    expect(caps.preferredRelayEnvelopeVersion).toBe(3);
     expect(() => sanitizeGatewayRelayEnvelopeCapabilities({ ...baseCaps(), supportsSignalEnvelope: "yes" })).toThrow(
       /must be a boolean/,
     );

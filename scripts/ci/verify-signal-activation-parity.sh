@@ -127,13 +127,15 @@ const args = parseArgs(process.argv.slice(2));
 const activationMode = args.mode === "activation";
 const activationEvidenceOK = activationMode ? validateActivationEvidence(args.activationEvidence) : false;
 
-// (1) Gateway transport: the PRODUCTION envelope-versions set must be EMPTY.
+// (1) Gateway transport: default mode requires the production set to remain
+// empty. Activation mode permits v4 only after the activation evidence bundle
+// validates.
 const gw = readFileSync("functions/src/hermesGateway.ts", "utf8");
 const productionSignalEmpty = /HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set<number>\(\s*\)/.test(gw);
 const productionSignalV4 =
-  /HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set<number>\(\s*\[\s*(?:4|HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL)\s*\]\s*\)/.test(gw);
+  /HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*(?:new Set<number>\(\s*\[\s*(?:4|HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL)\s*\]\s*\)|productionSignalEnvelopeVersionsFromEnv\(\s*\))/.test(gw);
 if (!activationMode && productionSignalEmpty) {
-  ok("HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS is empty (transport fail-closed)");
+  ok("HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS is empty (transport inactive)");
 } else if (!activationMode) {
   fail("HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS is NOT empty — production v4 would be accepted");
 } else if (activationEvidenceOK && productionSignalV4) {

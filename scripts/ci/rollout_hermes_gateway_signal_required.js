@@ -9,7 +9,7 @@ const SOURCE_URL_ENV = "OPENBURNBAR_CORRESPONDING_SOURCE_URL";
 const SERVICES = ["burnbarhermesgateway", "enqueuehermesgatewayevent"];
 const GIT_SHA_RE = /^[0-9a-f]{40}$/;
 const PRODUCTION_SIGNAL_SET_RE =
-  /HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set(?:<number>)?\(\s*\[\s*(?:HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL|4)\s*\]\s*\)/;
+  /HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*(?:new Set(?:<number>)?\(\s*\[\s*(?:HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL|4)\s*\]\s*\)|productionSignalEnvelopeVersionsFromEnv\(\s*\))/;
 
 function parseArgs(argv) {
   const options = {
@@ -78,6 +78,9 @@ function requireDeployedSourceReady(deployedCommit) {
     throw new Error(
       "deployed source functions/src/hermesGateway.ts must enable HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS for v4 Signal writes",
     );
+  }
+  if (!gatewaySource.includes("SIGNAL_ENVELOPE_V4_DISABLED")) {
+    throw new Error("deployed source functions/src/hermesGateway.ts is missing SIGNAL_ENVELOPE_V4_DISABLED rollback kill switch");
   }
 
   const callableSource = gitShow(deployedCommit, "functions/src/callables/hermesGateway.ts");

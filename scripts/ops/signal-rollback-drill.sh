@@ -20,6 +20,7 @@ cd "$(dirname "$0")/../.."
 
 LIVE="false"
 EVIDENCE=""
+PROJECT_ID="${GCLOUD_PROJECT:-burnbar}"
 CLOUDVAULT_EVIDENCE="${CLOUDVAULT_AT_REST_EVIDENCE:-launch-evidence/cloudvault-at-rest-runtime.json}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,19 +51,27 @@ assert_code() {
 log "Signal rollback drill — mode=$([[ $LIVE == true ]] && echo LIVE || echo DRY-RUN)"
 
 log "Step 1/5 — disable transport v4"
-# HONEST STATUS: the `signal_envelope_v4_enabled` Remote Config key is a PLANNED
-# Phase-E lever — it is read by ZERO runtime code today. The OPERATIVE current kill
-# lever is the compile-time fail-closed default below (empty production version Set);
-# reverting/keeping it empty is what actually stops new v4. Do not pretend the RC
-# key works until a future PR wires it.
+# HONEST STATUS: the `signal_envelope_v4_enabled` Remote Config key is still a
+# planned client-side coordination lever. The operative server-side rollback
+# lever is SIGNAL_ENVELOPE_V4_DISABLED=1 on both Cloud Run services; it empties
+# the production Signal-envelope version set at process startup while preserving
+# read tolerance for already-written v4 rows.
 if grep -REq "signal_envelope_v4_enabled" functions/src 2>/dev/null; then
   note "RC signal_envelope_v4_enabled is wired — $([[ $LIVE == true ]] && echo 'operator sets it false' || echo '[dry-run] would set it false')"
 else
-  note "RC signal_envelope_v4_enabled is PLANNED (Phase E) — not yet read in functions/src; relying on the compile-time lever below"
+  note "RC signal_envelope_v4_enabled is PLANNED — not yet read in functions/src; relying on SIGNAL_ENVELOPE_V4_DISABLED below"
 fi
-# The compile-time fail-closed default that is the REAL current kill lever:
-assert_code "empty HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS (REAL current lever)" \
-  "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS *= *new Set<number>\\(\\)" functions/src/hermesGateway.ts
+assert_code "SIGNAL_ENVELOPE_V4_DISABLED env rollback kill switch" \
+  "SIGNAL_ENVELOPE_V4_DISABLED" functions/src/hermesGateway.ts
+assert_code "production Signal v4 set is derived from the rollback-aware helper" \
+  "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS *= *productionSignalEnvelopeVersionsFromEnv\\(" functions/src/hermesGateway.ts
+if [[ "$LIVE" == "true" ]]; then
+  gcloud run services update burnbarhermesgateway --project "$PROJECT_ID" --region us-central1 --update-env-vars SIGNAL_ENVELOPE_V4_DISABLED=1
+  gcloud run services update enqueuehermesgatewayevent --project "$PROJECT_ID" --region us-central1 --update-env-vars SIGNAL_ENVELOPE_V4_DISABLED=1
+else
+  note "[dry-run] would run: gcloud run services update burnbarhermesgateway --project $PROJECT_ID --region us-central1 --update-env-vars SIGNAL_ENVELOPE_V4_DISABLED=1"
+  note "[dry-run] would run: gcloud run services update enqueuehermesgatewayevent --project $PROJECT_ID --region us-central1 --update-env-vars SIGNAL_ENVELOPE_V4_DISABLED=1"
+fi
 
 log "Step 2/5 — verify per-domain at-rest Signal rollback boundary"
 if grep -Eq '"sealingScheme"\s*:\s*"[^"]*signal' packages/data-domains/registry.json 2>/dev/null; then
@@ -81,13 +90,12 @@ else
   note "OK   no domain is on a Signal at-rest sealingScheme"
 fi
 
-log "Step 3/5 — set SIGNAL_ENVELOPE_V4_DISABLED for agents/clients/server capability"
-# HONEST STATUS: SIGNAL_ENVELOPE_V4_DISABLED (L35) is a PLANNED env kill switch. Until
-# a producer/capability path reads it, it is a no-op. The drill must NOT claim it works.
+log "Step 3/5 — verify rollback kill switch coverage"
 if grep -REq "SIGNAL_ENVELOPE_V4_DISABLED" functions/src 2>/dev/null; then
-  note "SIGNAL_ENVELOPE_V4_DISABLED is wired — $([[ $LIVE == true ]] && echo 'operator exports =1 + redeploys' || echo '[dry-run] would export =1')"
+  note "SIGNAL_ENVELOPE_V4_DISABLED is wired in server capability and write-gate code"
 else
-  note "SIGNAL_ENVELOPE_V4_DISABLED is PLANNED (L35) — not yet read in functions/src; implement before relying on it in a live rollback"
+  note "MISS SIGNAL_ENVELOPE_V4_DISABLED is not wired; do not rely on env-only rollback"
+  fail=$((fail + 1))
 fi
 
 log "Step 4/5 — keep dual-read OPEN (do NOT delete Signal rows on rollback)"

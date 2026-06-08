@@ -32,15 +32,14 @@ def fresh_cloudvault_evidence(tmp_path: Path) -> Path:
     return evidence
 
 
-def test_signal_activation_parity_default_mode_accepts_validated_cloudvault_activation(tmp_path: Path):
+def test_signal_activation_parity_default_mode_rejects_gateway_transport_activation(tmp_path: Path):
     evidence = fresh_cloudvault_evidence(tmp_path)
     result = run_parity("--cloudvault-evidence", str(evidence), "--skip-cloudvault-replay")
 
-    assert result.returncode == 0, combined_output(result)
+    assert result.returncode != 0
     output = combined_output(result)
-    assert "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS is empty" in output
+    assert "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS is NOT empty" in output
     assert "Signal at-rest domains match validated CloudVault evidence: pensieve=signal-hpke-identity-seal-v1" in output
-    assert "activation parity OK" in output
 
 
 def test_signal_activation_parity_default_mode_rejects_unvalidated_cloudvault_activation(tmp_path: Path):

@@ -118,19 +118,31 @@ export const HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION = SIGNAL_RELAY_KEY_VERSION;
 export const HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL = SIGNAL_RELAY_KEY_VERSION;
 export const HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION = SIGNAL_TRANSPORT_ENCRYPTION;
 export const HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION = SIGNAL_AT_REST_ENCRYPTION;
+
+export function signalEnvelopeV4DisabledFromEnv(raw = process.env.SIGNAL_ENVELOPE_V4_DISABLED): boolean {
+  return ["1", "true", "yes", "on"].includes(String(raw ?? "").trim().toLowerCase());
+}
+
+export function productionSignalEnvelopeVersionsFromEnv(
+  raw = process.env.SIGNAL_ENVELOPE_V4_DISABLED,
+): Set<number> {
+  return new Set<number>(
+    signalEnvelopeV4DisabledFromEnv(raw) ? [] : [HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL],
+  );
+}
+
 // Signal-envelope version ladder, kept parallel to the relay-envelope ladder
 // (HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS / *_PRODUCTION_*). SUPPORTED is the
 // set of signal relayKeyVersions whose wire shape the BLIND relay tolerates on the
 // READ side (sanitizeGatewaySignalEnvelope / requireGatewaySignalEnvelope) so a
 // stored or staged v4 doc is recognized as sealed and passed through opaque.
-// PRODUCTION is the set a NEW write may negotiate/emit — deliberately EMPTY while
-// the libsignal cross-language runtime readiness gate is open, so v4 is read-
-// tolerant but never producible (flag OFF). Activation flips v4 into PRODUCTION.
-// (Remediation R12) It is INTENTIONAL and EXPECTED for SUPPORTED to be non-empty
-// ({4}) while PRODUCTION is empty — that is the stable read-tolerant staging state,
-// NOT a misconfiguration or drift. Do not "fix" the asymmetry by emptying SUPPORTED.
+// PRODUCTION is the set a NEW write may negotiate/emit. v4 is enabled only after
+// the activation proof exists and the release validators can bind a deployed
+// Cloud Run revision to this source commit. Rollback sets
+// SIGNAL_ENVELOPE_V4_DISABLED=1 on the Cloud Run services; reads remain tolerant
+// so existing v4 sealed records can still round-trip opaquely.
 export const HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS = new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL]);
-export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = new Set<number>();
+export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = productionSignalEnvelopeVersionsFromEnv();
 export const HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64 = SIGNAL_MAX_MESSAGE_B64;
 export const HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64 = SIGNAL_MAX_KEY_WRAP_B64;
 export const HERMES_GATEWAY_MAX_SIGNAL_RECIPIENT_WRAPS = SIGNAL_MAX_RECIPIENT_WRAPS;
@@ -294,8 +306,8 @@ export interface HermesGatewayClientDoc {
   supportsRelayEnvelopeVersions?: number[];
   preferredRelayEnvelopeVersion?: number;
   supportsHpkeV3?: boolean;
-  // Negotiated AND of both endpoints' supportsSignalEnvelope — false unless BOTH
-  // sides advertise it, which no shipping client does yet (flag OFF).
+  // Negotiated AND of both endpoints' supportsSignalEnvelope. Defaults false for
+  // legacy clients; activated clients must still advertise it explicitly.
   supportsSignalEnvelope?: boolean;
   // True once BOTH endpoints have published a relay public key. New gateway
   // writes require this sealed path; legacy schema-1 plaintext is read-only.
@@ -762,9 +774,9 @@ export function requireGatewaySignalEnvelope(
  * malformed envelope is rejected as invalid-argument like every other write), then
  * fail-closes: a relayKeyVersion that is read-SUPPORTED but NOT in
  * {@link HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS} is rejected for new
- * writes. That set is EMPTY while the libsignal runtime readiness gate is open, so
- * NO client can negotiate or emit a v4 signal envelope (flag OFF). Mirrors
- * {@link requireProductionGatewayRelayEnvelope}; activation is a one-line set edit.
+ * writes. That set is deliberately explicit so rollback can remove v4 without
+ * changing the read-side sanitizer. Mirrors
+ * {@link requireProductionGatewayRelayEnvelope}.
  */
 export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: string): GatewaySignalEnvelopeDoc {
   const envelope = requireGatewaySignalEnvelope(raw, fieldName, "transport");
@@ -772,7 +784,7 @@ export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: 
   if (!HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.has(version)) {
     throw new HttpsError(
       "failed-precondition",
-      `${fieldName} is valid, but Signal envelope writes are disabled until the libsignal runtime readiness gate is complete.`,
+      `${fieldName} is valid, but Signal envelope writes are disabled by the server rollback gate.`,
     );
   }
   return envelope;
@@ -988,11 +1000,10 @@ export interface HermesGatewayRelayEnvelopeCapabilities {
   preferredRelayEnvelopeVersion: number;
   supportsHpkeV3: boolean;
   // Whether this endpoint can seal/open the official-libsignal `signalEnvelope`
-  // (relay key v4). Defaults FALSE and stays FALSE for every shipping client until
-  // the libsignal runtime readiness gate is complete — no negotiated pairing can
+  // (relay key v4). Defaults FALSE for legacy clients; no negotiated pairing can
   // become Signal-capable while either side is false, and v4 is never folded into
   // the relay-envelope version ladder, so preferredRelayEnvelopeVersion can never
-  // become 4. Purely a forward-compat capability bit (flag OFF).
+  // become 4.
   supportsSignalEnvelope: boolean;
   platform?: string;
   appBuild?: string;
@@ -1046,17 +1057,16 @@ export function sanitizeGatewayRelayEnvelopeCapabilities(
   }
   const supportsHpkeV3 = rawSupportsHpkeV3 ?? versionListIncludesV3;
 
-  // supportsSignalEnvelope is the official-libsignal (relay v4) capability bit. It
-  // defaults FALSE and stays FALSE: a client may only assert it true once v4 is in
-  // HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS (empty today), so any true
-  // value is rejected fail-closed while the runtime readiness gate is open. This
-  // keeps the flag OFF — no shipping client can become Signal-capable yet.
+  // supportsSignalEnvelope is the official-libsignal (relay v4) capability bit.
+  // It defaults FALSE for backward compatibility. A client may assert it true only
+  // while v4 remains in HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS; rollback
+  // empties that set and makes true fail-closed again.
   const rawSupportsSignalEnvelope = raw?.supportsSignalEnvelope;
   if (rawSupportsSignalEnvelope != null && typeof rawSupportsSignalEnvelope !== "boolean") {
     throwError("supportsSignalEnvelope must be a boolean.");
   }
   if (rawSupportsSignalEnvelope === true && HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.size === 0) {
-    throwError("supportsSignalEnvelope is not yet negotiable: Signal envelope writes are disabled.");
+    throwError("supportsSignalEnvelope is not negotiable while Signal envelope writes are disabled.");
   }
   const supportsSignalEnvelope = rawSupportsSignalEnvelope === true;
 

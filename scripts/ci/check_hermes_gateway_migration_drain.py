@@ -27,8 +27,10 @@ MAX_EVIDENCE_AGE = timedelta(hours=24)
 MAX_CLOCK_SKEW = timedelta(minutes=5)
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 PRODUCTION_SIGNAL_SET_RE = re.compile(
-    r"HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set(?:<number>)?\(\s*\[\s*"
-    r"(?:HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL|4)\s*\]\s*\)"
+    r"HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*(?:"
+    r"new Set(?:<number>)?\(\s*\[\s*(?:HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL|4)\s*\]\s*\)"
+    r"|productionSignalEnvelopeVersionsFromEnv\(\s*\)"
+    r")"
 )
 
 
@@ -102,6 +104,8 @@ def _validate_deployed_source(data: dict[str, Any], errors: list[str], *, repo_r
                 "deployed source functions/src/hermesGateway.ts must enable "
                 "HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS for v4 Signal writes"
             )
+        if "SIGNAL_ENVELOPE_V4_DISABLED" not in gateway_source:
+            errors.append("deployed source functions/src/hermesGateway.ts is missing SIGNAL_ENVELOPE_V4_DISABLED rollback kill switch")
 
     callable_source = _git_show(repo_root, deployed_commit, "functions/src/callables/hermesGateway.ts")
     if callable_source is None:
