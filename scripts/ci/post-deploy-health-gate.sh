@@ -3,8 +3,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-# shellcheck source=scripts/ops/resolve-functions-base-url.sh
-source "${ROOT}/scripts/ops/resolve-functions-base-url.sh"
+if [[ "${POST_DEPLOY_HEALTH_GATE_SELF_TEST:-}" == "1" ]]; then
+  export FUNCTIONS_BASE_URL="https://self-test.invalid"
+  export FUNCTIONS_HEALTH_LIVE_URL="https://self-test.invalid/healthLive"
+  export FUNCTIONS_HEALTH_READY_URL="https://self-test.invalid/healthReady"
+  export FIREBASE_PROJECT="self-test"
+  export FUNCTIONS_REGION="us-central1"
+else
+  # shellcheck source=scripts/ops/resolve-functions-base-url.sh
+  source "${ROOT}/scripts/ops/resolve-functions-base-url.sh"
+fi
 
 RETRIES="${HEALTH_GATE_RETRIES:-12}"
 SLEEP_SEC="${HEALTH_GATE_SLEEP_SEC:-10}"
@@ -12,25 +20,87 @@ LAST_HTTP_CODE=""
 LAST_URL=""
 LAST_BODY_SNIPPET=""
 EXPECTED_SOURCE_URL="${OPENBURNBAR_CORRESPONDING_SOURCE_URL:-https://burnbar.ai/legal/source}"
+EXPECTED_SOURCE_COMMIT="${OPENBURNBAR_SOURCE_COMMIT:-${EXPECTED_SOURCE_COMMIT:-}}"
 
 source_metadata_ok() {
   local body_file="$1"
   if command -v jq >/dev/null 2>&1; then
+    if [[ -n "$EXPECTED_SOURCE_COMMIT" ]]; then
+      jq -e \
+        --arg sourceUrl "$EXPECTED_SOURCE_URL" \
+        --arg sourceCommit "$EXPECTED_SOURCE_COMMIT" \
+        '.license == "AGPL-3.0-only"
+          and .source.correspondingSource == $sourceUrl
+          and .source.commit == $sourceCommit
+          and (.source.repository | type == "string" and length > 0)' \
+        "$body_file" >/dev/null 2>&1
+      return $?
+    fi
     jq -e \
       --arg sourceUrl "$EXPECTED_SOURCE_URL" \
       '.license == "AGPL-3.0-only"
         and .source.correspondingSource == $sourceUrl
         and (.source.repository | type == "string" and length > 0)
-        and (.source.commit | type == "string" and length > 0)' \
+        and (.source.commit | type == "string" and length > 0 and . != "unknown")' \
       "$body_file" >/dev/null 2>&1
     return $?
   fi
 
+  if [[ -n "$EXPECTED_SOURCE_COMMIT" ]] \
+    && ! grep -q '"commit"[[:space:]]*:[[:space:]]*"'"$EXPECTED_SOURCE_COMMIT"'"' "$body_file"; then
+    return 1
+  fi
   grep -q '"license"[[:space:]]*:[[:space:]]*"AGPL-3.0-only"' "$body_file" \
     && grep -q '"correspondingSource"[[:space:]]*:[[:space:]]*"'"$EXPECTED_SOURCE_URL"'"' "$body_file" \
     && grep -q '"repository"[[:space:]]*:[[:space:]]*"[^"]\+"' "$body_file" \
-    && grep -q '"commit"[[:space:]]*:[[:space:]]*"[^"]\+"' "$body_file"
+    && grep -q '"commit"[[:space:]]*:[[:space:]]*"[^"]\+"' "$body_file" \
+    && ! grep -q '"commit"[[:space:]]*:[[:space:]]*"unknown"' "$body_file"
 }
+
+run_source_metadata_self_test() {
+  local body_file
+  body_file="$(mktemp /tmp/ob-source-metadata.XXXXXX.json)"
+  local expected_commit="0123456789abcdef0123456789abcdef01234567"
+  local expected_url="https://burnbar.ai/legal/source"
+  EXPECTED_SOURCE_COMMIT="$expected_commit"
+  EXPECTED_SOURCE_URL="$expected_url"
+
+  cat > "$body_file" <<JSON
+{"license":"AGPL-3.0-only","source":{"repository":"https://github.com/Imagine-That-Ai/BurnBar","commit":"$expected_commit","correspondingSource":"$expected_url"}}
+JSON
+  source_metadata_ok "$body_file" || {
+    echo "FAIL: expected source metadata packet was rejected" >&2
+    rm -f "$body_file"
+    return 1
+  }
+
+  cat > "$body_file" <<JSON
+{"license":"AGPL-3.0-only","source":{"repository":"https://github.com/Imagine-That-Ai/BurnBar","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","correspondingSource":"$expected_url"}}
+JSON
+  if source_metadata_ok "$body_file"; then
+    echo "FAIL: mismatched source commit was accepted" >&2
+    rm -f "$body_file"
+    return 1
+  fi
+
+  EXPECTED_SOURCE_COMMIT=""
+  cat > "$body_file" <<JSON
+{"license":"AGPL-3.0-only","source":{"repository":"https://github.com/Imagine-That-Ai/BurnBar","commit":"unknown","correspondingSource":"$expected_url"}}
+JSON
+  if source_metadata_ok "$body_file"; then
+    echo "FAIL: unknown source commit was accepted" >&2
+    rm -f "$body_file"
+    return 1
+  fi
+
+  rm -f "$body_file"
+  echo "PASS: post-deploy source metadata self-test"
+}
+
+if [[ "${POST_DEPLOY_HEALTH_GATE_SELF_TEST:-}" == "1" ]]; then
+  run_source_metadata_self_test
+  exit $?
+fi
 
 curl_health() {
   local label="$1"

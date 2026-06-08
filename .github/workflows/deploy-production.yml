@@ -187,6 +187,8 @@ jobs:
           FUNCTIONS_REGION: us-central1
           DEPLOY_HEALTH_JSON: deploy-health.json
           DEPLOY_TAG: ${{ steps.tag.outputs.tag }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+          OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
         run: |
           # shellcheck source=scripts/ops/resolve-functions-base-url.sh
           source scripts/ops/resolve-functions-base-url.sh
