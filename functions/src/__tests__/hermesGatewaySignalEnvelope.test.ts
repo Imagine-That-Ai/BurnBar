@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   HERMES_GATEWAY_PREFERRED_RELAY_ENVELOPE_VERSION,
@@ -226,5 +226,84 @@ describe("supportsSignalEnvelope capability defaults OFF and never selects v4", 
         preferredRelayEnvelopeVersion: 4,
       }),
     ).toThrow(/supportsRelayEnvelopeVersions must contain only/);
+  });
+});
+
+describe("Hermes Gateway Signal envelope activation candidate", () => {
+  let previousProductionSignalVersions: number[];
+
+  function baseCaps(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      supportsRelayEnvelopeVersions: [2, 3],
+      preferredRelayEnvelopeVersion: 3,
+      supportsHpkeV3: true,
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    previousProductionSignalVersions = [...HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS];
+    HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+    HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL);
+  });
+
+  afterEach(() => {
+    HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.clear();
+    for (const version of previousProductionSignalVersions) {
+      HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.add(version);
+    }
+  });
+
+  it("accepts production Signal envelopes once v4 is explicitly activated", () => {
+    expect(HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.has(HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL)).toBe(true);
+    expect(requireProductionGatewaySignalEnvelope(signalEnvelope(), "signalEnvelope")).toEqual(signalEnvelope());
+  });
+
+  it("still rejects malformed Signal envelopes before the production activation check", () => {
+    expect(() =>
+      requireProductionGatewaySignalEnvelope(
+        { ...signalEnvelope(), ciphertextLayer: { ...signalEnvelope().ciphertextLayer, payloadCiphertextB64: "!!!" } },
+        "signalEnvelope",
+      ),
+    ).toThrow(/Signal envelope v1/);
+  });
+
+  it("allows supportsSignalEnvelope=true without folding v4 into the relay-envelope ladder", () => {
+    const caps = sanitizeGatewayRelayEnvelopeCapabilities(baseCaps({ supportsSignalEnvelope: true }));
+
+    expect(caps.supportsSignalEnvelope).toBe(true);
+    expect(caps.supportsRelayEnvelopeVersions).toEqual([2, 3]);
+    expect(caps.preferredRelayEnvelopeVersion).toBe(3);
+    expect(caps.preferredRelayEnvelopeVersion).not.toBe(HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL);
+  });
+
+  it("negotiates Signal support only when both endpoints advertise it", () => {
+    const agent = sanitizeGatewayRelayEnvelopeCapabilities(baseCaps({ supportsSignalEnvelope: true }));
+    const phone = sanitizeGatewayRelayEnvelopeCapabilities(baseCaps({ supportsSignalEnvelope: true }));
+    expect(negotiateGatewayRelayEnvelopeCapabilities(agent, phone)).toMatchObject({
+      supportsRelayEnvelopeVersions: [2, 3],
+      preferredRelayEnvelopeVersion: 3,
+      supportsHpkeV3: true,
+      supportsSignalEnvelope: true,
+    });
+
+    const legacyPhone = sanitizeGatewayRelayEnvelopeCapabilities(baseCaps({ supportsSignalEnvelope: false }));
+    expect(negotiateGatewayRelayEnvelopeCapabilities(agent, legacyPhone)).toMatchObject({
+      supportsSignalEnvelope: false,
+      preferredRelayEnvelopeVersion: 3,
+    });
+  });
+
+  it("keeps preferredRelayEnvelopeVersion=4 invalid even after Signal activation", () => {
+    expect(() =>
+      sanitizeGatewayRelayEnvelopeCapabilities(
+        baseCaps({ supportsSignalEnvelope: true, supportsRelayEnvelopeVersions: [2, 3, 4] }),
+      ),
+    ).toThrow(/supportsRelayEnvelopeVersions must contain only/);
+    expect(() =>
+      sanitizeGatewayRelayEnvelopeCapabilities(
+        baseCaps({ supportsSignalEnvelope: true, preferredRelayEnvelopeVersion: HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL }),
+      ),
+    ).toThrow(/preferredRelayEnvelopeVersion/);
   });
 });
