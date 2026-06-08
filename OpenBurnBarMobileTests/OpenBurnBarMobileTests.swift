@@ -2287,19 +2287,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
         repository.clients = [
             hermesGatewayClient(
                 id: "hgw_stale_home_alias",
-                displayName: "Alberto Nunez-Garcia's iPhone",
+                displayName: "Primary iPhone",
                 lastSeenAt: "2026-06-01T08:00:00Z",
                 homeDestinationId: "home"
             ),
             hermesGatewayClient(
                 id: "hgw_stale_whitespace",
-                displayName: "  Alberto Nunez-Garcia's   iPhone  ",
+                displayName: "  Primary   iPhone  ",
                 lastSeenAt: "2026-06-02T08:00:00Z",
                 homeDestinationId: "burnbar/home"
             ),
             hermesGatewayClient(
                 id: "hgw_current",
-                displayName: "Alberto Nunez-Garcia's iPhone",
+                displayName: "Primary iPhone",
                 lastSeenAt: now,
                 homeDestinationId: "burnbar:home"
             )
@@ -2320,6 +2320,37 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(store.displayClients.map(\.id), ["hgw_current"])
         XCTAssertEqual(store.hiddenDuplicateClientCount, 0)
         XCTAssertEqual(store.noticeText, "Removed 2 older Hermes gateway entries.")
+    }
+
+    func testHermesGatewaySettingsStoreKeepsSameNamedDevicesWithDifferentPhoneKeysVisible() async {
+        let suiteName = "HermesGatewaySettingsStore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let firstPhoneKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let secondPhoneKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
+        let repository = MockHermesGatewayRepository()
+        repository.clients = [
+            hermesGatewayClient(
+                id: "hgw_primary_phone",
+                displayName: "Primary iPhone",
+                lastSeenAt: now,
+                phoneRelayPublicKey: firstPhoneKey
+            ),
+            hermesGatewayClient(
+                id: "hgw_backup_phone",
+                displayName: "Primary iPhone",
+                lastSeenAt: now,
+                phoneRelayPublicKey: secondPhoneKey
+            )
+        ]
+        let store = HermesGatewaySettingsStore(repository: repository, defaults: defaults)
+
+        await store.refresh(isSignedIn: true)
+
+        XCTAssertEqual(store.displayClients.count, 2)
+        XCTAssertEqual(store.hiddenDuplicateClientCount, 0)
     }
 
     func testHermesGatewaySettingsStoreRepairsSelectionAfterRevokingSelectedClient() async {
@@ -2354,7 +2385,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         status: String = "active",
         lastSeenAt: String?,
         homeDestinationId: String = "burnbar:home",
-        canSealToAgent: Bool = true
+        canSealToAgent: Bool = true,
+        phoneRelayPublicKey: String? = nil
     ) -> HermesGatewayClientRecord {
         let relayKey = canSealToAgent ? HermesRelayCrypto.generatePrivateKey().publicKeyBase64 : nil
         return HermesGatewayClientRecord(
@@ -2375,7 +2407,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
             schemaVersion: canSealToAgent ? 2 : 1,
             relayPublicKey: relayKey,
             relayKeyVersion: canSealToAgent ? HermesRelayCrypto.keyVersion : nil,
-            relayEncryption: canSealToAgent ? HermesRelayCrypto.algorithm : nil
+            relayEncryption: canSealToAgent ? HermesRelayCrypto.algorithm : nil,
+            phoneRelayPublicKey: phoneRelayPublicKey,
+            phoneRelayKeyVersion: phoneRelayPublicKey == nil ? nil : HermesRelayCrypto.keyVersion,
+            phoneRelayEncryption: phoneRelayPublicKey == nil ? nil : HermesRelayCrypto.algorithm
         )
     }
 

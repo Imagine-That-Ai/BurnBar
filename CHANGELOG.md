@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Droid custom models (Anthropic BYOK)** — the local gateway now accepts the gateway bearer token via `x-api-key` as well as `Authorization: Bearer`, matching Factory Droid's Anthropic adapter. Routed Claude custom models (`provider: anthropic` in `~/.factory/settings.local.json`) no longer fail with `401 unauthorized` / `Exec failed`.
+- **Mobile Hermes Gateway replies** — BurnBar Cloud gateway replies now reopen the exact Hermes thread, persist replies before rendering mobile reply cards, hide older duplicate reconnect entries for the same device, and show the answering provider badge in notifications and gateway status UI.
 
 ### Added
 
