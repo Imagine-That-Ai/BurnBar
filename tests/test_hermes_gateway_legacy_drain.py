@@ -15,6 +15,9 @@ COUNTS = {
     "unknownSchema": 0,
     "parserMisses": 0,
 }
+DEPLOYED_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+FIREBASE_FUNCTIONS_HASH = "89abcdef0123456789abcdef0123456789abcdef"
+SOURCE_LOCATION = "https://burnbar.ai/legal/source"
 
 
 def runtime_evidence_payload():
@@ -39,8 +42,8 @@ def release_ready_drain_evidence(collections=None):
         "generatedAt": datetime.now(UTC).isoformat(),
         "privacy": "aggregate_counts_only_no_document_values_or_identifiers",
         "release": {
-            "deployedCommit": "abc1234",
-            "sourceLocation": "gcloud run latest ready revisions",
+            "deployedCommit": DEPLOYED_COMMIT,
+            "sourceLocation": SOURCE_LOCATION,
             "dependencyLocks": ["functions/package-lock.json"],
         },
         "writePath": {
@@ -55,11 +58,19 @@ def release_ready_drain_evidence(collections=None):
                     "service": "burnbarhermesgateway",
                     "signalRequired": True,
                     "latestReadyRevision": "burnbarhermesgateway-00001",
+                    "firebaseFunctionsHash": FIREBASE_FUNCTIONS_HASH,
+                    "functionVersion": "v2026.06.08",
+                    "sourceCommit": DEPLOYED_COMMIT,
+                    "correspondingSourceUrl": SOURCE_LOCATION,
                 },
                 {
                     "service": "enqueuehermesgatewayevent",
                     "signalRequired": True,
                     "latestReadyRevision": "enqueuehermesgatewayevent-00001",
+                    "firebaseFunctionsHash": FIREBASE_FUNCTIONS_HASH,
+                    "functionVersion": "v2026.06.08",
+                    "sourceCommit": DEPLOYED_COMMIT,
+                    "correspondingSourceUrl": SOURCE_LOCATION,
                 },
             ],
         },
@@ -135,6 +146,27 @@ def test_migration_drain_evidence_accepts_full_live_zero_state(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert "release-ready" in result.stdout
+
+
+def test_migration_drain_evidence_requires_live_service_source_provenance(tmp_path):
+    evidence = tmp_path / "drain-evidence.json"
+    data = release_ready_drain_evidence()
+    data["release"]["deployedCommit"] = "abc1234"
+    data["release"]["sourceLocation"] = "gcloud run latest ready revisions"
+    data["writePath"]["services"][0].pop("sourceCommit")
+    data["writePath"]["services"][1]["correspondingSourceUrl"] = "https://example.invalid/source"
+    evidence.write_text(json.dumps(data), encoding="utf-8")
+
+    result = run_drain_checker(evidence)
+
+    assert result.returncode != 0
+    assert "release.deployedCommit must be the 40-character git commit deployed to the live services" in result.stderr
+    assert "release.sourceLocation must be an https:// or git@ source URL" in result.stderr
+    assert "writePath.services.burnbarhermesgateway.sourceCommit must match release.deployedCommit" in result.stderr
+    assert (
+        "writePath.services.enqueuehermesgatewayevent.correspondingSourceUrl must match release.sourceLocation"
+        in result.stderr
+    )
 
 
 def test_migration_drain_evidence_reports_missing_file_without_traceback(tmp_path):
@@ -242,6 +274,59 @@ const collection = writer.COLLECTIONS[0];
     assert result.returncode == 0, result.stderr
 
 
+def test_runtime_mode_parser_records_live_source_provenance():
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            rf"""
+const assert = require("node:assert/strict");
+const writer = require("./scripts/ci/write_hermes_gateway_migration_drain_evidence.js");
+
+const mode = writer.serviceModeFromDescriptions(
+  {{
+    metadata: {{
+      name: "burnbarhermesgateway",
+      labels: {{ "firebase-functions-hash": "{FIREBASE_FUNCTIONS_HASH}" }},
+    }},
+    status: {{
+      latestReadyRevisionName: "burnbarhermesgateway-00016-wiw",
+      url: "https://burnbarhermesgateway.example",
+      conditions: [{{ type: "Ready", status: "True" }}],
+    }},
+  }},
+  {{
+    spec: {{
+      containers: [
+        {{
+          env: [
+            {{ name: "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED", value: "true" }},
+            {{ name: "FUNCTION_VERSION", value: "v2026.06.08" }},
+            {{ name: "OPENBURNBAR_SOURCE_COMMIT", value: "{DEPLOYED_COMMIT}" }},
+            {{ name: "OPENBURNBAR_CORRESPONDING_SOURCE_URL", value: "{SOURCE_LOCATION}" }},
+          ],
+        }},
+      ],
+    }},
+  }},
+);
+
+assert.equal(mode.signalRequired, true);
+assert.equal(mode.firebaseFunctionsHash, "{FIREBASE_FUNCTIONS_HASH}");
+assert.equal(mode.functionVersion, "v2026.06.08");
+assert.equal(mode.sourceCommit, "{DEPLOYED_COMMIT}");
+assert.equal(mode.correspondingSourceUrl, "{SOURCE_LOCATION}");
+""",
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_live_execute_rejects_truncated_runtime_evidence_before_firestore(tmp_path):
     runtime = tmp_path / "runtime.json"
     predelete = tmp_path / "predelete.json"
@@ -289,9 +374,9 @@ def test_signal_shaped_but_invalid_records_are_blocking_malformed(tmp_path):
             "--fixture",
             str(fixture),
             "--deployed-commit",
-            "abc1234",
+            DEPLOYED_COMMIT,
             "--source-location",
-            "fixture",
+            SOURCE_LOCATION,
         ],
         cwd=ROOT,
         text=True,

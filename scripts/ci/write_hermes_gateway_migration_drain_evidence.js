@@ -196,7 +196,7 @@ function describeCloudRunService({ service, projectId, region }) {
     projectId,
     "--region",
     region,
-    "--format=json(metadata.name,status.latestReadyRevisionName,status.conditions,status.url)",
+    "--format=json(metadata.name,metadata.labels,status.latestReadyRevisionName,status.conditions,status.url)",
   ];
   const result = spawnSync("gcloud", args, { encoding: "utf8" });
   if (result.status !== 0) {
@@ -227,11 +227,17 @@ function describeCloudRunRevision({ revision, projectId, region }) {
 function serviceModeFromDescriptions(serviceDescription, readyRevision) {
   const env = readyRevision?.spec?.containers?.[0]?.env ?? [];
   const flag = Array.isArray(env) ? env.find((entry) => entry?.name === SIGNAL_REQUIRED_ENV) : undefined;
+  const envValue = (name) => (Array.isArray(env) ? env.find((entry) => entry?.name === name)?.value ?? "" : "");
+  const labels = serviceDescription?.metadata?.labels ?? {};
   const ready = (serviceDescription?.status?.conditions ?? []).find((condition) => condition?.type === "Ready");
   return {
     service: serviceDescription?.metadata?.name ?? "",
     latestReadyRevision: serviceDescription?.status?.latestReadyRevisionName ?? "",
     url: serviceDescription?.status?.url ?? "",
+    firebaseFunctionsHash: labels["firebase-functions-hash"] ?? "",
+    functionVersion: envValue("FUNCTION_VERSION"),
+    sourceCommit: envValue("OPENBURNBAR_SOURCE_COMMIT") || envValue("SOURCE_COMMIT") || envValue("GIT_SHA"),
+    correspondingSourceUrl: envValue("OPENBURNBAR_CORRESPONDING_SOURCE_URL"),
     signalRequired: ready?.status === "True" && envFlagEnabled(flag?.value),
   };
 }
@@ -422,6 +428,7 @@ module.exports = {
   summarizeDocuments,
   buildEvidence,
   isAllowedGatewayDocumentPath,
+  serviceModeFromDescriptions,
 };
 
 if (require.main === module) {

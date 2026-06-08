@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from datetime import UTC, datetime, timedelta
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ REQUIRED_COLLECTIONS = {
 REQUIRED_SERVICES = ("burnbarhermesgateway", "enqueuehermesgatewayevent")
 MAX_EVIDENCE_AGE = timedelta(hours=24)
 MAX_CLOCK_SKEW = timedelta(minutes=5)
+GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _as_non_negative_int(value: Any, field: str, errors: list[str]) -> int:
@@ -65,6 +67,12 @@ def validate_drain_evidence(data: dict[str, Any]) -> list[str]:
     for field in ("deployedCommit", "sourceLocation", "dependencyLocks"):
         if not release.get(field):
             errors.append(f"release.{field} is required")
+    deployed_commit = release.get("deployedCommit")
+    source_location = release.get("sourceLocation")
+    if not isinstance(deployed_commit, str) or not GIT_SHA_RE.fullmatch(deployed_commit):
+        errors.append("release.deployedCommit must be the 40-character git commit deployed to the live services")
+    if not isinstance(source_location, str) or not source_location.startswith(("https://", "git@")):
+        errors.append("release.sourceLocation must be an https:// or git@ source URL")
     write_path = data.get("writePath") or {}
     if write_path.get("signalRequired") is not True:
         errors.append("writePath.signalRequired must be true")
@@ -90,6 +98,17 @@ def validate_drain_evidence(data: dict[str, Any]) -> list[str]:
             errors.append(f"writePath.services.{service_name}.signalRequired must be true")
         if not service.get("latestReadyRevision"):
             errors.append(f"writePath.services.{service_name}.latestReadyRevision is required")
+        firebase_hash = service.get("firebaseFunctionsHash")
+        if not isinstance(firebase_hash, str) or not GIT_SHA_RE.fullmatch(firebase_hash):
+            errors.append(f"writePath.services.{service_name}.firebaseFunctionsHash must be the live Firebase functions hash")
+        if not service.get("functionVersion"):
+            errors.append(f"writePath.services.{service_name}.functionVersion is required")
+        source_commit = service.get("sourceCommit")
+        if source_commit != deployed_commit:
+            errors.append(f"writePath.services.{service_name}.sourceCommit must match release.deployedCommit")
+        corresponding_source_url = service.get("correspondingSourceUrl")
+        if corresponding_source_url != source_location:
+            errors.append(f"writePath.services.{service_name}.correspondingSourceUrl must match release.sourceLocation")
 
     collections = data.get("collections") or {}
     if not collections:
