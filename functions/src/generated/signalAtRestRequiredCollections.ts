@@ -8,6 +8,10 @@
 
 export const GENERATED_SIGNAL_AT_REST_SCHEME = "signal-hpke-identity-seal-v1";
 
-export const SIGNAL_AT_REST_ENABLED_DOMAINS = [] as const satisfies readonly string[];
+export const SIGNAL_AT_REST_ENABLED_DOMAINS = [
+  "pensieve"
+] as const satisfies readonly string[];
 
-export const SIGNAL_AT_REST_REQUIRED_COLLECTIONS = [] as const satisfies readonly string[];
+export const SIGNAL_AT_REST_REQUIRED_COLLECTIONS = [
+  "cloud_search_knowledge"
+] as const satisfies readonly string[];

@@ -209,7 +209,7 @@ function runSignalAtRestWriteSmoke() {
   );
   assert.equal(
     writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge"),
-    false,
+    registryPolicy.requiredCollections.includes("cloud_search_knowledge"),
   );
   assert.equal(
     writeGuard.isSignalAtRestRequiredForCollection("cloud_search_knowledge", [

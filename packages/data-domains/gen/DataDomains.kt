@@ -68,7 +68,7 @@ object DataDomains {
             countSource = "knowledge_sync_manifests.chunkCount", byteSource = "knowledge_sync_manifests.byteCount",
             retention = "until_deleted", actions = listOf("view", "export", "delete", "configure", "sync"),
             entitlementGate = "burnbar_pro_max", suspensionSurface = "burnbar_cloud_pro",
-            sealingScheme = "cloudvault-aesgcm-v2",
+            sealingScheme = "signal-hpke-identity-seal-v1",
         ),
         DataDomain(
             id = "provider_accounts", title = "Provider Accounts", icon = "person.badge.key.fill",

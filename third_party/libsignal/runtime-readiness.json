@@ -97,6 +97,24 @@
       },
       "attachedAt": "2026-06-08T14:19:19.291795Z",
       "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
+    },
+    {
+      "id": "cloudvault_private_domains",
+      "status": "complete",
+      "artifactPath": "launch-evidence/cloudvault-at-rest-runtime.json",
+      "artifactType": "cloudvault_at_rest_runtime_evidence",
+      "sha256": "78b55f78957dccba16cc6db0ce2942d790b066d0380057796728a8f0ed10216e",
+      "validatorCommand": "python3 scripts/ci/check_cloudvault_at_rest_runtime.py launch-evidence/cloudvault-at-rest-runtime.json --replay-commands",
+      "validatorResult": {
+        "status": "pass",
+        "exitCode": 0,
+        "durationMs": 5494,
+        "stdoutSha256": "bf8edd74655c89a949eba25ee8b6c02067a416aaf3b423a7acdfb975429ec243",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checkedAt": "2026-06-08T14:43:03.671811Z"
+      },
+      "attachedAt": "2026-06-08T14:43:03.671814Z",
+      "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
     }
   ],
   "requiredGates": [
@@ -132,7 +150,7 @@
     },
     {
       "id": "cloudvault_private_domains",
-      "status": "pending",
+      "status": "complete",
       "proof": "New data-domain private writes use Signal-backed envelopes or a reviewed Signal-derived key schedule."
     },
     {
@@ -146,6 +164,6 @@
       "proof": "Counsel signs off before public app-store, direct-download, extension, npm, Docker, or hosted-service release that links libsignal."
     }
   ],
-  "generatedAt": "2026-06-08T14:19:19.291356Z",
+  "generatedAt": "2026-06-08T14:43:03.671522Z",
   "mergedMainEvidence": "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
 }

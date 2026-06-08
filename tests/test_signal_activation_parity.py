@@ -22,11 +22,13 @@ def combined_output(result: subprocess.CompletedProcess[str]) -> str:
     return result.stdout + result.stderr
 
 
-def test_signal_activation_parity_default_mode_passes_current_fail_closed_tree():
+def test_signal_activation_parity_default_mode_flags_intentional_pensieve_activation():
     result = run_parity()
 
-    assert result.returncode == 0, combined_output(result)
-    assert "fail-closed default" in combined_output(result)
+    assert result.returncode != 0
+    output = combined_output(result)
+    assert "domains already on a signal sealingScheme: pensieve=signal-hpke-identity-seal-v1" in output
+    assert "safe default" in output
 
 
 def test_signal_activation_parity_activation_mode_requires_evidence():

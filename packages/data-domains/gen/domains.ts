@@ -228,6 +228,9 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "knowledge_sync_manifests",
       "knowledge_repos"
     ],
+    "signalSealedCollections": [
+      "cloud_search_knowledge"
+    ],
     "storagePaths": [],
     "countSource": "knowledge_sync_manifests.chunkCount",
     "byteSource": "knowledge_sync_manifests.byteCount",
@@ -252,7 +255,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "entitlementGate": "burnbar_pro_max",
     "tieredLimits": "PENSIEVE_LIMITS",
     "suspensionSurface": "burnbar_cloud_pro",
-    "sealingScheme": "cloudvault-aesgcm-v2"
+    "sealingScheme": "signal-hpke-identity-seal-v1"
   },
   {
     "id": "provider_accounts",

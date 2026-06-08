@@ -318,23 +318,22 @@ test("HONEST CLAIMS: W3 sealed private collections are folded into conversations
 // changing the tier or leaking the codename to the public trust surface. These
 // assertions bind the field to reality so it can never be misused.
 
-test("sealingScheme: pensieve carries the CloudVault at-rest scheme; future Signal scheme is NOT set yet", () => {
+test("sealingScheme: pensieve activates Signal at-rest only for the wired knowledge producer", () => {
   const pensieve = registry.domains.find((d) => d.id === "pensieve");
   assert.ok(pensieve, "expected the pensieve domain");
-  // Today's value is the existing CloudVault AES-GCM at-rest seal.
   assert.equal(
     pensieve.sealingScheme,
-    "cloudvault-aesgcm-v2",
-    "pensieve sealingScheme must record the current CloudVault AES-GCM at-rest seal",
+    "signal-hpke-identity-seal-v1",
+    "pensieve sealingScheme must record the active Signal at-rest seal",
   );
-  // Flag-OFF: the future Signal HPKE identity seal must NOT be advertised in the
-  // registry until the client-side ciphertext path actually ships.
+  assert.deepEqual(
+    pensieve.signalSealedCollections,
+    ["cloud_search_knowledge"],
+    "pensieve must claim Signal at-rest only for the collection with a wired signalEnvelope producer",
+  );
   for (const d of registry.domains) {
-    assert.notEqual(
-      d.sealingScheme,
-      "signal-hpke-identity-seal-v1",
-      `${d.id} must not advertise the Signal at-rest scheme before the client ciphertext path ships`,
-    );
+    if (d.id === "pensieve") continue;
+    assert.notEqual(d.sealingScheme, "signal-hpke-identity-seal-v1", `${d.id} is not part of this activation`);
   }
 });
 
