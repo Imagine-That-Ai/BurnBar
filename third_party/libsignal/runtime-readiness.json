@@ -21,49 +21,103 @@
       "command": "npm run build --prefix functions && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/dataExport.test.ts src/__tests__/hermesGatewaySealedEvent.test.ts --reporter=verbose && npm run test:hermes-gateway --prefix ../functions"
     },
     {
-      "id": "node_contracts",
-      "status": "complete",
-      "proof": "Functions, hosted MCP, Hermes realtime relay, and the shared @openburnbar/signal-envelope-contracts package validate official-libsignal Signal envelope v1 transport/at-rest shapes, strip plaintext siblings on export, reject downgrade/mode confusion/non-canonical base64, and keep production writes fail-closed until runtime crypto gates are complete.",
-      "command": "npm test --prefix packages/signal-envelope-contracts && npm run build --prefix functions && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/dataExport.test.ts src/__tests__/hermesGatewaySealedEvent.test.ts --reporter=verbose && npm run test:hermes-gateway --prefix ../functions && npm test --prefix ../services/hosted-mcp && npm test --prefix ../services/hermes-realtime-relay"
-    },
-    {
-      "id": "swift_round_trips",
-      "status": "complete",
-      "proof": "Merged main passes Swift official-libsignal X3DH/PQXDH session round-trip, persistence reload, iroh loopback session transport, and CryptoKit-opens-libsignal HPKE at-rest KAT.",
-      "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter OBBSignalProtocolStoreSessionTests && swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter OBBSignalSessionOverIrohTests && swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-main-launch-swift-build --filter CryptoKitAtRestInteropTests"
-    },
-    {
-      "id": "kotlin_round_trips",
-      "status": "complete",
-      "proof": "Merged main passes Android official-libsignal session round-trip, Swift-to-Android interop KAT, iroh frame-path session test, identity key store, and CloudVault Signal payload tests.",
-      "command": "ANDROID_HOME=\"$HOME/Library/Android/sdk\" ./gradlew :app:testDebugUnitTest --tests \"*AndroidSignalSession*\" --tests \"*AndroidSignalInteropKatTest\" --tests \"*AndroidCloudVaultSignalPayloadsTest\" --tests \"*AndroidSignalIdentityKeyStoreTest\""
-    },
-    {
       "id": "phase2_main_merge",
       "status": "complete",
       "proof": "origin/main fast-forwarded to 143675f6f; branch protection restored with required checks/review/admin enforcement.",
       "command": "git push origin HEAD:main; gh api repos/Imagine-That-Ai/BurnBar/branches/main/protection"
+    },
+    {
+      "id": "node_contracts",
+      "status": "complete",
+      "artifactPath": "launch-evidence/signal-envelope-contract-runtime.json",
+      "artifactType": "signal_envelope_contract_test_report",
+      "sha256": "7b015371d6f46cbb3e23014fa934c48f73eee7a353f0aea11a134d19b57f4f08",
+      "validatorCommand": "python3 scripts/ci/check_signal_envelope_contract_runtime.py launch-evidence/signal-envelope-contract-runtime.json",
+      "validatorResult": {
+        "status": "pass",
+        "exitCode": 0,
+        "durationMs": 45,
+        "stdoutSha256": "a1f474b3a7f70b5beb161d5b10cb118f11ff402e8d71da1e91612df1a37a5255",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checkedAt": "2026-06-08T14:15:50.016278Z"
+      },
+      "attachedAt": "2026-06-08T14:15:50.016281Z",
+      "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
+    },
+    {
+      "id": "rust_core_bridge",
+      "status": "complete",
+      "artifactPath": "launch-evidence/native-signal-rust-runtime.json",
+      "artifactType": "native_signal_runtime_evidence",
+      "sha256": "15f9617f2d6a4a3a7aa4e1928a678e2c917e8ab6baf8d7d2ca6cc513cbfa4d39",
+      "validatorCommand": "python3 scripts/ci/check_native_signal_runtime_evidence.py launch-evidence/native-signal-rust-runtime.json --gate rust_core_bridge --repo-root . --replay-commands",
+      "validatorResult": {
+        "status": "pass",
+        "exitCode": 0,
+        "durationMs": 478,
+        "stdoutSha256": "f8d3b667b7e91142f6f246ac3ba8c8f7439f2d9424b5c3c27fb884100fed2041",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checkedAt": "2026-06-08T14:15:52.026587Z"
+      },
+      "attachedAt": "2026-06-08T14:15:52.026591Z",
+      "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
+    },
+    {
+      "id": "swift_round_trips",
+      "status": "complete",
+      "artifactPath": "launch-evidence/native-signal-swift-runtime.json",
+      "artifactType": "native_signal_runtime_evidence",
+      "sha256": "df1874c42ff08fd4cb3af14ca6d81de5e4678769cf16f75d3d5a33b6d5fb7975",
+      "validatorCommand": "python3 scripts/ci/check_native_signal_runtime_evidence.py launch-evidence/native-signal-swift-runtime.json --gate swift_round_trips --repo-root . --replay-commands",
+      "validatorResult": {
+        "status": "pass",
+        "exitCode": 0,
+        "durationMs": 3226,
+        "stdoutSha256": "f8d3b667b7e91142f6f246ac3ba8c8f7439f2d9424b5c3c27fb884100fed2041",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checkedAt": "2026-06-08T14:16:04.053454Z"
+      },
+      "attachedAt": "2026-06-08T14:16:04.053457Z",
+      "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
+    },
+    {
+      "id": "kotlin_round_trips",
+      "status": "complete",
+      "artifactPath": "launch-evidence/native-signal-kotlin-runtime.json",
+      "artifactType": "native_signal_runtime_evidence",
+      "sha256": "5742abf2f6d6c9fbb736e98ecc0a26a99f40c20b50279e82b6415551a86c56a2",
+      "validatorCommand": "python3 scripts/ci/check_native_signal_runtime_evidence.py launch-evidence/native-signal-kotlin-runtime.json --gate kotlin_round_trips --repo-root . --replay-commands",
+      "validatorResult": {
+        "status": "pass",
+        "exitCode": 0,
+        "durationMs": 64809,
+        "stdoutSha256": "f8d3b667b7e91142f6f246ac3ba8c8f7439f2d9424b5c3c27fb884100fed2041",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checkedAt": "2026-06-08T14:19:19.291791Z"
+      },
+      "attachedAt": "2026-06-08T14:19:19.291795Z",
+      "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
     }
   ],
   "requiredGates": [
     {
       "id": "rust_core_bridge",
-      "status": "pending",
+      "status": "complete",
       "proof": "Shared Rust libsignal adapter with stable FFI contracts for Swift, Kotlin, and Node."
     },
     {
       "id": "swift_round_trips",
-      "status": "pending",
+      "status": "complete",
       "proof": "Swift/macOS/iOS libsignal identity, prekey, session, encrypt, decrypt, replay, skipped-key, and safety-number tests."
     },
     {
       "id": "kotlin_round_trips",
-      "status": "pending",
+      "status": "complete",
       "proof": "Android/Kotlin libsignal identity, prekey, session, encrypt, decrypt, replay, skipped-key, and safety-number tests."
     },
     {
       "id": "node_contracts",
-      "status": "pending",
+      "status": "complete",
       "proof": "Shared @openburnbar/signal-envelope-contracts package consumed by Functions, hosted MCP, and Hermes realtime relay with schema, export-sanitization, downgrade, and malformed-base64 tests."
     },
     {
@@ -92,6 +146,6 @@
       "proof": "Counsel signs off before public app-store, direct-download, extension, npm, Docker, or hosted-service release that links libsignal."
     }
   ],
-  "generatedAt": "2026-06-06T16:47:17.942Z",
+  "generatedAt": "2026-06-08T14:19:19.291356Z",
   "mergedMainEvidence": "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
 }

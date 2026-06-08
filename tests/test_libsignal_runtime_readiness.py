@@ -280,7 +280,8 @@ def test_launch_gate_reports_actionable_incomplete_gate_details():
 
     assert result.returncode != 0
     assert "HOLD: official libsignal is not yet the OpenBurnBar runtime crypto core." in result.stderr
-    assert "rust_core_bridge:" in result.stderr
-    assert "action: produce Rust bridge runtime evidence" in result.stderr
-    assert "validator: check_native_signal_runtime_evidence.py" in result.stderr
-    assert "required args: --gate rust_core_bridge" in result.stderr
+    assert "Incomplete gates:" in result.stderr
+    assert "action:" in result.stderr
+    assert "artifact prefixes:" in result.stderr
+    assert "validator:" in result.stderr
+    assert "required args:" in result.stderr
