@@ -34,33 +34,10 @@ grep -q "AGPL-3.0-only" NOTICE || fail "NOTICE does not identify AGPL-3.0-only"
 grep -q "46d867c986f66201e34e7ae20ce423eec742bf3f" third_party/libsignal/manifest.json || fail "libsignal commit pin drifted"
 grep -q "v0.94.4" THIRD_PARTY_NOTICES.md || fail "third-party notices do not record the libsignal tag"
 
+node scripts/ci/verify-package-license-policy.mjs
+
 node <<'NODE'
 const fs = require('node:fs');
-const { execFileSync } = require('node:child_process');
-
-const files = execFileSync('git', [
-  'ls-files',
-  '--cached',
-  '--others',
-  '--exclude-standard',
-  '*package.json',
-  ':!:**/node_modules/**',
-  ':!:**/package-lock.json',
-], { encoding: 'utf8' })
-  .trim()
-  .split('\n')
-  .filter(Boolean);
-const failures = [];
-for (const file of files) {
-  const json = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (json.license !== 'AGPL-3.0-only') {
-    failures.push(`${file}: expected license AGPL-3.0-only, got ${json.license ?? '<missing>'}`);
-  }
-}
-if (failures.length) {
-  console.error(failures.join('\n'));
-  process.exit(1);
-}
 
 const manifest = JSON.parse(fs.readFileSync('third_party/libsignal/manifest.json', 'utf8'));
 if (manifest.license !== 'AGPL-3.0-only') throw new Error('libsignal manifest license drifted');

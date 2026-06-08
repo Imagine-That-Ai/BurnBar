@@ -349,6 +349,19 @@ def check_source_provenance_process() -> list[Check]:
             "validate_legal_release_review",
             "latest-agpl-store-legal-packet.json",
         ],
+        "scripts/ci/verify-agpl-compliance.sh": [
+            "verify-package-license-policy.mjs",
+            "verify-libsignal-pin.sh",
+            "verify-corresponding-source-archive.sh",
+            "PASS: AGPL compliance gate",
+        ],
+        "scripts/ci/verify-package-license-policy.mjs": [
+            "validatePackageLicensePolicy",
+            "PACKAGE_LICENSE_OVERRIDES",
+            "@openburnbar/e2ee-backend-policy",
+            "MIT upstream-boundary package must stay libsignal-free",
+            "@signalapp/libsignal-client",
+        ],
         "scripts/ci/check_cloudvault_at_rest_runtime.py": [
             "validate_cloudvault_at_rest_evidence",
             "_registry_signal_at_rest_enablement",
@@ -415,6 +428,11 @@ def check_source_provenance_process() -> list[Check]:
         "tests/test_burnbar_license_posture.py": [
             "test_android_firebase_config_guard_fails_when_file_is_tracked",
             "check_android_firebase_config_untracked",
+        ],
+        "scripts/ci/verify-package-license-policy.test.mjs": [
+            "allows the documented MIT upstream-boundary package",
+            "rejects undocumented MIT packages",
+            "rejects Signal dependencies in the MIT boundary package",
         ],
         "tests/test_libsignal_runtime_evidence_attach.py": [
             "test_attach_replaces_legacy_self_reported_gate_with_typed_evidence",
