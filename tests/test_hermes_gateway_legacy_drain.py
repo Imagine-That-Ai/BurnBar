@@ -137,6 +137,14 @@ def test_migration_drain_evidence_accepts_full_live_zero_state(tmp_path):
     assert "release-ready" in result.stdout
 
 
+def test_migration_drain_evidence_reports_missing_file_without_traceback(tmp_path):
+    result = run_drain_checker(tmp_path / "missing-drain-evidence.json")
+
+    assert result.returncode != 0
+    assert "FAIL: unreadable Hermes Gateway migration drain evidence:" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_migration_drain_evidence_rejects_truncated_or_missing_collection(tmp_path):
     evidence = tmp_path / "drain-evidence.json"
     data = release_ready_drain_evidence()

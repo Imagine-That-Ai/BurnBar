@@ -137,7 +137,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path)
     args = parser.parse_args(argv)
-    data = json.loads(args.evidence.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(args.evidence.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"FAIL: unreadable Hermes Gateway migration drain evidence: {exc}", file=sys.stderr)
+        return 1
     errors = validate_drain_evidence(data)
     if errors:
         print("FAIL: Hermes Gateway migration drain evidence is not release-ready", file=sys.stderr)
