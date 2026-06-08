@@ -103,17 +103,17 @@
       "status": "complete",
       "artifactPath": "launch-evidence/cloudvault-at-rest-runtime.json",
       "artifactType": "cloudvault_at_rest_runtime_evidence",
-      "sha256": "a98e5da45c29983adaf8930878b7735c248f2646a6d3da933eda3764bd9cd1ad",
+      "sha256": "74317a65f21bd606da6de73cc40ae67587821e8b8a2473694efcf580f995f9cf",
       "validatorCommand": "python3 scripts/ci/check_cloudvault_at_rest_runtime.py launch-evidence/cloudvault-at-rest-runtime.json --replay-commands",
       "validatorResult": {
         "status": "pass",
         "exitCode": 0,
-        "durationMs": 5374,
+        "durationMs": 5540,
         "stdoutSha256": "bf8edd74655c89a949eba25ee8b6c02067a416aaf3b423a7acdfb975429ec243",
         "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "checkedAt": "2026-06-08T15:22:58.191818Z"
+        "checkedAt": "2026-06-08T17:23:31.854708Z"
       },
-      "attachedAt": "2026-06-08T15:22:58.191822Z",
+      "attachedAt": "2026-06-08T17:23:31.854712Z",
       "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
     }
   ],
@@ -164,6 +164,6 @@
       "proof": "Counsel signs off before public app-store, direct-download, extension, npm, Docker, or hosted-service release that links libsignal."
     }
   ],
-  "generatedAt": "2026-06-08T15:22:58.191560Z",
+  "generatedAt": "2026-06-08T17:23:31.854452Z",
   "mergedMainEvidence": "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
 }

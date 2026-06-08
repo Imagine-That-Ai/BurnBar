@@ -2,13 +2,13 @@
   "commandEvidence": [
     {
       "command": "npm run build --prefix functions",
-      "durationMs": 5171,
+      "durationMs": 5577,
       "exitCode": 0,
       "status": "pass",
       "stderrNormalizedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stdoutNormalizedSha256": "825f5c21d7b07dba4a95d415b7f07f257f82b7ea02431987bb75fa41e7df53b4",
-      "stdoutSha256": "825f5c21d7b07dba4a95d415b7f07f257f82b7ea02431987bb75fa41e7df53b4"
+      "stdoutNormalizedSha256": "1a335d6e91789fe4a4882accd922cadb37ea740bb3b44e0fd2c069cd66987894",
+      "stdoutSha256": "1a335d6e91789fe4a4882accd922cadb37ea740bb3b44e0fd2c069cd66987894"
     },
     {
       "assertions": [
@@ -23,7 +23,7 @@
         "signal_at_rest_policy_requires_enabled_collection"
       ],
       "command": "node scripts/ci/check_functions_cloudvault_runtime.js",
-      "durationMs": 24,
+      "durationMs": 27,
       "exitCode": 0,
       "status": "pass",
       "stderrNormalizedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -36,16 +36,16 @@
         "cjs_runtime_import_validates_signal_at_rest_write"
       ],
       "command": "python3 -m pytest tests/test_signal_envelope_contracts_cjs_exports.py -q",
-      "durationMs": 183,
+      "durationMs": 200,
       "exitCode": 0,
       "status": "pass",
       "stderrNormalizedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stdoutNormalizedSha256": "08012d48ba103cade1ef63c9d3d05e311eba69801f290983def895e33bd66e89",
-      "stdoutSha256": "35d86279d96ed65491ba8ff0748e1c8e7891711531404dc5d4b9cd6ae33de3ec"
+      "stdoutNormalizedSha256": "d930225b1855d5eb0ae19e687fa3634664c0bc06c2d4a4ccf9ac9fb8fd3fba4d",
+      "stdoutSha256": "149e983c325e1215d8fe411fd58fb9c0fa38bc5dfa119c4a6a92d44ee61e3e10"
     }
   ],
-  "generatedAt": "2026-06-08T15:22:39.825437Z",
+  "generatedAt": "2026-06-08T17:19:44.982766Z",
   "generatedBy": "scripts/ci/write_cloudvault_at_rest_runtime_evidence.py",
   "privacy": "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers",
   "schemaVersion": 1,

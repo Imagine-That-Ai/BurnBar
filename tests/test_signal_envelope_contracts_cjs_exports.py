@@ -1,3 +1,4 @@
+import json
 import subprocess
 import textwrap
 from pathlib import Path
@@ -103,3 +104,18 @@ def test_functions_runtime_can_require_signal_envelope_contracts() -> None:
     )
 
     subprocess.run(["node", "-e", script], cwd=REPO_ROOT, check=True)
+
+
+def test_functions_signal_envelope_contracts_dependency_is_deploy_local() -> None:
+    package_json = json.loads((REPO_ROOT / "functions/package.json").read_text(encoding="utf-8"))
+    dependency = package_json["dependencies"]["@openburnbar/signal-envelope-contracts"]
+
+    assert dependency == "file:./vendor/signal-envelope-contracts"
+
+    vendor_package = REPO_ROOT / "functions/vendor/signal-envelope-contracts"
+    assert vendor_package.is_dir()
+    assert not vendor_package.is_symlink()
+    assert (vendor_package / "package.json").is_file()
+    assert (vendor_package / "lib/index.js").is_file()
+    assert (vendor_package / "lib/index.d.ts").is_file()
+    assert (vendor_package / "src/index.ts").is_file()

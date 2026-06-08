@@ -18,5 +18,9 @@ npm-debug.log*
 .env.*
 !.env.example
 
+# Deploy-local package copies that Cloud Functions must upload.
+!vendor/
+!vendor/**
+
 # Firebase
 .firebase/

@@ -133,6 +133,7 @@ if [[ "$(git rev-parse HEAD)" != "$SOURCE_COMMIT" ]]; then
   echo "ERROR: OPENBURNBAR_SOURCE_COMMIT must match the checked-out HEAD for this deploy." >&2
   exit 1
 fi
+scripts/sync-functions-signal-envelope-contracts.sh --check
 if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ignore-submodules --; then
   echo "ERROR: working tree is dirty; commit before deploying Hermes Gateway functions." >&2
   exit 1

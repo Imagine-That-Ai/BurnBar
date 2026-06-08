@@ -21,6 +21,7 @@ def test_source_provenance_manifest_covers_agpl_signal_release_inputs():
     assert "third_party/libsignal/manifest.json" in paths
     assert "third_party/libsignal/runtime-readiness.json" in paths
     assert "scripts/ci/attach_libsignal_runtime_evidence.py" in paths
+    assert "scripts/sync-functions-signal-envelope-contracts.sh" in paths
     assert "scripts/ci/check_signal_envelope_contract_runtime.py" in paths
     assert "scripts/ci/write_signal_envelope_contract_runtime_evidence.py" in paths
     assert "tests/test_libsignal_runtime_evidence_attach.py" in paths

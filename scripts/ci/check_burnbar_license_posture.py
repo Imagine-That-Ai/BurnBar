@@ -318,9 +318,17 @@ def check_source_provenance_process() -> list[Check]:
             "OPENBURNBAR_CORRESPONDING_SOURCE_URL",
             "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED",
             "SIGNAL_ENVELOPE_V4_DISABLED",
+            "sync-functions-signal-envelope-contracts.sh --check",
             "functions:burnBarHermesGateway,functions:enqueueHermesGatewayEvent",
             "rollout_hermes_gateway_signal_required.js",
             "SOURCE_COMMIT",
+        ],
+        "scripts/sync-functions-signal-envelope-contracts.sh": [
+            "packages/signal-envelope-contracts",
+            "functions/vendor/signal-envelope-contracts",
+            "npm run build --prefix",
+            "diff -ru",
+            "rsync -a",
         ],
         "scripts/ci/rollout_hermes_gateway_signal_required.js": [
             "enable-hermes-gateway-signal-required",

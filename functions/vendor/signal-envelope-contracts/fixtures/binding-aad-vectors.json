@@ -1,0 +1,70 @@
+{
+  "_comment": "Cross-language byte-parity vectors for the v4 Signal-envelope binding -> AAD canonicalizer (SIGNAL_ENVELOPE_V1 reconciliation, Phase P0). expectedAAD is the EXACT UTF-8 string both bindingToAAD() (TypeScript, packages/signal-envelope-contracts/src/index.ts) and signalEnvelopeBindingToAAD(...) (Swift, OpenBurnBarCore/.../SignalEnvelopeAAD.swift) MUST produce. Layout: \"OpenBurnBar-Signal-AAD-v1|\" + [mode, scope, uid, clientId, collection, docId, field, slotId, formatVersion].join(\"|\"); absent optionals serialize as EMPTY segments. Keep this file byte-identical to the copy vendored into OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/SignalBindingAADVectors.json.",
+  "prefix": "OpenBurnBar-Signal-AAD-v1|",
+  "vectors": [
+    {
+      "name": "transport-gateway",
+      "binding": {
+        "uid": "uid-1",
+        "scope": "gateway",
+        "clientId": "client-1",
+        "slotId": "event-1",
+        "mode": "transport",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|transport|gateway|uid-1|client-1||||event-1|1"
+    },
+    {
+      "name": "at-rest-cloudvault",
+      "binding": {
+        "uid": "uid-1",
+        "scope": "cloudvault",
+        "collection": "session_logs",
+        "docId": "doc-1",
+        "field": "body",
+        "mode": "at-rest",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|uid-1||session_logs|doc-1|body||1"
+    },
+    {
+      "name": "all-optionals-present",
+      "binding": {
+        "uid": "u",
+        "scope": "cloudvault",
+        "clientId": "c",
+        "collection": "col",
+        "docId": "d",
+        "field": "f",
+        "slotId": "s",
+        "mode": "at-rest",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|u|c|col|d|f|s|1"
+    },
+    {
+      "name": "all-optionals-empty",
+      "binding": {
+        "uid": "u",
+        "scope": "gateway",
+        "mode": "transport",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|transport|gateway|u||||||1"
+    },
+    {
+      "name": "non-ascii-nfc-uid",
+      "_comment": "uid carries U+00E9 (é) as the PRECOMPOSED single code point (NFC). Both suites also feed the DECOMPOSED form (e + U+0301) at runtime and assert it normalizes to this same expectedAAD — proving NFC normalization in bindingToAAD makes NFD and NFC byte-identical.",
+      "binding": {
+        "uid": "café-uid",
+        "scope": "cloudvault",
+        "collection": "col",
+        "docId": "d",
+        "field": "f",
+        "mode": "at-rest",
+        "formatVersion": 1
+      },
+      "expectedAAD": "OpenBurnBar-Signal-AAD-v1|at-rest|cloudvault|café-uid||col|d|f||1"
+    }
+  ]
+}

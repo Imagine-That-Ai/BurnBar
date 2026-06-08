@@ -33,6 +33,7 @@ REQUIRED_SOURCE_FILES = [
     "scripts/ci/verify-agpl-compliance.sh",
     "scripts/ci/verify-ops-readiness.sh",
     "scripts/ci/verify-package-license-policy.mjs",
+    "scripts/sync-functions-signal-envelope-contracts.sh",
     "scripts/ops/deploy-hermes-gateway-functions.sh",
     "scripts/ops/deploy-health-functions.sh",
     "scripts/ci/check_agpl_legal_release_review.py",
