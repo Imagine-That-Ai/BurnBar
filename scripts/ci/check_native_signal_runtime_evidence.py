@@ -52,7 +52,7 @@ REQUIRED_PLATFORM_COMMAND_FRAGMENTS = {
         ("swift", "test", "--package-path", "OpenBurnBarCore"),
         ("scripts/test-openburnbar-swift.sh", "OPENBURNBAR_CORE_SWIFT_FILTER"),
     ),
-    "kotlin": (("gradlew", ":app:testDebugUnitTest"),),
+    "kotlin": (("scripts/ci/run_android_signal_runtime_tests.py",),),
 }
 FORBIDDEN_EVIDENCE_KEYS = {
     "plaintext",

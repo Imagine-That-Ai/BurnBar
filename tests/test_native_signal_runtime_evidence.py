@@ -63,7 +63,10 @@ def test_validates_swift_native_runtime_evidence():
                 },
                 "kotlin": {
                     "commandEvidence": [
-                        command_evidence("./gradlew :app:testDebugUnitTest --tests *AndroidSignal*", KOTLIN_ASSERTIONS)
+                        command_evidence(
+                            "python3 scripts/ci/run_android_signal_runtime_tests.py",
+                            KOTLIN_ASSERTIONS,
+                        )
                     ]
                 },
             },
@@ -91,7 +94,7 @@ def test_validates_kotlin_android_native_runtime_evidence():
                 "kotlin": {
                     "commandEvidence": [
                         command_evidence(
-                            "./gradlew :app:testDebugUnitTest --tests *AndroidSignal*",
+                            "python3 scripts/ci/run_android_signal_runtime_tests.py",
                             KOTLIN_ASSERTIONS,
                             status="fail",
                             exit_code=1,
@@ -122,7 +125,10 @@ def test_rust_core_bridge_gate_requires_rust_evidence():
                 },
                 "kotlin": {
                     "commandEvidence": [
-                        command_evidence("./gradlew :app:testDebugUnitTest --tests *AndroidSignal*", KOTLIN_ASSERTIONS)
+                        command_evidence(
+                            "python3 scripts/ci/run_android_signal_runtime_tests.py",
+                            KOTLIN_ASSERTIONS,
+                        )
                     ]
                 },
             },
@@ -171,6 +177,30 @@ def test_rust_core_bridge_rejects_self_report_without_assertions():
     )
     assert any("rust runtime evidence is missing assertions" in error for error in errors)
     assert any("ffi_contracts_exported" in error for error in errors)
+
+
+def test_kotlin_gate_requires_dedicated_android_signal_runtime_harness():
+    errors = validate_native_signal_runtime_evidence(
+        {
+            "schemaVersion": 1,
+            "generatedAt": generated_at_now(),
+            "generatedBy": "tests",
+            "privacy": "proof_only_no_plaintext_keys_or_user_data",
+            "platforms": {
+                "kotlin": {
+                    "commandEvidence": [
+                        command_evidence(
+                            "./gradlew :app:testDebugUnitTest --tests *AndroidSignal*",
+                            KOTLIN_ASSERTIONS,
+                        )
+                    ]
+                },
+            },
+        },
+        gate="kotlin_round_trips",
+    )
+    assert any("approved runtime command" in error for error in errors)
+    assert any("scripts/ci/run_android_signal_runtime_tests.py" in error for error in errors)
 
 
 def test_native_evidence_rejects_raw_key_or_user_data_fields():

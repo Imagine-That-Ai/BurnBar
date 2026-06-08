@@ -15,6 +15,15 @@ cp ~/Downloads/google-services.json android/app/google-services.json
 
 The template at `android/app/google-services.json.template` is safe to commit — it contains only placeholder values.
 
+### Local JVM runtime-evidence tests
+
+`scripts/ci/run_android_signal_runtime_tests.py` may create a deterministic,
+dummy `google-services.json` when the real file is absent so Gradle's Google
+Services plugin can generate resources before offline JVM Signal tests run. The
+dummy file is marker-owned, ignored by git, and removed after the test command.
+It is **only** for local unit tests; do not use it for app builds, E2E,
+instrumentation, release, App Check, Auth, Firestore, or Functions validation.
+
 ### CI
 
 CI injects the config from `GOOGLE_SERVICES_JSON_BASE64` (a GitHub Actions secret).

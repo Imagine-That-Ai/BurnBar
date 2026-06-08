@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 import tomllib
 import zipfile
@@ -391,6 +392,12 @@ def check_source_provenance_process() -> list[Check]:
             "proof_only_no_plaintext_keys_or_user_data",
             "commandEvidence",
         ],
+        "scripts/ci/run_android_signal_runtime_tests.py": [
+            "ensure_unit_test_google_services",
+            "unit-test-google-services-json",
+            "SIGNAL_RUNTIME_GRADLE_ARGS",
+            ":app:testDebugUnitTest",
+        ],
         "scripts/ci/write_native_signal_runtime_evidence.py": [
             "build_native_signal_runtime_evidence",
             "proof_only_no_plaintext_keys_or_user_data",
@@ -400,6 +407,10 @@ def check_source_provenance_process() -> list[Check]:
             "test_source_provenance_manifest_covers_agpl_signal_release_inputs",
             "scripts/ci/attach_libsignal_runtime_evidence.py",
             "third_party/libsignal/runtime-readiness.json",
+        ],
+        "tests/test_burnbar_license_posture.py": [
+            "test_android_firebase_config_guard_fails_when_file_is_tracked",
+            "check_android_firebase_config_untracked",
         ],
         "tests/test_libsignal_runtime_evidence_attach.py": [
             "test_attach_replaces_legacy_self_reported_gate_with_typed_evidence",
@@ -588,6 +599,32 @@ def check_license_workflow_product_detection() -> Check:
     )
 
 
+def check_android_firebase_config_untracked() -> Check:
+    rel_path = "android/app/google-services.json"
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", rel_path],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as exc:
+        return Check("Android Firebase config source-control guard", False, f"unable to run git: {exc}")
+    if result.returncode == 0:
+        return Check(
+            "Android Firebase config source-control guard",
+            False,
+            f"{rel_path} is tracked; remove it from git and keep only android/app/google-services.json.template",
+        )
+    return Check(
+        "Android Firebase config source-control guard",
+        True,
+        f"{rel_path} is not tracked",
+    )
+
+
 _IOS_LIBSIGNAL_PATTERN = re.compile(r"libsignal|signal_ffi", re.IGNORECASE)
 
 
@@ -745,6 +782,7 @@ def all_checks() -> list[Check]:
         *check_legal_docs(),
         *check_mit_upstream_boundary_process(),
         check_license_workflow_product_detection(),
+        check_android_firebase_config_untracked(),
         check_ios_libsignal_free(),
         check_claim_hygiene(),
     ]

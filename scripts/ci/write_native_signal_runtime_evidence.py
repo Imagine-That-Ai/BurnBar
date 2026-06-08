@@ -87,19 +87,9 @@ COMMAND_SPECS = {
     "kotlin": [
         {
             "argv": [
-                "./gradlew",
-                ":app:testDebugUnitTest",
-                "--tests",
-                "*AndroidSignalSession*",
-                "--tests",
-                "*AndroidSignalInteropKatTest",
-                "--tests",
-                "*AndroidCloudVaultSignalPayloadsTest",
-                "--tests",
-                "*AndroidSignalIdentityKeyStoreTest",
-                "--no-daemon",
+                "python3",
+                "scripts/ci/run_android_signal_runtime_tests.py",
             ],
-            "cwd": "android",
             "assertions": PLATFORM_ASSERTIONS["kotlin"],
         },
     ],
