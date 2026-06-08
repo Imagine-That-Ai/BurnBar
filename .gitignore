@@ -188,3 +188,6 @@ appcheck-token.json
 .env.*.local
 .firebase/
 assets/generated/
+
+# Claude Code local worktrees (transient)
+.claude/worktrees/

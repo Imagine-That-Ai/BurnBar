@@ -9,7 +9,8 @@ import org.junit.runner.RunWith
 
 private const val SIGNAL_DEVICE_KAT_PRIVATE_KEY_B64 = "yGZ5zfds7ljkjsopcLya1ayDbjV+TCL6/b4BQBpqfV0="
 private const val SIGNAL_DEVICE_KAT_PUBLIC_KEY_B64_CANONICAL = "BVw7AC8duGgSdz/wLmMLMe+ymSUCcMkOcoJ+E6Eb+RhO"
-private const val SIGNAL_DEVICE_KAT_CIPHERTEXT_B64 = "AQt/WxZMem2jpwxChzbQuzg/yMY5kdPdzuOmgLoJwoIZOFUfdEr33hTkLyIzwQTD7J2uShoruECN2ty8j1QlSe2siO6trszlngaJe7Zhb7liPArb1x/A+J/nrS5GNw=="
+private const val SIGNAL_DEVICE_KAT_CIPHERTEXT_B64 =
+    "AQt/WxZMem2jpwxChzbQuzg/yMY5kdPdzuOmgLoJwoIZOFUfdEr33hTkLyIzwQTD7J2uShoruECN2ty8j1QlSe2siO6trszlngaJe7Zhb7liPArb1x/A+J/nrS5GNw=="
 private const val SIGNAL_DEVICE_KAT_PLAINTEXT_B64 = "Y3Jvc3MtbGFuZ3VhZ2UgaW50ZXJvcCBzZWNyZXQg4oCUIG5vZGUgc2VhbGVk"
 
 @RunWith(AndroidJUnit4::class)
@@ -72,22 +73,20 @@ class CloudVaultCryptoSignalInstrumentedTest {
         )
     }
 
-    private fun signalBinding(docId: String, field: String): SignalEnvelopeBinding =
-        SignalEnvelopeBinding(
-            uid = "u1",
-            scope = "cloudvault",
-            collection = "pensieve",
-            docId = docId,
-            field = field,
-            mode = "at-rest",
-            formatVersion = 1,
-        )
+    private fun signalBinding(docId: String, field: String): SignalEnvelopeBinding = SignalEnvelopeBinding(
+        uid = "u1",
+        scope = "cloudvault",
+        collection = "pensieve",
+        docId = docId,
+        field = field,
+        mode = "at-rest",
+        formatVersion = 1,
+    )
 
-    private fun cloudBinding(docId: String, field: String): CloudVaultSignalBinding =
-        CloudVaultSignalBinding(
-            uid = "android-physical-user",
-            collection = "mobile_assistant_chats",
-            docId = docId,
-            field = field,
-        )
+    private fun cloudBinding(docId: String, field: String): CloudVaultSignalBinding = CloudVaultSignalBinding(
+        uid = "android-physical-user",
+        collection = "mobile_assistant_chats",
+        docId = docId,
+        field = field,
+    )
 }

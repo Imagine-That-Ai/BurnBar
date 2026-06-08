@@ -36,7 +36,10 @@ private struct AgentReplyNotificationPayload: Sendable {
         runtime = Self.string(userInfo["runtime"]) ?? "hermes"
         threadID = Self.string(userInfo["thread_id"]) ?? ""
         title = Self.string(userInfo["title"]) ?? "Agent replied"
-        preview = Self.string(userInfo["preview"]) ?? ""
+        // Server-side previews are generic today, but any future plaintext
+        // preview must land here markdown-free — banners render plain text.
+        preview = HermesAtomParser.plainText(Self.string(userInfo["preview"]) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         provider = Self.string(userInfo["provider"]).flatMap(AgentProvider.init(rawValue:))
         deepLink = Self.string(userInfo["deep_link"])
     }
@@ -149,6 +152,11 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         let resolvedDeepLink = deepLink ?? URL(
             string: "burnbar://assistants/\(runtime)?threadId=\(threadID)"
         )
+        // Notification banners and UNNotification bodies are plain-text
+        // surfaces — flatten assistant markdown ("**Hello!**" → "Hello!")
+        // before it reaches either of them.
+        let preview = HermesAtomParser.plainText(preview)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         banner = AgentReplyNotificationBanner(
             id: id,
             title: title,

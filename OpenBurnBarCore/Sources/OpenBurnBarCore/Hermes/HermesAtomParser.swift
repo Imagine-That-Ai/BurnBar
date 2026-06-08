@@ -6,7 +6,10 @@ import Foundation
 // reading order; rendering always concatenates them in sequence.
 
 public enum HermesRichRunKind: Hashable, Sendable {
-    case body
+    /// Plain prose. `style` carries inline markdown emphasis resolved by
+    /// `HermesInlineMarkdown` (bold / italic / strikethrough); markers are
+    /// stripped from `text` by design.
+    case body(style: HermesInlineStyle)
     case atom(HermesAtom, label: String)
     /// `@handle` mention. Atomic, accent-colored chip in the bubble.
     case mention(handle: String)
@@ -23,8 +26,8 @@ public struct HermesRichRun: Hashable, Sendable {
         self.kind = kind
     }
 
-    public static func body(_ text: String) -> HermesRichRun {
-        HermesRichRun(text: text, kind: .body)
+    public static func body(_ text: String, style: HermesInlineStyle = []) -> HermesRichRun {
+        HermesRichRun(text: text, kind: .body(style: style))
     }
 
     public static func atom(_ atom: HermesAtom, label: String) -> HermesRichRun {
@@ -65,9 +68,15 @@ public struct HermesRichRun: Hashable, Sendable {
 //   - Known model IDs from a small dictionary of canonical OpenBurnBar
 //     model identifiers
 //
-// All output preserves source-text order and full character coverage —
+// Pass 3 (`HermesInlineMarkdown.expand`) resolves inline markdown emphasis
+// (`**bold**`, `*italic*`, `~~strike~~`, headings, bullets) into styled body
+// runs.
+//
+// All output preserves source-text order and full *prose* coverage —
 // concatenating `runs.map(\.text)` always reproduces the input within
-// link-flattening semantics (link text is preserved as the chip label).
+// marker-flattening semantics: link text is preserved as the chip label,
+// code-span backticks, emphasis markers, and heading hashes are dropped as
+// presentation chrome, and list markers render as `•`.
 
 public enum HermesAtomParser {
 
@@ -88,7 +97,18 @@ public enum HermesAtomParser {
                 output.append(contentsOf: parseEntities(in: body))
             }
         }
-        return output
+
+        // Phase 3: resolve inline markdown emphasis (`**bold**`, headings,
+        // bullets) into styled body runs — markers stripped, prose kept.
+        return HermesInlineMarkdown.expand(output)
+    }
+
+    /// Flatten `text` to plain prose for surfaces that cannot render runs:
+    /// notification bodies, banner previews, thread-list previews. Markdown
+    /// emphasis / heading markers and code-span backticks are stripped, link
+    /// labels and atom labels are kept, list markers become `•`.
+    public static func plainText(_ text: String) -> String {
+        parse(text).map(\.text).joined()
     }
 
     // MARK: - Phase 1: markdown link extraction

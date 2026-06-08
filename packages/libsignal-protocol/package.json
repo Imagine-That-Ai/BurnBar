@@ -19,8 +19,8 @@
     "test": "npm run build && node --test lib/*.test.js"
   },
   "dependencies": {
-    "@openburnbar/signal-envelope-contracts": "file:../signal-envelope-contracts",
-    "@signalapp/libsignal-client": "0.94.4"
+    "@openburnbar/libsignal-bridge": "file:../libsignal-bridge",
+    "@openburnbar/signal-envelope-contracts": "file:../signal-envelope-contracts"
   },
   "devDependencies": {
     "@types/node": "^20.19.0",

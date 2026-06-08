@@ -359,9 +359,15 @@ struct HermesRichBubble: View {
         if fragment.itemIndex < runs.count {
             let run = runs[fragment.itemIndex]
             switch run.kind {
-            case .body:
+            case .body(let style):
                 Text(fragment.text)
-                    .font(.system(size: baseSize, design: .rounded))
+                    .font(.system(
+                        size: baseSize,
+                        weight: style.contains(.bold) ? .semibold : .regular,
+                        design: .rounded
+                    ))
+                    .italic(style.contains(.italic))
+                    .strikethrough(style.contains(.strikethrough))
                     .foregroundStyle(baseColor)
                     .padding(.leading, fragment.gapBefore)
             case .atom(let atom, let label):
@@ -413,8 +419,20 @@ struct HermesRichBubble: View {
         for run in parsed {
             var piece = AttributedString(run.text)
             switch run.kind {
-            case .body:
+            case .body(let style):
                 piece.foregroundColor = baseColor
+                if !style.isEmpty {
+                    var font: Font = .system(
+                        size: baseSize,
+                        weight: style.contains(.bold) ? .semibold : .regular,
+                        design: .rounded
+                    )
+                    if style.contains(.italic) { font = font.italic() }
+                    piece.font = font
+                    if style.contains(.strikethrough) {
+                        piece.strikethroughStyle = .single
+                    }
+                }
             case .atom:
                 piece.foregroundColor = DesignSystem.Colors.hermesAureate
                 piece.font = .system(size: baseSize - 1, weight: .semibold, design: .rounded)
@@ -458,10 +476,14 @@ struct HermesRichBubble: View {
         baseSize: CGFloat
     ) -> PretextRichInlineItem {
         switch run.kind {
-        case .body:
+        case .body(let style):
+            // Mirror the rendered weight/slant so wrap math equals visual
+            // reality — semibold glyphs run wider than regular ones.
+            let weight = style.contains(.bold) ? 600 : 400
+            let slant = style.contains(.italic) ? "italic " : ""
             return PretextRichInlineItem(
                 text: run.text,
-                font: "400 \(Int(baseSize))px -apple-system"
+                font: "\(slant)\(weight) \(Int(baseSize))px -apple-system"
             )
         case .atom:
             return PretextRichInlineItem(

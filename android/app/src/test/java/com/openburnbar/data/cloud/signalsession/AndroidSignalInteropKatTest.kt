@@ -37,14 +37,18 @@ class AndroidSignalInteropKatTest {
         // Reconstruct Bob's store from the Swift-produced key material.
         val bobIdentity = IdentityKeyPair(b64(fx.getString("bobIdentityKeyPairB64")))
         val bob = AndroidSignalProtocolStore(
-            bobIdentity, fx.getInt("bobRegistrationId"), InMemorySignalRecordVault(),
+            bobIdentity,
+            fx.getInt("bobRegistrationId"),
+            InMemorySignalRecordVault(),
         )
         bob.storePreKey(fx.getInt("bobPreKeyId"), PreKeyRecord(b64(fx.getString("bobPreKeyRecordB64"))))
         bob.storeSignedPreKey(
-            fx.getInt("bobSignedPreKeyId"), SignedPreKeyRecord(b64(fx.getString("bobSignedPreKeyRecordB64"))),
+            fx.getInt("bobSignedPreKeyId"),
+            SignedPreKeyRecord(b64(fx.getString("bobSignedPreKeyRecordB64"))),
         )
         bob.storeKyberPreKey(
-            fx.getInt("bobKyberPreKeyId"), KyberPreKeyRecord(b64(fx.getString("bobKyberPreKeyRecordB64"))),
+            fx.getInt("bobKyberPreKeyId"),
+            KyberPreKeyRecord(b64(fx.getString("bobKyberPreKeyRecordB64"))),
         )
 
         val deviceId = fx.getInt("deviceId")
@@ -67,14 +71,18 @@ class AndroidSignalInteropKatTest {
 
         val bobIdentity = IdentityKeyPair(b64(fx.getString("bobIdentityKeyPairB64")))
         val bob = AndroidSignalProtocolStore(
-            bobIdentity, fx.getInt("bobRegistrationId"), InMemorySignalRecordVault(),
+            bobIdentity,
+            fx.getInt("bobRegistrationId"),
+            InMemorySignalRecordVault(),
         )
         bob.storePreKey(fx.getInt("bobPreKeyId"), PreKeyRecord(b64(fx.getString("bobPreKeyRecordB64"))))
         bob.storeSignedPreKey(
-            fx.getInt("bobSignedPreKeyId"), SignedPreKeyRecord(b64(fx.getString("bobSignedPreKeyRecordB64"))),
+            fx.getInt("bobSignedPreKeyId"),
+            SignedPreKeyRecord(b64(fx.getString("bobSignedPreKeyRecordB64"))),
         )
         bob.storeKyberPreKey(
-            fx.getInt("bobKyberPreKeyId"), KyberPreKeyRecord(b64(fx.getString("bobKyberPreKeyRecordB64"))),
+            fx.getInt("bobKyberPreKeyId"),
+            KyberPreKeyRecord(b64(fx.getString("bobKyberPreKeyRecordB64"))),
         )
 
         val deviceId = fx.getInt("deviceId")

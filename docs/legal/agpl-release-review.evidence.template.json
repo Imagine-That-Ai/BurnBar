@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "reviewStatus": "pending",
+  "reviewerRole": "external_counsel",
+  "distributionChannels": [
+    "Mac App Store",
+    "iOS App Store",
+    "direct download",
+    "browser extension marketplace",
+    "npm",
+    "Docker",
+    "hosted service"
+  ],
+  "reviewScope": [
+    "AGPL-3.0-only product license",
+    "MIT-compatible Nous/Hermes upstream boundary",
+    "official libsignal runtime posture",
+    "app store and commercial distribution terms",
+    "corresponding source availability"
+  ],
+  "documents": [
+    "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md",
+    "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md"
+  ],
+  "explicitNonApproval": "This template is not legal approval."
+}

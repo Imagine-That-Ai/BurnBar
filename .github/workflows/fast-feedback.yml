@@ -12,14 +12,18 @@ name: Fast Feedback (<5 min)
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: fast-feedback-${{ github.ref }}
-  cancel-in-progress: true
+  group: fast-feedback-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ── Functions: lint + typecheck + unit tests ──────────────────────────────
@@ -407,8 +411,13 @@ jobs:
       - functions-fast
       - extension-fast
       - website-fast
+      - agpl-compliance
+      - libsignal-bridge
       - shell-syntax
       - schema-drift
+      - chunker-parity
+      - control-center-foundations
+      - console-web
       - version-consistency
       - agents-md-fast
       - rust-deny-fast

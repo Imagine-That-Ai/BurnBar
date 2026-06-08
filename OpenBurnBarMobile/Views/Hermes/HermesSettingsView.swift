@@ -537,7 +537,7 @@ struct HermesSettingsView: View {
                 }
             }
 
-            Text(gatewayReplyBodyText(reply))
+            Text(HermesInlineMarkdown.attributedString(gatewayReplyBodyText(reply)))
                 .font(.body)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1202,7 +1202,7 @@ struct HermesSettingsView: View {
                         .font(.caption2)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
-                Text(gatewayReplyBodyText(reply, fallback: "Hermes sent a reply."))
+                Text(HermesInlineMarkdown.attributedString(gatewayReplyBodyText(reply, fallback: "Hermes sent a reply.")))
                     .font(.body)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1581,7 +1581,7 @@ struct HermesSettingsView: View {
                         Text("Rich text rendering")
                             .font(.body)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("Hermes assistant messages render `@mentions` and `code spans` as inline chips, with line breaking by Pretext. Streaming and error states stay plain.")
+                        Text("Hermes assistant messages render markdown emphasis as styled text and `@mentions` / `code spans` as inline chips, with line breaking by Pretext. Error states stay plain.")
                             .font(.caption2)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .fixedSize(horizontal: false, vertical: true)

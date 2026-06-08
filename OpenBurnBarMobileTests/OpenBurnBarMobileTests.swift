@@ -2530,6 +2530,15 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertTrue(transport.isMediaControlReceiverInstalledForTesting)
     }
 
+    func testIrohRequestStreamRoutesSignalSessionMessagesToMediaDispatcher() {
+        XCTAssertTrue(
+            HermesIrohRelayTransport.routesRequestStreamFrameToMediaDispatcherForTesting(.signalSessionMessage)
+        )
+        XCTAssertFalse(
+            HermesIrohRelayTransport.ignoresRequestStreamFrameForTesting(.signalSessionMessage)
+        )
+    }
+
     func testMobileRootSettingsNotificationRouteIsInstalled() throws {
         let rootTab = try sourceFile("OpenBurnBarMobile/Views/RootTabView.swift")
         let rootNavigation = try sourceFile("OpenBurnBarMobile/Views/RootNavigationView.swift")

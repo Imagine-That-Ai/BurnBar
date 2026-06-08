@@ -1,0 +1,10 @@
+{
+  "name": "@openburnbar/e2ee-backend-policy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test lib/index.test.js lib/index.crossdrift.test.js"
+  }
+}

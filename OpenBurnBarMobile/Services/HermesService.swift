@@ -1006,7 +1006,9 @@ final class HermesService {
 
     func sessionTitle(for sessionID: String) -> String {
         if let session = sessions.first(where: { $0.id == sessionID }) {
-            return session.title ?? session.preview ?? "Hermes Session"
+            // Titles are plain-text chrome — flatten any markdown that leaked
+            // in from assistant-derived previews.
+            return HermesAtomParser.plainText(session.title ?? session.preview ?? "Hermes Session")
         }
         return String(sessionID.prefix(12))
     }
@@ -1227,7 +1229,11 @@ final class HermesService {
     private static func derivedPreview(from messages: [HermesChatMessage]) -> String {
         if let last = messages.last(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
             .text.trimmingCharacters(in: .whitespacesAndNewlines), !last.isEmpty {
-            return String(last.prefix(140))
+            // Thread-list rows are plain text — flatten assistant markdown
+            // so previews never show raw `**` / `#` markers.
+            let plain = HermesAtomParser.plainText(last)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return String(plain.prefix(140))
         }
         return ""
     }
@@ -1563,7 +1569,13 @@ final class HermesService {
             id: threadID,
             runtime: AssistantRuntimeID.hermes.rawValue,
             title: existing?.title.nilIfBlank ?? "Hermes Gateway",
-            preview: finalText,
+            // Previews are plain-text chrome — keep the stored thread row
+            // markdown-free (the message itself keeps `finalText` verbatim).
+            preview: String(
+                HermesAtomParser.plainText(finalText)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .prefix(140)
+            ),
             modelName: resolvedModelName ?? existing?.modelName,
             createdAt: existing?.createdAt ?? timestamp,
             updatedAt: Date(),

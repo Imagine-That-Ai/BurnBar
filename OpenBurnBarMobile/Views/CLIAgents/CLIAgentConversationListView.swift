@@ -236,7 +236,9 @@ struct CLIAgentConversationListView: View {
                     .foregroundStyle(accent)
             }
             if !thread.preview.isEmpty {
-                Text(thread.preview)
+                // Previews persisted before the markdown-flattening fix may
+                // still carry raw markers — strip at display too.
+                Text(HermesAtomParser.plainText(thread.preview))
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .lineLimit(2)
@@ -329,7 +331,9 @@ struct CLIAgentConversationListView: View {
                 }
             }
             if !session.preview.isEmpty {
-                Text(session.preview)
+                // Mac-mirrored previews arrive via Firestore as raw
+                // assistant text — flatten markdown at display.
+                Text(HermesAtomParser.plainText(session.preview))
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .lineLimit(2)
@@ -987,7 +991,11 @@ final class CLIAgentMobileChatService {
         if let latest = messages.reversed().first(where: {
             !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         })?.text.trimmingCharacters(in: .whitespacesAndNewlines) {
-            return String(latest.prefix(140))
+            // List rows are plain text — flatten assistant markdown so
+            // previews never show raw `**` / `#` markers.
+            let plain = HermesAtomParser.plainText(latest)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return String(plain.prefix(140))
         }
         return ""
     }
@@ -1274,7 +1282,14 @@ struct CLIAgentChatThreadView: View {
                     .padding(.horizontal, MobileTheme.Spacing.md)
                     .padding(.vertical, MobileTheme.Spacing.sm)
             } else {
-                Text(message.text.isEmpty ? " " : message.text)
+                // Assistant turns arrive as markdown — render inline
+                // emphasis instead of raw `**` markers. User and error
+                // turns stay verbatim.
+                Text(
+                    isUser || message.isError || message.text.isEmpty
+                        ? AttributedString(message.text.isEmpty ? " " : message.text)
+                        : HermesInlineMarkdown.attributedString(message.text)
+                )
                     .font(MobileTheme.Typography.body)
                     .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
                     .textSelection(.enabled)

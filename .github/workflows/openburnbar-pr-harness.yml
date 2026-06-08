@@ -3,73 +3,37 @@ name: OpenBurnBar PR Harness
 permissions:
   contents: read
 
+concurrency:
+  group: pr-harness-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   workflow_dispatch:
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
+  merge_group:
+    branches:
+      - main
+    types: [checks_requested]
 
 jobs:
-  openburnbar-pr:
-    # Use the current GA macOS/Xcode image for the app target. The macOS 15
-    # image's Xcode 16.4 Swift frontend crashes while lowering lazy global
-    # initializers in the large OpenBurnBar SwiftUI target, before tests run.
-    runs-on: macos-26
-    # The macOS-hosted all-in-one harness now runs Swift/macOS/iOS, replay
-    # evals, Firestore, and Android on one runner. Android D8 can otherwise be
-    # killed at the 120-minute job cap after the earlier suites have passed.
-    timeout-minutes: 180
+  platform-misc:
+    name: Platform Misc
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
-      HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
-      HAS_ASC_SECRETS: ${{ secrets.APP_STORE_ASC_KEY_ID != '' && secrets.APP_STORE_ASC_ISSUER_ID != '' && secrets.APP_STORE_ASC_KEY_P8 != '' }}
-      INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
-      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
-
+      INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          submodules: recursive
-
-      - name: Validate shell script syntax
-        run: |
-          set -euo pipefail
-          for script in scripts/*.sh; do
-            if ! bash -n "$script"; then
-              echo "Shell syntax error in $script" >&2
-              exit 1
-            fi
-          done
-          echo "All shell scripts pass syntax validation."
 
       - name: Test OpenBurnBar app-test log classifier
         run: bash scripts/test-openburnbar-app-classifier.sh
-
-      - name: Verify version consistency
-        run: ./scripts/verify-version-consistency.sh
-
-      - name: Check schema sync drift
-        run: ./tools/schema-sync/check-drift.sh
-
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: extensions/openburnbar/package-lock.json
-
-      - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
-        with:
-          path: |
-            .spm-cache
-            .build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
 
       - name: Check unsafe cast debt budget
         run: ./scripts/debt/check-unsafe-cast-budget.sh
@@ -79,15 +43,6 @@ jobs:
 
       - name: Check try? debt budget
         run: ./scripts/debt/check-try-optional-budget.sh
-
-      - name: SwiftLint (informational)
-        continue-on-error: true
-        run: |
-          if command -v swiftlint >/dev/null 2>&1; then
-            swiftlint lint --quiet
-          else
-            echo "swiftlint not installed; skipping informational lint."
-          fi
 
       - name: Refresh tech debt metrics snapshot
         run: |
@@ -99,21 +54,287 @@ jobs:
             exit 1
           fi
 
-      - name: Check version drift across packages (syncpack)
-        run: |
-          set -euo pipefail
-          echo "==> Checking dependency version drift across all packages..."
-          npx syncpack@13 list-mismatches --config .syncpackrc.json 2>&1 | tee /tmp/syncpack-output.txt || true
-          if grep -qE "^✘" /tmp/syncpack-output.txt 2>/dev/null; then
-            echo "::warning::Version drift detected in package dependencies. Run 'npx syncpack fix-mismatches' to resolve."
-          else
-            echo "No version drift detected."
-          fi
-
       - name: Detect dead feature flags
         run: |
           set -euo pipefail
           ./scripts/detect-dead-feature-flags.sh || true
+
+      - name: Confirm fast security gate is active
+        run: |
+          set -euo pipefail
+          if [[ ! -f .github/workflows/security-pr.yml ]]; then
+            echo "::error::security-pr.yml is missing. Fast PR security gate must exist." >&2
+            exit 1
+          fi
+          echo "security-pr.yml: present (gitleaks + dependency-review + npm-audit + OSV-scanner)"
+          if [[ ! -f .github/workflows/codeql.yml ]]; then
+            echo "::error::codeql.yml is missing. Nightly CodeQL scan must exist." >&2
+            exit 1
+          fi
+          echo "codeql.yml: present (Swift + JS/TS + Python, security-extended, nightly)"
+
+  functions-integration:
+    name: Functions Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Set up Java 21 for Firebase emulators
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Install OpenBurnBar Functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Build OpenBurnBar Functions
+        run: |
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
+          npm --prefix functions run build
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
+          echo "functions_build_ms=$((END - START))" >> "$GITHUB_ENV"
+          echo "Functions build: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run OpenBurnBar Functions tests
+        run: |
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
+          npm --prefix functions test
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
+          echo "Functions tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify callable logging (ops)
+        run: bash scripts/ci/verify-callable-logging.sh
+
+      - name: Verify resilience wiring (ops)
+        run: bash scripts/ci/verify-resilience-wiring.sh
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
+      INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Java 21 (Android)
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      - name: Cache Gradle wrapper and dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0"
+
+      - name: Inject Android Firebase config (internal PRs)
+        if: env.INTERNAL_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config-android.sh
+
+      - name: Skip Android Firebase config (fork PRs)
+        if: env.INTERNAL_RUN != 'true'
+        run: |
+          echo "Skipping Android Firebase config for fork PR."
+          echo "A dummy google-services.json is generated so gradle can resolve the plugin."
+          python3 -c "
+          import json, pathlib
+          pathlib.Path('android/app').mkdir(parents=True, exist_ok=True)
+          pathlib.Path('android/app/google-services.json').write_text(json.dumps({
+              'project_info': {'project_id': 'burnbar-ci-dummy', 'project_number': '000000000000'},
+              'client': [{'client_info': {'mobilesdk_app_id': '1:000000000000:android:0000000000000000',
+              'android_client_info': {'package_name': 'com.openburnbar'}},
+              'api_key': [{'current_key': '*************************************'}],
+              'services': {}}],
+              'configuration_version': '1'
+          }))
+          "
+
+      - name: Skip Android Firebase config when secrets unavailable
+        if: env.INTERNAL_RUN == 'true' && env.HAS_ANDROID_SECRETS != 'true'
+        run: echo "Android Firebase secret is unavailable; building without injected config."
+
+      - name: Build Android APK
+        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Lint Kotlin (ktlint)
+        run: |
+          set -euo pipefail
+          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
+          cd android && ./gradlew ktlintCheck --no-daemon
+          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
+          echo "ktlint: $((END - START))ms — no violations found" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run Android unit tests
+        run: ./scripts/test-openburnbar-android.sh
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+  node-evals:
+    name: Node Evals
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Install OpenBurnBar extension dependencies
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: Run OpenBurnBar replay evals
+        run: ./scripts/test-openburnbar-replay-evals.sh
+
+      - name: Run OpenBurnBar extension-host tests
+        run: ./scripts/test-openburnbar-extension-host.sh
+
+  supply-chain:
+    name: Supply Chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Run supply chain audit (SBOM + VEX + ecosystem deny)
+        run: |
+          set -euo pipefail
+          PR_SBOM="$RUNNER_TEMP/openburnbar-pr.sbom.spdx.json"
+          python3 scripts/generate-sbom.py \
+            --version "pr-${GITHUB_SHA::7}" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$PR_SBOM"
+          python3 scripts/supply-chain/generate-vex.py \
+            --sbom "$PR_SBOM" \
+            --output "$RUNNER_TEMP/openburnbar-pr.vex.json" \
+            --product-version "pr-${GITHUB_SHA::7}"
+          bash scripts/supply-chain/run-ecosystem-deny-checks.sh
+
+  swift-core:
+    name: Swift Core
+    runs-on: macos-26
+    timeout-minutes: 20
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            .spm-cache
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Run OpenBurnBar Swift tests
+        env:
+          XCODEBUILD_RETRY_ON_FAILURE: "YES"
+          XCODEBUILD_TEST_ITERATIONS: "3"
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
+
+      - name: Computer Use safety invariant harness (WS6 gate)
+        run: OPENBURNBAR_CORE_SWIFT_FILTER='ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests' OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
+
+  app-xctest:
+    name: App XCTest
+    runs-on: macos-26
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    env:
+      INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            .spm-cache
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Prepare Signal FFI XCFramework
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: SwiftLint (informational)
+        continue-on-error: true
+        run: |
+          if command -v swiftlint >/dev/null 2>&1; then
+            swiftlint lint --quiet
+          else
+            echo "swiftlint not installed; skipping informational lint."
+          fi
 
       - name: Inject Firebase config
         if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
@@ -136,103 +357,11 @@ jobs:
         if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS != 'true'
         run: echo "Firebase CI secrets are unavailable; running tests without injected auth config."
 
-      - name: Install OpenBurnBar extension dependencies
-        run: npm ci --prefix extensions/openburnbar
-
-      - name: Lint OpenBurnBar extension
-        run: npm --prefix extensions/openburnbar run lint
-
-      - name: Check format (extension)
-        run: npm --prefix extensions/openburnbar run format:check
-
-      - name: Install OpenBurnBar Functions dependencies
-        run: npm ci --prefix functions
-
-      - name: Lint OpenBurnBar Functions
-        run: npm --prefix functions run lint
-
-      - name: Check format (functions)
-        run: npm --prefix functions run format:check
-
-      - name: Verify callable logging (ops)
-        run: bash scripts/ci/verify-callable-logging.sh
-
-      - name: Verify resilience wiring (ops)
-        run: bash scripts/ci/verify-resilience-wiring.sh
-
-      - name: Build OpenBurnBar Functions
-        run: |
-          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          npm --prefix functions run build
-          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          echo "functions_build_ms=$((END - START))" >> "$GITHUB_ENV"
-          echo "Functions build: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run OpenBurnBar Functions unit tests (pure, no emulator)
-        run: |
-          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          npm --prefix functions run test:unit
-          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          echo "Functions unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run OpenBurnBar Functions tests
-        run: |
-          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          npm --prefix functions test
-          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          echo "Functions tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
-        with:
-          toolchain: stable
-
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
-
-      - name: Run OpenBurnBar Swift tests
-        # -retry-tests-on-failure: retry failing tests up to 3 times to catch flaky tests
-        # -test-iterations 3: run each test at most 3 times on retry
-        # These flags are passed via XCODEBUILD_EXTRA_ARGS to the underlying xcodebuild invocation.
-        env:
-          XCODEBUILD_RETRY_ON_FAILURE: "YES"
-          XCODEBUILD_TEST_ITERATIONS: "3"
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
-
       - name: Run OpenBurnBar app tests
-        # Xcode 16.4 can crash in SwiftEmitModule while lowering lazy global
-        # initializers for this large SwiftUI app target. The script keeps this
-        # as a real test gate while disabling the brittle batch compile path.
-        # -retry-tests-on-failure: retry failing tests up to 3 times to catch flaky tests
-        # -test-iterations 3: run each test at most 3 times on retry
         env:
           XCODEBUILD_RETRY_ON_FAILURE: "YES"
           XCODEBUILD_TEST_ITERATIONS: "3"
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
-
-      - name: Run OpenBurnBar mobile unit tests
-        # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
-
-      - name: Report test timing
-        if: always()
-        run: |
-          {
-            echo "### Test Timing Summary"
-            echo ""
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [[ -f openburnbar-coverage.json ]]; then
-            echo "Swift coverage data collected ✓" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          {
-            echo "| Suite | Status |"
-            echo "|-------|--------|"
-            echo "| SwiftUI unit tests | ✓ |"
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
@@ -298,171 +427,164 @@ jobs:
             openburnbar-coverage.json
             openburnbar-diff-coverage.json
 
-      - name: Run OpenBurnBar retrieval replay evals
-        run: ./scripts/test-openburnbar-retrieval-evals.sh
+      - name: Clean up Firebase config
+        if: always() && env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
+        run: bash ./scripts/ci/cleanup-firebase-config.sh
 
-      - name: Run OpenBurnBar TypeScript unit tests
-        run: |
-          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          ./scripts/test-openburnbar-ts.sh
-          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          echo "TypeScript unit tests: $((END - START))ms" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run OpenBurnBar replay evals
-        run: ./scripts/test-openburnbar-replay-evals.sh
-
-      - name: Run OpenBurnBar extension-host tests
-        run: ./scripts/test-openburnbar-extension-host.sh
-
-      - name: Run Firestore rules emulator tests
-        run: npm --prefix functions run test:firestore-rules
-
-      # Security: fast gates run in security-pr.yml (gitleaks, dependency-review,
-      # npm audit, OSV-Scanner) — all complete in < 3 minutes.
-      # Deep CodeQL analysis (Swift + JS/TS + Python, security-extended) runs
-      # nightly and on push to main via codeql.yml. Removing it from the PR
-      # harness eliminates the 60-90 min Swift CodeQL job that was the primary
-      # driver of the ~49 min average PR CI time.
-      - name: Confirm fast security gate is active
-        run: |
-          set -euo pipefail
-          if [[ ! -f .github/workflows/security-pr.yml ]]; then
-            echo "::error::security-pr.yml is missing. Fast PR security gate must exist." >&2
-            exit 1
-          fi
-          echo "security-pr.yml: present (gitleaks + dependency-review + npm-audit + OSV-scanner)"
-          if [[ ! -f .github/workflows/codeql.yml ]]; then
-            echo "::error::codeql.yml is missing. Nightly CodeQL scan must exist." >&2
-            exit 1
-          fi
-          echo "codeql.yml: present (Swift + JS/TS + Python, security-extended, nightly)"
-
-
-      # ── Android ──────────────────────────────────────────────────────
-      - name: Set up Java 21 (Android)
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+  ios-mobile:
+    name: iOS Mobile
+    runs-on: macos-26
+    # Cold macOS runners can spend more than 25 minutes compiling Firebase
+    # before the mobile tests start; keep this lane bounded without false timeouts.
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    env:
+      INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          java-version: "21"
-          distribution: temurin
-          cache: gradle
+          submodules: recursive
 
-      - name: Cache Gradle wrapper and dependencies
+      - name: Cache Swift Package Manager dependencies
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
         with:
           path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/libs.versions.toml') }}
+            .spm-cache
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-
-          distribution: temurin
+            ${{ runner.os }}-spm-
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
-          packages: "platforms;android-35 build-tools;35.0.0"
+          toolchain: stable
 
-      - name: Inject Android Firebase config (internal PRs)
-        if: env.INTERNAL_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Prepare Signal FFI XCFramework
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Inject Firebase config
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
         env:
-          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
-        run: bash ./scripts/ci/inject-firebase-config-android.sh
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
 
-      - name: Skip Android Firebase config (fork PRs)
+      - name: Skip Firebase config injection for fork PRs
         if: env.INTERNAL_RUN != 'true'
-        run: |
-          echo "Skipping Android Firebase config for fork PR."
-          echo "A dummy google-services.json is generated so gradle can resolve the plugin."
-          python3 -c "
-          import json, pathlib
-          pathlib.Path('android/app').mkdir(parents=True, exist_ok=True)
-          pathlib.Path('android/app/google-services.json').write_text(json.dumps({
-              'project_info': {'project_id': 'burnbar-ci-dummy', 'project_number': '000000000000'},
-              'client': [{'client_info': {'mobilesdk_app_id': '1:000000000000:android:0000000000000000',
-              'android_client_info': {'package_name': 'com.openburnbar'}},
-              'api_key': [{'current_key': 'AIza000000000000000000000000000000000'}],
-              'services': {}}],
-              'configuration_version': '1'
-          }))
-          "
+        run: echo "Skipping Firebase config injection for fork PR; auth remains disabled in CI."
 
-      - name: Skip Android Firebase config when secrets unavailable
-        if: env.INTERNAL_RUN == 'true' && env.HAS_ANDROID_SECRETS != 'true'
-        run: echo "Android Firebase secret is unavailable; building without injected config."
+      - name: Skip Firebase config injection when secrets are unavailable
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS != 'true'
+        run: echo "Firebase CI secrets are unavailable; running tests without injected auth config."
 
-      - name: Build Android APK
-        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
-
-      - name: Lint Kotlin (ktlint)
-        run: |
-          set -euo pipefail
-          START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          # ktlint exits non-zero when violations are found.
-          # Run ktlintCheck on all modules; output is printed to stdout by Gradle.
-          cd android && ./gradlew ktlintCheck --no-daemon
-          END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
-          echo "ktlint: $((END - START))ms — no violations found" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run Android unit tests
-        run: ./scripts/test-openburnbar-android.sh
-
-      - name: Run supply chain audit (SBOM + VEX + ecosystem deny)
-        run: |
-          set -euo pipefail
-          PR_SBOM="$RUNNER_TEMP/openburnbar-pr.sbom.spdx.json"
-          python3 scripts/generate-sbom.py \
-            --version "pr-${GITHUB_SHA::7}" \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --output "$PR_SBOM"
-          python3 scripts/supply-chain/generate-vex.py \
-            --sbom "$PR_SBOM" \
-            --output "$RUNNER_TEMP/openburnbar-pr.vex.json" \
-            --product-version "pr-${GITHUB_SHA::7}"
-          bash scripts/supply-chain/run-ecosystem-deny-checks.sh
-
-      - name: Computer Use safety invariant harness (WS6 gate)
-        run: |
-          cd OpenBurnBarCore
-          swift test --filter 'ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests'
-
-      - name: Commercial launch gate (internal)
-        if: env.INTERNAL_RUN == 'true' && env.HAS_ASC_SECRETS == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APP_STORE_ASC_KEY_ID: ${{ secrets.APP_STORE_ASC_KEY_ID }}
-          APP_STORE_ASC_ISSUER_ID: ${{ secrets.APP_STORE_ASC_ISSUER_ID }}
-          APP_STORE_ASC_KEY_P8: ${{ secrets.APP_STORE_ASC_KEY_P8 }}
-        run: node scripts/commercial-launch-gate.mjs
-
-      - name: Skip commercial launch gate when ASC secrets are unavailable
-        if: env.INTERNAL_RUN == 'true' && env.HAS_ASC_SECRETS != 'true'
-        run: |
-          echo "::notice::Skipping commercial launch gate because APP_STORE_ASC_* secrets are not configured in GitHub Actions."
-          echo "Commercial launch readiness must be proven from an operator environment with App Store Connect credentials."
-
-      - name: Upload Android APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-
-
-      - name: Summarize test counts
-        if: always()
-        run: |
-          {
-            echo "### Test Summary"
-            echo ""
-            echo "| Surface | Status |"
-            echo "|---------|--------|"
-            for step in "Shell syntax" "Version consistency" "Functions lint" "Functions unit tests" "Functions build" "Swift tests" "App tests" "Mobile iOS tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests" "Firestore rules" "Android unit tests" "Supply chain audit" "Security gate (fast)"; do
-              echo "| $step | ran |"
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Run OpenBurnBar mobile unit tests
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-mobile.sh
 
       - name: Clean up Firebase config
         if: always() && env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
         run: bash ./scripts/ci/cleanup-firebase-config.sh
+
+  retrieval-evals:
+    name: Retrieval Evals
+    runs-on: macos-26
+    timeout-minutes: 20
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    env:
+      INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            .spm-cache
+            .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Prepare Signal FFI XCFramework
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Inject Firebase config
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: Skip Firebase config injection for fork PRs
+        if: env.INTERNAL_RUN != 'true'
+        run: echo "Skipping Firebase config injection for fork PR; auth remains disabled in CI."
+
+      - name: Skip Firebase config injection when secrets are unavailable
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS != 'true'
+        run: echo "Firebase CI secrets are unavailable; running tests without injected auth config."
+
+      - name: Run OpenBurnBar retrieval replay evals
+        run: ./scripts/test-openburnbar-retrieval-evals.sh
+
+      - name: Clean up Firebase config
+        if: always() && env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
+        run: bash ./scripts/ci/cleanup-firebase-config.sh
+
+  platform-confidence-gate:
+    name: Platform Confidence Gate
+    needs:
+      - platform-misc
+      - functions-integration
+      - android
+      - node-evals
+      - supply-chain
+      - swift-core
+      - app-xctest
+      - ios-mobile
+      - retrieval-evals
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all platform jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          failed=$(echo "$results" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          print('\n'.join(failed))
+          ")
+          if [[ -n "$failed" ]]; then
+            echo "::error::The following platform confidence jobs failed:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "### Platform Confidence: All checks passed" >> "$GITHUB_STEP_SUMMARY"
 
   path-filter:
     runs-on: ubuntu-latest
@@ -479,6 +601,15 @@ jobs:
         id: filter
         run: |
           set -euo pipefail
+          if [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            {
+              echo "hermes_iroh=true"
+              echo "hermes_gateway_e2ee=true"
+              echo "computer_use=true"
+              echo "mercury_media=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             git fetch origin "${{ github.base_ref }}" --depth=1
             CHANGED="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
@@ -510,7 +641,7 @@ jobs:
 
   hermes-gateway-e2ee-proof:
     needs: [path-filter]
-    if: needs.path-filter.outputs.hermes_gateway_e2ee == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: needs.path-filter.outputs.hermes_gateway_e2ee == 'true' && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -552,21 +683,31 @@ jobs:
         run: bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
 
   hermes-iroh-e2e:
-    needs: [openburnbar-pr, path-filter]
-    if: needs.path-filter.outputs.hermes_iroh == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    needs: [path-filter]
+    if: needs.path-filter.outputs.hermes_iroh == 'true' && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - name: Hermes relay unit tests (Functions)
         run: npm ci --prefix functions && npm --prefix functions run test:hermes
-      - name: Hermes core Swift tests
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+      - name: Install protobuf for libsignal Swift FFI
         run: |
-          cd OpenBurnBarCore
-          swift test --filter OpenBurnBarCoreTests/Hermes
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+      - name: Hermes core Swift tests
+        run: OPENBURNBAR_CORE_SWIFT_FILTER=OpenBurnBarCoreTests/Hermes OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
       - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
         with:
           java-version: "21"
@@ -576,7 +717,7 @@ jobs:
         run: cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon
 
   android-hermes-smoke:
-    needs: [openburnbar-pr, path-filter]
+    needs: [path-filter]
     if: >-
       github.event_name != 'pull_request' &&
       needs.path-filter.outputs.hermes_iroh == 'true' &&
@@ -604,19 +745,29 @@ jobs:
           script: ./scripts/e2e/android-iroh-chat.sh
 
   computer-use-e2e:
-    needs: [openburnbar-pr, path-filter]
-    if: needs.path-filter.outputs.computer_use == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    needs: [path-filter]
+    if: needs.path-filter.outputs.computer_use == 'true' && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: macos-14
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
-      - name: Computer Use core tests
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+      - name: Install protobuf for libsignal Swift FFI
         run: |
-          cd OpenBurnBarCore
-          swift test --filter OpenBurnBarComputerUseCoreTests
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+      - name: Computer Use core tests
+        run: OPENBURNBAR_CORE_SWIFT_FILTER=OpenBurnBarComputerUseCoreTests OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
       - name: Install Playwright (pinned)
         run: bash scripts/install-playwright.sh
       - name: Playwright bridge loopback smoke
@@ -625,12 +776,14 @@ jobs:
         run: bash scripts/test-computer-use-loopback.sh
 
   mercury-media-e2e:
-    needs: [openburnbar-pr, path-filter]
-    if: needs.path-filter.outputs.mercury_media == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    needs: [path-filter]
+    if: needs.path-filter.outputs.mercury_media == 'true' && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: macos-26
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
       - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
         with:
           java-version: "21"
@@ -640,6 +793,68 @@ jobs:
         run: |
           cd android
           ./gradlew :app:testDebugUnitTest --tests "com.openburnbar.ui.media.*" --tests "com.openburnbar.data.media.*" --no-daemon
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+      - name: Prepare Signal FFI XCFramework
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
       - name: iOS Mercury/media unit tests
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
         run: ./scripts/test-openburnbar-mobile.sh
+
+  targeted-e2e-gate:
+    name: Targeted E2E Gate
+    needs:
+      - hermes-gateway-e2ee-proof
+      - hermes-iroh-e2e
+      - computer-use-e2e
+      - mercury-media-e2e
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all targeted E2E jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          failed=$(echo "$results" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          print('\n'.join(failed))
+          ")
+          if [[ -n "$failed" ]]; then
+            echo "::error::The following targeted E2E jobs failed:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "### Targeted E2E: All required checks passed" >> "$GITHUB_STEP_SUMMARY"
+
+  openburnbar-pr:
+    name: openburnbar-pr
+    needs:
+      - platform-confidence-gate
+      - targeted-e2e-gate
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Preserve legacy required check while new gates prove out
+        run: |
+          results='${{ toJSON(needs) }}'
+          failed=$(echo "$results" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          print('\n'.join(failed))
+          ")
+          if [[ -n "$failed" ]]; then
+            echo "::error::The following aggregate gates failed:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "### openburnbar-pr compatibility gate: passed" >> "$GITHUB_STEP_SUMMARY"

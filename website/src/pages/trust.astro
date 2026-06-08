@@ -1,0 +1,153 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import TrustTierBadge from "@components/TrustTierBadge.astro";
+import DomainIcon from "@components/DomainIcon.astro";
+import { TRUST_TIER_BY_ID, TRUST_DOMAINS } from "@data/trust.generated";
+
+const TIER_ORDER = ["end_to_end", "zero_access", "server_readable"] as const;
+const domainGroups = TIER_ORDER.map((id) => ({
+  tier: TRUST_TIER_BY_ID[id],
+  domains: TRUST_DOMAINS.filter((domain) => domain.tier === id)
+}));
+---
+
+<BaseLayout
+  title="Trust center"
+  description="OpenBurnBar trust center: privacy zones, data-domain visibility, and the exact boundary between registry-backed claims and runtime release gates."
+>
+  <section class="pagehead">
+    <div class="container pagehead__inner">
+      <span class="eyebrow eyebrow--ember">Trust center</span>
+      <h1 class="pagehead__h">What BurnBar can read, and what it cannot.</h1>
+      <div class="lead-glass-wrap glass-pane">
+        <p class="lead">
+          The data-domain table below is generated from the same registry the apps consume. Runtime
+          crypto activation is a separate release gate, so this page does not treat registry alignment
+          as legal approval or production-readiness proof.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="trust-ledger" id="data-domains">
+    <div class="container">
+      {
+        domainGroups.map((group) => (
+          <article class="trust-band" style={`--tier-color: ${group.tier.colorHex}`}>
+            <header class="trust-band__head">
+              <TrustTierBadge tier={group.tier} size="lg" />
+              <div>
+                <h2>{group.tier.label}</h2>
+                <p>{group.tier.serverLine}</p>
+              </div>
+            </header>
+
+            <ul class="trust-grid">
+              {group.domains.map((domain) => (
+                <li class="trust-domain">
+                  <span class="trust-domain__icon">
+                    <DomainIcon id={domain.id} />
+                  </span>
+                  <h3>{domain.title}</h3>
+                  <p>{domain.blurb}</p>
+                  {domain.caveat && <p class="trust-domain__note">{domain.caveat}</p>}
+                  <dl>
+                    <div>
+                      <dt>Server sees</dt>
+                      <dd>{domain.serverSees.join(", ")}</dd>
+                    </div>
+                    <div>
+                      <dt>Device only</dt>
+                      <dd>{domain.deviceOnly.join(", ")}</dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .trust-ledger {
+    padding-block: var(--s-7);
+  }
+
+  .trust-band {
+    border-top: 1px solid color-mix(in srgb, var(--tier-color), transparent 55%);
+    padding-block: var(--s-6);
+  }
+
+  .trust-band__head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-3);
+    margin-bottom: var(--s-4);
+  }
+
+  .trust-band__head h2 {
+    margin: 0 0 var(--s-1);
+    font-size: clamp(1.45rem, 2vw, 2.2rem);
+    letter-spacing: 0;
+  }
+
+  .trust-band__head p {
+    margin: 0;
+    color: var(--ink-muted);
+    max-width: 68ch;
+  }
+
+  .trust-grid {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: var(--s-3);
+    margin: 0;
+    padding: 0;
+  }
+
+  .trust-domain {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--radius-sm);
+    padding: var(--s-3);
+    background: var(--surface);
+  }
+
+  .trust-domain__icon {
+    color: var(--tier-color);
+  }
+
+  .trust-domain h3 {
+    margin: var(--s-2) 0 var(--s-1);
+    font-size: 1rem;
+    letter-spacing: 0;
+  }
+
+  .trust-domain p,
+  .trust-domain dd {
+    color: var(--ink-muted);
+  }
+
+  .trust-domain__note {
+    border-left: 2px solid var(--tier-color);
+    padding-left: var(--s-2);
+  }
+
+  .trust-domain dl {
+    display: grid;
+    gap: var(--s-2);
+    margin: var(--s-3) 0 0;
+  }
+
+  .trust-domain dt {
+    font: var(--font-label);
+    color: var(--ink);
+  }
+
+  .trust-domain dd {
+    margin: var(--s-1) 0 0;
+  }
+</style>

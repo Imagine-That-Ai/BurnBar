@@ -141,6 +141,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     private nonisolated static let minimumControlPlaneRequestTimeout: TimeInterval = 90
     private nonisolated static let responseCompleteGraceTimeout: TimeInterval = 15
 
+    private enum RequestStreamFrameRoute {
+        case responseChunk
+        case responseComplete
+        case responseError
+        case ignore
+        case mediaDispatcher
+    }
+
     private let directory: any IrohPairingDirectory
     private let transportFactory: @MainActor (_ relayURL: String?) -> any IrohRelayTransport
     private let pairingPublicKeyProvider: any IrohPairingPublicKeyProviding
@@ -590,7 +598,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                   frame.requestId == requestID else {
                 continue
             }
-            switch frame.type {
+            switch Self.requestStreamRoute(for: frame.type) {
             case .responseChunk:
                 guard let chunk = try chunkRecord(from: frame, keyData: keyData, uid: uid, connectionID: payload.connectionID, requestID: requestID) else { continue }
                 receivedChunkCount += 1
@@ -655,35 +663,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     HermesRealtimeRelayErrorCode.publicMessage(for: frame.payload?.errorCode),
                     fallback: "Hermes iroh relay failed."
                 )
-            case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister,
-                 .controlClassify, .controlActionLogEntry, .controlInputIntent,
-                 .controlApprovalRequest, .controlApprovalResponse,
-                 .controlAgentGrantRequest, .controlAgentGrantReceipt,
-                 .controlClipboardRequest, .controlClipboardResponse,
-                 .controlAgentContextTarget,
-                 .controlDenied,
-                 .controlSystemPermissionRequest,
-                 .controlSystemPermissionStatus,
-                 .remoteUnlockSession,
-                 .remoteUnlockState,
-                 .remoteUnlockInput,
-                 .remoteUnlockCredential,
-                 .remoteUnlockResult,
-                 .remoteUnlockDenied:
+            case .ignore:
                 continue
-            case .mediaClassify,
-                 .mediaBlobAdvertise,
-                 .mediaBlobAck,
-                 .signalSessionMessage,
-                 .mediaMirrorRequest,
-                 .mediaMirrorAck,
-                 .mediaMirrorStop,
-                    .mediaMirrorDisplaySelect,
-                    .mediaPresenceHeartbeat,
-                    .mediaLongTermReferenceAck,
-                    .mediaCallInvite,
-                    .mediaCallAck,
-                    .mediaStreamFrame:
+            case .mediaDispatcher:
                 guard let dispatcher = mediaDispatcher else { continue }
                 let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
                     [stream] outboundFrame in
@@ -695,6 +677,63 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         }
         throw HermesServiceError.relayTimeout
     }
+
+    private nonisolated static func requestStreamRoute(
+        for type: HermesRealtimeRelayFrameType
+    ) -> RequestStreamFrameRoute {
+        switch type {
+        case .responseChunk:
+            return .responseChunk
+        case .responseComplete:
+            return .responseComplete
+        case .responseError:
+            return .responseError
+        case .mediaClassify,
+             .mediaBlobAdvertise,
+             .mediaBlobAck,
+             .signalSessionMessage,
+             .mediaMirrorRequest,
+             .mediaMirrorAck,
+             .mediaMirrorStop,
+             .mediaMirrorDisplaySelect,
+             .mediaPresenceHeartbeat,
+             .mediaLongTermReferenceAck,
+             .mediaCallInvite,
+             .mediaCallAck,
+             .mediaStreamFrame:
+            return .mediaDispatcher
+        case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister,
+             .controlClassify, .controlActionLogEntry, .controlInputIntent,
+             .controlApprovalRequest, .controlApprovalResponse,
+             .controlAgentGrantRequest, .controlAgentGrantReceipt,
+             .controlClipboardRequest, .controlClipboardResponse,
+             .controlAgentContextTarget,
+             .controlDenied,
+             .controlSystemPermissionRequest,
+             .controlSystemPermissionStatus,
+             .remoteUnlockSession,
+             .remoteUnlockState,
+             .remoteUnlockInput,
+             .remoteUnlockCredential,
+             .remoteUnlockResult,
+             .remoteUnlockDenied:
+            return .ignore
+        }
+    }
+
+    #if DEBUG
+    nonisolated static func routesRequestStreamFrameToMediaDispatcherForTesting(
+        _ type: HermesRealtimeRelayFrameType
+    ) -> Bool {
+        requestStreamRoute(for: type) == .mediaDispatcher
+    }
+
+    nonisolated static func ignoresRequestStreamFrameForTesting(
+        _ type: HermesRealtimeRelayFrameType
+    ) -> Bool {
+        requestStreamRoute(for: type) == .ignore
+    }
+    #endif
 
     private nonisolated static func isTerminalSSEChunk(_ raw: String?) -> Bool {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
