@@ -19,6 +19,7 @@ node --check functions/scripts/create-ops-log-metrics.mjs
 
 echo "==> post-deploy health gate script"
 bash -n scripts/ci/post-deploy-health-gate.sh
+DEPLOY_HEALTH_FUNCTIONS_SELF_TEST=1 bash scripts/ops/deploy-health-functions.sh
 
 echo "==> production ops plane scripts"
 bash -n scripts/ops/activate-production-ops-plane.sh

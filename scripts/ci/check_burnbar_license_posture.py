@@ -349,11 +349,22 @@ def check_source_provenance_process() -> list[Check]:
             "validate_legal_release_review",
             "latest-agpl-store-legal-packet.json",
         ],
+        "scripts/ci/post-deploy-health-gate.sh": [
+            "EXPECTED_SOURCE_COMMIT",
+            "source_metadata_ok",
+            "run_source_metadata_self_test",
+            "unknown source commit was accepted",
+        ],
         "scripts/ci/verify-agpl-compliance.sh": [
             "verify-package-license-policy.mjs",
             "verify-libsignal-pin.sh",
             "verify-corresponding-source-archive.sh",
             "PASS: AGPL compliance gate",
+        ],
+        "scripts/ci/verify-ops-readiness.sh": [
+            "DEPLOY_HEALTH_FUNCTIONS_SELF_TEST=1",
+            "post-deploy health gate script",
+            "PASS: ops readiness",
         ],
         "scripts/ci/verify-package-license-policy.mjs": [
             "validatePackageLicensePolicy",
@@ -361,6 +372,15 @@ def check_source_provenance_process() -> list[Check]:
             "@openburnbar/e2ee-backend-policy",
             "MIT upstream-boundary package must stay libsignal-free",
             "@signalapp/libsignal-client",
+        ],
+        "scripts/ops/deploy-health-functions.sh": [
+            "OPENBURNBAR_SOURCE_COMMIT",
+            "OPENBURNBAR_CORRESPONDING_SOURCE_URL",
+            "DEPLOY_HEALTH_FUNCTIONS_SELF_TEST",
+            "validate_deploy_metadata",
+            "40-character git commit",
+            "EXPECTED_SOURCE_COMMIT",
+            "deploy-health-functions source metadata self-test",
         ],
         "scripts/ci/check_cloudvault_at_rest_runtime.py": [
             "validate_cloudvault_at_rest_evidence",
