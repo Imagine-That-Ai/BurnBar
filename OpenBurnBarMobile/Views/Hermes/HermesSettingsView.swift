@@ -2386,11 +2386,14 @@ final class HermesGatewaySettingsStore {
 
     private static func gatewayClientDuplicateKey(_ client: HermesGatewayClientRecord) -> String {
         // The gateway can accumulate multiple active grants when the same
-        // device is re-paired during local testing. There is no stronger
-        // device identifier in this record, so collapse only by a normalized
-        // display name plus home destination and keep the freshest usable
-        // entry visible.
+        // device is re-paired during local testing. Prefer the phone's relay
+        // key when it exists so two distinct devices with the same display name
+        // stay visible. Older records without phone key material fall back to a
+        // normalized display name plus home destination.
         let homeDestination = gatewayClientDestinationKey(client.homeDestinationId)
+        if let phoneRelayKey = normalizedNonEmpty(client.phoneRelayPublicKey, lowercase: false) {
+            return "phone|\(phoneRelayKey)|\(homeDestination)"
+        }
         let displayName = gatewayClientDisplayNameKey(client.displayName)
         if displayName != "unknown-device" {
             return "name|\(displayName)|\(homeDestination)"
