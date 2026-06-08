@@ -4,8 +4,9 @@
 The manifest is allowed to be ``not_ready`` while launch gates remain open. A
 ``ready`` manifest is accepted only when every required gate is complete and the
 completed evidence is artifact-backed, hash-checked, and tied to an explicit
-validator command. This prevents a self-consistent JSON file from becoming a
-release-readiness proof.
+validator command. Completed gates replay their validators by default even while
+the overall manifest is still ``not_ready``; this prevents a stale, self-
+consistent JSON file from becoming a release-readiness proof.
 """
 
 from __future__ import annotations
@@ -305,7 +306,7 @@ def check_manifest(
     manifest: Path | str,
     *,
     repo_root: Path | str | None = None,
-    run_validators: bool = False,
+    run_validators: bool = True,
 ) -> list[str]:
     root = Path(repo_root or ROOT)
     path = _resolve(manifest, root)
@@ -376,11 +377,24 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--repo-root", type=Path, default=ROOT)
-    parser.add_argument("--run-validators", action="store_true")
+    parser.add_argument(
+        "--run-validators",
+        action="store_true",
+        help="Replay validatorCommand for complete gates (default; kept for compatibility)",
+    )
+    parser.add_argument(
+        "--skip-validators",
+        action="store_true",
+        help="Validate structure and artifact hashes only; do not replay validatorCommand",
+    )
     parser.add_argument("--launch-gate", action="store_true", help="Also fail while status is not_ready")
     args = parser.parse_args(argv)
 
-    errors = check_manifest(args.manifest, repo_root=args.repo_root, run_validators=args.run_validators)
+    errors = check_manifest(
+        args.manifest,
+        repo_root=args.repo_root,
+        run_validators=not args.skip_validators or args.run_validators,
+    )
     if errors:
         print("FAIL: libsignal runtime-readiness manifest is invalid", file=sys.stderr)
         for error in errors:

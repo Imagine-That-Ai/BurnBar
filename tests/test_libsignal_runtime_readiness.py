@@ -121,6 +121,44 @@ def test_not_ready_manifest_still_rejects_self_reported_completed_gate_evidence(
     assert not any("complete gates missing completed evidence" in error for error in errors)
 
 
+def test_not_ready_complete_gate_replays_validator_by_default(tmp_path):
+    launch_evidence = tmp_path / "launch-evidence"
+    launch_evidence.mkdir()
+    artifact = launch_evidence / "swift-runtime.json"
+    artifact.write_text('{"ok": true}\n', encoding="utf-8")
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    failing_script = tmp_path / "scripts" / "ci" / "check_native_signal_runtime_evidence.py"
+    failing_script.parent.mkdir(parents=True)
+    failing_script.write_text("import sys\nsys.exit(6)\n", encoding="utf-8")
+    manifest = tmp_path / "runtime-readiness.json"
+    manifest.write_text(
+        json.dumps(
+            _not_ready_manifest(
+                [
+                    {
+                        "id": "swift_round_trips",
+                        "status": "complete",
+                        "artifactPath": "launch-evidence/swift-runtime.json",
+                        "artifactType": "native_signal_runtime_evidence",
+                        "sha256": digest,
+                        "validatorCommand": (
+                            "python3 scripts/ci/check_native_signal_runtime_evidence.py "
+                            "launch-evidence/swift-runtime.json --gate swift_round_trips"
+                        ),
+                        "validatorResult": "pass",
+                    }
+                ],
+                completed_gate="swift_round_trips",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    errors = check_manifest(manifest, repo_root=tmp_path)
+
+    assert any("ready gate swift_round_trips validatorCommand failed with 6" in error for error in errors)
+
+
 def test_ready_manifest_always_replays_validators(tmp_path):
     launch_evidence = tmp_path / "launch-evidence"
     launch_evidence.mkdir()
