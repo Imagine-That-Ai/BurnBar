@@ -132,7 +132,12 @@ def _default_validator_command(
     if gate_id in HERMES_DRAIN_GATES:
         return ["python3", "scripts/ci/check_hermes_gateway_migration_drain.py", artifact_rel_path]
     if gate_id == "cloudvault_private_domains":
-        return ["python3", "scripts/ci/check_cloudvault_at_rest_runtime.py", artifact_rel_path]
+        return [
+            "python3",
+            "scripts/ci/check_cloudvault_at_rest_runtime.py",
+            artifact_rel_path,
+            "--replay-commands",
+        ]
     if gate_id == "store_and_counsel_approval":
         return ["python3", "scripts/ci/check_agpl_legal_release_review.py", "--evidence", artifact_rel_path]
     if gate_id == "node_contracts":

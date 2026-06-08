@@ -151,6 +151,29 @@ def test_attach_rejects_artifacts_outside_allowed_gate_prefix(tmp_path):
         raise AssertionError("bad artifact prefix should be rejected")
 
 
+def test_attach_cloudvault_defaults_to_replay_validator(tmp_path):
+    manifest = _write_manifest(tmp_path)
+    artifact = _write_artifact(tmp_path, "launch-evidence/cloudvault-at-rest.json")
+
+    updated = attach_runtime_evidence(
+        gate_id="cloudvault_private_domains",
+        artifact=Path("launch-evidence/cloudvault-at-rest.json"),
+        manifest=manifest,
+        repo_root=tmp_path,
+        postcheck_validators=False,
+        runner=_passing_runner,
+    )
+
+    evidence = next(
+        item for item in updated["completedEvidence"]
+        if item.get("id") == "cloudvault_private_domains"
+    )
+    assert evidence["artifactType"] == "cloudvault_at_rest_runtime_evidence"
+    assert evidence["sha256"] == hashlib.sha256(artifact.read_bytes()).hexdigest()
+    assert "check_cloudvault_at_rest_runtime.py launch-evidence/cloudvault-at-rest.json" in evidence["validatorCommand"]
+    assert "--replay-commands" in evidence["validatorCommand"]
+
+
 def test_attach_rejects_absolute_paths_and_symlink_escapes(tmp_path):
     manifest = _write_manifest(tmp_path)
     artifact = _write_artifact(tmp_path, "launch-evidence/native-swift.json")

@@ -229,6 +229,28 @@ def test_ready_manifest_rejects_validator_command_for_different_artifact(tmp_pat
     )
 
 
+def test_ready_manifest_cloudvault_gate_requires_replay_validator(tmp_path):
+    rel_path, digest = _hashed_artifact(tmp_path)
+    evidence = _complete_evidence(
+        rel_path,
+        digest,
+        {
+            "cloudvault_private_domains": (
+                f"python3 scripts/ci/check_cloudvault_at_rest_runtime.py {rel_path}"
+            )
+        },
+    )
+    manifest = tmp_path / "runtime-readiness.json"
+    manifest.write_text(json.dumps(_ready_manifest(evidence)), encoding="utf-8")
+
+    errors = check_manifest(manifest, repo_root=tmp_path, run_validators=False)
+
+    assert any(
+        "ready gate cloudvault_private_domains validatorCommand must include --replay-commands" in error
+        for error in errors
+    )
+
+
 def test_ready_manifest_rust_gate_requires_gate_specific_native_validator(tmp_path):
     rel_path, digest = _hashed_artifact(tmp_path)
     evidence = _complete_evidence(

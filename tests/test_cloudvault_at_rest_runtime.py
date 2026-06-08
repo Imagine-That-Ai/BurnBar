@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import hashlib
 import json
 from pathlib import Path
 
@@ -17,6 +18,7 @@ REQUIRED_ASSERTIONS = [
     "signal_at_rest_policy_requires_enabled_collection",
     "cjs_runtime_import_validates_signal_at_rest_write",
 ]
+EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 
 def generated_at_now():
@@ -47,6 +49,10 @@ def make_repo(tmp_path: Path, *, signal_enabled: bool) -> Path:
     return repo
 
 
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def enablement(*, enabled: bool, source_sha: str = "0" * 64):
     return {
         "scheme": "signal-hpke-identity-seal-v1",
@@ -59,22 +65,30 @@ def enablement(*, enabled: bool, source_sha: str = "0" * 64):
     }
 
 
-def valid_evidence():
+def valid_evidence(source_sha: str = "0" * 64):
     return {
         "schemaVersion": 1,
         "generatedAt": generated_at_now(),
         "generatedBy": "tests",
         "privacy": "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers",
         "signalAtRestWritesEnabled": True,
-        "signalAtRestEnablement": enablement(enabled=True),
+        "signalAtRestEnablement": enablement(enabled=True, source_sha=source_sha),
         "commandEvidence": [
             {
-                "command": "npm run build --prefix functions && node scripts/ci/check_functions_cloudvault_runtime.js",
+                "command": "npm run build --prefix functions",
                 "status": "pass",
                 "exitCode": 0,
                 "durationMs": 1,
-                "stdoutSha256": "0" * 64,
-                "stderrSha256": "0" * 64,
+                "stdoutSha256": EMPTY_SHA256,
+                "stderrSha256": EMPTY_SHA256,
+            },
+            {
+                "command": "node scripts/ci/check_functions_cloudvault_runtime.js",
+                "status": "pass",
+                "exitCode": 0,
+                "durationMs": 1,
+                "stdoutSha256": EMPTY_SHA256,
+                "stderrSha256": EMPTY_SHA256,
                 "assertions": REQUIRED_ASSERTIONS[:-1],
             },
             {
@@ -82,12 +96,16 @@ def valid_evidence():
                 "status": "pass",
                 "exitCode": 0,
                 "durationMs": 1,
-                "stdoutSha256": "0" * 64,
-                "stderrSha256": "0" * 64,
+                "stdoutSha256": EMPTY_SHA256,
+                "stderrSha256": EMPTY_SHA256,
                 "assertions": [REQUIRED_ASSERTIONS[-1]],
             },
         ],
     }
+
+
+def empty_output_runner(argv: list[str], repo_root: Path):
+    return 0, "", ""
 
 
 def test_validates_cloudvault_at_rest_runtime_evidence():
@@ -96,7 +114,7 @@ def test_validates_cloudvault_at_rest_runtime_evidence():
 
 def test_rejects_command_evidence_that_only_names_a_command():
     evidence = valid_evidence()
-    evidence["commandEvidence"][0].pop("status")
+    evidence["commandEvidence"][1].pop("status")
 
     errors = validate_cloudvault_at_rest_evidence(evidence)
 
@@ -114,7 +132,7 @@ def test_rejects_command_evidence_without_hashes():
 
 def test_rejects_missing_required_assertion():
     evidence = valid_evidence()
-    evidence["commandEvidence"][0]["assertions"].remove("admin_write_validator_rejects_plaintext")
+    evidence["commandEvidence"][1]["assertions"].remove("admin_write_validator_rejects_plaintext")
 
     errors = validate_cloudvault_at_rest_evidence(evidence)
 
@@ -147,6 +165,54 @@ def test_rejects_forged_signal_enablement_against_current_registry(tmp_path):
     errors = validate_cloudvault_at_rest_evidence(evidence, repo_root=repo)
 
     assert "signalAtRestEnablement must match packages/data-domains/registry.json" in errors
+
+
+def test_replay_commands_accepts_exact_reproduced_command_hashes(tmp_path):
+    repo = make_repo(tmp_path, signal_enabled=True)
+    evidence = valid_evidence(source_sha=sha256_file(repo / "packages/data-domains/registry.json"))
+
+    errors = validate_cloudvault_at_rest_evidence(
+        evidence,
+        repo_root=repo,
+        replay_commands=True,
+        command_runner=empty_output_runner,
+    )
+
+    assert errors == []
+
+
+def test_replay_commands_rejects_forged_command_output_hash(tmp_path):
+    repo = make_repo(tmp_path, signal_enabled=True)
+    evidence = valid_evidence(source_sha=sha256_file(repo / "packages/data-domains/registry.json"))
+
+    def forged_runner(argv: list[str], repo_root: Path):
+        if argv[:2] == ["node", "scripts/ci/check_functions_cloudvault_runtime.js"]:
+            return 0, "different runtime output\n", ""
+        return 0, "", ""
+
+    errors = validate_cloudvault_at_rest_evidence(
+        evidence,
+        repo_root=repo,
+        replay_commands=True,
+        command_runner=forged_runner,
+    )
+
+    assert any("replayed command stdoutSha256 mismatch for node scripts/ci/check_functions_cloudvault_runtime.js" in error for error in errors)
+
+
+def test_replay_commands_rejects_unapproved_shell_command(tmp_path):
+    repo = make_repo(tmp_path, signal_enabled=True)
+    evidence = valid_evidence(source_sha=sha256_file(repo / "packages/data-domains/registry.json"))
+    evidence["commandEvidence"][1]["command"] = "node scripts/ci/check_functions_cloudvault_runtime.js && echo forged"
+
+    errors = validate_cloudvault_at_rest_evidence(
+        evidence,
+        repo_root=repo,
+        replay_commands=True,
+        command_runner=empty_output_runner,
+    )
+
+    assert any("command evidence command is not approved for replay" in error for error in errors)
 
 
 def test_rejects_signal_enablement_boolean_that_disagrees_with_domains():

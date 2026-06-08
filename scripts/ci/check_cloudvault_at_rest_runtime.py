@@ -13,17 +13,25 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import re
+import shlex
+import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 PRIVACY_MARKER = "proof_only_no_plaintext_keys_ciphertext_or_document_identifiers"
 SIGNAL_AT_REST_SCHEME = "signal-hpke-identity-seal-v1"
 MAX_EVIDENCE_AGE = timedelta(hours=24)
 REQUIRED_COMMAND_FRAGMENTS = (
+    "npm run build --prefix functions",
     "scripts/ci/check_functions_cloudvault_runtime.js",
     "tests/test_signal_envelope_contracts_cjs_exports.py",
+)
+APPROVED_REPLAY_COMMANDS = (
+    ("npm", "run", "build", "--prefix", "functions"),
+    ("node", "scripts/ci/check_functions_cloudvault_runtime.js"),
+    ("python3", "-m", "pytest", "tests/test_signal_envelope_contracts_cjs_exports.py", "-q"),
 )
 REQUIRED_ASSERTIONS = (
     "compiled_functions_imports_signal_at_rest_write",
@@ -50,6 +58,11 @@ FORBIDDEN_EVIDENCE_KEYS = {
     "userId",
 }
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+CommandRunner = Callable[[list[str], Path], tuple[int, str, str]]
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
 
 
 def _sha256_file(path: Path) -> str:
@@ -97,6 +110,67 @@ def _passed_commands(data: dict[str, Any]) -> list[dict[str, Any]]:
         and entry.get("exitCode") == 0
         and isinstance(entry.get("command"), str)
     ]
+
+
+def _run_command(argv: list[str], repo_root: Path) -> tuple[int, str, str]:
+    result = subprocess.run(
+        argv,
+        cwd=repo_root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+def _command_argv(command: str) -> list[str] | None:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return None
+
+
+def _approved_replay_command(argv: list[str]) -> bool:
+    return tuple(argv) in APPROVED_REPLAY_COMMANDS
+
+
+def _replay_command_evidence(
+    data: dict[str, Any],
+    errors: list[str],
+    *,
+    repo_root: Path | None,
+    command_runner: CommandRunner,
+) -> None:
+    if repo_root is None:
+        errors.append("repo_root is required when replaying CloudVault command evidence")
+        return
+    for entry in _passed_commands(data):
+        command = entry.get("command")
+        if not isinstance(command, str):
+            continue
+        argv = _command_argv(command)
+        if argv is None:
+            errors.append(f"command evidence is not shell-safe for replay: {command}")
+            continue
+        if not _approved_replay_command(argv):
+            errors.append(f"command evidence command is not approved for replay: {command}")
+            continue
+        exit_code, stdout, stderr = command_runner(argv, repo_root)
+        if exit_code != entry.get("exitCode"):
+            errors.append(
+                f"replayed command exitCode mismatch for {command}: {exit_code} != {entry.get('exitCode')}"
+            )
+        stdout_sha = _sha256_text(stdout)
+        if stdout_sha != entry.get("stdoutSha256"):
+            errors.append(
+                f"replayed command stdoutSha256 mismatch for {command}: {stdout_sha} != {entry.get('stdoutSha256')}"
+            )
+        stderr_sha = _sha256_text(stderr)
+        if stderr_sha != entry.get("stderrSha256"):
+            errors.append(
+                f"replayed command stderrSha256 mismatch for {command}: {stderr_sha} != {entry.get('stderrSha256')}"
+            )
 
 
 def _validate_command_entry(entry: dict[str, Any], errors: list[str]) -> None:
@@ -213,6 +287,8 @@ def validate_cloudvault_at_rest_evidence(
     data: dict[str, Any],
     *,
     repo_root: Path | None = None,
+    replay_commands: bool = False,
+    command_runner: CommandRunner = _run_command,
 ) -> list[str]:
     errors: list[str] = []
     if data.get("schemaVersion") != 1:
@@ -241,6 +317,8 @@ def validate_cloudvault_at_rest_evidence(
     for fragment in REQUIRED_COMMAND_FRAGMENTS:
         if not any(fragment in command for command in commands):
             errors.append(f"missing passing command evidence for {fragment}")
+    if replay_commands:
+        _replay_command_evidence(data, errors, repo_root=repo_root, command_runner=command_runner)
     present_assertions = _assertions(data)
     for assertion in REQUIRED_ASSERTIONS:
         if assertion not in present_assertions:
@@ -265,13 +343,22 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--replay-commands",
+        action="store_true",
+        help="Re-run the allowlisted commandEvidence entries and compare their exit codes and stdout/stderr hashes.",
+    )
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.evidence.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"FAIL: unreadable CloudVault evidence: {exc}", file=sys.stderr)
         return 1
-    errors = validate_cloudvault_at_rest_evidence(data, repo_root=args.repo_root)
+    errors = validate_cloudvault_at_rest_evidence(
+        data,
+        repo_root=args.repo_root,
+        replay_commands=args.replay_commands,
+    )
     if errors:
         print("FAIL: CloudVault at-rest runtime evidence is not release-ready", file=sys.stderr)
         for error in errors:

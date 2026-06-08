@@ -67,6 +67,7 @@ GATE_VALIDATOR_REQUIRED_ARGS: dict[str, tuple[str, ...]] = {
     "rust_core_bridge": ("--gate", "rust_core_bridge"),
     "swift_round_trips": ("--gate", "swift_round_trips"),
     "kotlin_round_trips": ("--gate", "kotlin_round_trips"),
+    "cloudvault_private_domains": ("--replay-commands",),
 }
 
 GATE_ARTIFACT_PATH_PREFIXES: dict[str, tuple[str, ...]] = {
@@ -209,9 +210,19 @@ def _command_references_artifact(command: list[str], artifact_path: str) -> bool
 def _command_has_required_args(command: list[str], required: tuple[str, ...]) -> bool:
     if not required:
         return True
-    for index in range(0, len(required), 2):
+    index = 0
+    while index < len(required):
         option = required[index]
-        value = required[index + 1]
+        value = None
+        if index + 1 < len(required) and not required[index + 1].startswith("--"):
+            value = required[index + 1]
+            index += 2
+        else:
+            index += 1
+        if value is None:
+            if option in command:
+                return True
+            continue
         for position, token in enumerate(command):
             if token == option and position + 1 < len(command) and command[position + 1] == value:
                 return True
