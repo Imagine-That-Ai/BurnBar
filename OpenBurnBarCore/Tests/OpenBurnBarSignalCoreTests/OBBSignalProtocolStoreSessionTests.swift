@@ -86,6 +86,84 @@ final class OBBSignalProtocolStoreSessionTests: XCTestCase {
         XCTAssertEqual(Array(decrypted2), plaintext2)
     }
 
+    func testReplayedPQXDHPreKeyMessageIsRejected() throws {
+        let ctx = NullContext()
+        let alice = try makeStore()
+        let bob = try makeStore()
+
+        let bobPrekeys = try OBBSignalPreKeyGenerator.generatePreKeys(
+            identityKeypair: bob.identityKeypair, preKeyId: 11, signedPreKeyId: 11, kyberPreKeyId: 11
+        )
+        try OBBSignalPreKeyGenerator.storePreKeys(bobPrekeys, into: bob, context: ctx)
+        let bobBundle = try OBBSignalPreKeyGenerator.buildPreKeyBundle(
+            identityKeypair: bob.identityKeypair, registrationId: bob.registrationId, deviceId: 1, prekeys: bobPrekeys
+        )
+
+        let aliceAddress = try ProtocolAddress(name: "alice-replay_1", deviceId: 1)
+        let bobAddress = try ProtocolAddress(name: "bob-replay_1", deviceId: 1)
+        try processPreKeyBundle(
+            bobBundle, for: bobAddress, ourAddress: aliceAddress,
+            sessionStore: alice, identityStore: alice, context: ctx
+        )
+
+        let plaintext = Array("one valid prekey message".utf8)
+        let cipher = try signalEncrypt(
+            message: plaintext, for: bobAddress, localAddress: aliceAddress,
+            sessionStore: alice, identityStore: alice, context: ctx
+        )
+        XCTAssertEqual(cipher.messageType, .preKey)
+
+        let message = try PreKeySignalMessage(bytes: cipher.serialize())
+        let decrypted = try signalDecryptPreKey(
+            message: message, from: aliceAddress, localAddress: bobAddress,
+            sessionStore: bob, identityStore: bob, preKeyStore: bob,
+            signedPreKeyStore: bob, kyberPreKeyStore: bob, context: ctx
+        )
+        XCTAssertEqual(Array(decrypted), plaintext)
+
+        XCTAssertThrowsError(
+            try signalDecryptPreKey(
+                message: message, from: aliceAddress, localAddress: bobAddress,
+                sessionStore: bob, identityStore: bob, preKeyStore: bob,
+                signedPreKeyStore: bob, kyberPreKeyStore: bob, context: ctx
+            ),
+            "replaying the same PQXDH base key must be rejected"
+        )
+    }
+
+    func testChangedRemoteIdentityIsUntrustedForPinnedAddress() throws {
+        let ctx = NullContext()
+        let alice = try makeStore()
+        let bob = try makeStore()
+
+        let bobPrekeys = try OBBSignalPreKeyGenerator.generatePreKeys(
+            identityKeypair: bob.identityKeypair, preKeyId: 21, signedPreKeyId: 21, kyberPreKeyId: 21
+        )
+        try OBBSignalPreKeyGenerator.storePreKeys(bobPrekeys, into: bob, context: ctx)
+        let bobBundle = try OBBSignalPreKeyGenerator.buildPreKeyBundle(
+            identityKeypair: bob.identityKeypair, registrationId: bob.registrationId, deviceId: 1, prekeys: bobPrekeys
+        )
+
+        let aliceAddress = try ProtocolAddress(name: "alice-identity_1", deviceId: 1)
+        let bobAddress = try ProtocolAddress(name: "bob-identity_1", deviceId: 1)
+        try processPreKeyBundle(
+            bobBundle, for: bobAddress, ourAddress: aliceAddress,
+            sessionStore: alice, identityStore: alice, context: ctx
+        )
+
+        XCTAssertTrue(
+            try alice.isTrustedIdentity(
+                bob.identityKeypair.identityKey, for: bobAddress, direction: .sending, context: ctx
+            )
+        )
+
+        let replacementIdentity = IdentityKeyPair.generate().identityKey
+        XCTAssertFalse(
+            try alice.isTrustedIdentity(replacementIdentity, for: bobAddress, direction: .sending, context: ctx),
+            "a different identity key for the same Signal address must not be silently trusted"
+        )
+    }
+
     func testSessionSurvivesStoreRoundTrip() throws {
         let ctx = NullContext()
         // Stable backing so a fresh store instance reloads the same session + identities.
