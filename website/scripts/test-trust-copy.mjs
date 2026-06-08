@@ -11,10 +11,7 @@ const DIST = join(ROOT, "dist");
 const TRUST_GENERATED = join(ROOT, "src", "data", "trust.generated.ts");
 const RUNTIME_READINESS = join(REPO_ROOT, "third_party", "libsignal", "runtime-readiness.json");
 
-const TRUST_ROUTES = [
-  join(DIST, "trust", "index.html"),
-  join(DIST, "privacy", "index.html")
-];
+const TRUST_ROUTES = [join(DIST, "trust", "index.html"), join(DIST, "privacy", "index.html")];
 
 const NETWORK_LINK_RELS = [
   "stylesheet",
@@ -72,7 +69,7 @@ const NOT_READY_RUNTIME_CLAIMS = [
   /\bservers? never see(?:s)? the content or the key\b/i,
   /\bserver runs (?:nearest-neighbor search|ANN)[^.]{0,160}without reading your content\b/i,
   /\bhosted server never sees\b/i,
-  /\bwhat the server never sees\b/i,
+  /\bwhat the server never sees\b/i
 ];
 
 const ALLOWED_SCRIPT_URL_HOSTS = new Set([
@@ -86,14 +83,10 @@ const ALLOWED_SCRIPT_URL_HOSTS = new Set([
   "www.googleapis.com",
   "www.gstatic.com",
   "127.0.0.1",
-  "::1",
+  "::1"
 ]);
 
-const ALLOWED_SCRIPT_URL_SUFFIXES = [
-  ".cloudfunctions.net",
-  ".firebaseio.com",
-  ".googleapis.com",
-];
+const ALLOWED_SCRIPT_URL_SUFFIXES = [".cloudfunctions.net", ".firebaseio.com", ".googleapis.com"];
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -124,10 +117,7 @@ function assertNoNetworkLinkRels(label, body) {
     const tag = match[0];
     const href = getAttr(tag, "href");
     if (!/^(?:https?:)?\/\//i.test(href)) continue;
-    const rels = getAttr(tag, "rel")
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
+    const rels = getAttr(tag, "rel").toLowerCase().split(/\s+/).filter(Boolean);
     const networkRel = rels.find((rel) => NETWORK_LINK_RELS.includes(rel));
     assert.equal(
       networkRel,
@@ -162,11 +152,9 @@ function isFirebaseClientAsset(file) {
 function isAllowedScriptUrlLiteral(raw, file) {
   if (
     isFirebaseClientAsset(file) &&
-    (
-      /^https:\/\/\$\{[^}]+\.(?:config\.)?authDomain\}/.test(raw) ||
+    (/^https:\/\/\$\{[^}]+\.(?:config\.)?authDomain\}/.test(raw) ||
       /^https:\/\/\$\{[^}]+\.region\}-\$\{[^}]+\}\.cloudfunctions\.net\//.test(raw) ||
-      /^http:\/\/\$\{[^}]+\}$/.test(raw)
-    )
+      /^http:\/\/\$\{[^}]+\}$/.test(raw))
   ) {
     return true;
   }
@@ -207,7 +195,11 @@ function assertBlocked(label, body) {
 
 function assertNoWebManifestNetworkBody(label, body) {
   const match = body.match(/"(?:src|href|url)"\s*:\s*["'](?:https?:)?\/\//i);
-  assert.equal(match, null, `${label} contains external webmanifest URL ${JSON.stringify(match?.[0])}`);
+  assert.equal(
+    match,
+    null,
+    `${label} contains external webmanifest URL ${JSON.stringify(match?.[0])}`
+  );
 }
 
 function runtimeReadinessStatus() {
@@ -237,7 +229,7 @@ function runScannerSelfTests() {
       '<link rel="canonical" href="https://burnbar.ai/trust/">',
       '<meta property="og:image" content="https://burnbar.ai/og/default.png">',
       '<script type="application/ld+json">{"@context":"https://schema.org"}</script>',
-      '<a href="https://github.com/Imagine-That-Ai/BurnBar">GitHub</a>',
+      '<a href="https://github.com/Imagine-That-Ai/BurnBar">GitHub</a>'
     ].join("\n")
   );
   for (const [label, body] of [
@@ -263,25 +255,45 @@ function runScannerSelfTests() {
     ["external eventsource", 'new EventSource("https://stream.example")'],
     ["dynamic import", 'import("https://cdn.example/mod.mjs")'],
     ["static import", 'import x from "https://cdn.example/mod.mjs"'],
-    ["tracker token", "posthog.init('key')"],
+    ["tracker token", "posthog.init('key')"]
   ]) {
     assertBlocked(label, body);
   }
-  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", 'fetch("https://identitytoolkit.googleapis.com/v1/accounts")');
-  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", "const authUrl = `https://${app.config.authDomain}/__/auth`;");
-  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", "const authUrl = `https://${app.authDomain}/__/auth`;");
-  assertNoDisallowedScriptUrlLiterals("firebaseClient.js", "const fnUrl = `https://${this.region}-${project}.cloudfunctions.net/callable`;");
+  assertNoDisallowedScriptUrlLiterals(
+    "firebaseClient.js",
+    'fetch("https://identitytoolkit.googleapis.com/v1/accounts")'
+  );
+  assertNoDisallowedScriptUrlLiterals(
+    "firebaseClient.js",
+    "const authUrl = `https://${app.config.authDomain}/__/auth`;"
+  );
+  assertNoDisallowedScriptUrlLiterals(
+    "firebaseClient.js",
+    "const authUrl = `https://${app.authDomain}/__/auth`;"
+  );
+  assertNoDisallowedScriptUrlLiterals(
+    "firebaseClient.js",
+    "const fnUrl = `https://${this.region}-${project}.cloudfunctions.net/callable`;"
+  );
   assertNoDisallowedScriptUrlLiterals("firebaseClient.js", "const emulatorUrl = `http://${host}`;");
   assert.throws(
     () => assertNoDisallowedScriptUrlLiterals("feature.js", "const dynamicUrl = `http://${host}`;"),
     /disallowed external URL literal/
   );
   assert.throws(
-    () => assertNoDisallowedScriptUrlLiterals("bad.js", 'const sdk = "https://esm.sh/@chenglou/pretext";'),
+    () =>
+      assertNoDisallowedScriptUrlLiterals(
+        "bad.js",
+        'const sdk = "https://esm.sh/@chenglou/pretext";'
+      ),
     /disallowed external URL literal/
   );
   assert.throws(
-    () => assertNoWebManifestNetworkBody("external webmanifest icon", '{"icons":[{"src":"https://cdn.example/icon.png"}]}'),
+    () =>
+      assertNoWebManifestNetworkBody(
+        "external webmanifest icon",
+        '{"icons":[{"src":"https://cdn.example/icon.png"}]}'
+      ),
     /external/
   );
 }
@@ -302,7 +314,9 @@ for (const route of TRUST_ROUTES) {
   assert.ok(statSync(route).isFile(), `${relative(ROOT, route)} must exist`);
 }
 
-const builtFiles = walk(DIST).filter((file) => /\.(?:html|css|js|mjs|svg|xml|webmanifest)$/.test(file));
+const builtFiles = walk(DIST).filter((file) =>
+  /\.(?:html|css|js|mjs|svg|xml|webmanifest)$/.test(file)
+);
 for (const file of builtFiles) {
   assertNoExternalNetwork(file);
 }
@@ -314,4 +328,6 @@ for (const line of parseGeneratedStrings()) {
 
 assertNoUnreadyRuntimeClaims([...builtFiles, TRUST_GENERATED]);
 
-console.log(`PASS: trust copy scan checked ${builtFiles.length} built HTML/CSS/JS/SVG/XML/manifest files with no disallowed external network refs.`);
+console.log(
+  `PASS: trust copy scan checked ${builtFiles.length} built HTML/CSS/JS/SVG/XML/manifest files with no disallowed external network refs.`
+);
