@@ -91,6 +91,40 @@ else
   git archive --format=tar HEAD | tar -x -C "$archive_root"
 fi
 
+# Ensure third-party libsignal corresponding-source materials are present.
+# libsignal lives in a git submodule (Vendor/libsignal) that `git archive` does
+# not embed; we use it UNMODIFIED at a pinned commit, so we include its AGPL
+# license plus a precise pointer to the matching upstream source commit.
+mkdir -p "$archive_root/third_party/libsignal"
+if [[ -f "Vendor/libsignal/LICENSE" ]]; then
+  cp "Vendor/libsignal/LICENSE" "$archive_root/third_party/libsignal/LICENSE"
+fi
+if [[ -f "third_party/libsignal/manifest.json" ]]; then
+  python3 - "third_party/libsignal/manifest.json" "$archive_root/third_party/libsignal/CORRESPONDING_SOURCE.txt" <<'PY'
+import json
+import sys
+
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+repo = manifest.get("upstreamRepository", "https://github.com/signalapp/libsignal")
+tag = manifest.get("pinnedTag", "")
+commit = manifest.get("pinnedCommit", "")
+lic = manifest.get("license", "AGPL-3.0-only")
+with open(sys.argv[2], "w", encoding="utf-8") as handle:
+    handle.write(
+        "Official Signal libsignal - corresponding source\n"
+        "=================================================\n\n"
+        f"License: {lic}\n"
+        f"Upstream repository: {repo}\n"
+        f"Pinned tag: {tag}\n"
+        f"Pinned source commit: {commit}\n\n"
+        "OpenBurnBar uses this library UNMODIFIED at the exact commit above.\n"
+        "The complete, buildable corresponding source for this dependency is the\n"
+        "upstream tree at that commit. A mirror of that exact commit is retained\n"
+        "alongside OpenBurnBar release artifacts to keep the source available.\n"
+    )
+PY
+fi
+
 required=(
   "LICENSE"
   "NOTICE"
@@ -98,6 +132,10 @@ required=(
   "LICENSES/MIT-legacy.txt"
   "docs/legal/agpl-compliance.md"
   "scripts/create-corresponding-source.sh"
+  "third_party/libsignal/manifest.json"
+  "third_party/libsignal/runtime-readiness.json"
+  "third_party/libsignal/LICENSE"
+  "third_party/libsignal/CORRESPONDING_SOURCE.txt"
 )
 
 for rel in "${required[@]}"; do

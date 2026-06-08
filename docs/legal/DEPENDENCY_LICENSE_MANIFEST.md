@@ -17,7 +17,8 @@ BurnBar product-only AGPL/libsignal release artifacts.
 
 ## Review artifacts
 
-- Signal libsignal license and pin evidence: `Vendor/libsignal/LICENSE`
+- Signal libsignal license: `Vendor/libsignal/LICENSE`
+- Signal libsignal pin evidence (tag + commit): `third_party/libsignal/manifest.json`
 - Runtime readiness manifest: `third_party/libsignal/runtime-readiness.json`
 - AGPL release review packet: `docs/legal/AGPL_RELEASE_REVIEW_PACKET.md`
 - Gateway Signal-required rollout runbook:

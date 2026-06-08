@@ -25,7 +25,8 @@ The source packet must include:
 - `docs/legal/AGPL_RELEASE_REVIEW_PACKET.md`
 - `docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md`
 - `THIRD_PARTY_NOTICES.md`
-- `Vendor/libsignal/LICENSE`
+- `Vendor/libsignal/LICENSE` (official Signal libsignal AGPL license)
+- `third_party/libsignal/manifest.json` (official Signal libsignal pin: tag + commit)
 - `third_party/libsignal/runtime-readiness.json`
 
 Generate release provenance with:

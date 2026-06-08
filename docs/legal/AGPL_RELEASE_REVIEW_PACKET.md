@@ -50,6 +50,38 @@ field. `scripts/ci/check_agpl_legal_release_review.py` requires:
 Pending evidence may pass CI only with `--allow-pending` and must explicitly
 state that it is not legal approval.
 
+## Attaching Counsel Approval
+
+After external counsel approves a concrete reviewed document, store counsel's
+public verification key and detached signature under `launch-evidence/`, then
+materialize the approved evidence packet with the verifier-backed attach tool:
+
+```bash
+python3 scripts/ci/attach_agpl_legal_release_approval.py \
+  --reviewer-name "External Counsel Name or Firm" \
+  --approved-at "2026-06-08T15:00:00Z" \
+  --signature launch-evidence/agpl-release-review.sig \
+  --public-key launch-evidence/counsel-public.pem \
+  --use-required-channels \
+  --check
+
+python3 scripts/ci/attach_agpl_legal_release_approval.py \
+  --reviewer-name "External Counsel Name or Firm" \
+  --approved-at "2026-06-08T15:00:00Z" \
+  --signature launch-evidence/agpl-release-review.sig \
+  --public-key launch-evidence/counsel-public.pem \
+  --use-required-channels
+
+python3 scripts/ci/attach_libsignal_runtime_evidence.py \
+  --gate store_and_counsel_approval \
+  --artifact launch-evidence/latest-agpl-store-legal-packet.json
+```
+
+The attach tool refuses absolute or out-of-repo paths, recomputes the reviewed
+document hash, verifies the detached OpenSSL SHA-256/RSA signature, and writes
+only a packet that `check_agpl_legal_release_review.py` already accepts. Do not
+hand-edit `reviewStatus: "approved"`.
+
 Run the aggregate product release gate before any Signal-enabled release:
 
 ```bash

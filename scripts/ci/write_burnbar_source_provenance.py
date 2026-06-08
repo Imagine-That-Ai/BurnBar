@@ -22,6 +22,7 @@ REQUIRED_SOURCE_FILES = [
     "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md",
     "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
     "docs/legal/agpl-release-review.evidence.template.json",
+    "third_party/libsignal/manifest.json",
     "third_party/libsignal/runtime-readiness.json",
     "Vendor/libsignal/LICENSE",
     "Vendor/libsignal/Cargo.toml",
@@ -34,6 +35,7 @@ REQUIRED_SOURCE_FILES = [
     "scripts/ci/verify-package-license-policy.mjs",
     "scripts/ops/deploy-health-functions.sh",
     "scripts/ci/check_agpl_legal_release_review.py",
+    "scripts/ci/attach_agpl_legal_release_approval.py",
     "scripts/ci/check_burnbar_release_preflight.py",
     "scripts/ci/check_hermes_gateway_migration_drain.py",
     "scripts/ci/drain_hermes_gateway_legacy_records.js",
@@ -94,7 +96,7 @@ def required_file_entry(rel_path: str, *, repo_root: Path) -> dict[str, Any]:
     }
 
 
-def load_runtime_readiness(repo_root: Path) -> dict[str, Any]:
+def load_runtime_readiness(repo_root: Path, *, run_validators: bool = True) -> dict[str, Any]:
     sys.path.insert(0, str(repo_root))
     try:
         from scripts.ci.check_libsignal_runtime_readiness import (
@@ -105,7 +107,7 @@ def load_runtime_readiness(repo_root: Path) -> dict[str, Any]:
         )
     finally:
         sys.path.pop(0)
-    errors = check_manifest(DEFAULT_MANIFEST, repo_root=repo_root)
+    errors = check_manifest(DEFAULT_MANIFEST, repo_root=repo_root, run_validators=run_validators)
     data = load_manifest(DEFAULT_MANIFEST, repo_root=repo_root)
     gates = data.get("gates", {})
     return {
@@ -114,10 +116,15 @@ def load_runtime_readiness(repo_root: Path) -> dict[str, Any]:
         "incompleteGates": sorted(gate_id for gate_id, gate in gates.items() if gate.get("status") != "complete"),
         "incompleteGateDetails": incomplete_gate_details(data),
         "validatorErrors": errors,
+        "validatorsReplayed": run_validators,
     }
 
 
-def build_source_provenance_manifest(*, repo_root: Path = ROOT) -> dict[str, Any]:
+def build_source_provenance_manifest(
+    *,
+    repo_root: Path = ROOT,
+    run_runtime_validators: bool = True,
+) -> dict[str, Any]:
     dirty_paths = [line for line in run_git(["status", "--porcelain"], repo_root=repo_root).splitlines() if line]
     return {
         "schemaVersion": 1,
@@ -130,7 +137,7 @@ def build_source_provenance_manifest(*, repo_root: Path = ROOT) -> dict[str, Any
             "dirty": bool(dirty_paths),
             "dirtyPaths": dirty_paths,
         },
-        "runtimeReadiness": load_runtime_readiness(repo_root),
+        "runtimeReadiness": load_runtime_readiness(repo_root, run_validators=run_runtime_validators),
         "requiredSourceFiles": [required_file_entry(path, repo_root=repo_root) for path in REQUIRED_SOURCE_FILES],
         "excludedFromCorrespondingSource": [
             "private signing keys",

@@ -111,16 +111,31 @@ python3 scripts/ci/attach_libsignal_runtime_evidence.py \
 python3 scripts/ci/attach_libsignal_runtime_evidence.py \
   --gate cloudvault_private_domains \
   --artifact launch-evidence/cloudvault-at-rest-runtime.json
+python3 scripts/ci/attach_agpl_legal_release_approval.py \
+  --reviewer-name "External Counsel Name or Firm" \
+  --approved-at "2026-06-08T15:00:00Z" \
+  --signature launch-evidence/agpl-release-review.sig \
+  --public-key launch-evidence/counsel-public.pem \
+  --use-required-channels \
+  --check
+python3 scripts/ci/attach_agpl_legal_release_approval.py \
+  --reviewer-name "External Counsel Name or Firm" \
+  --approved-at "2026-06-08T15:00:00Z" \
+  --signature launch-evidence/agpl-release-review.sig \
+  --public-key launch-evidence/counsel-public.pem \
+  --use-required-channels
 python3 scripts/ci/attach_libsignal_runtime_evidence.py \
   --gate store_and_counsel_approval \
   --artifact launch-evidence/latest-agpl-store-legal-packet.json
 ```
 
-Use `--check` first when reviewing a packet; it runs the validator and manifest
-post-check without writing. The tool writes only typed evidence with an
-`artifactPath`, `artifactType`, `sha256`, `validatorCommand`, and structured
-`validatorResult`; it replaces stale same-gate evidence, refuses legal
-`--allow-pending`, requires a dedicated artifact validator for `node_contracts`,
+Use `--check` first when reviewing a packet; the legal attach tool verifies the
+detached counsel signature without writing, and the manifest attach tool runs
+the validator and manifest post-check without writing. The manifest attach tool
+writes only typed evidence with an `artifactPath`, `artifactType`, `sha256`,
+`validatorCommand`, and structured `validatorResult`; it replaces stale
+same-gate evidence, refuses legal `--allow-pending`, requires a dedicated
+artifact validator for `node_contracts`,
 and keeps `status` as `not_ready`. Final `ready` promotion is a separate
 release-manager action after `check_burnbar_release_preflight.py` passes and
 counsel approval is real.

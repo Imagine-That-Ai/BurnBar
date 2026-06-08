@@ -257,6 +257,14 @@ def check_source_provenance_process() -> list[Check]:
             "check_manifest",
             "run_validators=postcheck_validators",
         ],
+        "scripts/ci/attach_agpl_legal_release_approval.py": [
+            "build_approval_packet",
+            "validate_legal_release_review",
+            "SIGNATURE_FORMAT",
+            "--use-required-channels",
+            "repo-relative",
+            "explicitApprovalBoundary",
+        ],
         "scripts/ci/check_hermes_gateway_migration_drain.py": [
             "validate_drain_evidence",
             "aggregate_counts_only_no_document_values_or_identifiers",

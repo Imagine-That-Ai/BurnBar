@@ -13,8 +13,12 @@ from scripts.ci.write_burnbar_source_provenance import (
 
 
 def test_source_provenance_manifest_covers_agpl_signal_release_inputs():
-    manifest = build_source_provenance_manifest(repo_root=Path(__file__).resolve().parents[1])
+    manifest = build_source_provenance_manifest(
+        repo_root=Path(__file__).resolve().parents[1],
+        run_runtime_validators=False,
+    )
     paths = {entry["path"] for entry in manifest["requiredSourceFiles"]}
+    assert "third_party/libsignal/manifest.json" in paths
     assert "third_party/libsignal/runtime-readiness.json" in paths
     assert "scripts/ci/attach_libsignal_runtime_evidence.py" in paths
     assert "scripts/ci/check_signal_envelope_contract_runtime.py" in paths
@@ -24,6 +28,7 @@ def test_source_provenance_manifest_covers_agpl_signal_release_inputs():
     assert "tests/test_signal_envelope_contract_runtime_writer.py" in paths
     assert "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md" in paths
     assert manifest["runtimeReadiness"]["status"] in {"ready", "not_ready"}
+    assert manifest["runtimeReadiness"]["validatorsReplayed"] is False
     assert manifest["runtimeReadiness"]["validatorErrors"] == []
 
 

@@ -29,7 +29,7 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_approval_signature(approval: dict[str, Any]) -> list[str]:
+def validate_approval_signature(approval: dict[str, Any], *, repo_root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     for field in (
         "reviewerName",
@@ -48,9 +48,9 @@ def validate_approval_signature(approval: dict[str, Any]) -> list[str]:
     if approval.get("signatureFormat") != SIGNATURE_FORMAT:
         errors.append(f"approval.signatureFormat must be {SIGNATURE_FORMAT}")
 
-    document_path = ROOT / str(approval["documentPath"])
-    signature_path = ROOT / str(approval["signaturePath"])
-    public_key_path = ROOT / str(approval["publicKeyPath"])
+    document_path = repo_root / str(approval["documentPath"])
+    signature_path = repo_root / str(approval["signaturePath"])
+    public_key_path = repo_root / str(approval["publicKeyPath"])
     if str(approval["documentPath"]) not in REQUIRED_DOCS:
         errors.append("approval.documentPath must be one of the required legal review documents")
     if not document_path.is_file():
@@ -78,7 +78,7 @@ def validate_approval_signature(approval: dict[str, Any]) -> list[str]:
             str(signature_path),
             str(document_path),
         ],
-        cwd=ROOT,
+        cwd=repo_root,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -89,7 +89,12 @@ def validate_approval_signature(approval: dict[str, Any]) -> list[str]:
     return errors
 
 
-def validate_legal_release_review(data: dict[str, Any], *, require_approved: bool = True) -> list[str]:
+def validate_legal_release_review(
+    data: dict[str, Any],
+    *,
+    require_approved: bool = True,
+    repo_root: Path = ROOT,
+) -> list[str]:
     """Return legal-review blockers.
 
     The required review scope includes app store and commercial distribution terms,
@@ -111,13 +116,14 @@ def validate_legal_release_review(data: dict[str, Any], *, require_approved: boo
     if status != "approved" and "not legal approval" not in non_approval:
         errors.append("pending evidence must explicitly say it is not legal approval")
     if status == "approved":
-        errors.extend(validate_approval_signature(data.get("approval") or {}))
+        errors.extend(validate_approval_signature(data.get("approval") or {}, repo_root=repo_root))
     return errors
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence", type=Path, default=DEFAULT_EVIDENCE)
+    parser.add_argument("--repo-root", type=Path, default=ROOT)
     parser.add_argument(
         "--allow-pending",
         action="store_true",
@@ -125,19 +131,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    missing_docs = [rel_path for rel_path in REQUIRED_DOCS if not (ROOT / rel_path).is_file()]
+    repo_root = args.repo_root.resolve()
+    evidence_path = args.evidence if args.evidence.is_absolute() else repo_root / args.evidence
+
+    missing_docs = [rel_path for rel_path in REQUIRED_DOCS if not (repo_root / rel_path).is_file()]
     if missing_docs:
         print("FAIL: missing legal review document(s): " + ", ".join(missing_docs), file=sys.stderr)
         return 1
 
     try:
-        data = json.loads(args.evidence.read_text(encoding="utf-8"))
+        data = json.loads(evidence_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"FAIL: legal release review evidence is unreadable: {exc}", file=sys.stderr)
         return 1
 
     require_approved = not args.allow_pending
-    errors = validate_legal_release_review(data, require_approved=require_approved)
+    errors = validate_legal_release_review(data, require_approved=require_approved, repo_root=repo_root)
     if errors:
         print("FAIL: AGPL/libsignal legal release review is not release-approved", file=sys.stderr)
         for error in errors:

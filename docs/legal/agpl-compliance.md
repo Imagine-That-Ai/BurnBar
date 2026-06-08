@@ -32,6 +32,11 @@ covered work:
 - dependency lockfiles and generated SBOM/license reports
 - generated binding steps for libsignal, Swift, Kotlin, Rust, Node, and FFI
   surfaces that are part of the artifact
+- official Signal libsignal corresponding source: its AGPL `LICENSE`
+  (`Vendor/libsignal/LICENSE`), the pin manifest
+  (`third_party/libsignal/manifest.json`), and a written pointer to the exact
+  pinned upstream commit (libsignal is used unmodified, so the upstream tree at
+  that commit is its corresponding source)
 - deployment notes for hosted services, including environment variables with
   secret values redacted
 - checksums for binaries and source archives
