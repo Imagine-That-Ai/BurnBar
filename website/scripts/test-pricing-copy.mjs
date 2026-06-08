@@ -27,6 +27,11 @@ const faq = await read("src/data/faq.ts");
 const claims = await read("CLAIMS.md");
 const supportMacros = await read("src/data/supportMacros.ts");
 const publicPricingCopy = [pricing, plans, faq, claims, supportMacros].join("\n");
+const cloudTier = site.match(/id: "cloud",[\s\S]*?id: "cloud_pro"/)?.[0] ?? "";
+const cloudProTier = site.match(/id: "cloud_pro",[\s\S]*?id: "ultra"/)?.[0] ?? "";
+const cloudFaq = faq.match(/id: "burnbar-cloud",[\s\S]*?id: "burnbar-cloud-pro"/)?.[0] ?? "";
+const cloudProFaq =
+  faq.match(/id: "burnbar-cloud-pro",[\s\S]*?id: "cloud-pro-allowance"/)?.[0] ?? "";
 
 assert.match(site, /pricing:\s*{/, "site constants must expose a structured pricing catalog");
 assert.doesNotMatch(
@@ -62,6 +67,26 @@ assert.match(publicPricingCopy, /\$24\.99/, "Cloud Pro monthly price must be pub
 assert.match(publicPricingCopy, /\$249\/year|\$249\/yr/, "Cloud Pro annual price must be public");
 assert.match(publicPricingCopy, /\$59\.99/, "Ultra monthly price must be public");
 assert.match(publicPricingCopy, /\$599\/year|\$599\/yr/, "Ultra annual price must be public");
+assert.doesNotMatch(
+  cloudTier + cloudFaq,
+  /synced agent memory|Data Vault agent memory, Floo|plus Data Vault agent memory/i,
+  "base Cloud must not claim the Cloud Pro Data Vault agent-memory feature"
+);
+assert.match(
+  cloudFaq,
+  /Data Vault agent memory starts at Cloud Pro/,
+  "base Cloud FAQ must explicitly point agent memory to Cloud Pro"
+);
+assert.match(
+  cloudProTier + cloudProFaq,
+  /Data Vault agent memory/,
+  "Cloud Pro copy must include the Data Vault agent-memory feature"
+);
+assert.match(
+  cloudProFaq,
+  /10 knowledge sources, 50,000 memory chunks, and 1 GB/,
+  "Cloud Pro agent-memory limits must be public"
+);
 assert.match(
   publicPricingCopy,
   /100 Pensieve knowledge sources|100 knowledge sources/,

@@ -145,7 +145,7 @@ export const LAUNCH_POSTS: LaunchPost[] = [
   {
     channel: "email",
     headline: "OpenBurnBar is ready for paid cloud workflows",
-    body: "The free local app remains the foundation. BurnBar Cloud adds sync, backup, search, and agent memory across devices. BurnBar Cloud Pro adds Floo and Agent Control with included monthly allowance and prepaid top-ups.",
+    body: "The free local app remains the foundation. BurnBar Cloud adds sync, backup, and search across devices. BurnBar Cloud Pro adds Data Vault agent memory, Floo, and Agent Control with included monthly allowance and prepaid top-ups.",
     cta: "Upgrade when you need sync or control"
   }
 ];

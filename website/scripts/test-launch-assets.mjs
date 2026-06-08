@@ -37,7 +37,11 @@ for (const trigger of [
   "encrypted-backup",
   "remote-mcp-grant"
 ]) {
-  assert.match(launch, new RegExp(`id: "${trigger}"`), `Free to Cloud trigger ${trigger} is required`);
+  assert.match(
+    launch,
+    new RegExp(`id: "${trigger}"`),
+    `Free to Cloud trigger ${trigger} is required`
+  );
 }
 
 for (const trigger of [
@@ -47,13 +51,23 @@ for (const trigger of [
   "audit-export-notarization",
   "hosted-action-balance-exhausted"
 ]) {
-  assert.match(launch, new RegExp(`id: "${trigger}"`), `Cloud to Cloud Pro trigger ${trigger} is required`);
+  assert.match(
+    launch,
+    new RegExp(`id: "${trigger}"`),
+    `Cloud to Cloud Pro trigger ${trigger} is required`
+  );
 }
 
 assert.doesNotMatch(
   launch,
   /fromTier: "free"[\s\S]{0,160}paywall: "BurnBar Cloud Pro"/,
   "Free users must not see a Cloud Pro prompt before a Group-B action"
+);
+
+assert.match(
+  launch,
+  /BurnBar Cloud adds sync, backup, and search across devices\. BurnBar Cloud Pro adds Data Vault agent memory/,
+  "launch email copy must keep Data Vault agent memory in Cloud Pro, not base Cloud"
 );
 
 assert.doesNotMatch(

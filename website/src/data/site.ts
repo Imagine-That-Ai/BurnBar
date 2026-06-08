@@ -36,7 +36,8 @@ export const SITE = {
         period: "month",
         productIds: ["com.openburnbar.pro.monthly", "com.openburnbar.pro.annual"],
         entitlementId: "burnbar_pro",
-        summary: "Sync your quota, encrypted history, and agent memory across devices.",
+        summary:
+          "Sync your quota, encrypted conversation history, session logs, and cloud search across devices.",
         cta: "Choose Cloud"
       },
       {
@@ -48,7 +49,8 @@ export const SITE = {
         period: "month",
         productIds: ["com.openburnbar.proMax.v2.monthly", "com.openburnbar.proMax.annual"],
         entitlementId: "burnbar_pro_max",
-        summary: "Use your Mac from your phone and let agents work under your grant.",
+        summary:
+          "Add Data Vault agent memory, Floo phone-to-Mac workflows, and Agent Control under your grant.",
         cta: "Choose Cloud Pro",
         allowance: {
           hostedAgentActionsMonthly: 500,
@@ -67,7 +69,7 @@ export const SITE = {
         productIds: ["com.openburnbar.ultra.monthly", "com.openburnbar.ultra.annual.v2"],
         entitlementId: "burnbar_ultra",
         summary:
-          "Everything in Cloud Pro, plus 10× your private agent memory — 100 sources, 500,000 sealed chunks, and 10 GB your agents can recall.",
+          "Everything in Cloud Pro, plus 10× your Data Vault agent memory — 100 sources, 500,000 sealed chunks, and 10 GB your agents can recall.",
         cta: "Choose Ultra",
         allowance: {
           hostedAgentActionsMonthly: 500,
