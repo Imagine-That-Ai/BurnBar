@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-08T17:32:58.161Z",
+  "privacy": "aggregate_counts_only_no_document_values_or_identifiers",
+  "release": {
+    "deployedCommit": "572f5ce27251eff5d92f572212f6aefd365b9de1",
+    "sourceLocation": "https://burnbar.ai/legal/source",
+    "dependencyLocks": [
+      "functions/package-lock.json",
+      "packages/signal-envelope-contracts/package-lock.json"
+    ]
+  },
+  "writePath": {
+    "signalRequired": true,
+    "signalEnvelopeWritesEnabled": true,
+    "legacyRelayWritesEnabled": false,
+    "legacyRatchetWritesEnabled": false,
+    "legacyPlaintextWritesEnabled": false,
+    "modeSource": "gcloud run services describe + gcloud run revisions describe; status.conditions + readyRevision env",
+    "services": [
+      {
+        "service": "burnbarhermesgateway",
+        "latestReadyRevision": "burnbarhermesgateway-00019-44v",
+        "url": "https://burnbarhermesgateway-cjrjb5ckqq-uc.a.run.app",
+        "firebaseFunctionsHash": "d9e096dadfc390a5bfa3712e5daf025c2c20b86a",
+        "functionVersion": "v2026.06.08.1729",
+        "sourceCommit": "572f5ce27251eff5d92f572212f6aefd365b9de1",
+        "correspondingSourceUrl": "https://burnbar.ai/legal/source",
+        "signalRequired": true
+      },
+      {
+        "service": "enqueuehermesgatewayevent",
+        "latestReadyRevision": "enqueuehermesgatewayevent-00015-scp",
+        "url": "https://enqueuehermesgatewayevent-cjrjb5ckqq-uc.a.run.app",
+        "firebaseFunctionsHash": "d9e096dadfc390a5bfa3712e5daf025c2c20b86a",
+        "functionVersion": "v2026.06.08.1729",
+        "sourceCommit": "572f5ce27251eff5d92f572212f6aefd365b9de1",
+        "correspondingSourceUrl": "https://burnbar.ai/legal/source",
+        "signalRequired": true
+      }
+    ]
+  },
+  "collections": {
+    "events": {
+      "collectionGroup": "hermes_gateway_events",
+      "sampleLimit": 50000,
+      "sampled": 0,
+      "truncated": false,
+      "counts": {
+        "signalRead": 0,
+        "knownLegacyRelay": 0,
+        "knownLegacyRatchet": 0,
+        "knownLegacyPlaintext": 0,
+        "unreadable": 0,
+        "malformed": 0,
+        "unknownSchema": 0,
+        "parserMisses": 0
+      }
+    },
+    "messages": {
+      "collectionGroup": "hermes_gateway_messages",
+      "sampleLimit": 50000,
+      "sampled": 0,
+      "truncated": false,
+      "counts": {
+        "signalRead": 0,
+        "knownLegacyRelay": 0,
+        "knownLegacyRatchet": 0,
+        "knownLegacyPlaintext": 0,
+        "unreadable": 0,
+        "malformed": 0,
+        "unknownSchema": 0,
+        "parserMisses": 0
+      }
+    },
+    "attachments": {
+      "collectionGroup": "hermes_gateway_attachments",
+      "sampleLimit": 50000,
+      "sampled": 0,
+      "truncated": false,
+      "counts": {
+        "signalRead": 0,
+        "knownLegacyRelay": 0,
+        "knownLegacyRatchet": 0,
+        "knownLegacyPlaintext": 0,
+        "unreadable": 0,
+        "malformed": 0,
+        "unknownSchema": 0,
+        "parserMisses": 0
+      }
+    }
+  }
+}

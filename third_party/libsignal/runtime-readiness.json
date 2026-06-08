@@ -115,6 +115,60 @@
       },
       "attachedAt": "2026-06-08T17:23:31.854712Z",
       "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
+    },
+    {
+      "id": "hermes_gateway_writes",
+      "status": "complete",
+      "artifactPath": "launch-evidence/hermes-gateway-drain.json",
+      "artifactType": "hermes_gateway_migration_drain_evidence",
+      "sha256": "312f45a2399cbf62082069b8b698ab38e4c317790bcafac6808ac73f6fcfaf96",
+      "validatorCommand": "python3 scripts/ci/check_hermes_gateway_migration_drain.py launch-evidence/hermes-gateway-drain.json",
+      "validatorResult": {
+        "status": "pass",
+        "exitCode": 0,
+        "durationMs": 74,
+        "stdoutSha256": "f4378342ddfc227ae742f0cdb98c480b49a7726f9516e529463cec93223f02e2",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checkedAt": "2026-06-08T17:34:42.505026Z"
+      },
+      "attachedAt": "2026-06-08T17:34:42.505030Z",
+      "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
+    },
+    {
+      "id": "hermes_attachment_writes",
+      "status": "complete",
+      "artifactPath": "launch-evidence/hermes-gateway-drain.json",
+      "artifactType": "hermes_gateway_migration_drain_evidence",
+      "sha256": "312f45a2399cbf62082069b8b698ab38e4c317790bcafac6808ac73f6fcfaf96",
+      "validatorCommand": "python3 scripts/ci/check_hermes_gateway_migration_drain.py launch-evidence/hermes-gateway-drain.json",
+      "validatorResult": {
+        "status": "pass",
+        "exitCode": 0,
+        "durationMs": 74,
+        "stdoutSha256": "f4378342ddfc227ae742f0cdb98c480b49a7726f9516e529463cec93223f02e2",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checkedAt": "2026-06-08T17:37:29.593293Z"
+      },
+      "attachedAt": "2026-06-08T17:37:29.593296Z",
+      "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
+    },
+    {
+      "id": "migration_telemetry",
+      "status": "complete",
+      "artifactPath": "launch-evidence/hermes-gateway-drain.json",
+      "artifactType": "hermes_gateway_migration_drain_evidence",
+      "sha256": "312f45a2399cbf62082069b8b698ab38e4c317790bcafac6808ac73f6fcfaf96",
+      "validatorCommand": "python3 scripts/ci/check_hermes_gateway_migration_drain.py launch-evidence/hermes-gateway-drain.json",
+      "validatorResult": {
+        "status": "pass",
+        "exitCode": 0,
+        "durationMs": 70,
+        "stdoutSha256": "f4378342ddfc227ae742f0cdb98c480b49a7726f9516e529463cec93223f02e2",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checkedAt": "2026-06-08T17:40:13.451779Z"
+      },
+      "attachedAt": "2026-06-08T17:40:13.451782Z",
+      "attachedBy": "scripts/ci/attach_libsignal_runtime_evidence.py"
     }
   ],
   "requiredGates": [
@@ -140,12 +194,12 @@
     },
     {
       "id": "hermes_gateway_writes",
-      "status": "pending",
+      "status": "complete",
       "proof": "New Hermes Gateway text/control writes use Signal-backed envelopes; legacy relayEnvelope and ratchetEnvelope remain read-only."
     },
     {
       "id": "hermes_attachment_writes",
-      "status": "pending",
+      "status": "complete",
       "proof": "New Hermes Gateway attachment writes use Signal-backed envelopes; legacy envelopes remain read-only."
     },
     {
@@ -155,7 +209,7 @@
     },
     {
       "id": "migration_telemetry",
-      "status": "pending",
+      "status": "complete",
       "proof": "Legacy HPKE/CloudVault envelope read telemetry proves compatibility rows are drained or safely retained read-only."
     },
     {
@@ -164,6 +218,6 @@
       "proof": "Counsel signs off before public app-store, direct-download, extension, npm, Docker, or hosted-service release that links libsignal."
     }
   ],
-  "generatedAt": "2026-06-08T17:23:31.854452Z",
+  "generatedAt": "2026-06-08T17:40:13.451478Z",
   "mergedMainEvidence": "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
 }
