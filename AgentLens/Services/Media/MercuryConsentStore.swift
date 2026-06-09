@@ -23,7 +23,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private static let legacyAlwaysAllowKey = "mercuryAlwaysAllowMyIPhoneToMirror"
     private static let rememberAcceptedPeersKey = "mercuryRememberAcceptedMirrorPeers"
-    private static let grantsKey = "mercuryMirrorAutoAcceptGrants.v1"
+    private static let grantsKey = "mercuryMirrorAutoAcceptGrants.v2"
     private static let grantTTL: TimeInterval = 30 * 24 * 60 * 60
 
     @Published var rememberAcceptedMirrorPeers: Bool {
@@ -58,6 +58,12 @@ final class MercuryConsentStore: ObservableObject {
         controlAuthorityPeerNodeId: String?,
         now: Date = Date()
     ) -> Bool {
+        guard Self.hasStrongPeerBinding(
+            viewerDeviceId: viewerDeviceId,
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
+        ) else {
+            return false
+        }
         pruneExpired(now: now)
         let key = Self.grantKey(
             connectionId: connectionId,
@@ -80,6 +86,12 @@ final class MercuryConsentStore: ObservableObject {
         now: Date = Date()
     ) {
         guard rememberAcceptedMirrorPeers else { return }
+        guard Self.hasStrongPeerBinding(
+            viewerDeviceId: viewerDeviceId,
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
+        ) else {
+            return
+        }
         let key = Self.grantKey(
             connectionId: connectionId,
             viewerDeviceId: viewerDeviceId,
@@ -133,6 +145,13 @@ final class MercuryConsentStore: ObservableObject {
             viewerDeviceId?.nilIfEmpty() ?? "_",
             controlAuthorityPeerNodeId?.nilIfEmpty() ?? "_",
         ].joined(separator: "|")
+    }
+
+    private static func hasStrongPeerBinding(
+        viewerDeviceId: String?,
+        controlAuthorityPeerNodeId: String?
+    ) -> Bool {
+        viewerDeviceId?.nilIfEmpty() != nil || controlAuthorityPeerNodeId?.nilIfEmpty() != nil
     }
 }
 

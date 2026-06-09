@@ -49,7 +49,8 @@ public extension AgentCapabilityGrantRequest {
             grantDurationSeconds: request.grantDurationSeconds,
             sourceDeviceID: request.sourceDeviceId,
             clientIntentID: request.clientIntentId,
-            localAuthenticationSatisfied: request.localAuthenticationSatisfied
+            localAuthenticationSatisfied: request.localAuthenticationSatisfied,
+            localAuthProof: request.localAuthProof
         )
     }
 
@@ -68,6 +69,7 @@ public extension AgentCapabilityGrantRequest {
             sourceDeviceId: sourceDeviceID,
             clientIntentId: clientIntentID,
             localAuthenticationSatisfied: localAuthenticationSatisfied,
+            localAuthProof: localAuthProof,
             authority: authority
         )
     }

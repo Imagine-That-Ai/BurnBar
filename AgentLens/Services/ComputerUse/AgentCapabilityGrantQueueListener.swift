@@ -114,7 +114,7 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
             "requestId", "runtime", "threadId", "preset", "capabilities",
             "trustMode", "deliveryMode", "requestedAt", "expiresAt",
             "grantDurationSeconds", "sourceDeviceId", "clientIntentId",
-            "localAuthenticationSatisfied", "authority"
+            "localAuthenticationSatisfied", "localAuthProof", "authority"
         ]
         var payload: [String: Any] = [:]
         for key in keys {

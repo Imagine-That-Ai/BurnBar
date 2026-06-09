@@ -165,12 +165,12 @@ final class ControllerKeyPinStoreTests: XCTestCase {
 
     // MARK: Enforcement flag
 
-    func testEnforcementFlagDefaultsOffAndHonorsOverride() {
+    func testEnforcementFlagDefaultsOnAndHonorsOverride() {
         let suite = UserDefaults(suiteName: "controller-pin-flag-\(UUID().uuidString)")!
-        XCTAssertFalse(ControllerKeyPinEnforcementFlag.isEnabled(defaults: suite), "default off pending UI rollout")
-        suite.set(true, forKey: ControllerKeyPinEnforcementFlag.userDefaultsKey)
         XCTAssertTrue(ControllerKeyPinEnforcementFlag.isEnabled(defaults: suite))
         suite.set(false, forKey: ControllerKeyPinEnforcementFlag.userDefaultsKey)
         XCTAssertFalse(ControllerKeyPinEnforcementFlag.isEnabled(defaults: suite))
+        suite.set(true, forKey: ControllerKeyPinEnforcementFlag.userDefaultsKey)
+        XCTAssertTrue(ControllerKeyPinEnforcementFlag.isEnabled(defaults: suite))
     }
 }

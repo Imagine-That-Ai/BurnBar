@@ -136,6 +136,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private var screenshotEvidenceDataByHash: [String: Data] = [:]
     private var latestControlUID: String?
     private var latestControlConnectionID: String?
+    private var phoneFirstActionConfirmedSessionKeys: Set<String> = []
     #if DEBUG
     private var didStartE2EApprovalProbe = false
     #endif
@@ -191,6 +192,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         browserDispatcher: BrowserDispatcher? = nil,
         screenshotService: MacScreenshotService? = nil,
         authorityProvider: PhoneControlAuthorityPublicKeyProviding = FirestorePhoneControlAuthorityProvider.shared,
+        phoneValidator: PhoneControlAuthorityValidator = PhoneControlAuthorityValidator(),
         displayBoundsProvider: @escaping PhoneControlReceiver.DisplayBoundsProvider = {
             let totalHeight = NSScreen.screens.first?.frame.maxY ?? 0
             return NSScreen.screens.map { screen in
@@ -225,6 +227,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             baseDirectory: configuration.auditBaseDirectory
         )
         self.authorityProvider = authorityProvider
+        self.phoneValidator = phoneValidator
         self.displayBoundsProvider = displayBoundsProvider
         self.approvalPresenter = approvalPresenter
         self.remoteConfigObserver = NotificationCenter.default.addObserver(
@@ -278,6 +281,65 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         // F1: scope the controller-key pin to this account so the Mac refuses a
         // relay/Firestore-swapped signing key for an already-paired controller.
         phoneValidator.registerPeer(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId)
+    }
+
+    private func registerPhonePeerForControlClassify(
+        nodeId: String,
+        publicKey: Curve25519.Signing.PublicKey,
+        connectionID: String
+    ) async -> (admitted: Bool, denialDetail: String?) {
+        switch phoneValidator.registerPeerDetailed(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId) {
+        case .admitted:
+            return (true, nil)
+        case .pendingConfirmation(let safetyCode):
+            recordE2EProofEvent([
+                "event": "mac_control_classify_pending_controller_confirmation",
+                "peerNodeId": nodeId,
+                "connectionId": connectionID,
+                "safetyCode": safetyCode ?? ""
+            ])
+            let codeLine = safetyCode.map { " Safety code: \($0)." } ?? ""
+            let approval = await requestMacOnlyApproval(
+                toolKind: "phone_control_pairing",
+                title: "Approve phone controller",
+                message: "A remote device wants to control this Mac.\(codeLine)",
+                actionSummary: "Approve phone controller \(nodeId)"
+            )
+            guard approval.decision == .approve,
+                  phoneValidator.confirmPeerPin(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId)
+            else {
+                return (false, "controller_confirmation_rejected")
+            }
+            switch phoneValidator.registerPeerDetailed(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId) {
+            case .admitted:
+                return (true, nil)
+            case .pendingConfirmation:
+                return (false, "controller_confirmation_required")
+            case .refused(let refusal):
+                return (false, Self.controllerRegistrationDenialDetail(for: refusal))
+            }
+        case .refused(let refusal):
+            return (false, Self.controllerRegistrationDenialDetail(for: refusal))
+        }
+    }
+
+    private func phoneFirstActionConfirmationKey(peerNodeId: String? = nil) -> String? {
+        guard let sessionId = activeSessionId?.rawValue else { return nil }
+        let peer = peerNodeId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? state?.manifest.phoneViewerNodeId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? phoneControlAuthorizedPeerNodeProvider?()?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "unknown-peer"
+        return "\(sessionId)|\(peer)"
+    }
+
+    private func isPhoneFirstActionConfirmed(peerNodeId: String? = nil) -> Bool {
+        guard let key = phoneFirstActionConfirmationKey(peerNodeId: peerNodeId) else { return false }
+        return phoneFirstActionConfirmedSessionKeys.contains(key)
+    }
+
+    private func markPhoneFirstActionConfirmed(peerNodeId: String? = nil) {
+        guard let key = phoneFirstActionConfirmationKey(peerNodeId: peerNodeId) else { return }
+        phoneFirstActionConfirmedSessionKeys.insert(key)
     }
 
     /// Peer node id of the in-flight phone-control session, if any.
@@ -458,6 +520,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         focusFollowController?.stop()
         auditLogger = nil
         screenshotEvidenceDataByHash.removeAll()
+        phoneFirstActionConfirmedSessionKeys.removeAll()
         pendingApproval = nil
         pendingApprovalScreenshotPNG = nil
         state?.endReason = reason
@@ -494,6 +557,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         focusFollowController?.stop()
         auditLogger = nil
         screenshotEvidenceDataByHash.removeAll()
+        phoneFirstActionConfirmedSessionKeys.removeAll()
         pendingApproval = nil
         pendingApprovalScreenshotPNG = nil
         state?.endReason = endReason(for: source)
@@ -540,6 +604,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         focusFollowController?.stop()
         auditLogger = nil
         screenshotEvidenceDataByHash.removeAll()
+        phoneFirstActionConfirmedSessionKeys.removeAll()
         pendingApproval = nil
         pendingApprovalScreenshotPNG = nil
         approvalContexts.removeAll()
@@ -649,6 +714,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             context: scopeContext
         )
         let accessibilityDeny = accessibilityDeny(for: action)
+        let originatedFromPhone = invocation.requestedBy.rawValue == "phone-control"
+        let phoneSessionFirstActionConfirmed = !originatedFromPhone || isPhoneFirstActionConfirmed()
         let capability = ComputerUseCapabilityContext(
             entitlement: configuration.entitlement,
             envelope: configuration.budgetEnvelope,
@@ -657,14 +724,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             concurrentSessionActive: false,
             killSwitch: configuration.killSwitch,
             accessibilityTrusted: inputController.isAccessibilityTrusted(),
-            originatedFromPhone: invocation.requestedBy.rawValue == "phone-control",
+            originatedFromPhone: originatedFromPhone,
             phoneControlRespectsDenyRegions: configuration.phoneControlRespectsDenyRegions,
-            // F3: the per-session first-action approval mechanism is implemented and
-            // unit-tested in DefaultComputerUseCapabilityGate. It stays gated-off in
-            // production (confirmed: true) until the coordinator tracks per-session
-            // confirmation and the on-Mac/overlay approval UX is validated; the
-            // deny-region protection above ships on by default.
-            phoneSessionFirstActionConfirmed: true
+            phoneSessionFirstActionConfirmed: phoneSessionFirstActionConfirmed
         )
 
         switch gate.check(
@@ -699,11 +761,52 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             return response
 
         case .allowed(let approvedByCandidate):
+            let needsPhoneFirstActionApproval = originatedFromPhone && !phoneSessionFirstActionConfirmed
             let approval: ApprovalDecision
             if approvedByCandidate == .trustedScope ||
                 approvedByCandidate == .phone ||
-                isReadOnlyInspect(action: action) {
+                (isReadOnlyInspect(action: action) && !needsPhoneFirstActionApproval) {
                 approval = ApprovalDecision(approvedBy: approvedByCandidate, approvalId: nil)
+            } else if needsPhoneFirstActionApproval {
+                let summary = action.executableSummary(forApproval: scopeContext)
+                approval = await requestMacOnlyApproval(
+                    toolKind: invocation.tool.rawValue,
+                    title: "Approve phone control",
+                    message: summary,
+                    actionSummary: summary
+                )
+                switch approval.decision {
+                case .approve:
+                    markPhoneFirstActionConfirmed()
+                    break
+                case .reject, .rejectAndHalt:
+                    lastDeniedReason = .userRejected
+                    let entry = appendAuditEntry(
+                        logger: logger,
+                        action: action,
+                        approvedBy: .denied,
+                        scopeRuleId: scopeRuleIfDenied(outcome: scopeOutcome),
+                        denyReason: ComputerUseDenyReason.userRejected.rawValue,
+                        scopeContext: scopeContext,
+                        beforeScreenshotHashHex: beforeCapture?.sha256Hex
+                    )
+                    currentState.actionsRejected += 1
+                    currentState.auditChainHeadHashHex = logger.headHashHex
+                    state = currentState
+                    let response = ComputerUseInvokeResponse(
+                        sessionId: sessionId.rawValue,
+                        callID: invocation.callID,
+                        status: .denied,
+                        denyReason: ComputerUseDenyReason.userRejected.rawValue,
+                        auditEntryIndex: entry?.entryIndex,
+                        auditHeadHashHex: logger.headHashHex
+                    )
+                    appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
+                    if approval.decision == .rejectAndHalt {
+                        await panicHalt(source: .phoneGesture)
+                    }
+                    return response
+                }
             } else {
                 approval = await requestApproval(
                     invocation: invocation,
@@ -901,6 +1004,43 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         )
     }
 
+    private func requestMacOnlyApproval(
+        toolKind: String,
+        title: String,
+        message: String,
+        actionSummary: String
+    ) async -> ApprovalDecision {
+        let request = HermesRealtimeRelayApprovalRequest(
+            approvalId: UUID().uuidString,
+            runId: activeSessionId?.rawValue ?? "mac-local-security-approval",
+            sessionId: activeSessionId?.rawValue ?? "",
+            toolKind: toolKind,
+            title: title,
+            message: message,
+            beforeScreenshotBlake3: nil,
+            actionSummary: actionSummary,
+            requestedAt: Date(),
+            trustMode: (state?.liveTrustMode ?? .manual).rawValue
+        )
+        pendingApproval = request
+        pendingApprovalScreenshotPNG = nil
+        appendTimeline(
+            kind: toolKind,
+            summary: actionSummary,
+            status: .awaitingApproval
+        )
+        let response = await approvalPresenter(request, nil)
+        if pendingApproval?.approvalId == request.approvalId {
+            pendingApproval = nil
+            pendingApprovalScreenshotPNG = nil
+        }
+        return ApprovalDecision(
+            decision: response.decision,
+            approvedBy: .mac,
+            approvalId: response.approvalId
+        )
+    }
+
     private func dispatch(
         action: ComputerUseAction,
         invocation: BurnBarToolInvocation
@@ -1006,18 +1146,27 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     connectionId: frame.connectionId,
                     peerNodeId: peerNodeId
                 )
-                guard registerPhonePeer(nodeId: peerNodeId, publicKey: publicKey) else {
+                let registration = await registerPhonePeerForControlClassify(
+                    nodeId: peerNodeId,
+                    publicKey: publicKey,
+                    connectionID: frame.connectionId
+                )
+                guard registration.admitted else {
                     recordE2EProofEvent([
-                        "event": "mac_control_classify_revoked_peer",
+                        "event": "mac_control_classify_refused",
                         "peerNodeId": peerNodeId,
-                        "connectionId": frame.connectionId
+                        "connectionId": frame.connectionId,
+                        "detail": registration.denialDetail ?? "controller_registration_refused"
                     ])
                     emitControlFrame(
                         type: .controlDenied,
                         payload: HermesRealtimeRelayControlPayload(
                             streamClass: "control.input",
                             sessionId: activeSessionId?.rawValue,
-                            denied: HermesRealtimeRelayControlDenied(reason: .signatureFailure, detail: "peer_revoked")
+                            denied: HermesRealtimeRelayControlDenied(
+                                reason: .signatureFailure,
+                                detail: registration.denialDetail ?? "controller_registration_refused"
+                            )
                         )
                     )
                     return
@@ -1080,19 +1229,62 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 "connectionId": frame.connectionId,
                 "counter": String(request.authority.counter)
             ])
-            let result = remoteClipboardController.handle(
-                request: request,
-                context: RemoteClipboardController.RuntimeContext(
-                    activeSessionId: activeSessionId,
-                    state: state,
-                    configuration: configuration,
-                    auditLogger: auditLogger,
-                    scopeRules: scopeRulesProvider(),
-                    validator: phoneValidator,
-                    isDirectPhoneControl: activeSessionIsDirectPhoneControl,
-                    attestation: await phoneControlAttestationRequirement()
+            let makeClipboardContext: () async -> RemoteClipboardController.RuntimeContext = { [self] in
+                let attestation = await self.phoneControlAttestationRequirement()
+                return RemoteClipboardController.RuntimeContext(
+                    activeSessionId: self.activeSessionId,
+                    state: self.state,
+                    configuration: self.configuration,
+                    auditLogger: self.auditLogger,
+                    scopeRules: self.scopeRulesProvider(),
+                    validator: self.phoneValidator,
+                    isDirectPhoneControl: self.activeSessionIsDirectPhoneControl,
+                    attestation: attestation,
+                    phoneSessionFirstActionConfirmed: self.isPhoneFirstActionConfirmed(peerNodeId: request.authority.peerNodeId)
                 )
+            }
+            var result = remoteClipboardController.handle(
+                request: request,
+                context: await makeClipboardContext()
             )
+            if result.response.detail == "phone_first_action_approval_required" {
+                let approval = await requestMacOnlyApproval(
+                    toolKind: "remote_clipboard",
+                    title: "Approve phone clipboard",
+                    message: "A remote device wants to use this Mac's clipboard.",
+                    actionSummary: "Approve phone clipboard \(request.action.rawValue)"
+                )
+                guard approval.decision == .approve else {
+                    result = RemoteClipboardController.Result(
+                        response: HermesRealtimeRelayClipboardResponse(
+                            requestId: request.requestId,
+                            action: request.action,
+                            status: .denied,
+                            detail: ComputerUseDenyReason.userRejected.rawValue
+                        ),
+                        action: result.action,
+                        auditEntry: nil,
+                        executed: false,
+                        rejected: true,
+                        denyReason: .userRejected
+                    )
+                    applyRemoteClipboardResult(result)
+                    emitControlFrame(
+                        type: .controlClipboardResponse,
+                        payload: HermesRealtimeRelayControlPayload(
+                            streamClass: "control.clipboard",
+                            sessionId: activeSessionId?.rawValue,
+                            clipboardResponse: result.response
+                        )
+                    )
+                    return
+                }
+                markPhoneFirstActionConfirmed(peerNodeId: request.authority.peerNodeId)
+                result = remoteClipboardController.handle(
+                    request: request,
+                    context: await makeClipboardContext()
+                )
+            }
             applyRemoteClipboardResult(result)
             emitControlFrame(
                 type: .controlClipboardResponse,
@@ -1130,7 +1322,30 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                     now: Date()
                 )
                 let request = try AgentCapabilityGrantRequest(wire: wireRequest)
-                receipt = AgentCapabilityGrantStore.shared.apply(request)
+                let requiresMacApproval = AgentDesktopCapability.requiresMacApproval(
+                    capabilities: request.capabilities,
+                    trustMode: request.trustMode
+                )
+                if requiresMacApproval {
+                    let approval = await requestMacOnlyApproval(
+                        toolKind: "agent_capability_grant",
+                        title: "Approve agent desktop tools",
+                        message: "\(request.preset.title) permissions requested for \(request.runtimeID.rawValue).",
+                        actionSummary: "Approve \(request.preset.title) agent tools for \(request.runtimeID.rawValue)"
+                    )
+                    if approval.decision == .approve {
+                        receipt = AgentCapabilityGrantStore.shared.apply(request, macApprovalSatisfied: true)
+                    } else {
+                        receipt = Self.agentGrantReceipt(
+                            for: wireRequest,
+                            status: .denied,
+                            denialReason: .macApprovalRequired,
+                            message: "Mac approval was required and was not granted."
+                        )
+                    }
+                } else {
+                    receipt = AgentCapabilityGrantStore.shared.apply(request)
+                }
             } catch let error as PhoneControlAuthorityValidator.ValidationError {
                 receipt = Self.agentGrantReceipt(
                     for: wireRequest,
@@ -1317,6 +1532,21 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         for error: PhoneControlAuthorityValidator.ValidationError
     ) -> AgentGrantDenialReason {
         error.agentGrantDenialReason
+    }
+
+    private static func controllerRegistrationDenialDetail(
+        for refusal: PhoneControlAuthorityValidator.RegistrationRefusal
+    ) -> String {
+        switch refusal {
+        case .revokedPeer:
+            return "peer_revoked"
+        case .pinMismatch:
+            return "controller_key_mismatch"
+        case .malformedAdvertisedKey:
+            return "controller_key_malformed"
+        case .keychainError:
+            return "controller_pin_unavailable"
+        }
     }
 
     #if DEBUG
@@ -1991,6 +2221,12 @@ private extension Dictionary where Key == String, Value == BurnBarJSONValue {
             if case let .string(string) = value { return string }
             return nil
         }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }
 #endif

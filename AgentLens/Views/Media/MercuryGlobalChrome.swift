@@ -33,11 +33,24 @@ struct MercuryChromeRoot: View {
                     IncomingCallSheet(
                         pairedDeviceName: request.requesterName,
                         initial: String(request.requesterName.prefix(1)).uppercased(),
-                        subtitle: "Screen mirror request",
+                        subtitle: request.requestsAgentTerminal
+                            ? "Screen mirror + terminal request"
+                            : "Screen mirror request",
                         actionNoun: "mirror request",
+                        secondaryAcceptTitle: request.requestsAgentTerminal
+                            ? "Mirror + Terminal"
+                            : nil,
+                        secondaryAcceptAccessibilityLabel: request.requestsAgentTerminal
+                            ? "Accept mirror and open \(request.agentTerminalRuntimeName ?? "agent") terminal from \(request.requesterName)"
+                            : nil,
                         onAccept: {
                             Task { await router.acceptMirror(request) }
                         },
+                        onSecondaryAccept: request.requestsAgentTerminal
+                            ? {
+                                Task { await router.acceptMirrorWithAgentTerminal(request) }
+                            }
+                            : nil,
                         onDecline: {
                             Task { await router.declineMirror(request) }
                         }

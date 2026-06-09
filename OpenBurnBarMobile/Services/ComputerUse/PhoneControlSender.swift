@@ -162,6 +162,16 @@ public final class PhoneControlSender: @unchecked Sendable {
             signatureEd25519: signed.signatureBase64,
             attestationHashBlake3: attestationDigest
         )
+        var signedRequest = request
+        if request.localAuthenticationSatisfied {
+            signedRequest.localAuthProof = try signer.signLocalAuthProof(
+                deviceId: request.sourceDeviceID,
+                signedIntentHash: signed.intentHashHex,
+                authenticatedAt: signed.timestamp,
+                expiresAt: request.expiresAt,
+                privateKey: key
+            )
+        }
         let frame = HermesRealtimeRelayFrame(
             type: .controlAgentGrantRequest,
             uid: uid,
@@ -170,7 +180,7 @@ public final class PhoneControlSender: @unchecked Sendable {
             media: nil,
             control: HermesRealtimeRelayControlPayload(
                 streamClass: "control.agent.grant",
-                agentGrantRequest: request.wire(authority: authority)
+                agentGrantRequest: signedRequest.wire(authority: authority)
             )
         )
         try await frameSink(frame)

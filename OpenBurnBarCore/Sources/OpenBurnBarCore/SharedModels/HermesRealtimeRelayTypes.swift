@@ -400,6 +400,31 @@ public struct HermesRealtimeRelayClipboardResponse: Codable, Sendable, Equatable
     }
 }
 
+public struct HermesRealtimeRelayAgentGrantLocalAuthProof: Codable, Sendable, Equatable, Hashable {
+    public var proofId: String
+    public var deviceId: String
+    public var signedIntentHash: String
+    public var authenticatedAt: Date
+    public var expiresAt: Date
+    public var signatureEd25519: String
+
+    public init(
+        proofId: String,
+        deviceId: String,
+        signedIntentHash: String,
+        authenticatedAt: Date,
+        expiresAt: Date,
+        signatureEd25519: String
+    ) {
+        self.proofId = proofId
+        self.deviceId = deviceId
+        self.signedIntentHash = signedIntentHash
+        self.authenticatedAt = authenticatedAt
+        self.expiresAt = expiresAt
+        self.signatureEd25519 = signatureEd25519
+    }
+}
+
 public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable {
     public var requestId: String
     public var runtime: String
@@ -414,6 +439,7 @@ public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable
     public var sourceDeviceId: String
     public var clientIntentId: String
     public var localAuthenticationSatisfied: Bool
+    public var localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof?
     public var authority: HermesRealtimeRelayAuthorityEnvelope
 
     public init(
@@ -430,6 +456,7 @@ public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable
         sourceDeviceId: String,
         clientIntentId: String,
         localAuthenticationSatisfied: Bool,
+        localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
         authority: HermesRealtimeRelayAuthorityEnvelope
     ) {
         self.requestId = requestId
@@ -445,6 +472,7 @@ public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable
         self.sourceDeviceId = sourceDeviceId
         self.clientIntentId = clientIntentId
         self.localAuthenticationSatisfied = localAuthenticationSatisfied
+        self.localAuthProof = localAuthProof
         self.authority = authority
     }
 }

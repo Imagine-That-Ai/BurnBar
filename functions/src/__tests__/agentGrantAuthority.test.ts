@@ -8,6 +8,11 @@ const {
   canonicalAgentGrantRequestJSON,
   agentGrantRequestHashHex,
   agentGrantAuthoritySignablePayload,
+  agentGrantLocalAuthProofSignablePayload,
+  verifyAgentGrantLocalAuthProof,
+  queuedAgentGrantRequiresLocalAuthProof,
+  queuedAgentGrantRequiresMacApproval,
+  queuedAgentGrantDeliveryRequiresMacApproval,
   verifyEd25519RawSignature,
 } = __testing__;
 
@@ -54,5 +59,78 @@ describe("agent grant authority validation", () => {
 
     expect(verifyEd25519RawSignature(rawPublicKey, payload, signature)).toBe(true);
     expect(verifyEd25519RawSignature(rawPublicKey, Buffer.from("tampered"), signature)).toBe(false);
+  });
+
+  it("requires local-auth proof for high-risk capability-derived grants", () => {
+    expect(queuedAgentGrantRequiresLocalAuthProof(["workspace_read"], "manual")).toBe(false);
+    expect(queuedAgentGrantRequiresLocalAuthProof(["workspace_read", "workspace_write"], "manual")).toBe(true);
+    expect(queuedAgentGrantRequiresLocalAuthProof(["workspace_read", "shell"], "manual")).toBe(true);
+    expect(queuedAgentGrantRequiresLocalAuthProof(["desktop_screenshot"], "manual")).toBe(true);
+    expect(queuedAgentGrantRequiresLocalAuthProof(["desktop_system_input"], "manual")).toBe(true);
+    expect(queuedAgentGrantRequiresLocalAuthProof(["shell_unrestricted"], "manual")).toBe(true);
+    expect(queuedAgentGrantRequiresLocalAuthProof(["workspace_read"], "trusted")).toBe(true);
+
+    // Back-compat export for older tests/clients; policy now means "local proof".
+    expect(queuedAgentGrantRequiresMacApproval(["workspace_read"], "manual")).toBe(false);
+    expect(queuedAgentGrantRequiresMacApproval(["workspace_read", "workspace_write"], "manual")).toBe(true);
+  });
+
+  it("rejects queued high-risk grants so only live Mac approval can unlock them", () => {
+    expect(queuedAgentGrantDeliveryRequiresMacApproval(["workspace_read"], "manual", "queued")).toBe(false);
+    expect(queuedAgentGrantDeliveryRequiresMacApproval(["workspace_read"], "manual", "live_then_queued")).toBe(false);
+    expect(queuedAgentGrantDeliveryRequiresMacApproval(["shell"], "manual", "live")).toBe(false);
+    expect(queuedAgentGrantDeliveryRequiresMacApproval(["shell"], "manual", "queued")).toBe(true);
+    expect(queuedAgentGrantDeliveryRequiresMacApproval(["shell"], "manual", "live_then_queued")).toBe(true);
+    expect(queuedAgentGrantDeliveryRequiresMacApproval(["workspace_read"], "trusted", "queued")).toBe(true);
+  });
+
+  it("verifies a local-auth proof bound to one exact grant intent", () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ type: "spki", format: "der" });
+    const rawPublicKey = publicDer.subarray(publicDer.length - 32);
+    const intentHash = agentGrantRequestHashHex({ ...canonicalGrant, localAuthenticationSatisfied: true });
+    const proof = {
+      proofId: "proof-1",
+      deviceId: "iphone-1",
+      signedIntentHash: intentHash,
+      authenticatedAt: 789_000_000.25,
+      expiresAt: 789_000_240.25,
+      signatureEd25519: "",
+    };
+    const payload = agentGrantLocalAuthProofSignablePayload(proof);
+    proof.signatureEd25519 = sign(null, payload, privateKey).toString("base64");
+
+    expect(
+      verifyAgentGrantLocalAuthProof(proof, {
+        sourceDeviceId: "iphone-1",
+        observedIntentHashHex: intentHash,
+        nowReferenceSeconds: 789_000_010.25,
+        authorityPublicKey: rawPublicKey,
+      }),
+    ).toBe("ok");
+    expect(
+      verifyAgentGrantLocalAuthProof(proof, {
+        sourceDeviceId: "iphone-2",
+        observedIntentHashHex: intentHash,
+        nowReferenceSeconds: 789_000_010.25,
+        authorityPublicKey: rawPublicKey,
+      }),
+    ).toBe("wrong_device");
+    expect(
+      verifyAgentGrantLocalAuthProof(proof, {
+        sourceDeviceId: "iphone-1",
+        observedIntentHashHex: "f".repeat(64),
+        nowReferenceSeconds: 789_000_010.25,
+        authorityPublicKey: rawPublicKey,
+      }),
+    ).toBe("wrong_intent");
+    expect(
+      verifyAgentGrantLocalAuthProof(proof, {
+        sourceDeviceId: "iphone-1",
+        observedIntentHashHex: intentHash,
+        nowReferenceSeconds: 789_000_300.25,
+        authorityPublicKey: rawPublicKey,
+      }),
+    ).toBe("expired");
   });
 });

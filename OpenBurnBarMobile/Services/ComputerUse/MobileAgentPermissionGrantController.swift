@@ -204,7 +204,17 @@ final class MobileAgentPermissionGrantController {
         } catch {
             throw GrantError.signingFailed(error.localizedDescription)
         }
-        return request.wire(authority: HermesRealtimeRelayAuthorityEnvelope(
+        var signedRequest = request
+        if request.localAuthenticationSatisfied {
+            signedRequest.localAuthProof = try signer.signLocalAuthProof(
+                deviceId: request.sourceDeviceID,
+                signedIntentHash: signed.intentHashHex,
+                authenticatedAt: signed.timestamp,
+                expiresAt: request.expiresAt,
+                privateKey: key.privateKey
+            )
+        }
+        return signedRequest.wire(authority: HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,

@@ -58,11 +58,16 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Escrow device registration failed.")
     }
 
-    suspend fun approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = null) {
+    suspend fun approveEscrowDeviceTrust(
+        deviceId: String,
+        approverDeviceId: String? = null,
+        trustChain: Map<String, Any>? = null,
+    ) {
         requireAuthenticatedUser()
         val nonce = issueHighRiskActionNonce()
         val payload = mutableMapOf<String, Any>("deviceId" to deviceId, "nonce" to nonce)
         approverDeviceId?.takeIf { it.isNotBlank() }?.let { payload["approverDeviceId"] = it }
+        trustChain?.let { payload["trustChain"] = it }
         val result =
             functions.getHttpsCallable("approveEscrowDeviceTrust")
                 .call(payload)

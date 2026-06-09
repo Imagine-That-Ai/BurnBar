@@ -16,11 +16,10 @@ import OpenBurnBarComputerUseCore
 /// frame back over the same connection so the iOS overlay knows the
 /// intent did not execute and surfaces the deny reason to the user.
 ///
-/// - Note: Phone control intentionally bypasses AX deny-region checks.
-///   The phone user is the authenticated human operator (Ed25519-signed authority
-///   via `PhoneControlAuthorityValidator`). Blocking the operator from their own
-///   login window would break the "phone-as-controller" use case. The gate still
-///   enforces: kill switch, entitlement, concurrency, action caps, and session timeout.
+/// - Note: Phone control respects AX deny-region checks by default.
+///   A verified phone authority still has to clear the same secure-field/system-auth
+///   protections as autonomous input. The narrow login-window recovery path exists
+///   only behind the explicit operator opt-out flag in `ComputerUseCapabilityGate`.
 public final class PhoneControlReceiver: @unchecked Sendable {
     public typealias DispatchHandler = @Sendable (
         _ action: ComputerUseAction,
