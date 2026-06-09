@@ -47,7 +47,8 @@ final class AgentCapabilityGrantStore {
     func apply(
         _ request: AgentCapabilityGrantRequest,
         workspaceRootPath: String? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        macApprovalSatisfied: Bool = false
     ) -> AgentCapabilityGrantReceipt {
         let receipt: AgentCapabilityGrantReceipt
         if request.threadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -64,11 +65,41 @@ final class AgentCapabilityGrantStore {
                 message: "Grant request expired before this Mac received it.",
                 now: now
             )
-        } else if request.preset.requiresLocalAuthentication && !request.localAuthenticationSatisfied {
+        } else if !request.preset.matches(capabilities: request.capabilities, trustMode: request.trustMode) {
+            receipt = deniedReceipt(
+                for: request,
+                reason: .grantPresetMismatch,
+                message: "Grant preset does not match the requested capabilities and trust mode.",
+                now: now
+            )
+        } else if AgentDesktopCapability.requiresLocalAuthentication(
+            capabilities: request.capabilities,
+            trustMode: request.trustMode
+        ) && !request.localAuthenticationSatisfied {
             receipt = deniedReceipt(
                 for: request,
                 reason: .localAuthenticationRequired,
                 message: "This permission level requires device authentication.",
+                now: now
+            )
+        } else if AgentDesktopCapability.requiresLocalAuthentication(
+            capabilities: request.capabilities,
+            trustMode: request.trustMode
+        ) && request.localAuthProof == nil {
+            receipt = deniedReceipt(
+                for: request,
+                reason: .localAuthProofRequired,
+                message: "This permission level requires a verified local-auth proof.",
+                now: now
+            )
+        } else if AgentDesktopCapability.requiresMacApproval(
+            capabilities: request.capabilities,
+            trustMode: request.trustMode
+        ) && !macApprovalSatisfied {
+            receipt = deniedReceipt(
+                for: request,
+                reason: .macApprovalRequired,
+                message: "This permission level requires approval on the Mac.",
                 now: now
             )
         } else if yoloUnavailable(for: request) {

@@ -41,11 +41,21 @@ public enum AgentDesktopCapability: String, Codable, CaseIterable, Hashable, Sen
             .desktopBrowser,
             .desktopSystemInput,
             .desktopScreenshot,
-            .accessibilityInspect,
             .desktopFileExport,
+            .workspaceWrite,
+            .shell,
             .shellUnrestricted
         ]
         return !capabilities.isDisjoint(with: privileged)
+    }
+
+    public static func requiresMacApproval(
+        capabilities: Set<AgentDesktopCapability>,
+        trustMode: ComputerUseTrustMode
+    ) -> Bool {
+        if trustMode == .trusted { return true }
+        let lowRisk: Set<AgentDesktopCapability> = [.workspaceRead]
+        return !capabilities.isSubset(of: lowRisk)
     }
 }
 
@@ -81,7 +91,11 @@ public enum AgentGrantDenialReason: String, Codable, CaseIterable, Hashable, Sen
     case staleTimestamp = "stale_timestamp"
     case noPairedMac = "no_paired_mac"
     case localAuthenticationRequired = "local_authentication_required"
+    case localAuthProofRequired = "local_auth_proof_required"
+    case localAuthProofInvalid = "local_auth_proof_invalid"
+    case macApprovalRequired = "mac_approval_required"
     case yoloUnavailable = "yolo_unavailable"
+    case grantPresetMismatch = "grant_preset_mismatch"
     case unknown
 }
 
@@ -157,12 +171,7 @@ public enum AgentPermissionPreset: String, Codable, CaseIterable, Hashable, Iden
     }
 
     public var requiresLocalAuthentication: Bool {
-        switch self {
-        case .desktop, .all, .yolo:
-            return true
-        case .off, .low, .workspace:
-            return false
-        }
+        AgentDesktopCapability.requiresLocalAuthentication(capabilities: capabilities, trustMode: trustMode)
     }
 
     public func matches(capabilities: Set<AgentDesktopCapability>, trustMode: ComputerUseTrustMode) -> Bool {
@@ -190,6 +199,7 @@ public struct AgentCapabilityGrantRequest: Codable, Hashable, Identifiable, Send
     public var sourceDeviceID: String
     public var clientIntentID: String
     public var localAuthenticationSatisfied: Bool
+    public var localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof?
 
     public var id: String { requestID }
 
@@ -206,7 +216,8 @@ public struct AgentCapabilityGrantRequest: Codable, Hashable, Identifiable, Send
         grantDurationSeconds: TimeInterval = AgentCapabilityGrantRequest.defaultGrantDuration,
         sourceDeviceID: String,
         clientIntentID: String = UUID().uuidString,
-        localAuthenticationSatisfied: Bool = false
+        localAuthenticationSatisfied: Bool = false,
+        localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil
     ) {
         self.requestID = requestID
         self.runtimeID = runtimeID
@@ -221,6 +232,7 @@ public struct AgentCapabilityGrantRequest: Codable, Hashable, Identifiable, Send
         self.sourceDeviceID = sourceDeviceID
         self.clientIntentID = clientIntentID
         self.localAuthenticationSatisfied = localAuthenticationSatisfied
+        self.localAuthProof = localAuthProof
     }
 
     public func isFresh(now: Date = Date()) -> Bool {

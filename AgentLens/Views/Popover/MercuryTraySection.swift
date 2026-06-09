@@ -12,8 +12,8 @@ import OpenBurnBarMedia
 ///   • `MercuryRouter.phase` for the streaming indicator and Cooldown
 ///     countdown.
 ///   • `MercuryPeerSource.peer` for online/offline + display name.
-///   • `MercuryConsentStore.alwaysAllow` for the "auto-accept my
-///     iPhone" disclosure toggle.
+///   • `MercuryConsentStore.rememberAcceptedMirrorPeers` for per-peer
+///     mirror auto-accept grants.
 ///
 /// Side-effects:
 ///   • "Call iPhone" → `VoIPCallTrigger.trigger`.
@@ -50,10 +50,10 @@ struct MercuryTraySection: View {
             actionRow
             if let consentStore {
                 Toggle(isOn: Binding(
-                    get: { consentStore.alwaysAllow },
-                    set: { consentStore.alwaysAllow = $0 }
+                    get: { consentStore.rememberAcceptedMirrorPeers },
+                    set: { consentStore.rememberAcceptedMirrorPeers = $0 }
                 )) {
-                    Text("Always allow my iPhone to mirror this Mac")
+                    Text("Remember accepted mirror devices")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

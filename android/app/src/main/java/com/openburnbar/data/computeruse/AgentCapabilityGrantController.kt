@@ -7,7 +7,6 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
@@ -208,17 +207,7 @@ class AgentCapabilityGrantController(
             )
         PhoneControlAuthorityPublisher(firestore)
             .publishAgentGrantAuthority(uid = uid, sourceDeviceId = request.sourceDeviceId, authority = authority)
-        firestore.collection("users").document(uid)
-            .collection("agent_capability_grant_requests").document(request.requestId)
-            .set(
-                wireRequestMap(signedWire) +
-                    mapOf(
-                        "status" to AgentGrantDecisionStatus.QUEUED.wireValue,
-                        "createdAt" to FieldValue.serverTimestamp(),
-                        "updatedAt" to FieldValue.serverTimestamp(),
-                    ),
-            )
-            .await()
+        ComputerUseSecurityCallableClient().queueAgentCapabilityGrantRequest(wireRequestMap(signedWire))
     }
 
     private fun signedWireRequest(request: AgentCapabilityGrantRequest): com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest {
@@ -230,17 +219,33 @@ class AgentCapabilityGrantController(
                 timestamp = request.requestedAtSwiftReferenceSeconds,
                 intentHashBlake3 = "",
                 signatureEd25519 = "",
-            )
+        )
         val unsignedWire = request.toWire(placeholder)
+        val timestampMillis = System.currentTimeMillis()
         val authority =
             PhoneControlSignerSign.signAgentGrantRequest(
                 request = unsignedWire,
                 peerNodeId = peerNodeId,
                 counter = counterStore.nextCounter(peerNodeId),
-                timestampMillis = System.currentTimeMillis(),
+                timestampMillis = timestampMillis,
                 privateKeySeed = keyStore.privateKeySeed(),
             )
-        return request.toWire(
+        val signedRequest =
+            if (request.localAuthenticationSatisfied) {
+                request.copy(
+                    localAuthProof =
+                    PhoneControlSignerSign.signLocalAuthProof(
+                        deviceId = request.sourceDeviceId,
+                        signedIntentHash = authority.intentHashBlake3,
+                        authenticatedAtMillis = timestampMillis,
+                        expiresAtSwiftReferenceSeconds = request.expiresAtSwiftReferenceSeconds,
+                        privateKeySeed = keyStore.privateKeySeed(),
+                    ),
+                )
+            } else {
+                request
+            }
+        return signedRequest.toWire(
             HermesRealtimeRelayAuthorityEnvelope(
                 peerNodeId = authority.peerNodeId,
                 counter = authority.counter,
@@ -251,21 +256,35 @@ class AgentCapabilityGrantController(
         )
     }
 
-    private fun wireRequestMap(wire: com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest): Map<String, Any> = mapOf(
-        "requestId" to wire.requestId,
-        "runtime" to wire.runtime,
-        "threadId" to wire.threadId,
-        "preset" to wire.preset,
-        "capabilities" to wire.capabilities,
-        "trustMode" to wire.trustMode,
-        "deliveryMode" to wire.deliveryMode,
-        "requestedAt" to wire.requestedAt,
-        "expiresAt" to wire.expiresAt,
-        "grantDurationSeconds" to wire.grantDurationSeconds,
-        "sourceDeviceId" to wire.sourceDeviceId,
-        "clientIntentId" to wire.clientIntentId,
-        "localAuthenticationSatisfied" to wire.localAuthenticationSatisfied,
-        "authority" to
+    private fun wireRequestMap(wire: com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest): Map<String, Any> = buildMap {
+        put("requestId", wire.requestId)
+        put("runtime", wire.runtime)
+        put("threadId", wire.threadId)
+        put("preset", wire.preset)
+        put("capabilities", wire.capabilities)
+        put("trustMode", wire.trustMode)
+        put("deliveryMode", wire.deliveryMode)
+        put("requestedAt", wire.requestedAt)
+        put("expiresAt", wire.expiresAt)
+        put("grantDurationSeconds", wire.grantDurationSeconds)
+        put("sourceDeviceId", wire.sourceDeviceId)
+        put("clientIntentId", wire.clientIntentId)
+        put("localAuthenticationSatisfied", wire.localAuthenticationSatisfied)
+        wire.localAuthProof?.let { proof ->
+            put(
+                "localAuthProof",
+                mapOf(
+                    "proofId" to proof.proofId,
+                    "deviceId" to proof.deviceId,
+                    "signedIntentHash" to proof.signedIntentHash,
+                    "authenticatedAt" to proof.authenticatedAt,
+                    "expiresAt" to proof.expiresAt,
+                    "signatureEd25519" to proof.signatureEd25519,
+                ),
+            )
+        }
+        put(
+            "authority",
             mapOf(
                 "peerNodeId" to wire.authority.peerNodeId,
                 "counter" to wire.authority.counter,
@@ -273,7 +292,8 @@ class AgentCapabilityGrantController(
                 "intentHashBlake3" to wire.authority.intentHashBlake3,
                 "signatureEd25519" to wire.authority.signatureEd25519,
             ),
-    )
+        )
+    }
 
     private fun remember(receipt: AgentCapabilityGrantReceipt): AgentCapabilityGrantReceipt {
         AgentCapabilityGrantState.apply(receipt)

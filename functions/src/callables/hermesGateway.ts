@@ -81,6 +81,7 @@ import {
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 import {
   assertCallableApprovalNotLocked,
+  checkHermesGatewayBearerRateLimit,
   checkPublicHttpRateLimit,
   clientIpFromHttpRequest,
   recordCallableApprovalFailure,
@@ -564,17 +565,7 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   }
   await assertActiveHermesGatewayEntitlement(index.uid);
   const now = nowISO();
-  // Grandfather legacy tokens: backfill a default expiry on first use so
-  // pre-expiry tokens eventually age out without mass-invalidation.
-  const expiresAtBackfill = client.expiresAt ? undefined : gatewayTokenExpiryISO();
-  await Promise.all([
-    clientRef.set(stripUndefinedObject({ lastSeenAt: now, updatedAt: now, expiresAt: expiresAtBackfill }), {
-      merge: true,
-    }),
-    expiresAtBackfill
-      ? db.doc(`hermes_gateway_token_index/${tokenHash}`).set({ expiresAt: expiresAtBackfill }, { merge: true })
-      : Promise.resolve(),
-  ]);
+  await clientRef.set({ lastSeenAt: now, updatedAt: now }, { merge: true });
   return { uid: index.uid, client };
 }
 
@@ -816,6 +807,7 @@ async function handleEvents(req: HttpRequest, res: HttpResponse): Promise<void> 
 async function handleMessageSend(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
+  await checkHermesGatewayBearerRateLimit(grant.uid, grant.client.id, "hermes_gateway_message_send");
   const body = requestBody(req);
   const destinationId = sanitizeHermesGatewayDestinationId(body.destinationId);
   const attachmentIds = sanitizedAttachmentIds(body.attachmentIds);
@@ -1108,6 +1100,7 @@ async function handleGatewayState(req: HttpRequest, res: HttpResponse): Promise<
 async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "POST") throw httpError(405, "method_not_allowed");
   const grant = await resolveGatewayGrant(req, "hermes.gateway.write");
+  await checkHermesGatewayBearerRateLimit(grant.uid, grant.client.id, "hermes_gateway_attachment_init");
   const body = requestBody(req);
   // Sealed attachments (schema 2+): the agent seals the BYTES before uploading,
   // and seals {fileName,byteCount,contentType} into either relayEnvelope or the
@@ -1436,7 +1429,14 @@ export async function dispatchHermesGatewayRequest(req: HttpRequest, res: HttpRe
       return;
     }
     if (err instanceof HttpsError) {
-      const status = err.code === "invalid-argument" ? 400 : err.code === "permission-denied" ? 403 : 500;
+      const status =
+        err.code === "invalid-argument"
+          ? 400
+          : err.code === "permission-denied"
+            ? 403
+            : err.code === "resource-exhausted"
+              ? 429
+              : 500;
       sendJSON(res, status, { error: err.code, detail: err.message });
       return;
     }

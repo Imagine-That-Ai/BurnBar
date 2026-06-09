@@ -64,10 +64,28 @@ function buildConfig(): EnvConfig {
     return Number.isFinite(n) ? n : def;
   };
 
+  const enforceAppCheck = toBool(process.env.ENFORCE_APP_CHECK ?? configString(openburnbar, "enforce_app_check"), true);
+
+  // L-3: fail CLOSED in production. App Check enforcement is what keeps
+  // non-app / non-attested traffic out of every callable and the relay; a real
+  // deploy must never silently run with it disabled. Refuse to start if a
+  // production project has App Check turned off. Emulator and demo/test/local
+  // projects are exempt so local dev and CI still run.
+  const isEmulator = !!process.env.FUNCTIONS_EMULATOR || !!process.env.FIRESTORE_EMULATOR_HOST;
+  const looksProd =
+    !isEmulator && projectId !== "demo-project" && !/(^|-)(demo|test|local|dev|emulator)(-|$)/i.test(projectId);
+  if (looksProd && !enforceAppCheck) {
+    throw new Error(
+      `[security] App Check enforcement is DISABLED for production project "${projectId}". ` +
+        "Refusing to start: ENFORCE_APP_CHECK must be true in production (set ENFORCE_APP_CHECK=true " +
+        "or openburnbar.enforce_app_check=true). Use a demo/emulator project for local testing.",
+    );
+  }
+
   return {
     projectId,
     kmsKeyName,
-    enforceAppCheck: toBool(process.env.ENFORCE_APP_CHECK ?? configString(openburnbar, "enforce_app_check"), true),
+    enforceAppCheck,
     requireHighRiskNonce: toBool(
       process.env.REQUIRE_HIGH_RISK_NONCE ?? configString(openburnbar, "require_high_risk_nonce"),
       false,

@@ -813,6 +813,54 @@ final class ComputerUsePhoneControlSignerTests: XCTestCase {
         )
     }
 
+    func testApprovalResponseSignatureBindsPendingRequestHashAndIgnoresAuthorityCarrier() throws {
+        let priv = Curve25519.Signing.PrivateKey()
+        let issuedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let request = HermesRealtimeRelayApprovalRequest(
+            approvalId: "approval-1",
+            runId: "run-1",
+            sessionId: "session-1",
+            toolKind: "desktop.click",
+            title: "Click",
+            message: "Click the button",
+            beforeScreenshotBlake3: "screenshot-hash",
+            actionSummary: "Click the button",
+            requestedAt: issuedAt,
+            trustMode: "manual"
+        )
+        var response = HermesRealtimeRelayApprovalResponse(
+            approvalId: request.approvalId,
+            decision: .approve,
+            respondedBy: "phone",
+            respondedAt: issuedAt.addingTimeInterval(1),
+            note: "approved",
+            requestHashBlake3: try signer.canonicalApprovalRequestHashHex(request: request)
+        )
+
+        let signed = try signer.sign(
+            approvalResponse: response,
+            peerNodeId: "ios-phone-0123456789abcdef01234567",
+            counter: 42,
+            timestamp: issuedAt.addingTimeInterval(1),
+            privateKey: priv
+        )
+        let unsignedHash = try signer.canonicalApprovalResponseHashHex(response: response)
+        response.authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+
+        XCTAssertEqual(try signer.canonicalApprovalResponseHashHex(response: response), unsignedHash)
+        XCTAssertEqual(signed.intentHashHex, unsignedHash)
+
+        var tampered = response
+        tampered.requestHashBlake3 = String(repeating: "f", count: 64)
+        XCTAssertNotEqual(try signer.canonicalApprovalResponseHashHex(response: tampered), signed.intentHashHex)
+    }
+
     private func authority(
         peerNodeId: String,
         counter: UInt64,

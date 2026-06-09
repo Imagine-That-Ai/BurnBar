@@ -158,19 +158,25 @@ struct MediaPermissionsView: View {
 
     private var mercuryConsentCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Auto-accept mirror from iPhone")
+            Text("Remember accepted mirror devices")
                 .font(DesignSystem.Typography.body)
                 .fontWeight(.semibold)
-            Text("When on, your paired iPhone can start a screen share without asking each time. Turn off to require an Accept tap on every request.")
+            Text("When on, accepting a mirror request remembers that exact peer for 30 days. New or changed devices still require an Accept tap.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Toggle(isOn: $consentStore.alwaysAllow) {
-                Text("Always allow my iPhone to mirror this Mac")
+            Toggle(isOn: $consentStore.rememberAcceptedMirrorPeers) {
+                Text("Remember accepted devices")
                     .font(DesignSystem.Typography.body)
             }
             .toggleStyle(.switch)
-            .accessibilityLabel("Always allow my iPhone to mirror this Mac")
+            .accessibilityLabel("Remember accepted mirror devices")
+            if consentStore.activeGrantCount > 0 {
+                Button("Revoke remembered devices") {
+                    consentStore.revokeAllMirrorAutoAcceptGrants()
+                }
+                .buttonStyle(.borderless)
+            }
         }
         .padding(DesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)

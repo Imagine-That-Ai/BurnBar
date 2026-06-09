@@ -234,23 +234,11 @@ final class AppCommandRouter {
 
             let base64Key = keyData.base64EncodedString()
 
-            // 1. Write to Keychain service com.openburnbar.mcp-remote account vault-key
             let keychain = SecurityKeychainStoreBackend()
             if let utf8Data = base64Key.data(using: .utf8) {
                 try keychain.set(utf8Data, service: "com.openburnbar.mcp-remote", account: "vault-key")
             }
-
-            // 2. Write fallback file to ~/.openburnbar/vault-key
-            let fileManager = FileManager.default
-            let home = fileManager.homeDirectoryForCurrentUser
-            let dir = home.appendingPathComponent(".openburnbar")
-            try fileManager.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
-            let fileUrl = dir.appendingPathComponent("vault-key")
-            try base64Key.write(to: fileUrl, atomically: true, encoding: .utf8)
-
-            var attributes = [FileAttributeKey: Any]()
-            attributes[.posixPermissions] = 0o600
-            try fileManager.setAttributes(attributes, ofItemAtPath: fileUrl.path)
+            try removeLegacyMCPVaultKeyFallback()
 
             DispatchQueue.main.async {
                 let alert = NSAlert()
@@ -272,6 +260,16 @@ final class AppCommandRouter {
             }
             return false
         }
+    }
+
+    private func removeLegacyMCPVaultKeyFallback() throws {
+        let fileManager = FileManager.default
+        let fileURL = fileManager
+            .homeDirectoryForCurrentUser
+            .appendingPathComponent(".openburnbar", isDirectory: true)
+            .appendingPathComponent("vault-key")
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        try fileManager.removeItem(at: fileURL)
     }
 }
 

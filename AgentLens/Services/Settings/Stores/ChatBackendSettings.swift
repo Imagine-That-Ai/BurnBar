@@ -112,11 +112,13 @@ final class ChatBackendSettings {
         didSet { persistence.set(computerUseKillSwitch, forKey: "computerUseKillSwitch") }
     }
 
-    /// Defense-in-depth: when `true`, phone-control intents are also checked
-    /// against AX deny-regions. Default `false` because the phone user IS the
-    /// authenticated human operator. Mirrors Remote Config
-    /// `computer_use_phone_control_respects_deny_regions`.
-    var computerUsePhoneControlRespectsDenyRegions: Bool = false {
+    /// F3: when `true` (the secure default), phone-control intents are subject to
+    /// the SAME AX deny-region protection as agent input — a remote controller
+    /// cannot silently type into a password field / system auth sheet. The narrow
+    /// "drive my own locked login window" case uses the dedicated Remote Unlock
+    /// path; an operator who needs the legacy bypass for general phone input can
+    /// set Remote Config `computer_use_phone_control_respects_deny_regions = false`.
+    var computerUsePhoneControlRespectsDenyRegions: Bool = true {
         didSet {
             persistence.set(
                 computerUsePhoneControlRespectsDenyRegions,
@@ -290,7 +292,8 @@ final class ChatBackendSettings {
         self.computerUseAuditExportEnabled = persistence.bool(forKey: "computerUseAuditExportEnabled")
         self.computerUseKillSwitch = persistence.bool(forKey: "computerUseKillSwitch")
         self.computerUsePhoneControlRespectsDenyRegions = persistence.bool(
-            forKey: "computerUsePhoneControlRespectsDenyRegions"
+            forKey: "computerUsePhoneControlRespectsDenyRegions",
+            defaultValue: true
         )
         self.mediaKillSwitch = persistence.bool(forKey: "mediaKillSwitch")
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")

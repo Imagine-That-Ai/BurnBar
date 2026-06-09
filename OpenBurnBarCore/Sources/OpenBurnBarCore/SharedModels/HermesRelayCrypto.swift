@@ -155,6 +155,52 @@ public enum HermesRelayCrypto {
         aad(["key", uid, connectionID, requestID])
     }
 
+    public static func authenticatedRequestAAD(
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        operation: HermesRelayOperation,
+        senderDeviceID: String,
+        senderPeerNodeID: String,
+        senderCounter: Int64,
+        keyID: String
+    ) -> Data {
+        aad([
+            "request-v3",
+            uid,
+            connectionID,
+            requestID,
+            operation.rawValue,
+            senderDeviceID,
+            senderPeerNodeID,
+            String(senderCounter),
+            keyID
+        ])
+    }
+
+    public static func authenticatedKeyAAD(
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        operation: HermesRelayOperation,
+        senderDeviceID: String,
+        senderPeerNodeID: String,
+        senderCounter: Int64,
+        keyID: String
+    ) -> Data {
+        aad([
+            "key-v3",
+            uid,
+            connectionID,
+            requestID,
+            operation.rawValue,
+            senderDeviceID,
+            senderPeerNodeID,
+            String(senderCounter),
+            keyID
+        ])
+    }
+
     public static func chunkAAD(
         uid: String,
         connectionID: String,

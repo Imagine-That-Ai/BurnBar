@@ -7,7 +7,43 @@ import Foundation
 
 public struct FirestoreComputerUsePhoneAuthorityDoc: Codable, Sendable, Equatable {
     public var deviceId: String
-    public var publicKey: String
+    public var connectionId: String
+    public var peerNodeId: String
+    public var publicKeyBase64: String
+    public var publishedAtMillis: Int
+    public var protocolVersion: Int
+    public var schemaVersion: Int
     public var createdAt: String
-    public var revokedAt: String?
+    public var updatedAt: String
+}
+
+public struct FirestoreRelaySenderKeyDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var deviceId: String
+    public var peerNodeId: String
+    public var keyId: String
+    public var publicKeyBase64: String
+    public var relayKeyVersion: Int
+    public var relayEncryption: String
+    public var signalIdentityKeyVersion: Int
+    public var signalIdentityFingerprint: String
+    public var signalIdentityVerification: String
+    public var status: String
+    public var publishedAtMillis: Int
+    public var createdAt: String
+    public var updatedAt: String
+    public var schemaVersion: Int
+}
+
+public struct FirestoreAgentGrantAuthorityDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var deviceId: String
+    public var peerNodeId: String
+    public var publicKeyBase64: String
+    public var authorityKind: String
+    public var status: String
+    public var publishedAtMillis: Int
+    public var createdAt: String
+    public var updatedAt: String
+    public var schemaVersion: Int
 }

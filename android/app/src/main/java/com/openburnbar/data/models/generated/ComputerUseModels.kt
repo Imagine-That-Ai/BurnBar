@@ -13,7 +13,47 @@ import com.google.firebase.firestore.PropertyName
 @IgnoreExtraProperties
 data class FirestoreComputerUsePhoneAuthorityDoc(
     val deviceId: String = "",
-    val publicKey: String = "",
+    val connectionId: String = "",
+    val peerNodeId: String = "",
+    val publicKeyBase64: String = "",
+    val publishedAtMillis: Long = 0,
+    val protocolVersion: Long = 0,
+    val schemaVersion: Long = 0,
     val createdAt: String = "",
-    val revokedAt: String? = null,
+    val updatedAt: String = "",
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreRelaySenderKeyDoc(
+    val id: String = "",
+    val deviceId: String = "",
+    val peerNodeId: String = "",
+    val keyId: String = "",
+    val publicKeyBase64: String = "",
+    val relayKeyVersion: Long = 0,
+    val relayEncryption: String = "",
+    val signalIdentityKeyVersion: Long = 0,
+    val signalIdentityFingerprint: String = "",
+    val signalIdentityVerification: String = "verified",
+    val status: String = "",
+    val publishedAtMillis: Long = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val schemaVersion: Long = 0,
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreAgentGrantAuthorityDoc(
+    val id: String = "",
+    val deviceId: String = "",
+    val peerNodeId: String = "",
+    val publicKeyBase64: String = "",
+    val authorityKind: String = "agent_capability_grant",
+    val status: String = "",
+    val publishedAtMillis: Long = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val schemaVersion: Long = 0,
 )

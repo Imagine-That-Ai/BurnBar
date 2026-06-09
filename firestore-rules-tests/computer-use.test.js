@@ -239,16 +239,41 @@ async function main() {
       );
     });
 
-    await step("phone-control authority requires a trusted escrow device", async () => {
+    await step("iroh pairing trust roots are server-owned", async () => {
       await seedIrohPairing(testEnv, aliceUid, validPhoneAuthorityDoc.connectionId);
+      await seedEscrowDevice(testEnv, aliceUid, "mac-1", "trusted", "macOS");
       await assertFails(
         setDoc(
-          doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`),
-          validPhoneAuthorityDoc
+          doc(aliceDB, `users/${aliceUid}/iroh_pairing_keys/host`),
+          {
+            id: "host",
+            publicKeyBase64: "A".repeat(44),
+            publishedAtMillis: Date.now(),
+            protocolVersion: 1,
+            schemaVersion: 2,
+          }
         )
       );
+      await assertFails(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/iroh_pairing/new-connection`),
+          {
+            id: "new-connection",
+            nodeId: "attacker-node",
+            directAddresses: [],
+            publishedAtMillis: Date.now(),
+            protocolVersion: 1,
+            signature: "A".repeat(44),
+            schemaVersion: 2,
+          }
+        )
+      );
+    });
+
+    await step("phone-control authority roots are server-owned even for trusted devices", async () => {
+      await seedIrohPairing(testEnv, aliceUid, validPhoneAuthorityDoc.connectionId);
       await seedEscrowDevice(testEnv, aliceUid, validPhoneAuthorityDoc.deviceId, "trusted");
-      await assertSucceeds(
+      await assertFails(
         setDoc(
           doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`),
           validPhoneAuthorityDoc
@@ -256,29 +281,22 @@ async function main() {
       );
     });
 
-    await step("phone-control authority cannot use a mismatched peer or connection id", async () => {
-      await assertFails(
-        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/other-peer`), {
-          ...validPhoneAuthorityDoc,
-          id: "other-peer",
-          peerNodeId: validPhoneAuthorityDoc.peerNodeId,
-        })
-      );
-      await assertFails(
-        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`), {
-          ...validPhoneAuthorityDoc,
-          connectionId: "different-connection",
-        })
-      );
-    });
-
-    await step("phone-control authority requires an existing iroh pairing record", async () => {
-      await assertFails(
-        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/missing-connection/controllers/${validPhoneAuthorityDoc.peerNodeId}`), {
-          ...validPhoneAuthorityDoc,
-          connectionId: "missing-connection",
-        })
-      );
+    await step("escrow device metadata can update but identity fields and delete are denied", async () => {
+      await seedEscrowDevice(testEnv, aliceUid, "iphone-metadata-1", "trusted");
+      const path = `users/${aliceUid}/escrow_devices/iphone-metadata-1`;
+      const snap = await getDoc(doc(aliceDB, path));
+      const data = snap.data();
+      await assertSucceeds(setDoc(doc(aliceDB, path), {
+        ...data,
+        deviceName: "Renamed iPhone",
+        updatedAt: Timestamp.fromMillis(Date.now()),
+      }));
+      await assertFails(setDoc(doc(aliceDB, path), {
+        ...data,
+        publicKeyFingerprint: "swapped",
+        updatedAt: Timestamp.fromMillis(Date.now()),
+      }));
+      await assertFails(deleteDoc(doc(aliceDB, path)));
     });
 
     await step("audit-export signer requires a trusted macOS escrow device", async () => {

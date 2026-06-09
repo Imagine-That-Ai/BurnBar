@@ -62,6 +62,7 @@ final class IrohRelayRequestHandler: Sendable {
     }
 
     private let relayKeyStore: HermesRelayKeyStore
+    private let authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener
     private let urlSession: URLSession
     private let settingsManager: any SettingsManagerProtocol
     private let mediaDispatcher: MediaFrameDispatcher?
@@ -75,6 +76,7 @@ final class IrohRelayRequestHandler: Sendable {
     @MainActor
     init(
         relayKeyStore: HermesRelayKeyStore,
+        authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener = HermesRelayAuthenticatedRequestOpeners.shared,
         urlSession: URLSession,
         settingsManager: any SettingsManagerProtocol,
         mediaDispatcher: MediaFrameDispatcher? = nil,
@@ -86,6 +88,7 @@ final class IrohRelayRequestHandler: Sendable {
         auditLogger: (any IrohTransportAuditLogging)? = nil
     ) {
         self.relayKeyStore = relayKeyStore
+        self.authenticatedRequestOpener = authenticatedRequestOpener
         self.urlSession = urlSession
         self.settingsManager = settingsManager
         self.mediaDispatcher = mediaDispatcher
@@ -119,13 +122,10 @@ final class IrohRelayRequestHandler: Sendable {
             // First-frame classification — when iOS opens a stream and
             // declares it the long-lived media control stream, hand
             // ownership to the registry and return. The registry's
-            // owner drives the read loop from there. Use the frame's
-            // connection id instead of the host's current relay id: iOS can
-            // arrive through a still-signed persisted Mercury route while the
-            // Mac has since refreshed its own relay document. The iroh node
-            // identity + uid are the trust boundary here; rejecting the
-            // classify frame on connection-id drift strands the phone in
-            // reconnect churn before the mirror request can ever arrive.
+            // owner drives the read loop from there. The host-observed
+            // connection id is the authority for this stream; a peer-claimed
+            // stale or drifted id is rejected instead of being used to mount
+            // control state under attacker-chosen routing metadata.
             if !classifiedAsMediaControl,
                frame.type == .mediaClassify,
                let mediaControlRegistrar,
@@ -139,8 +139,10 @@ final class IrohRelayRequestHandler: Sendable {
                         requestID: frame.requestId,
                         extra: ["hostConnectionId": connectionID]
                     )
+                    try await sendError(frame: frame, stream: stream)
+                    return .callerOwnsStream
                 }
-                await mediaControlRegistrar(stream, uid, frame.connectionId)
+                await mediaControlRegistrar(stream, uid, connectionID)
                 return .transferredStreamOwnership
             }
             guard frame.connectionId == connectionID else {
@@ -281,9 +283,10 @@ final class IrohRelayRequestHandler: Sendable {
     ) async throws {
         guard let payload = frame.payload,
               let operation = payload.operation,
-              let payloadCiphertext = payload.payloadCiphertext,
-              let wrappedKey = payload.wrappedKey,
-              payload.relayEncryption == HermesRelayCrypto.algorithm else {
+              operation == .chatCompletions
+                || operation == .cliAgentChat
+                || operation == .cliAgentModelCatalog
+                || operation == .cliAgentSessionAction else {
             await auditStage(
                 "host_request_malformed",
                 uid: uid,
@@ -299,28 +302,16 @@ final class IrohRelayRequestHandler: Sendable {
         }
 
         let privateKey = try relayKeyStore.privateKey()
-        let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
-            wrappedKey,
-            privateKey: privateKey,
-            aad: HermesRelayCrypto.keyAAD(
-                uid: uid,
-                connectionID: connectionID,
-                requestID: requestID
-            )
+        let opened = try await authenticatedRequestOpener.open(
+            payload: payload,
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            operation: operation,
+            recipientPrivateKey: privateKey
         )
-        let requestPlaintext = try HermesRelayCrypto.openBase64(
-            ciphertext: payloadCiphertext,
-            keyData: keyData,
-            aad: HermesRelayCrypto.requestAAD(
-                uid: uid,
-                connectionID: connectionID,
-                requestID: requestID
-            )
-        )
-        let encryptedPayload = try JSONDecoder().decode(
-            HermesRelayEncryptedRequestPayload.self,
-            from: requestPlaintext
-        )
+        let keyData = opened.keyData
+        let encryptedPayload = opened.encryptedPayload
         await auditStage(
             "host_request_decrypted",
             uid: uid,

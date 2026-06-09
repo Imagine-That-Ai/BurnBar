@@ -45,6 +45,8 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         kill: Bool = false,
         accessibility: Bool = true,
         originatedFromPhone: Bool = false,
+        phoneControlRespectsDenyRegions: Bool = true,
+        phoneSessionFirstActionConfirmed: Bool = false,
         clipboardConsentGranted: Bool = false
     ) -> ComputerUseCapabilityContext {
         ComputerUseCapabilityContext(
@@ -56,6 +58,8 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
             killSwitch: kill,
             accessibilityTrusted: accessibility,
             originatedFromPhone: originatedFromPhone,
+            phoneControlRespectsDenyRegions: phoneControlRespectsDenyRegions,
+            phoneSessionFirstActionConfirmed: phoneSessionFirstActionConfirmed,
             clipboardConsentGranted: clipboardConsentGranted
         )
     }
@@ -81,7 +85,9 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
     func testClipboardAllowedWithDedicatedConsent() {
         XCTAssertEqual(
             gate.check(action: clipboardAction, scopeOutcome: .notMatched, accessibilityDeny: nil,
-                       context: makeContext(originatedFromPhone: true, clipboardConsentGranted: true)),
+                       context: makeContext(originatedFromPhone: true,
+                                            phoneSessionFirstActionConfirmed: true,
+                                            clipboardConsentGranted: true)),
             .allowed(approvedBy: .phone)
         )
     }
@@ -89,7 +95,9 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
     func testMacInputStillAllowedWhenClipboardConsentOff() {
         XCTAssertEqual(
             gate.check(action: macAction, scopeOutcome: .notMatched, accessibilityDeny: nil,
-                       context: makeContext(originatedFromPhone: true, clipboardConsentGranted: false)),
+                       context: makeContext(originatedFromPhone: true,
+                                            phoneSessionFirstActionConfirmed: true,
+                                            clipboardConsentGranted: false)),
             .allowed(approvedBy: .phone)
         )
     }
@@ -167,20 +175,21 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
                 action: macAction,
                 scopeOutcome: .notMatched,
                 accessibilityDeny: nil,
-                context: makeContext(entitlement: entitlement, originatedFromPhone: true)
+                context: makeContext(entitlement: entitlement,
+                                     originatedFromPhone: true,
+                                     phoneSessionFirstActionConfirmed: true)
             ),
             .allowed(approvedBy: .phone)
         )
     }
 
-    func testDirectPhoneControlBypassesAgentDenyRegionAndScopeRules() {
+    // F3: by default a verified phone intent now respects AX deny-regions — a
+    // remote controller cannot silently type into a secure text field / auth
+    // sheet. (Previously this short-circuited to `.allowed(.phone)`.)
+    func testDirectPhoneControlRespectsAgentDenyRegionByDefault() {
         let entitlement = ComputerUseEntitlementSnapshot(
-            isActive: false,
-            allowsBrowser: true,
-            allowsSystem: true,
-            allowsPhoneControl: true
+            isActive: false, allowsBrowser: true, allowsSystem: true, allowsPhoneControl: true
         )
-
         XCTAssertEqual(
             gate.check(
                 action: macAction,
@@ -188,8 +197,28 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
                 accessibilityDeny: .secureTextField,
                 context: makeContext(entitlement: entitlement, originatedFromPhone: true)
             ),
+            .denied(.denyRegion),
+            "Default secure posture: a phone-controlled click/type into a password field is refused."
+        )
+    }
+
+    // F3: the legacy escape hatch survives ONLY when the operator explicitly opts
+    // out (`phoneControlRespectsDenyRegions: false`) — the narrow locked-login case.
+    func testDirectPhoneControlLegacyOptOutStillBypassesDenyRegion() {
+        let entitlement = ComputerUseEntitlementSnapshot(
+            isActive: false, allowsBrowser: true, allowsSystem: true, allowsPhoneControl: true
+        )
+        XCTAssertEqual(
+            gate.check(
+                action: macAction,
+                scopeOutcome: .denied(rule: ComputerUseScopeRuleID("login-window")),
+                accessibilityDeny: .secureTextField,
+                context: makeContext(entitlement: entitlement,
+                                     originatedFromPhone: true,
+                                     phoneControlRespectsDenyRegions: false)
+            ),
             .allowed(approvedBy: .phone),
-            "A signed paired-phone click/type is the user controlling their own mirror; agent deny regions must not block locked-login input."
+            "Explicit opt-out preserves the old behavior so the operator can drive their own locked login window."
         )
     }
 
@@ -277,7 +306,8 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
                     envelope: hardCapEnvelope,
                     usage: usage,
                     session: session,
-                    originatedFromPhone: true
+                    originatedFromPhone: true,
+                    phoneSessionFirstActionConfirmed: true
                 )
             ),
             .allowed(approvedBy: .phone)
@@ -378,15 +408,30 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
             "Manual mode never grants automatic dispatch; gate returns approvedBy: .mac so the dispatcher knows to raise an approval sheet.")
     }
 
-    func testPhoneOriginatedMacInputIsPhoneApprovedAfterTrustChecksPass() {
+    // F3: the FIRST input of a phone session raises the on-Mac/overlay approval
+    // sheet (gate returns `.mac`), restoring "approval is the only ground truth".
+    func testFirstPhoneInputRequiresApproval() {
         let outcome = gate.check(
             action: macAction,
             scopeOutcome: .notMatched,
             accessibilityDeny: nil,
-            context: makeContext(originatedFromPhone: true)
+            context: makeContext(originatedFromPhone: true, phoneSessionFirstActionConfirmed: false)
+        )
+        XCTAssertEqual(outcome, .allowed(approvedBy: .mac),
+            "The first phone-control input of a session must raise the approval sheet (gate returns .mac).")
+    }
+
+    // F3: once the operator confirms the session, later inputs flow as `.phone`
+    // so the live mirror stays responsive (no per-tap sheet).
+    func testConfirmedPhoneSessionInputIsPhoneApproved() {
+        let outcome = gate.check(
+            action: macAction,
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            context: makeContext(originatedFromPhone: true, phoneSessionFirstActionConfirmed: true)
         )
         XCTAssertEqual(outcome, .allowed(approvedBy: .phone),
-            "A verified phone-control intent is already the operator action; the Mac coordinator should audit it as phone-approved without raising a second Mac approval sheet.")
+            "After the one-time per-session confirmation, the Mac audits phone input as phone-approved without a second sheet.")
     }
 
     func testNoScopeMatchFallsBackToMacApproval() {

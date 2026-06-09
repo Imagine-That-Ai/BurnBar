@@ -642,9 +642,7 @@ final class OpenBurnBarRuntimeContext {
                 uid: frame.uid,
                 connectionID: frame.connectionId,
                 streamClass: MediaStreamClass(rawValue: request.streamClass),
-                extraHeartbeatCapabilities: consent.alwaysAllow
-                    ? [MercuryPeer.Feature.mirrorAutoAccept.rawValue]
-                    : []
+                extraHeartbeatCapabilities: []
             )
         }
         self.voipCallTrigger = VoIPCallTrigger()

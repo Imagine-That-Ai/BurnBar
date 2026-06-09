@@ -1087,6 +1087,8 @@ data class HermesRealtimeRelayApprovalResponse(
     /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
     val respondedAt: Double,
     val note: String? = null,
+    val requestHashBlake3: String? = null,
+    val authority: HermesRealtimeRelayAuthorityEnvelope? = null,
 ) {
     @Serializable
     enum class Decision {
@@ -1100,6 +1102,18 @@ data class HermesRealtimeRelayApprovalResponse(
         REJECT_AND_HALT,
     }
 }
+
+@Serializable
+data class HermesRealtimeRelayAgentGrantLocalAuthProof(
+    val proofId: String,
+    val deviceId: String,
+    val signedIntentHash: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val authenticatedAt: Double,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val expiresAt: Double,
+    val signatureEd25519: String,
+)
 
 @Serializable
 data class HermesRealtimeRelayAgentGrantRequest(
@@ -1118,6 +1132,7 @@ data class HermesRealtimeRelayAgentGrantRequest(
     val sourceDeviceId: String,
     val clientIntentId: String,
     val localAuthenticationSatisfied: Boolean,
+    val localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = null,
     val authority: HermesRealtimeRelayAuthorityEnvelope,
 )
 

@@ -52,6 +52,15 @@ class HermesRelayKeyStore(context: Context) {
         return HermesRelayCryptoEc.encodeUncompressedPublicKey(publicKey)
     }
 
+    fun nextAuthenticatedSenderCounter(connectionId: String, keyId: String): Long {
+        val prefKey = "relay_sender_counter_v3_${connectionId}_$keyId"
+        val current = prefs.getLong(prefKey, 0L)
+        check(current < Long.MAX_VALUE) { "Relay sender counter is exhausted; re-pair this Android device." }
+        val next = current + 1L
+        prefs.edit().putLong(prefKey, next).apply()
+        return next
+    }
+
     /**
      * 32-byte iroh secret used to bootstrap the local iroh endpoint.
      * Generated lazily on first use and persisted alongside the relay

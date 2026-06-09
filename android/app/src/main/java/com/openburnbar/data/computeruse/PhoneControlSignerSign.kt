@@ -1,10 +1,12 @@
 package com.openburnbar.data.computeruse
 
 import com.google.crypto.tink.subtle.Ed25519Sign
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantLocalAuthProof
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 import java.util.Base64
+import java.util.UUID
 
 private const val VAL_32 = 32
 
@@ -38,6 +40,36 @@ object PhoneControlSignerSign {
             timestampMillis = timestampMillis,
             privateKeySeed = privateKeySeed,
         )
+
+    fun signLocalAuthProof(
+        deviceId: String,
+        signedIntentHash: String,
+        authenticatedAtMillis: Long,
+        expiresAtSwiftReferenceSeconds: Double,
+        privateKeySeed: ByteArray,
+        proofId: String = UUID.randomUUID().toString(),
+    ): HermesRealtimeRelayAgentGrantLocalAuthProof {
+        require(privateKeySeed.size == VAL_32) { "Ed25519 private key seed must be 32 bytes" }
+        val authenticatedAtSwiftReferenceSeconds =
+            AgentCapabilityGrantRequest.swiftReferenceSeconds(authenticatedAtMillis)
+        val payload =
+            PhoneControlSignerPayload.localAuthProofPayload(
+                proofId = proofId,
+                deviceId = deviceId,
+                signedIntentHash = signedIntentHash,
+                authenticatedAtSwiftReferenceSeconds = authenticatedAtSwiftReferenceSeconds,
+                expiresAtSwiftReferenceSeconds = expiresAtSwiftReferenceSeconds,
+            )
+        val signature = Ed25519Sign(privateKeySeed).sign(payload)
+        return HermesRealtimeRelayAgentGrantLocalAuthProof(
+            proofId = proofId,
+            deviceId = deviceId,
+            signedIntentHash = signedIntentHash.lowercase(),
+            authenticatedAt = authenticatedAtSwiftReferenceSeconds,
+            expiresAt = expiresAtSwiftReferenceSeconds,
+            signatureEd25519 = Base64.getEncoder().encodeToString(signature),
+        )
+    }
 
     fun signClipboardRequest(
         request: PhoneControlClipboardRequest,

@@ -162,35 +162,19 @@ final class MobileAgentPermissionGrantController {
     }
 
     private func queue(_ request: AgentCapabilityGrantRequest) async throws {
-        guard let uid = Auth.auth().currentUser?.uid else { throw GrantError.notSignedIn }
         let signedWire = try signedWireRequest(for: request)
-        try await publishAuthority(uid: uid, sourceDeviceID: request.sourceDeviceID)
-        var payload = try jsonObject(from: signedWire)
-        payload["status"] = AgentGrantDecisionStatus.queued.rawValue
-        payload["createdAt"] = Timestamp(date: Date())
-        payload["updatedAt"] = Timestamp(date: Date())
-        try await firestoreProvider()
-            .collection("users")
-            .document(uid)
-            .collection("agent_capability_grant_requests")
-            .document(request.requestID)
-            .setData(payload, merge: false)
+        try await publishAuthority(sourceDeviceID: request.sourceDeviceID)
+        try await ComputerUseSecurityCallableClient.queueAgentCapabilityGrantRequest(try jsonObject(from: signedWire))
     }
 
-    private func publishAuthority(uid: String, sourceDeviceID: String) async throws {
+    private func publishAuthority(sourceDeviceID: String) async throws {
         let key = try keyStore.signingKey()
         let peerNodeId = keyStore.peerNodeId(for: key)
-        try await firestoreProvider()
-            .collection("users")
-            .document(uid)
-            .collection("agent_grant_authorities")
-            .document(sourceDeviceID)
-            .setData([
-                "sourceDeviceId": sourceDeviceID,
-                "peerNodeId": peerNodeId,
-                "publicKeyBase64": key.privateKey.publicKey.rawRepresentation.base64EncodedString(),
-                "updatedAt": Timestamp(date: Date())
-            ], merge: true)
+        try await ComputerUseSecurityCallableClient.publishAgentGrantAuthority(
+            deviceId: sourceDeviceID,
+            peerNodeId: peerNodeId,
+            publicKeyBase64: key.privateKey.publicKey.rawRepresentation.base64EncodedString()
+        )
     }
 
     private func signedWireRequest(
@@ -220,7 +204,17 @@ final class MobileAgentPermissionGrantController {
         } catch {
             throw GrantError.signingFailed(error.localizedDescription)
         }
-        return request.wire(authority: HermesRealtimeRelayAuthorityEnvelope(
+        var signedRequest = request
+        if request.localAuthenticationSatisfied {
+            signedRequest.localAuthProof = try signer.signLocalAuthProof(
+                deviceId: request.sourceDeviceID,
+                signedIntentHash: signed.intentHashHex,
+                authenticatedAt: signed.timestamp,
+                expiresAt: request.expiresAt,
+                privateKey: key.privateKey
+            )
+        }
+        return signedRequest.wire(authority: HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: signed.peerNodeId,
             counter: signed.counter,
             timestamp: signed.timestamp,

@@ -62,6 +62,30 @@ final class MercuryRouter: ObservableObject {
         /// and Android can share a Mac pairing `connectionID`; this keeps
         /// ownership tied to the exact stream that requested it.
         fileprivate let controlStreamID: UUID?
+        fileprivate let agentTerminalApproved: Bool
+
+        var requestsAgentTerminal: Bool {
+            guard let terminal = frame.media?.mirrorRequest?.agentTerminal else { return false }
+            return terminal.interactive && !terminal.runtimeId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        var agentTerminalRuntimeName: String? {
+            frame.media?.mirrorRequest?.agentTerminal?.runtimeId
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmptyForMercury
+        }
+
+        fileprivate func approvingAgentTerminal() -> PendingRequest {
+            PendingRequest(
+                id: id,
+                requesterName: requesterName,
+                requestedAt: requestedAt,
+                frame: frame,
+                replySender: replySender,
+                controlStreamID: controlStreamID,
+                agentTerminalApproved: true
+            )
+        }
 
         static func == (lhs: PendingRequest, rhs: PendingRequest) -> Bool {
             lhs.id == rhs.id
@@ -127,6 +151,7 @@ final class MercuryRouter: ObservableObject {
         let viewerDeviceID: String?
         let controlAuthorityPeerNodeID: String?
         let remoteUnlockSessionID: String?
+        let agentTerminalApproved: Bool
         /// Phase 12 — set when this viewer requested an interactive single-window
         /// CLI; the launched Terminal session is terminated on viewer teardown.
         var interactiveTerminalSession: LaunchedAgentTerminalSession?
@@ -287,9 +312,18 @@ final class MercuryRouter: ObservableObject {
         }
     }
 
-    private func viewer(matchingDeviceID deviceID: String?) -> ActiveMirrorViewer? {
-        guard let deviceID, !deviceID.isEmpty else { return nil }
-        return activeMirrorViewers.values.first { $0.viewerDeviceID == deviceID }
+    private func viewer(matchingPeerIdentity request: HermesRealtimeRelayMirrorRequest) -> ActiveMirrorViewer? {
+        if let authorityPeerNodeID = request.controlAuthorityPeerNodeId?.nilIfEmptyForMercury {
+            return activeMirrorViewers.values.first {
+                $0.controlAuthorityPeerNodeID?.nilIfEmptyForMercury == authorityPeerNodeID
+            }
+        }
+        if let deviceID = request.viewerDeviceId?.nilIfEmptyForMercury {
+            return activeMirrorViewers.values.first {
+                $0.viewerDeviceID?.nilIfEmptyForMercury == deviceID
+            }
+        }
+        return nil
     }
 
     private func activeMirrorSessionMatches(_ sessionID: String?) -> Bool {
@@ -550,9 +584,6 @@ final class MercuryRouter: ObservableObject {
             MercuryPeer.Feature.fileReceive.rawValue,
             MercuryPeer.Feature.callReceive.rawValue
         ]
-        if consentStore.alwaysAllow {
-            capabilities.append(MercuryPeer.Feature.mirrorAutoAccept.rawValue)
-        }
         if remoteUnlockReadiness.capabilities().enabled {
             capabilities.append(MercuryPeer.Feature.remoteUnlockHost.rawValue)
         }
@@ -561,10 +592,27 @@ final class MercuryRouter: ObservableObject {
 
     /// User tapped "Accept" on the incoming-call sheet.
     func acceptMirror(_ request: PendingRequest) async {
-        if !consentStore.alwaysAllow {
-            consentStore.alwaysAllow = true
+        if let mirrorRequest = request.frame.media?.mirrorRequest {
+            consentStore.rememberAcceptedPeer(
+                connectionId: request.frame.connectionId,
+                viewerDeviceId: mirrorRequest.viewerDeviceId,
+                controlAuthorityPeerNodeId: mirrorRequest.controlAuthorityPeerNodeId,
+                requesterName: request.requesterName
+            )
         }
         await beginMirror(for: request)
+    }
+
+    func acceptMirrorWithAgentTerminal(_ request: PendingRequest) async {
+        if let mirrorRequest = request.frame.media?.mirrorRequest {
+            consentStore.rememberAcceptedPeer(
+                connectionId: request.frame.connectionId,
+                viewerDeviceId: mirrorRequest.viewerDeviceId,
+                controlAuthorityPeerNodeId: mirrorRequest.controlAuthorityPeerNodeId,
+                requesterName: request.requesterName
+            )
+        }
+        await beginMirror(for: request.approvingAgentTerminal())
     }
 
     /// User tapped "Decline" on the incoming-call sheet.
@@ -1087,7 +1135,7 @@ final class MercuryRouter: ObservableObject {
         // Recovery fast-path: if the same viewer/device asks again while the
         // router still has its old sink, replace only that viewer lease.
         if case .streaming = phase,
-           let staleViewer = activeMirrorViewers[requestedViewerID] ?? viewer(matchingDeviceID: req.viewerDeviceId) {
+           let staleViewer = activeMirrorViewers[requestedViewerID] ?? viewer(matchingPeerIdentity: req) {
             Self.log.info("router_mirror_request_restarting_same_peer requestID=\(req.requestId, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
             Self.debugTrace("router_mirror_request_restarting_same_peer requestID=\(req.requestId) connectionID=\(frame.connectionId)")
             _ = await removeActiveMirrorViewer(viewerID: staleViewer.viewerID)
@@ -1148,14 +1196,21 @@ final class MercuryRouter: ObservableObject {
             requestedAt: req.requestedAt,
             frame: frame,
             replySender: replySender,
-            controlStreamID: controlStreamID
+            controlStreamID: controlStreamID,
+            agentTerminalApproved: false
+        )
+
+        let hasMirrorAutoAcceptGrant = consentStore.canAutoAccept(
+            connectionId: frame.connectionId,
+            viewerDeviceId: req.viewerDeviceId,
+            controlAuthorityPeerNodeId: req.controlAuthorityPeerNodeId
         )
 
         // Consent fast-paths:
-        // - normal unlocked mirrors can use the durable "always allow" Mac grant;
+        // - normal unlocked mirrors require a per-peer expiring grant;
         // - locked Remote Unlock mirrors can use a signed trusted-device session.
         // Neither path stores or replays the user's Mac password.
-        if consentStore.alwaysAllow || remoteUnlockSession != nil {
+        if (hasMirrorAutoAcceptGrant || remoteUnlockSession != nil) && !pending.requestsAgentTerminal {
             Self.log.info("router_mirror_request_auto_accept requestID=\(req.requestId, privacy: .public)")
             Self.debugTrace("router_mirror_request_auto_accept requestID=\(req.requestId)")
             await beginMirror(for: pending)
@@ -1325,7 +1380,8 @@ final class MercuryRouter: ObservableObject {
             requestedAt: invite.requestedAt,
             frame: frame,
             replySender: replySender,
-            controlStreamID: controlStreamID
+            controlStreamID: controlStreamID,
+            agentTerminalApproved: false
         )
         pendingCall = pending
         phase = .callRinging(
@@ -1461,7 +1517,8 @@ final class MercuryRouter: ObservableObject {
                 controlStreamID: request.controlStreamID,
                 viewerDeviceID: mirrorRequest.viewerDeviceId,
                 controlAuthorityPeerNodeID: mirrorRequest.controlAuthorityPeerNodeId,
-                remoteUnlockSessionID: remoteUnlockSession?.sessionId
+                remoteUnlockSessionID: remoteUnlockSession?.sessionId,
+                agentTerminalApproved: request.agentTerminalApproved
             )
 
             addActiveMirrorViewer(viewer)
@@ -1617,6 +1674,7 @@ final class MercuryRouter: ObservableObject {
     ) async -> LaunchedAgentTerminalSession? {
         guard let request = viewer.frame.media?.mirrorRequest?.agentTerminal,
               request.interactive,
+              viewer.agentTerminalApproved,
               !request.runtimeId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return nil }
         do {
@@ -1978,4 +2036,10 @@ private enum MercuryRemoteAccessAgentClientError: Error {
     case readFailed
     case responseTooLarge
     case daemonRejected
+}
+
+private extension String {
+    var nilIfEmptyForMercury: String? {
+        isEmpty ? nil : self
+    }
 }

@@ -75,6 +75,16 @@ else
   exit 1
 fi
 
+# L-4: a Homebrew cask with the placeholder/zero sha256 has its integrity check
+# effectively disabled. Refuse to proceed unless we computed a real 64-hex digest
+# that is not the all-zeros placeholder.
+if ! printf '%s' "$SHA256" | grep -Eq '^[0-9a-f]{64}$' \
+   || [ "$SHA256" = "0000000000000000000000000000000000000000000000000000000000000000" ]; then
+  echo "ERROR: refusing to write cask — computed sha256 is invalid or the placeholder: '${SHA256}'" >&2
+  rm -rf "$TMPDIR"
+  exit 1
+fi
+
 echo "  SHA256: $SHA256"
 
 # Clean up the downloaded file
@@ -103,6 +113,12 @@ sed -i '' "s|sha256 .*|sha256 \"${SHA256}\"|" "$TMP_CASK"
 sed -i '' "s|url \".*/releases/download/v.*\"|url \"https://github.com/${OWNER}/${REPO}/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg\"|" "$TMP_CASK"
 
 mv "$TMP_CASK" "$CASK_FILE"
+
+# L-4: post-write tripwire — the published cask must never carry the placeholder.
+if grep -q "0000000000000000000000000000000000000000000000000000000000000000" "$CASK_FILE"; then
+  echo "ERROR: $CASK_FILE still contains the placeholder sha256 after update — do NOT publish." >&2
+  exit 1
+fi
 
 echo ""
 echo "✓ Homebrew cask updated:"

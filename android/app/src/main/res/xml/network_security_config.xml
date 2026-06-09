@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenBurnBar Android network security policy (security remediation H-7).
+
+  Background: the app previously set a blanket `android:usesCleartextTraffic="true"`
+  on <application>, which permits cleartext (HTTP) to ANY host. The app already
+  scopes cleartext at the application layer — `HermesProtocol.validatedBaseURL`
+  only allows http:// for localhost and RFC1918 LAN hosts (10/8, 172.16/12,
+  192.168/16) and rejects plain HTTP to public hosts — but the OS-level flag
+  left no defense-in-depth if that check is ever bypassed (an SDK, an image
+  loader, a future code path).
+
+  Android's Network Security Config cannot express RFC1918 CIDR ranges in a
+  <domain-config> (it matches hostnames / IP literals, not subnets), so we
+  CANNOT scope cleartext to "LAN only" here without breaking the deliberate
+  LAN-direct gateway feature. Instead we:
+
+    1. Keep the base config cleartext-permitted so LAN-direct (http://192.168.x.x,
+       http://localhost) keeps working — the app-layer validatedBaseURL remains
+       the gate that refuses plain HTTP to public hosts.
+    2. HARD-DENY cleartext for the security-critical backend hosts (Firebase /
+       Google APIs / Cloud Functions), so backend traffic can NEVER fall back to
+       HTTP even if some code path tries. These hosts are always HTTPS, so this
+       cannot break a legitimate flow — it only closes a downgrade vector.
+
+  Recommendation (tracked separately): migrate LAN-direct gateway connections to
+  TLS (or route them through the authenticated relay) so the base config can be
+  flipped to cleartext-denied and the LAN exception removed entirely.
+-->
+<network-security-config>
+    <!-- Base: permit cleartext (required for the RFC1918 LAN-direct feature;
+         see validatedBaseURL). Public-host HTTP is still refused in app code. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Backend / control-plane hosts: TLS only, no cleartext, ever. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">firebaseio.com</domain>
+        <domain includeSubdomains="true">firebaseapp.com</domain>
+        <domain includeSubdomains="true">firebaseappcheck.googleapis.com</domain>
+        <domain includeSubdomains="true">firebaseinstallations.googleapis.com</domain>
+        <domain includeSubdomains="true">identitytoolkit.googleapis.com</domain>
+        <domain includeSubdomains="true">securetoken.googleapis.com</domain>
+        <domain includeSubdomains="true">firestore.googleapis.com</domain>
+        <domain includeSubdomains="true">cloudfunctions.net</domain>
+        <domain includeSubdomains="true">run.app</domain>
+        <domain includeSubdomains="true">web.app</domain>
+        <domain includeSubdomains="true">gstatic.com</domain>
+        <domain includeSubdomains="true">trycloudflare.com</domain>
+    </domain-config>
+</network-security-config>

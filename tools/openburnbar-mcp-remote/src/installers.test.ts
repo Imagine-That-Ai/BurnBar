@@ -59,6 +59,7 @@ test("non-codex installers stay byte-identical", () => {
 
 test("sealed result decrypt is no-op without a local vault key", () => {
   delete process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64;
+  delete process.env.OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE;
   const input = JSON.stringify({ hits: [{ sealedTitle: { algorithm: "AES-256-GCM" } }] });
   const output = JSON.parse(decryptSearchResultJson(input)) as { hits: Array<{ title?: string }> };
   assert.equal(output.hits[0].title, undefined);
@@ -66,6 +67,7 @@ test("sealed result decrypt is no-op without a local vault key", () => {
 
 test("sealed result decrypt binds v2 envelopes to returned AAD coordinates", () => {
   const key = Buffer.alloc(32, 7);
+  process.env.OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE = "true";
   process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64 = key.toString("base64");
 
   const seal = (plaintext: string, aad: string) => {

@@ -400,6 +400,31 @@ public struct HermesRealtimeRelayClipboardResponse: Codable, Sendable, Equatable
     }
 }
 
+public struct HermesRealtimeRelayAgentGrantLocalAuthProof: Codable, Sendable, Equatable, Hashable {
+    public var proofId: String
+    public var deviceId: String
+    public var signedIntentHash: String
+    public var authenticatedAt: Date
+    public var expiresAt: Date
+    public var signatureEd25519: String
+
+    public init(
+        proofId: String,
+        deviceId: String,
+        signedIntentHash: String,
+        authenticatedAt: Date,
+        expiresAt: Date,
+        signatureEd25519: String
+    ) {
+        self.proofId = proofId
+        self.deviceId = deviceId
+        self.signedIntentHash = signedIntentHash
+        self.authenticatedAt = authenticatedAt
+        self.expiresAt = expiresAt
+        self.signatureEd25519 = signatureEd25519
+    }
+}
+
 public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable {
     public var requestId: String
     public var runtime: String
@@ -414,6 +439,7 @@ public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable
     public var sourceDeviceId: String
     public var clientIntentId: String
     public var localAuthenticationSatisfied: Bool
+    public var localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof?
     public var authority: HermesRealtimeRelayAuthorityEnvelope
 
     public init(
@@ -430,6 +456,7 @@ public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable
         sourceDeviceId: String,
         clientIntentId: String,
         localAuthenticationSatisfied: Bool,
+        localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
         authority: HermesRealtimeRelayAuthorityEnvelope
     ) {
         self.requestId = requestId
@@ -445,6 +472,7 @@ public struct HermesRealtimeRelayAgentGrantRequest: Codable, Sendable, Equatable
         self.sourceDeviceId = sourceDeviceId
         self.clientIntentId = clientIntentId
         self.localAuthenticationSatisfied = localAuthenticationSatisfied
+        self.localAuthProof = localAuthProof
         self.authority = authority
     }
 }
@@ -560,19 +588,25 @@ public struct HermesRealtimeRelayApprovalResponse: Codable, Sendable, Equatable 
     public var respondedBy: String
     public var respondedAt: Date
     public var note: String?
+    public var requestHashBlake3: String?
+    public var authority: HermesRealtimeRelayAuthorityEnvelope?
 
     public init(
         approvalId: String,
         decision: Decision,
         respondedBy: String,
         respondedAt: Date,
-        note: String? = nil
+        note: String? = nil,
+        requestHashBlake3: String? = nil,
+        authority: HermesRealtimeRelayAuthorityEnvelope? = nil
     ) {
         self.approvalId = approvalId
         self.decision = decision
         self.respondedBy = respondedBy
         self.respondedAt = respondedAt
         self.note = note
+        self.requestHashBlake3 = requestHashBlake3
+        self.authority = authority
     }
 }
 
@@ -2302,9 +2336,15 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
     public var operation: HermesRelayOperation?
     public var method: String?
     public var payloadCiphertext: String?
+    public var enc: String?
     public var wrappedKey: String?
     public var relayEncryption: String?
     public var relayKeyVersion: Int?
+    public var senderPublicKey: String?
+    public var senderDeviceId: String?
+    public var senderPeerNodeId: String?
+    public var senderCounter: Int64?
+    public var keyId: String?
     public var sequence: Int?
     public var kind: HermesRelayChunkKind?
     public var ciphertext: String?
@@ -2322,9 +2362,15 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
         operation: HermesRelayOperation? = nil,
         method: String? = nil,
         payloadCiphertext: String? = nil,
+        enc: String? = nil,
         wrappedKey: String? = nil,
         relayEncryption: String? = nil,
         relayKeyVersion: Int? = nil,
+        senderPublicKey: String? = nil,
+        senderDeviceId: String? = nil,
+        senderPeerNodeId: String? = nil,
+        senderCounter: Int64? = nil,
+        keyId: String? = nil,
         sequence: Int? = nil,
         kind: HermesRelayChunkKind? = nil,
         ciphertext: String? = nil,
@@ -2336,9 +2382,15 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
         self.operation = operation
         self.method = method
         self.payloadCiphertext = payloadCiphertext
+        self.enc = enc
         self.wrappedKey = wrappedKey
         self.relayEncryption = relayEncryption
         self.relayKeyVersion = relayKeyVersion
+        self.senderPublicKey = senderPublicKey
+        self.senderDeviceId = senderDeviceId
+        self.senderPeerNodeId = senderPeerNodeId
+        self.senderCounter = senderCounter
+        self.keyId = keyId
         self.sequence = sequence
         self.kind = kind
         self.ciphertext = ciphertext
