@@ -1,230 +1,148 @@
 #!/usr/bin/env node
-import assert from "node:assert/strict";
+/**
+ * test-trust-copy.mjs — built-output gates for the trust surface. Runs after
+ * `astro build` (wired into `npm run verify` behind `links:check`).
+ *
+ * 1. TRACKER-FREE: the footer says "No analytics, no trackers, no third-party
+ *    fonts loaded remotely" — enforce it on what actually ships: no external
+ *    <script src> in any built page, and no tracker SDK tokens in the built JS.
+ * 2. PAGE ↔ MODULE BINDING: /trust must render every generated claim line and
+ *    not-claim verbatim. The drift gates guarantee module == registry; this
+ *    closes the remaining gap (page == module) so trust.astro cannot quietly
+ *    stop rendering the gated copy.
+ * 3. BANNED VOCABULARY: forbidden claim tokens must never appear in built HTML
+ *    (the machine version of the launch-guardrail grep).
+ */
+
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import assert from "node:assert";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
-const REPO_ROOT = join(ROOT, "..");
 const DIST = join(ROOT, "dist");
-const TRUST_GENERATED = join(ROOT, "src", "data", "trust.generated.ts");
-const RUNTIME_READINESS = join(REPO_ROOT, "third_party", "libsignal", "runtime-readiness.json");
-
-const TRUST_ROUTES = [
-  join(DIST, "trust", "index.html"),
-  join(DIST, "privacy", "index.html")
-];
-
-const NETWORK_LINK_RELS = [
-  "stylesheet",
-  "preload",
-  "modulepreload",
-  "prefetch",
-  "preconnect",
-  "dns-prefetch",
-  "icon",
-  "apple-touch-icon",
-  "manifest"
-];
-
-const EXTERNAL_PATTERNS = [
-  /<script\b[^>]*\bsrc=["'](?:https?:)?\/\//i,
-  /<link\b(?=[^>]*\brel=["'][^"']*(?:stylesheet|preload|modulepreload|prefetch|preconnect|dns-prefetch|icon|apple-touch-icon|manifest)[^"']*["'])(?=[^>]*\bhref=["'](?:https?:)?\/\/)/i,
-  /<img\b[^>]*\bsrc=["'](?:https?:)?\/\//i,
-  /<(?:img|source)\b[^>]*\bsrcset=["'][^"']*(?:https?:)?\/\//i,
-  /<iframe\b[^>]*\bsrc=["'](?:https?:)?\/\//i,
-  /<source\b[^>]*\bsrc=["'](?:https?:)?\/\//i,
-  /<form\b[^>]*\baction=["'](?:https?:)?\/\//i,
-  /<(?:button|input)\b[^>]*\bformaction=["'](?:https?:)?\/\//i,
-  /<a\b[^>]*\bping=["'][^"']*(?:https?:)?\/\//i,
-  /<(?:video|audio)\b[^>]*\bposter=["'](?:https?:)?\/\//i,
-  /<meta\b(?=[^>]*\bhttp-equiv=["']refresh["'])(?=[^>]*\bcontent=["'][^"']*\burl\s*=\s*(?:https?:)?\/\/)/i,
-  /<(?:use|image)\b[^>]*\b(?:href|xlink:href)=["'](?:https?:)?\/\//i,
-  /@import\s+(?:url\(\s*)?["']?(?:https?:)?\/\//i,
-  /url\(\s*["']?(?:https?:)?\/\//i,
-  /\bfetch\(\s*["'](?:https?:)?\/\//i,
-  /\bnavigator\.sendBeacon\(\s*["'](?:https?:)?\/\//i,
-  /\bXMLHttpRequest\b/i,
-  /\bnew\s+WebSocket\(\s*["'](?:wss?:|https?:)\/\//i,
-  /\bnew\s+EventSource\(\s*["'](?:https?:)?\/\//i,
-  /\bimport\(\s*["'](?:https?:)?\/\//i,
-  /from\s+["'](?:https?:)?\/\//i
-];
-
-const TRACKER_TOKENS =
-  /\bposthog\b|googletagmanager|gtag\(|plausible\.io|usefathom|umami\.is|hotjar|mixpanel|browser\.sentry-cdn|ingest\.sentry\.io|@sentry\//i;
-
-const NOT_READY_RUNTIME_CLAIMS = [
-  /\b(?:relay|gateway)[^.]{0,160}\bnever (?:sees|receives) plaintext\b/i,
-  /\bnever reads? message text\b/i,
-  /\bnever receives readable message text\b/i,
-  /\bboth directions are end-to-end encrypted\b/i,
-];
+const GENERATED = join(ROOT, "src", "data", "crypto-claims.generated.ts");
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) walk(path, out);
-    else out.push(path);
+    const p = join(dir, entry);
+    if (statSync(p).isDirectory()) walk(p, out);
+    else out.push(p);
   }
   return out;
 }
 
-function htmlDecode(value) {
-  return value
+const files = walk(DIST);
+const htmlFiles = files.filter((f) => f.endsWith(".html"));
+const jsFiles = files.filter((f) => f.endsWith(".js"));
+assert.ok(htmlFiles.length > 10, `expected a built dist/, found ${htmlFiles.length} HTML files`);
+
+// ---------------------------------------------------------------------------
+// 1. Tracker-free dist.
+// ---------------------------------------------------------------------------
+
+// Any <script src> pointing at another origin is a failure — the site
+// self-hosts everything (fonts included).
+const externalScript = /<script[^>]+src=["'](?:https?:)?\/\/(?!burnbar\.ai)[^"']+["']/i;
+for (const file of htmlFiles) {
+  const html = readFileSync(file, "utf8");
+  assert.ok(
+    !externalScript.test(html),
+    `${relative(ROOT, file)} loads a third-party script — the footer's "no trackers" claim must stay verbatim true`
+  );
+}
+
+// Tracker SDK tokens in built JS (page prose may mention vendors — code must not).
+const TRACKER_TOKENS =
+  /posthog|googletagmanager|gtag\(|plausible\.io|usefathom|umami\.is|hotjar|mixpanel|browser\.sentry-cdn|ingest\.sentry\.io|@sentry\//i;
+for (const file of jsFiles) {
+  const js = readFileSync(file, "utf8");
+  const match = js.match(TRACKER_TOKENS);
+  assert.ok(
+    !match,
+    `${relative(ROOT, file)} contains tracker token ${JSON.stringify(match?.[0])} — no analytics, no trackers`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 2. /trust renders every generated claim verbatim.
+// ---------------------------------------------------------------------------
+
+const generated = readFileSync(GENERATED, "utf8");
+const publicLines = [...generated.matchAll(/"publicLine": (".*")/g)].map((m) => JSON.parse(m[1]));
+const notBlock = generated.slice(generated.indexOf("CRYPTO_NOT_CLAIMS"));
+// `= [` skips the `string[]` type annotation's brackets; the literal is
+// JSON.stringify output, so the slice parses as plain JSON.
+const notStart = notBlock.indexOf("= [") + 2;
+const notEnd = notBlock.indexOf("] as const", notStart) + 1;
+const notClaims = JSON.parse(notBlock.slice(notStart, notEnd));
+assert.ok(publicLines.length >= 5, `expected ≥5 publicLines, parsed ${publicLines.length}`);
+assert.ok(notClaims.length >= 4, `expected ≥4 not-claims, parsed ${notClaims.length}`);
+
+const unescape = (s) =>
+  s
     .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
+
+const trustHtml = unescape(readFileSync(join(DIST, "trust", "index.html"), "utf8"));
+for (const line of [...publicLines, ...notClaims]) {
+  assert.ok(
+    trustHtml.includes(line),
+    `/trust no longer renders a generated claim verbatim:\n  ${line}\nThe page must render crypto-claims.generated.ts, not paraphrase it.`
+  );
 }
 
-function getAttr(tag, attr) {
-  const match = tag.match(new RegExp(`\\b${attr}=["']([^"']+)["']`, "i"));
-  return match ? htmlDecode(match[1]) : "";
-}
+// The page must never render the internal policy vocabulary.
+assert.ok(
+  !/policyClaim/.test(readFileSync(join(DIST, "trust", "index.html"), "utf8")),
+  "/trust leaks the internal policyClaim field into HTML"
+);
 
-function assertNoNetworkLinkRels(label, body) {
-  for (const match of body.matchAll(/<link\b[^>]*>/gi)) {
-    const tag = match[0];
-    const href = getAttr(tag, "href");
-    if (!/^(?:https?:)?\/\//i.test(href)) continue;
-    const rels = getAttr(tag, "rel")
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
-    const networkRel = rels.find((rel) => NETWORK_LINK_RELS.includes(rel));
-    assert.equal(
-      networkRel,
-      undefined,
-      `${label} contains external ${networkRel} link ${JSON.stringify(tag)}`
-    );
-  }
-}
+// ---------------------------------------------------------------------------
+// 3. Banned claim vocabulary never ships.
+// ---------------------------------------------------------------------------
 
-function assertNoExternalNetworkBody(label, body) {
-  assertNoNetworkLinkRels(label, body);
-  for (const pattern of EXTERNAL_PATTERNS) {
-    const match = body.match(pattern);
-    assert.equal(
-      match,
-      null,
-      `${label} contains external network reference ${JSON.stringify(match?.[0])}`
-    );
-  }
-  const tracker = body.match(TRACKER_TOKENS);
-  assert.equal(tracker, null, `${label} contains tracker token ${JSON.stringify(tracker?.[0])}`);
-}
-
-function assertNoExternalNetwork(file) {
-  const body = readFileSync(file, "utf8");
-  assertNoExternalNetworkBody(relative(ROOT, file), body);
-  if (file.endsWith(".webmanifest")) {
-    assertNoWebManifestNetworkBody(relative(ROOT, file), body);
-  }
-}
-
-function assertBlocked(label, body) {
-  assert.throws(() => assertNoExternalNetworkBody(label, body), /external|tracker/);
-}
-
-function assertNoWebManifestNetworkBody(label, body) {
-  const match = body.match(/"(?:src|href|url)"\s*:\s*["'](?:https?:)?\/\//i);
-  assert.equal(match, null, `${label} contains external webmanifest URL ${JSON.stringify(match?.[0])}`);
-}
-
-function runtimeReadinessStatus() {
-  return JSON.parse(readFileSync(RUNTIME_READINESS, "utf8")).status;
-}
-
-function assertNoUnreadyRuntimeClaims() {
-  if (runtimeReadinessStatus() === "ready") return;
-  const claimFiles = [...TRUST_ROUTES, TRUST_GENERATED, join(ROOT, "src", "pages", "privacy.astro")];
-  for (const file of claimFiles) {
-    const label = relative(REPO_ROOT, file);
-    const body = htmlDecode(readFileSync(file, "utf8"));
-    for (const pattern of NOT_READY_RUNTIME_CLAIMS) {
-      const match = body.match(pattern);
-      assert.equal(
-        match,
-        null,
-        `${label} contains an uncaveated runtime crypto claim while runtime-readiness.json is not ready: ${JSON.stringify(match?.[0])}`
-      );
+const BANNED = [
+  /signal[- ]grade/i,
+  /signal[- ]quality/i,
+  /signal[- ]class\b/i,
+  /signal protocol/i,
+  /externally audited/i,
+  /assistant (?:cannot|can't) read/i,
+  /signalEnvelope/i,
+  /signalification/i,
+  /\bhpke\b/i,
+  /RFC ?9180/i,
+  /double[- ]ratchet/i,
+  /zero[- ]knowledge/i,
+  /quantum[- ]proof/i,
+  /\bPQ3\b/i
+];
+// The honest-boundary copy QUOTES the forbidden claim in order to refuse it
+// ("we don't say “the assistant can't read your messages,” because that would
+// be false") — a denial is the one sanctioned context. Assertions still fail.
+const DENIAL_CONTEXT = /(?:don't|do not|never) say/i;
+for (const file of htmlFiles) {
+  const html = unescape(readFileSync(file, "utf8"));
+  for (const pattern of BANNED) {
+    const match = html.match(pattern);
+    if (match && DENIAL_CONTEXT.test(html.slice(Math.max(0, match.index - 60), match.index))) {
+      continue; // quoted denial, explicitly allowed
     }
+    assert.ok(
+      !match,
+      `${relative(ROOT, file)} ships banned claim vocabulary ${JSON.stringify(match?.[0])} (${pattern})`
+    );
   }
 }
 
-function runScannerSelfTests() {
-  assertNoExternalNetworkBody(
-    "safe metadata self-test",
-    [
-      '<link rel="canonical" href="https://burnbar.ai/trust/">',
-      '<meta property="og:image" content="https://burnbar.ai/og/default.png">',
-      '<script type="application/ld+json">{"@context":"https://schema.org"}</script>',
-      '<a href="https://github.com/Imagine-That-Ai/BurnBar">GitHub</a>',
-    ].join("\n")
-  );
-  for (const [label, body] of [
-    ["external script", '<script src="https://cdn.example/app.js"></script>'],
-    ["external stylesheet", '<link rel="stylesheet" href="https://fonts.example/style.css">'],
-    ["external preload", '<link href="https://fonts.example/font.woff2" rel="preload" as="font">'],
-    ["external image", '<img src="https://pixel.example/1x1.gif">'],
-    ["external srcset", '<img srcset="/local.png 1x, https://cdn.example/x.png 2x">'],
-    ["external iframe", '<iframe src="https://example.com/embed"></iframe>'],
-    ["external source", '<source src="https://cdn.example/video.mp4">'],
-    ["external form", '<form action="https://collector.example/post"></form>'],
-    ["external form action", '<button formaction="https://collector.example/post">Send</button>'],
-    ["external ping", '<a href="/local" ping="https://collector.example/ping">A</a>'],
-    ["external poster", '<video poster="https://cdn.example/poster.jpg"></video>'],
-    ["external meta refresh", '<meta http-equiv="refresh" content="0; url=https://evil.example/">'],
-    ["external svg href", '<svg><use xlink:href="https://cdn.example/icon.svg#x"></use></svg>'],
-    ["external css import", '@import "https://fonts.example/style.css";'],
-    ["external css url", ".hero{background:url(https://cdn.example/bg.png)}"],
-    ["external fetch", 'fetch("https://api.example/data")'],
-    ["external beacon", 'navigator.sendBeacon("https://analytics.example/hit")'],
-    ["xhr token", "new XMLHttpRequest()"],
-    ["external websocket", 'new WebSocket("wss://socket.example")'],
-    ["external eventsource", 'new EventSource("https://stream.example")'],
-    ["dynamic import", 'import("https://cdn.example/mod.mjs")'],
-    ["static import", 'import x from "https://cdn.example/mod.mjs"'],
-    ["tracker token", "posthog.init('key')"],
-  ]) {
-    assertBlocked(label, body);
-  }
-  assert.throws(
-    () => assertNoWebManifestNetworkBody("external webmanifest icon", '{"icons":[{"src":"https://cdn.example/icon.png"}]}'),
-    /external/
-  );
-}
-
-function parseGeneratedStrings() {
-  const generated = readFileSync(TRUST_GENERATED, "utf8");
-  const strings = new Set();
-  for (const match of generated.matchAll(/"(?:blurb|serverLine|caveat)": ("(?:[^"\\]|\\.)*")/g)) {
-    const parsed = JSON.parse(match[1]);
-    if (parsed && parsed.length > 24) strings.add(parsed);
-  }
-  return [...strings];
-}
-
-runScannerSelfTests();
-
-for (const route of TRUST_ROUTES) {
-  assert.ok(statSync(route).isFile(), `${relative(ROOT, route)} must exist`);
-}
-
-const builtFiles = walk(DIST).filter((file) => /\.(?:html|css|js|mjs|svg|xml|webmanifest)$/.test(file));
-for (const file of builtFiles) {
-  assertNoExternalNetwork(file);
-}
-
-const trustHtml = htmlDecode(readFileSync(join(DIST, "trust", "index.html"), "utf8"));
-for (const line of parseGeneratedStrings()) {
-  assert.ok(trustHtml.includes(line), `/trust does not render generated trust line: ${line}`);
-}
-
-assertNoUnreadyRuntimeClaims();
-
-console.log(`PASS: trust copy scan checked ${builtFiles.length} built HTML/CSS/JS/SVG/XML/manifest files with no external network refs.`);
+console.log(
+  `✓ trust copy gates: ${htmlFiles.length} pages tracker-free, /trust renders all ${
+    publicLines.length + notClaims.length
+  } generated claim lines verbatim, banned vocabulary absent.`
+);

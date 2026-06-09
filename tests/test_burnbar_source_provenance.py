@@ -1,91 +1,102 @@
-import hashlib
-import json
-import shutil
-import subprocess
-import sys
 from pathlib import Path
 
 from scripts.ci.write_burnbar_source_provenance import (
-    REQUIRED_SOURCE_FILES,
+    REQUIRED_SOURCE_PATHS,
     build_source_provenance_manifest,
     release_preflight_blockers,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
-def test_source_provenance_manifest_covers_agpl_signal_release_inputs():
-    manifest = build_source_provenance_manifest(repo_root=Path(__file__).resolve().parents[1])
+
+def test_source_provenance_manifest_covers_agpl_signal_release_inputs() -> None:
+    manifest = build_source_provenance_manifest(repo_root=REPO_ROOT)
+
+    assert manifest["schemaVersion"] == 1
+    assert manifest["productLicense"] == "AGPL-3.0-only"
+    assert manifest["sourceAvailability"] == "docs/legal/SOURCE_AVAILABILITY.md"
+    assert manifest["libsignal"]["license"] == "AGPL-3.0-only"
+    assert manifest["runtimeReadiness"]["status"] == "not_ready"
+    assert "node_contracts" in manifest["runtimeReadiness"]["completeGates"]
+    assert "swift_round_trips" in manifest["runtimeReadiness"]["completeGates"]
+    assert "kotlin_round_trips" in manifest["runtimeReadiness"]["completeGates"]
+    # Launch stays fail-closed until counsel signs off.
+    assert "store_and_counsel_approval" in manifest["runtimeReadiness"]["incompleteGates"]
+
     paths = {entry["path"] for entry in manifest["requiredSourceFiles"]}
-    assert "third_party/libsignal/runtime-readiness.json" in paths
-    assert "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md" in paths
-    assert manifest["runtimeReadiness"]["status"] in {"ready", "not_ready"}
-    assert manifest["runtimeReadiness"]["validatorErrors"] == []
+    assert {
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "docs/legal/AGPL_RELEASE_REVIEW_PACKET.md",
+        "docs/legal/agpl-release-review.evidence.template.json",
+        "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
+        "OpenBurnBarCore/Package.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/SignalEnvelopeAAD.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/SignalEnvelopeAADTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",
+        "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalProtocolStore.kt",
+        "packages/signal-envelope-contracts/src/cloudVaultSignalEnvelope.ts",
+        "packages/signal-envelope-contracts/package-lock.json",
+        "functions/src/hermesGateway.ts",
+        "functions/package-lock.json",
+        "scripts/ci/drain_hermes_gateway_legacy_records.js",
+        "scripts/ci/check_hermes_gateway_migration_drain.py",
+        "tests/test_hermes_gateway_signal_required_rollout.py",
+        "third_party/libsignal/runtime-readiness.json",
+        "Vendor/libsignal/LICENSE",
+        "Vendor/libsignal/rust/protocol/src/triple_ratchet.rs",
+    }.issubset(paths)
 
 
-def test_source_provenance_rejects_forged_ready_runtime_manifest(tmp_path):
-    repo = tmp_path / "repo"
-    source = Path(__file__).resolve().parents[1]
-    shutil.copytree(source / "scripts", repo / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
-    (repo / "third_party/libsignal").mkdir(parents=True)
-    for rel_path in REQUIRED_SOURCE_FILES:
-        if rel_path == "third_party/libsignal/runtime-readiness.json":
-            continue
-        path = repo / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"placeholder for {rel_path}\n", encoding="utf-8")
-    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    subprocess.run(["git", "add", "."], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    subprocess.run(
-        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "fixture"],
-        cwd=repo,
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+def test_required_source_paths_are_committed_sources_not_build_output() -> None:
+    # Gitignored build output (functions/lib, packages/*/lib) can never be a
+    # provenance input — CI does not build before this gate runs.
+    for rel_path in REQUIRED_SOURCE_PATHS:
+        assert "/lib/" not in rel_path, f"provenance must hash committed sources, not build output: {rel_path}"
 
-    artifact = repo / "README.md"
-    artifact.write_text("hash-matching fake evidence\n", encoding="utf-8")
-    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
-    gates = (
-        "rust_core_bridge",
-        "swift_round_trips",
-        "kotlin_round_trips",
-        "node_contracts",
-        "hermes_gateway_writes",
-        "hermes_attachment_writes",
-        "cloudvault_private_domains",
-        "migration_telemetry",
-        "store_and_counsel_approval",
-    )
+    # The repo root is the MIT upstream graft point: no root manifests.
+    assert "package-lock.json" not in REQUIRED_SOURCE_PATHS
+    assert "pyproject.toml" not in REQUIRED_SOURCE_PATHS
+
+
+def test_every_required_source_path_exists() -> None:
+    missing = [rel for rel in REQUIRED_SOURCE_PATHS if not (REPO_ROOT / rel).is_file()]
+    assert missing == []
+
+
+def test_release_preflight_blocks_dirty_or_not_ready_manifest() -> None:
     manifest = {
-        "status": "ready",
-        "runtimeCryptoCore": "forged",
-        "officialLibsignalPin": {
-            "tag": "v0.94.4",
-            "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
-            "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f",
+        "git": {
+            "dirty": True,
+            "dirtyPaths": [" M README.md", "?? .secrets/"],
         },
-        "blockingReason": "forged",
-        "requiredGates": [{"id": gate_id, "status": "complete", "proof": "forged"} for gate_id in gates],
-        "completedEvidence": [
-            {
-                "id": gate_id,
-                "status": "complete",
-                "artifactPath": "README.md",
-                "artifactType": "test_log",
-                "sha256": digest,
-                "validatorCommand": "echo forged",
-                "validatorResult": "pass",
-            }
-            for gate_id in gates
-        ],
+        "runtimeReadiness": {
+            "status": "not_ready",
+            "incompleteGates": ["rust_core_bridge", "store_and_counsel_approval"],
+        },
     }
-    (repo / "third_party/libsignal/runtime-readiness.json").write_text(json.dumps(manifest), encoding="utf-8")
-    sys.path.insert(0, str(repo))
-    try:
-        forged = build_source_provenance_manifest(repo_root=repo)
-    finally:
-        sys.path.pop(0)
 
-    blockers = release_preflight_blockers(forged)
+    assert release_preflight_blockers(manifest) == [
+        "git working tree must be clean for release provenance (2 dirty path(s))",
+        "runtimeReadiness.status must be 'ready', found 'not_ready'",
+        "runtimeReadiness has incomplete gate(s): rust_core_bridge, store_and_counsel_approval",
+    ]
 
-    assert any("runtimeReadiness validator failed" in blocker for blocker in blockers)
+
+def test_release_preflight_passes_only_for_clean_ready_manifest() -> None:
+    manifest = {
+        "git": {
+            "dirty": False,
+            "dirtyPaths": [],
+        },
+        "runtimeReadiness": {
+            "status": "ready",
+            "incompleteGates": [],
+        },
+    }
+
+    assert release_preflight_blockers(manifest) == []

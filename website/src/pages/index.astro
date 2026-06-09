@@ -9,6 +9,8 @@ import LockedModelRelay from "@components/LockedModelRelay.astro";
 import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import HermesGatewayPromo from "@components/HermesGatewayPromo.astro";
 import PricingPlans from "@components/PricingPlans.astro";
+import SealBadge from "@components/SealBadge.astro";
+import TrustBoundaryMap from "@components/TrustBoundaryMap.astro";
 import { SITE } from "@data/site";
 import { SURFACES } from "@data/surfaces";
 import { PROVIDERS_PRIMARY, PROVIDERS_ALL } from "@data/providers";
@@ -42,6 +44,8 @@ const detectedCount = totalCount - primaryCount;
           <span>macOS release</span>
           <span aria-hidden="true">·</span>
           <span>iOS in App Store review</span>
+          <span aria-hidden="true">·</span>
+          <a class="hero__agpl" href="/trust">{SITE.license.replace("-only", "")}</a>
         </div>
 
         <h1 id="hero-h" class="hero__h">
@@ -561,7 +565,9 @@ const detectedCount = totalCount - primaryCount;
         <h2 id="trust-h">By default, OpenBurnBar collects nothing.</h2>
         <p class="lead">
           All processing happens on your device. No telemetry, no analytics, no crash reports —
-          nothing is transmitted unless you explicitly opt in.
+          nothing is transmitted unless you explicitly opt in. And when you do opt into cloud, your
+          content leaves sealed — what stays readable is labeled operational metadata, domain by
+          domain, in a ledger you can audit.
         </p>
         <ul class="trust__points">
           <li><strong>No API keys read</strong> for local-only tracking.</li>
@@ -577,20 +583,30 @@ const detectedCount = totalCount - primaryCount;
           <li><strong>Claude Code is self-hosted only</strong>, by design.</li>
         </ul>
         <div class="trust__ctas">
+          <a class="btn btn--ember" href="/trust">
+            Trust, in plain language
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
           <a class="btn btn--ghost" href="/privacy">Privacy model</a>
           <a class="btn btn--ghost" href="/security">Security model</a>
         </div>
       </header>
 
       <aside class="trust__quote">
-        <blockquote>
-          <p>
-            "Your API keys never leave the providers you already trust; OpenBurnBar just reads
-            crumbs they dropped on disk."
-          </p>
-          <footer class="mono small">— README.md · README · the team</footer>
-        </blockquote>
+        <p class="trust__pull">Read it. <em>Don't just trust it.</em></p>
+        <p class="mono small"><a href="/trust">burnbar.ai/trust</a></p>
+        <div class="trust__seal">
+          <SealBadge variant="agpl" size={96} />
+        </div>
       </aside>
+    </div>
+
+    <div class="container trust__band">
+      <p class="trust__band-caption mono">
+        Where the seal holds — the relay sees ciphertext only.
+        <a href="/trust">The full map →</a>
+      </p>
+      <TrustBoundaryMap view="relay" compact />
     </div>
   </section>
 
@@ -619,7 +635,7 @@ const detectedCount = totalCount - primaryCount;
        ──────────────────────────────────────────────── -->
   <section class="endcta">
     <div class="container container--narrow endcta__inner">
-      <h2 class="endcta__h">Dont get burned. Keep Building.</h2>
+      <h2 class="endcta__h">Don't get burned. Keep building.</h2>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
           OpenBurnBar is AGPL-licensed, signed and notarized for macOS, and ready to run today.
@@ -667,6 +683,18 @@ const detectedCount = totalCount - primaryCount;
   }
   .hero__eyebrow::before {
     display: none;
+  }
+  .hero__agpl {
+    padding: 0.18em 0.62em;
+    border: 1px solid color-mix(in oklab, var(--ember-core) 50%, transparent);
+    border-radius: var(--r-pill);
+    background: var(--seal-ember-wash);
+    color: var(--ember-bright);
+    text-decoration: none;
+    transition: border-color var(--dur-fast) var(--ease);
+  }
+  .hero__agpl:hover {
+    border-color: var(--ember-core);
   }
   .hero__h {
     font-size: var(--t-display);
@@ -1352,6 +1380,7 @@ const detectedCount = totalCount - primaryCount;
   .trust__ctas {
     margin-top: var(--s-5);
     display: flex;
+    flex-wrap: wrap;
     gap: var(--s-3);
   }
   .trust__quote {
@@ -1359,7 +1388,8 @@ const detectedCount = totalCount - primaryCount;
     padding: var(--s-6);
     border-radius: 0 var(--r-4) var(--r-4) 0;
   }
-  .trust__quote blockquote p {
+  .trust__pull {
+    margin: 0;
     font-family: var(--font-display);
     font-size: var(--t-h3);
     line-height: 1.2;
@@ -1369,9 +1399,37 @@ const detectedCount = totalCount - primaryCount;
       "wght" 400;
     letter-spacing: -0.018em;
   }
-  .trust__quote footer {
+  .trust__pull em {
+    color: var(--ember-bright);
+  }
+  .trust__quote .mono {
     margin-top: var(--s-4);
     color: var(--text-mute);
+  }
+  .trust__quote .mono a {
+    color: var(--ember-bright);
+    text-decoration: underline;
+  }
+  .trust__seal {
+    margin-top: var(--s-6);
+    display: flex;
+    justify-content: flex-start;
+  }
+  .trust__band {
+    margin-top: var(--s-7);
+  }
+  .trust__band :global(.tbm) {
+    max-width: 56rem;
+  }
+  .trust__band-caption {
+    margin-bottom: var(--s-4);
+    font-size: var(--t-caption);
+    letter-spacing: 0.04em;
+    color: var(--text-mute);
+  }
+  .trust__band-caption a {
+    color: var(--ember-bright);
+    text-decoration: underline;
   }
   .small {
     font-size: var(--t-caption);

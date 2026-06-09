@@ -15,8 +15,16 @@ const HEADINGS = {
   server_readable: "We can read these"
 } as const;
 const TIER_ORDER = ["end_to_end", "zero_access", "server_readable"] as const;
+// Theme-flipping tier hue (tokens.css darkens these for AA on paper); the
+// generated colorHex stays as the dark-theme-only fallback for unknown ids.
+const TIER_TOKEN = {
+  end_to_end: "--tier-e2e",
+  zero_access: "--tier-zero",
+  server_readable: "--tier-server"
+} as const;
 const domainGroups = TIER_ORDER.map((id) => ({
   tier: TRUST_TIER_BY_ID[id],
+  tierColor: `var(${TIER_TOKEN[id]}, ${TRUST_TIER_BY_ID[id].colorHex})`,
   heading: HEADINGS[id],
   domains: TRUST_DOMAINS.filter((d) => d.tier === id)
 }));
@@ -156,11 +164,14 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
           A plain map of everything BurnBar keeps for you. It's built from the data-domain
           registry our apps consume, so the page and registry cannot quietly drift apart.
         </p>
+        <p class="domains__trustlink mono">
+          How the license and the seal back this up → <a href="/trust">the trust page</a>
+        </p>
       </header>
 
       {
         domainGroups.map((g) => (
-          <div class="bucket" style={`--tier-c: ${g.tier.colorHex}`}>
+          <div class="bucket" style={`--tier-c: ${g.tierColor}`}>
             <div class="bucket__inner">
               <header class="bucket__head">
                 <TrustTierBadge tier={g.tier} size="lg" />
@@ -441,13 +452,13 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
   }
   .zonecard {
     padding: var(--s-5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border: 1px solid var(--ink-line);
+    border-top: 1px solid var(--ink-line-bright);
     border-radius: var(--r-4);
-    background: rgba(10, 10, 15, 0.72);
+    background: var(--glass-bg-elevated);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow-glass);
     display: grid;
     gap: var(--s-3);
   }
@@ -486,16 +497,16 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
     font-size: 0.86em;
   }
   .zonecard--a {
-    border-color: color-mix(in oklab, var(--ember-core) 30%, rgba(255, 255, 255, 0.08));
-    border-top-color: color-mix(in oklab, var(--ember-core) 45%, rgba(255, 255, 255, 0.16));
+    border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
+    border-top-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line-bright));
   }
   .zonecard--b {
-    border-color: color-mix(in oklab, var(--mercury-bright) 25%, rgba(255, 255, 255, 0.08));
-    border-top-color: color-mix(in oklab, var(--mercury-bright) 38%, rgba(255, 255, 255, 0.16));
+    border-color: color-mix(in oklab, var(--mercury-bright) 25%, var(--ink-line));
+    border-top-color: color-mix(in oklab, var(--mercury-bright) 38%, var(--ink-line-bright));
   }
   .zonecard--c {
-    border-color: color-mix(in oklab, var(--ember-core) 22%, rgba(255, 255, 255, 0.12));
-    border-top-color: color-mix(in oklab, var(--ember-core) 35%, rgba(255, 255, 255, 0.22));
+    border-color: color-mix(in oklab, var(--ember-core) 22%, var(--ink-line-bright));
+    border-top-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line-bright));
     border-style: dashed;
   }
 
@@ -522,13 +533,13 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
     position: relative;
     color: var(--text-base);
     line-height: 1.6;
-    background: rgba(10, 10, 15, 0.4);
+    background: var(--glass-bg);
     backdrop-filter: blur(12px) saturate(140%);
     -webkit-backdrop-filter: blur(12px) saturate(140%);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--ink-line-soft);
+    border-top: 1px solid var(--ink-line);
     border-radius: var(--r-3);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-glass-soft);
   }
   .never__list li::before,
   .cdelete__list li::before {
@@ -549,13 +560,13 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
   }
   .optins__list li {
     padding: var(--s-5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border: 1px solid var(--ink-line);
+    border-top: 1px solid var(--ink-line-bright);
     border-radius: var(--r-3);
-    background: rgba(10, 10, 15, 0.72);
+    background: var(--glass-bg-elevated);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-glass);
   }
   .optins__list h3 {
     font-family: var(--font-display);
@@ -590,7 +601,11 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
   .endcta--inline {
     padding-block: var(--s-9);
     text-align: center;
-    background: radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
+    background: radial-gradient(
+      60% 80% at 50% 50%,
+      color-mix(in oklab, var(--core-fire) 5%, transparent),
+      transparent 70%
+    );
   }
   .endcta--inline h2 {
     margin-bottom: var(--s-3);
@@ -617,6 +632,14 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
   }
   .domains .sec-head {
     margin-bottom: var(--s-7);
+  }
+  .domains__trustlink {
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+  .domains__trustlink a {
+    color: var(--ember-bright);
+    text-decoration: underline;
   }
   .bucket {
     --tier-c: var(--text-mute);
@@ -665,7 +688,7 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
     padding: var(--s-5);
     min-width: 0;
     border-radius: var(--r-4);
-    background: rgba(12, 12, 18, 0.5);
+    background: var(--glass-bg);
     border: 1px solid var(--ink-line);
     border-left: 2px solid color-mix(in oklab, var(--tier-c) 55%, transparent);
     transition:
@@ -689,7 +712,7 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
     height: 2.5rem;
     border-radius: var(--r-3);
     color: var(--tier-c);
-    background: color-mix(in oklab, var(--tier-c) 12%, rgba(8, 8, 12, 0.6));
+    background: color-mix(in oklab, var(--tier-c) 12%, var(--glass-bg-elevated));
     border: 1px solid color-mix(in oklab, var(--tier-c) 30%, var(--ink-line));
   }
   .dom__icon :global(svg) {
@@ -740,7 +763,11 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
   .cloak {
     padding-block: var(--s-9);
     border-top: 1px solid var(--ink-line);
-    background: radial-gradient(80% 60% at 50% 0%, rgba(60, 214, 192, 0.05), transparent 70%);
+    background: radial-gradient(
+      80% 60% at 50% 0%,
+      color-mix(in oklab, var(--tier-e2e) 5%, transparent),
+      transparent 70%
+    );
   }
   .cloak__cols {
     display: grid;
@@ -750,14 +777,14 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
   .cloak__col {
     padding: var(--s-5);
     border-radius: var(--r-4);
-    background: rgba(12, 12, 18, 0.5);
+    background: var(--glass-bg);
     border: 1px solid var(--ink-line);
   }
   .cloak__col--does {
-    border-top: 2px solid color-mix(in oklab, #3cd6c0 60%, transparent);
+    border-top: 2px solid color-mix(in oklab, var(--tier-e2e) 60%, transparent);
   }
   .cloak__col--doesnt {
-    border-top: 2px solid color-mix(in oklab, #8b94a8 60%, transparent);
+    border-top: 2px solid color-mix(in oklab, var(--tier-zero) 60%, transparent);
   }
   .cloak__colh {
     font-family: var(--font-display);

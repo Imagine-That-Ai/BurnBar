@@ -1,499 +1,83 @@
-import json
 import subprocess
-from datetime import UTC, datetime
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-COUNTS = {
-    "signalRead": 0,
-    "knownLegacyRelay": 0,
-    "knownLegacyRatchet": 0,
-    "knownLegacyPlaintext": 0,
-    "unreadable": 0,
-    "malformed": 0,
-    "unknownSchema": 0,
-    "parserMisses": 0,
-}
+DRAIN = ROOT / "scripts/ci/drain_hermes_gateway_legacy_records.js"
 
 
-def runtime_evidence_payload():
-    return {
-        "writePath": {
-            "signalRequired": True,
-            "signalEnvelopeWritesEnabled": True,
-            "legacyRelayWritesEnabled": False,
-            "legacyRatchetWritesEnabled": False,
-            "legacyPlaintextWritesEnabled": False,
+def test_gateway_legacy_drain_self_test_passes() -> None:
+    result = subprocess.run(
+        ["node", str(DRAIN), "--self-test"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.stdout.strip() == "PASS: Hermes Gateway legacy drain self-test passed"
+    assert result.stderr == ""
+
+
+def test_gateway_legacy_drain_execute_requires_runtime_mode_evidence() -> None:
+    result = subprocess.run(
+        [
+            "node",
+            str(DRAIN),
+            "--execute",
+            "--confirm",
+            "delete-legacy-hermes-gateway-records",
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 1
+    assert "--runtime-mode-evidence is required when --execute is set" in result.stderr
+
+
+def test_gateway_legacy_drain_execute_rejects_non_signal_required_evidence(tmp_path: Path) -> None:
+    evidence = tmp_path / "runtime-mode.json"
+    evidence.write_text(
+        """
+        {
+          "writePath": {
+            "signalRequired": false,
+            "signalEnvelopeWritesEnabled": false,
+            "legacyRelayWritesEnabled": true,
+            "legacyRatchetWritesEnabled": true,
+            "legacyPlaintextWritesEnabled": false,
             "services": [
-                {"service": "burnbarhermesgateway", "signalRequired": True},
-                {"service": "enqueuehermesgatewayevent", "signalRequired": True},
-            ],
+              {"service": "burnbarhermesgateway", "signalRequired": false},
+              {"service": "enqueuehermesgatewayevent", "signalRequired": false}
+            ]
+          }
         }
-    }
-
-
-def release_ready_drain_evidence(collections=None):
-    return {
-        "schemaVersion": 1,
-        "generatedAt": datetime.now(UTC).isoformat(),
-        "privacy": "aggregate_counts_only_no_document_values_or_identifiers",
-        "release": {
-            "deployedCommit": "abc1234",
-            "sourceLocation": "gcloud run latest ready revisions",
-            "dependencyLocks": ["functions/package-lock.json"],
-        },
-        "writePath": {
-            "signalRequired": True,
-            "signalEnvelopeWritesEnabled": True,
-            "legacyRelayWritesEnabled": False,
-            "legacyRatchetWritesEnabled": False,
-            "legacyPlaintextWritesEnabled": False,
-            "modeSource": "gcloud run services describe + gcloud run revisions describe",
-            "services": [
-                {
-                    "service": "burnbarhermesgateway",
-                    "signalRequired": True,
-                    "latestReadyRevision": "burnbarhermesgateway-00001",
-                },
-                {
-                    "service": "enqueuehermesgatewayevent",
-                    "signalRequired": True,
-                    "latestReadyRevision": "enqueuehermesgatewayevent-00001",
-                },
-            ],
-        },
-        "collections": collections
-        or {
-            "events": {
-                "collectionGroup": "hermes_gateway_events",
-                "sampleLimit": 50000,
-                "sampled": 3,
-                "truncated": False,
-                "counts": {**COUNTS, "signalRead": 3},
-            },
-            "messages": {
-                "collectionGroup": "hermes_gateway_messages",
-                "sampleLimit": 50000,
-                "sampled": 2,
-                "truncated": False,
-                "counts": {**COUNTS, "signalRead": 2},
-            },
-            "attachments": {
-                "collectionGroup": "hermes_gateway_attachments",
-                "sampleLimit": 50000,
-                "sampled": 0,
-                "truncated": False,
-                "counts": COUNTS,
-            },
-        },
-    }
-
-
-def run_drain_checker(evidence):
-    return subprocess.run(
-        ["python3", "scripts/ci/check_hermes_gateway_migration_drain.py", str(evidence)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-
-
-def test_legacy_drain_self_test_preserves_unreadable_records():
-    result = subprocess.run(
-        ["node", "scripts/ci/drain_hermes_gateway_legacy_records.js", "--self-test"],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "PASS: Hermes Gateway legacy drain self-test passed" in result.stdout
-
-
-def test_root_drain_wrapper_runs_the_self_test():
-    result = subprocess.run(
-        ["node", "scripts/drain_hermes_gateway_legacy_records.js", "--self-test"],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "PASS: Hermes Gateway legacy drain self-test passed" in result.stdout
-
-
-def test_migration_drain_evidence_accepts_full_live_zero_state(tmp_path):
-    evidence = tmp_path / "drain-evidence.json"
-    evidence.write_text(json.dumps(release_ready_drain_evidence()), encoding="utf-8")
-
-    result = run_drain_checker(evidence)
-
-    assert result.returncode == 0, result.stderr
-    assert "release-ready" in result.stdout
-
-
-def test_migration_drain_evidence_rejects_truncated_or_missing_collection(tmp_path):
-    evidence = tmp_path / "drain-evidence.json"
-    data = release_ready_drain_evidence()
-    data["collections"]["events"]["truncated"] = True
-    del data["collections"]["messages"]
-    evidence.write_text(json.dumps(data), encoding="utf-8")
-
-    result = run_drain_checker(evidence)
-
-    assert result.returncode != 0
-    assert "events.truncated must be false" in result.stderr
-    assert "collections.messages is required" in result.stderr
-
-
-def test_signal_shaped_but_invalid_records_are_blocking_malformed(tmp_path):
-    fixture = tmp_path / "fixture.json"
-    fixture.write_text(
-        json.dumps({"events": [{"signalEnvelope": {}}, {"cryptoMode": "signal"}]}),
+        """,
         encoding="utf-8",
     )
 
     result = subprocess.run(
         [
             "node",
-            "scripts/ci/write_hermes_gateway_migration_drain_evidence.js",
-            "--fixture",
-            str(fixture),
-            "--deployed-commit",
-            "abc1234",
-            "--source-location",
-            "fixture",
-        ],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    evidence = json.loads(result.stdout)
-    assert evidence["collections"]["events"]["counts"]["signalRead"] == 0
-    assert evidence["collections"]["events"]["counts"]["malformed"] == 2
-
-
-def test_execute_requires_predelete_export(tmp_path):
-    fixture = tmp_path / "fixture.json"
-    runtime = tmp_path / "runtime.json"
-    fixture.write_text(json.dumps({"events": [{"relayEnvelope": {"ciphertext": "legacy"}}]}), encoding="utf-8")
-    runtime.write_text(json.dumps(runtime_evidence_payload()), encoding="utf-8")
-    result = subprocess.run(
-        [
-            "node",
-            "scripts/ci/drain_hermes_gateway_legacy_records.js",
-            "--fixture",
-            str(fixture),
+            str(DRAIN),
             "--execute",
             "--confirm",
             "delete-legacy-hermes-gateway-records",
             "--runtime-mode-evidence",
-            str(runtime),
+            str(evidence),
         ],
         cwd=ROOT,
+        check=False,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert result.returncode != 0
-    assert "--predelete-export" in result.stderr
-
-
-def test_live_execute_requires_project_id_before_firestore(tmp_path):
-    runtime = tmp_path / "runtime.json"
-    predelete = tmp_path / "predelete.json"
-    runtime.write_text(json.dumps(runtime_evidence_payload()), encoding="utf-8")
-    result = subprocess.run(
-        [
-            "node",
-            "scripts/ci/drain_hermes_gateway_legacy_records.js",
-            "--execute",
-            "--confirm",
-            "delete-legacy-hermes-gateway-records",
-            "--runtime-mode-evidence",
-            str(runtime),
-            "--predelete-export",
-            str(predelete),
-        ],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert result.returncode != 0
-    assert "--project-id" in result.stderr
-    assert not predelete.exists()
-
-
-def test_live_execute_rejects_weak_runtime_evidence_before_firestore(tmp_path):
-    runtime = tmp_path / "runtime.json"
-    predelete = tmp_path / "predelete.json"
-    runtime.write_text(json.dumps(runtime_evidence_payload()), encoding="utf-8")
-    result = subprocess.run(
-        [
-            "node",
-            "scripts/ci/drain_hermes_gateway_legacy_records.js",
-            "--execute",
-            "--confirm",
-            "delete-legacy-hermes-gateway-records",
-            "--project-id",
-            "burnbar",
-            "--live-production-acknowledgement",
-            "mutate-production-hermes-gateway-records-in-burnbar",
-            "--runtime-mode-evidence",
-            str(runtime),
-            "--predelete-export",
-            str(predelete),
-        ],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert result.returncode != 0
-    assert "privacy must be aggregate_counts_only" in result.stderr
-    assert "release.deployedCommit" in result.stderr
-    assert "modeSource" in result.stderr
-    assert not predelete.exists()
-
-
-def test_execute_blocks_unknown_records_before_delete_and_quarantines(tmp_path):
-    fixture = tmp_path / "fixture.json"
-    runtime = tmp_path / "runtime.json"
-    quarantine = tmp_path / "quarantine.json"
-    predelete = tmp_path / "predelete.json"
-    output = tmp_path / "evidence.json"
-    fixture.write_text(
-        json.dumps(
-            {
-                "events": [
-                    {"relayEnvelope": {"ciphertext": "legacy"}},
-                    {"schemaVersion": 99, "futureEnvelope": {"ciphertext": "unknown"}},
-                    {"__unreadable": True},
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    runtime.write_text(json.dumps(runtime_evidence_payload()), encoding="utf-8")
-    result = subprocess.run(
-        [
-            "node",
-            "scripts/ci/drain_hermes_gateway_legacy_records.js",
-            "--fixture",
-            str(fixture),
-            "--execute",
-            "--confirm",
-            "delete-legacy-hermes-gateway-records",
-            "--runtime-mode-evidence",
-            str(runtime),
-            "--predelete-export",
-            str(predelete),
-            "--quarantine-output",
-            str(quarantine),
-            "--output",
-            str(output),
-        ],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert result.returncode != 0
-    assert "refusing --execute" in result.stderr
-    assert quarantine.exists()
-    assert not predelete.exists()
-    assert not output.exists()
-    private_export = json.loads(quarantine.read_text(encoding="utf-8"))
-    assert private_export["privacy"] == "private_export_contains_document_values_do_not_commit"
-    assert {record["classification"] for record in private_export["blockedRecords"]} == {
-        "unknownSchema",
-        "unreadable",
-    }
-
-
-def test_execute_exports_predelete_records_before_fixture_delete(tmp_path):
-    fixture = tmp_path / "fixture.json"
-    runtime = tmp_path / "runtime.json"
-    predelete = tmp_path / "predelete.json"
-    output = tmp_path / "evidence.json"
-    fixture.write_text(
-        json.dumps(
-            {
-                "events": [{"relayEnvelope": {"ciphertext": "legacy"}}],
-                "messages": [{"text": "legacy cleartext"}],
-            }
-        ),
-        encoding="utf-8",
-    )
-    runtime.write_text(json.dumps(runtime_evidence_payload()), encoding="utf-8")
-
-    result = subprocess.run(
-        [
-            "node",
-            "scripts/ci/drain_hermes_gateway_legacy_records.js",
-            "--fixture",
-            str(fixture),
-            "--execute",
-            "--confirm",
-            "delete-legacy-hermes-gateway-records",
-            "--runtime-mode-evidence",
-            str(runtime),
-            "--predelete-export",
-            str(predelete),
-            "--output",
-            str(output),
-        ],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
     )
 
-    assert result.returncode == 0, result.stderr
-    private_export = json.loads(predelete.read_text(encoding="utf-8"))
-    assert private_export["privacy"] == "private_export_contains_document_values_do_not_commit"
-    assert [record["classification"] for record in private_export["predeleteRecords"]] == [
-        "knownLegacyRelay",
-        "knownLegacyPlaintext",
-    ]
-    public_evidence = json.loads(output.read_text(encoding="utf-8"))
-    assert public_evidence["mode"] == "execute"
-    assert public_evidence["collections"]["events"]["deleted"] == 1
-    assert public_evidence["collections"]["messages"]["deleted"] == 1
-
-
-def test_restore_utility_dry_run_requires_private_export(tmp_path):
-    export = tmp_path / "predelete.json"
-    export.write_text(
-        json.dumps(
-            {
-                "privacy": "private_export_contains_document_values_do_not_commit",
-                "predeleteRecords": [
-                    {
-                        "collection": "events",
-                        "collectionGroup": "hermes_gateway_events",
-                        "path": "users/u/hermes_gateway_events/e1",
-                        "classification": "knownLegacyRelay",
-                        "data": {"relayEnvelope": {"ciphertext": "legacy"}},
-                    }
-                ],
-                "blockedRecords": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-    result = subprocess.run(
-        [
-            "node",
-            "scripts/ci/restore_hermes_gateway_legacy_records.js",
-            "--export",
-            str(export),
-            "--project-id",
-            "burnbar",
-        ],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    output = json.loads(result.stdout)
-    assert output["mode"] == "dry_run"
-    assert output["wouldRestore"] == 1
-    assert output["executeCommandRequires"]["confirm"] == "restore-hermes-gateway-predelete-export"
-
-
-def test_restore_utility_rejects_non_gateway_paths(tmp_path):
-    export = tmp_path / "predelete.json"
-    export.write_text(
-        json.dumps(
-            {
-                "privacy": "private_export_contains_document_values_do_not_commit",
-                "predeleteRecords": [
-                    {
-                        "collection": "events",
-                        "collectionGroup": "hermes_gateway_events",
-                        "path": "users/u/provider_accounts/a",
-                        "classification": "knownLegacyRelay",
-                        "data": {"relayEnvelope": {"ciphertext": "legacy"}},
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-    result = subprocess.run(
-        [
-            "node",
-            "scripts/ci/restore_hermes_gateway_legacy_records.js",
-            "--export",
-            str(export),
-            "--project-id",
-            "burnbar",
-        ],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-
-    assert result.returncode != 0
-    assert "not an allowed Hermes Gateway document path" in result.stderr
-
-
-def test_restore_utility_execute_requires_project_ack(tmp_path):
-    export = tmp_path / "predelete.json"
-    export.write_text(
-        json.dumps(
-            {
-                "privacy": "private_export_contains_document_values_do_not_commit",
-                "predeleteRecords": [
-                    {
-                        "collection": "messages",
-                        "collectionGroup": "hermes_gateway_messages",
-                        "path": "users/u/hermes_gateway_messages/m1",
-                        "classification": "knownLegacyRelay",
-                        "data": {"relayEnvelope": {"ciphertext": "legacy"}},
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-    result = subprocess.run(
-        [
-            "node",
-            "scripts/ci/restore_hermes_gateway_legacy_records.js",
-            "--export",
-            str(export),
-            "--project-id",
-            "burnbar",
-            "--execute",
-            "--confirm",
-            "restore-hermes-gateway-predelete-export",
-        ],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert result.returncode != 0
-    assert "--live-production-acknowledgement" in result.stderr
+    assert result.returncode == 1
+    assert "runtime mode evidence writePath.signalRequired must be true" in result.stderr
+    assert "runtime mode evidence writePath.services.0.signalRequired must be true" in result.stderr

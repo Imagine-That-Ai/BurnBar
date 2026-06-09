@@ -131,6 +131,7 @@ export const HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION = SIGNAL_AT_REST_ENCRYPTIO
 // NOT a misconfiguration or drift. Do not "fix" the asymmetry by emptying SUPPORTED.
 export const HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS = new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL]);
 export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = new Set<number>();
+export const HERMES_GATEWAY_SIGNAL_REQUIRED_ENV = "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED";
 export const HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64 = SIGNAL_MAX_MESSAGE_B64;
 export const HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64 = SIGNAL_MAX_KEY_WRAP_B64;
 export const HERMES_GATEWAY_MAX_SIGNAL_RECIPIENT_WRAPS = SIGNAL_MAX_RECIPIENT_WRAPS;
@@ -145,6 +146,20 @@ export const HERMES_GATEWAY_GRACE_WINDOW_CUTOFF = "2026-06-03T00:00:00.000Z";
  */
 export function isWithinGatewayGraceWindow(_now = Date.now()): boolean {
   return false;
+}
+
+export function gatewaySignalRequiredMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env[HERMES_GATEWAY_SIGNAL_REQUIRED_ENV] === "true";
+}
+
+export function productionGatewaySignalEnvelopeVersions(): Set<number> {
+  return gatewaySignalRequiredMode()
+    ? new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL])
+    : new Set(HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS);
+}
+
+export function productionGatewayRelayKeyVersions(): Set<number> {
+  return gatewaySignalRequiredMode() ? new Set() : new Set(HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS);
 }
 
 /**
@@ -714,6 +729,19 @@ export function requireGatewayRatchetEnvelope(raw: unknown, fieldName: string): 
   return envelope;
 }
 
+export function requireProductionGatewayRatchetEnvelope(
+  raw: unknown,
+  fieldName: string,
+): GatewayRatchetEnvelopeDoc {
+  if (gatewaySignalRequiredMode()) {
+    throw new HttpsError(
+      "failed-precondition",
+      `${fieldName} is rejected in Signal-required gateway mode; write a Signal envelope instead.`,
+    );
+  }
+  return requireGatewayRatchetEnvelope(raw, fieldName);
+}
+
 /**
  * Non-throwing SHAPE check for an official-libsignal `signalEnvelope` (relay key
  * version 4). Delegates to the in-tree contract's {@link sanitizeSignalEnvelope}
@@ -769,7 +797,8 @@ export function requireGatewaySignalEnvelope(
 export function requireProductionGatewaySignalEnvelope(raw: unknown, fieldName: string): GatewaySignalEnvelopeDoc {
   const envelope = requireGatewaySignalEnvelope(raw, fieldName, "transport");
   const version = envelope.relayKeyVersion ?? HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL;
-  if (!HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.has(version)) {
+  const productionVersions = productionGatewaySignalEnvelopeVersions();
+  if (!productionVersions.has(version)) {
     throw new HttpsError(
       "failed-precondition",
       `${fieldName} is valid, but Signal envelope writes are disabled until the libsignal runtime readiness gate is complete.`,
@@ -876,11 +905,18 @@ export function requireGatewayRelayEnvelope(raw: unknown, fieldName: string): Ga
  * not bricked; the trust boundary rejects new legacy envelopes.
  */
 export function requireProductionGatewayRelayEnvelope(raw: unknown, fieldName: string): GatewayRelayEnvelopeDoc {
+  if (gatewaySignalRequiredMode()) {
+    throw new HttpsError(
+      "failed-precondition",
+      `${fieldName} is rejected in Signal-required gateway mode; write a Signal envelope instead.`,
+    );
+  }
   const envelope = requireGatewayRelayEnvelope(raw, fieldName);
-  if (!HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS.has(envelope.relayKeyVersion)) {
+  const productionVersions = productionGatewayRelayKeyVersions();
+  if (!productionVersions.has(envelope.relayKeyVersion)) {
     throw new HttpsError(
       "invalid-argument",
-      `${fieldName}.relayKeyVersion must be one of ${[...HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS].join(", ")} for new gateway writes.`,
+      `${fieldName}.relayKeyVersion must be one of ${[...productionVersions].join(", ")} for new gateway writes.`,
     );
   }
   return envelope;
@@ -1055,7 +1091,14 @@ export function sanitizeGatewayRelayEnvelopeCapabilities(
   if (rawSupportsSignalEnvelope != null && typeof rawSupportsSignalEnvelope !== "boolean") {
     throwError("supportsSignalEnvelope must be a boolean.");
   }
-  if (rawSupportsSignalEnvelope === true && HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS.size === 0) {
+  if (gatewaySignalRequiredMode() && rawSupportsSignalEnvelope !== true) {
+    throwError("supportsSignalEnvelope=true is required in Signal-required gateway mode.");
+  }
+  if (
+    rawSupportsSignalEnvelope === true &&
+    !gatewaySignalRequiredMode() &&
+    productionGatewaySignalEnvelopeVersions().size === 0
+  ) {
     throwError("supportsSignalEnvelope is not yet negotiable: Signal envelope writes are disabled.");
   }
   const supportsSignalEnvelope = rawSupportsSignalEnvelope === true;

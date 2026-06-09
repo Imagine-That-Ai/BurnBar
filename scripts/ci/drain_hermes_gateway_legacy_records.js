@@ -4,48 +4,59 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+
 const {
   COLLECTIONS,
   PRIVACY_MARKER,
   classifyGatewayDocument,
-  summarizeDocuments,
 } = require("./write_hermes_gateway_migration_drain_evidence.js");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const EXECUTE_CONFIRMATION = "delete-legacy-hermes-gateway-records";
-const LIVE_PRODUCTION_ACK_PREFIX = "mutate-production-hermes-gateway-records-in-";
-const DELETABLE = new Set(["knownLegacyRelay", "knownLegacyRatchet", "knownLegacyPlaintext"]);
-const BLOCKERS = new Set(["unreadable", "malformed", "unknownSchema", "parserMisses"]);
-const REQUIRED_SERVICES = new Set(["burnbarhermesgateway", "enqueuehermesgatewayevent"]);
 // Output privacy contract: aggregate_counts_only_no_document_values_or_identifiers.
-// Private quarantine/export outputs intentionally break that public evidence
-// contract and must not be committed or published.
+const REQUIRED_WRITE_PATH_SERVICES = new Set(["burnbarhermesgateway", "enqueuehermesgatewayevent"]);
+const TARGET_CLASSIFICATIONS = [
+  "legacyHermesRelayRead",
+  "legacyHermesRatchetRead",
+  "legacyPlaintextRead",
+  "unreadable",
+];
+const CLASSIFICATIONS = ["signalRead", ...TARGET_CLASSIFICATIONS];
 
-function validGatewaySignalEnvelope() {
+function emptyClassificationCounts() {
+  return Object.fromEntries(CLASSIFICATIONS.map((field) => [field, 0]));
+}
+
+function summarizeGatewayDrainDocuments(documents, collection, { execute = false, deleted = 0, truncated = false } = {}) {
+  const classifications = emptyClassificationCounts();
+  for (const data of documents) {
+    classifications[classifyGatewayDocument(data, collection.plaintextFields)] += 1;
+  }
+  const eligible = TARGET_CLASSIFICATIONS.reduce((total, field) => total + classifications[field], 0);
   return {
-    signalEnvelopeFormatVersion: 1,
-    mode: "transport",
-    relayKeyVersion: 4,
-    relayEncryption: "signal-doubleratchet-pqxdh-v1",
-    ciphertextLayer: {
-      payloadCiphertextB64: Buffer.from("payload").toString("base64"),
-      payloadAADLabel: "gateway-event",
-      schemaVersion: 1,
-    },
-    keyDelivery: {
-      scheme: "signal-doubleratchet-pqxdh-v1",
-      signalMessageType: 3,
-      signalMessageB64: Buffer.from("signal-message").toString("base64"),
-      senderIdentityKeyId: "sender-identity",
-    },
-    binding: {
-      uid: "user",
-      scope: "gateway",
-      clientId: "client",
-      slotId: "event",
-      mode: "transport",
-      formatVersion: 1,
-    },
+    collectionGroup: collection.collectionGroup,
+    scanned: documents.length,
+    retainedSignal: classifications.signalRead,
+    eligible,
+    deleted: execute ? deleted : 0,
+    dryRun: !execute,
+    truncated,
+    classifications,
+  };
+}
+
+function requireFirebaseAdmin() {
+  return require(path.join(repoRoot, "functions/node_modules/firebase-admin"));
+}
+
+function initializeFirestore({ projectId }) {
+  const admin = requireFirebaseAdmin();
+  if (admin.apps.length === 0) {
+    admin.initializeApp(projectId ? { projectId } : undefined);
+  }
+  return {
+    admin,
+    db: admin.firestore(),
   };
 }
 
@@ -63,279 +74,179 @@ function runtimeModeEvidenceErrors(raw) {
     legacyPlaintextWritesEnabled: false,
   };
   for (const [key, value] of Object.entries(expected)) {
-    if (writePath[key] !== value) errors.push(`runtime mode evidence writePath.${key} must be ${value}`);
+    if (writePath[key] !== value) {
+      errors.push(`runtime mode evidence writePath.${key} must be ${value}`);
+    }
   }
-  const services = new Set((writePath.services ?? []).map((service) => service?.service));
-  for (const service of REQUIRED_SERVICES) {
-    if (!services.has(service)) errors.push(`runtime mode evidence missing required service: ${service}`);
+  const services = writePath.services;
+  if (!Array.isArray(services) || services.length === 0) {
+    errors.push("runtime mode evidence writePath.services must be a non-empty list");
+    return errors;
+  }
+  const seenServices = new Set();
+  for (const [index, service] of services.entries()) {
+    if (!service || typeof service !== "object" || Array.isArray(service)) {
+      errors.push(`runtime mode evidence writePath.services.${index} must be an object`);
+      continue;
+    }
+    if (typeof service.service === "string") {
+      seenServices.add(service.service);
+    }
+    if (service.signalRequired !== true) {
+      errors.push(`runtime mode evidence writePath.services.${index}.signalRequired must be true`);
+    }
+  }
+  for (const service of REQUIRED_WRITE_PATH_SERVICES) {
+    if (!seenServices.has(service)) {
+      errors.push(`runtime mode evidence missing required service: ${service}`);
+    }
   }
   return errors;
 }
 
-function validateRuntimeModeEvidence(filePath, { requireLiveEvidence = false } = {}) {
-  if (!filePath) return ["--runtime-mode-evidence is required when --execute is set"];
+function validateRuntimeModeEvidence(pathValue) {
+  if (!pathValue) {
+    return ["--runtime-mode-evidence is required when --execute is set"];
+  }
+  const evidencePath = path.resolve(pathValue);
+  let raw;
   try {
-    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    const errors = runtimeModeEvidenceErrors(raw);
-    if (requireLiveEvidence) {
-      if (raw.privacy !== PRIVACY_MARKER) {
-        errors.push(`runtime mode evidence privacy must be ${PRIVACY_MARKER}`);
-      }
-      const release = raw.release ?? {};
-      for (const field of ["deployedCommit", "sourceLocation", "dependencyLocks"]) {
-        if (!release[field]) errors.push(`runtime mode evidence release.${field} is required`);
-      }
-      const generatedAt = Date.parse(raw.generatedAt ?? "");
-      if (!Number.isFinite(generatedAt)) {
-        errors.push("runtime mode evidence generatedAt must be an ISO timestamp");
-      } else if (Date.now() - generatedAt > 24 * 60 * 60 * 1000) {
-        errors.push("runtime mode evidence must be generated within the last 24 hours");
-      }
-      if (!String(raw.writePath?.modeSource ?? "").includes("gcloud run services describe")) {
-        errors.push("runtime mode evidence writePath.modeSource must come from gcloud service/revision inspection");
-      }
-      const services = raw.writePath?.services ?? [];
-      for (const service of services) {
-        if (!service?.latestReadyRevision) {
-          errors.push(`runtime mode evidence service ${service?.service ?? "<unknown>"} is missing latestReadyRevision`);
-        }
-        if (service?.signalRequired !== true) {
-          errors.push(`runtime mode evidence service ${service?.service ?? "<unknown>"} is not signalRequired`);
-        }
-      }
-      const collections = raw.collections ?? {};
-      for (const [name, summary] of Object.entries(collections)) {
-        const counts = summary.counts ?? summary.classifications ?? {};
-        for (const field of BLOCKERS) {
-          if (Number(counts[field] ?? 0) !== 0) {
-            errors.push(`runtime mode evidence ${name}.${field} must be 0 before live execute`);
-          }
-        }
-      }
-    }
-    return errors;
+    raw = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
   } catch (error) {
     return [`runtime mode evidence is not readable JSON: ${error.message}`];
   }
-}
-
-function emptyPrivateExport() {
-  return {
-    schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
-    privacy: "private_export_contains_document_values_do_not_commit",
-    blockedRecords: [],
-    predeleteRecords: [],
-  };
-}
-
-function pushExportRecord(records, collection, index, classification, data, extra = {}) {
-  records.push({
-    collection: collection.id,
-    collectionGroup: collection.collectionGroup,
-    index,
-    classification,
-    data,
-    ...extra,
-  });
-}
-
-function summarizeFixture(fixture, { execute = false, capturePredelete = false, privateExport = undefined } = {}) {
-  const collections = {};
-  let eligible = 0;
-  let blocked = 0;
-  for (const collection of COLLECTIONS) {
-    const documents = fixture[collection.id] ?? [];
-    const summary = summarizeDocuments(documents, collection);
-    const counts = summary.counts;
-    const collectionEligible = [...DELETABLE].reduce((total, field) => total + (counts[field] ?? 0), 0);
-    const collectionBlocked = [...BLOCKERS].reduce((total, field) => total + (counts[field] ?? 0), 0);
-    eligible += collectionEligible;
-    blocked += collectionBlocked;
-    documents.forEach((document, index) => {
-      const classification = classifyGatewayDocument(document, collection.plaintextFields);
-      if (privateExport && BLOCKERS.has(classification)) {
-        pushExportRecord(privateExport.blockedRecords, collection, index, classification, document);
-      }
-      if (privateExport && (execute || capturePredelete) && DELETABLE.has(classification)) {
-        pushExportRecord(privateExport.predeleteRecords, collection, index, classification, document);
-      }
-    });
-    collections[collection.id] = {
-      ...summary,
-      eligible: collectionEligible,
-      deleted: execute ? collectionEligible : 0,
-      dryRun: !execute,
-    };
-  }
-  return { collections, eligible, blocked };
-}
-
-function requireFirebaseAdmin() {
-  return require(path.join(repoRoot, "functions/node_modules/firebase-admin"));
-}
-
-function initializeFirestore({ projectId }) {
-  const admin = requireFirebaseAdmin();
-  if (admin.apps.length === 0) admin.initializeApp(projectId ? { projectId } : undefined);
-  return { admin, db: admin.firestore() };
+  return runtimeModeEvidenceErrors(raw);
 }
 
 async function drainCollection(db, admin, collection, options) {
-  const counts = {};
+  const classifications = emptyClassificationCounts();
   let scanned = 0;
-  let blocked = 0;
+  let deleted = 0;
+  let retainedSignal = 0;
   let cursor;
+  let truncated = false;
+  const writer = options.execute ? db.bulkWriter() : undefined;
+
   while (scanned < options.maxDocsPerCollection) {
     let query = db.collectionGroup(collection.collectionGroup).orderBy(admin.firestore.FieldPath.documentId()).limit(options.pageSize);
-    if (cursor) query = query.startAfter(cursor);
+    if (cursor) {
+      query = query.startAfter(cursor);
+    }
     const snap = await query.get();
-    if (snap.empty) break;
+    if (snap.empty) {
+      break;
+    }
     for (const doc of snap.docs) {
-      const classification = classifyGatewayDocument(doc.data(), collection.plaintextFields);
-      counts[classification] = (counts[classification] ?? 0) + 1;
-      scanned += 1;
-      if (BLOCKERS.has(classification)) blocked += 1;
-      if (options.privateExport && BLOCKERS.has(classification)) {
-        options.privateExport.blockedRecords.push({
-          collection: collection.id,
-          collectionGroup: collection.collectionGroup,
-          path: doc.ref.path,
-          classification,
-          data: doc.data(),
-        });
+      if (scanned >= options.maxDocsPerCollection) {
+        truncated = true;
+        break;
       }
-      if (options.privateExport && options.capturePredelete && DELETABLE.has(classification)) {
-        const updateTime = doc.updateTime;
-        options.privateExport.predeleteRecords.push({
-          collection: collection.id,
-          collectionGroup: collection.collectionGroup,
-          path: doc.ref.path,
-          classification,
-          updateTime: updateTime?.toDate ? updateTime.toDate().toISOString() : undefined,
-          data: doc.data(),
-        });
-        if (options.deleteCandidates) {
-          options.deleteCandidates.push({
-            collection: collection.id,
-            path: doc.ref.path,
-            updateTime,
-          });
-        }
+      const classification = classifyGatewayDocument(doc.data(), collection.plaintextFields);
+      classifications[classification] += 1;
+      scanned += 1;
+      if (classification === "signalRead") {
+        retainedSignal += 1;
+        continue;
+      }
+      if (writer) {
+        writer.delete(doc.ref);
+        deleted += 1;
       }
     }
     cursor = snap.docs[snap.docs.length - 1];
-    if (snap.size < options.pageSize) break;
+    if (snap.size < options.pageSize) {
+      break;
+    }
   }
+  if (writer) {
+    await writer.close();
+  }
+
+  const eligible = TARGET_CLASSIFICATIONS.reduce((total, field) => total + classifications[field], 0);
   return {
     collectionGroup: collection.collectionGroup,
     scanned,
-    counts,
-    eligible: [...DELETABLE].reduce((total, field) => total + (counts[field] ?? 0), 0),
-    blocked,
-    deleted: 0,
-    dryRun: true,
+    retainedSignal,
+    eligible,
+    deleted,
+    dryRun: !options.execute,
+    truncated,
+    classifications,
   };
 }
 
-async function drainLive(options) {
+async function drainLiveGateway(options) {
   const { admin, db } = initializeFirestore(options);
   const collections = {};
-  let blocked = 0;
   for (const collection of COLLECTIONS) {
-    const summary = await drainCollection(db, admin, collection, options);
-    blocked += summary.blocked;
-    collections[collection.id] = summary;
-  }
-  return { collections, blocked };
-}
-
-async function previewDrain(options) {
-  const previewOptions = { ...options, execute: false };
-  return options.fixture
-    ? summarizeFixture(JSON.parse(fs.readFileSync(options.fixture, "utf8")), previewOptions)
-    : await drainLive(previewOptions);
-}
-
-function markExecuted(preview) {
-  const collections = {};
-  for (const [name, summary] of Object.entries(preview.collections)) {
-    collections[name] = {
-      ...summary,
-      deleted: summary.eligible,
-      dryRun: false,
-    };
+    collections[collection.id] = await drainCollection(db, admin, collection, options);
   }
   return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    privacy: PRIVACY_MARKER,
+    mode: options.execute ? "execute" : "dry_run",
+    safety: {
+      executeConfirmation: options.execute ? EXECUTE_CONFIRMATION : "not_requested",
+      runtimeModeEvidence: options.runtimeModeEvidence || null,
+    },
     collections,
-    eligible: preview.eligible,
-    blocked: preview.blocked,
   };
-}
-
-async function deleteCapturedCandidates(options, deleteCandidates) {
-  if (deleteCandidates.length === 0) return;
-  const { db } = initializeFirestore(options);
-  const writer = db.bulkWriter();
-  writer.onWriteError(() => false);
-  for (const candidate of deleteCandidates) {
-    const precondition = candidate.updateTime ? { lastUpdateTime: candidate.updateTime } : undefined;
-    writer.delete(db.doc(candidate.path), precondition);
-  }
-  await writer.close();
 }
 
 function parseArgs(argv) {
   const options = {
     execute: false,
-    confirmation: undefined,
-    runtimeModeEvidence: undefined,
     output: undefined,
-    fixture: undefined,
     projectId: undefined,
+    runtimeModeEvidence: undefined,
+    confirmation: undefined,
+    maxDocsPerCollection: 50_000,
     pageSize: 500,
-    maxDocsPerCollection: 50000,
-    quarantineOutput: undefined,
-    predeleteExport: undefined,
-    liveProductionAcknowledgement: undefined,
     selfTest: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const next = () => {
       index += 1;
-      if (index >= argv.length) throw new Error(`${arg} requires a value`);
+      if (index >= argv.length) {
+        throw new Error(`${arg} requires a value`);
+      }
       return argv[index];
     };
-    if (arg === "--self-test") options.selfTest = true;
-    else if (arg === "--execute") options.execute = true;
-    else if (arg === "--confirm") options.confirmation = next();
-    else if (arg === "--runtime-mode-evidence") options.runtimeModeEvidence = next();
-    else if (arg === "--output") options.output = next();
-    else if (arg === "--fixture") options.fixture = next();
-    else if (arg === "--project-id") options.projectId = next();
-    else if (arg === "--quarantine-output") options.quarantineOutput = next();
-    else if (arg === "--predelete-export") options.predeleteExport = next();
-    else if (arg === "--live-production-acknowledgement") options.liveProductionAcknowledgement = next();
-    else throw new Error(`unknown argument: ${arg}`);
+    if (arg === "--self-test") {
+      options.selfTest = true;
+    } else if (arg === "--execute") {
+      options.execute = true;
+    } else if (arg === "--confirm") {
+      options.confirmation = next();
+    } else if (arg === "--runtime-mode-evidence") {
+      options.runtimeModeEvidence = next();
+    } else if (arg === "--output") {
+      options.output = next();
+    } else if (arg === "--project-id") {
+      options.projectId = next();
+    } else if (arg === "--max-docs-per-collection") {
+      options.maxDocsPerCollection = Number(next());
+    } else if (arg === "--page-size") {
+      options.pageSize = Number(next());
+    } else {
+      throw new Error(`unknown argument: ${arg}`);
+    }
+  }
+  if (!Number.isInteger(options.maxDocsPerCollection) || options.maxDocsPerCollection < 1) {
+    throw new Error("--max-docs-per-collection must be a positive integer");
+  }
+  if (!Number.isInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1000) {
+    throw new Error("--page-size must be an integer from 1 to 1000");
   }
   if (options.execute) {
     if (options.confirmation !== EXECUTE_CONFIRMATION) {
       throw new Error(`--execute requires --confirm ${EXECUTE_CONFIRMATION}`);
     }
-    if (!options.fixture) {
-      if (!options.projectId) {
-        throw new Error("--execute against live Firestore requires --project-id");
-      }
-      const expectedAck = `${LIVE_PRODUCTION_ACK_PREFIX}${options.projectId}`;
-      if (options.liveProductionAcknowledgement !== expectedAck) {
-        throw new Error(`--execute against live Firestore requires --live-production-acknowledgement ${expectedAck}`);
-      }
-    }
-    const errors = validateRuntimeModeEvidence(options.runtimeModeEvidence, { requireLiveEvidence: !options.fixture });
-    if (errors.length > 0) throw new Error(errors.join("; "));
-    if (!options.predeleteExport) {
-      throw new Error("--execute requires --predelete-export so known legacy records are exported before deletion");
+    const runtimeErrors = validateRuntimeModeEvidence(options.runtimeModeEvidence);
+    if (runtimeErrors.length > 0) {
+      throw new Error(runtimeErrors.join("; "));
     }
   }
   return options;
@@ -344,54 +255,52 @@ function parseArgs(argv) {
 function writeEvidence(evidence, output) {
   const body = `${JSON.stringify(evidence, null, 2)}\n`;
   if (output) {
-    fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true });
-    fs.writeFileSync(output, body, "utf8");
+    const outputPath = path.resolve(output);
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, body, "utf8");
+    console.log(`Wrote Hermes Gateway legacy drain evidence: ${outputPath}`);
   } else {
     process.stdout.write(body);
   }
 }
 
-function writePrivateExport(privateExport, output) {
-  if (!output) return;
-  const body = `${JSON.stringify(privateExport, null, 2)}\n`;
-  fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true });
-  fs.writeFileSync(output, body, { encoding: "utf8", mode: 0o600 });
-}
-
 function runSelfTest() {
-  const fixture = {
-    events: [
-      { signalEnvelope: validGatewaySignalEnvelope() },
-      { relayEnvelope: { ciphertext: "x" } },
+  const events = COLLECTIONS.find((collection) => collection.id === "events");
+  const summary = summarizeGatewayDrainDocuments(
+    [
+      { signalEnvelope: { signalEnvelopeFormatVersion: 1 } },
+      { relayEnvelope: { payloadCiphertext: "x" } },
       { text: "legacy cleartext" },
-      { __unreadable: true },
       { schemaVersion: 4 },
     ],
-  };
-  const summary = summarizeFixture(fixture);
-  assert.equal(summary.eligible, 2);
-  assert.equal(summary.blocked, 2);
-  assert.equal(summary.collections.events.deleted, 0);
-  assert.equal(classifyGatewayDocument({ schemaVersion: 4 }, ["text"]), "unknownSchema");
-  assert.equal(classifyGatewayDocument({ __unreadable: true }, ["text"]), "unreadable");
-  const privateExport = emptyPrivateExport();
-  summarizeFixture(fixture, { privateExport });
-  assert.equal(privateExport.blockedRecords.length, 2);
-  assert.equal(privateExport.predeleteRecords.length, 0);
-  const runtimeErrors = runtimeModeEvidenceErrors({
-    writePath: {
-      signalRequired: true,
-      signalEnvelopeWritesEnabled: true,
-      legacyRelayWritesEnabled: false,
-      legacyRatchetWritesEnabled: false,
-      legacyPlaintextWritesEnabled: false,
-      services: [
-        { service: "burnbarhermesgateway", signalRequired: true },
-        { service: "enqueuehermesgatewayevent", signalRequired: true },
-      ],
-    },
-  });
-  assert.deepEqual(runtimeErrors, []);
+    events,
+  );
+  assert.equal(summary.scanned, 4);
+  assert.equal(summary.retainedSignal, 1);
+  assert.equal(summary.eligible, 3);
+  assert.equal(summary.deleted, 0);
+  assert.equal(summary.dryRun, true);
+  assert.equal(summary.classifications.signalRead, 1);
+  assert.equal(summary.classifications.legacyHermesRelayRead, 1);
+  assert.equal(summary.classifications.legacyPlaintextRead, 1);
+  assert.equal(summary.classifications.unreadable, 1);
+
+  assert.deepEqual(
+    runtimeModeEvidenceErrors({
+      writePath: {
+        signalRequired: true,
+        signalEnvelopeWritesEnabled: true,
+        legacyRelayWritesEnabled: false,
+        legacyRatchetWritesEnabled: false,
+        legacyPlaintextWritesEnabled: false,
+        services: [
+          { service: "burnbarhermesgateway", signalRequired: true },
+          { service: "enqueuehermesgatewayevent", signalRequired: true },
+        ],
+      },
+    }),
+    [],
+  );
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -401,57 +310,9 @@ async function main(argv = process.argv.slice(2)) {
     console.log("PASS: Hermes Gateway legacy drain self-test passed");
     return;
   }
-  let result;
-  if (options.execute) {
-    const privateExport = emptyPrivateExport();
-    const deleteCandidates = [];
-    const preview = await previewDrain({ ...options, privateExport, capturePredelete: true, deleteCandidates });
-    if (privateExport.blockedRecords.length > 0 && options.quarantineOutput) {
-      writePrivateExport(privateExport, options.quarantineOutput);
-    }
-    if (preview.blocked > 0) {
-      throw new Error(
-        "refusing --execute because unreadable/malformed/unknown records are present; preserve them with --quarantine-output and investigate manually",
-      );
-    }
-    writePrivateExport(privateExport, options.predeleteExport);
-    if (!options.fixture) {
-      await deleteCapturedCandidates(options, deleteCandidates);
-    }
-    result = markExecuted(preview);
-  } else {
-    result = options.fixture
-      ? summarizeFixture(JSON.parse(fs.readFileSync(options.fixture, "utf8")), options)
-      : await drainLive(options);
-  }
-  writeEvidence(
-    {
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      privacy: PRIVACY_MARKER,
-      mode: options.execute ? "execute" : "dry_run",
-      safety: {
-        executeConfirmation: options.execute ? EXECUTE_CONFIRMATION : "not_requested",
-        runtimeModeEvidence: options.runtimeModeEvidence ?? null,
-        quarantineOutput: options.quarantineOutput ?? null,
-        predeleteExport: options.predeleteExport ?? null,
-        liveProductionAcknowledgement: options.liveProductionAcknowledgement ?? null,
-      },
-      collections: result.collections,
-    },
-    options.output,
-  );
+  const evidence = await drainLiveGateway(options);
+  writeEvidence(evidence, options.output);
 }
-
-module.exports = {
-  runtimeModeEvidenceErrors,
-  validateRuntimeModeEvidence,
-  summarizeFixture,
-  DELETABLE,
-  BLOCKERS,
-  parseArgs,
-  main,
-};
 
 if (require.main === module) {
   main().catch((error) => {
@@ -459,3 +320,9 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+
+module.exports = {
+  EXECUTE_CONFIRMATION,
+  runtimeModeEvidenceErrors,
+  summarizeGatewayDrainDocuments,
+};

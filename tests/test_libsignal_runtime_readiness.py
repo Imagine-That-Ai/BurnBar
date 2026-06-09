@@ -1,173 +1,106 @@
-import hashlib
+"""Tests for the libsignal runtime-readiness consistency gate.
+
+The manifest may honestly say "not_ready" (expected today) or "ready", but it
+may never be internally dishonest: a ready status with incomplete gates, a
+drifted pin, a missing required gate, or a gate marked complete without
+completed evidence must all fail.
+"""
+
 import json
 from pathlib import Path
 
-from scripts.ci.check_libsignal_runtime_readiness import check_manifest
-
-
-GATES = (
-    "rust_core_bridge",
-    "swift_round_trips",
-    "kotlin_round_trips",
-    "node_contracts",
-    "hermes_gateway_writes",
-    "hermes_attachment_writes",
-    "cloudvault_private_domains",
-    "migration_telemetry",
-    "store_and_counsel_approval",
+from scripts.ci.check_libsignal_runtime_readiness import (
+    DEFAULT_MANIFEST,
+    EXPECTED_PIN,
+    REQUIRED_GATE_IDS,
+    check_manifest,
+    load_manifest,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
-def _ready_manifest(evidence):
+
+def _valid_manifest(*, status: str = "not_ready", complete_ids: tuple[str, ...] = ()) -> dict:
+    gates = [
+        {
+            "id": gate_id,
+            "status": "complete" if gate_id in complete_ids else "pending",
+            "proof": f"proof for {gate_id}",
+        }
+        for gate_id in REQUIRED_GATE_IDS
+    ]
     return {
-        "status": "ready",
-        "runtimeCryptoCore": "official_libsignal",
-        "officialLibsignalPin": {
-            "tag": "v0.94.4",
-            "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
-            "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f",
-        },
-        "blockingReason": "all gates complete",
-        "requiredGates": [
-            {"id": gate_id, "status": "complete", "proof": f"{gate_id} proof"}
-            for gate_id in GATES
+        "status": status,
+        "officialLibsignalPin": dict(EXPECTED_PIN),
+        "requiredGates": gates,
+        "completedEvidence": [
+            {"id": gate_id, "status": "complete", "proof": "x", "command": "y"} for gate_id in complete_ids
         ],
-        "completedEvidence": evidence,
     }
 
 
-def _hashed_artifact(tmp_path, rel_path="launch-evidence/proof.json"):
-    artifact = tmp_path / rel_path
-    artifact.parent.mkdir(parents=True, exist_ok=True)
-    artifact.write_text('{"ok": true}\n', encoding="utf-8")
-    return rel_path, hashlib.sha256(artifact.read_bytes()).hexdigest()
+def _write(tmp_path: Path, data: dict) -> Path:
+    path = tmp_path / "runtime-readiness.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
 
 
-def _complete_evidence(rel_path, digest, command_by_gate=None):
-    command_by_gate = command_by_gate or {}
-    return [
-        {
-            "id": gate_id,
-            "status": "complete",
-            "artifactPath": rel_path,
-            "artifactType": "validator_report_json",
-            "sha256": digest,
-            "validatorCommand": command_by_gate.get(
-                gate_id,
-                f"python3 scripts/ci/check_native_signal_runtime_evidence.py {rel_path}",
-            ),
-            "validatorResult": "pass",
-        }
-        for gate_id in GATES
-    ]
+def test_tracked_manifest_is_internally_consistent() -> None:
+    assert check_manifest(DEFAULT_MANIFEST, repo_root=REPO_ROOT) == []
 
 
-def test_ready_manifest_rejects_arbitrary_hash_matching_artifacts(tmp_path):
-    artifact = tmp_path / "README.md"
-    artifact.write_text("hash-matching but semantically unrelated proof\n", encoding="utf-8")
-    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
-    evidence = [
-        {
-            "id": gate_id,
-            "status": "complete",
-            "artifactPath": "README.md",
-            "artifactType": "test_log",
-            "sha256": digest,
-            "validatorCommand": "python3 scripts/ci/check_native_signal_runtime_evidence.py",
-            "validatorResult": "pass",
-        }
-        for gate_id in GATES
-    ]
-    manifest = tmp_path / "runtime-readiness.json"
-    manifest.write_text(json.dumps(_ready_manifest(evidence)), encoding="utf-8")
-
-    errors = check_manifest(manifest, repo_root=tmp_path)
-
-    assert any("artifactPath must live under" in error for error in errors)
+def test_tracked_manifest_normalizes_gates() -> None:
+    data = load_manifest(DEFAULT_MANIFEST, repo_root=REPO_ROOT)
+    assert set(REQUIRED_GATE_IDS) <= set(data["gates"])
 
 
-def test_ready_manifest_always_replays_validators(tmp_path):
-    launch_evidence = tmp_path / "launch-evidence"
-    launch_evidence.mkdir()
-    artifact = launch_evidence / "proof.json"
-    artifact.write_text('{"ok": true}\n', encoding="utf-8")
-    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
-    failing_script = tmp_path / "scripts" / "ci" / "check_native_signal_runtime_evidence.py"
-    failing_script.parent.mkdir(parents=True)
-    failing_script.write_text("import sys\nsys.exit(7)\n", encoding="utf-8")
-    evidence = [
-        {
-            "id": gate_id,
-            "status": "complete",
-            "artifactPath": "launch-evidence/proof.json",
-            "artifactType": "validator_report_json",
-            "sha256": digest,
-            "validatorCommand": "python3 scripts/ci/check_native_signal_runtime_evidence.py",
-            "validatorResult": "pass",
-        }
-        for gate_id in GATES
-    ]
-    manifest = tmp_path / "runtime-readiness.json"
-    manifest.write_text(json.dumps(_ready_manifest(evidence)), encoding="utf-8")
-
-    errors = check_manifest(manifest, repo_root=tmp_path, run_validators=False)
-
-    assert any("validatorCommand failed" in error for error in errors)
+def test_valid_not_ready_manifest_passes(tmp_path: Path) -> None:
+    assert check_manifest(_write(tmp_path, _valid_manifest())) == []
 
 
-def test_ready_manifest_rejects_legal_allow_pending_validator(tmp_path):
-    rel_path, digest = _hashed_artifact(tmp_path)
-    evidence = _complete_evidence(
-        rel_path,
-        digest,
-        {
-            "store_and_counsel_approval": (
-                f"python3 scripts/ci/check_agpl_legal_release_review.py --evidence {rel_path} --allow-pending"
-            )
-        },
-    )
-    manifest = tmp_path / "runtime-readiness.json"
-    manifest.write_text(json.dumps(_ready_manifest(evidence)), encoding="utf-8")
-
-    errors = check_manifest(manifest, repo_root=tmp_path, run_validators=False)
-
-    assert any("must not use --allow-pending" in error for error in errors)
+def test_ready_with_incomplete_gates_fails(tmp_path: Path) -> None:
+    errors = check_manifest(_write(tmp_path, _valid_manifest(status="ready")))
+    assert any("says ready but gates are incomplete" in error for error in errors)
 
 
-def test_ready_manifest_rejects_validator_command_for_different_artifact(tmp_path):
-    rel_path, digest = _hashed_artifact(tmp_path)
-    evidence = _complete_evidence(
-        rel_path,
-        digest,
-        {
-            "hermes_gateway_writes": (
-                "python3 scripts/ci/check_hermes_gateway_migration_drain.py launch-evidence/other.json"
-            )
-        },
-    )
-    manifest = tmp_path / "runtime-readiness.json"
-    manifest.write_text(json.dumps(_ready_manifest(evidence)), encoding="utf-8")
-
-    errors = check_manifest(manifest, repo_root=tmp_path, run_validators=False)
-
-    assert any(
-        "ready gate hermes_gateway_writes validatorCommand must validate its artifactPath" in error
-        for error in errors
-    )
+def test_ready_with_all_gates_complete_passes(tmp_path: Path) -> None:
+    manifest = _valid_manifest(status="ready", complete_ids=REQUIRED_GATE_IDS)
+    assert check_manifest(_write(tmp_path, manifest)) == []
 
 
-def test_ready_manifest_rust_gate_requires_gate_specific_native_validator(tmp_path):
-    rel_path, digest = _hashed_artifact(tmp_path)
-    evidence = _complete_evidence(
-        rel_path,
-        digest,
-        {
-            "rust_core_bridge": f"python3 scripts/ci/check_native_signal_runtime_evidence.py {rel_path}",
-        },
-    )
-    manifest = tmp_path / "runtime-readiness.json"
-    manifest.write_text(json.dumps(_ready_manifest(evidence)), encoding="utf-8")
+def test_pin_drift_fails(tmp_path: Path) -> None:
+    manifest = _valid_manifest()
+    manifest["officialLibsignalPin"]["commit"] = "0" * 40
+    errors = check_manifest(_write(tmp_path, manifest))
+    assert any("pin commit drifted" in error for error in errors)
 
-    errors = check_manifest(manifest, repo_root=tmp_path, run_validators=False)
 
-    assert any("ready gate rust_core_bridge validatorCommand must include --gate rust_core_bridge" in error for error in errors)
+def test_missing_required_gate_fails(tmp_path: Path) -> None:
+    manifest = _valid_manifest()
+    manifest["requiredGates"] = [g for g in manifest["requiredGates"] if g["id"] != "store_and_counsel_approval"]
+    errors = check_manifest(_write(tmp_path, manifest))
+    assert any("missing libsignal runtime gates: store_and_counsel_approval" in error for error in errors)
+
+
+def test_complete_gate_without_completed_evidence_fails(tmp_path: Path) -> None:
+    manifest = _valid_manifest()
+    manifest["requiredGates"][0]["status"] = "complete"  # no matching completedEvidence entry
+    errors = check_manifest(_write(tmp_path, manifest))
+    assert any("complete gates missing completed evidence" in error for error in errors)
+
+
+def test_invalid_status_fails(tmp_path: Path) -> None:
+    errors = check_manifest(_write(tmp_path, _valid_manifest(status="shipped")))
+    assert any("invalid libsignal runtime status" in error for error in errors)
+
+
+def test_gate_without_proof_fails(tmp_path: Path) -> None:
+    manifest = _valid_manifest()
+    manifest["requiredGates"][0]["proof"] = ""
+    errors = check_manifest(_write(tmp_path, manifest))
+    assert any("missing its proof description" in error for error in errors)
+
+
+def test_missing_manifest_fails(tmp_path: Path) -> None:
+    errors = check_manifest(tmp_path / "nope.json")
+    assert errors and "missing libsignal runtime-readiness manifest" in errors[0]

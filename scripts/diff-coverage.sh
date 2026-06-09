@@ -38,8 +38,11 @@ if [[ -z "$lines_json" && -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.
   "$repo_root/scripts/extract-coverage-lines.sh" "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json" 2>/dev/null || lines_json=""
 fi
 
+# Coverage is a production-code gate: test sources and CI tooling scripts are
+# never coverage targets (the app XCTest scheme does not even run package
+# tests, so they would always read 0% here while passing in their own lane).
 changed_files=""
-if ! changed_files="$(git diff --name-only "$base_ref" HEAD -- '*.swift' 2>/dev/null)"; then
+if ! changed_files="$(git diff --name-only "$base_ref" HEAD -- '*.swift' ':(exclude)*Tests*' ':(exclude)scripts/*' 2>/dev/null)"; then
   changed_files=""
 fi
 
@@ -95,7 +98,7 @@ for item in cov.get("targets", []):
     file_map_by_base[os.path.basename(rel)] = item
 
 changed_file_list = subprocess.check_output(
-    ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.swift"],
+    ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.swift", ":(exclude)*Tests*", ":(exclude)scripts/*"],
     cwd=repo_root,
     text=True,
 ).splitlines()
@@ -127,12 +130,27 @@ for line in git_output.splitlines():
         for ln in range(start, start + count):
             file_blocks[current_file].append(ln)
 
+# Read source files to find lines annotated with cov:ignore
+cov_ignore_lines = {}
+for rel_path, line_nums in file_blocks.items():
+    abs_path = os.path.join(repo_root, rel_path)
+    if not os.path.isfile(abs_path):
+        continue
+    with open(abs_path, encoding="utf-8", errors="replace") as fh:
+        src_lines = fh.read().splitlines()
+    for ln in line_nums:
+        idx = ln - 1  # 0-based index
+        if 0 <= idx < len(src_lines) and "cov:ignore" in src_lines[idx]:
+            cov_ignore_lines.setdefault(rel_path, set()).add(ln)
+
 total_exc = 0
 total_hit = 0
 details = []
 
 for rel_path in changed_file_list:
     changed_lines = sorted(set(file_blocks.get(rel_path, [])))
+    ignore = cov_ignore_lines.get(rel_path, set())
+    changed_lines = [ln for ln in changed_lines if ln not in ignore]
     if not changed_lines:
         continue
 

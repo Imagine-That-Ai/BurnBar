@@ -9,9 +9,13 @@
 // `@signalapp/libsignal-client` directly. Centralising the boundary keeps the
 // crypto surface auditable and lets us swap the underlying provider in one place.
 //
-// PROVENANCE:
-//   This package imports `@openburnbar/libsignal-bridge`, the single in-repo
-//   bridge that imports official `@signalapp/libsignal-client`.
+// PROVENANCE (AGPL re-point — DONE):
+//   The in-repo AGPL wrapper `packages/libsignal-bridge/` (published as
+//   `@openburnbar/libsignal-bridge`) is the single place allowed to import the
+//   upstream `@signalapp/libsignal-client@0.94.4` directly. This package imports
+//   the same Signal-protocol symbols from the bridge, so the AGPL boundary stays
+//   intact (enforced by scripts/ci/check_burnbar_license_posture.py's
+//   "Signal bridge boundary" check).
 //
 // STATUS: inert / flag-off. Nothing in the existing app imports this module, so
 // introducing it changes no production behavior.

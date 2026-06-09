@@ -1,6 +1,12 @@
 import * as libsignal from "@signalapp/libsignal-client";
 
+// The AGPL boundary: this bridge is the ONE place that imports official
+// libsignal directly (enforced by scripts/ci/check_burnbar_license_posture.py).
+// Re-export its named symbols so AGPL consumers (e.g. packages/libsignal-protocol)
+// import them from "@openburnbar/libsignal-bridge" instead of reaching past the
+// boundary to "@signalapp/libsignal-client".
 export * from "@signalapp/libsignal-client";
+
 export * from "./protocolHarness.js";
 
 export const LIBSIGNAL_PIN = {
