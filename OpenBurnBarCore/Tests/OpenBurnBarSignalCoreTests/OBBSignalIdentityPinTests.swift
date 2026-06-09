@@ -23,12 +23,22 @@ final class OBBSignalIdentityPinTests: XCTestCase {
     ) throws -> OBBSignalProtocolStore {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         tempDirs.append(dir)
-        return try OBBSignalProtocolStore(
+        let registrationId = UInt32.random(in: 1...0x3FFF)
+        let service = "com.openburnbar.signal.pin.tests.\(UUID().uuidString)"
+        if let evaluator {
+            return try OBBSignalProtocolStore(
+                identityKeypair: identity,
+                registrationId: registrationId,
+                keychainService: service,
+                sessionDir: dir,
+                identityTrustEvaluator: evaluator
+            )
+        }
+        return try OBBSignalProtocolStore.testingTOFU(
             identityKeypair: identity,
-            registrationId: UInt32.random(in: 1...0x3FFF),
-            keychainService: "com.openburnbar.signal.pin.tests.\(UUID().uuidString)",
-            sessionDir: dir,
-            identityTrustEvaluator: evaluator
+            registrationId: registrationId,
+            keychainService: service,
+            sessionDir: dir
         )
     }
 

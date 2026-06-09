@@ -145,6 +145,13 @@ data class CloudVaultSignalRecipient(
     val publicKeyData: ByteArray,
 )
 
+data class CloudVaultDocumentRewrapResult(
+    val data: Map<String, Any?>,
+    val changedFields: List<String>,
+) {
+    val changed: Boolean get() = changedFields.isNotEmpty()
+}
+
 object CloudVaultCrypto {
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_TAG_BYTES = 16
@@ -292,6 +299,26 @@ object CloudVaultCrypto {
 
     fun vaultKeyID(vaultKey: ByteArray): String = "v1_${sha256Hex(vaultKey).take(32)}"
 
+    fun sealBlob(plaintext: ByteArray, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultBlobEnvelope {
+        val nonce =
+            ByteArray(GCM_NONCE_BYTES).apply {
+                java.security.SecureRandom().nextBytes(this)
+            }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        aadContext?.let { cipher.updateAAD(it.bytes) }
+        return CloudVaultBlobEnvelope(
+            schemaVersion = currentBlobEnvelopeSchemaVersion,
+            algorithm = "AES-256-GCM",
+            keyVersion = 1,
+            plaintextSHA256 = null,
+            plaintextHMAC = blobPlaintextHmac(plaintext, vaultKey),
+            integrityHashVersion = blobIntegrityHashVersion,
+            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(nonce + cipher.doFinal(plaintext)),
+            aad = aadContext?.stringValue ?: BLOB_AAD_CONTEXT,
+        )
+    }
+
     fun sealPayload(
         plaintext: ByteArray,
         vaultKey: ByteArray,
@@ -436,6 +463,104 @@ object CloudVaultCrypto {
         )
     }
 
+    fun sealedTextMap(envelope: CloudVaultSealedText): Map<String, Any> =
+        buildMap {
+            envelope.schemaVersion?.let { put("schemaVersion", it) }
+            put("algorithm", envelope.algorithm)
+            put("keyVersion", envelope.keyVersion)
+            put("nonce", envelope.nonce)
+            put("ciphertext", envelope.ciphertext)
+            put("tag", envelope.tag)
+            envelope.aad?.let { put("aad", it) }
+        }
+
+    fun sealedTextFromMap(raw: Map<*, *>?): CloudVaultSealedText? {
+        if (raw == null) return null
+        return CloudVaultSealedText(
+            schemaVersion = (raw["schemaVersion"] as? Number)?.toInt(),
+            algorithm = raw["algorithm"] as? String ?: "AES-256-GCM",
+            keyVersion = (raw["keyVersion"] as? Number)?.toInt() ?: 1,
+            nonce = raw["nonce"] as? String ?: return null,
+            ciphertext = raw["ciphertext"] as? String ?: return null,
+            tag = raw["tag"] as? String ?: return null,
+            aad = raw["aad"] as? String,
+        )
+    }
+
+    fun blobEnvelopeMap(envelope: CloudVaultBlobEnvelope): Map<String, Any> =
+        buildMap {
+            put("schemaVersion", envelope.schemaVersion)
+            put("algorithm", envelope.algorithm)
+            put("keyVersion", envelope.keyVersion)
+            envelope.plaintextSHA256?.let { put("plaintextSHA256", it) }
+            envelope.plaintextHMAC?.let { put("plaintextHMAC", it) }
+            envelope.integrityHashVersion?.let { put("integrityHashVersion", it) }
+            put("sealedBoxBase64", envelope.sealedBoxBase64)
+            envelope.aad?.let { put("aad", it) }
+        }
+
+    fun blobEnvelopeFromMap(raw: Map<*, *>?): CloudVaultBlobEnvelope? {
+        if (raw == null) return null
+        return CloudVaultBlobEnvelope(
+            schemaVersion = (raw["schemaVersion"] as? Number)?.toInt() ?: return null,
+            algorithm = raw["algorithm"] as? String ?: "AES-256-GCM",
+            keyVersion = (raw["keyVersion"] as? Number)?.toInt() ?: 1,
+            plaintextSHA256 = raw["plaintextSHA256"] as? String,
+            plaintextHMAC = raw["plaintextHMAC"] as? String,
+            integrityHashVersion = (raw["integrityHashVersion"] as? Number)?.toInt(),
+            sealedBoxBase64 = raw["sealedBoxBase64"] as? String ?: return null,
+            aad = raw["aad"] as? String,
+        )
+    }
+
+    fun rewrapCloudVaultDocument(
+        data: Map<String, Any?>,
+        uid: String,
+        collection: String,
+        docID: String,
+        oldKey: ByteArray,
+        newKey: ByteArray,
+        newVaultKeyID: String = vaultKeyID(newKey),
+        vaultGeneration: Int? = null,
+        rotationJobId: String? = null,
+    ): CloudVaultDocumentRewrapResult {
+        require(vaultKeyID(newKey) == newVaultKeyID) { "New vault key id mismatch" }
+        val updated = data.toMutableMap()
+        val changedFields = mutableListOf<String>()
+
+        for (field in data.keys.sorted()) {
+            val raw = data[field] as? Map<*, *> ?: continue
+            val context = CloudVaultAADContext(uid = uid, collection = collection, docID = docID, field = field)
+
+            sealedPayloadFromMap(raw)?.let { envelope ->
+                val plaintext = openPayloadForRewrap(envelope, oldKey, context)
+                val resealed = sealPayload(plaintext, newKey, newVaultKeyID, context)
+                updated[field] = sealedPayloadMap(resealed)
+                applyVaultKeyCompanionUpdates(updated, field, newVaultKeyID)
+                changedFields += field
+                return@let
+            } ?: sealedTextFromMap(raw)?.let { envelope ->
+                val plaintext = openTextForRewrap(envelope, oldKey, context)
+                val resealed = sealText(plaintext, newKey, context)
+                updated[field] = sealedTextMap(resealed)
+                changedFields += field
+                return@let
+            } ?: blobEnvelopeFromMap(raw)?.let { envelope ->
+                val plaintext = openBlobForRewrap(envelope, oldKey, context)
+                val resealed = sealBlob(plaintext, newKey, context)
+                updated[field] = blobEnvelopeMap(resealed)
+                changedFields += field
+            }
+        }
+
+        if (changedFields.isNotEmpty()) {
+            vaultGeneration?.let { updated["vaultGeneration"] = it }
+            rotationJobId?.let { updated["rewrapJobId"] = it }
+        }
+
+        return CloudVaultDocumentRewrapResult(updated.toMap(), changedFields)
+    }
+
     fun signalEnvelopeMap(envelope: CloudVaultSignalEnvelope): Map<String, Any> =
         mapOf(
             "signalEnvelopeFormatVersion" to envelope.signalEnvelopeFormatVersion,
@@ -529,6 +654,50 @@ object CloudVaultCrypto {
             aadContext.legacyV1StringValue -> aadContext.legacyV1Bytes
             else -> error("Invalid CloudVault AAD context")
         }
+
+    private fun openTextForRewrap(
+        envelope: CloudVaultSealedText,
+        vaultKey: ByteArray,
+        aadContext: CloudVaultAADContext,
+    ): String =
+        if ((envelope.schemaVersion ?: 1) >= currentSealedTextSchemaVersion) {
+            openText(envelope, vaultKey, aadContext)
+        } else {
+            openText(envelope, vaultKey)
+        }
+
+    private fun openBlobForRewrap(
+        envelope: CloudVaultBlobEnvelope,
+        vaultKey: ByteArray,
+        aadContext: CloudVaultAADContext,
+    ): ByteArray =
+        if (envelope.schemaVersion >= currentBlobEnvelopeSchemaVersion && envelope.aad != BLOB_AAD_CONTEXT) {
+            openBlob(envelope, vaultKey, aadContext)
+        } else {
+            openBlob(envelope, vaultKey)
+        }
+
+    private fun openPayloadForRewrap(
+        envelope: CloudVaultSealedPayload,
+        vaultKey: ByteArray,
+        aadContext: CloudVaultAADContext,
+    ): ByteArray =
+        if (envelope.schemaVersion >= currentSealedPayloadSchemaVersion && envelope.aad != SEALED_PAYLOAD_AAD_CONTEXT) {
+            openPayload(envelope, vaultKey, aadContext)
+        } else {
+            openPayload(envelope, vaultKey)
+        }
+
+    private fun applyVaultKeyCompanionUpdates(
+        data: MutableMap<String, Any?>,
+        field: String,
+        newVaultKeyID: String,
+    ) {
+        when (field) {
+            "sealedPayload", "sealedReplyPayload" -> if (data.containsKey("vaultKeyID")) data["vaultKeyID"] = newVaultKeyID
+            "sealedStatePayload" -> if (data.containsKey("sealedStateVaultKeyID")) data["sealedStateVaultKeyID"] = newVaultKeyID
+        }
+    }
 
     private fun keyedHmacHex(data: ByteArray, vaultKey: ByteArray, purpose: String): String {
         require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }

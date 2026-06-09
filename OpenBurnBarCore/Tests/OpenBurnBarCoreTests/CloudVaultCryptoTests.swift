@@ -145,6 +145,131 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(try CloudVaultCrypto.openPayload(legacy, keyData: key), payload)
     }
 
+    func test_rewrapCloudVaultDocument_resealsTopLevelEnvelopesWithPathBoundAAD() throws {
+        let oldKey = Data(repeating: 0x71, count: 32)
+        let newKey = Data(repeating: 0x72, count: 32)
+        let oldVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: oldKey)
+        let newVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: newKey)
+        let uid = "userA"
+        let collection = "cli_agent_mission_requests"
+        let docID = "requestA"
+        let stateContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: collection,
+            docID: docID,
+            field: "sealedStatePayload"
+        )
+
+        let document: [String: Any] = [
+            "vaultKeyID": oldVaultKeyID,
+            "sealedStateVaultKeyID": oldVaultKeyID,
+            "sealedPayload": try CloudVaultCrypto.firestoreDictionary(
+                CloudVaultCrypto.sealPayload(
+                    Data("{\"prompt\":\"fix launch\"}".utf8),
+                    keyData: oldKey,
+                    vaultKeyID: oldVaultKeyID
+                )
+            ),
+            "sealedStatePayload": try CloudVaultCrypto.firestoreDictionary(
+                CloudVaultCrypto.sealPayload(
+                    Data("{\"summary\":\"running\"}".utf8),
+                    keyData: oldKey,
+                    vaultKeyID: oldVaultKeyID,
+                    aadContext: stateContext
+                )
+            ),
+            "sealedDisplayLabel": try CloudVaultCrypto.firestoreDictionary(
+                CloudVaultCrypto.sealText("release policy", keyData: oldKey)
+            ),
+            "plainStatus": "queued"
+        ]
+
+        let result = try CloudVaultCrypto.rewrapCloudVaultDocument(
+            document,
+            uid: uid,
+            collection: collection,
+            docID: docID,
+            oldKeyData: oldKey,
+            newKeyData: newKey,
+            newVaultKeyID: newVaultKeyID,
+            vaultGeneration: 7,
+            rotationJobId: "job-7"
+        )
+
+        XCTAssertEqual(Set(result.changedFields), Set(["sealedDisplayLabel", "sealedPayload", "sealedStatePayload"]))
+        XCTAssertEqual(result.data["plainStatus"] as? String, "queued")
+        XCTAssertEqual(result.data["vaultKeyID"] as? String, newVaultKeyID)
+        XCTAssertEqual(result.data["sealedStateVaultKeyID"] as? String, newVaultKeyID)
+        XCTAssertEqual(result.data["vaultGeneration"] as? Int, 7)
+        XCTAssertEqual(result.data["rewrapJobId"] as? String, "job-7")
+
+        let payloadEnvelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: result.data["sealedPayload"]))
+        let payloadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: collection,
+            docID: docID,
+            field: "sealedPayload"
+        )
+        XCTAssertEqual(payloadEnvelope.vaultKeyID, newVaultKeyID)
+        XCTAssertEqual(payloadEnvelope.aad, payloadContext.stringValue)
+        XCTAssertEqual(
+            try CloudVaultCrypto.openPayload(payloadEnvelope, keyData: newKey, aadContext: payloadContext),
+            Data("{\"prompt\":\"fix launch\"}".utf8)
+        )
+        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(payloadEnvelope, keyData: oldKey))
+
+        let stateEnvelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: result.data["sealedStatePayload"]))
+        XCTAssertEqual(stateEnvelope.aad, stateContext.stringValue)
+        XCTAssertEqual(
+            try CloudVaultCrypto.openPayload(stateEnvelope, keyData: newKey, aadContext: stateContext),
+            Data("{\"summary\":\"running\"}".utf8)
+        )
+
+        let labelEnvelope = try XCTUnwrap(CloudVaultCrypto.decodeSealedText(from: result.data["sealedDisplayLabel"]))
+        let labelContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: collection,
+            docID: docID,
+            field: "sealedDisplayLabel"
+        )
+        XCTAssertEqual(labelEnvelope.aad, labelContext.stringValue)
+        XCTAssertEqual(try CloudVaultCrypto.openText(labelEnvelope, keyData: newKey, aadContext: labelContext), "release policy")
+    }
+
+    func test_rewrapCloudVaultDocument_resealsBlobEnvelopes() throws {
+        let oldKey = Data(repeating: 0x81, count: 32)
+        let newKey = Data(repeating: 0x82, count: 32)
+        let newVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: newKey)
+        let body = Data("session markdown body".utf8)
+        let document: [String: Any] = [
+            "sealedSnapshot": try CloudVaultCrypto.firestoreDictionary(
+                CloudVaultCrypto.sealBlob(body, keyData: oldKey)
+            )
+        ]
+
+        let result = try CloudVaultCrypto.rewrapCloudVaultDocument(
+            document,
+            uid: "userA",
+            collection: "project_memory_snapshots",
+            docID: "pm_fixture",
+            oldKeyData: oldKey,
+            newKeyData: newKey,
+            newVaultKeyID: newVaultKeyID
+        )
+
+        XCTAssertEqual(result.changedFields, ["sealedSnapshot"])
+        let envelope = try XCTUnwrap(CloudVaultCrypto.decodeBlobEnvelope(from: result.data["sealedSnapshot"]))
+        let context = try CloudVaultAADContext(
+            uid: "userA",
+            collection: "project_memory_snapshots",
+            docID: "pm_fixture",
+            field: "sealedSnapshot"
+        )
+        XCTAssertEqual(envelope.aad, context.stringValue)
+        XCTAssertEqual(try CloudVaultCrypto.openBlob(envelope, keyData: newKey, aadContext: context), body)
+        XCTAssertThrowsError(try CloudVaultCrypto.openBlob(envelope, keyData: oldKey))
+    }
+
     func test_tokenHashes_areKeyedStableDeduplicatedAndNotPlaintext() throws {
         let key = Data(repeating: 0x11, count: 32)
         let otherKey = Data(repeating: 0x22, count: 32)

@@ -4,12 +4,13 @@
 
 import { FieldValue, Timestamp, type DocumentData, type Query } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import type { Request, Response } from "express";
 import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, verify as verifySignature } from "node:crypto";
 
 import { db } from "../adminRuntime.js";
-import { enforceHighRiskComputerUseCallable } from "../appCheckAttestation.js";
+import { enforceHighRiskComputerUseCallable, enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
@@ -116,6 +117,39 @@ type HttpResponse = {
   set(name: string, value: string): void;
 };
 
+function toHermesHttpRequest(req: Request): HttpRequest {
+  return {
+    method: req.method,
+    path: req.path,
+    url: req.url,
+    body: req.body,
+    headers: req.headers,
+    ip: req.ip,
+    socket: { remoteAddress: req.socket.remoteAddress },
+    query: recordOrUndefined(req.query) ?? {},
+    get: (name: string) => req.get(name),
+  };
+}
+
+function toHermesHttpResponse(res: Response): HttpResponse {
+  const response: HttpResponse = {
+    status(code: number): HttpResponse {
+      res.status(code);
+      return response;
+    },
+    json(body: unknown): void {
+      res.json(body);
+    },
+    send(body?: unknown): void {
+      res.send(body);
+    },
+    set(name: string, value: string): void {
+      res.set(name, value);
+    },
+  };
+  return response;
+}
+
 interface ResolvedGatewayGrant {
   uid: string;
   client: HermesGatewayClientDoc;
@@ -134,6 +168,9 @@ type StorageFile = ReturnType<StorageBucket["file"]>;
 // escrow set enforced by the CLI-agent mission approval path so the gateway and
 // mission oversight share one trust model (a web/headless device cannot approve).
 const NATIVE_ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
+const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
+const ED25519_SPKI_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+const GATEWAY_POP_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 function httpError(status: number, error: string, detail?: string): GatewayHttpError {
   return { status, error, detail };
@@ -513,6 +550,137 @@ function header(req: HttpRequest, name: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function gatewayHeader(req: HttpRequest, canonicalName: string, shortName: string): string | undefined {
+  return header(req, canonicalName) ?? header(req, shortName);
+}
+
+function stableJSONString(value: unknown): string {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJSONString).join(",")}]`;
+  }
+  const record = recordOrUndefined(value);
+  if (!record) return "{}";
+  return `{${Object.entries(record)
+    .filter(([, item]) => item !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${stableJSONString(item)}`)
+    .join(",")}}`;
+}
+
+function parseGatewayClientSigningPublicKey(raw: unknown): Buffer | undefined {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  const publicKey = Buffer.from(value, "base64");
+  if (publicKey.length !== ED25519_PUBLIC_KEY_BYTE_LENGTH || publicKey.toString("base64") !== value) {
+    return undefined;
+  }
+  return publicKey;
+}
+
+function requireGatewayClientSigningPublicKey(raw: unknown): Buffer {
+  const publicKey = parseGatewayClientSigningPublicKey(raw);
+  if (!publicKey) throw httpError(400, "invalid_client_signing_public_key");
+  return publicKey;
+}
+
+function requireCallableGatewayClientSigningPublicKey(raw: unknown): Buffer {
+  const publicKey = parseGatewayClientSigningPublicKey(raw);
+  if (!publicKey) {
+    throw new HttpsError("failed-precondition", "Hermes Gateway clients must publish a request signing public key.");
+  }
+  return publicKey;
+}
+
+function gatewayRequestBodyHash(req: HttpRequest): string {
+  return sha256Hex(stableJSONString(requestBody(req)));
+}
+
+function gatewayPopSignablePayload(options: {
+  tokenHash: string;
+  method: string;
+  path: string;
+  bodyHash: string;
+  nonce: string;
+  timestamp: string;
+}): Buffer {
+  return Buffer.from(
+    [
+      "OpenBurnBar.HermesGatewayPoP.v1",
+      options.tokenHash,
+      options.method.toUpperCase(),
+      options.path,
+      options.bodyHash,
+      options.nonce,
+      options.timestamp,
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function verifyGatewayRequestPoP(
+  req: HttpRequest,
+  options: { uid: string; clientId: string; client: HermesGatewayClientDoc; tokenHash: string },
+): Promise<void> {
+  if (!options.client.agentClientSigningPublicKeyBase64 || options.client.popRequired !== true) {
+    throw httpError(401, "legacy_pop_required");
+  }
+  const nonce = gatewayHeader(req, "x-openburnbar-pop-nonce", "x-obb-pop-nonce")?.trim() ?? "";
+  const timestamp = gatewayHeader(req, "x-openburnbar-pop-timestamp", "x-obb-pop-timestamp")?.trim() ?? "";
+  const suppliedBodyHash =
+    gatewayHeader(req, "x-openburnbar-pop-body-sha256", "x-obb-pop-body-sha256")?.trim().toLowerCase() ?? "";
+  const signatureBase64 =
+    gatewayHeader(req, "x-openburnbar-pop-signature-ed25519", "x-obb-pop-signature-ed25519")?.trim() ?? "";
+  if (!/^[A-Za-z0-9._:-]{16,160}$/u.test(nonce)) throw httpError(401, "missing_pop_nonce");
+  const timestampMillis = Number.isFinite(Number(timestamp)) ? Number(timestamp) : Date.parse(timestamp);
+  if (!Number.isFinite(timestampMillis) || Math.abs(Date.now() - timestampMillis) > GATEWAY_POP_CLOCK_SKEW_MS) {
+    throw httpError(401, "expired_pop_timestamp");
+  }
+  const expectedBodyHash = gatewayRequestBodyHash(req);
+  if (!safeEqualHex(suppliedBodyHash, expectedBodyHash)) {
+    throw httpError(401, "bad_pop_body_hash");
+  }
+  const signature = Buffer.from(signatureBase64, "base64");
+  if (signature.length !== 64 || signature.toString("base64") !== signatureBase64) {
+    throw httpError(401, "bad_pop_signature");
+  }
+  const publicKeyRaw = Buffer.from(options.client.agentClientSigningPublicKeyBase64, "base64");
+  if (publicKeyRaw.length !== ED25519_PUBLIC_KEY_BYTE_LENGTH) {
+    throw httpError(401, "legacy_pop_required");
+  }
+  const publicKey = createPublicKey({
+    key: Buffer.concat([ED25519_SPKI_DER_PREFIX, publicKeyRaw]),
+    format: "der",
+    type: "spki",
+  });
+  const payload = gatewayPopSignablePayload({
+    tokenHash: options.tokenHash,
+    method: req.method ?? "GET",
+    path: gatewayPath(req),
+    bodyHash: suppliedBodyHash,
+    nonce,
+    timestamp,
+  });
+  if (!verifySignature(null, payload, publicKey, signature)) {
+    throw httpError(401, "bad_pop_signature");
+  }
+  const nonceRef = db.doc(`users/${options.uid}/hermes_gateway_clients/${options.clientId}/pop_nonces/${nonce}`);
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(nonceRef);
+    if (snap.exists) {
+      throw httpError(401, "pop_nonce_replay");
+    }
+    transaction.create(nonceRef, {
+      nonce,
+      tokenHash: options.tokenHash,
+      observedAt: nowISO(),
+      expireAt: Timestamp.fromMillis(Date.now() + GATEWAY_POP_CLOCK_SKEW_MS),
+      schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
+    });
+  });
+}
+
 async function assertActiveHermesGatewayEntitlement(uid: string): Promise<void> {
   const [hostedSnap, proSnap, proMaxSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
@@ -533,6 +701,20 @@ async function assertActiveHermesGatewayClient(uid: string, targetClientId: stri
     throw new HttpsError("failed-precondition", "Selected Hermes Gateway client is not active.");
   }
   return client;
+}
+
+async function assertTrustedNativeEscrowDevice(uid: string, deviceId: string): Promise<void> {
+  const deviceSnap = await db.doc(`users/${uid}/escrow_devices/${deviceId}`).get();
+  if (
+    !deviceSnap.exists ||
+    deviceSnap.get("trustState") !== "trusted" ||
+    !NATIVE_ESCROW_PLATFORMS.has(deviceSnap.get("platform"))
+  ) {
+    throw new HttpsError(
+      "permission-denied",
+      "This operation requires a trusted native escrow device. Trust this device first.",
+    );
+  }
 }
 
 async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope): Promise<ResolvedGatewayGrant> {
@@ -560,6 +742,12 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   if (isHermesGatewayTokenExpired(client.expiresAt)) {
     throw httpError(401, "expired_bearer_token");
   }
+  await verifyGatewayRequestPoP(req, {
+    uid: index.uid,
+    clientId: index.clientId,
+    client,
+    tokenHash,
+  });
   if (!hasHermesGatewayScope(client.scopes, scope)) {
     throw httpError(403, "missing_scope", scope);
   }
@@ -602,6 +790,9 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
   const expiresAt = Timestamp.fromMillis(Date.now() + HERMES_GATEWAY_DEVICE_SESSION_TTL_MS);
   const clientName = sanitizedGatewayDisplayName(body.clientName, "Hermes Agent");
   const requestedScopes = sanitizeHermesGatewayScopes(body.scopes);
+  const agentClientSigningPublicKey = requireGatewayClientSigningPublicKey(body.agentClientSigningPublicKeyBase64);
+  const agentClientSigningPublicKeyBase64 = agentClientSigningPublicKey.toString("base64");
+  const agentClientSigningKeyId = sha256Hex(agentClientSigningPublicKeyBase64).slice(0, 32);
 
   // The agent publishes its relay public key here so the phone can wrap event
   // bodies to it at approval time. Unsealed pairings are rejected; legacy
@@ -637,6 +828,9 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
       status: "pending",
       clientName,
       requestedScopes,
+      agentClientSigningPublicKeyBase64,
+      agentClientSigningKeyId,
+      popRequired: true,
       agentRelayPublicKey: agentRelay?.publicKey,
       agentRelayKeyVersion: agentRelay?.keyVersion,
       agentRelayEncryption: agentRelay?.encryption,
@@ -1453,7 +1647,7 @@ export const burnBarHermesGateway = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res): Promise<void> => {
-    await dispatchHermesGatewayRequest(req as unknown as HttpRequest, res as unknown as HttpResponse);
+    await dispatchHermesGatewayRequest(toHermesHttpRequest(req), toHermesHttpResponse(res));
   },
 );
 
@@ -1500,13 +1694,14 @@ export const approveHermesGatewayDeviceGrant = onCall(
       await assertActiveHermesGatewayEntitlement(uid);
       const userCode = canonicalHermesGatewayUserCode(request.data.userCode);
       if (!userCode) throw new HttpsError("invalid-argument", "userCode must be an 8-character Hermes Gateway code.");
+      const requestData = recordOrUndefined(request.data) ?? {};
 
       // The approving PHONE publishes its own relay public key so the agent can
       // wrap reply/attachment bodies to it. Required once sealing is mandatory
       // (relay-capable pairing / past the grace cutoff); optional only for a
       // legacy in-grace pairing.
       const phoneRelay = parseRelayPublicKey(
-        request.data as Record<string, unknown>,
+        requestData,
         {
           publicKeyField: "phoneRelayPublicKey",
           keyVersionField: "phoneRelayKeyVersion",
@@ -1517,9 +1712,9 @@ export const approveHermesGatewayDeviceGrant = onCall(
         },
       );
       const phoneCapabilities = phoneRelay
-        ? sanitizeGatewayRelayEnvelopeCapabilities(request.data as Record<string, unknown>)
+        ? sanitizeGatewayRelayEnvelopeCapabilities(requestData)
         : undefined;
-      const phoneRatchet = parseRatchetPrekeyBundle(request.data as Record<string, unknown>, "phone", (message) => {
+      const phoneRatchet = parseRatchetPrekeyBundle(requestData, "phone", (message) => {
         throw new HttpsError("invalid-argument", message);
       });
 
@@ -1537,12 +1732,20 @@ export const approveHermesGatewayDeviceGrant = onCall(
       const session = recordOrUndefined(sessions.docs[0].data());
       if (!session) throw new HttpsError("failed-precondition", "Hermes Gateway pairing session is invalid.");
       const expiresAt = session.expiresAt instanceof Timestamp ? session.expiresAt.toMillis() : 0;
-      if (expiresAt <= Date.now()) {
-        await sessionRef.set({ status: "expired", updatedAt: Timestamp.now() }, { merge: true });
-        throw new HttpsError("deadline-exceeded", "Hermes Gateway pairing code has expired.");
-      }
+	      if (expiresAt <= Date.now()) {
+	        await sessionRef.set({ status: "expired", updatedAt: Timestamp.now() }, { merge: true });
+	        throw new HttpsError("deadline-exceeded", "Hermes Gateway pairing code has expired.");
+	      }
+	      const agentClientSigningPublicKey = requireCallableGatewayClientSigningPublicKey(
+	        session.agentClientSigningPublicKeyBase64,
+	      );
+	      const agentClientSigningPublicKeyBase64 = agentClientSigningPublicKey.toString("base64");
+	      const agentClientSigningKeyId =
+	        typeof session.agentClientSigningKeyId === "string"
+	          ? session.agentClientSigningKeyId
+	          : sha256Hex(agentClientSigningPublicKeyBase64).slice(0, 32);
 
-      // The agent published its relay public key at device/start; carry it onto
+	      // The agent published its relay public key at device/start; carry it onto
       // the new client doc so the phone can wrap event bodies to it. The pair is
       // relay-capable only when BOTH keys are present.
       const agentRelayPublicKey = isGatewayRelayPublicKeyB64(session.agentRelayPublicKey);
@@ -1613,10 +1816,13 @@ export const approveHermesGatewayDeviceGrant = onCall(
         id: clientId,
         uid,
         displayName,
-        status: "active",
-        tokenHash,
-        tokenPreview: tokenPreview(token),
-        scopes,
+	        status: "active",
+	        tokenHash,
+	        tokenPreview: tokenPreview(token),
+	        agentClientSigningPublicKeyBase64,
+	        agentClientSigningKeyId,
+	        popRequired: true,
+	        scopes,
         homeDestinationId,
         expiresAt: tokenExpiresAt,
         agentRelayPublicKey,
@@ -1823,6 +2029,12 @@ export const rotateHermesGatewayClientToken = onCall(
     }
     if (client.status !== "active") {
       throw new HttpsError("failed-precondition", "Revoked Hermes Gateway clients cannot be rotated.");
+    }
+    if (!client.agentClientSigningPublicKeyBase64 || client.popRequired !== true) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Legacy Hermes Gateway clients must re-pair with request proof-of-possession.",
+      );
     }
     const previousTokenHash = client.tokenHash;
     const token = generateHermesGatewayBearerToken();
@@ -2091,21 +2303,41 @@ export const setHermesGatewayOversightMode = onCall(
   },
   wrapCallableHandler(
     "setHermesGatewayOversightMode",
-    async (request: CallableRequest<{ clientId?: unknown; mode?: unknown }>) => {
+    async (request: CallableRequest<{ clientId?: unknown; mode?: unknown; deviceId?: unknown; nonce?: unknown }>) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before changing Hermes Gateway oversight.");
-      enforceAuthAndAppCheck(request, uid);
       await assertActiveHermesGatewayEntitlement(uid);
       const clientId = requiredIdentifier(request.data.clientId, "clientId");
       const mode = sanitizeHermesGatewayOversightMode(request.data.mode);
       if (!mode) throw new HttpsError("invalid-argument", "mode must be 'supervised' or 'autonomous'.");
       await assertActiveHermesGatewayClient(uid, clientId);
+      let elevatedByDeviceId: string | undefined;
+      if (mode === "autonomous") {
+        await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+        elevatedByDeviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+        await assertTrustedNativeEscrowDevice(uid, elevatedByDeviceId);
+      } else {
+        enforceAuthAndAppCheck(request, uid);
+      }
       const now = nowISO();
       await db
         .doc(`users/${uid}/hermes_gateway_clients/${clientId}`)
-        .set({ oversightMode: mode, updatedAt: now }, { merge: true });
-      logInfo({ event: "hermes_gateway.oversight_mode_set", client_id: clientId, mode });
-      return { clientId, oversightMode: mode };
+        .set(
+          stripUndefinedObject({
+            oversightMode: mode,
+            oversightModeUpdatedAt: now,
+            oversightModeElevatedByDeviceId: elevatedByDeviceId,
+            updatedAt: now,
+          }),
+          { merge: true },
+        );
+      logInfo({
+        event: "hermes_gateway.oversight_mode_set",
+        client_id: clientId,
+        mode,
+        elevated_by_device_id: elevatedByDeviceId,
+      });
+      return stripUndefinedObject({ clientId, oversightMode: mode, elevatedByDeviceId });
     },
   ),
 );
@@ -2177,7 +2409,8 @@ export const respondHermesGatewayApproval = onCall(
           },
           { merge: true },
         );
-        return { status: approve ? "approved" : ("rejected" as HermesGatewayApprovalDoc["status"]) };
+        const status: HermesGatewayApprovalDoc["status"] = approve ? "approved" : "rejected";
+        return { status };
       });
 
       logInfo({

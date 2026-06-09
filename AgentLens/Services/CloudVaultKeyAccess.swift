@@ -327,30 +327,25 @@ enum MacCloudVaultKeyAccess {
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
             .getDocuments()
         for doc in trusted.documents {
-            let data = doc.data()
-            let targetDeviceId = (data["deviceId"] as? String) ?? doc.documentID
-            guard targetDeviceId.isEmpty == false,
-                  let keyVersion = data["keyVersion"] as? Int,
-                  let fingerprint = data["publicKeyFingerprint"] as? String else {
-                continue
-            }
-            let publicKeyDoc = try await userRef.collection("escrow_public_keys")
-                .document("\(targetDeviceId)_\(keyVersion)")
-                .getDocument()
-            guard let publicKeyBase64 = publicKeyDoc.data()?["publicKeyData"] as? String,
-                  let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
-                continue
-            }
-            let wrapped = try CloudVaultCrypto.wrapVaultKey(vaultKey, recipientPublicKey: publicKeyData)
+            let target = try await CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                uid: uid,
+                userRef: userRef,
+                deviceDocument: doc,
+                localIdentity: signalIdentity
+            )
+            let wrapped = try CloudVaultCrypto.wrapVaultKey(
+                vaultKey,
+                recipientPublicKey: target.escrowPublicKeyData
+            )
             try await userRef.collection("cloud_vault_key_wrappers")
-                .document("\(vaultKeyID)_\(targetDeviceId)_\(keyVersion)")
+                .document("\(vaultKeyID)_\(target.deviceId)_\(target.keyVersion)")
                 .setData([
                     "uid": uid,
                     "vaultKeyID": vaultKeyID,
-                    "targetDeviceId": targetDeviceId,
+                    "targetDeviceId": target.deviceId,
                     "sourceDeviceId": deviceId,
-                    "publicKeyFingerprint": fingerprint,
-                    "keyVersion": keyVersion,
+                    "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
+                    "keyVersion": target.keyVersion,
                     "wrappedVaultKey": wrapped.base64EncodedString(),
                     "algorithm": "ECIES-P256-AESGCM",
                     "status": "active",

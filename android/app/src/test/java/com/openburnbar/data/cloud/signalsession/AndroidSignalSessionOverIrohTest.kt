@@ -38,8 +38,8 @@ class AndroidSignalSessionOverIrohTest {
             )
         val aliceAddress = alicePeer.address()
         val bobAddress = bobPeer.address()
-        val alice = AndroidSignalProtocolStore(IdentityKeyPair.generate(), alicePeer.registrationId, InMemorySignalRecordVault())
-        val bob = AndroidSignalProtocolStore(IdentityKeyPair.generate(), bobPeer.registrationId, InMemorySignalRecordVault())
+        val alice = AndroidSignalProtocolStore.testingTOFU(IdentityKeyPair.generate(), alicePeer.registrationId, InMemorySignalRecordVault())
+        val bob = AndroidSignalProtocolStore.testingTOFU(IdentityKeyPair.generate(), bobPeer.registrationId, InMemorySignalRecordVault())
         val bobPrekeys = AndroidSignalPreKeyGenerator.generatePreKeys(
             identityKeyPair = bob.getIdentityKeyPair(),
             preKeyId = 31337,

@@ -23,7 +23,7 @@ final class OBBSignalProtocolStoreSessionTests: XCTestCase {
     ) throws -> OBBSignalProtocolStore {
         let dir = sessionDir ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         tempDirs.append(dir)
-        return try OBBSignalProtocolStore(
+        return try OBBSignalProtocolStore.testingTOFU(
             identityKeypair: identity,
             registrationId: registrationId,
             keychainService: service,
@@ -123,7 +123,7 @@ final class OBBSignalProtocolStoreSessionTests: XCTestCase {
         )
 
         // Reopen Alice's store from the SAME Keychain service + session dir + identity.
-        let aliceReloaded = try OBBSignalProtocolStore(
+        let aliceReloaded = try OBBSignalProtocolStore.testingTOFU(
             identityKeypair: aliceIdentity, registrationId: aliceReg, keychainService: aliceService, sessionDir: aliceDir
         )
         XCTAssertNotNil(try aliceReloaded.loadSession(for: bobAddress, context: ctx), "session must persist to disk")

@@ -29,6 +29,7 @@ const mockApi: BurnBarWorkspaceApi = {
   saveAll: vi.fn(() => Promise.resolve(true)),
   createWorkspaceEdit: vi.fn(() => ({ replace: vi.fn() })),
   createRange: vi.fn(() => ({ start: { line: 0, character: 0 }, end: { line: 0, character: 0 } })),
+  confirmWorkspaceEdit: vi.fn(() => Promise.resolve(true)),
   confirmTerminalCommand: vi.fn(() => Promise.resolve(true)),
   createTerminal: vi.fn(() => ({ name: 'OpenBurnBar', show: vi.fn(), sendText: vi.fn() })),
   ...uriHelpers

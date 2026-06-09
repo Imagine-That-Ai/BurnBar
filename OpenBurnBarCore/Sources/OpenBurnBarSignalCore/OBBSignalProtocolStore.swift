@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import LibSignalClient
 import OpenBurnBarCore
 import Security
@@ -49,23 +50,68 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
     public let registrationId: UInt32
     public let keychainService: String
     public let sessionDir: URL
+    private static let sessionStoreKeyAccount = "signal-session-store-key:v1"
+    private static let sealedSessionMagic = Data("OpenBurnBar.SignalSessionRecord.v1\n".utf8)
+
     private let identityTrustEvaluator: IdentityTrustEvaluator?
+    private let sessionStoreKey: SymmetricKey
+    private let allowsTestingTOFU: Bool
 
     private let lock = NSRecursiveLock()
 
-    public init(
+    public convenience init(
         identityKeypair: IdentityKeyPair,
         registrationId: UInt32,
         keychainService: String,
         sessionDir: URL,
-        identityTrustEvaluator: IdentityTrustEvaluator? = nil
+        identityTrustEvaluator: @escaping IdentityTrustEvaluator
     ) throws {
+        try self.init(
+            identityKeypair: identityKeypair,
+            registrationId: registrationId,
+            keychainService: keychainService,
+            sessionDir: sessionDir,
+            identityTrustEvaluator: identityTrustEvaluator,
+            allowsTestingTOFU: false
+        )
+    }
+
+    public static func testingTOFU(
+        identityKeypair: IdentityKeyPair,
+        registrationId: UInt32,
+        keychainService: String,
+        sessionDir: URL
+    ) throws -> OBBSignalProtocolStore {
+        try OBBSignalProtocolStore(
+            identityKeypair: identityKeypair,
+            registrationId: registrationId,
+            keychainService: keychainService,
+            sessionDir: sessionDir,
+            identityTrustEvaluator: nil,
+            allowsTestingTOFU: true
+        )
+    }
+
+    private init(
+        identityKeypair: IdentityKeyPair,
+        registrationId: UInt32,
+        keychainService: String,
+        sessionDir: URL,
+        identityTrustEvaluator: IdentityTrustEvaluator?,
+        allowsTestingTOFU: Bool
+    ) throws {
+        guard identityTrustEvaluator != nil || allowsTestingTOFU else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
         self.identityKeypair = identityKeypair
         self.registrationId = registrationId
         self.keychainService = keychainService
         self.sessionDir = sessionDir
         self.identityTrustEvaluator = identityTrustEvaluator
+        self.sessionStoreKey = try Self.loadOrCreateSessionStoreKey(keychainService: keychainService)
+        self.allowsTestingTOFU = allowsTestingTOFU
         try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: sessionDir.path)
     }
 
     private func withLock<T>(_ body: () throws -> T) rethrows -> T {
@@ -109,6 +155,7 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         if let identityTrustEvaluator {
             return identityTrustEvaluator(address, identity)
         }
+        guard allowsTestingTOFU else { return false }
         return try withLock {
             guard let existing = try keychainRead(identityAccount(address)) else { return true } // TOFU
             return existing == Data(identity.serialize())
@@ -205,7 +252,7 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         try withLock {
             let url = sessionURL(address)
             guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-            return try SessionRecord(bytes: Data(contentsOf: url))
+            return try SessionRecord(bytes: openSessionRecordData(Data(contentsOf: url)))
         }
     }
 
@@ -219,13 +266,18 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
                 guard FileManager.default.fileExists(atPath: url.path) else {
                     throw SignalError.sessionNotFound("\(address.name).\(address.deviceId)")
                 }
-                return try SessionRecord(bytes: Data(contentsOf: url))
+                return try SessionRecord(bytes: openSessionRecordData(Data(contentsOf: url)))
             }
         }
     }
 
     public func storeSession(_ record: SessionRecord, for address: ProtocolAddress, context: StoreContext) throws {
-        try withLock { try Data(record.serialize()).write(to: sessionURL(address), options: .atomic) }
+        try withLock {
+            let sealed = try sealSessionRecordData(Data(record.serialize()))
+            let url = sessionURL(address)
+            try sealed.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        }
     }
 
     // MARK: - Private helpers (always called while `lock` is held)
@@ -237,6 +289,69 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
     private func sessionURL(_ address: ProtocolAddress) -> URL {
         let safeName = address.name.replacingOccurrences(of: "/", with: "-")
         return sessionDir.appendingPathComponent("\(safeName)_\(address.deviceId).session")
+    }
+
+    private func sealSessionRecordData(_ data: Data) throws -> Data {
+        let sealed = try AES.GCM.seal(data, using: sessionStoreKey, authenticating: Self.sealedSessionMagic)
+        guard let combined = sealed.combined else { throw CloudVaultCryptoError.sealedBoxUnavailable }
+        return Self.sealedSessionMagic + combined
+    }
+
+    private func openSessionRecordData(_ data: Data) throws -> Data {
+        guard data.starts(with: Self.sealedSessionMagic) else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        let combined = data.dropFirst(Self.sealedSessionMagic.count)
+        let sealed = try AES.GCM.SealedBox(combined: Data(combined))
+        return try AES.GCM.open(sealed, using: sessionStoreKey, authenticating: Self.sealedSessionMagic)
+    }
+
+    private static func loadOrCreateSessionStoreKey(keychainService: String) throws -> SymmetricKey {
+        if let existing = try staticKeychainRead(keychainService: keychainService, account: sessionStoreKeyAccount) {
+            guard existing.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+            return SymmetricKey(data: existing)
+        }
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
+        let data = Data(bytes)
+        try staticKeychainWrite(data, keychainService: keychainService, account: sessionStoreKeyAccount)
+        return SymmetricKey(data: data)
+    }
+
+    private static func staticKeychainRead(keychainService: String, account: String) throws -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
+        guard let data = item as? Data else { throw CloudVaultCryptoError.keychainDataMissing }
+        return data
+    }
+
+    private static func staticKeychainWrite(_ data: Data, keychainService: String, account: String) throws {
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+        ]
+        var add = base
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let addStatus = SecItemAdd(add as CFDictionary, nil)
+        if addStatus == errSecSuccess { return }
+        if addStatus == errSecDuplicateItem {
+            let updateStatus = SecItemUpdate(base as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+            guard updateStatus == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(updateStatus)) }
+            return
+        }
+        throw CloudVaultCryptoError.keychainError(Int(addStatus))
     }
 
     private func keychainRead(_ account: String) throws -> Data? {

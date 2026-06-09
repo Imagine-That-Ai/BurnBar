@@ -71,9 +71,16 @@ class AndroidEscrowDeviceRegistry(
         keypair: AndroidCloudVaultDeviceKeypair = AndroidCloudVaultDeviceKeypair.loadOrCreate(),
     ): AndroidEscrowDeviceRegistration {
         registerSelf(uid = uid, keypair = keypair)
+        val trustChain = buildTrustChainProof(
+            uid = uid,
+            targetDeviceId = keypair.deviceId,
+            approverDeviceId = keypair.deviceId,
+            approverKeyVersion = keypair.keyVersion,
+        )
         securityClient.approveEscrowDeviceTrust(
             deviceId = keypair.deviceId,
             approverDeviceId = keypair.deviceId,
+            trustChain = trustChain.asMap(),
         )
 
         return AndroidEscrowDeviceRegistration(
@@ -146,5 +153,60 @@ class AndroidEscrowDeviceRegistry(
                 SetOptions.merge(),
             )
             .await()
+    }
+
+    private suspend fun buildTrustChainProof(
+        uid: String,
+        targetDeviceId: String,
+        approverDeviceId: String,
+        approverKeyVersion: Int,
+    ): CloudVaultDeviceTrustChainProof {
+        val userRef = firestore.collection("users").document(uid)
+        val approverIdentity = AndroidSignalIdentityKeyStore.loadOrCreate(approverDeviceId, approverKeyVersion)
+        AndroidSignalIdentityKeyStore.publishIfNeeded(
+            uid = uid,
+            deviceId = approverDeviceId,
+            identity = approverIdentity,
+            firestore = firestore,
+        )
+
+        val targetDevice = userRef.collection("escrow_devices").document(targetDeviceId).get().await()
+        val targetKeyVersion =
+            targetDevice.getLong("keyVersion")?.toInt()
+                ?: error("Target device escrow key is not published.")
+        val targetEscrowFingerprint =
+            targetDevice.getString("publicKeyFingerprint")
+                ?: error("Target device escrow fingerprint is not published.")
+        val targetSignalIdentityKeyId = AndroidSignalIdentityKeypair.identityKeyId(targetDeviceId, targetKeyVersion)
+        val targetIdentity =
+            userRef.collection("signal_identity_public_keys").document(targetSignalIdentityKeyId).get().await()
+        val targetSignalFingerprint =
+            targetIdentity.getString("publicKeyFingerprint")
+                ?: error("Target device Signal identity is not published.")
+        check(
+            targetIdentity.getString("deviceId") == targetDeviceId &&
+                targetIdentity.getString("identityKeyId") == targetSignalIdentityKeyId &&
+                targetIdentity.getLong("keyVersion")?.toInt() == targetKeyVersion,
+        ) { "Target device Signal identity does not match escrow device." }
+
+        val payload =
+            CloudVaultDeviceTrustChainPayload(
+                uid = uid,
+                targetDeviceId = targetDeviceId,
+                targetEscrowPublicKeyFingerprint = targetEscrowFingerprint,
+                targetKeyVersion = targetKeyVersion,
+                targetSignalIdentityKeyId = targetSignalIdentityKeyId,
+                targetSignalIdentityPublicKeyFingerprint = targetSignalFingerprint,
+                approverDeviceId = approverDeviceId,
+                approverSignalIdentityKeyId = approverIdentity.identityKeyId,
+                approverSignalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(approverIdentity.publicKeyData),
+            )
+        return CloudVaultDeviceTrustChainProof(
+            targetSignalIdentityKeyId = targetSignalIdentityKeyId,
+            targetSignalIdentityPublicKeyFingerprint = targetSignalFingerprint,
+            approverSignalIdentityKeyId = approverIdentity.identityKeyId,
+            approverSignalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(approverIdentity.publicKeyData),
+            signature = CloudVaultDeviceTrustChain.sign(payload, approverIdentity),
+        )
     }
 }

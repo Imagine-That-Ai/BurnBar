@@ -11,7 +11,8 @@ final class BurnBarDaemonServerTests: XCTestCase {
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
                 socketAuthToken: "test-token",
-                daemonVersion: "test-daemon"
+                daemonVersion: "test-daemon",
+                startsMissionControlBackgroundLoops: false
             )
         )
 
@@ -43,7 +44,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
 
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token")
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            )
         )
         try await server.start()
 
@@ -64,7 +69,8 @@ final class BurnBarDaemonServerTests: XCTestCase {
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
                 socketAuthToken: "test-token",
-                daemonVersion: "catalog-daemon"
+                daemonVersion: "catalog-daemon",
+                startsMissionControlBackgroundLoops: false
             )
         )
 
@@ -97,13 +103,17 @@ final class BurnBarDaemonServerTests: XCTestCase {
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             configStore: configStore
         )
 
         try await server.start()
-        defer { Task { await server.stop() } }
+        addTeardownBlock { await server.stop() }
 
         let response: BurnBarRPCResponseEnvelope<BurnBarProviderCredentialSlotMutationResponse> = try sendEnvelope(
             BurnBarRPCRequestEnvelopeWithParams(
@@ -148,7 +158,8 @@ final class BurnBarDaemonServerTests: XCTestCase {
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
-                socketAuthToken: "socket-secret"
+                socketAuthToken: "socket-secret",
+                startsMissionControlBackgroundLoops: false
             )
         )
 
@@ -205,7 +216,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
 
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             configStore: configStore,
             usageRecorder: usageRecorder,
@@ -412,7 +427,12 @@ final class BurnBarDaemonServerTests: XCTestCase {
     func testSearchQueryWithoutIndexDatabaseReturnsError() async throws {
         let socketPath = makeSocketPath(name: "search-no-db")
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token", indexDatabasePath: nil)
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                indexDatabasePath: nil,
+                startsMissionControlBackgroundLoops: false
+            )
         )
 
         try await server.start()
@@ -491,7 +511,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             runService: runService
         )
@@ -635,7 +659,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             runService: runService
         )
@@ -740,7 +768,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
     func testServerExposesMissionControlRPCs() async throws {
         let socketPath = makeSocketPath(name: "mission-control")
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token")
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            )
         )
 
         try await server.start()
@@ -841,7 +873,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
             executionReadinessGate: { _, _ in nil }
         )
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             missionControlService: missionControlService
         )
@@ -954,7 +990,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
             logger: BurnBarDaemonLogger(category: "usage-record-tests")
         )
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
             logger: BurnBarDaemonLogger(category: "usage-record-tests"),
             usageRecorder: usageRecorder
         )
@@ -1164,7 +1204,8 @@ final class BurnBarDaemonServerTests: XCTestCase {
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
-                socketAuthToken: "test-token"
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
             ),
             rateLimiter: rateLimiter
         )

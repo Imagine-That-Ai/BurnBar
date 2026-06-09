@@ -112,32 +112,19 @@ object AndroidCloudVaultSignalPayloads {
         val trusted = userRef.collection("escrow_devices").whereEqualTo("trustState", "trusted").get().await()
         val byId = LinkedHashMap<String, CloudVaultSignalRecipient>()
         for (deviceDoc in trusted.documents) {
-            val deviceId = deviceDoc.getString("deviceId")?.trim().takeUnless { it.isNullOrEmpty() } ?: deviceDoc.id
-            // Fail-CLOSED (iOS parity, MobileCloudVaultSignalPayloads.swift:125-130): a trusted
-            // device with no keyVersion must abort the whole seal, NOT be silently dropped — a
-            // silently-excluded device could never open the resulting envelope. All throws here
-            // use IllegalStateException so producer catch blocks treat them uniformly.
-            val keyVersion =
-                (deviceDoc.getLong("keyVersion")
-                    ?: throw IllegalStateException("Trusted device $deviceId has no keyVersion; cannot resolve its Signal identity.")).toInt()
-            val identityKeyId = AndroidSignalIdentityKeypair.identityKeyId(deviceId, keyVersion)
-            if (identityKeyId == localIdentity.identityKeyId) continue
-            val identityDoc =
-                userRef.collection("signal_identity_public_keys").document(identityKeyId).get().await()
-            check(identityDoc.exists()) { "Trusted device $identityKeyId has no Signal identity public key." }
-            val publicKeyB64 = identityDoc.getString("publicKeyData")
-            check(
-                identityDoc.getString("deviceId") == deviceId &&
-                    identityDoc.getString("identityKeyId") == identityKeyId &&
-                    identityDoc.getLong("keyVersion")?.toInt() == keyVersion &&
-                    identityDoc.getString("algorithm") == CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION &&
-                    publicKeyB64 != null,
-            ) { "Trusted device $identityKeyId has an invalid Signal identity public key." }
-            byId[identityKeyId] =
+            val verified =
+                AndroidCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                    uid = uid,
+                    firestore = firestore,
+                    deviceDocument = deviceDoc,
+                    localIdentity = localIdentity,
+                )
+            if (verified.signalIdentityKeyId == localIdentity.identityKeyId) continue
+            byId[verified.signalIdentityKeyId] =
                 CloudVaultSignalRecipient(
                     recipientKind = "device",
-                    recipientIdentityKeyId = identityKeyId,
-                    publicKeyData = CloudVaultCryptoSupport.decodeBase64(requireNotNull(publicKeyB64)),
+                    recipientIdentityKeyId = verified.signalIdentityKeyId,
+                    publicKeyData = verified.signalIdentityPublicKeyData,
                 )
         }
         return byId.values.sortedBy { it.recipientIdentityKeyId }

@@ -432,54 +432,17 @@ public final class KnowledgeSyncService: @unchecked Sendable {
         ]
 
         for document in trustedDevices.documents {
-            let data = document.data()
-            let rawDeviceId = (data["deviceId"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let deviceId: String
-            if let rawDeviceId, !rawDeviceId.isEmpty {
-                deviceId = rawDeviceId
-            } else {
-                deviceId = document.documentID
-            }
-            guard let keyVersion = data["keyVersion"] as? Int else {
-                throw KnowledgeSyncError.trustedDeviceSignalIdentityMismatch(
-                    deviceId: deviceId,
-                    keyVersion: 0
-                )
-            }
-            let identityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(
-                deviceId: deviceId,
-                keyVersion: keyVersion
+            let verified = try await CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                uid: uid,
+                userRef: userRef,
+                deviceDocument: document,
+                localIdentity: localIdentity
             )
-            // Self-exclusion: the local recipient was already seeded above from the
-            // authoritative in-memory keypair. NEVER overwrite it with a server-fetched
-            // copy — a malicious/compromised directory could substitute our own key.
-            // (Matches Mac/iOS atRestRecipients; this pensieve copy previously missed it.)
-            if identityKeyId == localIdentity.identityKeyId { continue }
-            let identityDoc = try await userRef.collection("signal_identity_public_keys")
-                .document(identityKeyId)
-                .getDocument()
-            guard let identityData = identityDoc.data() else {
-                throw KnowledgeSyncError.trustedDeviceMissingSignalIdentity(
-                    deviceId: deviceId,
-                    keyVersion: keyVersion
-                )
-            }
-            guard identityData["deviceId"] as? String == deviceId,
-                  identityData["identityKeyId"] as? String == identityKeyId,
-                  identityData["keyVersion"] as? Int == keyVersion,
-                  identityData["algorithm"] as? String == CloudVaultCrypto.signalAtRestEncryption,
-                  let publicKeyBase64 = identityData["publicKeyData"] as? String,
-                  let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
-                throw KnowledgeSyncError.trustedDeviceSignalIdentityMismatch(
-                    deviceId: deviceId,
-                    keyVersion: keyVersion
-                )
-            }
-            recipientsByIdentityKeyId[identityKeyId] = OpenBurnBarSignalAtRestRecipient(
+            if verified.signalIdentityKeyId == localIdentity.identityKeyId { continue }
+            recipientsByIdentityKeyId[verified.signalIdentityKeyId] = OpenBurnBarSignalAtRestRecipient(
                 recipientKind: "device",
-                recipientIdentityKeyId: identityKeyId,
-                publicKeyData: publicKeyData
+                recipientIdentityKeyId: verified.signalIdentityKeyId,
+                publicKeyData: verified.signalIdentityPublicKeyData
             )
         }
 

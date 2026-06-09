@@ -56,27 +56,19 @@ import kotlin.math.min
 // Rendered by `BurnBarLargeWidget` and `BurnBarMediumWidget` so the user can
 // kick off an assistant conversation directly from the home screen — either
 // with a curated prompt prefilled or just by focusing the composer. The
-// underlying Intent carries:
-//   • A `burnbar://<assistant>?prompt=…` data URI (so adb / external
-//     deep-links work the same way).
-//   • Direct extras (`burnbar.assistant`, `burnbar.prompt`) — the redundant
-//     form is the fast path that `MainActivity.stashPendingPromptFromIntent`
-//     reads first.
+// underlying Intent navigates to the assistant only. Prompt auto-submit from
+// exported/browsable Activity intents is intentionally forbidden.
 
 const val ASK_CHIP_ASSISTANT_HERMES = "hermes"
 const val ASK_CHIP_ASSISTANT_PI = "pi"
 
 /** Build the launch Intent for an Ask-chip. Public so widgets can compose it. */
-fun askAssistantIntent(context: Context, assistant: String, prompt: String?): Intent {
-    val baseUri = "burnbar://$assistant"
-    val uri = if (prompt.isNullOrBlank()) baseUri else "$baseUri?prompt=${Uri.encode(prompt)}"
+fun askAssistantIntent(context: Context, assistant: String, _prompt: String?): Intent {
+    val uri = "burnbar://$assistant"
     return Intent(context, MainActivity::class.java).apply {
         data = Uri.parse(uri)
         action = Intent.ACTION_VIEW
         putExtra(MainActivity.EXTRA_ASSISTANT, assistant)
-        if (!prompt.isNullOrBlank()) {
-            putExtra(MainActivity.EXTRA_PROMPT, prompt)
-        }
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
     }
 }

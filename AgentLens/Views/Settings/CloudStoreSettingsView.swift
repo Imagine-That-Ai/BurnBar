@@ -1181,7 +1181,7 @@ struct CloudStoreSettingsView: View {
                 .font(.system(size: 10, weight: .heavy))
                 .tracking(1.8)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text("BurnBar Cloud, Cloud Pro, and Cloud Ultra are auto-renewable subscriptions billed through the App Store. Cloud adds hosted quota refresh, encrypted backup and resume, cloud search, synced agent memory, and remote relay. Cloud Pro adds Floo phone-to-Mac control and supervised Agent Control with prepaid hosted allowances. Cloud Ultra keeps all of Pro and gives your agents 10× private memory — sealed on your device, with search running over encrypted structures (some access patterns stay visible). Prices shown are live from the App Store; Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
+            Text("BurnBar Cloud, Cloud Pro, and Cloud Ultra are auto-renewable subscriptions billed through the App Store. Cloud adds hosted quota refresh, encrypted backup and resume, cloud search, synced agent memory, and remote relay. Cloud Pro adds Floo phone-to-Mac control and supervised Agent Control with prepaid hosted allowances. Cloud Ultra keeps all of Pro and gives your agents 10× private memory — sealed on your device, with hosted recall over encrypted structures that still expose some access patterns. Prices shown are live from the App Store; Apple bills your Apple ID and you can cancel anytime in Apple ID subscriptions.")
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1647,7 +1647,7 @@ private struct MacPricingTierModel: Identifiable {
             includedNote: MacPricingTierModel.IncludedNote(
                 label: "Private semantic memory",
                 lines: [
-                    "Cloaked vectors + sealed text — nearest-neighbor search, never your content",
+                    "Cloaked vectors + sealed text — hosted recall is opt-in; structural patterns remain visible",
                     "500 hosted actions · 50 relay-accounting GB each month",
                     "Prepaid overage only · BYOK never spends credits"
                 ]

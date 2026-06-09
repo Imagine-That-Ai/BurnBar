@@ -184,7 +184,7 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "id": "pensieve",
     "title": "Pensieve Knowledge",
     "tier": "end_to_end",
-    "blurb": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN over them without reading your content, though these structures still reveal some recurrence/co-occurrence patterns.",
+    "blurb": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Text is sealed on-device; hosted ANN recall is an explicit opt-in over cloaked vectors and opaque keyed hashes. Those structures still reveal structural signals such as vector geometry, recurrence/co-occurrence patterns, counts, and access timing. Use local-only recall for sensitive memories when available.",
     "caveat": "A connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
     "serverSees": [
       "cloaked 384-dim vectors",

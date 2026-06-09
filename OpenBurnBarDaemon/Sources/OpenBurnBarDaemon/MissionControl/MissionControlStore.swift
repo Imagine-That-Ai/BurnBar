@@ -11,10 +11,14 @@ public actor BurnBarMissionControlStore {
 
     private var projection: BurnBarMissionControlProjectionFile?
     private var cachedEvents: [BurnBarControllerEvent]?
+    private var cachedRecentEvents: [BurnBarControllerEvent]?
     private var seenEventIDs: Set<String> = []
 
     private var summaryEnricher: MissionControlSummaryEnricher {
-        MissionControlSummaryEnricher(projection: projection, cachedEvents: cachedEvents)
+        MissionControlSummaryEnricher(
+            projection: projection,
+            cachedEvents: cachedRecentEvents ?? cachedEvents
+        )
     }
 
     public init(
@@ -34,7 +38,7 @@ public actor BurnBarMissionControlStore {
     }
 
     public func controllerSummary(_ request: BurnBarControllerSummaryRequest) throws -> BurnBarControllerSummaryResponse {
-        try ensureLoaded()
+        try ensureLoaded(loadEventsForRecentActivity: request.includeRecentEvents)
         return BurnBarControllerSummaryResponse(summary: summaryEnricher.makeSummary(for: request))
     }
 
@@ -864,13 +868,7 @@ public actor BurnBarMissionControlStore {
     }
 
     public func rebuildProjection(_ request: BurnBarProjectionRebuildRequest) throws -> BurnBarProjectionRebuildResponse {
-        let events = try loadEvents()
-        projection = BurnBarMissionControlProjectionFile.empty(now: Date())
-        seenEventIDs = []
-        for event in events.sorted(by: MissionControlMissionStateMerger.eventSort) {
-            try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
-        }
-        try writeProjection()
+        try rebuildProjectionFromJournal(rebuiltAt: Date())
 
         _ = try appendEvent(
             family: .projection,
@@ -947,21 +945,32 @@ public actor BurnBarMissionControlStore {
         return nudgedFollowups
     }
 
-    private func ensureLoaded() throws {
+    private func ensureLoaded(loadEventsForRecentActivity: Bool = false) throws {
         if projection != nil {
+            if loadEventsForRecentActivity {
+                _ = try loadRecentEventsForSummary()
+            }
             return
         }
 
         if let decoded = try journal.loadProjectionFromDiskIfPresent(decoder: decoder) {
             projection = decoded
         } else {
-            projection = BurnBarMissionControlProjectionFile.empty()
+            try rebuildProjectionFromJournal(rebuiltAt: Date())
+            return
         }
 
+        if loadEventsForRecentActivity {
+            _ = try loadRecentEventsForSummary()
+        }
+    }
+
+    private func rebuildProjectionFromJournal(rebuiltAt: Date = Date()) throws {
         let events = try loadEvents()
-        projection = BurnBarMissionControlProjectionFile.empty(now: projection?.rebuiltAt ?? Date())
+        projection = BurnBarMissionControlProjectionFile.empty(now: rebuiltAt)
         seenEventIDs = []
         for event in events.sorted(by: MissionControlMissionStateMerger.eventSort) {
+            try Task.checkCancellation()
             try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
         }
         try writeProjection()
@@ -972,7 +981,19 @@ public actor BurnBarMissionControlStore {
             return cachedEvents
         }
         let events = try journal.readEventsFromDisk(decoder: decoder)
+        try Task.checkCancellation()
         cachedEvents = events
+        cachedRecentEvents = nil
+        return events
+    }
+
+    private func loadRecentEventsForSummary(limit: Int = 100) throws -> [BurnBarControllerEvent] {
+        if let cachedEvents {
+            cachedRecentEvents = Array(cachedEvents.suffix(limit))
+            return cachedRecentEvents ?? []
+        }
+        let events = try journal.readRecentEventsFromDisk(limit: limit, decoder: decoder)
+        cachedRecentEvents = events
         return events
     }
 
@@ -1273,6 +1294,10 @@ public actor BurnBarMissionControlStore {
             cachedEvents = [event]
         } else {
             cachedEvents?.append(event)
+        }
+        if cachedRecentEvents != nil {
+            cachedRecentEvents?.append(event)
+            cachedRecentEvents = cachedRecentEvents.map { Array($0.suffix(100)) }
         }
         try writeProjection()
     }

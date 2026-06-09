@@ -215,6 +215,14 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
       changedFiles.add(uri.toString());
     }
 
+    const confirmed = await this.api.confirmWorkspaceEdit(request.changes, [...changedFiles]);
+    if (!confirmed) {
+      throw new OpenBurnBarWorkspaceRpcError(
+        'APPLY_PATCH_CANCELLED',
+        'Workspace patch application was cancelled by the operator.'
+      );
+    }
+
     const applied = await this.api.applyEdit(edit);
     if (!applied) {
       throw new OpenBurnBarWorkspaceRpcError('APPLY_EDIT_FAILED', 'VS Code rejected the OpenBurnBar workspace edit.');

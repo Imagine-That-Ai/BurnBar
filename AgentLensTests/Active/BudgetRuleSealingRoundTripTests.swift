@@ -18,10 +18,10 @@ final class BudgetRuleSealingRoundTripTests: XCTestCase {
         let label = "Engineering Cap"
 
         var doc: [String: Any] = [:]
-        doc["sealedProjectName"] = try CloudVaultCrypto.dictionary(
+        doc["sealedProjectName"] = try CloudVaultCrypto.firestoreDictionary(
             CloudVaultCrypto.sealText(projectName, keyData: vaultKey)
         )
-        doc["sealedLabel"] = try CloudVaultCrypto.dictionary(
+        doc["sealedLabel"] = try CloudVaultCrypto.firestoreDictionary(
             CloudVaultCrypto.sealText(label, keyData: vaultKey)
         )
         if let hash = CloudVaultCrypto.projectKeyHash(for: projectName, keyData: vaultKey) {
@@ -81,7 +81,7 @@ final class BudgetRuleSealingRoundTripTests: XCTestCase {
         var doc: [String: Any] = [
             "projectName": "Stale Plaintext"
         ]
-        doc["sealedProjectName"] = try CloudVaultCrypto.dictionary(
+        doc["sealedProjectName"] = try CloudVaultCrypto.firestoreDictionary(
             CloudVaultCrypto.sealText("Sealed Truth", keyData: vaultKey)
         )
 

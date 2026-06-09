@@ -69,6 +69,56 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Deterministic Signal envelope placeholder wraps used only in first-party contract tests"
+regexTarget = "match"
+regexes = [
+  '''recipientIdentityKeyB64"?\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''sealedContentKeyB64"?\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultSignalEnvelopeTests\.swift''',
+  '''functions/src/__tests__/signalEnvelopeExport\.test\.ts''',
+  '''packages/signal-envelope-contracts/src/cloudVaultSignalEnvelope\.test\.ts''',
+  '''packages/signal-envelope-contracts/src/index\.test\.ts''',
+  '''services/hosted-mcp/src/signalEnvelopeContracts\.test\.ts''',
+]
+
+[[allowlists]]
+description = "Escrow fingerprint parity tests use public P-256 keys, not private key material"
+regexTarget = "match"
+regexes = [
+  '''key\s*=\s*"[A-Za-z0-9+/_=-]{80,}"''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/EscrowDeviceSafetyCodeTests\.swift''',
+  '''functions/src/__tests__/escrowDeviceTrustFingerprint\.test\.ts''',
+]
+
+[[allowlists]]
+description = "Gateway size-limit constants reference imported protocol caps, not credential values"
+regexTarget = "match"
+regexes = [
+  '''HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64\s*=\s*SIGNAL_MAX_KEY_WRAP_B64''',
+]
+paths = [
+  '''functions/src/hermesGateway\.ts''',
+]
+
+[[allowlists]]
+description = "Vendored libsignal cryptographic KATs and registration fixtures are deterministic public test vectors"
+regexTarget = "match"
+regexes = [
+  '''"key"\s*:\s*"[A-Fa-f0-9]{32,128}"''',
+  '''"(profileKey|masterKey|media_root_backup_key|mediaRootBackupKey|root_key|admin_key|rootKey|adminKey|recoveryPassword|aciIdentityKey|pniIdentityKey)"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+]
+paths = [
+  '''Vendor/libsignal/rust/crypto/tests/data/aes_gcm_test\.json''',
+  '''Vendor/libsignal/rust/message-backup/tests/res/.*''',
+  '''Vendor/libsignal/java/client/src/test/java/org/signal/libsignal/net/RegistrationServiceTest\.java''',
+  '''Vendor/libsignal/rust/net/chat/src/ws/registration/request\.rs''',
+]
+
+[[allowlists]]
 description = "Swift UserDefaults key constants and test lookup keys, not credential material"
 regexTarget = "match"
 regexes = [

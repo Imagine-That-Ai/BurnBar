@@ -24,6 +24,7 @@ public struct DataDomain: Identifiable, Codable, Sendable {
     public let actions: [String]
     public let entitlementGate: String?
     public let suspensionSurface: String?
+    public let cloudVaultRewrapStrategy: String?
     public let sealingScheme: String?
 }
 
@@ -37,6 +38,7 @@ public enum DataDomains {
             countSource: "usage", byteSource: nil,
             retention: "rolling", actions: ["view", "export", "delete"],
             entitlementGate: nil, suspensionSurface: nil,
+            cloudVaultRewrapStrategy: "document_envelopes",
             sealingScheme: nil
         ),
         DataDomain(
@@ -47,6 +49,7 @@ public enum DataDomains {
             countSource: "chat_threads", byteSource: nil,
             retention: "until_deleted", actions: ["view", "export", "delete"],
             entitlementGate: "burnbar_pro", suspensionSurface: "burnbar_cloud",
+            cloudVaultRewrapStrategy: "document_envelopes",
             sealingScheme: nil
         ),
         DataDomain(
@@ -57,16 +60,18 @@ public enum DataDomains {
             countSource: "cloud_search_documents", byteSource: "session_logs",
             retention: "until_deleted", actions: ["view", "export", "delete"],
             entitlementGate: "burnbar_pro", suspensionSurface: "burnbar_cloud",
+            cloudVaultRewrapStrategy: "document_and_storage_envelopes",
             sealingScheme: nil
         ),
         DataDomain(
             id: "pensieve", title: "Pensieve Knowledge", icon: "brain.head.profile",
-            encryptionTier: .endToEnd, summary: "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN over them without reading your content, though these structures still reveal some recurrence/co-occurrence patterns. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
+            encryptionTier: .endToEnd, summary: "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Text is sealed on-device; hosted ANN recall is an explicit opt-in over cloaked vectors and opaque keyed hashes. Those structures still reveal structural signals such as vector geometry, recurrence/co-occurrence patterns, counts, and access timing. Use local-only recall for sensitive memories when available. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
             serverSees: ["cloaked 384-dim vectors", "sourceKind", "opaque keyed slug/dedup hashes", "opaque repo match token", "chunk/byte counts", "timestamps"], deviceOnly: ["chunk text", "source paths", "repo names", "section/category metadata"],
             firestorePaths: ["cloud_search_knowledge", "knowledge_sync_manifests", "knowledge_repos"], storagePaths: [],
             countSource: "knowledge_sync_manifests.chunkCount", byteSource: "knowledge_sync_manifests.byteCount",
             retention: "until_deleted", actions: ["view", "export", "delete", "configure", "sync"],
             entitlementGate: "burnbar_pro_max", suspensionSurface: "burnbar_cloud_pro",
+            cloudVaultRewrapStrategy: "document_envelopes",
             sealingScheme: "cloudvault-aesgcm-v2"
         ),
         DataDomain(
@@ -77,16 +82,18 @@ public enum DataDomains {
             countSource: "provider_accounts", byteSource: nil,
             retention: "until_disconnected", actions: ["view", "revoke"],
             entitlementGate: nil, suspensionSurface: nil,
+            cloudVaultRewrapStrategy: nil,
             sealingScheme: nil
         ),
         DataDomain(
             id: "connected_devices", title: "Connected Devices & Pairings", icon: "laptopcomputer.and.iphone",
             encryptionTier: .serverReadable, summary: "Your paired Macs, phones, and relays (Hermes, Pi agent, iroh) and which can talk to your account. NOTE: paired relay and hosted-gateway frame contents are only claimed as sealed after paired E2EE is enabled and the runtime-readiness gate is complete; relay routing metadata, public keys, coarse tool labels, thread ids, attachment ids, and delivery state remain visible. The per-agent subscription graph is cloaked behind opaque keyed doc ids.",
             serverSees: ["device ids", "pairing metadata", "last seen", "relay routing", "opaque relay key material (public keys)"], deviceOnly: ["paired relay + gateway frame contents after E2EE/runtime readiness is complete (message text, sender names, attachment file names — sealed on-device in that mode)"],
-            firestorePaths: ["devices", "hermes_connections", "hermes_pairings", "hermes_relay_requests", "hermes_session_cache", "hermes_gateway_clients", "hermes_gateway_destinations", "hermes_gateway_events", "hermes_gateway_messages", "hermes_gateway_typing", "hermes_gateway_state", "hermes_gateway_attachments", "hermes_gateway_approvals", "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests", "iroh_pairing", "iroh_pairing_keys", "runtime_connection_preferences"], storagePaths: ["hermes_gateway_attachments/**"],
+            firestorePaths: ["devices", "hermes_connections", "hermes_pairings", "hermes_relay_requests", "hermes_session_cache", "hermes_gateway_clients", "hermes_gateway_destinations", "hermes_gateway_events", "hermes_gateway_messages", "hermes_gateway_typing", "hermes_gateway_state", "hermes_gateway_attachments", "hermes_gateway_approvals", "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests", "iroh_pairing", "iroh_pairing_keys", "relay_sender_keys", "runtime_connection_preferences"], storagePaths: ["hermes_gateway_attachments/**"],
             countSource: "devices", byteSource: nil,
             retention: "until_revoked", actions: ["view", "revoke"],
             entitlementGate: nil, suspensionSurface: nil,
+            cloudVaultRewrapStrategy: nil,
             sealingScheme: nil
         ),
         DataDomain(
@@ -97,6 +104,7 @@ public enum DataDomains {
             countSource: "remote_mcp_clients", byteSource: nil,
             retention: "until_revoked", actions: ["view", "revoke"],
             entitlementGate: "burnbar_pro", suspensionSurface: "remote_mcp",
+            cloudVaultRewrapStrategy: nil,
             sealingScheme: nil
         ),
         DataDomain(
@@ -107,6 +115,7 @@ public enum DataDomains {
             countSource: "computer_use_sessions", byteSource: nil,
             retention: "rolling", actions: ["view", "delete"],
             entitlementGate: "burnbar_pro_max", suspensionSurface: "hosted_agent_control",
+            cloudVaultRewrapStrategy: nil,
             sealingScheme: nil
         ),
         DataDomain(
@@ -117,6 +126,7 @@ public enum DataDomains {
             countSource: "media_attachment_manifests", byteSource: "media_attachment_manifests",
             retention: "rolling", actions: ["view", "delete"],
             entitlementGate: "burnbar_pro_max", suspensionSurface: "floo_relay",
+            cloudVaultRewrapStrategy: "document_envelopes",
             sealingScheme: nil
         ),
         DataDomain(
@@ -127,16 +137,18 @@ public enum DataDomains {
             countSource: "entitlements", byteSource: nil,
             retention: "permanent", actions: ["view"],
             entitlementGate: nil, suspensionSurface: nil,
+            cloudVaultRewrapStrategy: nil,
             sealingScheme: nil
         ),
         DataDomain(
             id: "device_trust_keys", title: "Device Trust & Vault Keys", icon: "lock.shield.fill",
             encryptionTier: .endToEnd, summary: "Which devices are trusted to decrypt your data, and the wrapped vault keys that make end-to-end encryption possible. The crux of the whole E2EE model.",
             serverSees: ["device trust state", "public key fingerprints", "wrapped (ciphertext) key blobs"], deviceOnly: ["the vault key itself (Keychain / 0600 file, never uploaded)"],
-            firestorePaths: ["cloud_vault_state", "cloud_vault_key_wrappers", "escrow_devices", "escrow_public_keys", "signal_identity_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"], storagePaths: [],
+            firestorePaths: ["cloud_vault_state", "cloud_vault_key_wrappers", "cloud_vault_rotation_jobs", "escrow_devices", "escrow_public_keys", "signal_identity_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods"], storagePaths: [],
             countSource: "escrow_devices", byteSource: nil,
             retention: "until_revoked", actions: ["view", "approve", "revoke", "recover"],
             entitlementGate: nil, suspensionSurface: nil,
+            cloudVaultRewrapStrategy: "key_wrappers_only",
             sealingScheme: nil
         ),
         DataDomain(
@@ -147,6 +159,7 @@ public enum DataDomains {
             countSource: "unified_audit_log", byteSource: nil,
             retention: "append_only", actions: ["view", "verify", "export"],
             entitlementGate: nil, suspensionSurface: nil,
+            cloudVaultRewrapStrategy: "document_envelopes",
             sealingScheme: nil
         ),
     ]

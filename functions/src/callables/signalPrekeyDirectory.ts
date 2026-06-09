@@ -48,6 +48,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { db } from "../adminRuntime.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
+import { recordOrUndefined } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { randomBytes } from "node:crypto";
@@ -172,6 +173,12 @@ export function parseFutureExpiry(
   return Timestamp.fromMillis(floored);
 }
 
+function requireFutureExpiry(raw: unknown, fieldName: string, nowMs: number): Timestamp {
+  const expiresAt = parseFutureExpiry(raw, fieldName, nowMs, true);
+  if (!expiresAt) throw new HttpsError("invalid-argument", `${fieldName} is required.`);
+  return expiresAt;
+}
+
 /** Build the persisted signed-prekey doc body (minus server createdAt/updatedAt). */
 export function buildSignedPreKeyDoc(
   raw: Record<string, unknown>,
@@ -216,7 +223,7 @@ export function buildOneTimePreKeyDoc(
     1,
     MAX_INT32,
   );
-  const expiresAt = parseFutureExpiry(raw.expiresAt, "oneTimePreKey.expiresAt", nowMs, true)!;
+  const expiresAt = requireFutureExpiry(raw.expiresAt, "oneTimePreKey.expiresAt", nowMs);
   return {
     id: oneTimePreKeyId,
     data: {
@@ -247,7 +254,7 @@ export function buildKyberPreKeyDoc(
     1,
     MAX_INT32,
   );
-  const expiresAt = parseFutureExpiry(raw.expiresAt, "kyberPreKey.expiresAt", nowMs, true)!;
+  const expiresAt = requireFutureExpiry(raw.expiresAt, "kyberPreKey.expiresAt", nowMs);
   return {
     id: kyberPreKeyId,
     data: {
@@ -390,7 +397,10 @@ async function resolveTrustedIdentity(uid: string, identityKeyIdRaw: unknown): P
   if (!snap.exists) {
     throw new HttpsError("failed-precondition", "Publish the Signal identity key before its prekey bundle.");
   }
-  const data = snap.data() as DocumentData;
+  const data = snap.data();
+  if (!data) {
+    throw new HttpsError("failed-precondition", "Stored Signal identity key is malformed.");
+  }
   const deviceId = String(data.deviceId ?? "");
   const keyVersion = Number(data.keyVersion ?? 0);
   const identityPublicKeyData = String(data.publicKeyData ?? "");
@@ -401,7 +411,10 @@ async function resolveTrustedIdentity(uid: string, identityKeyIdRaw: unknown): P
   if (!deviceSnap.exists) {
     throw new HttpsError("failed-precondition", "Signal identity key has no backing escrow device.");
   }
-  const deviceData = deviceSnap.data() as DocumentData;
+  const deviceData = deviceSnap.data();
+  if (!deviceData) {
+    throw new HttpsError("failed-precondition", "Backing escrow device is malformed.");
+  }
   if (!TRUSTED_DEVICE_STATES.has(String(deviceData.trustState))) {
     throw new HttpsError("failed-precondition", "Backing escrow device is not trusted.");
   }
@@ -440,7 +453,11 @@ export const publishSignalPrekeyBundle = onCall(
       if (request.data?.signedPreKey === undefined || request.data?.signedPreKey === null) {
         throw new HttpsError("invalid-argument", "signedPreKey is required.");
       }
-      const signed = buildSignedPreKeyDoc(request.data.signedPreKey as Record<string, unknown>, ctx, nowMs);
+      const signedPreKey = recordOrUndefined(request.data.signedPreKey);
+      if (!signedPreKey) {
+        throw new HttpsError("invalid-argument", "signedPreKey must be an object.");
+      }
+      const signed = buildSignedPreKeyDoc(signedPreKey, ctx, nowMs);
 
       const oneTimeRaw = requireRecordArray(
         request.data?.oneTimePreKeys ?? [],
@@ -588,7 +605,10 @@ export const claimSignalPrekeyBundle = onCall(
             ref: d.ref,
             data: d.data(),
           })),
-        )!;
+        );
+        if (!kyberPick) {
+          throw new HttpsError("resource-exhausted", "No unexpired Kyber prekeys are available; publish more before claiming.");
+        }
         const oneTimePick = selectPrekeyToClaim(
           oneTimeSnap.docs.map((d) => ({
             id: d.id,
@@ -666,8 +686,12 @@ export const recordSignalSession = onCall(
       if (request.data?.session === undefined || request.data?.session === null) {
         throw new HttpsError("invalid-argument", "session is required.");
       }
+      const sessionRaw = recordOrUndefined(request.data.session);
+      if (!sessionRaw) {
+        throw new HttpsError("invalid-argument", "session must be an object.");
+      }
       const session = buildSessionDoc(
-        request.data.session as Record<string, unknown>,
+        sessionRaw,
         {
           identityKeyId: identity.identityKeyId,
           deviceId: identity.deviceId,
@@ -705,7 +729,10 @@ export const recordSignalRotation = onCall(
       if (request.data?.rotation === undefined || request.data?.rotation === null) {
         throw new HttpsError("invalid-argument", "rotation is required.");
       }
-      const raw = request.data.rotation as Record<string, unknown>;
+      const raw = recordOrUndefined(request.data.rotation);
+      if (!raw) {
+        throw new HttpsError("invalid-argument", "rotation must be an object.");
+      }
       const rewrapRequired = raw.rewrapRequired === true;
       const rewrapJobId = rewrapRequired ? `rewrap_${randomBytes(12).toString("hex")}` : undefined;
       const rotation = buildRotationEventDoc(

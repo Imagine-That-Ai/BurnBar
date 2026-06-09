@@ -36,7 +36,7 @@ class AndroidSignalInteropKatTest {
 
         // Reconstruct Bob's store from the Swift-produced key material.
         val bobIdentity = IdentityKeyPair(b64(fx.getString("bobIdentityKeyPairB64")))
-        val bob = AndroidSignalProtocolStore(
+        val bob = AndroidSignalProtocolStore.testingTOFU(
             bobIdentity,
             fx.getInt("bobRegistrationId"),
             InMemorySignalRecordVault(),
@@ -70,7 +70,7 @@ class AndroidSignalInteropKatTest {
         val fx = JSONObject(raw)
 
         val bobIdentity = IdentityKeyPair(b64(fx.getString("bobIdentityKeyPairB64")))
-        val bob = AndroidSignalProtocolStore(
+        val bob = AndroidSignalProtocolStore.testingTOFU(
             bobIdentity,
             fx.getInt("bobRegistrationId"),
             InMemorySignalRecordVault(),
