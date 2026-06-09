@@ -32,7 +32,7 @@ The unifying flaw: **the Mac was not the authoritative root of trust for who may
 
 Make the **Mac** the authoritative root of trust, mirroring the existing
 `HermesGatewayAgentKeyPinStore` and `SignalAtRestSealer` pinning models. Six changes (F1–F6);
-F4 is intentionally deferred (see below).
+F4's two halves are split across this remediation and the concurrent relay-sealing effort.
 
 ### F1 — Mac-side controller-key pinning (keystone)
 
@@ -97,14 +97,28 @@ bundle before any session state is created. The transport is currently unwired; 
 wiring **must** supply the anchor. The protocol address is intentionally **not** re-keyed, to
 keep the cross-platform interop KAT fixtures byte-compatible.
 
+### F4 — relay/transport integrity
+
+Two halves, both now addressed:
+
+- **Confidentiality + authenticity (the high-severity half)** landed via the concurrent relay
+  sealing effort (commit *"require authenticated command plane"*): legacy plaintext relay
+  envelopes are rejected for Mac-dispatched control/agent operations, and sender-authenticated
+  v3 sealing/opening is applied across WSS, Firestore, iroh, iOS, and Android — so a relay can
+  no longer read the typed text / coordinates of a control intent.
+- **Chunk integrity (this change).** Each `response.chunk` is AES-GCM sealed with its `sequence`
+  bound into the AAD, so a relay cannot forge, modify, or re-sequence a chunk — but it could
+  silently **drop** one, truncating the reassembled result. The new pure
+  `ChunkReassemblyValidator` (`OpenBurnBarCore`) records each received sequence and, on
+  `response.complete`, rejects a response missing any chunk `0..<chunkCount` (a no-op for
+  streaming completions that declare no total). It is wired into both iOS client reassembly
+  paths (`HermesIrohRelayTransport.send` and `HermesService.send`).
+
 ## Deferred
 
-- **F4 — relay/transport confidentiality + chunk sequencing.** Deferred in this change to
-  avoid conflicting with the concurrent "Hermes gateway E2EE / relay sender-trust" effort
-  that is actively rewriting the same transport/sealing layer
-  (`IrohRelayRequestHandler`, `HermesIrohRelayTransport`, `HermesService`, the relay, and the
-  Android relay crypto). The control-frame confidentiality belongs in that work; client-side
-  chunk gap/dup/order enforcement is a follow-up. Tracked separately.
+- **F4 — Android chunk-integrity parity.** The iOS clients now reject a truncated chunk stream;
+  the Android client should adopt the same `chunkCount`-completeness check on its relay
+  reassembly. Tracked as a follow-up.
 - **F2 — cryptographic approver consent.** A distinct-device *signed* approval (proving the
   approver consented, not merely that a `trusted` doc exists) requires provisioning a per-
   device signing key on iOS/iPadOS/Android/macOS/Web — escrow devices today hold only P-256
@@ -120,6 +134,7 @@ keep the cross-platform interop KAT fixtures byte-compatible.
 | F2 fingerprint | `escrowDeviceTrustFingerprint.test.ts` (13) | `npx vitest run src/__tests__/escrowDeviceTrustFingerprint.test.ts` |
 | F5 fail-closed | `SignalAtRestFallbackPolicyTests` (3) | `swift test --filter SignalAtRestFallbackPolicyTests` |
 | F6 identity pin | `OBBSignalIdentityPinTests` (4) | `swift test --filter OBBSignalIdentityPinTests` |
+| F4 chunk integrity | `ChunkReassemblyValidatorTests` (7) | `swift test --filter ChunkReassemblyValidatorTests` |
 
 All `OpenBurnBarComputerUseCore` (215), `OpenBurnBarSignalCore` (20), and
 `OpenBurnBarSignalSessionTransport` (3) tests pass. The app-target (AgentLens / OpenBurnBar)
