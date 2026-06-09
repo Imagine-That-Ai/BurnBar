@@ -69,6 +69,16 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Deterministic libsignal XEd25519 public-key KATs used only in server-side trust-chain signature tests"
+regexTarget = "match"
+regexes = [
+  '''keyHex:\s*"[A-Fa-f0-9]{66}"''',
+]
+paths = [
+  '''functions/src/__tests__/escrowDeviceTrustChainSignature\.test\.ts''',
+]
+
+[[allowlists]]
 description = "Deterministic Signal envelope placeholder wraps used only in first-party contract tests"
 regexTarget = "match"
 regexes = [

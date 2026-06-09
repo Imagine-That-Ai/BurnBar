@@ -6,21 +6,23 @@ screen/keystrokes/data are exfiltrated* — and began a parallel remediation
 before discovering the in-flight coordinated work in
 [`SECURITY_REMEDIATION_2026-06-09.md`](SECURITY_REMEDIATION_2026-06-09.md).
 
-Per the owner's call, the parallel work was reconciled: **keep the one
-plausibly net-new fix (B1, already committed + tested); revert the overlapping
-in-progress edits; leave C-3 to its owner.** This memo records the mapping so
-nothing is lost and no one re-does it.
+Per the owner's call, the parallel work was reconciled against the coordinated
+pre-beta remediation branch. The net-new fixes that survived reconciliation are:
+**B1** server-side trust-chain signature verification, **A1/A2** Swift broker
+approval + sandbox hardening, and **C3** persisted phone-control replay
+counters. This memo records the mapping so nothing is lost and no one re-does
+it.
 
 ## Mapping (parallel finding → coordinated item → disposition)
 
 | Parallel finding | Their item | Disposition |
 |---|---|---|
 | **B1** — `approveEscrowDeviceTrust` never cryptographically verified the device-trust-chain signature (stored it verbatim) | adjacent to **C-2** (escrow trust); their C-2 design is *client-side verify-before-wrap* + fingerprint backstop, and does **not** include server-side signature verification | **KEPT — committed** (`8a673cbc2`). See details below. |
-| **A1/A2** — Swift `AgentToolBroker` shell tool: no per-action approval + weak `(allow default)` sandbox | **C-4** (agent command-guard, fail-closed) | **REVERTED.** C-4 is done in the *Python* hermes-agent fork and deliberately rejected a blanket `sandbox-exec`. See residual-gap note. |
+| **A1/A2** — Swift `AgentToolBroker` shell tool: no per-action approval + weak `(allow default)` sandbox | **C-4** (agent command-guard, fail-closed) | **KEPT — committed** (`8a673cbc2`, tightened by `addc96311`). Privileged broker tools now fail closed without a per-action approver, and the restricted shell denies network, credential-store reads, and out-of-workspace writes with canonical Seatbelt paths. |
 | **B3** — live relay-request plane trusts server `trustState` instead of a device-rooted chain | **C-1 / H-2 / F1–F6** (authenticated+pinned relay, Signal-identity gate, Mac-rooted trust) | **REVERTED** as duplicative of the trust-root work. See residual-gap note. |
 | **C1** — at-rest readers swallow sender-auth failures and fall through to the unauthenticated legacy opener | F5-adjacent (sender-auth downgrade) | Swept into `8a673cbc2` (3 readers now consult `SignalAtRestFallbackPolicy`, fail-closed on `.senderAuthMissing/.senderSignatureInvalid/.bindingMismatch` + wrapper `signalBindingMismatch`). Owner: confirm desired. |
 | **A4** — `InsightMissionApprovalPolicy` `default:` returned `false` (fail-open direction) | — | Swept into `8a673cbc2`; `default:` now returns `true` (fail-closed) + 7 tests pass. |
-| **C3** — phone-control replay counter in-memory only (replayable after daemon restart) | **C-3** | **Collision** — owner implemented C-3 concurrently (`PhoneControlReplayCounterStore.swift` + `replayCounterPersistenceFailed`). Left entirely to them; my scaffolding residue (a `replayCounterStore` property + load-on-init) was incorporated by their version. |
+| **C3** — phone-control replay counter in-memory only (replayable after daemon restart) | **C-3** | **KEPT — committed** (`addc96311`). `PhoneControlReplayCounterStore` persists per-peer high-water marks with 0600 permissions and fail-closed validation on persistence failure. |
 | **D1** — chunk-drop silent truncation on Firestore-fallback + Android | **F4** | Already committed (`2dff9416c`) for iOS realtime; Firestore-fallback + Android parity is their tracked follow-up. |
 | **A3** — local-auth "proof" is self-signed by the controller key (no independent 2nd factor) | defense-in-depth once **B1+C-1+F1-F6** close the entry path | Not implemented (needs a Secure-Enclave-distinct key + Mac challenge-nonce + cross-platform wire change + on-device test). Design below. |
 
@@ -58,22 +60,30 @@ is now in HEAD (`8a673cbc2`). Coordinate before rebasing C-2 onto it.**
   verify-before-wrap stops a *compromised backend* from harvesting the vault
   key. Land both.
 
-## REVERTED — residual gaps the owners should weigh
+## RESOLVED AND RESIDUAL
 
-1. **Swift `AgentToolBroker` shell surface (A1/A2) is back to its original state.**
-   `AgentLens/Services/CLIBridge/OpenAICompatibleChatGatewayClient.swift` still
-   has: (a) `shell_run`/`workspace_write_file`/`desktop_export_file` executing
-   with **no per-action approval** once a grant is active, and (b) the
-   `(allow default)` + out-of-workspace-write-deny sandbox that leaves **outbound
-   network and secret-store reads open** (`cat ~/.ssh/id_rsa | curl …`). C-4
-   hardened the *Python* hermes-agent guard, not this *Swift* broker. **Decision
-   needed:** is this Swift surface in scope, and if so apply C-4's precise-guard
-   philosophy here (vs. the reverted sandbox-exec approach). The reverted A2
-   profile was OS-validated to deny network + `~/.ssh`/Keychains/Messages reads +
-   out-of-workspace writes while keeping `git`/`2>/dev/null`/system reads working
-   — available if a sandbox approach is wanted for this surface.
+1. **Swift `AgentToolBroker` shell surface (A1/A2) is resolved.**
+   `AgentLens/Services/CLIBridge/OpenAICompatibleChatGatewayClient.swift` now
+   gates `shell_run`, `workspace_write_file`, and `desktop_export_file` behind
+   explicit per-action approval unless the grant is already trusted. The
+   restricted shell profile denies network, denies reads from high-value
+   credential/private-data stores (`~/.ssh`, Keychains, Messages, browser
+   profiles, cloud CLIs, etc.), and confines writes to the workspace. The profile
+   canonicalizes workspace/home paths before emitting Seatbelt rules so `/var`
+   versus `/private/var` cannot punch holes in the boundary. Proof:
+   `CLIBridgeTests` executes the profile with `sandbox-exec`; 85 tests pass.
 
-2. **Live relay-request plane device-rooted trust (B3) reverted.**
+2. **Phone-control replay persistence (C3) is resolved.**
+   `PhoneControlAuthorityValidator` restores persisted counters on init,
+   never clears high-water marks on peer deregistration/revocation, and commits
+   each accepted counter through `PhoneControlReplayCounterStore`. If the store
+   cannot persist the new high-water mark, validation fails closed with
+   `replay_counter_persistence_failed`. Proof:
+   `PhoneControlAuthorityValidatorAttestationTests` rejects a captured envelope
+   after validator restart and verifies max-merge rollback resistance; 17 tests
+   pass.
+
+3. **Live relay-request plane device-rooted trust (B3) remains a tracked residual.**
    `FirestoreHermesRelaySenderTrustResolver.fetchTrustedSenderRecord` still gates
    on the server-asserted `escrow_devices.trustState == "trusted"` (+ HPKE-Auth
    to a server-served key) and does **not** run the device-rooted
@@ -85,7 +95,7 @@ is now in HEAD (`8a673cbc2`). Coordinate before rebasing C-2 onto it.**
    Signal identity and bind the relay record's `signalIdentityKeyId`/fingerprint
    to the chain-verified device, fail-closed.)
 
-3. **A3 (self-signed local-auth proof) — design, not implemented.** The
+4. **A3 (self-signed local-auth proof) — design, not implemented.** The
    "biometric" local-auth proof is verified only against the controller's *own*
    pinned key (`PhoneControlAuthorityValidator.validateLocalAuthProofIfNeeded`),
    so a device holding a trusted controller key can mint its own proof. Now
@@ -99,8 +109,10 @@ is now in HEAD (`8a673cbc2`). Coordinate before rebasing C-2 onto it.**
 
 Entry (enroll/impersonate a device → live control) is closed by **B1**
 (server verifies the chain) + **C-1/C-2/H-2/F1-F6** (authenticated relay +
-Mac-rooted trust). Escalation (peer message → code execution) is the agent
-tool surface — **C-4** (Python guard) + residual-gap #1 (Swift broker). The
-single most dangerous residual, if #1 is unowned, is **prompt-injection →
-`shell_run` → arbitrary read/network exec** inside an active grant on the Swift
-broker.
+Mac-rooted trust), with B3 retained above as the live-resolver confirmation
+point. Escalation (peer message → code execution) is reduced by **C-4** (Python
+guard) plus the Swift broker's A1/A2 approval and sandbox hardening. The
+remaining high-value follow-through is to make the live relay resolver verify
+the same device-rooted chain the at-rest CloudVault paths use, then replace the
+controller-self-signed local-auth proof with a distinct hardware-backed
+user-presence key.
