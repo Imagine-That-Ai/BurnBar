@@ -566,6 +566,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         )
         var deadline = started.addingTimeInterval(effectiveTimeout)
         var receivedChunkCount = 0
+        // F4: detect a relay that drops/withholds a sealed chunk (silent truncation).
+        var chunkValidator = ChunkReassemblyValidator()
         var didRecordFirstChunk = false
         while true {
             let remaining = deadline.timeIntervalSinceNow
@@ -582,6 +584,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             case .responseChunk:
                 guard let chunk = try chunkRecord(from: frame, keyData: keyData, uid: uid, connectionID: payload.connectionID, requestID: requestID) else { continue }
                 receivedChunkCount += 1
+                try chunkValidator.record(sequence: chunk.sequence)
                 let graceDeadline = Date().addingTimeInterval(Self.responseCompleteGraceTimeout)
                 if deadline < graceDeadline {
                     deadline = graceDeadline
@@ -624,6 +627,10 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     return
                 }
             case .responseComplete:
+                // F4: refuse a truncated response — a relay that dropped a sealed
+                // chunk leaves a gap below the declared `chunkCount`. No-op when the
+                // completion does not declare a total (streaming).
+                try chunkValidator.validateComplete(declaredChunkCount: frame.payload?.chunkCount ?? 0)
                 let rtt = Int(Date().timeIntervalSince(started) * 1000)
                 await auditLogger.record(
                     event: .streamClosed,

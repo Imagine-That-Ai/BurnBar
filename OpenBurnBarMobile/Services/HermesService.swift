@@ -3948,6 +3948,8 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
         try await task.send(.data(encoder.encode(startFrame)))
 
         let deadline = Date().addingTimeInterval(timeout)
+        // F4: detect a relay that drops/withholds a sealed chunk (silent truncation).
+        var chunkValidator = ChunkReassemblyValidator()
         while Date() < deadline {
             let frame = try await receiveFrame(
                 from: task,
@@ -3962,7 +3964,10 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
             case .responseChunk:
                 guard let chunk = try chunkRecord(from: frame, uid: uid, keyData: keyData) else { continue }
                 try onChunk(chunk)
+                try chunkValidator.record(sequence: chunk.sequence)
             case .responseComplete:
+                // F4: refuse a truncated response (a relay dropped a sealed chunk).
+                try chunkValidator.validateComplete(declaredChunkCount: frame.payload?.chunkCount ?? 0)
                 return
             case .responseError:
                 throw HermesServiceError.relayFailure(
