@@ -502,6 +502,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           bash scripts/ci/verify-libsignal-pin.sh --network
+          # M-6: the Vendor/libsignal fork may differ from official only in
+          # allow-listed build files (never the crypto core).
+          bash scripts/ci/verify-libsignal-submodule-delta.sh
           bash scripts/ci/verify-corresponding-source-archive.sh --version "$VERSION"
           SOURCE_ARCHIVE="$RUNNER_TEMP/OpenBurnBar-${VERSION}-corresponding-source.tar.gz"
           scripts/create-corresponding-source.sh --version "$VERSION" --output "$SOURCE_ARCHIVE"
