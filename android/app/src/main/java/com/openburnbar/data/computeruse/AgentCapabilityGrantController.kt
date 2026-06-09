@@ -7,7 +7,6 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
@@ -208,17 +207,7 @@ class AgentCapabilityGrantController(
             )
         PhoneControlAuthorityPublisher(firestore)
             .publishAgentGrantAuthority(uid = uid, sourceDeviceId = request.sourceDeviceId, authority = authority)
-        firestore.collection("users").document(uid)
-            .collection("agent_capability_grant_requests").document(request.requestId)
-            .set(
-                wireRequestMap(signedWire) +
-                    mapOf(
-                        "status" to AgentGrantDecisionStatus.QUEUED.wireValue,
-                        "createdAt" to FieldValue.serverTimestamp(),
-                        "updatedAt" to FieldValue.serverTimestamp(),
-                    ),
-            )
-            .await()
+        ComputerUseSecurityCallableClient().queueAgentCapabilityGrantRequest(wireRequestMap(signedWire))
     }
 
     private fun signedWireRequest(request: AgentCapabilityGrantRequest): com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest {

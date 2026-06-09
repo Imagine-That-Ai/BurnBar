@@ -550,9 +550,6 @@ final class MercuryRouter: ObservableObject {
             MercuryPeer.Feature.fileReceive.rawValue,
             MercuryPeer.Feature.callReceive.rawValue
         ]
-        if consentStore.alwaysAllow {
-            capabilities.append(MercuryPeer.Feature.mirrorAutoAccept.rawValue)
-        }
         if remoteUnlockReadiness.capabilities().enabled {
             capabilities.append(MercuryPeer.Feature.remoteUnlockHost.rawValue)
         }
@@ -561,8 +558,13 @@ final class MercuryRouter: ObservableObject {
 
     /// User tapped "Accept" on the incoming-call sheet.
     func acceptMirror(_ request: PendingRequest) async {
-        if !consentStore.alwaysAllow {
-            consentStore.alwaysAllow = true
+        if let mirrorRequest = request.frame.media?.mirrorRequest {
+            consentStore.rememberAcceptedPeer(
+                connectionId: request.frame.connectionId,
+                viewerDeviceId: mirrorRequest.viewerDeviceId,
+                controlAuthorityPeerNodeId: mirrorRequest.controlAuthorityPeerNodeId,
+                requesterName: request.requesterName
+            )
         }
         await beginMirror(for: request)
     }
@@ -1151,11 +1153,17 @@ final class MercuryRouter: ObservableObject {
             controlStreamID: controlStreamID
         )
 
+        let hasMirrorAutoAcceptGrant = consentStore.canAutoAccept(
+            connectionId: frame.connectionId,
+            viewerDeviceId: req.viewerDeviceId,
+            controlAuthorityPeerNodeId: req.controlAuthorityPeerNodeId
+        )
+
         // Consent fast-paths:
-        // - normal unlocked mirrors can use the durable "always allow" Mac grant;
+        // - normal unlocked mirrors require a per-peer expiring grant;
         // - locked Remote Unlock mirrors can use a signed trusted-device session.
         // Neither path stores or replays the user's Mac password.
-        if consentStore.alwaysAllow || remoteUnlockSession != nil {
+        if hasMirrorAutoAcceptGrant || remoteUnlockSession != nil {
             Self.log.info("router_mirror_request_auto_accept requestID=\(req.requestId, privacy: .public)")
             Self.debugTrace("router_mirror_request_auto_accept requestID=\(req.requestId)")
             await beginMirror(for: pending)

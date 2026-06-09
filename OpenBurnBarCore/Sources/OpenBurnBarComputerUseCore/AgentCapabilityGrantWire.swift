@@ -9,6 +9,7 @@ public enum AgentCapabilityGrantWireError: Error, Equatable, Sendable {
     case unsupportedDeliveryMode(String)
     case unsupportedReceiptStatus(String)
     case unsupportedDenialReason(String)
+    case presetCapabilityMismatch
 }
 
 public extension AgentCapabilityGrantRequest {
@@ -31,6 +32,9 @@ public extension AgentCapabilityGrantRequest {
         }
         guard let deliveryMode = AgentGrantDeliveryMode(rawValue: request.deliveryMode) else {
             throw AgentCapabilityGrantWireError.unsupportedDeliveryMode(request.deliveryMode)
+        }
+        guard preset.matches(capabilities: capabilities, trustMode: trustMode) else {
+            throw AgentCapabilityGrantWireError.presetCapabilityMismatch
         }
         self.init(
             requestID: request.requestId,

@@ -82,6 +82,7 @@ public enum AgentGrantDenialReason: String, Codable, CaseIterable, Hashable, Sen
     case noPairedMac = "no_paired_mac"
     case localAuthenticationRequired = "local_authentication_required"
     case yoloUnavailable = "yolo_unavailable"
+    case grantPresetMismatch = "grant_preset_mismatch"
     case unknown
 }
 

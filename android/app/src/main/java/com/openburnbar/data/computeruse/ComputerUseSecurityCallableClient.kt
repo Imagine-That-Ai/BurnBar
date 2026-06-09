@@ -72,12 +72,101 @@ class ComputerUseSecurityCallableClient(
 
     suspend fun revokeEscrowDeviceTrust(deviceId: String) {
         requireAuthenticatedUser()
+        bindAppCheckAttestation()
         val nonce = issueHighRiskActionNonce()
         val result =
             functions.getHttpsCallable("revokeEscrowDeviceTrust")
                 .call(mapOf("deviceId" to deviceId, "nonce" to nonce))
                 .await()
         requireOk(result.getData(), "Escrow device trust revocation failed.")
+    }
+
+    suspend fun publishPhoneControlAuthority(authority: PhoneControlAuthorityDoc) {
+        requireAuthenticatedUser()
+        bindAppCheckAttestation()
+        val nonce = issueHighRiskActionNonce()
+        val result =
+            functions.getHttpsCallable("publishPhoneControlAuthority")
+                .call(
+                    mapOf(
+                        "deviceId" to authority.deviceId,
+                        "connectionId" to authority.connectionId,
+                        "peerNodeId" to authority.peerNodeId,
+                        "publicKeyBase64" to authority.publicKeyBase64,
+                        "publishedAtMillis" to authority.publishedAtMillis,
+                        "protocolVersion" to authority.protocolVersion,
+                        "nonce" to nonce,
+                    ),
+                )
+                .await()
+        requireOk(result.getData(), "Phone-control authority publication failed.")
+    }
+
+    suspend fun publishRelaySenderKey(
+        deviceId: String,
+        peerNodeId: String,
+        keyId: String,
+        publicKeyBase64: String,
+        relayKeyVersion: Int,
+        publishedAtMillis: Long,
+        signalIdentityKeyId: String,
+        signalIdentityKeyVersion: Int,
+        signalIdentityPublicKeyFingerprint: String,
+    ) {
+        requireAuthenticatedUser()
+        bindAppCheckAttestation()
+        val nonce = issueHighRiskActionNonce()
+        val result =
+            functions.getHttpsCallable("publishRelaySenderKey")
+                .call(
+                    mapOf(
+                        "deviceId" to deviceId,
+                        "peerNodeId" to peerNodeId,
+                        "keyId" to keyId,
+                        "publicKeyBase64" to publicKeyBase64,
+                        "relayKeyVersion" to relayKeyVersion,
+                        "publishedAtMillis" to publishedAtMillis,
+                        "signalIdentityKeyId" to signalIdentityKeyId,
+                        "signalIdentityKeyVersion" to signalIdentityKeyVersion,
+                        "signalIdentityPublicKeyFingerprint" to signalIdentityPublicKeyFingerprint,
+                        "nonce" to nonce,
+                    ),
+                )
+                .await()
+        requireOk(result.getData(), "Relay sender-key publication failed.")
+    }
+
+    suspend fun publishAgentGrantAuthority(
+        deviceId: String,
+        peerNodeId: String,
+        publicKeyBase64: String,
+    ) {
+        requireAuthenticatedUser()
+        bindAppCheckAttestation()
+        val nonce = issueHighRiskActionNonce()
+        val result =
+            functions.getHttpsCallable("publishAgentGrantAuthority")
+                .call(
+                    mapOf(
+                        "deviceId" to deviceId,
+                        "peerNodeId" to peerNodeId,
+                        "publicKeyBase64" to publicKeyBase64,
+                        "nonce" to nonce,
+                    ),
+                )
+                .await()
+        requireOk(result.getData(), "Agent grant authority publication failed.")
+    }
+
+    suspend fun queueAgentCapabilityGrantRequest(payload: Map<String, Any>) {
+        requireAuthenticatedUser()
+        bindAppCheckAttestation()
+        val nonce = issueHighRiskActionNonce()
+        val result =
+            functions.getHttpsCallable("queueAgentCapabilityGrantRequest")
+                .call(payload + mapOf("nonce" to nonce))
+                .await()
+        requireOk(result.getData(), "Agent grant request queueing failed.")
     }
 
     /**

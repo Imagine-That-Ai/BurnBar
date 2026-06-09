@@ -63,6 +63,44 @@ class HermesRelayCryptoTest {
     }
 
     @Test
+    fun `authenticated request AAD matches iOS canonical shape`() {
+        val bytes =
+            HermesRelayCrypto.authenticatedRequestAAD(
+                uid = "u1",
+                connectionId = "c1",
+                requestId = "r1",
+                operation = "cliAgentChat",
+                senderDeviceId = "phone-1",
+                senderPeerNodeId = "node-1",
+                senderCounter = 42,
+                keyId = "relay-v3-abcd",
+            )
+        assertEquals(
+            "OpenBurnBar-HermesRelay-v1|request-v3|u1|c1|r1|cliAgentChat|phone-1|node-1|42|relay-v3-abcd",
+            String(bytes, Charsets.UTF_8),
+        )
+    }
+
+    @Test
+    fun `authenticated key AAD matches iOS canonical shape`() {
+        val bytes =
+            HermesRelayCrypto.authenticatedKeyAAD(
+                uid = "u1",
+                connectionId = "c1",
+                requestId = "r1",
+                operation = "cliAgentChat",
+                senderDeviceId = "phone-1",
+                senderPeerNodeId = "node-1",
+                senderCounter = 42,
+                keyId = "relay-v3-abcd",
+            )
+        assertEquals(
+            "OpenBurnBar-HermesRelay-v1|key-v3|u1|c1|r1|cliAgentChat|phone-1|node-1|42|relay-v3-abcd",
+            String(bytes, Charsets.UTF_8),
+        )
+    }
+
+    @Test
     fun `chunk AAD matches iOS canonical shape including kind and sequence`() {
         val bytes =
             HermesRelayCrypto.chunkAAD(

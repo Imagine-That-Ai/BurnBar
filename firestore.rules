@@ -489,6 +489,52 @@ service cloud.firestore {
         );
     }
 
+    function validCloudSealedTextAt(userId, collection, docID, field, value) {
+      return validCloudSealedText(value)
+        && value.schemaVersion is int
+        && value.schemaVersion >= 2
+        && value.aad == cloudVaultAADContext(userId, collection, docID, field);
+    }
+
+    function validPathBoundCloudSealedText(value, expectedAAD) {
+      return value is map
+        && value.keys().hasAll([
+          "schemaVersion",
+          "algorithm",
+          "keyVersion",
+          "nonce",
+          "ciphertext",
+          "tag",
+          "aad"
+        ])
+        && value.keys().hasOnly([
+          "schemaVersion",
+          "algorithm",
+          "keyVersion",
+          "nonce",
+          "ciphertext",
+          "tag",
+          "aad"
+        ])
+        && value.schemaVersion is int
+        && value.schemaVersion >= 2
+        && value.schemaVersion <= 10
+        && value.algorithm == "AES-256-GCM"
+        && value.keyVersion is int
+        && value.keyVersion >= 1
+        && value.keyVersion <= 100
+        && value.nonce is string
+        && value.nonce.size() <= 128
+        && value.nonce.matches("^[A-Za-z0-9+/=]+$")
+        && value.ciphertext is string
+        && value.ciphertext.size() <= 8192
+        && value.ciphertext.matches("^[A-Za-z0-9+/=]+$")
+        && value.tag is string
+        && value.tag.size() <= 128
+        && value.tag.matches("^[A-Za-z0-9+/=]+$")
+        && value.aad == expectedAAD;
+    }
+
     // CloudVaultBlobEnvelopeDoc (sealed binary blob, larger than sealed text).
     // Used by project_memory_snapshots.sealedSnapshot. Mirrors the Swift/TS
     // CloudVaultCrypto blob envelope shape — never invent a new one.
@@ -703,16 +749,16 @@ service cloud.firestore {
         && request.resource.data.sourceDeviceID.size() <= 160
         && request.resource.data.triggerHash is string
         && request.resource.data.triggerHash.size() <= 128
-        && validCloudSealedText(request.resource.data.sealedTitle)
-        && validCloudSealedText(request.resource.data.sealedTrigger)
-        && validCloudSealedText(request.resource.data.sealedBody)
-        && validCloudSealedText(request.resource.data.sealedScope)
+        && validPathBoundCloudSealedText(request.resource.data.sealedTitle, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedTitle"))
+        && validPathBoundCloudSealedText(request.resource.data.sealedTrigger, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedTrigger"))
+        && validPathBoundCloudSealedText(request.resource.data.sealedBody, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedBody"))
+        && validPathBoundCloudSealedText(request.resource.data.sealedScope, cloudVaultAADContext(userId, "text_snippets", snippetId, "sealedScope"))
         && request.resource.data.mode in ["static", "llm_rewrite"]
         && request.resource.data.isEnabled is bool
         && request.resource.data.revision is int
         && request.resource.data.revision >= 1
         && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1;
+        && request.resource.data.schemaVersion >= 2;
     }
 
     function validCloudSessionStoragePath(userId, documentId, bodyHash, storagePath) {
@@ -798,8 +844,8 @@ service cloud.firestore {
         && request.resource.data.status in ["online", "offline", "degraded", "unauthorized"]
         && request.resource.data.schemaVersion is int
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
-        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
-        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
+        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion == 3)
+        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm")
         && (!("realtimeRelayURL" in request.resource.data) || (request.resource.data.realtimeRelayURL is string && request.resource.data.realtimeRelayURL.matches("^wss://.+")))
         && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"])
         && (!("realtimeRelayLastSeenAt" in request.resource.data) || (request.resource.data.realtimeRelayLastSeenAt is string && request.resource.data.realtimeRelayLastSeenAt.size() <= 64))
@@ -823,9 +869,15 @@ service cloud.firestore {
           "sessionId",
           "body",
           "payloadCiphertext",
+          "enc",
           "wrappedKey",
           "relayEncryption",
           "relayKeyVersion",
+          "senderPublicKey",
+          "senderDeviceId",
+          "senderPeerNodeId",
+          "senderCounter",
+          "keyId",
           "error",
           "chunkCount",
           "createdAt",
@@ -853,10 +905,23 @@ service cloud.firestore {
         && !("error" in request.resource.data)
         && request.resource.data.payloadCiphertext is string
         && request.resource.data.payloadCiphertext.size() <= 900000
+        && request.resource.data.enc is string
+        && request.resource.data.enc.size() <= 4096
         && request.resource.data.wrappedKey is string
         && request.resource.data.wrappedKey.size() <= 4096
-        && request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm"
-        && request.resource.data.relayKeyVersion is int;
+        && request.resource.data.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm"
+        && request.resource.data.relayKeyVersion == 3
+        && request.resource.data.senderPublicKey is string
+        && request.resource.data.senderPublicKey.size() >= 80
+        && request.resource.data.senderPublicKey.size() <= 128
+        && request.resource.data.senderDeviceId is string
+        && request.resource.data.senderDeviceId.size() <= 160
+        && request.resource.data.senderPeerNodeId is string
+        && request.resource.data.senderPeerNodeId.size() <= 160
+        && request.resource.data.senderCounter is int
+        && request.resource.data.senderCounter >= 0
+        && request.resource.data.keyId is string
+        && request.resource.data.keyId.matches("^relay-v3-[a-f0-9]{24}$");
     }
 
     function relayChunkWrite(userId, requestId, chunkId) {
@@ -1769,24 +1834,26 @@ service cloud.firestore {
     // label, file glob, and target project are sealed into
     // `sealedDisplayLabel`/`sealedFileGlob`/`sealedTargetProject` (with opaque
     // `projectKeyHash`/`fileGlobHash` trapdoors for client-side bucketing); the
-	    // doc ID itself becomes an opaque keyed hash. New writes are sealed-only;
-	    // legacy plaintext rows remain readable but may not be re-created through
-	    // client rules (privacy-leak-remediation).
-	    match /users/{userId}/approval_policies/{policyId} {
-	      function validApprovalPolicy() {
-	        return request.resource.data.keys().hasOnly([
-	          "decision", "missionKind", "toolName", "runtimeID",
-	          "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject",
-	          "projectKeyHash", "fileGlobHash",
-	          "createdAt", "expiresAt", "matchCount", "schemaVersion"
-	        ])
-	        && request.resource.data.decision in ["approve", "deny"]
-	        && validCloudSealedText(request.resource.data.sealedDisplayLabel)
-	        && (!("missionKind" in request.resource.data) || request.resource.data.missionKind is string)
-	        && (!("toolName" in request.resource.data) || request.resource.data.toolName is string)
-	        && (!("runtimeID" in request.resource.data) || request.resource.data.runtimeID is string)
-	        && (!("sealedFileGlob" in request.resource.data) || validCloudSealedText(request.resource.data.sealedFileGlob))
-	        && (!("sealedTargetProject" in request.resource.data) || validCloudSealedText(request.resource.data.sealedTargetProject))
+    // doc ID itself becomes an opaque keyed hash. New writes require v2 sealed
+    // fields bound by AAD to this exact user/doc/field path. Legacy plaintext
+    // rows remain readable but may not be re-created through client rules.
+    match /users/{userId}/approval_policies/{policyId} {
+      function validApprovalPolicy() {
+        return request.resource.data.keys().hasOnly([
+          "decision", "missionKind", "toolName", "runtimeID",
+          "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject",
+          "projectKeyHash", "fileGlobHash",
+          "createdAt", "expiresAt", "matchCount", "schemaVersion"
+        ])
+        && request.resource.data.decision in ["approve", "deny"]
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 2
+        && validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedDisplayLabel", request.resource.data.sealedDisplayLabel)
+        && (!("missionKind" in request.resource.data) || request.resource.data.missionKind is string)
+        && (!("toolName" in request.resource.data) || request.resource.data.toolName is string)
+        && (!("runtimeID" in request.resource.data) || request.resource.data.runtimeID is string)
+        && (!("sealedFileGlob" in request.resource.data) || validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedFileGlob", request.resource.data.sealedFileGlob))
+        && (!("sealedTargetProject" in request.resource.data) || validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedTargetProject", request.resource.data.sealedTargetProject))
         && (!("projectKeyHash" in request.resource.data) || request.resource.data.projectKeyHash.matches("^[a-f0-9]{32}$"))
         && (!("fileGlobHash" in request.resource.data) || request.resource.data.fileGlobHash.matches("^[a-f0-9]{32}$"))
         && (!("matchCount" in request.resource.data) || request.resource.data.matchCount is int);
@@ -2514,26 +2581,11 @@ service cloud.firestore {
     // in `functions/src/types.ts` (`IrohPairingPublicKeyDoc`).
     match /users/{userId}/iroh_pairing_keys/{roleId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.keys().hasOnly([
-          "id",
-          "publicKeyBase64",
-          "publishedAtMillis",
-          "protocolVersion",
-          "schemaVersion"
-        ])
-        && request.resource.data.id is string
-        && request.resource.data.id == roleId
-        && request.resource.data.publicKeyBase64 is string
-        && request.resource.data.publicKeyBase64.size() >= 32
-        && request.resource.data.publicKeyBase64.size() <= 128
-        && request.resource.data.publishedAtMillis is int
-        && request.resource.data.publishedAtMillis > 0
-        && request.resource.data.protocolVersion is int
-        && request.resource.data.protocolVersion >= 1
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1;
-      allow delete: if ownsUserNamespace(userId);
+      // Trust roots are server-owned. Clients publish through
+      // `publishIrohPairingPublicKey`, which enforces App Check, a single-use
+      // high-risk nonce, and a trusted macOS escrow device before Admin SDK
+      // writes this document.
+      allow create, update, delete: if false;
     }
 
     // Iroh transport pairing records. Mac publishes; iOS reads + verifies the
@@ -2542,36 +2594,10 @@ service cloud.firestore {
     // (`IrohPairingRecordDoc`); the Mac is the sole writer.
     match /users/{userId}/iroh_pairing/{connectionId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.keys().hasOnly([
-          "id",
-          "nodeId",
-          "relayURL",
-          "directAddresses",
-          "publishedAtMillis",
-          "protocolVersion",
-          "signature",
-          "createdAt",
-          "updatedAt",
-          "schemaVersion"
-        ])
-        && request.resource.data.id is string
-        && request.resource.data.id == connectionId
-        && request.resource.data.nodeId is string
-        && request.resource.data.nodeId.size() <= 64
-        && (!("relayURL" in request.resource.data)
-          || (request.resource.data.relayURL is string
-            && request.resource.data.relayURL.size() <= 512))
-        && (!("directAddresses" in request.resource.data)
-          || (request.resource.data.directAddresses is list
-            && request.resource.data.directAddresses.size() <= 16))
-        && request.resource.data.publishedAtMillis is int
-        && request.resource.data.publishedAtMillis > 0
-        && request.resource.data.signature is string
-        && request.resource.data.signature.size() <= 256
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1;
-      allow delete: if ownsUserNamespace(userId);
+      // The signed host pairing record is a remote-control trust root. Clients
+      // publish/revoke through high-risk server callables; direct owner writes
+      // would let a stolen Firebase session replace the Mac endpoint.
+      allow create, update, delete: if false;
     }
 
     // Iroh transport audit events. Append-only; written by the Mac (on stream
@@ -2665,37 +2691,20 @@ service cloud.firestore {
     // before dialing.
     match /users/{userId}/iroh_pairing/{connectionId}/controllers/{peerNodeId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && hasActiveHostedComputerUseEntitlement(userId)
-        && exists(/databases/$(database)/documents/users/$(userId)/iroh_pairing/$(connectionId))
-        && request.resource.data.keys().hasOnly([
-          "id",
-          "connectionId",
-          "peerNodeId",
-          "deviceId",
-          "publicKeyBase64",
-          "publishedAtMillis",
-          "protocolVersion",
-          "schemaVersion"
-        ])
-        && request.resource.data.id == peerNodeId
-        && request.resource.data.connectionId == connectionId
-        && request.resource.data.peerNodeId == peerNodeId
-        && request.resource.data.deviceId is string
-        && request.resource.data.deviceId.size() <= 160
-        && request.resource.data.publicKeyBase64 is string
-        && request.resource.data.publicKeyBase64.size() >= 32
-        && request.resource.data.publicKeyBase64.size() <= 128
-        && request.resource.data.publishedAtMillis is int
-        && request.resource.data.publishedAtMillis > 0
-        && request.resource.data.protocolVersion is int
-        && request.resource.data.protocolVersion >= 1
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1
-        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId))
-        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.trustState == "trusted"
-        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.platform in ["iOS", "iPadOS", "Android"];
-      allow delete: if ownsUserNamespace(userId);
+      // Phone-control verifier keys are server-owned for the same reason as
+      // host pairing roots. `publishPhoneControlAuthority` verifies a trusted
+      // native mobile escrow device and existing host pairing before writing.
+      allow create, update, delete: if false;
+    }
+
+    // Mobile/Android sender keys for authenticated relay request envelopes.
+    // These are trust-root cache entries, not user-editable preferences. Clients
+    // publish through `publishRelaySenderKey`, which verifies App Check,
+    // high-risk nonce freshness, trusted native escrow state, key shape, key id,
+    // and the device's Signal identity binding before Admin SDK writes here.
+    match /users/{userId}/relay_sender_keys/{deviceId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update, delete: if false;
     }
 
     // Phone/iPad/Android -> Mac agent desktop permission grants. These
@@ -2706,6 +2715,8 @@ service cloud.firestore {
           "sourceDeviceId",
           "peerNodeId",
           "publicKeyBase64",
+          "publishedAtMillis",
+          "schemaVersion",
           "updatedAt"
         ])
         && request.resource.data.sourceDeviceId == deviceId
@@ -2714,6 +2725,8 @@ service cloud.firestore {
         && request.resource.data.publicKeyBase64 is string
         && request.resource.data.publicKeyBase64.size() >= 32
         && request.resource.data.publicKeyBase64.size() <= 256
+        && (!("publishedAtMillis" in request.resource.data) || request.resource.data.publishedAtMillis is int)
+        && (!("schemaVersion" in request.resource.data) || request.resource.data.schemaVersion is int)
         && request.resource.data.updatedAt is timestamp
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId)).data.trustState == "trusted"
@@ -2721,10 +2734,7 @@ service cloud.firestore {
       }
 
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && hasActiveHostedComputerUseEntitlement(userId)
-        && validAgentGrantAuthorityDocument();
-      allow delete: if ownsUserNamespace(userId);
+      allow create, update, delete: if false;
     }
 
     match /users/{userId}/agent_capability_grant_requests/{requestId} {
@@ -2790,7 +2800,7 @@ service cloud.firestore {
           && (!("appliedGrantId" in receipt) || (receipt.appliedGrantId is string && receipt.appliedGrantId.size() <= 160))
           && (!("grantExpiresAt" in receipt) || receipt.grantExpiresAt is number)
           && (!("sourceDeviceId" in receipt) || (receipt.sourceDeviceId is string && receipt.sourceDeviceId.size() <= 160))
-          && (!("denialReason" in receipt) || receipt.denialReason in ["malformed_request", "unsupported_runtime", "expired", "signature_failure", "counter_replay", "stale_timestamp", "no_paired_mac", "local_authentication_required", "yolo_unavailable", "unknown"])
+          && (!("denialReason" in receipt) || receipt.denialReason in ["malformed_request", "unsupported_runtime", "expired", "signature_failure", "counter_replay", "stale_timestamp", "no_paired_mac", "local_authentication_required", "yolo_unavailable", "grant_preset_mismatch", "unknown"])
           && (!("message" in receipt) || (receipt.message is string && receipt.message.size() <= 2048));
       }
 
@@ -2811,6 +2821,7 @@ service cloud.firestore {
           "localAuthenticationSatisfied",
           "authority",
           "status",
+          "canonicalRequestHashSha256",
           "createdAt",
           "updatedAt",
           "receipt"
@@ -2846,6 +2857,7 @@ service cloud.firestore {
         && request.resource.data.clientIntentId is string
         && request.resource.data.clientIntentId.size() <= 160
         && request.resource.data.localAuthenticationSatisfied is bool
+        && (!("canonicalRequestHashSha256" in request.resource.data) || request.resource.data.canonicalRequestHashSha256.matches("^[a-f0-9]{64}$"))
         && request.resource.data.createdAt is timestamp
         && request.resource.data.updatedAt is timestamp
         && validAgentGrantAuthorityEnvelope()
@@ -2857,11 +2869,7 @@ service cloud.firestore {
       }
 
       allow read: if ownsUserNamespace(userId);
-      allow create: if ownerWritableNonSecret(userId)
-        && hasActiveHostedComputerUseEntitlement(userId)
-        && validAgentCapabilityGrantDocument()
-        && request.resource.data.status == "queued"
-        && !("receipt" in request.resource.data);
+      allow create: if false;
       allow update: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
         && validAgentCapabilityGrantDocument()
@@ -2872,7 +2880,7 @@ service cloud.firestore {
         ])
         && request.resource.data.status in ["applied", "revoked", "denied", "expired"]
         && ("receipt" in request.resource.data);
-      allow delete: if ownsUserNamespace(userId);
+      allow delete: if false;
     }
 
     // Per-session metadata. The full audit chain lives on the Mac at
@@ -3316,11 +3324,24 @@ service cloud.firestore {
       }
 
       function validEscrowDeviceUpdate(deviceId) {
-        // Trust-state transitions are server-only via the escrow trust callables.
-        // Client updates may refresh metadata/key fingerprints, but stale clients
-        // must not elevate or downgrade an already trusted/revoked device.
+        // Trust and cryptographic identity fields are server-only via the escrow
+        // callables. Client updates are limited to display metadata so a stolen
+        // owner session cannot swap fingerprints, platforms, approvers, or
+        // bootstrap state and then reuse an existing trusted document.
         return validEscrowDeviceDocument(deviceId)
-          && request.resource.data.trustState == resource.data.trustState;
+          && request.resource.data.deviceId == resource.data.deviceId
+          && request.resource.data.platform == resource.data.platform
+          && request.resource.data.trustState == resource.data.trustState
+          && (!("publicKeyFingerprint" in resource.data)
+            || request.resource.data.publicKeyFingerprint == resource.data.publicKeyFingerprint)
+          && (!("keyVersion" in resource.data)
+            || request.resource.data.keyVersion == resource.data.keyVersion)
+          && (!("approvedByDeviceId" in resource.data)
+            || request.resource.data.approvedByDeviceId == resource.data.approvedByDeviceId)
+          && (!("approvedAt" in resource.data)
+            || request.resource.data.approvedAt == resource.data.approvedAt)
+          && (!("createdAt" in resource.data)
+            || request.resource.data.createdAt == resource.data.createdAt);
       }
 
       allow read: if ownsUserNamespace(userId);
@@ -3332,7 +3353,7 @@ service cloud.firestore {
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowDeviceUpdate(deviceId);
-      allow delete: if ownsUserNamespace(userId);
+      allow delete: if false;
 
       match /computer_use_audit_export_signers/{signerId} {
         function parentEscrowDeviceIsTrustedMac() {

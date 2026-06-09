@@ -134,7 +134,7 @@ final class ApprovalPolicyStore {
                     let vaultKey = self.cachedVaultKey(uid: uid)
                     let docs = snapshot?.documents ?? []
                     let cloudPolicies = docs.compactMap { doc in
-                        Self.decode(documentID: doc.documentID, data: doc.data(), vaultKey: vaultKey)
+                        Self.decode(documentID: doc.documentID, data: doc.data(), vaultKey: vaultKey, uid: uid)
                     }
                     self.mergeCloudPolicies(cloudPolicies)
                 }
@@ -210,8 +210,8 @@ final class ApprovalPolicyStore {
         let payload: [String: Any]
         let docID: String
         do {
-            payload = try Self.encode(policy, vaultKey: vaultKey)
             docID = try Self.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: vaultKey)
+            payload = try Self.encode(policy, uid: uid, documentID: docID, vaultKey: vaultKey)
         } catch {
             lastCloudError = error.localizedDescription
             return
@@ -298,31 +298,37 @@ final class ApprovalPolicyStore {
     /// to name the document, which is now the opaque keyed hash. Opaque match
     /// trapdoors `projectKeyHash` / `fileGlobHash` let the client bucket policies
     /// without decrypting; the server never reads any of them.
-    static func encode(_ policy: ApprovalPolicy, vaultKey: Data) throws -> [String: Any] {
+    static func encode(_ policy: ApprovalPolicy, uid: String, documentID: String, vaultKey: Data) throws -> [String: Any] {
+        func seal(_ value: String, field: String) throws -> [String: Any] {
+            try CloudVaultCrypto.dictionary(CloudVaultCrypto.sealText(
+                value,
+                keyData: vaultKey,
+                aadContext: CloudVaultAADContext(
+                    uid: uid,
+                    collection: "approval_policies",
+                    docID: documentID,
+                    field: field
+                )
+            ))
+        }
         var dict: [String: Any] = [
             "decision": policy.decision.rawValue,
             "createdAt": ISO8601DateFormatter().string(from: policy.createdAt),
             "matchCount": policy.matchCount,
-            "schemaVersion": 1,
-            "sealedDisplayLabel": try CloudVaultCrypto.dictionary(
-                CloudVaultCrypto.sealText(policy.displayLabel, keyData: vaultKey)
-            )
+            "schemaVersion": 2,
+            "sealedDisplayLabel": try seal(policy.displayLabel, field: "sealedDisplayLabel")
         ]
         if let v = policy.missionKind { dict["missionKind"] = v }
         if let v = policy.toolName { dict["toolName"] = v }
         if let v = policy.runtimeID { dict["runtimeID"] = v }
         if let v = policy.fileGlob {
-            dict["sealedFileGlob"] = try CloudVaultCrypto.dictionary(
-                CloudVaultCrypto.sealText(v, keyData: vaultKey)
-            )
+            dict["sealedFileGlob"] = try seal(v, field: "sealedFileGlob")
             if let fileGlobHash = CloudVaultCrypto.projectKeyHash(for: v, keyData: vaultKey) {
                 dict["fileGlobHash"] = fileGlobHash
             }
         }
         if let v = policy.targetProject {
-            dict["sealedTargetProject"] = try CloudVaultCrypto.dictionary(
-                CloudVaultCrypto.sealText(v, keyData: vaultKey)
-            )
+            dict["sealedTargetProject"] = try seal(v, field: "sealedTargetProject")
             if let projectKeyHash = CloudVaultCrypto.projectKeyHash(for: v, keyData: vaultKey) {
                 dict["projectKeyHash"] = projectKeyHash
             }
@@ -340,28 +346,34 @@ final class ApprovalPolicyStore {
     /// absent on this device). The `id` is recomputed by the `ApprovalPolicy`
     /// initializer from the decoded discriminators, so the in-memory class hash
     /// used for matching is unchanged even though the cloud no longer stores it.
-    static func decode(documentID: String, data: [String: Any], vaultKey: Data?) -> ApprovalPolicy? {
+    static func decode(documentID: String, data: [String: Any], vaultKey: Data?, uid: String? = nil) -> ApprovalPolicy? {
         guard
-            let label = CloudVaultCrypto.openSealedProjectName(
+            let label = openSealedPolicyField(
                 from: data,
+                documentID: documentID,
                 sealedField: "sealedDisplayLabel",
                 legacyField: "displayLabel",
-                keyData: vaultKey
+                keyData: vaultKey,
+                uid: uid
             ),
             let decisionRaw = data["decision"] as? String,
             let decision = ApprovalPolicy.Decision(rawValue: decisionRaw)
         else { return nil }
-        let fileGlob = CloudVaultCrypto.openSealedProjectName(
+        let fileGlob = openSealedPolicyField(
             from: data,
+            documentID: documentID,
             sealedField: "sealedFileGlob",
             legacyField: "fileGlob",
-            keyData: vaultKey
+            keyData: vaultKey,
+            uid: uid
         )
-        let targetProject = CloudVaultCrypto.openSealedProjectName(
+        let targetProject = openSealedPolicyField(
             from: data,
+            documentID: documentID,
             sealedField: "sealedTargetProject",
             legacyField: "targetProject",
-            keyData: vaultKey
+            keyData: vaultKey,
+            uid: uid
         )
         let createdAt = (data["createdAt"] as? String)
             .flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
@@ -379,5 +391,35 @@ final class ApprovalPolicyStore {
             expiresAt: expiresAt,
             matchCount: (data["matchCount"] as? Int) ?? 0
         )
+    }
+
+    private static func openSealedPolicyField(
+        from data: [String: Any],
+        documentID: String,
+        sealedField: String,
+        legacyField: String,
+        keyData: Data?,
+        uid: String?
+    ) -> String? {
+        if let envelope = CloudVaultCrypto.decodeSealedText(from: data[sealedField]) {
+            guard let keyData else { return nil }
+            if let uid = uid ?? data["uid"] as? String {
+                if let context = try? CloudVaultAADContext(
+                    uid: uid,
+                    collection: "approval_policies",
+                    docID: documentID,
+                    field: sealedField
+                ),
+                   let plaintext = try? CloudVaultCrypto.openText(envelope, keyData: keyData, aadContext: context) {
+                    return plaintext
+                }
+            }
+            if (envelope.schemaVersion ?? 1) < 2,
+               let plaintext = try? CloudVaultCrypto.openText(envelope, keyData: keyData) {
+                return plaintext
+            }
+            return nil
+        }
+        return data[legacyField] as? String
     }
 }

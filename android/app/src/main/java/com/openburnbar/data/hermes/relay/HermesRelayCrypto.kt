@@ -32,6 +32,54 @@ object HermesRelayCrypto {
     fun keyAAD(uid: String, connectionId: String, requestId: String): ByteArray =
         HermesRelayCryptoSupport.aad(listOf("key", uid, connectionId, requestId))
 
+    fun authenticatedRequestAAD(
+        uid: String,
+        connectionId: String,
+        requestId: String,
+        operation: String,
+        senderDeviceId: String,
+        senderPeerNodeId: String,
+        senderCounter: Long,
+        keyId: String,
+    ): ByteArray =
+        HermesRelayCryptoSupport.aad(
+            listOf(
+                "request-v3",
+                uid,
+                connectionId,
+                requestId,
+                operation,
+                senderDeviceId,
+                senderPeerNodeId,
+                senderCounter.toString(),
+                keyId,
+            ),
+        )
+
+    fun authenticatedKeyAAD(
+        uid: String,
+        connectionId: String,
+        requestId: String,
+        operation: String,
+        senderDeviceId: String,
+        senderPeerNodeId: String,
+        senderCounter: Long,
+        keyId: String,
+    ): ByteArray =
+        HermesRelayCryptoSupport.aad(
+            listOf(
+                "key-v3",
+                uid,
+                connectionId,
+                requestId,
+                operation,
+                senderDeviceId,
+                senderPeerNodeId,
+                senderCounter.toString(),
+                keyId,
+            ),
+        )
+
     fun chunkAAD(uid: String, connectionId: String, requestId: String, sequence: Int, kind: String): ByteArray =
         HermesRelayCryptoSupport.aad(listOf("chunk", uid, connectionId, requestId, sequence.toString(), kind))
 

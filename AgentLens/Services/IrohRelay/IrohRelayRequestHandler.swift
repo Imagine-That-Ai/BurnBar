@@ -62,6 +62,7 @@ final class IrohRelayRequestHandler: Sendable {
     }
 
     private let relayKeyStore: HermesRelayKeyStore
+    private let authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener
     private let urlSession: URLSession
     private let settingsManager: any SettingsManagerProtocol
     private let mediaDispatcher: MediaFrameDispatcher?
@@ -75,6 +76,7 @@ final class IrohRelayRequestHandler: Sendable {
     @MainActor
     init(
         relayKeyStore: HermesRelayKeyStore,
+        authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener = HermesRelayAuthenticatedRequestOpeners.shared,
         urlSession: URLSession,
         settingsManager: any SettingsManagerProtocol,
         mediaDispatcher: MediaFrameDispatcher? = nil,
@@ -86,6 +88,7 @@ final class IrohRelayRequestHandler: Sendable {
         auditLogger: (any IrohTransportAuditLogging)? = nil
     ) {
         self.relayKeyStore = relayKeyStore
+        self.authenticatedRequestOpener = authenticatedRequestOpener
         self.urlSession = urlSession
         self.settingsManager = settingsManager
         self.mediaDispatcher = mediaDispatcher
@@ -281,9 +284,10 @@ final class IrohRelayRequestHandler: Sendable {
     ) async throws {
         guard let payload = frame.payload,
               let operation = payload.operation,
-              let payloadCiphertext = payload.payloadCiphertext,
-              let wrappedKey = payload.wrappedKey,
-              payload.relayEncryption == HermesRelayCrypto.algorithm else {
+              operation == .chatCompletions
+                || operation == .cliAgentChat
+                || operation == .cliAgentModelCatalog
+                || operation == .cliAgentSessionAction else {
             await auditStage(
                 "host_request_malformed",
                 uid: uid,
@@ -299,28 +303,16 @@ final class IrohRelayRequestHandler: Sendable {
         }
 
         let privateKey = try relayKeyStore.privateKey()
-        let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
-            wrappedKey,
-            privateKey: privateKey,
-            aad: HermesRelayCrypto.keyAAD(
-                uid: uid,
-                connectionID: connectionID,
-                requestID: requestID
-            )
+        let opened = try await authenticatedRequestOpener.open(
+            payload: payload,
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            operation: operation,
+            recipientPrivateKey: privateKey
         )
-        let requestPlaintext = try HermesRelayCrypto.openBase64(
-            ciphertext: payloadCiphertext,
-            keyData: keyData,
-            aad: HermesRelayCrypto.requestAAD(
-                uid: uid,
-                connectionID: connectionID,
-                requestID: requestID
-            )
-        )
-        let encryptedPayload = try JSONDecoder().decode(
-            HermesRelayEncryptedRequestPayload.self,
-            from: requestPlaintext
-        )
+        let keyData = opened.keyData
+        let encryptedPayload = opened.encryptedPayload
         await auditStage(
             "host_request_decrypted",
             uid: uid,

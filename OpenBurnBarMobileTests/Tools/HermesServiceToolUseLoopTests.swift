@@ -174,9 +174,9 @@ final class HermesServiceToolUseLoopTests: XCTestCase {
             displayName: "Mac (relay)",
             mode: .relayLink,
             status: .online,
-            relayPublicKey: "AAAA",
-            relayKeyVersion: 1,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             capabilities: ["chat_completions"]
         )
     }

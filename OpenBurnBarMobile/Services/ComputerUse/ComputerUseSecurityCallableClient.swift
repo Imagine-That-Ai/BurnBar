@@ -154,6 +154,74 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func publishRelaySenderKey(
+        deviceId: String,
+        peerNodeId: String,
+        keyId: String,
+        publicKeyBase64: String,
+        relayKeyVersion: Int,
+        publishedAtMillis: Int64,
+        signalIdentityKeyId: String,
+        signalIdentityKeyVersion: Int,
+        signalIdentityPublicKeyFingerprint: String
+    ) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        let result = try await functions.httpsCallable("publishRelaySenderKey").call([
+            "deviceId": deviceId,
+            "peerNodeId": peerNodeId,
+            "keyId": keyId,
+            "publicKeyBase64": publicKeyBase64,
+            "relayKeyVersion": relayKeyVersion,
+            "publishedAtMillis": publishedAtMillis,
+            "signalIdentityKeyId": signalIdentityKeyId,
+            "signalIdentityKeyVersion": signalIdentityKeyVersion,
+            "signalIdentityPublicKeyFingerprint": signalIdentityPublicKeyFingerprint,
+            "nonce": nonce,
+        ])
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Relay sender-key publication failed.")
+        }
+    }
+
+    static func publishAgentGrantAuthority(
+        deviceId: String,
+        peerNodeId: String,
+        publicKeyBase64: String
+    ) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        let result = try await functions.httpsCallable("publishAgentGrantAuthority").call([
+            "deviceId": deviceId,
+            "peerNodeId": peerNodeId,
+            "publicKeyBase64": publicKeyBase64,
+            "nonce": nonce,
+        ])
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Agent grant authority publication failed.")
+        }
+    }
+
+    static func queueAgentCapabilityGrantRequest(_ wirePayload: [String: Any]) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        var payload = wirePayload
+        payload["nonce"] = nonce
+        let result = try await functions.httpsCallable("queueAgentCapabilityGrantRequest").call(payload)
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Agent grant request queueing failed.")
+        }
+    }
+
     /// Bind a CLI-agent mission approve/reject decision to this trusted native
     /// escrow device via the App-Check-enforced `respondMissionApproval` callable.
     static func respondMissionApproval(requestId: String, approve: Bool, deviceId: String) async throws {

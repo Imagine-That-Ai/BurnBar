@@ -560,19 +560,25 @@ public struct HermesRealtimeRelayApprovalResponse: Codable, Sendable, Equatable 
     public var respondedBy: String
     public var respondedAt: Date
     public var note: String?
+    public var requestHashBlake3: String?
+    public var authority: HermesRealtimeRelayAuthorityEnvelope?
 
     public init(
         approvalId: String,
         decision: Decision,
         respondedBy: String,
         respondedAt: Date,
-        note: String? = nil
+        note: String? = nil,
+        requestHashBlake3: String? = nil,
+        authority: HermesRealtimeRelayAuthorityEnvelope? = nil
     ) {
         self.approvalId = approvalId
         self.decision = decision
         self.respondedBy = respondedBy
         self.respondedAt = respondedAt
         self.note = note
+        self.requestHashBlake3 = requestHashBlake3
+        self.authority = authority
     }
 }
 

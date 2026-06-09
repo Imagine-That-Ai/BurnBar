@@ -7,6 +7,7 @@ import {
   isGatewayRelayPublicKeyB64,
   isHermesGatewayApprovalExpired,
   isHermesGatewayClientOnline,
+  isHermesGatewayTokenExpired,
   isWithinGatewayGraceWindow,
   pendingModelSwitchInFlight,
   publicApprovalView,
@@ -180,6 +181,15 @@ describe("Hermes Gateway oversight (feature 3)", () => {
     expect(sanitizeHermesGatewayApprovalTTL(1)).toBe(HERMES_GATEWAY_MIN_APPROVAL_TTL_MS);
     expect(sanitizeHermesGatewayApprovalTTL(30)).toBe(30_000);
     expect(sanitizeHermesGatewayApprovalTTL(60 * 60)).toBe(HERMES_GATEWAY_MAX_APPROVAL_TTL_MS);
+  });
+});
+
+describe("Hermes Gateway bearer token expiry", () => {
+  it("treats missing legacy expiresAt as expired", () => {
+    expect(isHermesGatewayTokenExpired(undefined)).toBe(true);
+    expect(isHermesGatewayTokenExpired("")).toBe(true);
+    expect(isHermesGatewayTokenExpired("2000-01-01T00:00:00.000Z")).toBe(true);
+    expect(isHermesGatewayTokenExpired(new Date(Date.now() + 60_000).toISOString())).toBe(false);
   });
 });
 

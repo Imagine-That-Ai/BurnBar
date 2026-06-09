@@ -64,7 +64,17 @@ final class AgentCapabilityGrantStore {
                 message: "Grant request expired before this Mac received it.",
                 now: now
             )
-        } else if request.preset.requiresLocalAuthentication && !request.localAuthenticationSatisfied {
+        } else if !request.preset.matches(capabilities: request.capabilities, trustMode: request.trustMode) {
+            receipt = deniedReceipt(
+                for: request,
+                reason: .grantPresetMismatch,
+                message: "Grant preset does not match the requested capabilities and trust mode.",
+                now: now
+            )
+        } else if AgentDesktopCapability.requiresLocalAuthentication(
+            capabilities: request.capabilities,
+            trustMode: request.trustMode
+        ) && !request.localAuthenticationSatisfied {
             receipt = deniedReceipt(
                 for: request,
                 reason: .localAuthenticationRequired,

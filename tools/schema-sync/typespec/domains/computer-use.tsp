@@ -1,11 +1,47 @@
-/** Computer Use audit and phone-control Firestore contracts. */
+/** Computer Use audit, relay sender, grant, and phone-control Firestore contracts. */
 namespace OpenBurnBar.Firestore.ComputerUse;
 
 model ComputerUsePhoneAuthorityDoc {
   deviceId: string;
-  publicKey: string;
+  connectionId: string;
+  peerNodeId: string;
+  publicKeyBase64: string;
+  publishedAtMillis: int64;
+  protocolVersion: int32;
+  schemaVersion: int32;
   createdAt: string;
-  revokedAt?: string;
+  updatedAt: string;
+}
+
+model RelaySenderKeyDoc {
+  id: string;
+  deviceId: string;
+  peerNodeId: string;
+  keyId: string;
+  publicKeyBase64: string;
+  relayKeyVersion: int32;
+  relayEncryption: string;
+  signalIdentityKeyVersion: int32;
+  signalIdentityFingerprint: string;
+  signalIdentityVerification: "verified";
+  status: "active" | "revoked";
+  publishedAtMillis: int64;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: int32;
+}
+
+model AgentGrantAuthorityDoc {
+  id: string;
+  deviceId: string;
+  peerNodeId: string;
+  publicKeyBase64: string;
+  authorityKind: "agent_capability_grant";
+  status: "active" | "revoked";
+  publishedAtMillis: int64;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: int32;
 }
 
 model ComputerUseAuditExportSignerPublicKeyDoc {

@@ -128,4 +128,35 @@ final class AgentCapabilityGrantTests: XCTestCase {
         XCTAssertEqual(decoded.deliveryMode, .liveThenQueued)
         XCTAssertTrue(decoded.localAuthenticationSatisfied)
     }
+
+    func test_wireModelRejectsPresetCapabilityTrustMismatch() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "ios-phone-000000000000000000000000",
+            counter: 1,
+            timestamp: now,
+            intentHashBlake3: String(repeating: "a", count: 64),
+            signatureEd25519: "signature"
+        )
+        let forged = HermesRealtimeRelayAgentGrantRequest(
+            requestId: "grant-forged",
+            runtime: AssistantRuntimeID.codex.rawValue,
+            threadId: "thread-1",
+            preset: AgentPermissionPreset.low.rawValue,
+            capabilities: AgentPermissionPreset.yolo.capabilities.map(\.rawValue).sorted(),
+            trustMode: ComputerUseTrustMode.trusted.rawValue,
+            deliveryMode: AgentGrantDeliveryMode.liveThenQueued.rawValue,
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(300),
+            grantDurationSeconds: 300,
+            sourceDeviceId: "iphone-1",
+            clientIntentId: "intent-1",
+            localAuthenticationSatisfied: true,
+            authority: authority
+        )
+
+        XCTAssertThrowsError(try AgentCapabilityGrantRequest(wire: forged)) { error in
+            XCTAssertEqual(error as? AgentCapabilityGrantWireError, .presetCapabilityMismatch)
+        }
+    }
 }
