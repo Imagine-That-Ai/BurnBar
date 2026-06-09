@@ -82,14 +82,29 @@ function buildConfig(): EnvConfig {
     );
   }
 
+  const requireHighRiskNonce = toBool(
+    process.env.REQUIRE_HIGH_RISK_NONCE ?? configString(openburnbar, "require_high_risk_nonce"),
+    false,
+  );
+  // M2: surface a fail-open replay posture in production. Unlike App Check
+  // (hard fail-closed above), the high-risk single-use nonce defaults OFF and
+  // legacy clients may still omit it during staged rollout, so a hard throw
+  // could break a live ramp. The sharpest path (bootstrap self-approval) already
+  // HARD-requires a consumed nonce regardless of this flag; this warning surfaces
+  // the residual global replay-defense gap so ops flips the flag on once every
+  // client sends nonces.
+  if (looksProd && enforceAppCheck && !requireHighRiskNonce) {
+    console.warn(
+      `[security] High-risk single-use nonce replay defense is DISABLED for production project "${projectId}". ` +
+        "Set REQUIRE_HIGH_RISK_NONCE=true (or openburnbar.require_high_risk_nonce=true) once all clients send nonces.",
+    );
+  }
+
   return {
     projectId,
     kmsKeyName,
     enforceAppCheck,
-    requireHighRiskNonce: toBool(
-      process.env.REQUIRE_HIGH_RISK_NONCE ?? configString(openburnbar, "require_high_risk_nonce"),
-      false,
-    ),
+    requireHighRiskNonce,
     maxCredentialLength: toNum(
       process.env.MAX_CREDENTIAL_LENGTH ?? configString(openburnbar, "max_credential_length"),
       8192,
