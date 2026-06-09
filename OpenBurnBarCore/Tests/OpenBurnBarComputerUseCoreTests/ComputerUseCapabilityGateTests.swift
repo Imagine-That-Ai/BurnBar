@@ -202,9 +202,9 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         )
     }
 
-    // F3: the legacy escape hatch survives ONLY when the operator explicitly opts
-    // out (`phoneControlRespectsDenyRegions: false`) — the narrow locked-login case.
-    func testDirectPhoneControlLegacyOptOutStillBypassesDenyRegion() {
+    // F3: even the explicit legacy opt-out cannot bypass secure deny regions.
+    // The locked-login case now belongs to the dedicated Remote Unlock path.
+    func testDirectPhoneControlLegacyOptOutStillRespectsDenyRegion() {
         let entitlement = ComputerUseEntitlementSnapshot(
             isActive: false, allowsBrowser: true, allowsSystem: true, allowsPhoneControl: true
         )
@@ -217,8 +217,8 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
                                      originatedFromPhone: true,
                                      phoneControlRespectsDenyRegions: false)
             ),
-            .allowed(approvedBy: .phone),
-            "Explicit opt-out preserves the old behavior so the operator can drive their own locked login window."
+            .denied(.denyRegion),
+            "Explicit opt-out cannot re-open password field / auth sheet / locked-screen input."
         )
     }
 
