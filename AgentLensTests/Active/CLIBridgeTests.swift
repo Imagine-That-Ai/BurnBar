@@ -1584,16 +1584,47 @@ final class CLIBridgeTests: XCTestCase {
 
     // MARK: - A2: restricted shell sandbox profile
 
-    func test_restrictedShellSandboxProfile_emitsHardeningRules() {
+    func test_restrictedShellSandboxProfile_emitsHardeningRules() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-sbx-profile-\(UUID().uuidString)", isDirectory: true)
+        let workspace = base.appendingPathComponent("ws", isDirectory: true)
+        let home = base.appendingPathComponent("home", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let workspacePath = realpathString(workspace)
+        let homePath = realpathString(home)
         let profile = AgentToolBroker.restrictedShellSandboxProfile(
-            workspacePath: "/tmp/ws", homePath: "/Users/x"
+            workspacePath: workspace.path,
+            homePath: home.path
         )
         XCTAssertTrue(profile.contains("(deny network*)"))
-        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"/Users/x/.ssh\"))"))
-        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"/Users/x/Library/Keychains\"))"))
-        XCTAssertTrue(profile.contains("(deny file-write* (require-not (subpath \"/tmp/ws\"))"))
-        XCTAssertTrue(profile.contains("(allow file-write* (subpath \"/tmp/ws\"))"))
+        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/.ssh\"))"))
+        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/Library/Keychains\"))"))
+        XCTAssertTrue(profile.contains("(deny file-write* (require-not (subpath \"\(workspacePath)\"))"))
+        XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
         XCTAssertTrue(profile.contains("(allow file-write* (literal \"/dev/null\"))"))
+    }
+
+    func test_restrictedShellSandboxProfile_canonicalizesWorkspaceAndHomePaths() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-sbx-canonical-\(UUID().uuidString)", isDirectory: true)
+        let workspace = base.appendingPathComponent("ws", isDirectory: true)
+        let home = base.appendingPathComponent("home", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let profile = AgentToolBroker.restrictedShellSandboxProfile(
+            workspacePath: workspace.path,
+            homePath: home.path
+        )
+
+        let workspacePath = realpathString(workspace)
+        let homePath = realpathString(home)
+        XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
+        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/.ssh\"))"))
     }
 
     func test_restrictedShellSandboxProfile_enforcesNetworkAndSecretDenial() throws {
@@ -1610,8 +1641,8 @@ final class CLIBridgeTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: base) }
         try Data("TOPSECRET".utf8).write(to: ssh.appendingPathComponent("id_secret"))
 
-        let wsPath = ws.resolvingSymlinksInPath().path
-        let homePath = home.resolvingSymlinksInPath().path
+        let wsPath = ws.path
+        let homePath = home.path
         let profile = AgentToolBroker.restrictedShellSandboxProfile(workspacePath: wsPath, homePath: homePath)
 
         func run(_ cmd: String) -> Int32 {
@@ -1647,6 +1678,16 @@ final class CLIBridgeTests: XCTestCase {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
     }
+}
+
+private func realpathString(_ url: URL) -> String {
+    #if canImport(Darwin)
+    var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+    if realpath(url.path, &buffer) != nil {
+        return String(cString: buffer)
+    }
+    #endif
+    return url.resolvingSymlinksInPath().path
 }
 
 /// Thread-safe recorder for the privileged-action approver in A1 tests.

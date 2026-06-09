@@ -7,6 +7,15 @@ import OpenBurnBarComputerUseCore
 
 final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
     private let phoneSigner = ComputerUsePhoneControlSigner()
+    private var replayCounterStoreURLs: [URL] = []
+
+    override func tearDown() {
+        for url in replayCounterStoreURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        replayCounterStoreURLs.removeAll()
+        super.tearDown()
+    }
 
     // MARK: - F1 controller-key pin enforcement
 
@@ -14,7 +23,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
     /// relay/Firestore control-plane key-swap MITM this remediation closes.
     func test_registerPeerRefusesSwappedControllerKey() {
         let pinStore = ControllerKeyPinStore(backing: InMemoryControllerKeyPinBacking())
-        let validator = PhoneControlAuthorityValidator(controllerPinStore: pinStore)
+        let validator = makeValidator(controllerPinStore: pinStore)
         let real = Curve25519.Signing.PrivateKey().publicKey
         let attacker = Curve25519.Signing.PrivateKey().publicKey
 
@@ -37,7 +46,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
     /// preserving backward compatibility.
     func test_registerPeerWithoutUidSkipsPinEnforcement() {
         let pinStore = ControllerKeyPinStore(backing: InMemoryControllerKeyPinBacking())
-        let validator = PhoneControlAuthorityValidator(controllerPinStore: pinStore)
+        let validator = makeValidator(controllerPinStore: pinStore)
         let a = Curve25519.Signing.PrivateKey().publicKey
         let b = Curve25519.Signing.PrivateKey().publicKey
         XCTAssertTrue(validator.registerPeer(nodeId: "p", publicKey: a))
@@ -46,7 +55,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_rejectsAttestationMismatchWhenRequired() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
 
         var intent = HermesRealtimeRelayInputIntent(
@@ -95,7 +104,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_requirePresent_rejectsMissingEnvelopeAttestation() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: nil)
 
@@ -114,7 +123,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_requirePresent_acceptsNonEmptyAttestation() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: "phone-digest")
 
@@ -129,7 +138,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_clipboardValidationRequiresAttestationWhenPolicyRequiresIt() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         let request = try signedClipboardRequest(privateKey: privateKey, attestationDigest: nil)
 
@@ -148,7 +157,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_remoteUnlockCredentialValidationRequiresAttestationWhenPolicyRequiresIt() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         let credential = try signedRemoteUnlockCredential(privateKey: privateKey, attestationDigest: nil)
 
@@ -167,7 +176,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_strictMode_rejectsMacUnbound() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: "any")
 
@@ -186,7 +195,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_strictMode_acceptsMatchingDigest() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         let digest = AppCheckAttestationBinding.digestHex(
             appId: "1:123:ios:abc",
@@ -205,7 +214,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_revokedPeerRejected() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         validator.revokePeer(nodeId: "peer-1")
 
@@ -248,7 +257,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_registerPeerRefusesRevokedPeerAndFailsClosed() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         // Revoke BEFORE any (re)registration — simulates a revoked device
         // reconnecting and trying to re-admit its pubkey via controlClassify.
         validator.revokePeer(nodeId: "peer-1")
@@ -304,7 +313,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_escrowDeviceRevokedRejectsGrantRequest() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         validator.revokeEscrowDevice(deviceId: "escrow-device-1")
         XCTAssertTrue(validator.isEscrowDeviceRevoked(deviceId: "escrow-device-1"))
@@ -353,7 +362,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
     }
 
     func test_revocationQueryHelpersReflectState() {
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         XCTAssertFalse(validator.isPeerRevoked(nodeId: "peer-9"))
         XCTAssertFalse(validator.isEscrowDeviceRevoked(deviceId: "device-9"))
         validator.revokePeer(nodeId: "peer-9")
@@ -367,7 +376,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_signedApprovalResponseValidatesAndBindsPendingRequestHash() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         let request = approvalRequest(toolKind: "desktop.click")
         let requestHash = try phoneSigner.canonicalApprovalRequestHashHex(request: request)
@@ -406,7 +415,7 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     func test_signedApprovalResponseRejectsWrongPendingRequestHash() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
-        let validator = PhoneControlAuthorityValidator()
+        let validator = makeValidator()
         validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
         let request = approvalRequest(toolKind: "desktop.click")
         let otherRequestHash = try phoneSigner.canonicalApprovalRequestHashHex(
@@ -447,6 +456,73 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         }
     }
 
+    func test_replayCounterStoreRejectsCapturedEnvelopeAfterValidatorRestart() throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-phone-replay-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let firstStore = PhoneControlReplayCounterStore(fileURL: fileURL)
+        let firstValidator = PhoneControlAuthorityValidator(
+            controllerPinStore: nil,
+            replayCounterStore: firstStore
+        )
+        firstValidator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let intent = try signedTapIntent(privateKey: privateKey, attestationDigest: nil, counter: 9)
+
+        XCTAssertEqual(
+            try firstValidator.validate(envelope: intent.authority, intent: intent).counter,
+            9
+        )
+        XCTAssertEqual(firstStore.load()["peer-1"], 9)
+
+        let restartedValidator = PhoneControlAuthorityValidator(
+            controllerPinStore: nil,
+            replayCounterStore: PhoneControlReplayCounterStore(fileURL: fileURL)
+        )
+        restartedValidator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+
+        XCTAssertThrowsError(
+            try restartedValidator.validate(envelope: intent.authority, intent: intent)
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.counterReplay(let lastSeen, let attempted) = error else {
+                return XCTFail("Expected counterReplay, got \(error)")
+            }
+            XCTAssertEqual(lastSeen, 9)
+            XCTAssertEqual(attempted, 9)
+        }
+    }
+
+    func test_replayCounterStoreMergeByMaxDoesNotDowngradeCounters() throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-phone-replay-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let store = PhoneControlReplayCounterStore(fileURL: fileURL)
+
+        try store.persist(["peer-1": 12])
+        try store.persist(["peer-1": 7, "peer-2": 3])
+
+        XCTAssertEqual(store.load()["peer-1"], 12)
+        XCTAssertEqual(store.load()["peer-2"], 3)
+    }
+
+    private func makeValidator(
+        freshnessWindow: TimeInterval = 5.0,
+        authorityMaxLifetime: TimeInterval = 300.0,
+        controllerPinStore: ControllerKeyPinStore? = nil,
+        pinEnforcement: @escaping @Sendable () -> Bool = { ControllerKeyPinEnforcementFlag.isEnabled() }
+    ) -> PhoneControlAuthorityValidator {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-phone-replay-test-\(UUID().uuidString).json")
+        replayCounterStoreURLs.append(fileURL)
+        return PhoneControlAuthorityValidator(
+            freshnessWindow: freshnessWindow,
+            authorityMaxLifetime: authorityMaxLifetime,
+            controllerPinStore: controllerPinStore,
+            pinEnforcement: pinEnforcement,
+            replayCounterStore: PhoneControlReplayCounterStore(fileURL: fileURL)
+        )
+    }
+
     private func approvalRequest(toolKind: String) -> HermesRealtimeRelayApprovalRequest {
         HermesRealtimeRelayApprovalRequest(
             approvalId: "approval-1",
@@ -464,7 +540,9 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
 
     private func signedTapIntent(
         privateKey: Curve25519.Signing.PrivateKey,
-        attestationDigest: String?
+        attestationDigest: String?,
+        counter: UInt64 = 1,
+        timestamp: Date = Date()
     ) throws -> HermesRealtimeRelayInputIntent {
         var intent = HermesRealtimeRelayInputIntent(
             kind: .tap,
@@ -480,8 +558,8 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
             clientIntentId: UUID().uuidString,
             authority: HermesRealtimeRelayAuthorityEnvelope(
                 peerNodeId: "peer-1",
-                counter: 1,
-                timestamp: Date(),
+                counter: counter,
+                timestamp: timestamp,
                 intentHashBlake3: "",
                 signatureEd25519: "",
                 attestationHashBlake3: attestationDigest
@@ -490,8 +568,8 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         let signed = try phoneSigner.sign(
             intent: intent,
             peerNodeId: "peer-1",
-            counter: 1,
-            timestamp: intent.authority.timestamp,
+            counter: counter,
+            timestamp: timestamp,
             privateKey: privateKey
         )
         intent.authority.intentHashBlake3 = signed.intentHashHex

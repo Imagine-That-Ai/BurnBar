@@ -589,7 +589,9 @@ final class AgentToolBroker: @unchecked Sendable {
         workspacePath: String,
         homePath: String = FileManager.default.homeDirectoryForCurrentUser.path
     ) -> String {
-        let ws = escapeSandboxProfileString(workspacePath)
+        let canonicalWorkspacePath = canonicalSandboxPath(workspacePath)
+        let canonicalHomePath = canonicalSandboxPath(homePath)
+        let ws = escapeSandboxProfileString(canonicalWorkspacePath)
         // High-value secret / private-data stores. Reads are denied even though
         // general reads stay allowed (so dev tooling keeps reading system libs,
         // configs, etc.). Defense-in-depth behind `(deny network*)`.
@@ -602,10 +604,10 @@ final class AgentToolBroker: @unchecked Sendable {
             "/Library/Application Support/Firefox",
             "/Library/Application Support/BraveSoftware",
             "/Library/Application Support/com.apple.sharedfilelist"
-        ].map { homePath + $0 }
+        ].map { canonicalHomePath + $0 }
         let secretLiterals = [
             "/.netrc", "/.npmrc", "/.pypirc", "/.git-credentials"
-        ].map { homePath + $0 }
+        ].map { canonicalHomePath + $0 }
 
         var lines: [String] = [
             "(version 1)",
@@ -632,6 +634,17 @@ final class AgentToolBroker: @unchecked Sendable {
         lines.append("(deny file-write* (require-not (subpath \"\(ws)\")))")
         lines.append("(allow default)")
         return lines.joined(separator: "\n")
+    }
+
+    private static func canonicalSandboxPath(_ path: String) -> String {
+        let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
+        #if canImport(Darwin)
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        if realpath(standardized, &buffer) != nil {
+            return String(cString: buffer)
+        }
+        #endif
+        return URL(fileURLWithPath: standardized).resolvingSymlinksInPath().path
     }
 
     private static func escapeSandboxProfileString(_ value: String) -> String {
