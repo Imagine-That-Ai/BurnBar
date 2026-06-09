@@ -75,6 +75,7 @@ fi
 required=(
   "LICENSE"
   "LICENSES/MIT-legacy.txt"
+  "LICENSES/Nous-hermes-agent-MIT.txt"
   "NOTICE"
   "THIRD_PARTY_NOTICES.md"
   "REUSE.toml"

@@ -237,42 +237,39 @@ test("HONEST CLAIMS: pensieve repo names are device-only with a webhook caveat",
   );
 });
 
-// connected_devices: BOTH the end-to-end relay path AND the hosted chat gateway
-// are now sealed end-to-end (HermesRelayCrypto per-link P-256 ECDH + AES-256-GCM).
-// The label must no longer name gateway message text / sender names / attachment
-// file names as server-readable facets, and the sealed claim now covers the
-// gateway frame contents too. (Gateway E2E re-architecture — Wave 4.)
+// connected_devices: relay/gateway content-sealing claims are runtime-gated.
+// The registry can describe the paired E2EE mode, but it must not turn that into
+// an unconditional production claim while the release-readiness manifest is
+// still not_ready.
 
-test("HONEST CLAIMS: connected_devices seals both the relay and the hosted chat gateway", () => {
+test("HONEST CLAIMS: connected_devices caveats relay and hosted gateway sealing", () => {
   const devices = registry.domains.find((d) => d.id === "connected_devices");
   assert.ok(devices, "expected the connected_devices domain");
   const serverLower = devices.serverSees.map((v) => v.toLowerCase());
-  // The gateway is sealed now — the server must NOT claim it reads gateway
-  // message text, sender names, or attachment file names.
-  for (const leak of ["message text", "sender name", "file name"]) {
-    assert.ok(
-      !serverLower.some((v) => v.includes("gateway") && v.includes(leak)),
-      `connected_devices serverSees must not claim the server reads gateway ${leak} (the gateway is sealed)`,
-    );
+  const summaryLower = devices.summary.toLowerCase();
+  const deviceOnlyLower = devices.deviceOnly.map((v) => v.toLowerCase()).join(" ");
+
+  assert.match(devices.summary, /NOTE:/, "connected_devices summary must carry a NOTE caveat");
+  assert.match(summaryLower, /runtime-readiness gate/, "connected_devices must bind sealing to readiness");
+  assert.match(summaryLower, /paired e2ee/, "connected_devices must bind sealing to paired E2EE");
+  assert.ok(
+    !/never (?:reads?|receives?|sees) plaintext/i.test(devices.summary),
+    "connected_devices summary must not make an unconditional plaintext-visibility denial",
+  );
+  assert.ok(
+    !/both directions are end-to-end encrypted/i.test(devices.summary),
+    "connected_devices summary must not make an unconditional hosted-gateway E2EE claim",
+  );
+  for (const visible of ["routing metadata", "public keys", "tool labels", "thread ids", "attachment ids"]) {
+    assert.ok(summaryLower.includes(visible), `connected_devices summary must disclose visible ${visible}`);
   }
-  // What the server may see is only opaque relay key material (public keys) plus
-  // routing metadata — named honestly.
   assert.ok(
     serverLower.some((v) => v.includes("opaque") && v.includes("key material")),
     "connected_devices serverSees must declare the opaque relay public-key material it routes",
   );
-  // The sealed claim now scopes to BOTH relay AND gateway frame contents.
   assert.ok(
-    devices.deviceOnly
-      .map((v) => v.toLowerCase())
-      .some((v) => v.includes("gateway") && v.includes("sealed")),
-    "connected_devices deviceOnly must state the gateway frame contents are sealed",
-  );
-  // The summary must state the gateway is sealed end-to-end (no readable-text caveat).
-  assert.match(
-    devices.summary,
-    /gateway[^.]*sealed/i,
-    "connected_devices summary must disclose the gateway is sealed end-to-end",
+    deviceOnlyLower.includes("runtime readiness is complete"),
+    "connected_devices deviceOnly must caveat gateway frame contents on runtime readiness",
   );
   assert.ok(
     !/server can read/i.test(devices.summary),

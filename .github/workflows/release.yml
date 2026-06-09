@@ -92,6 +92,9 @@ jobs:
       - name: Scan publishable tree for secrets
         run: ./scripts/security/scan-publishable-tree.sh
 
+      - name: BurnBar product release preflight
+        run: python3 scripts/ci/check_burnbar_release_preflight.py
+
       - name: Release preflight summary
         env:
           TAG_NAME: ${{ steps.version.outputs.tag_name }}

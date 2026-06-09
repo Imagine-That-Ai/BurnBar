@@ -41,7 +41,7 @@ struct HermesSquareThreadRow: View {
                         .font(.callout.bold())
                         .foregroundStyle(DesignSystemColors.textPrimary)
                         .lineLimit(1)
-                    Text(item.preview)
+                    Text(HermesAtomParser.plainText(item.preview))
                         .font(.caption)
                         .foregroundStyle(DesignSystemColors.textMuted)
                         .lineLimit(2)
@@ -276,7 +276,7 @@ struct HermesSquareSearchHitRow: View {
                         .font(.caption2.bold())
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
-                Text(hit.preview)
+                Text(HermesAtomParser.plainText(hit.preview))
                     .font(.caption)
                     .foregroundStyle(DesignSystemColors.textMuted)
                     .lineLimit(2)

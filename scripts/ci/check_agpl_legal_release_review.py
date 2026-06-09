@@ -58,7 +58,17 @@ TOP_LEVEL_KEYS = {
     "scope",
     "distributionChannels",
     "reviewedArtifacts",
+    "approval",
     "notes",
+}
+APPROVAL_KEYS = {
+    "reviewerName",
+    "approvedAt",
+    "documentPath",
+    "documentSha256",
+    "signatureFormat",
+    "signaturePath",
+    "publicKeyPath",
 }
 
 
@@ -83,7 +93,12 @@ def _string_list(value: Any, path: str) -> tuple[list[str], list[str]]:
     return items, errors
 
 
-def validate_legal_release_review(data: Any, *, repo_root: Path | None = None) -> list[str]:
+def validate_legal_release_review(
+    data: Any,
+    *,
+    repo_root: Path | None = None,
+    require_approved: bool = False,
+) -> list[str]:
     errors: list[str] = []
     if not isinstance(data, dict):
         return ["review root must be a JSON object"]
@@ -131,6 +146,40 @@ def validate_legal_release_review(data: Any, *, repo_root: Path | None = None) -
         errors.append("notes must be a non-empty string explaining the release decision boundary")
     elif "not legal advice" in notes.lower():
         errors.append("notes must record the review outcome, not a placeholder disclaimer")
+
+    if require_approved:
+        approval = data.get("approval")
+        if not isinstance(approval, dict):
+            errors.append("approval must be an object")
+        else:
+            errors.extend(_unexpected_keys(approval, APPROVAL_KEYS, ("approval",)))
+            for key in (
+                "reviewerName",
+                "approvedAt",
+                "documentPath",
+                "documentSha256",
+                "signatureFormat",
+                "signaturePath",
+                "publicKeyPath",
+            ):
+                value = approval.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(f"approval.{key} is required")
+            document_sha = approval.get("documentSha256")
+            if isinstance(document_sha, str) and document_sha.strip() and (
+                len(document_sha) != 64 or any(char not in "0123456789abcdefABCDEF" for char in document_sha)
+            ):
+                errors.append("approval.documentSha256 must be a 64-character hex SHA-256")
+            if repo_root is not None:
+                for key in ("documentPath", "signaturePath", "publicKeyPath"):
+                    value = approval.get(key)
+                    if not isinstance(value, str) or not value.strip():
+                        continue
+                    path = Path(value)
+                    if path.is_absolute() or ".." in path.parts:
+                        errors.append(f"approval.{key} must be repo-relative")
+                    elif not (repo_root / path).is_file():
+                        errors.append(f"approval.{key} path does not exist: {value}")
 
     return errors
 

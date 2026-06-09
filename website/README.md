@@ -49,10 +49,13 @@ npm run dev    # http://127.0.0.1:4321
 ## Build
 
 ```sh
-npm run build  # astro build && build-sitemap.mjs
+npm run build          # refreshes live router research, then builds
+npm run build:offline  # builds from committed data only
 ```
 
 Output goes to `website/dist/`. The build step also produces `dist/sitemap.xml`.
+Use `npm run research` or `npm run build` only when you intentionally want to
+refresh `src/data/router-rundown-history/`.
 
 ## Verify
 
@@ -61,9 +64,17 @@ npm run verify
 ```
 
 Runs:
-1. `astro check` — TypeScript and Astro template diagnostics
-2. `astro build` — production build, all 12 pages
-3. `node scripts/check-links.mjs` — verifies every internal `href` resolves to a built page or a static asset
+1. content/copy regression checks
+2. `astro check` — TypeScript and Astro template diagnostics
+3. `npm run build:offline` — production build from committed data
+4. `node scripts/update-csp-hashes.mjs --check` — proves the Firebase marketing CSP has exact hashes for the built inline scripts/styles and no `unsafe-inline`
+5. `node scripts/test-trust-copy.mjs` — scans built trust/privacy output for external network references
+6. `node scripts/check-links.mjs` — verifies every internal `href` resolves to a built page or a static asset
+
+`npm run verify` is intentionally source-data non-mutating; it rebuilds
+`website/dist/`, but it must not refresh router-rundown history.
+If a legitimate inline script/style changes, run `npm run build:offline` and
+then `npm run csp:update` to refresh `firebase.json` before re-running verify.
 
 For a manual visual pass:
 
@@ -93,8 +104,9 @@ firebase login            # if not already
 firebase deploy --only hosting:marketing
 ```
 
-Firebase Hosting predeploy runs `npm --prefix "$RESOURCE_DIR/website" run build`,
-so a fresh dist is always produced.
+Firebase Hosting predeploy runs `npm --prefix website run verify`, so deploys
+rebuild the site, run copy/build checks, scan the built trust/privacy output for
+external network references, and verify links before publishing.
 
 ### Connecting the burnbar.ai domain
 

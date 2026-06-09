@@ -964,7 +964,7 @@ private struct OnDeviceHermesRow: View {
             }
 
             if !thread.preview.isEmpty {
-                Text(thread.preview)
+                Text(HermesAtomParser.plainText(thread.preview))
                     .font(MobileTheme.Typography.body)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .lineLimit(2)
@@ -1161,7 +1161,7 @@ private struct HermesLibraryRow: View {
                 }
             }
 
-            Text(session.preview)
+            Text(HermesAtomParser.plainText(session.preview))
                 .font(MobileTheme.Typography.body)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                 .lineLimit(2)
@@ -1675,7 +1675,7 @@ struct HermesChatView: View {
                     Label("Show tokens/sec", systemImage: "speedometer")
                 }
                 Toggle(isOn: $usePretextRendering) {
-                    Label("Rich text (mentions · code)", systemImage: "text.alignleft")
+                    Label("Rich text (bold · mentions · code)", systemImage: "text.alignleft")
                 }
                 Button {
                     showPretextPlayground = true
@@ -3582,9 +3582,12 @@ func hermesAgentProvider(for raw: String) -> AgentProvider {
 struct HermesMessageBubble: View {
     let message: HermesChatMessage
     var showTPS: Bool = false
-    /// When true, assistant text is rendered through `PretextRichBubble` so
-    /// `@mentions` and `` `code spans` `` get inline chips and pretext line
-    /// breaking. Falls back to native `Text` if the engine isn't ready.
+    /// When true, assistant text is rendered through `HermesRichBubble` so
+    /// markdown emphasis renders styled and `@mentions` / `` `code spans` ``
+    /// get inline chips with pretext line breaking. Falls back to native
+    /// `Text` if the engine isn't ready. When false, inline markdown still
+    /// resolves through an attributed `Text` — only chips and engine layout
+    /// are skipped.
     var usePretextRendering: Bool = true
     /// Display mode: rich agent bubbles or raw CLI output.
     var viewMode: ChatViewMode = .agent
@@ -4028,7 +4031,14 @@ struct HermesMessageBubble: View {
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text(message.text)
+            // Errors render exactly what the server returned. Non-error text
+            // with Pretext off still resolves markdown emphasis — opting out
+            // of chips and engine layout is not opting into raw `**` markers.
+            Text(
+                message.isError
+                    ? AttributedString(message.text)
+                    : HermesInlineMarkdown.attributedString(message.text)
+            )
                 .font(MobileTheme.Typography.body)
                 .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -22,6 +22,8 @@ offer, keep that material with the distribution.
   Hermes files.
 - Scope: Hermes-origin agent, gateway, plugin, CLI, and supporting code that
   BurnBar carries forward or modifies.
+- Upstream: `https://github.com/NousResearch/hermes-agent`.
+- Preserved upstream notice: `LICENSES/Nous-hermes-agent-MIT.txt`.
 - Notice: MIT-origin copyright and permission notices must be preserved in
   source distributions and any generated third-party notice bundle.
 

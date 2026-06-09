@@ -17,6 +17,8 @@ OpenBurnBar's macOS release ships through two channels: a sandboxed Mac App Stor
 
 The macOS app ships as a packaged release artifact. The editor extension remains source-only for now; there is no public VS Marketplace / Open VSX listing or signed VSIX attached to releases yet.
 
+OpenBurnBar's shipped product is AGPL-3.0-only. The Nous/Hermes gateway contribution path remains MIT-compatible and is guarded separately so BurnBar product-only AGPL/libsignal release artifacts do not leak into upstream Hermes Agent PRs.
+
 ## Architecture stance
 
 OpenBurnBar is now explicitly **daemon-first** and **local-first**.

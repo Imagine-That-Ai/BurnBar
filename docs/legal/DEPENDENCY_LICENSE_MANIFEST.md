@@ -4,6 +4,10 @@ This manifest records the load-bearing license posture for BurnBar's E2EE
 strategy. It is intentionally small and auditable; generated SBOMs may add more
 detail, but they should not contradict this file.
 
+The preserved Nous Research MIT notice for Hermes-origin gateway code lives at
+`LICENSES/Nous-hermes-agent-MIT.txt` and must be included with product source
+packets and notice bundles.
+
 | Component                          | Location                                       | License                             | BurnBar Lane                     |
 | ---------------------------------- | ---------------------------------------------- | ----------------------------------- | -------------------------------- |
 | BurnBar shipped product            | Root product tree                              | AGPL-3.0-only                       | Product                          |

@@ -498,7 +498,10 @@ jobs:
   retrieval-evals:
     name: Retrieval Evals
     runs-on: macos-26
-    timeout-minutes: 20
+    # Cold macOS runners can spend most of the first 20 minutes compiling the
+    # Signal FFI before the replay suite starts, so keep this lane bounded but
+    # large enough for the actual retrieval evals to run.
+    timeout-minutes: 60
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     env:
       INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}

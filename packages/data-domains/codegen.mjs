@@ -224,9 +224,9 @@ function camel(snake) {
 // and cannot see from the same registry the apps consume. We emit a TS module —
 // website/src/data/trust.generated.ts — and a CI drift gate (registry.test.mjs +
 // `git diff --exit-code`) fails red if the in-tree copy diverges. This is the
-// website-equivalent of the Android DataDomains.kt sync: the marketing copy can
-// never quietly overstate the product, because the tier + facets are generated,
-// not hand-authored.
+// website-equivalent of the Android DataDomains.kt sync: the tier + facets are
+// generated, not hand-authored. Runtime-readiness and crypto-wiring claims still
+// require their own validators; registry drift checks do not prove runtime state.
 //
 // Tier badge colors are sourced from the Pensieve design-token DTCG file so the
 // website's tier colors match the in-app Data & Privacy Control Center
@@ -367,8 +367,9 @@ export function emitWebsiteTrust(reg, tierColors) {
     "// The public trust surface (burnbar.ai/trust) renders every factual claim from",
     "// this file. Re-generate with: node packages/data-domains/codegen.mjs",
     "// A CI drift gate (registry.test.mjs + git diff --exit-code) fails if this file",
-    "// diverges from the registry, so the marketing site can never overstate what",
-    "// the product does. Tier colors match the in-app control center byte-for-byte.",
+    "// diverges from the registry. Runtime-readiness and crypto-wiring claims are",
+    "// validated separately; this file proves registry alignment, not live runtime",
+    "// state. Tier colors match the in-app control center byte-for-byte.",
     "",
     `export type TrustTierId = ${TIERS.map((t) => `"${t}"`).join(" | ")};`,
     "",

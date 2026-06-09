@@ -39,7 +39,8 @@ jobs:
           # Vendor/libsignal is a pinned submodule; without it the product-tree
           # detection below reads this repo as an MIT upstream checkout and the
           # whole job silently skips — a green light with no checks behind it.
-          submodules: true
+          fetch-depth: 0
+          submodules: recursive
 
       - name: Detect BurnBar AGPL product tree
         id: product-tree
