@@ -534,8 +534,8 @@ import BaseLayout from "@layouts/BaseLayout.astro";
       const approve = httpsCallable(functions, "approveHermesGatewayDeviceGrant");
       await approve({ userCode: code, displayName: "Hermes Agent" });
       showState("success");
-    } catch (error: any) {
-      const codeText = String(error?.code || "");
+    } catch (error: unknown) {
+      const codeText = String((error as { code?: unknown })?.code || "");
       if (codeText.includes("permission-denied")) {
         setError("BurnBar Cloud or Cloud Pro is required to connect Hermes.");
       } else if (codeText.includes("not-found")) {
