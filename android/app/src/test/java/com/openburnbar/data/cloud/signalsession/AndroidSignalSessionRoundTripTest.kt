@@ -33,7 +33,7 @@ class AndroidSignalSessionRoundTripTest {
     }
 
     private fun newStore(registrationId: Int, vault: SignalRecordVault = InMemorySignalRecordVault()) =
-        AndroidSignalProtocolStore(newIdentity(), registrationId, vault)
+        AndroidSignalProtocolStore.testingTOFU(newIdentity(), registrationId, vault)
 
     @Test
     fun fullPqxdhSessionEncryptDecrypt() {
@@ -80,7 +80,7 @@ class AndroidSignalSessionRoundTripTest {
     fun sessionSurvivesStoreRoundTrip() {
         val aliceVault = InMemorySignalRecordVault()
         val aliceIdentity = newIdentity()
-        val alice = AndroidSignalProtocolStore(aliceIdentity, 0x4f01, aliceVault)
+        val alice = AndroidSignalProtocolStore.testingTOFU(aliceIdentity, 0x4f01, aliceVault)
         val bob = newStore(0x4f02)
         val now = 1_700_000_000_000L
 
@@ -98,7 +98,7 @@ class AndroidSignalSessionRoundTripTest {
 
         // Reopen Alice's store from the SAME vault and decrypt Bob's later reply via the persisted session.
         val bobReply = SessionCipher(bob, bobAddress, aliceAddress).encrypt("second".toByteArray())
-        val aliceReloaded = AndroidSignalProtocolStore(aliceIdentity, 0x4f01, aliceVault)
+        val aliceReloaded = AndroidSignalProtocolStore.testingTOFU(aliceIdentity, 0x4f01, aliceVault)
         val out = SessionCipher(aliceReloaded, aliceAddress, bobAddress)
             .decrypt(SignalMessage(bobReply.serialize()))
         assertArrayEquals("second".toByteArray(), out)

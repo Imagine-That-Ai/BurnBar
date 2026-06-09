@@ -50,7 +50,7 @@ enum MacCloudVaultSignalPayloads {
     static func signalEnvelopeIfEnabled(
         domainID: String,
         uid: String,
-        firestore: Firestore,
+        firestore: @autoclosure () throws -> Firestore,
         collection: String,
         docId: String,
         field: String = "signalEnvelope",
@@ -62,7 +62,7 @@ enum MacCloudVaultSignalPayloads {
             throw MacCloudVaultSignalPayloadError.signalIdentityUnavailable(domainID: domainID)
         }
         let binding = CloudVaultSignalBinding(uid: uid, collection: collection, docId: docId, field: field)
-        let recipients = try await atRestRecipients(uid: uid, firestore: firestore, localIdentity: signalIdentity)
+        let recipients = try await atRestRecipients(uid: uid, firestore: try firestore(), localIdentity: signalIdentity)
         // Sender authentication: sign with THIS device's identity private key so a reader
         // can prove the envelope was produced by a trusted device, not forged by the server.
         let envelope = try OpenBurnBarSignalAtRest.sealPayload(
@@ -153,32 +153,17 @@ enum MacCloudVaultSignalPayloads {
         ]
 
         for document in trustedDevices.documents {
-            let data = document.data()
-            let rawDeviceId = (data["deviceId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let deviceId = (rawDeviceId?.isEmpty == false ? rawDeviceId! : document.documentID)
-            guard let keyVersion = data["keyVersion"] as? Int else {
-                throw MacCloudVaultSignalPayloadError.trustedDeviceSignalIdentityMismatch(deviceId: deviceId, keyVersion: 0)
-            }
-            let identityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(deviceId: deviceId, keyVersion: keyVersion)
-            if identityKeyId == localIdentity.identityKeyId { continue }
-            let identityDoc = try await userRef.collection("signal_identity_public_keys")
-                .document(identityKeyId)
-                .getDocument()
-            guard let identityData = identityDoc.data() else {
-                throw MacCloudVaultSignalPayloadError.trustedDeviceMissingSignalIdentity(deviceId: deviceId, keyVersion: keyVersion)
-            }
-            guard identityData["deviceId"] as? String == deviceId,
-                  identityData["identityKeyId"] as? String == identityKeyId,
-                  identityData["keyVersion"] as? Int == keyVersion,
-                  identityData["algorithm"] as? String == CloudVaultCrypto.signalAtRestEncryption,
-                  let publicKeyBase64 = identityData["publicKeyData"] as? String,
-                  let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
-                throw MacCloudVaultSignalPayloadError.trustedDeviceSignalIdentityMismatch(deviceId: deviceId, keyVersion: keyVersion)
-            }
-            recipientsByIdentityKeyId[identityKeyId] = OpenBurnBarSignalAtRestRecipient(
+            let verified = try await CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                uid: uid,
+                userRef: userRef,
+                deviceDocument: document,
+                localIdentity: localIdentity
+            )
+            if verified.signalIdentityKeyId == localIdentity.identityKeyId { continue }
+            recipientsByIdentityKeyId[verified.signalIdentityKeyId] = OpenBurnBarSignalAtRestRecipient(
                 recipientKind: "device",
-                recipientIdentityKeyId: identityKeyId,
-                publicKeyData: publicKeyData
+                recipientIdentityKeyId: verified.signalIdentityKeyId,
+                publicKeyData: verified.signalIdentityPublicKeyData
             )
         }
 

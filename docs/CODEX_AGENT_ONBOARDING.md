@@ -73,8 +73,12 @@ Why this is the default:
 - The shim sends `MCP-Protocol-Version: 2025-11-25` explicitly,
   matching what the hosted server enforces at
   `services/hosted-mcp/src/server.ts` (`validateProtocol`).
-- The shim decrypts sealed search-result content locally using
-  `OPENBURNBAR_CLOUD_VAULT_KEY_BASE64` when present. Without the shim,
+- The shim decrypts sealed search-result content locally using the
+  OpenBurnBar vault key from macOS Keychain. The plaintext
+  `OPENBURNBAR_CLOUD_VAULT_KEY_BASE64` source is accepted only for
+  disposable test/CI runs when
+  `OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE=true`; production-style
+  Codex linking should use Keychain-backed access. Without the shim,
   sealed titles/snippets in `burnbar_search_conversations` and
   `burnbar_get_conversation_body` stay as ciphertext.
 - The shim picks up the bearer transparently from Keychain (or the
@@ -198,9 +202,11 @@ After editing `~/.codex/config.toml`:
 `tools/list returns sealed ciphertext instead of titles`
 
 - You are on Option B. Sealed search results are not decrypted on
-  the direct HTTP path. Switch to Option A (the shim) and confirm
-  `OPENBURNBAR_CLOUD_VAULT_KEY_BASE64` is exported so the shim can
-  decrypt.
+  the direct HTTP path. Switch to Option A (the shim) and confirm the
+  local OpenBurnBar vault key is available in macOS Keychain. For a
+  disposable test-only run, the shim can use
+  `OPENBURNBAR_CLOUD_VAULT_KEY_BASE64` only when
+  `OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE=true` is also set.
 
 `Daemon unavailable when calling burnbar_record_hermes_usage`
 
@@ -220,9 +226,10 @@ After editing `~/.codex/config.toml`:
   process Codex launches. Do not point Codex at the local MCP from a
   shared / unprivileged account.
 - Sealed search results are decrypted on-device by the stdio shim
-  using `OPENBURNBAR_CLOUD_VAULT_KEY_BASE64`. Keep the vault key out
-  of shared environments — Firebase only ever sees opaque token
-  hashes.
+  using the Keychain-backed OpenBurnBar vault key. Keep vault keys out
+  of shared environments; the plaintext env/file fallback is disabled
+  unless `OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE=true` is set for
+  disposable tests. Firebase only ever sees opaque token hashes.
 
 ## Support level
 

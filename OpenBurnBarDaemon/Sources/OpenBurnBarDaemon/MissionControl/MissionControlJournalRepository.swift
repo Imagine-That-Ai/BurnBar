@@ -24,11 +24,61 @@ struct MissionControlJournalRepository {
             .split(whereSeparator: \.isNewline)
             .compactMap { line -> BurnBarControllerEvent? in
                 guard line.isEmpty == false else { return nil }
+                if Task.isCancelled { return nil }
                 do {
                     return try decoder.decode(BurnBarControllerEvent.self, from: Data(line.utf8))
                 } catch {
                     logger.error(
                         "controller_event_skipped",
+                        metadata: ["error": error.localizedDescription]
+                    )
+                    return nil
+                }
+            }
+    }
+
+    func readRecentEventsFromDisk(limit: Int, decoder: JSONDecoder) throws -> [BurnBarControllerEvent] {
+        guard limit > 0,
+              FileManager.default.fileExists(atPath: eventsFileURL.path) else {
+            return []
+        }
+
+        let handle = try FileHandle(forReadingFrom: eventsFileURL)
+        defer { try? handle.close() }
+
+        let fileSize = try handle.seekToEnd()
+        guard fileSize > 0 else { return [] }
+
+        let chunkSize: UInt64 = 64 * 1024
+        let maxTailBytes: UInt64 = 4 * 1024 * 1024
+        var offset = fileSize
+        var tail = Data()
+        var newlineCount = 0
+
+        while offset > 0 && newlineCount <= limit && UInt64(tail.count) < maxTailBytes {
+            try Task.checkCancellation()
+            let readSize = min(chunkSize, offset)
+            offset -= readSize
+            try handle.seek(toOffset: offset)
+            guard let chunk = try handle.read(upToCount: Int(readSize)), chunk.isEmpty == false else {
+                break
+            }
+            tail.insert(contentsOf: chunk, at: 0)
+            newlineCount = tail.reduce(into: 0) { count, byte in
+                if byte == 0x0A { count += 1 }
+            }
+        }
+
+        return String(decoding: tail, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+            .suffix(limit)
+            .compactMap { line -> BurnBarControllerEvent? in
+                guard line.isEmpty == false else { return nil }
+                do {
+                    return try decoder.decode(BurnBarControllerEvent.self, from: Data(line.utf8))
+                } catch {
+                    logger.error(
+                        "controller_recent_event_skipped",
                         metadata: ["error": error.localizedDescription]
                     )
                     return nil

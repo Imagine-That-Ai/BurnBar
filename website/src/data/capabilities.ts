@@ -89,7 +89,7 @@ export const FLOO_CAPABILITIES: Capability[] = [
 /** Floo's safety promises — the part that earns the feature. */
 export const FLOO_PROMISES: string[] = [
   "It only ever connects your own devices — the ones you've paired and trust.",
-  "Everything between them is end-to-end encrypted. No one in the middle can read it, and that includes us.",
+  "Payloads are sealed between your paired devices. The relay still sees routing metadata, never the screen, file, call, or clipboard contents.",
   "Every connection asks first. Decline and it backs off.",
   "One tap ends it — the screen view, the call, the control, all of it, instantly."
 ];

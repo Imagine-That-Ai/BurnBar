@@ -187,6 +187,10 @@ public struct BurnBarDaemonConfiguration: Sendable {
     /// Rate limiting configuration for Unix domain socket RPC.
     /// Default: 60 req/s sustained, 100 burst.
     public let socketRateLimit: BurnBarRateLimitConfiguration
+    /// Starts Mission Control's scheduler/notification background loop when the daemon boots.
+    /// Production keeps this on; tests and narrow socket harnesses should disable it unless
+    /// they explicitly exercise scheduler behavior with isolated Mission Control storage.
+    public let startsMissionControlBackgroundLoops: Bool
 
     public init(
         socketPath: String = BurnBarDaemonPaths.defaultSocketPath,
@@ -198,7 +202,8 @@ public struct BurnBarDaemonConfiguration: Sendable {
         socketRateLimit: BurnBarRateLimitConfiguration = BurnBarRateLimitConfiguration(
             requestsPerSecond: 60,
             burstCapacity: 100
-        )
+        ),
+        startsMissionControlBackgroundLoops: Bool = true
     ) {
         self.socketPath = socketPath
         self.socketAuthToken = socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
@@ -207,6 +212,7 @@ public struct BurnBarDaemonConfiguration: Sendable {
         self.indexDatabasePath = indexDatabasePath
         self.gateway = gateway
         self.socketRateLimit = socketRateLimit
+        self.startsMissionControlBackgroundLoops = startsMissionControlBackgroundLoops
     }
 
     /// Validates that required configuration is present.

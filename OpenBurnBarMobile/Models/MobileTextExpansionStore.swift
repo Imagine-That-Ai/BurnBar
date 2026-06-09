@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 import Observation
 import FirebaseAuth
 import FirebaseFirestore
@@ -241,6 +242,13 @@ final class MobileTextExpansionStore {
             publicKeyFingerprint: keypair.publicKeyFingerprint,
             keyVersion: keypair.keyVersion
         )
+        let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+        try await MobileSignalIdentityPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: deviceId,
+            platform: UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS",
+            identity: signalIdentity
+        )
         guard sourceIsTrusted else {
             return
         }
@@ -249,29 +257,25 @@ final class MobileTextExpansionStore {
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
             .getDocuments()
         for document in trusted.documents {
-            let data = document.data()
-            let targetDeviceId = data["deviceId"] as? String ?? document.documentID
-            guard let keyVersion = data["keyVersion"] as? Int,
-                  let fingerprint = data["publicKeyFingerprint"] as? String else {
-                continue
-            }
-            let publicKeyDoc = try await userRef.collection("escrow_public_keys")
-                .document("\(targetDeviceId)_\(keyVersion)")
-                .getDocument()
-            guard let publicKeyBase64 = publicKeyDoc.data()?["publicKeyData"] as? String,
-                  let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
-                continue
-            }
-            let wrapped = try CloudVaultCrypto.wrapVaultKey(vaultKey, recipientPublicKey: publicKeyData)
+            let target = try await MobileCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                uid: uid,
+                userRef: userRef,
+                deviceDocument: document,
+                localIdentity: signalIdentity
+            )
+            let wrapped = try CloudVaultCrypto.wrapVaultKey(
+                vaultKey,
+                recipientPublicKey: target.escrowPublicKeyData
+            )
             try await userRef.collection("cloud_vault_key_wrappers")
-                .document("\(targetDeviceId)_\(keyVersion)")
+                .document("\(target.deviceId)_\(target.keyVersion)")
                 .setData([
                     "uid": uid,
                     "vaultKeyID": vaultKeyID,
-                    "targetDeviceId": targetDeviceId,
+                    "targetDeviceId": target.deviceId,
                     "sourceDeviceId": deviceId,
-                    "publicKeyFingerprint": fingerprint,
-                    "keyVersion": keyVersion,
+                    "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
+                    "keyVersion": target.keyVersion,
                     "wrappedVaultKey": wrapped.base64EncodedString(),
                     "algorithm": "ECIES-P256-AESGCM",
                     "status": "active",
@@ -369,22 +373,34 @@ final class MobileTextExpansionStore {
         let scopeJSON = String(data: try jsonData(snippet.scope), encoding: .utf8) ?? "{}"
         let triggerHash = try CloudVaultCrypto.tokenHashes(for: snippet.trigger, keyData: key, limit: 1).first
             ?? CloudVaultCrypto.sha256Hex(snippet.trigger)
+        func seal(_ value: String, field: String) throws -> [String: Any] {
+            try dictionary(CloudVaultCrypto.sealText(
+                value,
+                keyData: key,
+                aadContext: CloudVaultAADContext(
+                    uid: uid,
+                    collection: "text_snippets",
+                    docID: snippet.id,
+                    field: field
+                )
+            ))
+        }
         return [
             "id": snippet.id,
             "uid": uid,
             "sourceDeviceID": snippet.sourceDeviceID ?? MobileDeviceIdentity.loadOrCreateDeviceId(),
             "triggerHash": triggerHash,
-            "sealedTitle": try dictionary(CloudVaultCrypto.sealText(snippet.title, keyData: key)),
-            "sealedTrigger": try dictionary(CloudVaultCrypto.sealText(snippet.trigger, keyData: key)),
-            "sealedBody": try dictionary(CloudVaultCrypto.sealText(snippet.body, keyData: key)),
-            "sealedScope": try dictionary(CloudVaultCrypto.sealText(scopeJSON, keyData: key)),
+            "sealedTitle": try seal(snippet.title, field: "sealedTitle"),
+            "sealedTrigger": try seal(snippet.trigger, field: "sealedTrigger"),
+            "sealedBody": try seal(snippet.body, field: "sealedBody"),
+            "sealedScope": try seal(scopeJSON, field: "sealedScope"),
             "mode": snippet.mode.rawValue,
             "isEnabled": snippet.isEnabled,
             "revision": snippet.revision,
             "createdAt": Timestamp(date: snippet.createdAt),
             "updatedAt": Timestamp(date: snippet.updatedAt),
             "deletedAt": snippet.deletedAt.map(Timestamp.init(date:)) as Any? ?? NSNull(),
-            "schemaVersion": 1,
+            "schemaVersion": CloudVaultCrypto.currentSealedTextSchemaVersion,
             "encryption": [
                 "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
                 "keyVersion": CloudVaultCrypto.currentKeyVersion,
@@ -402,13 +418,33 @@ final class MobileTextExpansionStore {
               let mode = TextExpansionMode(rawValue: modeRaw) else {
             return nil
         }
-        let scopeJSON = try CloudVaultCrypto.openText(sealedScope, keyData: key)
+        let snippetID = data["id"] as? String ?? documentID
+        let snippetUID = data["uid"] as? String
+        func open(_ envelope: CloudVaultSealedText, field: String) throws -> String {
+            if (envelope.schemaVersion ?? 1) >= CloudVaultCrypto.currentSealedTextSchemaVersion {
+                guard let snippetUID, !snippetUID.isEmpty else {
+                    throw CloudVaultCryptoError.invalidEnvelope
+                }
+                return try CloudVaultCrypto.openText(
+                    envelope,
+                    keyData: key,
+                    aadContext: CloudVaultAADContext(
+                        uid: snippetUID,
+                        collection: "text_snippets",
+                        docID: snippetID,
+                        field: field
+                    )
+                )
+            }
+            return try CloudVaultCrypto.openText(envelope, keyData: key)
+        }
+        let scopeJSON = try open(sealedScope, field: "sealedScope")
         let scope = (try? JSONDecoder().decode(TextExpansionScope.self, from: Data(scopeJSON.utf8))) ?? .global
         return TextExpansionSnippet(
-            id: data["id"] as? String ?? documentID,
-            title: try CloudVaultCrypto.openText(sealedTitle, keyData: key),
-            trigger: try CloudVaultCrypto.openText(sealedTrigger, keyData: key),
-            body: try CloudVaultCrypto.openText(sealedBody, keyData: key),
+            id: snippetID,
+            title: try open(sealedTitle, field: "sealedTitle"),
+            trigger: try open(sealedTrigger, field: "sealedTrigger"),
+            body: try open(sealedBody, field: "sealedBody"),
             mode: mode,
             isEnabled: data["isEnabled"] as? Bool ?? true,
             scope: scope,

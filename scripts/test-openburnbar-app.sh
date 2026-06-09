@@ -79,10 +79,66 @@ normalize_app_test_filter() {
     esac
 }
 
-raw_test_filter="${OPENBURNBAR_APP_TEST_FILTER:-OpenBurnBarTests}"
+usage() {
+    cat <<'EOF'
+Usage: scripts/test-openburnbar-app.sh [options]
+
+Options:
+  -only-testing:<target>  Run a specific XCTest bundle/class/method.
+  -only-testing <target>  Same as above.
+  -h, --help             Show this help.
+
+Environment:
+  OPENBURNBAR_APP_TEST_FILTER=<target>
+      Default test filter when -only-testing is not supplied.
+EOF
+}
+
+cli_test_filter=""
+set_cli_test_filter() {
+    local value="$1"
+    if [[ -z "$value" ]]; then
+        echo "error: -only-testing requires a non-empty target" >&2
+        exit 64
+    fi
+    if [[ -n "$cli_test_filter" && "$cli_test_filter" != "$value" ]]; then
+        echo "error: pass only one -only-testing filter to this wrapper" >&2
+        exit 64
+    fi
+    cli_test_filter="$value"
+}
+
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -only-testing:*)
+            set_cli_test_filter "${1#-only-testing:}"
+            shift
+            ;;
+        -only-testing)
+            shift
+            if [[ "$#" -eq 0 ]]; then
+                echo "error: -only-testing requires a target" >&2
+                exit 64
+            fi
+            set_cli_test_filter "$1"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "error: unsupported argument '$1'" >&2
+            usage >&2
+            exit 64
+            ;;
+    esac
+done
+
+raw_test_filter="${cli_test_filter:-${OPENBURNBAR_APP_TEST_FILTER:-OpenBurnBarTests}}"
 test_filter="$(normalize_app_test_filter "$raw_test_filter")"
 if [[ "$test_filter" != "$raw_test_filter" ]]; then
-    echo ">>> Normalized OPENBURNBAR_APP_TEST_FILTER from '$raw_test_filter' to '$test_filter'."
+    echo ">>> Normalized app test filter from '$raw_test_filter' to '$test_filter'."
 fi
 
 mkdir -p "$cache_dir"

@@ -152,53 +152,17 @@ enum MobileCloudVaultSignalPayloads {
         ]
 
         for document in trustedDevices.documents {
-            let data = document.data()
-            let rawDeviceId = (data["deviceId"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let deviceId: String
-            if let rawDeviceId, !rawDeviceId.isEmpty {
-                deviceId = rawDeviceId
-            } else {
-                deviceId = document.documentID
-            }
-            guard let keyVersion = data["keyVersion"] as? Int else {
-                throw MobileCloudVaultSignalPayloadError.trustedDeviceSignalIdentityMismatch(
-                    deviceId: deviceId,
-                    keyVersion: 0
-                )
-            }
-            let identityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(
-                deviceId: deviceId,
-                keyVersion: keyVersion
+            let verified = try await MobileCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                uid: uid,
+                userRef: userRef,
+                deviceDocument: document,
+                localIdentity: localIdentity
             )
-            // Self-exclusion (parity with Mac/Android): the local recipient is already seeded
-            // from the in-memory keypair above; skip the Firestore round-trip + avoid overwriting
-            // the authoritative local public key with a server-fetched copy.
-            if identityKeyId == localIdentity.identityKeyId { continue }
-            let identityDoc = try await userRef.collection("signal_identity_public_keys")
-                .document(identityKeyId)
-                .getDocument()
-            guard let identityData = identityDoc.data() else {
-                throw MobileCloudVaultSignalPayloadError.trustedDeviceMissingSignalIdentity(
-                    deviceId: deviceId,
-                    keyVersion: keyVersion
-                )
-            }
-            guard identityData["deviceId"] as? String == deviceId,
-                  identityData["identityKeyId"] as? String == identityKeyId,
-                  identityData["keyVersion"] as? Int == keyVersion,
-                  identityData["algorithm"] as? String == CloudVaultCrypto.signalAtRestEncryption,
-                  let publicKeyBase64 = identityData["publicKeyData"] as? String,
-                  let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
-                throw MobileCloudVaultSignalPayloadError.trustedDeviceSignalIdentityMismatch(
-                    deviceId: deviceId,
-                    keyVersion: keyVersion
-                )
-            }
-            recipientsByIdentityKeyId[identityKeyId] = OpenBurnBarSignalAtRestRecipient(
+            if verified.signalIdentityKeyId == localIdentity.identityKeyId { continue }
+            recipientsByIdentityKeyId[verified.signalIdentityKeyId] = OpenBurnBarSignalAtRestRecipient(
                 recipientKind: "device",
-                recipientIdentityKeyId: identityKeyId,
-                publicKeyData: publicKeyData
+                recipientIdentityKeyId: verified.signalIdentityKeyId,
+                publicKeyData: verified.signalIdentityPublicKeyData
             )
         }
 

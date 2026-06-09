@@ -25,14 +25,14 @@ final class OBBSignalInteropFixtureGen: XCTestCase {
         let bobReg: UInt32 = 0x0B0B
         let bobDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: bobDir) }
-        let bob = try OBBSignalProtocolStore(
+        let bob = try OBBSignalProtocolStore.testingTOFU(
             identityKeypair: bobIdentity, registrationId: bobReg,
             keychainService: "com.openburnbar.signal.interop.bob.\(UUID().uuidString)", sessionDir: bobDir
         )
 
         let aliceDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: aliceDir) }
-        let alice = try OBBSignalProtocolStore(
+        let alice = try OBBSignalProtocolStore.testingTOFU(
             identityKeypair: IdentityKeyPair.generate(), registrationId: 0x0A1C,
             keychainService: "com.openburnbar.signal.interop.alice.\(UUID().uuidString)", sessionDir: aliceDir
         )
