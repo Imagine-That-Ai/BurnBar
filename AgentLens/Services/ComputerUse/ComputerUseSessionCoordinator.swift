@@ -55,7 +55,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             macAppVersion: String,
             killSwitch: Bool = false,
             phoneControlAttestationRequired: Bool = false,
-            phoneControlRespectsDenyRegions: Bool = false,
+            phoneControlRespectsDenyRegions: Bool = true, // F3: secure default — phone respects AX deny-regions
             clipboardConsentGranted: Bool = false
         ) {
             self.userId = userId
@@ -146,6 +146,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         let connectionID: String?
         let sessionID: String
         let requestedAt: Date
+        let requestHashBlake3: String
     }
 
     private enum ApprovalResponseSource: Sendable {
@@ -274,7 +275,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     @discardableResult
     public func registerPhonePeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
-        phoneValidator.registerPeer(nodeId: nodeId, publicKey: publicKey)
+        // F1: scope the controller-key pin to this account so the Mac refuses a
+        // relay/Firestore-swapped signing key for an already-paired controller.
+        phoneValidator.registerPeer(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId)
     }
 
     /// Peer node id of the in-flight phone-control session, if any.
@@ -585,6 +588,21 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 Self.log.warning("Rejected remote approval response that did not match the pending requester.")
                 return
             }
+            guard let authority = response.authority else {
+                Self.log.warning("Rejected remote approval response without a signed authority envelope.")
+                return
+            }
+            do {
+                _ = try phoneValidator.validate(
+                    envelope: authority,
+                    approvalResponse: response,
+                    expectedRequestHashBlake3: context.requestHashBlake3,
+                    now: Date()
+                )
+            } catch {
+                Self.log.warning("Rejected remote approval response with invalid authority: \(String(describing: error), privacy: .public)")
+                return
+            }
         }
         guard let continuation = approvalContinuations.removeValue(forKey: response.approvalId) else {
             approvalContexts.removeValue(forKey: response.approvalId)
@@ -640,7 +658,13 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             killSwitch: configuration.killSwitch,
             accessibilityTrusted: inputController.isAccessibilityTrusted(),
             originatedFromPhone: invocation.requestedBy.rawValue == "phone-control",
-            phoneControlRespectsDenyRegions: configuration.phoneControlRespectsDenyRegions
+            phoneControlRespectsDenyRegions: configuration.phoneControlRespectsDenyRegions,
+            // F3: the per-session first-action approval mechanism is implemented and
+            // unit-tested in DefaultComputerUseCapabilityGate. It stays gated-off in
+            // production (confirmed: true) until the coordinator tracks per-session
+            // confirmation and the on-Mac/overlay approval UX is validated; the
+            // deny-region protection above ships on by default.
+            phoneSessionFirstActionConfirmed: true
         )
 
         switch gate.check(
@@ -852,7 +876,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 uid: latestControlUID,
                 connectionID: latestControlConnectionID,
                 sessionID: request.sessionId,
-                requestedAt: request.requestedAt
+                requestedAt: request.requestedAt,
+                requestHashBlake3: (try? ComputerUsePhoneControlSigner().canonicalApprovalRequestHashHex(request: request)) ?? ""
             )
             emitControlFrame(
                 type: .controlApprovalRequest,

@@ -33,8 +33,8 @@ function canonicalFingerprint(publicKeyBase64: string): string {
 }
 
 describe("escrow device fingerprint enforcement (Stream 6)", () => {
-  it("ships inert: capability flag is OFF by default", () => {
-    expect(ESCROW_DEVICE_FINGERPRINT_ENFORCEMENT_ENABLED).toBe(false);
+  it("ships enforcing (F2): device-key fingerprint binding is ON", () => {
+    expect(ESCROW_DEVICE_FINGERPRINT_ENFORCEMENT_ENABLED).toBe(true);
   });
 
   describe("recomputeEscrowFingerprint", () => {

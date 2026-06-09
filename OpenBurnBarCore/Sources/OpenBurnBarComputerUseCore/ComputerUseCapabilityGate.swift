@@ -154,12 +154,23 @@ public struct ComputerUseCapabilityContext: Sendable {
     public let killSwitch: Bool
     public let accessibilityTrusted: Bool
     public let originatedFromPhone: Bool
-    /// Defense-in-depth: when `true`, phone-control intents are also checked
-    /// against AX deny-regions. Default `false` because the phone user IS
-    /// the authenticated human operator (Ed25519-signed authority). Flip to
-    /// `true` via Remote Config `computer_use_phone_control_respects_deny_regions`
-    /// if the threat model changes.
+    /// Whether phone-control intents are subject to the SAME AX deny-region
+    /// protection as autonomous-agent input — secure text fields, system auth
+    /// sheets, the screen-lock window, etc. **Default `true`** (F3): a remote
+    /// controller, even one with a valid Ed25519-signed authority, must not be
+    /// able to silently type into a password field. The legacy bypass — for the
+    /// narrow case where the operator must drive their own login window — is
+    /// preserved only when an operator explicitly opts out via Remote Config
+    /// `computer_use_phone_control_respects_deny_regions = false`.
     public let phoneControlRespectsDenyRegions: Bool
+    /// Whether the operator has already confirmed control of this phone session
+    /// on the Mac/overlay (F3). The FIRST input of a phone session returns
+    /// `.allowed(.mac)` so the dispatcher raises the approval sheet — restoring
+    /// the documented "approval is the only ground truth" invariant — and the
+    /// coordinator sets this `true` after that approval so subsequent inputs flow
+    /// as `.phone` and the live mirror stays responsive. Default `false`
+    /// (fail-safe: an unconfirmed session requires approval).
+    public let phoneSessionFirstActionConfirmed: Bool
     /// Dedicated, short-lived consent for remote-clipboard read/write. This
     /// is a SEPARATE bit from `entitlement.allowsSystem` so the user can
     /// grant screen-share + Mac input yet still deny clipboard. Defaults to
@@ -176,7 +187,8 @@ public struct ComputerUseCapabilityContext: Sendable {
         killSwitch: Bool,
         accessibilityTrusted: Bool,
         originatedFromPhone: Bool = false,
-        phoneControlRespectsDenyRegions: Bool = false,
+        phoneControlRespectsDenyRegions: Bool = true,
+        phoneSessionFirstActionConfirmed: Bool = false,
         clipboardConsentGranted: Bool = false
     ) {
         self.entitlement = entitlement
@@ -188,6 +200,7 @@ public struct ComputerUseCapabilityContext: Sendable {
         self.accessibilityTrusted = accessibilityTrusted
         self.originatedFromPhone = originatedFromPhone
         self.phoneControlRespectsDenyRegions = phoneControlRespectsDenyRegions
+        self.phoneSessionFirstActionConfirmed = phoneSessionFirstActionConfirmed
         self.clipboardConsentGranted = clipboardConsentGranted
     }
 }
@@ -288,19 +301,16 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             }
         }
 
-        // 6. A verified phone-control intent is already the operator action in
-        //    a live mirror. Do not apply agent-oriented AX deny-region or scope
-        //    rules here: those rules protect autonomous agent runs from typing
-        //    into passwords or out-of-scope apps, but they also block the user
-        //    from clicking/typing on their own locked login screen. The phone
-        //    path has already passed signed-authority validation, kill switch,
-        //    entitlement bit, concurrency, and action-cap checks.
-        //
-        //    Defense-in-depth override: if `phoneControlRespectsDenyRegions` is
-        //    set to `true` (via Remote Config
-        //    `computer_use_phone_control_respects_deny_regions`), phone-control
-        //    intents fall through to the normal deny-region and scope checks
-        //    below instead of short-circuiting here.
+        // 6. Legacy phone escape hatch — explicit operator opt-out ONLY.
+        //    A verified phone-control intent is the operator acting in a live
+        //    mirror. Historically that short-circuited the AX deny-region and
+        //    approval checks so the operator could drive their own locked login
+        //    window. That bypass let a remote controller (or anything holding the
+        //    controller's signing key) silently type into a password field with
+        //    no approval, contradicting the "approval is the only ground truth"
+        //    invariant. It now survives ONLY when an operator explicitly sets
+        //    `phoneControlRespectsDenyRegions = false` via Remote Config — the
+        //    narrow login-window case — and is OFF by default.
         if directPhoneControl && !context.phoneControlRespectsDenyRegions {
             switch action {
             case .macInput, .phoneIntent:
@@ -310,17 +320,33 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             }
         }
 
-        // 7. Accessibility deny region beats scope outcome for agent/mac
-        //    approval paths — even an allow rule cannot override a password
-        //    field click.
+        // 7. Accessibility deny region beats EVERYTHING — agent, mac, AND phone.
+        //    By default (the block above does not fire) a verified phone intent is
+        //    now subject to the same protection: even a valid allow rule or a
+        //    signed phone authority cannot override a password-field / system
+        //    auth-sheet / locked-screen click.
         if accessibilityDeny != nil { return .denied(.denyRegion) }
 
-        // 8. Scope rules (deny precedence enforced by matcher).
+        // 8. Verified phone input that cleared the deny-region check. Honor the
+        //    operator's signed authority WITHOUT applying agent-oriented scope
+        //    allow/deny rules (those protect autonomous agent runs, not a human
+        //    operator) — but DO require the one-time per-session approval so the
+        //    first input of a phone session raises the on-Mac/overlay sheet.
+        if directPhoneControl {
+            switch action {
+            case .macInput, .phoneIntent:
+                return phoneControlApproval(context: context)
+            case .browser, .macInspect, .remoteClipboard:
+                break
+            }
+        }
+
+        // 9. Scope rules (deny precedence enforced by matcher).
         switch scopeOutcome {
         case .denied: return .denied(.scopeDenied)
         case .allowed:
             if context.originatedFromPhone {
-                return .allowed(approvedBy: .phone)
+                return phoneControlApproval(context: context)
             }
             // Trusted-mode + allow rule covers approval automatically.
             // Step / Manual modes still need explicit approval; the
@@ -332,12 +358,25 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             return .allowed(approvedBy: .mac)
         case .notMatched:
             if context.originatedFromPhone {
-                return .allowed(approvedBy: .phone)
+                return phoneControlApproval(context: context)
             }
             // Manual / Step / Trusted all fall back to per-action
             // approval here; the dispatcher will pop the sheet.
             return .allowed(approvedBy: .mac)
         }
+    }
+
+    /// Approval authority for a verified phone-control action that has already
+    /// cleared the kill switch, entitlement, concurrency, cap, and deny-region
+    /// checks. The FIRST input of a phone session returns `.mac` so the
+    /// dispatcher raises the on-Mac/overlay approval sheet — restoring the
+    /// documented "approval is the only ground truth" invariant — and the
+    /// coordinator records that confirmation so subsequent inputs return `.phone`
+    /// and the live mirror stays responsive.
+    private func phoneControlApproval(context: ComputerUseCapabilityContext) -> ComputerUseCapabilityCheck {
+        context.phoneSessionFirstActionConfirmed
+            ? .allowed(approvedBy: .phone)
+            : .allowed(approvedBy: .mac)
     }
 
     private func skipsMeteredCapsForDirectPhoneControl(

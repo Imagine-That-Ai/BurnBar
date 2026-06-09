@@ -24,10 +24,32 @@ import Security
 public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore,
     KyberPreKeyStore, SessionStore
 {
+    /// Out-of-band trust anchor for remote peer identities (F6). When set, the
+    /// closure is the SOLE authority for `isTrustedIdentity`: it receives the
+    /// peer's `ProtocolAddress` and the identity key the (untrusted) directory is
+    /// advertising, and returns `true` only when that key matches a key the
+    /// caller pinned out-of-band (mirroring `SignalAtRestSealer`'s
+    /// `trustedSenderPublicKeys`). It is keyed by a STABLE peer identity (uid +
+    /// deviceId), so a key swap that arrives under a new `identityKeyId` — and
+    /// therefore a fresh per-address Keychain slot — is still caught instead of
+    /// being trust-on-first-use'd into a new slot. Covers BOTH the outbound
+    /// (`processPreKeyBundle`) and inbound (`signalDecryptPreKey`) paths because
+    /// both consult the store's `isTrustedIdentity`.
+    ///
+    /// When `nil` the store falls back to the legacy byte-equality TOFU contract
+    /// (no anchor configured). Production wiring of this transport MUST provide an
+    /// evaluator — the transport is otherwise trust-on-first-use against a
+    /// server-supplied key. See `OBBSignalSessionCipherTransport`.
+    public typealias IdentityTrustEvaluator = @Sendable (
+        _ address: ProtocolAddress,
+        _ advertisedIdentity: IdentityKey
+    ) -> Bool
+
     public let identityKeypair: IdentityKeyPair
     public let registrationId: UInt32
     public let keychainService: String
     public let sessionDir: URL
+    private let identityTrustEvaluator: IdentityTrustEvaluator?
 
     private let lock = NSRecursiveLock()
 
@@ -35,12 +57,14 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         identityKeypair: IdentityKeyPair,
         registrationId: UInt32,
         keychainService: String,
-        sessionDir: URL
+        sessionDir: URL,
+        identityTrustEvaluator: IdentityTrustEvaluator? = nil
     ) throws {
         self.identityKeypair = identityKeypair
         self.registrationId = registrationId
         self.keychainService = keychainService
         self.sessionDir = sessionDir
+        self.identityTrustEvaluator = identityTrustEvaluator
         try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
     }
 
@@ -77,7 +101,15 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         direction: Direction,
         context: StoreContext
     ) throws -> Bool {
-        try withLock {
+        // F6: when an out-of-band trust anchor is configured it is the SOLE
+        // authority — fail-closed against any server-supplied key that is not
+        // pinned, which also catches a key swap arriving under a new
+        // identityKeyId (a fresh per-address slot would otherwise TOFU-accept it).
+        // Without an anchor, fall back to the legacy byte-equality TOFU contract.
+        if let identityTrustEvaluator {
+            return identityTrustEvaluator(address, identity)
+        }
+        return try withLock {
             guard let existing = try keychainRead(identityAccount(address)) else { return true } // TOFU
             return existing == Data(identity.serialize())
         }
