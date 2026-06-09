@@ -22,7 +22,7 @@
 
 import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -33,8 +33,32 @@ import { boundedTrimmedString, requireHexDigest, requireBoundedNumber, requireRe
 import { appendAuditEvent, appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-export const RECOVERY_SCHEMA_VERSION = 1;
+export const RECOVERY_SCHEMA_VERSION = 2;
 const RECOVERY_COLLECTION = "account_recovery_methods";
+// Confirmation-verifier scheme version (security remediation M-5). v2 stores a
+// one-way commitment SHA-256(salt || verificationHash) instead of the raw
+// verificationHash, so a party that can READ the stored doc (server/admin, or a
+// future read-rule slip) cannot replay the stored value to flip confirmed:true
+// without actually possessing the recovery key.
+const RECOVERY_CONFIRM_VERIFIER_VERSION = 2;
+
+/**
+ * Build a non-replayable confirmation commitment from the client-derived
+ * verificationHash. The server stores only the commitment + a random salt; the
+ * raw verificationHash is NEVER persisted, so reading the doc reveals nothing
+ * that can be replayed at confirmRecovery (preimage resistance of SHA-256).
+ */
+function buildConfirmationCommitment(verificationHash: string): {
+  confirmSalt: string;
+  confirmVerifier: string;
+  confirmVerifierVersion: number;
+} {
+  const confirmSalt = randomBytes(16).toString("hex");
+  const confirmVerifier = createHash("sha256")
+    .update(`${confirmSalt}:${verificationHash}`)
+    .digest("hex");
+  return { confirmSalt, confirmVerifier, confirmVerifierVersion: RECOVERY_CONFIRM_VERIFIER_VERSION };
+}
 const MAX_RECOVERY_CONTACTS = 5;
 const MAX_WRAPPED_BLOB_LENGTH = 8192;
 const RECOVERY_ID_PATTERN = /^rec_[a-z0-9_-]{8,80}$/u;
@@ -115,12 +139,33 @@ function parseRecoveryContactPayload(raw: unknown): { contacts: RecoveryContactS
 export function verifyRecoveryConfirmation(data: Record<string, unknown>, suppliedHash: string | undefined): void {
   const kind = typeof data.kind === "string" ? data.kind : "recovery_key";
   if (kind !== "recovery_key") return;
-  const stored = (data.recoveryKey as Record<string, unknown> | undefined)?.verificationHash;
-  if (typeof stored !== "string") {
-    throw new HttpsError("failed-precondition", "Recovery method is missing its verification hash.");
-  }
   if (!suppliedHash) {
     throw new HttpsError("failed-precondition", "Re-enter your recovery key to confirm (verificationHash required).");
+  }
+  const recoveryKey = data.recoveryKey as Record<string, unknown> | undefined;
+
+  // v2 (security remediation M-5): non-replayable commitment. The server stored
+  // SHA-256(confirmSalt || verificationHash); recompute it from the SUPPLIED
+  // hash and compare. The stored value cannot be replayed because it is not the
+  // value the client must send.
+  const confirmVerifier = recoveryKey?.confirmVerifier;
+  const confirmSalt = recoveryKey?.confirmSalt;
+  if (typeof confirmVerifier === "string" && typeof confirmSalt === "string") {
+    const computed = createHash("sha256").update(`${confirmSalt}:${suppliedHash}`).digest("hex");
+    const a = Buffer.from(computed);
+    const b = Buffer.from(confirmVerifier);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new HttpsError("permission-denied", "Recovery key verification failed.");
+    }
+    return;
+  }
+
+  // Legacy v1 fallback: pre-remediation methods stored the raw verificationHash.
+  // These remain equality-checked (and replay-exposed if their doc is read);
+  // surface them so they can be re-set-up onto the v2 commitment scheme.
+  const stored = recoveryKey?.verificationHash;
+  if (typeof stored !== "string") {
+    throw new HttpsError("failed-precondition", "Recovery method is missing its verification commitment; please set recovery up again.");
   }
   const a = Buffer.from(suppliedHash);
   const b = Buffer.from(stored);
@@ -164,7 +209,18 @@ export const setupRecovery = onCall(
     let doc: Record<string, unknown>;
     if (method === "recovery_key") {
       const payload = parseRecoveryKeyPayload(request.data?.payload);
-      doc = { ...base, recoveryKey: payload };
+      // M-5: persist a one-way commitment, NOT the raw verificationHash, so the
+      // stored doc cannot be replayed to confirm without the recovery key.
+      const commitment = buildConfirmationCommitment(payload.verificationHash);
+      doc = {
+        ...base,
+        recoveryKey: {
+          wrappedVaultKey: payload.wrappedVaultKey,
+          keyVersion: payload.keyVersion,
+          algorithm: payload.algorithm,
+          ...commitment,
+        },
+      };
     } else {
       const payload = parseRecoveryContactPayload(request.data?.payload);
       doc = { ...base, recoveryContacts: payload.contacts, threshold: payload.threshold };
@@ -235,7 +291,9 @@ export const __testing__ = {
   parseRecoveryKeyPayload,
   parseRecoveryContactPayload,
   verifyRecoveryConfirmation,
+  buildConfirmationCommitment,
   requireRecoveryId,
+  RECOVERY_CONFIRM_VERIFIER_VERSION,
 };
 
 export const listRecovery = onCall(
