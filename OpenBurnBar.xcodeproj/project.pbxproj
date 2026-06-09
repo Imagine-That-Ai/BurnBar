@@ -65,6 +65,7 @@
 		0787E2375804477B2ECD2651 /* QuotaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910D86D28523099419F5FBA4 /* QuotaView.swift */; };
 		07D18987B3A9D99EEDFAE43B /* ProjectionPipelineService+Jobs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86EB0415F98112DBEAEE123F /* ProjectionPipelineService+Jobs.swift */; };
 		07DAE29797FE272FF6296B61 /* PhoneControlAuthorityValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8743B3355926BA104F25310 /* PhoneControlAuthorityValidator.swift */; };
+		BEEFC0DEC0FFEE1234567890 /* PhoneControlReplayCounterStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEFC0DEC0FFEE1234567891 /* PhoneControlReplayCounterStore.swift */; };
 		07E94113995028745BD31F1A /* ProjectsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F5DC7024B1BE5DE80BE3026 /* ProjectsModels.swift */; };
 		07ECFD238A168FF132D1441E /* SmartHubCastButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D69535FF1B751D91047638 /* SmartHubCastButton.swift */; };
 		082526A38D02C2DFFF8BCB33 /* KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAD6FF38854FDE960210F394 /* KeyboardView.swift */; };
@@ -2245,6 +2246,7 @@
 		4EFAEC2A0AEBECA98F22B915 /* MercuryAvatarStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryAvatarStyle.swift; sourceTree = "<group>"; };
 		4F2745296F07BD2D574E8359 /* NewAdapterIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewAdapterIntegrationTests.swift; sourceTree = "<group>"; };
 		4F4963CD9217BE3E5891B7B1 /* PhoneControlAuthorityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneControlAuthorityProvider.swift; sourceTree = "<group>"; };
+		BEEFC0DEC0FFEE1234567891 /* PhoneControlReplayCounterStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneControlReplayCounterStore.swift; sourceTree = "<group>"; };
 		4F6602BBB3BD6D62D9B413CC /* WebsiteBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebsiteBackgroundView.swift; sourceTree = "<group>"; };
 		4F6FC93C22823C157DC47591 /* FactoryDroidProviderExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryDroidProviderExecutorTests.swift; sourceTree = "<group>"; };
 		4F907EAB0DD37C399F3C2E46 /* OpenBurnBarCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OpenBurnBarCore; path = OpenBurnBarCore; sourceTree = SOURCE_ROOT; };
@@ -5002,6 +5004,7 @@
 				53738B5DE4E7C80DF422D9F3 /* MacAppCheckAttestationReader.swift */,
 				4F4963CD9217BE3E5891B7B1 /* PhoneControlAuthorityProvider.swift */,
 				C8743B3355926BA104F25310 /* PhoneControlAuthorityValidator.swift */,
+				BEEFC0DEC0FFEE1234567891 /* PhoneControlReplayCounterStore.swift */,
 				F20DFAD6265A67D2732B0F0F /* PhoneControlReceiver.swift */,
 				08C73984FD8672BC773FE796 /* RemoteUnlockCapabilityTokenBroker.swift */,
 				F6D3D41B74BAC98F00E97C2E /* SystemPermissionMonitor.swift */,
@@ -8474,6 +8477,7 @@
 				9656AE5E0ADEF7037C43AA39 /* PensieveTokens.swift in Sources */,
 				FA20958A95BC4424717D0AAD /* PhoneControlAuthorityProvider.swift in Sources */,
 				07DAE29797FE272FF6296B61 /* PhoneControlAuthorityValidator.swift in Sources */,
+				BEEFC0DEC0FFEE1234567890 /* PhoneControlReplayCounterStore.swift in Sources */,
 				D34116C00991AFA310CBFF8B /* PhoneControlReceiver.swift in Sources */,
 				0A83482F37317282034379B2 /* PiAgentCloudRelayHostService.swift in Sources */,
 				F094386225E5E3F298430F19 /* PiAgentCommandProfile.swift in Sources */,
