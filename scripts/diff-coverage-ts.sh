@@ -59,6 +59,8 @@ for path in changed:
     base = os.path.basename(path).replace(".ts", "")
     test_candidates = [
         path.replace("/src/", "/test/").replace(".ts", ".test.ts"),
+        os.path.join(repo_root, "functions", "src", "__tests__", f"{base}.test.ts"),
+        os.path.join(repo_root, "functions", "src", "__tests__", f"{base}.spec.ts"),
         path.replace(".ts", ".test.ts"),
         os.path.join(repo_root, "functions/test", f"test-{base}.mjs"),
     ]
