@@ -7,6 +7,17 @@ operational dependency risk notes.
 
 ## Nous Hermes / MIT-Origin Code
 
+OpenBurnBar's product code is original OpenBurnBar work. The Hermes Gateway
+component includes code derived from `NousResearch/hermes-agent`, incorporated
+under the MIT License and redistributed as part of OpenBurnBar's AGPL-3.0-only
+product distribution as the MIT License permits.
+
+- Upstream: `https://github.com/NousResearch/hermes-agent`
+- Component scope: Hermes Gateway / Hermes Agent integration code
+- License: `MIT`
+- Upstream notice: `LICENSES/Nous-hermes-agent-MIT.txt`
+- Copyright: `Copyright (c) 2025 Nous Research`
+
 The Hermes Agent upstream contribution lane remains MIT-compatible. BurnBar
 product-only AGPL/libsignal release materials must not be included in Nous/Hermes
 MIT PRs.

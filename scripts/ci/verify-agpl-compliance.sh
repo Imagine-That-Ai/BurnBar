@@ -16,6 +16,7 @@ require_file LICENSE
 require_file NOTICE
 require_file THIRD_PARTY_NOTICES.md
 require_file LICENSES/MIT-legacy.txt
+require_file LICENSES/Nous-hermes-agent-MIT.txt
 require_file docs/legal/agpl-compliance.md
 require_file REUSE.toml
 require_file third_party/libsignal/manifest.json
@@ -30,6 +31,8 @@ require_file scripts/ci/verify-libsignal-runtime-readiness.sh
 
 grep -q "GNU AFFERO GENERAL PUBLIC LICENSE" LICENSE || fail "root LICENSE is not AGPLv3 text"
 grep -q "MIT License" LICENSES/MIT-legacy.txt || fail "legacy MIT notice is missing"
+grep -q "Copyright (c) 2025 Nous Research" LICENSES/Nous-hermes-agent-MIT.txt || fail "Nous Hermes MIT notice is missing"
+grep -q "NousResearch/hermes-agent" THIRD_PARTY_NOTICES.md || fail "third-party notices do not record the Nous Hermes origin"
 grep -q "AGPL-3.0-only" NOTICE || fail "NOTICE does not identify AGPL-3.0-only"
 grep -q "46d867c986f66201e34e7ae20ce423eec742bf3f" third_party/libsignal/manifest.json || fail "libsignal commit pin drifted"
 grep -q "v0.94.4" THIRD_PARTY_NOTICES.md || fail "third-party notices do not record the libsignal tag"
@@ -51,10 +54,17 @@ const files = execFileSync('git', [
   .split('\n')
   .filter(Boolean);
 const failures = [];
+const allowedPackageLicenses = new Map([
+  // This policy package is deliberately kept MIT-compatible because it encodes
+  // the Nous/Hermes upstream mode and must not pull AGPL/libsignal materials
+  // into the upstream contribution lane.
+  ['packages/e2ee-backend-policy/package.json', 'MIT'],
+]);
 for (const file of files) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (json.license !== 'AGPL-3.0-only') {
-    failures.push(`${file}: expected license AGPL-3.0-only, got ${json.license ?? '<missing>'}`);
+  const expectedLicense = allowedPackageLicenses.get(file) ?? 'AGPL-3.0-only';
+  if (json.license !== expectedLicense) {
+    failures.push(`${file}: expected license ${expectedLicense}, got ${json.license ?? '<missing>'}`);
   }
 }
 if (failures.length) {

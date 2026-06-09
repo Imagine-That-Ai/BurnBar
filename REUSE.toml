@@ -16,6 +16,13 @@ SPDX-License-Identifier = "MIT"
 
 [[annotations]]
 path = [
+  "LICENSES/Nous-hermes-agent-MIT.txt",
+]
+SPDX-FileCopyrightText = "2025 Nous Research"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
   "THIRD_PARTY.md",
   "THIRD_PARTY_NOTICES.md",
 ]
