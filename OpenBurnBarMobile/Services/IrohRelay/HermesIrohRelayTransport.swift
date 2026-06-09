@@ -359,10 +359,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         guard let uid = Auth.auth().currentUser?.uid else {
             throw HermesServiceError.relayUnavailable("Iroh relay requires a signed-in Firebase user.")
         }
-        guard payload.relayEncryption == HermesRelayCrypto.algorithm,
+        guard payload.relayEncryption == HermesRelayCrypto.relayEncryptionV3,
+              payload.relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersionV3,
               let relayPublicKey = payload.relayPublicKey,
               !relayPublicKey.isEmpty else {
-            throw HermesServiceError.relayUnavailable("Update OpenBurnBar on your Mac and re-enable Remote Relay so this iPhone/iPad can use encrypted relay traffic.")
+            throw HermesServiceError.relayUnavailable("Update OpenBurnBar on your Mac and re-enable Remote Relay so this iPhone/iPad can use authenticated relay traffic.")
         }
 
         let publicKey = try await pairingPublicKeyProvider.fetchPublicKey(uid: uid)
@@ -465,6 +466,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 uid: uid,
                 publicKey: publicKey,
                 relayPublicKey: relayPublicKey,
+                localNodeId: localNodeId,
                 verifiedTarget: verifiedTarget,
                 stream: stream,
                 timeout: timeout,
@@ -492,6 +494,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         uid: String,
         publicKey: Data,
         relayPublicKey: String,
+        localNodeId: String,
         verifiedTarget: IrohDialTarget,
         stream: any IrohRelayStream,
         timeout: TimeInterval,
@@ -504,6 +507,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 uid: uid,
                 publicKey: publicKey,
                 relayPublicKey: relayPublicKey,
+                localNodeId: localNodeId,
                 verifiedTarget: verifiedTarget,
                 stream: stream,
                 timeout: timeout,
@@ -529,6 +533,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         uid: String,
         publicKey: Data,
         relayPublicKey: String,
+        localNodeId: String,
         verifiedTarget: IrohDialTarget,
         stream: any IrohRelayStream,
         timeout: TimeInterval,
@@ -536,46 +541,21 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         onChunk: @MainActor (HermesRelayChunkRecord) throws -> Void
     ) async throws {
         let requestID = "iroh_\(UUID().uuidString.lowercased())"
-        let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
-        let bodyString = payload.body.flatMap { String(data: $0, encoding: .utf8) }
-        let encryptedPayload = HermesRelayEncryptedRequestPayload(
-            path: payload.path,
-            sessionId: payload.sessionID,
-            body: bodyString
-        )
-        let plaintext = try JSONEncoder().encode(encryptedPayload)
-        let requestAAD = HermesRelayCrypto.requestAAD(
+        _ = relayPublicKey
+        let sealed = try await MobileHermesAuthenticatedRelayRequestSealer.seal(
+            payload: payload,
             uid: uid,
-            connectionID: payload.connectionID,
-            requestID: requestID
+            requestID: requestID,
+            senderPeerNodeID: localNodeId
         )
-        let keyAAD = HermesRelayCrypto.keyAAD(
-            uid: uid,
-            connectionID: payload.connectionID,
-            requestID: requestID
-        )
+        let keyData = sealed.keyData
 
         let startFrame = HermesRealtimeRelayFrame(
             type: .requestStart,
             uid: uid,
             connectionId: payload.connectionID,
             requestId: requestID,
-            payload: HermesRealtimeRelayPayload(
-                operation: payload.operation,
-                method: payload.method,
-                payloadCiphertext: try HermesRelayCrypto.sealToBase64(
-                    plaintext: plaintext,
-                    keyData: keyData,
-                    aad: requestAAD
-                ),
-                wrappedKey: try HermesRelayCrypto.wrapSymmetricKey(
-                    keyData,
-                    recipientPublicKeyBase64: relayPublicKey,
-                    aad: keyAAD
-                ),
-                relayEncryption: HermesRelayCrypto.algorithm,
-                relayKeyVersion: payload.relayKeyVersion ?? HermesRelayCrypto.keyVersion
-            )
+            payload: sealed.payload
         )
         try await stream.send(startFrame)
 

@@ -56,7 +56,9 @@ final class MercuryRouterTests: XCTestCase {
             capabilityGate: AlwaysAllowGate()
         )
         let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults())
-        consentStore.alwaysAllow = consent
+        if consent {
+            seedTestAutoAcceptGrants(in: consentStore)
+        }
 
         let router = MercuryRouter(
             sessionCoordinator: sessionCoordinator,
@@ -78,6 +80,29 @@ final class MercuryRouterTests: XCTestCase {
             RecordingMediaStreamSink()
         }
         return (router, AckSink(), consentStore)
+    }
+
+    private func seedTestAutoAcceptGrants(in consentStore: MercuryConsentStore) {
+        consentStore.rememberAcceptedMirrorPeers = true
+        let grants: [(connectionId: String, viewerDeviceId: String?, controlAuthorityPeerNodeId: String?, requesterName: String)] = [
+            ("c", nil, nil, "Alberto's iPhone"),
+            ("c", "iphone-1", "ios-peer", "Alberto's iPhone"),
+            ("legacy-conn", nil, nil, "Legacy phone"),
+            ("iphone-1", nil, nil, "Alberto's iPhone"),
+            ("android-1", nil, nil, "Samsung Galaxy"),
+            ("android-1", "android-device", nil, "Samsung Galaxy"),
+            ("android-2", nil, nil, "Samsung Galaxy"),
+            ("ipad-1", nil, nil, "iPad"),
+            ("shared-mac", nil, nil, "Shared control stream")
+        ]
+        for grant in grants {
+            consentStore.rememberAcceptedPeer(
+                connectionId: grant.connectionId,
+                viewerDeviceId: grant.viewerDeviceId,
+                controlAuthorityPeerNodeId: grant.controlAuthorityPeerNodeId,
+                requesterName: grant.requesterName
+            )
+        }
     }
 
     private func makeIsolatedDefaults() -> UserDefaults {
@@ -457,16 +482,16 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(ackCount, 0, "ringing must not auto-ack")
     }
 
-    func testConsentToggleSkipsRingingAndAutoAccepts() async {
+    func testExistingPeerGrantSkipsRingingAndAutoAccepts() async {
         let (router, sink) = makeRouter(consent: true)
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
-        // With consent on, no ringing phase — router admits the viewer
-        // immediately. Host capture may fail later on machines without
-        // ScreenCaptureKit permission, but the phone must not wait for
-        // that startup before receiving the admission ack.
+        // With a grant scoped to this verified peer, no ringing phase — router
+        // admits the viewer immediately. Host capture may fail later on
+        // machines without ScreenCaptureKit permission, but the phone must not
+        // wait for that startup before receiving the admission ack.
         XCTAssertNil(router.pendingRequest)
         if case .ringing = router.phase {
-            XCTFail("consent toggle must skip ringing, got \(router.phase)")
+            XCTFail("peer grant must skip ringing, got \(router.phase)")
         }
         let frames = await sink.frames
         XCTAssertGreaterThanOrEqual(frames.count, 1)
@@ -483,11 +508,22 @@ final class MercuryRouterTests: XCTestCase {
             XCTFail("expected pending request before first consent")
             return
         }
-        XCTAssertFalse(consentStore.alwaysAllow)
+        XCTAssertEqual(consentStore.activeGrantCount, 0)
 
+        consentStore.rememberAcceptedMirrorPeers = true
         await router.acceptMirror(pending)
 
-        XCTAssertTrue(consentStore.alwaysAllow)
+        XCTAssertEqual(consentStore.activeGrantCount, 1)
+        XCTAssertTrue(consentStore.canAutoAccept(
+            connectionId: "c",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: nil
+        ))
+        XCTAssertFalse(consentStore.canAutoAccept(
+            connectionId: "other-connection",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: nil
+        ))
         XCTAssertNil(router.pendingRequest)
         let frames = await sink.frames
         XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
@@ -557,7 +593,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(router.phase, .idle)
     }
 
-    func testPresenceHeartbeatAdvertisesMirrorAutoAcceptWhenConsented() async {
+    func testPresenceHeartbeatDoesNotAdvertiseMirrorAutoAcceptCapability() async {
         let (router, sink) = makeRouter(consent: true)
         await router.handleFrame(
             presenceHeartbeatFrame(connectionID: "c", streamingCapabilities: nil),
@@ -567,7 +603,10 @@ final class MercuryRouterTests: XCTestCase {
         let frames = await sink.frames
         let capabilities = frames.first?.media?.presence?.capabilities ?? []
         XCTAssertTrue(capabilities.contains(MercuryPeer.Feature.mirrorHost.rawValue))
-        XCTAssertTrue(capabilities.contains(MercuryPeer.Feature.mirrorAutoAccept.rawValue))
+        XCTAssertFalse(
+            capabilities.contains(MercuryPeer.Feature.mirrorAutoAccept.rawValue),
+            "auto-accept is now proven per request from the stored peer grant, not advertised as a blanket host capability"
+        )
     }
 
     func testControlStreamMirrorSinkEmitsHealthHeartbeatsWithoutVideoFrames() async throws {
@@ -1117,7 +1156,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(startCount, 0)
         XCTAssertNil(router.pendingRequest)
         XCTAssertEqual(router.phase, .idle)
-        XCTAssertFalse(consentStore.alwaysAllow)
+        XCTAssertEqual(consentStore.activeGrantCount, 0)
     }
 
     func testSignedRemoteUnlockSessionAutoAcceptsWhileMacLocked() async throws {
@@ -1157,7 +1196,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(startCount, 0)
         XCTAssertNil(router.pendingRequest)
         XCTAssertEqual(try extractStreaming(from: router.phase), "locked-with-session")
-        XCTAssertFalse(consentStore.alwaysAllow)
+        XCTAssertEqual(consentStore.activeGrantCount, 0)
     }
 
     func testSignedRemoteUnlockSessionDoesNotWaitForLockedScreenCaptureBeforeAck() async throws {

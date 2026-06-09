@@ -177,6 +177,73 @@ public final class PhoneControlSender: @unchecked Sendable {
         return authority
     }
 
+    /// Sign and write a phone-issued approval decision. The response binds the
+    /// pending approval request hash so a relay-visible approve/reject frame
+    /// cannot be replayed onto a different action.
+    @discardableResult
+    public func send(
+        approvalResponse response: HermesRealtimeRelayApprovalResponse,
+        approvalRequest request: HermesRealtimeRelayApprovalRequest
+    ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await sendSequencer.enqueue { [self] in
+            try await sendApprovalResponse(response, approvalRequest: request)
+        }
+    }
+
+    private func sendApprovalResponse(
+        _ response: HermesRealtimeRelayApprovalResponse,
+        approvalRequest request: HermesRealtimeRelayApprovalRequest
+    ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try await ensureAttestationIfRequired()
+        guard let key = signingKeyProvider()?.privateKey else {
+            throw SendError.signingFailed("no signing key")
+        }
+        var response = response
+        response.requestHashBlake3 = try signer.canonicalApprovalRequestHashHex(request: request)
+        let counter = nextCounter()
+        let timestamp = Date()
+        let signed: ComputerUsePhoneControlSigner.SignedAuthority
+        do {
+            signed = try signer.sign(
+                approvalResponse: response,
+                peerNodeId: peerNodeId,
+                counter: counter,
+                timestamp: timestamp,
+                privateKey: key
+            )
+        } catch {
+            throw SendError.signingFailed(error.localizedDescription)
+        }
+        let attestationDigest = await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()
+        response.authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationDigest
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .controlApprovalResponse,
+            uid: uid,
+            connectionId: connectionId,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.approval",
+                sessionId: request.sessionId,
+                approvalResponse: response
+            )
+        )
+        try await frameSink(frame)
+        return response.authority ?? HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: attestationDigest
+        )
+    }
+
     /// Sign and write an explicit remote-clipboard request. Clipboard
     /// requests share the same counter namespace as input intents and
     /// agent grants so replay protection remains one monotonic stream per

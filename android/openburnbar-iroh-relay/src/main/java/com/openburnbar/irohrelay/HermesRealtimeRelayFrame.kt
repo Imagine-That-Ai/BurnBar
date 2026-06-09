@@ -1087,6 +1087,8 @@ data class HermesRealtimeRelayApprovalResponse(
     /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
     val respondedAt: Double,
     val note: String? = null,
+    val requestHashBlake3: String? = null,
+    val authority: HermesRealtimeRelayAuthorityEnvelope? = null,
 ) {
     @Serializable
     enum class Decision {

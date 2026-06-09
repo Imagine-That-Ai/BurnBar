@@ -6,7 +6,7 @@
  * Firestore writes to `trustState: trusted`.
  */
 
-import { createHash, createPublicKey, timingSafeEqual } from "node:crypto";
+import { createHash, createPublicKey, timingSafeEqual, verify as verifySignature } from "node:crypto";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
@@ -106,6 +106,13 @@ async function requireTrustedEscrowDevice(
 // shape `registerBrowserEscrowDevice` and the native keypair advertise.
 const P256_X963_PUBLIC_KEY_BYTE_LENGTH = 65;
 const P256_COORDINATE_BYTE_LENGTH = 32;
+const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
+const RELAY_AUTH_ENCRYPTION = "hpke-auth-p256-hkdfsha256-aes256gcm";
+const RELAY_AUTH_KEY_VERSION = 3;
+const MAX_TRUST_ROOT_PUBLICATION_SKEW_MILLIS = 10 * 60 * 1000;
+const COCOA_REFERENCE_UNIX_OFFSET_SECONDS = 978_307_200;
+const AGENT_GRANT_AUTHORITY_FRESHNESS_SECONDS = 60;
+const ED25519_SPKI_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 /**
  * Validate that the 65-byte x9.63 public-key bytes encode a point that actually
@@ -178,6 +185,202 @@ function recomputeEscrowFingerprint(publicKeyDataBase64: unknown): string | null
 /** Normalize base64 (strip whitespace) so the round-trip comparison is exact. */
 function normalizeBase64(value: string): string {
   return value.replace(/\s+/gu, "");
+}
+
+function requireExactBase64Bytes(raw: unknown, name: string, byteLength: number): Buffer {
+  const encoded = requireBase64Like(raw, name, Math.ceil(byteLength * 1.3), Math.ceil(byteLength * 1.5) + 8);
+  const decoded = Buffer.from(encoded, "base64");
+  if (decoded.length !== byteLength || decoded.toString("base64") !== normalizeBase64(encoded)) {
+    throw new HttpsError("invalid-argument", `${name} has invalid key bytes.`);
+  }
+  return decoded;
+}
+
+function requireP256X963PublicKey(raw: unknown, name: string): { encoded: string; decoded: Buffer } {
+  const encoded = requireBase64Like(raw, name, 80, 128);
+  const decoded = Buffer.from(encoded, "base64");
+  if (
+    decoded.length !== P256_X963_PUBLIC_KEY_BYTE_LENGTH ||
+    decoded[0] !== 0x04 ||
+    decoded.toString("base64") !== normalizeBase64(encoded) ||
+    !isPointOnP256Curve(decoded)
+  ) {
+    throw new HttpsError("invalid-argument", `${name} must be a valid x9.63 P-256 public key.`);
+  }
+  return { encoded, decoded };
+}
+
+function requireFreshPublicationMillis(raw: unknown, name: string): number {
+  const value = boundedInteger(raw ?? Date.now(), name, 1, Number.MAX_SAFE_INTEGER, true) ?? Date.now();
+  if (Math.abs(Date.now() - value) > MAX_TRUST_ROOT_PUBLICATION_SKEW_MILLIS) {
+    throw new HttpsError("failed-precondition", `${name} is stale.`);
+  }
+  return value;
+}
+
+function requireDerivedPhoneControlPeerNodeId(peerNodeId: string, publicKey: Buffer): void {
+  const iosPeerNodeId = `ios-phone-${publicKey.subarray(0, 12).toString("hex")}`;
+  const androidPeerNodeId = `android-phone-${createHash("sha256").update(publicKey).digest("hex").slice(0, 24)}`;
+  if (peerNodeId !== iosPeerNodeId && peerNodeId !== androidPeerNodeId) {
+    throw new HttpsError("invalid-argument", "peerNodeId does not match the published authority key.");
+  }
+}
+
+function canonicalJSONString(value: unknown): string {
+  if (value === undefined) return "null";
+  if (value == null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJSONString).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJSONString(record[key])}`)
+    .join(",")}}`;
+}
+
+function canonicalJSONQuote(value: string): string {
+  return JSON.stringify(value);
+}
+
+function canonicalJSONNumber(value: number): string {
+  if (!Number.isFinite(value)) {
+    throw new HttpsError("invalid-argument", "Signed grant request contains a non-finite number.");
+  }
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(12).replace(/(?:\.0+|(\.\d*?)0+)$/u, "$1");
+}
+
+function canonicalAgentGrantRequestJSON(request: {
+  requestId: string;
+  runtime: string;
+  threadId: string;
+  preset: string;
+  capabilities: string[];
+  trustMode: string;
+  deliveryMode: string;
+  requestedAt: number;
+  expiresAt: number;
+  grantDurationSeconds: number;
+  sourceDeviceId: string;
+  clientIntentId: string;
+  localAuthenticationSatisfied: boolean;
+}): string {
+  const fields = new Map<string, string>([
+    ["capabilities", `[${[...request.capabilities].sort().map(canonicalJSONQuote).join(",")}]`],
+    ["clientIntentId", canonicalJSONQuote(request.clientIntentId)],
+    ["deliveryMode", canonicalJSONQuote(request.deliveryMode)],
+    ["expiresAt", canonicalJSONNumber(request.expiresAt)],
+    ["grantDurationSeconds", canonicalJSONNumber(request.grantDurationSeconds)],
+    ["localAuthenticationSatisfied", request.localAuthenticationSatisfied ? "true" : "false"],
+    ["preset", canonicalJSONQuote(request.preset)],
+    ["requestedAt", canonicalJSONNumber(request.requestedAt)],
+    ["requestId", canonicalJSONQuote(request.requestId)],
+    ["runtime", canonicalJSONQuote(request.runtime)],
+    ["sourceDeviceId", canonicalJSONQuote(request.sourceDeviceId)],
+    ["threadId", canonicalJSONQuote(request.threadId)],
+    ["trustMode", canonicalJSONQuote(request.trustMode)],
+  ]);
+  return `{${[...fields.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${canonicalJSONQuote(key)}:${value}`)
+    .join(",")}}`;
+}
+
+function agentGrantRequestHashHex(request: Parameters<typeof canonicalAgentGrantRequestJSON>[0]): string {
+  return createHash("sha256").update(canonicalAgentGrantRequestJSON(request)).digest("hex");
+}
+
+function cocoaReferenceSecondsNow(): number {
+  return Date.now() / 1000 - COCOA_REFERENCE_UNIX_OFFSET_SECONDS;
+}
+
+function cocoaReferenceSecondsToUnixMillis(referenceSeconds: number): bigint {
+  return BigInt(Math.round((referenceSeconds + COCOA_REFERENCE_UNIX_OFFSET_SECONDS) * 1000));
+}
+
+function agentGrantAuthoritySignablePayload(intentHashHex: string, counter: number, timestampReferenceSeconds: number): Buffer {
+  const hashBytes = Buffer.from(intentHashHex, "utf8");
+  const suffix = Buffer.alloc(16);
+  suffix.writeBigUInt64BE(BigInt(counter), 0);
+  suffix.writeBigInt64BE(cocoaReferenceSecondsToUnixMillis(timestampReferenceSeconds), 8);
+  return Buffer.concat([hashBytes, suffix]);
+}
+
+function verifyEd25519RawSignature(publicKeyRaw: Buffer, payload: Buffer, signatureBase64: string): boolean {
+  const signature = Buffer.from(signatureBase64, "base64");
+  if (signature.length !== 64 || signature.toString("base64") !== normalizeBase64(signatureBase64)) {
+    return false;
+  }
+  const publicKey = createPublicKey({
+    key: Buffer.concat([ED25519_SPKI_DER_PREFIX, publicKeyRaw]),
+    format: "der",
+    type: "spki",
+  });
+  return verifySignature(null, payload, publicKey, signature);
+}
+
+function grantPresetCapabilities(preset: string): string[] {
+  switch (preset) {
+    case "off":
+      return [];
+    case "low":
+      return ["workspace_read"];
+    case "workspace":
+      return ["shell", "workspace_read", "workspace_write"];
+    case "desktop":
+      return [
+        "accessibility_inspect",
+        "desktop_browser",
+        "desktop_file_export",
+        "desktop_screenshot",
+        "workspace_read",
+        "workspace_write",
+      ];
+    case "all":
+      return [
+        "accessibility_inspect",
+        "desktop_browser",
+        "desktop_file_export",
+        "desktop_screenshot",
+        "desktop_system_input",
+        "shell",
+        "workspace_read",
+        "workspace_write",
+      ];
+    case "yolo":
+      return [
+        "accessibility_inspect",
+        "desktop_browser",
+        "desktop_file_export",
+        "desktop_screenshot",
+        "desktop_system_input",
+        "shell",
+        "shell_unrestricted",
+        "workspace_read",
+        "workspace_write",
+      ];
+    default:
+      throw new HttpsError("invalid-argument", "Unsupported grant preset.");
+  }
+}
+
+function grantPresetTrustMode(preset: string): string {
+  return preset === "yolo" ? "trusted" : "manual";
+}
+
+function normalizedStringList(raw: unknown, name: string, maxItems: number, allowed: Set<string>): string[] {
+  if (!Array.isArray(raw) || raw.length > maxItems) {
+    throw new HttpsError("invalid-argument", `${name} is invalid.`);
+  }
+  const values = raw.map((item, index) => boundedTrimmedString(item, `${name}[${index}]`, 80, true));
+  const unique = Array.from(new Set(values)).sort();
+  for (const value of unique) {
+    if (!allowed.has(value)) throw new HttpsError("invalid-argument", `${name} contains an unsupported value.`);
+  }
+  return unique;
+}
+
+function sameStringList(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 /**
@@ -721,8 +924,9 @@ export const publishPhoneControlAuthority = onCallProduction(
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
     const peerNodeId = boundedTrimmedString(request.data.peerNodeId, "peerNodeId", 160, true);
     const publicKeyBase64 = requireBase64Like(request.data.publicKeyBase64, "publicKeyBase64", 32, 128);
-    const publishedAtMillis =
-      boundedInteger(request.data.publishedAtMillis ?? Date.now(), "publishedAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? Date.now();
+    const publicKeyBytes = requireExactBase64Bytes(publicKeyBase64, "publicKeyBase64", ED25519_PUBLIC_KEY_BYTE_LENGTH);
+    requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes);
+    const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
     const protocolVersion = boundedInteger(request.data.protocolVersion ?? 1, "protocolVersion", 1, 100, true) ?? 1;
 
     const pairing = await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).get();
@@ -754,6 +958,370 @@ export const publishPhoneControlAuthority = onCallProduction(
       device_id: deviceId,
     });
     return { ok: true, connectionId, peerNodeId };
+  },
+);
+
+export const publishRelaySenderKey = onCallProduction(
+  "publishRelaySenderKey",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      deviceId?: unknown;
+      peerNodeId?: unknown;
+      keyId?: unknown;
+      publicKeyBase64?: unknown;
+      relayKeyVersion?: unknown;
+      publishedAtMillis?: unknown;
+      signalIdentityKeyId?: unknown;
+      signalIdentityKeyVersion?: unknown;
+      signalIdentityPublicKeyFingerprint?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing a relay sender key.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+    await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
+    const peerNodeId = boundedTrimmedString(request.data.peerNodeId, "peerNodeId", 160, true);
+    const keyId = boundedTrimmedString(request.data.keyId, "keyId", 128, true);
+    if (!/^relay-v3-[a-f0-9]{24}$/u.test(keyId)) {
+      throw new HttpsError("invalid-argument", "keyId must be a v3 relay sender key id.");
+    }
+    const relayKeyVersion =
+      boundedInteger(request.data.relayKeyVersion, "relayKeyVersion", RELAY_AUTH_KEY_VERSION, RELAY_AUTH_KEY_VERSION, true) ??
+      RELAY_AUTH_KEY_VERSION;
+    const relaySenderKey = requireP256X963PublicKey(request.data.publicKeyBase64, "publicKeyBase64");
+    const derivedKeyId = `relay-v3-${createHash("sha256").update(relaySenderKey.decoded).digest("hex").slice(0, 24)}`;
+    if (keyId !== derivedKeyId) {
+      throw new HttpsError("invalid-argument", "keyId does not match the relay sender key.");
+    }
+    const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
+    const signalIdentityKeyId = boundedTrimmedString(request.data.signalIdentityKeyId, "signalIdentityKeyId", 200, true);
+    const signalIdentityKeyVersion =
+      boundedInteger(request.data.signalIdentityKeyVersion, "signalIdentityKeyVersion", 1, 100, true) ?? 1;
+    const expectedSignalIdentityKeyId = `${deviceId}_${signalIdentityKeyVersion}`;
+    if (signalIdentityKeyId !== expectedSignalIdentityKeyId) {
+      throw new HttpsError("permission-denied", "Relay sender key must bind to this device's current Signal identity.");
+    }
+    const signalIdentityPublicKeyFingerprint = boundedTrimmedString(
+      request.data.signalIdentityPublicKeyFingerprint,
+      "signalIdentityPublicKeyFingerprint",
+      128,
+      true,
+    );
+
+    const [identity, device] = await Promise.all([
+      db.doc(`users/${uid}/signal_identity_public_keys/${signalIdentityKeyId}`).get(),
+      db.doc(`users/${uid}/escrow_devices/${deviceId}`).get(),
+    ]);
+    if (
+      !identity.exists ||
+      identity.get("deviceId") !== deviceId ||
+      identity.get("identityKeyId") !== signalIdentityKeyId ||
+      identity.get("publicKeyFingerprint") !== signalIdentityPublicKeyFingerprint ||
+      identity.get("keyVersion") !== signalIdentityKeyVersion
+    ) {
+      throw new HttpsError("permission-denied", "Relay sender key requires a published Signal identity for this trusted device.");
+    }
+    if (device.exists && device.get("peerNodeId") && device.get("peerNodeId") !== peerNodeId) {
+      throw new HttpsError("permission-denied", "Relay sender peer node does not match the trusted device binding.");
+    }
+
+    await db.doc(`users/${uid}/relay_sender_keys/${deviceId}`).set(
+      {
+        deviceId,
+        peerNodeId,
+        keyId,
+        publicKeyBase64: relaySenderKey.encoded,
+        relayEncryption: RELAY_AUTH_ENCRYPTION,
+        relayKeyVersion,
+        status: "active",
+        publishedAtMillis,
+        publishedByDeviceId: deviceId,
+        signalIdentityKeyId,
+        signalIdentityKeyVersion,
+        signalIdentityPublicKeyFingerprint,
+        signalIdentityVerification: "verified",
+        schemaVersion: 1,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    logInfo({
+      event: "callable_info",
+      message: "relay_sender_key_published",
+      device_id: deviceId,
+      peer_node_id: peerNodeId,
+      key_id: keyId,
+    });
+    return { ok: true, deviceId, peerNodeId, keyId };
+  },
+);
+
+export const publishAgentGrantAuthority = onCallProduction(
+  "publishAgentGrantAuthority",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      deviceId?: unknown;
+      peerNodeId?: unknown;
+      publicKeyBase64?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an agent grant authority.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+    await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
+    const peerNodeId = boundedTrimmedString(request.data.peerNodeId, "peerNodeId", 160, true);
+    const publicKeyBytes = requireExactBase64Bytes(request.data.publicKeyBase64, "publicKeyBase64", ED25519_PUBLIC_KEY_BYTE_LENGTH);
+    requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes);
+
+    await db.doc(`users/${uid}/agent_grant_authorities/${deviceId}`).set(
+      {
+        sourceDeviceId: deviceId,
+        peerNodeId,
+        publicKeyBase64: publicKeyBytes.toString("base64"),
+        publishedAtMillis: Date.now(),
+        schemaVersion: 2,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    logInfo({
+      event: "callable_info",
+      message: "agent_grant_authority_published",
+      device_id: deviceId,
+      peer_node_id: peerNodeId,
+    });
+    return { ok: true, deviceId, peerNodeId };
+  },
+);
+
+export const queueAgentCapabilityGrantRequest = onCallProduction(
+  "queueAgentCapabilityGrantRequest",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      requestId?: unknown;
+      runtime?: unknown;
+      threadId?: unknown;
+      preset?: unknown;
+      capabilities?: unknown;
+      trustMode?: unknown;
+      deliveryMode?: unknown;
+      requestedAt?: unknown;
+      expiresAt?: unknown;
+      grantDurationSeconds?: unknown;
+      sourceDeviceId?: unknown;
+      clientIntentId?: unknown;
+      localAuthenticationSatisfied?: unknown;
+      authority?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before queuing an agent grant request.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+
+    const allowedRuntimes = new Set([
+      "hermes",
+      "pi",
+      "codex",
+      "claude",
+      "openclaw",
+      "antigravity",
+      "droid",
+      "forge",
+      "grok",
+      "cursorAgent",
+      "cursoragent",
+      "cursor_agent",
+    ]);
+    const allowedCapabilities = new Set([
+      "desktop_browser",
+      "desktop_screenshot",
+      "accessibility_inspect",
+      "desktop_system_input",
+      "workspace_read",
+      "workspace_write",
+      "shell",
+      "desktop_file_export",
+      "shell_unrestricted",
+    ]);
+    const requestId = boundedTrimmedString(request.data.requestId, "requestId", 160, true);
+    const runtime = boundedTrimmedString(request.data.runtime, "runtime", 80, true);
+    if (!allowedRuntimes.has(runtime)) throw new HttpsError("invalid-argument", "Unsupported runtime.");
+    const threadId = boundedTrimmedString(request.data.threadId, "threadId", 240, true);
+    const preset = boundedTrimmedString(request.data.preset, "preset", 32, true);
+    const capabilities = normalizedStringList(request.data.capabilities, "capabilities", 16, allowedCapabilities);
+    const expectedCapabilities = grantPresetCapabilities(preset);
+    const trustMode = boundedTrimmedString(request.data.trustMode, "trustMode", 32, true);
+    if (!sameStringList(capabilities, expectedCapabilities) || trustMode !== grantPresetTrustMode(preset)) {
+      throw new HttpsError("permission-denied", "grant_preset_mismatch");
+    }
+    const deliveryMode = boundedTrimmedString(request.data.deliveryMode, "deliveryMode", 32, true);
+    if (!["live", "queued", "live_then_queued"].includes(deliveryMode)) {
+      throw new HttpsError("invalid-argument", "Unsupported delivery mode.");
+    }
+    const requestedAt = typeof request.data.requestedAt === "number" ? request.data.requestedAt : Number(request.data.requestedAt);
+    const expiresAt = typeof request.data.expiresAt === "number" ? request.data.expiresAt : Number(request.data.expiresAt);
+    const grantDurationSeconds =
+      typeof request.data.grantDurationSeconds === "number"
+        ? request.data.grantDurationSeconds
+        : Number(request.data.grantDurationSeconds);
+    if (
+      !Number.isFinite(requestedAt) ||
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= requestedAt ||
+      !Number.isFinite(grantDurationSeconds) ||
+      grantDurationSeconds <= 0 ||
+      grantDurationSeconds > 86400
+    ) {
+      throw new HttpsError("invalid-argument", "Grant request timing is invalid.");
+    }
+    const nowReferenceSeconds = cocoaReferenceSecondsNow();
+    if (nowReferenceSeconds - requestedAt > 5 * 60 || expiresAt < nowReferenceSeconds) {
+      throw new HttpsError("failed-precondition", "Grant request is stale.");
+    }
+    const sourceDeviceId = boundedTrimmedString(request.data.sourceDeviceId, "sourceDeviceId", 160, true);
+    await requireTrustedEscrowDevice(uid, sourceDeviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
+    const clientIntentId = boundedTrimmedString(request.data.clientIntentId, "clientIntentId", 160, true);
+    if (typeof request.data.localAuthenticationSatisfied !== "boolean") {
+      throw new HttpsError("invalid-argument", "localAuthenticationSatisfied must be boolean.");
+    }
+    const localAuthenticationSatisfied = request.data.localAuthenticationSatisfied;
+    if (preset === "yolo" && localAuthenticationSatisfied !== true) {
+      throw new HttpsError("permission-denied", "YOLO grants require fresh device authentication.");
+    }
+
+    const authority = request.data.authority as Record<string, unknown> | undefined;
+    if (!authority || typeof authority !== "object" || Array.isArray(authority)) {
+      throw new HttpsError("invalid-argument", "authority is required.");
+    }
+    const authorityPeerNodeId = boundedTrimmedString(authority.peerNodeId, "authority.peerNodeId", 160, true);
+    const authorityCounter = boundedInteger(authority.counter, "authority.counter", 0, Number.MAX_SAFE_INTEGER, true);
+    const authorityTimestamp = typeof authority.timestamp === "number" ? authority.timestamp : Number(authority.timestamp);
+    const intentHashBlake3 = boundedTrimmedString(authority.intentHashBlake3, "authority.intentHashBlake3", 64, true);
+    const signatureEd25519 = requireBase64Like(authority.signatureEd25519, "authority.signatureEd25519", 32, 256);
+    if (authorityCounter == null || !Number.isFinite(authorityTimestamp) || !/^[a-fA-F0-9]{64}$/u.test(intentHashBlake3)) {
+      throw new HttpsError("invalid-argument", "authority is invalid.");
+    }
+    if (Math.abs(nowReferenceSeconds - authorityTimestamp) > AGENT_GRANT_AUTHORITY_FRESHNESS_SECONDS) {
+      throw new HttpsError("failed-precondition", "Grant request authority is stale.");
+    }
+
+    const grantRequest = {
+      requestId,
+      runtime,
+      threadId,
+      preset,
+      capabilities,
+      trustMode,
+      deliveryMode,
+      requestedAt,
+      expiresAt,
+      grantDurationSeconds,
+      sourceDeviceId,
+      clientIntentId,
+      localAuthenticationSatisfied,
+    };
+    const observedIntentHashHex = agentGrantRequestHashHex(grantRequest);
+    if (observedIntentHashHex.toLowerCase() !== intentHashBlake3.toLowerCase()) {
+      throw new HttpsError("permission-denied", "Agent grant authority hash does not match the request.");
+    }
+
+    const authorityRef = db.doc(`users/${uid}/agent_grant_authorities/${sourceDeviceId}`);
+    const requestRef = db.doc(`users/${uid}/agent_capability_grant_requests/${requestId}`);
+    const authoritySnapshot = await authorityRef.get();
+    if (
+      !authoritySnapshot.exists ||
+      authoritySnapshot.get("peerNodeId") !== authorityPeerNodeId ||
+      typeof authoritySnapshot.get("publicKeyBase64") !== "string"
+    ) {
+      throw new HttpsError("permission-denied", "Agent grant authority is not trusted for this device.");
+    }
+    const authorityPublicKey = requireExactBase64Bytes(
+      authoritySnapshot.get("publicKeyBase64"),
+      "agentGrantAuthority.publicKeyBase64",
+      ED25519_PUBLIC_KEY_BYTE_LENGTH,
+    );
+    const signablePayload = agentGrantAuthoritySignablePayload(intentHashBlake3.toLowerCase(), authorityCounter, authorityTimestamp);
+    if (!verifyEd25519RawSignature(authorityPublicKey, signablePayload, signatureEd25519)) {
+      throw new HttpsError("permission-denied", "Agent grant authority signature is invalid.");
+    }
+
+    const payload = {
+      ...grantRequest,
+      authority: {
+        peerNodeId: authorityPeerNodeId,
+        counter: authorityCounter,
+        timestamp: authorityTimestamp,
+        intentHashBlake3,
+        signatureEd25519,
+      },
+      status: "queued",
+      canonicalRequestHashSha256: observedIntentHashHex,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    await db.runTransaction(async (transaction) => {
+      const [freshAuthority, existingRequest] = await Promise.all([
+        transaction.get(authorityRef),
+        transaction.get(requestRef),
+      ]);
+      if (existingRequest.exists) {
+        throw new HttpsError("already-exists", "Agent grant request is already queued.");
+      }
+      if (
+        !freshAuthority.exists ||
+        freshAuthority.get("peerNodeId") !== authorityPeerNodeId ||
+        freshAuthority.get("publicKeyBase64") !== authorityPublicKey.toString("base64")
+      ) {
+        throw new HttpsError("permission-denied", "Agent grant authority changed before the request could be queued.");
+      }
+      const lastQueuedCounter = freshAuthority.get("lastQueuedCounter");
+      if (typeof lastQueuedCounter === "number" && authorityCounter <= lastQueuedCounter) {
+        throw new HttpsError("permission-denied", "Agent grant authority counter replay.");
+      }
+      transaction.create(requestRef, payload);
+      transaction.set(
+        authorityRef,
+        {
+          lastQueuedCounter: authorityCounter,
+          lastQueuedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    });
+
+    logInfo({
+      event: "callable_info",
+      message: "agent_capability_grant_request_queued",
+      request_id: requestId,
+      source_device_id: sourceDeviceId,
+      preset,
+    });
+    return { ok: true, requestId, status: "queued" };
   },
 );
 
@@ -848,4 +1416,8 @@ export const __testing__ = {
   P256_X963_PUBLIC_KEY_BYTE_LENGTH,
   recomputeEscrowFingerprint,
   evaluateEscrowFingerprintBinding,
+  canonicalAgentGrantRequestJSON,
+  agentGrantRequestHashHex,
+  agentGrantAuthoritySignablePayload,
+  verifyEd25519RawSignature,
 };

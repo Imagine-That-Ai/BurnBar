@@ -106,7 +106,7 @@ public actor HermesRelayReplayCache {
     public init(
         persistenceURL: URL? = nil,
         requestIDTTL: TimeInterval = 24 * 60 * 60,
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.persistenceURL = persistenceURL
         self.requestIDTTL = requestIDTTL

@@ -18,7 +18,43 @@ export interface CapabilityToken {
 
 export interface ComputerUsePhoneAuthorityDoc {
   deviceId: string;
-  publicKey: string;
+  connectionId: string;
+  peerNodeId: string;
+  publicKeyBase64: string;
+  publishedAtMillis: number;
+  protocolVersion: number;
+  schemaVersion: number;
   createdAt: string;
-  revokedAt?: string;
+  updatedAt: string;
+}
+
+export interface RelaySenderKeyDoc {
+  id: string;
+  deviceId: string;
+  peerNodeId: string;
+  keyId: string;
+  publicKeyBase64: string;
+  relayKeyVersion: number;
+  relayEncryption: string;
+  signalIdentityKeyVersion: number;
+  signalIdentityFingerprint: string;
+  signalIdentityVerification: "verified";
+  status: "active" | "revoked";
+  publishedAtMillis: number;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface AgentGrantAuthorityDoc {
+  id: string;
+  deviceId: string;
+  peerNodeId: string;
+  publicKeyBase64: string;
+  authorityKind: "agent_capability_grant";
+  status: "active" | "revoked";
+  publishedAtMillis: number;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
 }

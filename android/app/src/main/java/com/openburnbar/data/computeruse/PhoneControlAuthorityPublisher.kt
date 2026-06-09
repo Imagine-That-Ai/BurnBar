@@ -3,9 +3,7 @@ package com.openburnbar.data.computeruse
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.openburnbar.irohrelay.HermesRealtimeRelayProtocol
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -14,7 +12,6 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import kotlinx.coroutines.tasks.await
 
 data class PhoneControlAuthorityDoc(
     val id: String,
@@ -66,28 +63,18 @@ object PhoneControlAuthorityDocumentFactory {
 
 class PhoneControlAuthorityPublisher(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
     suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) {
-        firestore.collection("users").document(uid)
-            .collection("iroh_pairing").document(authority.connectionId)
-            .collection("controllers").document(authority.peerNodeId)
-            .set(authority.asMap())
-            .await()
+        securityCallables.publishPhoneControlAuthority(authority)
     }
 
     suspend fun publishAgentGrantAuthority(uid: String, sourceDeviceId: String, authority: PhoneControlAuthorityDoc) {
-        firestore.collection("users").document(uid)
-            .collection("agent_grant_authorities").document(sourceDeviceId)
-            .set(
-                mapOf(
-                    "sourceDeviceId" to sourceDeviceId,
-                    "peerNodeId" to authority.peerNodeId,
-                    "publicKeyBase64" to authority.publicKeyBase64,
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                ),
-                SetOptions.merge(),
-            )
-            .await()
+        securityCallables.publishAgentGrantAuthority(
+            deviceId = sourceDeviceId,
+            peerNodeId = authority.peerNodeId,
+            publicKeyBase64 = authority.publicKeyBase64,
+        )
     }
 }
 

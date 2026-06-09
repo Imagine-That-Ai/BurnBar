@@ -29,10 +29,8 @@ import { isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
 export const HERMES_GATEWAY_SCHEMA_VERSION = 2;
 export const HERMES_GATEWAY_DEVICE_SESSION_TTL_MS = 10 * 60 * 1000;
 export const HERMES_GATEWAY_TOKEN_BYTES = 32;
-// Bearer tokens expire 90 days after issuance/rotation. Tokens minted before
-// this field existed have no expiresAt and are grandfathered as non-expiring
-// until their next successful use (which backfills a default expiry) or an
-// explicit rotation.
+// Bearer tokens expire 90 days after issuance/rotation. Tokens without
+// expiresAt are legacy credentials and must be rotated before use.
 export const HERMES_GATEWAY_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const HERMES_GATEWAY_MAX_EVENT_TEXT = 32_000;
 export const HERMES_GATEWAY_MAX_MESSAGE_TEXT = 64_000;
@@ -482,12 +480,11 @@ export function gatewayTokenExpiryISO(fromMillis = Date.now()): string {
 }
 
 /**
- * Fail-closed expiry check. A missing/empty expiresAt is grandfathered as
- * non-expiring (returns false). An UNPARSEABLE expiresAt is treated as expired
- * (returns true) so corrupt data cannot keep a token alive forever.
+ * Fail-closed expiry check. Missing, empty, or unparsable expiresAt values are
+ * expired so corrupt or legacy token docs cannot keep a bearer credential alive.
  */
 export function isHermesGatewayTokenExpired(expiresAt: unknown, now = Date.now()): boolean {
-  if (expiresAt == null || expiresAt === "") return false;
+  if (expiresAt == null || expiresAt === "") return true;
   if (typeof expiresAt !== "string") return true;
   const ms = Date.parse(expiresAt);
   if (!Number.isFinite(ms)) return true;

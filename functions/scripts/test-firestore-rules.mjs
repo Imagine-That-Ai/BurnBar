@@ -143,6 +143,18 @@ function sealedText(overrides = {}) {
   };
 }
 
+function cloudVaultAAD(uid, collection, docID, field) {
+  return `OpenBurnBar-CloudVault-aad-v2|${uid}|${collection}|${docID}|${field}|2|${field}`;
+}
+
+function sealedTextAt(uid, collection, docID, field, overrides = {}) {
+  return sealedText({
+    schemaVersion: 2,
+    aad: cloudVaultAAD(uid, collection, docID, field),
+    ...overrides,
+  });
+}
+
 // Canonical CloudVaultBlobEnvelope v2 (validCloudSealedBlob shape):
 // schemaVersion/algorithm/keyVersion/plaintextHMAC/integrityHashVersion/sealedBoxBase64/createdAt/aad.
 function sealedBlob(overrides = {}) {
@@ -749,26 +761,26 @@ test("L41 Signal prekey/session directory is path-bound, public-only, and rotati
   );
 });
 
-test("owners can publish iroh pairing data and audit events without leaking secrets", async () => {
+test("iroh pairing trust roots are server-owned while audit events remain metadata-only", async () => {
   const ownerDb = authedDb("iroh-owner");
   const otherDb = authedDb("mallory");
   const publicKeyPath = "users/iroh-owner/iroh_pairing_keys/host";
   const pairingPath = "users/iroh-owner/iroh_pairing/relay-1";
   const auditPath = "users/iroh-owner/iroh_audit_events/event-1";
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(ownerDb, publicKeyPath), {
       id: "host",
       publicKeyBase64: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
       publishedAtMillis: 1778860800000,
       protocolVersion: 1,
-      schemaVersion: 1,
+      schemaVersion: 2,
     })
   );
   await assertSucceeds(getDoc(doc(ownerDb, publicKeyPath)));
   await assertFails(getDoc(doc(otherDb, publicKeyPath)));
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(ownerDb, pairingPath), {
       id: "relay-1",
       nodeId: "z".repeat(52),
@@ -777,7 +789,7 @@ test("owners can publish iroh pairing data and audit events without leaking secr
       signature: "A".repeat(88),
       createdAt: "2026-05-15T00:00:00.000Z",
       updatedAt: "2026-05-15T00:00:00.000Z",
-      schemaVersion: 1,
+      schemaVersion: 2,
     })
   );
   await assertFails(
@@ -821,7 +833,7 @@ test("owners can publish iroh pairing data and audit events without leaking secr
   );
 });
 
-test("mobile agent grant queue is entitlement-gated and metadata-only", async () => {
+test("mobile agent grant trust roots and queue creates are server-owned while receipts remain metadata-only", async () => {
   const db = authedDb("grant-user");
   const otherDb = authedDb("mallory");
   const authorityPath = "users/grant-user/agent_grant_authorities/phone-1";
@@ -845,7 +857,14 @@ test("mobile agent grant queue is entitlement-gated and metadata-only", async ()
 
   await assertFails(setDoc(doc(db, authorityPath), authorityDoc));
   await seedHostedComputerUseEntitlement("grant-user");
-  await assertSucceeds(setDoc(doc(db, authorityPath), authorityDoc));
+  await assertFails(setDoc(doc(db, authorityPath), authorityDoc));
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), authorityPath), {
+      ...authorityDoc,
+      publishedAtMillis: Date.now(),
+      schemaVersion: 2,
+    });
+  });
   await assertFails(getDoc(doc(otherDb, authorityPath)));
   await assertFails(
     setDoc(doc(db, "users/grant-user/agent_grant_authorities/phone-2"), {
@@ -886,7 +905,10 @@ test("mobile agent grant queue is entitlement-gated and metadata-only", async ()
     updatedAt: serverTimestamp(),
   };
 
-  await assertSucceeds(setDoc(doc(db, requestPath), baseRequest));
+  await assertFails(setDoc(doc(db, requestPath), baseRequest));
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), requestPath), baseRequest);
+  });
   await assertFails(getDoc(doc(otherDb, requestPath)));
   await assertFails(
     setDoc(doc(db, "users/grant-user/agent_capability_grant_requests/grant-with-prompt"), {
@@ -938,7 +960,7 @@ test("mobile agent grant queue is entitlement-gated and metadata-only", async ()
   );
 });
 
-test("current and legacy computer use subscription product ids satisfy the client authority gate", async () => {
+test("current and legacy computer use subscription product ids do not bypass server-owned authority writes", async () => {
   const cases = [
     ["computer-use-current", "hosted_computer_use_sync", "com.openburnbar.computerUse.monthly"],
     ["computer-use-legacy", "hosted_computer_use_sync", "com.openburnbar.hostedComputerUseSync.monthly"],
@@ -959,7 +981,7 @@ test("current and legacy computer use subscription product ids satisfy the clien
     });
     await seedHostedComputerUseEntitlement(uid, entitlementId, productID);
 
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(authedDb(uid), `users/${uid}/agent_grant_authorities/phone-1`), {
         sourceDeviceId: "phone-1",
         peerNodeId: `${uid}-peer-${"a".repeat(24)}`,
@@ -1002,7 +1024,7 @@ test("BurnBar Cloud does not unlock media metadata but Cloud Pro does", async ()
   );
 });
 
-test("BurnBar Cloud does not unlock computer-use authority but Cloud Pro does", async () => {
+test("no subscription tier bypasses server-owned computer-use authority writes", async () => {
   const cloudUid = "cloud-only-control";
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), `users/${cloudUid}/escrow_devices/phone-1`), {
@@ -1034,7 +1056,7 @@ test("BurnBar Cloud does not unlock computer-use authority but Cloud Pro does", 
     });
   });
   await seedBurnBarProMaxEntitlement(proUid, "com.openburnbar.proMax.annual");
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(authedDb(proUid), `users/${proUid}/agent_grant_authorities/phone-1`), {
       sourceDeviceId: "phone-1",
       peerNodeId: `${proUid}-peer-${"a".repeat(24)}`,
@@ -1127,13 +1149,7 @@ test("chat metadata stays free, but chat content backup requires entitlement", a
 test("owners can sync encrypted text expansion snippets without plaintext fields", async () => {
   const db = authedDb("alice");
   const snippetPath = "users/alice/text_snippets/snippet-1";
-  const sealedText = {
-    algorithm: "AES-256-GCM",
-    nonce: "base64nonce",
-    ciphertext: "base64ciphertext",
-    tag: "base64tag",
-    keyVersion: 1,
-  };
+  const snippetSealed = (snippetID, field) => sealedTextAt("alice", "text_snippets", snippetID, field);
 
   await assertSucceeds(
     setDoc(doc(db, snippetPath), {
@@ -1141,17 +1157,17 @@ test("owners can sync encrypted text expansion snippets without plaintext fields
       uid: "alice",
       sourceDeviceID: "mac-1",
       triggerHash: "a".repeat(32),
-      sealedTitle: sealedText,
-      sealedTrigger: sealedText,
-      sealedBody: sealedText,
-      sealedScope: sealedText,
+      sealedTitle: snippetSealed("snippet-1", "sealedTitle"),
+      sealedTrigger: snippetSealed("snippet-1", "sealedTrigger"),
+      sealedBody: snippetSealed("snippet-1", "sealedBody"),
+      sealedScope: snippetSealed("snippet-1", "sealedScope"),
       mode: "llm_rewrite",
       isEnabled: true,
       revision: 1,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       deletedAt: null,
-      schemaVersion: 1,
+      schemaVersion: 2,
       encryption: {
         algorithm: "AES-256-GCM",
         keyVersion: 1,
@@ -1161,22 +1177,41 @@ test("owners can sync encrypted text expansion snippets without plaintext fields
   );
 
   await assertFails(
+    setDoc(doc(db, "users/alice/text_snippets/replay"), {
+      id: "replay",
+      uid: "alice",
+      sourceDeviceID: "mac-1",
+      triggerHash: "c".repeat(32),
+      sealedTitle: snippetSealed("snippet-1", "sealedTitle"),
+      sealedTrigger: snippetSealed("replay", "sealedTrigger"),
+      sealedBody: snippetSealed("replay", "sealedBody"),
+      sealedScope: snippetSealed("replay", "sealedScope"),
+      mode: "static",
+      isEnabled: true,
+      revision: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 2,
+    })
+  );
+
+  await assertFails(
     setDoc(doc(db, "users/alice/text_snippets/plaintext"), {
       id: "plaintext",
       uid: "alice",
       sourceDeviceID: "mac-1",
       triggerHash: "b".repeat(32),
-      sealedTitle: sealedText,
-      sealedTrigger: sealedText,
-      sealedBody: sealedText,
-      sealedScope: sealedText,
+      sealedTitle: snippetSealed("plaintext", "sealedTitle"),
+      sealedTrigger: snippetSealed("plaintext", "sealedTrigger"),
+      sealedBody: snippetSealed("plaintext", "sealedBody"),
+      sealedScope: snippetSealed("plaintext", "sealedScope"),
       body: "plaintext snippet",
       mode: "static",
       isEnabled: true,
       revision: 1,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      schemaVersion: 1,
+      schemaVersion: 2,
     })
   );
 });
@@ -3051,9 +3086,16 @@ test("T1 hermes_relay_requests stays sealed across create and merge update", asy
     status: "pending",
     method: "POST",
     payloadCiphertext: "ciphertext",
+    enc: "encapsulated-key",
     wrappedKey: "wrapped",
-    relayEncryption: "p256-hkdf-sha256-aesgcm",
-    relayKeyVersion: 1,
+    relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm",
+    relayKeyVersion: 3,
+    senderPublicKey:
+      "B".repeat(88),
+    senderDeviceId: "ios-device-1",
+    senderPeerNodeId: "ios-phone-abcdef123456",
+    senderCounter: 1,
+    keyId: `relay-v3-${"a".repeat(24)}`,
     chunkCount: 0,
     createdAt: "2026-06-02T00:00:01.000Z",
     updatedAt: "2026-06-02T00:00:01.000Z",
@@ -3067,7 +3109,7 @@ test("T1 hermes_relay_requests stays sealed across create and merge update", asy
   await assertFails(
     setDoc(doc(db, requestPath), { ...sealedRequest, sessionId: "leak-session" })
   );
-  // The sealed v2 request succeeds.
+  // The sender-authenticated sealed v3 request succeeds.
   await assertSucceeds(setDoc(doc(db, requestPath), sealedRequest));
 
   // A merge update advancing the status stays sealed and is allowed.
@@ -4045,54 +4087,78 @@ test("T14 approval_policies require sealed label/glob/project and reject plainte
       targetProject: "/Users/me/BurnBar",
     })
   );
-  // Sealed policy (opaque doc ID + sealed fields + 32-hex trapdoors) accepted.
+  // Sealed policy (opaque doc ID + v2 AAD-bound sealed fields + 32-hex trapdoors) accepted.
+  const policyID = `ap_${"a".repeat(32)}`;
   await assertSucceeds(
-    setDoc(doc(db, `users/${ownerUid}/approval_policies/ap_${"a".repeat(32)}`), {
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/${policyID}`), {
       decision: "approve",
-      sealedDisplayLabel: sealedText(),
-      sealedFileGlob: sealedText(),
-      sealedTargetProject: sealedText(),
+      sealedDisplayLabel: sealedTextAt(ownerUid, "approval_policies", policyID, "sealedDisplayLabel"),
+      sealedFileGlob: sealedTextAt(ownerUid, "approval_policies", policyID, "sealedFileGlob"),
+      sealedTargetProject: sealedTextAt(ownerUid, "approval_policies", policyID, "sealedTargetProject"),
       projectKeyHash: "a".repeat(32),
       fileGlobHash: "b".repeat(32),
+      schemaVersion: 2,
+    })
+  );
+  // v2 AAD is mandatory and must bind to this exact document and field.
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/wrong-aad`), {
+      decision: "approve",
+      sealedDisplayLabel: sealedTextAt(ownerUid, "approval_policies", "different-doc", "sealedDisplayLabel"),
+      schemaVersion: 2,
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, `users/${ownerUid}/approval_policies/v1-envelope`), {
+      decision: "approve",
+      sealedDisplayLabel: sealedText(),
+      schemaVersion: 1,
     })
   );
   // A doc carrying BOTH sealed + plaintext is denied (each private field).
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/approval_policies/leak-label`), {
       decision: "approve",
-      sealedDisplayLabel: sealedText(),
+      sealedDisplayLabel: sealedTextAt(ownerUid, "approval_policies", "leak-label", "sealedDisplayLabel"),
       displayLabel: "Edits in BurnBar",
+      schemaVersion: 2,
     })
   );
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/approval_policies/leak-glob`), {
       decision: "approve",
-      sealedFileGlob: sealedText(),
+      sealedDisplayLabel: sealedTextAt(ownerUid, "approval_policies", "leak-glob", "sealedDisplayLabel"),
+      sealedFileGlob: sealedTextAt(ownerUid, "approval_policies", "leak-glob", "sealedFileGlob"),
       fileGlob: "src/**",
+      schemaVersion: 2,
     })
   );
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/approval_policies/leak-project`), {
       decision: "approve",
-      sealedTargetProject: sealedText(),
+      sealedDisplayLabel: sealedTextAt(ownerUid, "approval_policies", "leak-project", "sealedDisplayLabel"),
+      sealedTargetProject: sealedTextAt(ownerUid, "approval_policies", "leak-project", "sealedTargetProject"),
       targetProject: "/Users/me/BurnBar",
+      schemaVersion: 2,
     })
   );
   // A non-hex projectKeyHash is rejected.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/approval_policies/bad-hash`), {
       decision: "approve",
-      sealedDisplayLabel: sealedText(),
-      sealedTargetProject: sealedText(),
+      sealedDisplayLabel: sealedTextAt(ownerUid, "approval_policies", "bad-hash", "sealedDisplayLabel"),
+      sealedTargetProject: sealedTextAt(ownerUid, "approval_policies", "bad-hash", "sealedTargetProject"),
       projectKeyHash: "NOTHEX",
+      schemaVersion: 2,
     })
   );
   // An unknown extra key is rejected by hasOnly.
   await assertFails(
     setDoc(doc(db, `users/${ownerUid}/approval_policies/smuggle`), {
       decision: "approve",
-      sealedDisplayLabel: sealedText(),
+      sealedDisplayLabel: sealedTextAt(ownerUid, "approval_policies", "smuggle", "sealedDisplayLabel"),
       notes: "hi",
+      schemaVersion: 2,
     })
   );
 });

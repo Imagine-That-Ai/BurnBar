@@ -196,6 +196,14 @@ public final class AgentWatchReceiver: ObservableObject {
             respondedAt: Date(),
             note: note
         )
+        if let phoneControlSender {
+            _ = try await phoneControlSender.send(
+                approvalResponse: response,
+                approvalRequest: request
+            )
+            state.setPendingApproval(nil)
+            return
+        }
         let frame = HermesRealtimeRelayFrame(
             type: .controlApprovalResponse,
             uid: uid,

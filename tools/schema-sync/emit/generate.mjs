@@ -1083,23 +1083,133 @@ data class FirestorePiAgentConnectionDoc(
       ComputerUsePhoneAuthorityDoc: {
         ts: `export interface ComputerUsePhoneAuthorityDoc {
   deviceId: string;
-  publicKey: string;
+  connectionId: string;
+  peerNodeId: string;
+  publicKeyBase64: string;
+  publishedAtMillis: number;
+  protocolVersion: number;
+  schemaVersion: number;
   createdAt: string;
-  revokedAt?: string;
+  updatedAt: string;
 }`,
         swift: `public struct FirestoreComputerUsePhoneAuthorityDoc: Codable, Sendable, Equatable {
     public var deviceId: String
-    public var publicKey: String
+    public var connectionId: String
+    public var peerNodeId: String
+    public var publicKeyBase64: String
+    public var publishedAtMillis: Int
+    public var protocolVersion: Int
+    public var schemaVersion: Int
     public var createdAt: String
-    public var revokedAt: String?
+    public var updatedAt: String
 }`,
         kotlin: `@Keep
 @IgnoreExtraProperties
 data class FirestoreComputerUsePhoneAuthorityDoc(
     val deviceId: String = "",
-    val publicKey: String = "",
+    val connectionId: String = "",
+    val peerNodeId: String = "",
+    val publicKeyBase64: String = "",
+    val publishedAtMillis: Long = 0,
+    val protocolVersion: Long = 0,
+    val schemaVersion: Long = 0,
     val createdAt: String = "",
-    val revokedAt: String? = null,
+    val updatedAt: String = "",
+)`,
+      },
+      RelaySenderKeyDoc: {
+        ts: `export interface RelaySenderKeyDoc {
+  id: string;
+  deviceId: string;
+  peerNodeId: string;
+  keyId: string;
+  publicKeyBase64: string;
+  relayKeyVersion: number;
+  relayEncryption: string;
+  signalIdentityKeyVersion: number;
+  signalIdentityFingerprint: string;
+  signalIdentityVerification: "verified";
+  status: "active" | "revoked";
+  publishedAtMillis: number;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreRelaySenderKeyDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var deviceId: String
+    public var peerNodeId: String
+    public var keyId: String
+    public var publicKeyBase64: String
+    public var relayKeyVersion: Int
+    public var relayEncryption: String
+    public var signalIdentityKeyVersion: Int
+    public var signalIdentityFingerprint: String
+    public var signalIdentityVerification: String
+    public var status: String
+    public var publishedAtMillis: Int
+    public var createdAt: String
+    public var updatedAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreRelaySenderKeyDoc(
+    val id: String = "",
+    val deviceId: String = "",
+    val peerNodeId: String = "",
+    val keyId: String = "",
+    val publicKeyBase64: String = "",
+    val relayKeyVersion: Long = 0,
+    val relayEncryption: String = "",
+    val signalIdentityKeyVersion: Long = 0,
+    val signalIdentityFingerprint: String = "",
+    val signalIdentityVerification: String = "verified",
+    val status: String = "",
+    val publishedAtMillis: Long = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+      AgentGrantAuthorityDoc: {
+        ts: `export interface AgentGrantAuthorityDoc {
+  id: string;
+  deviceId: string;
+  peerNodeId: string;
+  publicKeyBase64: string;
+  authorityKind: "agent_capability_grant";
+  status: "active" | "revoked";
+  publishedAtMillis: number;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}`,
+        swift: `public struct FirestoreAgentGrantAuthorityDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var deviceId: String
+    public var peerNodeId: String
+    public var publicKeyBase64: String
+    public var authorityKind: String
+    public var status: String
+    public var publishedAtMillis: Int
+    public var createdAt: String
+    public var updatedAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreAgentGrantAuthorityDoc(
+    val id: String = "",
+    val deviceId: String = "",
+    val peerNodeId: String = "",
+    val publicKeyBase64: String = "",
+    val authorityKind: String = "agent_capability_grant",
+    val status: String = "",
+    val publishedAtMillis: Long = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val schemaVersion: Long = 0,
 )`,
       },
     },

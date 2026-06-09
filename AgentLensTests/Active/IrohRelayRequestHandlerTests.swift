@@ -403,9 +403,11 @@ final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
 
 private actor RecordingIrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing {
     private(set) var publishCount = 0
+    private(set) var publishedDeviceIds: [String] = []
 
-    func publish(uid: String, publicKeyBase64: String) async throws {
+    func publish(uid: String, deviceId: String, publicKeyBase64: String) async throws {
         publishCount += 1
+        publishedDeviceIds.append(deviceId)
     }
 }
 
