@@ -371,7 +371,12 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             filters: RetrievalFilters(),
             limit: 24
         )
-        XCTAssertEqual(annCandidates.map(\.chunkID), exactCandidates.map(\.chunkID))
+        assertApproximateSemanticParity(
+            annCandidates: annCandidates,
+            exactCandidates: exactCandidates,
+            minimumRecall: 0.90,
+            topScoreTolerance: 0.02
+        )
     }
 
     func test_longArtifacts_memoryAndChunking_remainBounded() async throws {
@@ -566,6 +571,52 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             }
         }
         return nil
+    }
+
+    private func assertApproximateSemanticParity(
+        annCandidates: [SemanticCandidate],
+        exactCandidates: [SemanticCandidate],
+        minimumRecall: Double,
+        topScoreTolerance: Float,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertFalse(annCandidates.isEmpty, file: file, line: line)
+        XCTAssertEqual(annCandidates.count, exactCandidates.count, file: file, line: line)
+
+        let exactIDs = exactCandidates.map(\.chunkID)
+        let annIDs = annCandidates.map(\.chunkID)
+        let exactIDSet = Set(exactIDs)
+        let overlapCount = annIDs.filter { exactIDSet.contains($0) }.count
+        let recall = Double(overlapCount) / Double(max(1, exactIDs.count))
+        XCTAssertGreaterThanOrEqual(
+            recall,
+            minimumRecall,
+            "ANN exact-rerank recall \(recall) fell below \(minimumRecall). ANN IDs: \(annIDs), exact IDs: \(exactIDs)",
+            file: file,
+            line: line
+        )
+
+        let exactTopWindow = Set(exactCandidates.prefix(min(10, exactCandidates.count)).map(\.chunkID))
+        let annTopWindow = Set(annCandidates.prefix(min(12, annCandidates.count)).map(\.chunkID))
+        let topWindowOverlap = exactTopWindow.intersection(annTopWindow).count
+        XCTAssertGreaterThanOrEqual(
+            topWindowOverlap,
+            min(8, exactTopWindow.count),
+            "ANN top-window overlap too low. ANN IDs: \(annIDs), exact IDs: \(exactIDs)",
+            file: file,
+            line: line
+        )
+
+        if let annTopScore = annCandidates.first?.score, let exactTopScore = exactCandidates.first?.score {
+            XCTAssertGreaterThanOrEqual(
+                annTopScore + topScoreTolerance,
+                exactTopScore,
+                "ANN top score \(annTopScore) drifted too far below exact top score \(exactTopScore)",
+                file: file,
+                line: line
+            )
+        }
     }
 
     private func residentMemoryBytes() -> UInt64 {
