@@ -124,6 +124,45 @@ describe("verifyRecoveryConfirmation (delayed re-verification)", () => {
   });
 });
 
+describe("verifyRecoveryConfirmation v2 commitment (M-5 replay resistance)", () => {
+  const { verifyRecoveryConfirmation, buildConfirmationCommitment, RECOVERY_CONFIRM_VERIFIER_VERSION } = __testing__;
+
+  const commitment = buildConfirmationCommitment(VALID_HASH);
+  const storedV2 = { kind: "recovery_key", recoveryKey: { ...commitment } };
+
+  it("stores a versioned, salted one-way commitment (never the raw hash)", () => {
+    expect(commitment.confirmVerifierVersion).toBe(RECOVERY_CONFIRM_VERIFIER_VERSION);
+    expect(commitment.confirmSalt).toMatch(/^[0-9a-f]{32}$/);
+    expect(commitment.confirmVerifier).toMatch(/^[0-9a-f]{64}$/);
+    // The commitment must NOT equal the value the client sends.
+    expect(commitment.confirmVerifier).not.toBe(VALID_HASH);
+    expect(Object.values(commitment)).not.toContain(VALID_HASH);
+  });
+
+  it("accepts the correct re-entered verificationHash", () => {
+    expect(() => verifyRecoveryConfirmation(storedV2, VALID_HASH)).not.toThrow();
+  });
+
+  it("REJECTS replay of the stored commitment value (the core M-5 fix)", () => {
+    // An attacker who can read the doc has confirmVerifier; sending it must fail.
+    expect(() => verifyRecoveryConfirmation(storedV2, commitment.confirmVerifier)).toThrow(/verification failed/);
+  });
+
+  it("rejects a wrong hash under the commitment scheme", () => {
+    expect(() => verifyRecoveryConfirmation(storedV2, "c".repeat(64))).toThrow(/verification failed/);
+  });
+
+  it("salt is per-method (two setups of the same key yield different commitments)", () => {
+    const other = buildConfirmationCommitment(VALID_HASH);
+    expect(other.confirmVerifier).not.toBe(commitment.confirmVerifier);
+    expect(other.confirmSalt).not.toBe(commitment.confirmSalt);
+  });
+
+  it("still requires a re-entered hash (no silent flag-flip)", () => {
+    expect(() => verifyRecoveryConfirmation(storedV2, undefined)).toThrow(/Re-enter/);
+  });
+});
+
 describe("requireRecoveryId", () => {
   it("accepts setup-generated recovery ids", () => {
     expect(requireRecoveryId("rec_recovery_key_abcd1234")).toBe("rec_recovery_key_abcd1234");
