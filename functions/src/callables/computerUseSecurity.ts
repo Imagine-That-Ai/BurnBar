@@ -133,13 +133,17 @@ function isPointOnP256Curve(raw: Buffer): boolean {
 /**
  * Stream 6 capability gate (server mirror of `EscrowDeviceTrustSafetyCheckFlag`).
  *
- * Stays `false` for production until the device-key fingerprint enforcement is
- * deliberately activated. Kept as a module constant rather than wired to Remote
- * Config so this change stays additive and self-contained; activation flips this
- * (and the native flag) together. Exported via `__testing__` so the gated path
- * is exercised in tests without shipping it on.
+ * **ON (F2):** `approveEscrowDeviceTrust` now fails closed when a device's stored
+ * `publicKeyFingerprint` does not match the SHA-256 of its actually-published
+ * `escrow_public_keys` bytes — binding escrow-device trust to the real key so a
+ * relay/Firestore tamper cannot advertise a swapped key (or a fingerprint
+ * unrelated to the key) and have it approved. A device with no key on file yet is
+ * a no-op (`missing_public_key` → ok), so this cannot brick a device that simply
+ * has not published its key; only an actual mismatch / a key-without-fingerprint
+ * is refused. The native `EscrowDeviceTrustSafetyCheckFlag` should be activated in
+ * lockstep so the client surfaces the safety-number comparison UX.
  */
-const ESCROW_DEVICE_FINGERPRINT_ENFORCEMENT_ENABLED = false;
+const ESCROW_DEVICE_FINGERPRINT_ENFORCEMENT_ENABLED = true;
 
 /** The outcome of checking a stored fingerprint against the real key bytes. */
 type EscrowFingerprintCheck =

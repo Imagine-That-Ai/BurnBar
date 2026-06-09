@@ -56,22 +56,67 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     private var revokedPeerNodeIds: Set<String> = []
     private var revokedEscrowDeviceIds: Set<String> = []
 
-    public init(freshnessWindow: TimeInterval = 5.0, authorityMaxLifetime: TimeInterval = 300.0) {
+    /// F1 keystone: the Mac-Keychain pin that makes this device the authoritative
+    /// root of trust for which controller key may drive it. `nil` disables pin
+    /// enforcement (legacy/unit-test validators that only exercise the signature
+    /// path); the shipping coordinator + grant listener pass the real store.
+    private let controllerPinStore: ControllerKeyPinStore?
+    /// Whether an unpinned/first-use key must be confirmed out-of-band before it
+    /// is admitted. Evaluated per registration so a flag flip takes effect
+    /// without reconstructing the validator.
+    private let pinEnforcement: @Sendable () -> Bool
+
+    public init(
+        freshnessWindow: TimeInterval = 5.0,
+        authorityMaxLifetime: TimeInterval = 300.0,
+        controllerPinStore: ControllerKeyPinStore? = ControllerKeyPinStore(),
+        pinEnforcement: @escaping @Sendable () -> Bool = { ControllerKeyPinEnforcementFlag.isEnabled() }
+    ) {
         self.freshnessWindow = freshnessWindow
         self.authorityMaxLifetime = authorityMaxLifetime
+        self.controllerPinStore = controllerPinStore
+        self.pinEnforcement = pinEnforcement
     }
 
     /// Register the verified Ed25519 public key for a paired peer.
-    /// Source: `users/{uid}/iroh_pairing/{connId}.peerPubKey` after
-    /// fingerprint verification in the existing pairing flow.
+    /// Source: `users/{uid}/iroh_pairing/{connId}/controllers/{peerNodeId}
+    /// .publicKeyBase64`, fetched by `FirestorePhoneControlAuthorityProvider`.
     ///
-    /// FAIL-CLOSED: a peer in the revocation set is refused — a revoked
-    /// device that reconnects (fresh `controlClassify`) cannot re-admit its
-    /// pubkey and therefore cannot pass `publicKeyForActivePeer`. Returns
-    /// `false` when the registration was refused due to revocation.
+    /// FAIL-CLOSED on two independent grounds:
+    ///  1. Revocation — a peer in the revocation set is refused so a revoked
+    ///     device that reconnects (fresh `controlClassify`) cannot re-admit its
+    ///     pubkey and therefore cannot pass `publicKeyForActivePeer`.
+    ///  2. F1 controller pin — when a `uid` is supplied and a pin store is
+    ///     configured, the advertised key is checked against the Mac-Keychain
+    ///     pin (``ControllerKeyPinStore``). A key that DIFFERS from the
+    ///     operator-pinned key is refused (a relay/Firestore key swap — the
+    ///     control-plane MITM this remediation closes); an unpinned key is
+    ///     pinned on first use and, when ``ControllerKeyPinEnforcementFlag`` is
+    ///     enabled, admitted only after the operator confirms the safety number
+    ///     out-of-band. Without a `uid` only revocation + in-memory admission
+    ///     apply (signature-only validators and legacy callers).
+    ///
+    /// Returns `false` when the registration was refused; the caller MUST treat
+    /// a `false` as "do not validate intents from this peer" and surface a denial.
     @discardableResult
-    public func registerPeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
-        queue.sync {
+    public func registerPeer(
+        nodeId: String,
+        publicKey: Curve25519.Signing.PublicKey,
+        uid: String? = nil
+    ) -> Bool {
+        if queue.sync(execute: { revokedPeerNodeIds.contains(nodeId) }) { return false }
+        if let controllerPinStore, let uid {
+            let advertised = publicKey.rawRepresentation.base64EncodedString()
+            let result = controllerPinStore.verifyOrPin(
+                advertisedKeyBase64: advertised,
+                uid: uid,
+                peerNodeId: nodeId
+            )
+            guard result.admits(requireConfirmation: pinEnforcement()) else {
+                return false
+            }
+        }
+        return queue.sync {
             if revokedPeerNodeIds.contains(nodeId) { return false }
             peerPublicKeys[nodeId] = publicKey
             return true
@@ -252,6 +297,57 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
 
         let observedHex = try ComputerUsePhoneControlSigner()
             .canonicalAgentGrantRequestHashHex(request: grantRequest)
+        guard observedHex == envelope.intentHashBlake3 else {
+            throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
+        }
+
+        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
+            throw ValidationError.signatureFailed
+        }
+        var toVerify = Data()
+        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
+        var beCounter = envelope.counter.bigEndian
+        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
+        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
+        var beTs = timestampMs.bigEndian
+        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
+
+        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
+            throw ValidationError.signatureFailed
+        }
+
+        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        return ValidationResult(
+            peerNodeId: envelope.peerNodeId,
+            validatedAt: now,
+            counter: envelope.counter
+        )
+    }
+
+    public func validate(
+        envelope: HermesRealtimeRelayAuthorityEnvelope,
+        approvalResponse response: HermesRealtimeRelayApprovalResponse,
+        expectedRequestHashBlake3: String,
+        now: Date = Date()
+    ) throws -> ValidationResult {
+        let pubKey = try publicKeyForActivePeer(envelope)
+
+        try validateAuthorityEnvelope(envelope, now: now)
+
+        guard response.requestHashBlake3 == expectedRequestHashBlake3 else {
+            throw ValidationError.intentHashMismatch(
+                expected: expectedRequestHashBlake3,
+                observed: response.requestHashBlake3 ?? ""
+            )
+        }
+
+        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        guard envelope.counter > lastSeen else {
+            throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
+        }
+
+        let observedHex = try ComputerUsePhoneControlSigner()
+            .canonicalApprovalResponseHashHex(response: response)
         guard observedHex == envelope.intentHashBlake3 else {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }

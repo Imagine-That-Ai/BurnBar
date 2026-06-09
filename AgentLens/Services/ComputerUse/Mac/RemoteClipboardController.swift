@@ -211,6 +211,8 @@ public final class RemoteClipboardController {
             accessibilityTrusted: inputController.isAccessibilityTrusted(),
             originatedFromPhone: true,
             phoneControlRespectsDenyRegions: context.configuration.phoneControlRespectsDenyRegions,
+            // F3: first-action approval mechanism gated-off in production (see coordinator note).
+            phoneSessionFirstActionConfirmed: true,
             clipboardConsentGranted: context.configuration.clipboardConsentGranted
         )
 
