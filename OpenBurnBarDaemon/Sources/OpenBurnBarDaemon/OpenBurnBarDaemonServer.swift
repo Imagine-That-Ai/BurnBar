@@ -237,7 +237,14 @@ public actor BurnBarDaemonServer {
         heartbeatTask = BurnBarDaemonHeartbeat.startPeriodicWriter(
             daemonVersion: configuration.daemonVersion
         )
-        await missionControlService.startBackgroundLoops()
+        if configuration.startsMissionControlBackgroundLoops {
+            await missionControlService.startBackgroundLoops()
+        } else {
+            logger.debug(
+                "mission_control_background_loops_disabled",
+                metadata: ["socket_path": configuration.socketPath]
+            )
+        }
 
         logger.notice(
             "bootstrap_ready",

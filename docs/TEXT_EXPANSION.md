@@ -32,7 +32,7 @@ iOS/iPadOS stores the active snapshot in the same App Group shape so the keyboar
 
 Android stores static snippets in Room table `text_expansion_snippets`. The IME and in-app composers read enabled, non-deleted rows.
 
-Cloud sync uses `users/{uid}/text_snippets/{snippetId}`. Firestore stores `sealedTitle`, `sealedTrigger`, `sealedBody`, `sealedScope`, `triggerHash`, mode, timestamps, revision, and encryption metadata. It rejects plaintext `title`, `trigger`, `body`, and `scope` fields. The vault key is the same Cloud Vault device-key system used by encrypted hosted session search, so Firebase stores ciphertext and keyed hashes, not snippet text.
+Cloud sync uses `users/{uid}/text_snippets/{snippetId}`. Firestore stores `sealedTitle`, `sealedTrigger`, `sealedBody`, `sealedScope`, `triggerHash`, mode, timestamps, revision, and encryption metadata. It rejects plaintext `title`, `trigger`, `body`, and `scope` fields. New writes use Cloud Vault sealed-text schema v2 with AAD bound to `uid`, collection, document id, and field name, so sealed values cannot be copied between users, documents, or fields without failing decryption. The vault key is the same Cloud Vault device-key system used by encrypted hosted session search, so Firebase stores ciphertext and keyed hashes, not snippet text.
 
 ## Safety Rules
 

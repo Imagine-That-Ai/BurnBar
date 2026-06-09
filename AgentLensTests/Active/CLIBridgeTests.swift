@@ -164,6 +164,18 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(args.contains("--verbose"))
     }
 
+    func test_cliBridge_claudeArguments_withoutGrantForcesPlanModeAndDeniesRiskyTools() {
+        let args = CLIBridge.claudeArguments(prompt: "test")
+        let disallowedTools = value(after: "--disallowedTools", in: args) ?? ""
+
+        XCTAssertEqual(value(after: "--permission-mode", in: args), "plan")
+        XCTAssertTrue(disallowedTools.contains("Bash"))
+        XCTAssertTrue(disallowedTools.contains("Write"))
+        XCTAssertTrue(disallowedTools.contains("Edit"))
+        XCTAssertTrue(disallowedTools.contains("MultiEdit"))
+        XCTAssertTrue(disallowedTools.contains("NotebookEdit"))
+    }
+
     func test_cliBridge_claudeArguments_includeExplicitModelWhenProvided() {
         let args = CLIBridge.claudeArguments(prompt: "test", model: "claude-sonnet-4-20250514")
         XCTAssertTrue(args.contains("--model"))
@@ -218,6 +230,15 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(args.contains("--json"))
         XCTAssertFalse(args.contains("-m"))
         XCTAssertFalse(args.contains("gpt-5.5"))
+    }
+
+    func test_cliBridge_codexArguments_withoutGrantForcesReadOnlySandboxAndIgnoresUserOverrides() {
+        let args = CLIBridge.codexArguments(prompt: "test")
+
+        XCTAssertEqual(value(after: "--sandbox", in: args), "read-only")
+        XCTAssertTrue(args.contains("--ignore-user-config"))
+        XCTAssertTrue(args.contains("--ignore-rules"))
+        XCTAssertEqual(args.last, "test")
     }
 
     func test_cliBridge_codexArguments_useExplicitModelWhenProvided() {
@@ -484,7 +505,11 @@ final class CLIBridgeTests: XCTestCase {
             now: Date(),
             duration: 60
         )
-        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true }
+        )
 
         let result = await broker.invokeOpenAITool(
             name: "workspace_write_file",
@@ -511,7 +536,11 @@ final class CLIBridgeTests: XCTestCase {
             now: Date(),
             duration: 60
         )
-        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true }
+        )
 
         let result = await broker.invokeOpenAITool(
             name: "workspace_write_file",
@@ -572,7 +601,11 @@ final class CLIBridgeTests: XCTestCase {
             now: Date(),
             duration: 60
         )
-        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true }
+        )
 
         let result = await broker.invokeOpenAITool(
             name: "shell_run",
@@ -605,7 +638,11 @@ final class CLIBridgeTests: XCTestCase {
             now: Date(),
             duration: 60
         )
-        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+        let broker = AgentToolBroker(
+            grant: grant,
+            workspaceURL: workspace,
+            privilegedActionApprover: { _, _ in true }
+        )
 
         let arguments = try jsonArguments([
             "command": "echo ok > inside.txt; (echo bad > \"\(outside.path)\" && echo BAD) || true",
@@ -1464,6 +1501,174 @@ final class CLIBridgeTests: XCTestCase {
         )
     }
 
+    // MARK: - A1: privileged-tool per-action approval gate
+
+    func test_agentToolBroker_privilegedTool_failsClosedWithoutApprover() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes, threadID: "thread-1", capabilities: [.shell], now: Date(), duration: 60
+        )
+        // No approver wired → a privileged tool must be DENIED, never executed.
+        let broker = AgentToolBroker(grant: grant, workspaceURL: workspace)
+        let result = await broker.invokeOpenAITool(
+            name: "shell_run",
+            arguments: #"{"command":"echo SHOULD_NOT_RUN > ran.txt"}"#,
+            callID: "c", runID: "r"
+        )
+        let payload = try jsonPayload(from: result)
+        XCTAssertEqual(payload["ok"] as? Bool, false)
+        XCTAssertEqual(payload["status"] as? String, "denied")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("ran.txt").path))
+    }
+
+    func test_agentToolBroker_privilegedTool_deniedWhenApproverRejects() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes, threadID: "thread-1", capabilities: [.shell], now: Date(), duration: 60
+        )
+        let recorder = BrokerApprovalRecorder(decision: false)
+        let broker = AgentToolBroker(
+            grant: grant, workspaceURL: workspace,
+            privilegedActionApprover: { _, summary in await recorder.approve(summary: summary) }
+        )
+        let result = await broker.invokeOpenAITool(
+            name: "shell_run",
+            arguments: #"{"command":"echo SHOULD_NOT_RUN > ran.txt"}"#,
+            callID: "c", runID: "r"
+        )
+        let payload = try jsonPayload(from: result)
+        XCTAssertEqual(payload["ok"] as? Bool, false)
+        XCTAssertEqual(payload["reason"] as? String, "user declined this action")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("ran.txt").path))
+        let count = await recorder.callCount
+        let summaries = await recorder.summaries
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(summaries.first?.contains("echo SHOULD_NOT_RUN"), true)
+    }
+
+    func test_agentToolBroker_trustedGrant_bypassesApprover() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .hermes, threadID: "thread-1", capabilities: [.shell],
+            trustMode: .trusted, now: Date(), duration: 60
+        )
+        // Approver would DENY if consulted; trusted (YOLO) must bypass it.
+        let recorder = BrokerApprovalRecorder(decision: false)
+        let broker = AgentToolBroker(
+            grant: grant, workspaceURL: workspace,
+            privilegedActionApprover: { _, summary in await recorder.approve(summary: summary) }
+        )
+        let result = await broker.invokeOpenAITool(
+            name: "shell_run",
+            arguments: #"{"command":"echo trusted > out.txt"}"#,
+            callID: "c", runID: "r"
+        )
+        let payload = try jsonPayload(from: result)
+        XCTAssertEqual(payload["ok"] as? Bool, true)
+        let count = await recorder.callCount
+        XCTAssertEqual(count, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("out.txt").path))
+    }
+
+    // MARK: - A2: restricted shell sandbox profile
+
+    func test_restrictedShellSandboxProfile_emitsHardeningRules() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-sbx-profile-\(UUID().uuidString)", isDirectory: true)
+        let workspace = base.appendingPathComponent("ws", isDirectory: true)
+        let home = base.appendingPathComponent("home", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let workspacePath = realpathString(workspace)
+        let homePath = realpathString(home)
+        let profile = AgentToolBroker.restrictedShellSandboxProfile(
+            workspacePath: workspace.path,
+            homePath: home.path
+        )
+        XCTAssertTrue(profile.contains("(deny network*)"))
+        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/.ssh\"))"))
+        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/Library/Keychains\"))"))
+        XCTAssertTrue(profile.contains("(deny file-write* (require-not (subpath \"\(workspacePath)\"))"))
+        XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
+        XCTAssertTrue(profile.contains("(allow file-write* (literal \"/dev/null\"))"))
+    }
+
+    func test_restrictedShellSandboxProfile_canonicalizesWorkspaceAndHomePaths() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-sbx-canonical-\(UUID().uuidString)", isDirectory: true)
+        let workspace = base.appendingPathComponent("ws", isDirectory: true)
+        let home = base.appendingPathComponent("home", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let profile = AgentToolBroker.restrictedShellSandboxProfile(
+            workspacePath: workspace.path,
+            homePath: home.path
+        )
+
+        let workspacePath = realpathString(workspace)
+        let homePath = realpathString(home)
+        XCTAssertTrue(profile.contains("(allow file-write* (subpath \"\(workspacePath)\"))"))
+        XCTAssertTrue(profile.contains("(deny file-read* (subpath \"\(homePath)/.ssh\"))"))
+    }
+
+    func test_restrictedShellSandboxProfile_enforcesNetworkAndSecretDenial() throws {
+        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") else {
+            throw XCTSkip("sandbox-exec unavailable")
+        }
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-sbx-\(UUID().uuidString)", isDirectory: true)
+        let home = base.appendingPathComponent("home", isDirectory: true)
+        let ws = base.appendingPathComponent("ws", isDirectory: true)
+        let ssh = home.appendingPathComponent(".ssh", isDirectory: true)
+        try FileManager.default.createDirectory(at: ssh, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        try Data("TOPSECRET".utf8).write(to: ssh.appendingPathComponent("id_secret"))
+
+        let wsPath = ws.path
+        let homePath = home.path
+        let profile = AgentToolBroker.restrictedShellSandboxProfile(workspacePath: wsPath, homePath: homePath)
+
+        func run(_ cmd: String) -> Int32 {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
+            process.arguments = ["-p", profile, "/bin/zsh", "-f", "-lc", cmd]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            do { try process.run() } catch { return -1 }
+            process.waitUntilExit()
+            return process.terminationStatus
+        }
+
+        // Workspace write is allowed.
+        XCTAssertEqual(run("echo ok > '\(wsPath)/in.txt'"), 0)
+        // Reading a secret store is denied.
+        XCTAssertNotEqual(run("cat '\(homePath)/.ssh/id_secret'"), 0)
+        // Writing outside the workspace (persistence) is denied.
+        XCTAssertNotEqual(run("echo x > '\(homePath)/.zshrc'"), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".zshrc").path))
+        // Outbound network (exfiltration) is denied.
+        if FileManager.default.isExecutableFile(atPath: "/usr/bin/curl") {
+            XCTAssertNotEqual(run("/usr/bin/curl --max-time 3 -s http://127.0.0.1:1/ -o /dev/null"), 0)
+        }
+    }
+
     private func jsonPayload(from result: AgentToolExecutionPayload) throws -> [String: Any] {
         let data = try XCTUnwrap(result.content.data(using: .utf8))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -1472,5 +1677,28 @@ final class CLIBridgeTests: XCTestCase {
     private func jsonArguments(_ object: [String: Any]) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+private func realpathString(_ url: URL) -> String {
+    #if canImport(Darwin)
+    var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+    if realpath(url.path, &buffer) != nil {
+        return String(cString: buffer)
+    }
+    #endif
+    return url.resolvingSymlinksInPath().path
+}
+
+/// Thread-safe recorder for the privileged-action approver in A1 tests.
+private actor BrokerApprovalRecorder {
+    let decision: Bool
+    private(set) var summaries: [String] = []
+    private(set) var callCount = 0
+    init(decision: Bool) { self.decision = decision }
+    func approve(summary: String) -> Bool {
+        callCount += 1
+        summaries.append(summary)
+        return decision
     }
 }

@@ -8,6 +8,7 @@ import com.google.firebase.firestore.SetOptions
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
+import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.cloud.CloudVaultSealedText
 import com.openburnbar.data.db.AppDatabase
@@ -77,6 +78,17 @@ class TextExpansionSyncManager(
             val triggerHash =
                 CloudVaultCrypto.tokenHashes(entity.trigger, vaultKey, limit = 1).firstOrNull()
                     ?: CloudVaultCrypto.sha256Hex(entity.trigger.toByteArray(Charsets.UTF_8))
+            fun seal(value: String, field: String) =
+                CloudVaultCrypto.sealText(
+                    value,
+                    vaultKey,
+                    CloudVaultAADContext(
+                        uid = uid,
+                        collection = "text_snippets",
+                        docID = entity.id,
+                        field = field,
+                    ),
+                ).toMap()
 
             val doc =
                 mapOf(
@@ -84,17 +96,17 @@ class TextExpansionSyncManager(
                     "uid" to uid,
                     "sourceDeviceID" to (entity.sourceDeviceID ?: keypair.deviceId),
                     "triggerHash" to triggerHash,
-                    "sealedTitle" to CloudVaultCrypto.sealText(entity.title, vaultKey).toMap(),
-                    "sealedTrigger" to CloudVaultCrypto.sealText(entity.trigger, vaultKey).toMap(),
-                    "sealedBody" to CloudVaultCrypto.sealText(entity.body, vaultKey).toMap(),
-                    "sealedScope" to CloudVaultCrypto.sealText(entity.scopeJson, vaultKey).toMap(),
+                    "sealedTitle" to seal(entity.title, "sealedTitle"),
+                    "sealedTrigger" to seal(entity.trigger, "sealedTrigger"),
+                    "sealedBody" to seal(entity.body, "sealedBody"),
+                    "sealedScope" to seal(entity.scopeJson, "sealedScope"),
                     "mode" to entity.mode,
                     "isEnabled" to entity.isEnabled,
                     "revision" to entity.revision,
                     "createdAt" to com.google.firebase.Timestamp(Date(entity.createdAtMillis)),
                     "updatedAt" to com.google.firebase.Timestamp(Date(entity.updatedAtMillis)),
                     "deletedAt" to entity.deletedAtMillis?.let { com.google.firebase.Timestamp(Date(it)) },
-                    "schemaVersion" to 1,
+                    "schemaVersion" to CloudVaultCrypto.currentSealedTextSchemaVersion,
                     "encryption" to
                         mapOf(
                             "algorithm" to "AES-256-GCM",
@@ -123,7 +135,7 @@ class TextExpansionSyncManager(
 
         for (doc in remoteSnapshot.documents) {
             runCatching {
-                mergeRemoteSnippet(doc, localMap, vaultKey, keypair, dao)
+                mergeRemoteSnippet(doc, uid, localMap, vaultKey, keypair, dao)
             }.onFailure { e ->
                 if (e is IllegalStateException) {
                     Log.e("TextExpansionSync", "Failed to decrypt or merge remote snippet ${doc.id}: ${e.message}", e)
@@ -136,6 +148,7 @@ class TextExpansionSyncManager(
 
     private suspend fun mergeRemoteSnippet(
         doc: com.google.firebase.firestore.DocumentSnapshot,
+        uid: String,
         localMap: Map<String, TextExpansionSnippetEntity>,
         vaultKey: ByteArray,
         keypair: AndroidCloudVaultDeviceKeypair,
@@ -162,10 +175,17 @@ class TextExpansionSyncManager(
         val updatedAt = parseTimestamp(doc.get("updatedAt")) ?: Date()
         val deletedAt = parseTimestamp(doc.get("deletedAt"))
 
-        val title = CloudVaultCrypto.openText(sealedTitleMap.toSealedText(), vaultKey)
-        val trigger = CloudVaultCrypto.openText(sealedTriggerMap.toSealedText(), vaultKey)
-        val body = CloudVaultCrypto.openText(sealedBodyMap.toSealedText(), vaultKey)
-        val scopeJson = CloudVaultCrypto.openText(sealedScopeMap.toSealedText(), vaultKey)
+        fun context(field: String) =
+            CloudVaultAADContext(
+                uid = uid,
+                collection = "text_snippets",
+                docID = id,
+                field = field,
+            )
+        val title = CloudVaultCrypto.openText(sealedTitleMap.toSealedText(), vaultKey, context("sealedTitle"))
+        val trigger = CloudVaultCrypto.openText(sealedTriggerMap.toSealedText(), vaultKey, context("sealedTrigger"))
+        val body = CloudVaultCrypto.openText(sealedBodyMap.toSealedText(), vaultKey, context("sealedBody"))
+        val scopeJson = CloudVaultCrypto.openText(sealedScopeMap.toSealedText(), vaultKey, context("sealedScope"))
 
         val localSnippet = localMap[id]
         val localIsCurrent = localSnippet != null && localSnippet.updatedAtMillis >= updatedAt.time
@@ -219,17 +239,23 @@ class TextExpansionSyncManager(
             nonce = this["nonce"] as? String ?: "",
             ciphertext = this["ciphertext"] as? String ?: "",
             tag = this["tag"] as? String ?: "",
+            schemaVersion = (this["schemaVersion"] as? Number)?.toInt(),
+            aad = this["aad"] as? String,
         )
     }
 
     private fun CloudVaultSealedText.toMap(): Map<String, Any> {
-        return mapOf(
+        return buildMap {
+            schemaVersion?.let { put("schemaVersion", it) }
+            aad?.let { put("aad", it) }
+            putAll(mapOf(
             "algorithm" to algorithm,
             "keyVersion" to keyVersion,
             "nonce" to nonce,
             "ciphertext" to ciphertext,
             "tag" to tag,
-        )
+            ))
+        }
     }
 
     private fun parseTimestamp(value: Any?): Date? = when (value) {

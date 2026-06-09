@@ -29,9 +29,11 @@ import { isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
 export const HERMES_GATEWAY_SCHEMA_VERSION = 2;
 export const HERMES_GATEWAY_DEVICE_SESSION_TTL_MS = 10 * 60 * 1000;
 export const HERMES_GATEWAY_TOKEN_BYTES = 32;
-// Bearer tokens expire 90 days after issuance/rotation. Tokens without
-// expiresAt are legacy credentials and must be rotated before use.
-export const HERMES_GATEWAY_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+// Gateway access tokens are only bearer-compatible as an index hint; every HTTP
+// request must also prove possession of the client signing key pinned at pairing.
+// Tokens without expiresAt/signing-key material are legacy credentials and fail
+// closed until the client re-pairs.
+export const HERMES_GATEWAY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 export const HERMES_GATEWAY_MAX_EVENT_TEXT = 32_000;
 export const HERMES_GATEWAY_MAX_MESSAGE_TEXT = 64_000;
 export const HERMES_GATEWAY_MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
@@ -253,6 +255,9 @@ export interface HermesGatewayClientDoc {
   status: HermesGatewayClientStatus;
   tokenHash: string;
   tokenPreview: string;
+  agentClientSigningPublicKeyBase64?: string;
+  agentClientSigningKeyId?: string;
+  popRequired?: boolean;
   scopes: HermesGatewayScope[];
   homeDestinationId: string;
   expiresAt?: string;
@@ -1237,9 +1242,13 @@ export function isHermesGatewayClientDoc(raw: unknown): raw is HermesGatewayClie
     typeof record.uid === "string" &&
     typeof record.displayName === "string" &&
     (record.status === "active" || record.status === "revoked") &&
-    isSha256Hex(record.tokenHash) &&
-    typeof record.tokenPreview === "string" &&
-    Array.isArray(record.scopes) &&
+	    isSha256Hex(record.tokenHash) &&
+	    typeof record.tokenPreview === "string" &&
+	    (typeof record.agentClientSigningPublicKeyBase64 === "string" ||
+	      record.agentClientSigningPublicKeyBase64 === undefined) &&
+	    (typeof record.agentClientSigningKeyId === "string" || record.agentClientSigningKeyId === undefined) &&
+	    (typeof record.popRequired === "boolean" || record.popRequired === undefined) &&
+	    Array.isArray(record.scopes) &&
     typeof record.homeDestinationId === "string" &&
     (typeof record.expiresAt === "string" || record.expiresAt === undefined) &&
     (typeof record.rotatedAt === "string" || record.rotatedAt === undefined) &&
@@ -1435,6 +1444,8 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     displayName: client.displayName,
     status: client.status,
     tokenPreview: client.tokenPreview,
+    agentClientSigningKeyId: client.agentClientSigningKeyId,
+    popRequired: client.popRequired === true,
     scopes: client.scopes,
     homeDestinationId: client.homeDestinationId,
     expiresAt: client.expiresAt,

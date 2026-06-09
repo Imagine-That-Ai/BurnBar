@@ -42,6 +42,17 @@ We do not promise formal SLA response times. Reports are handled on a best-effor
 - **Cursor connector runtime**: The local connector bridge keeps provider API keys in Keychain and writes only Keychain lookup metadata plus a short-lived session token into OpenBurnBar's private support directory while the bridge is active.
 - **Optional integrations**: Connector-plane, browser-tooling, and tunnel features expand the network surface area. Enable only the integrations you actually plan to use.
 
+## Pre-Beta Security Gates
+
+High-impact control paths are fail-closed:
+
+- **Risky Agent Control grants**: `shell`, `workspace_write`, `desktop_*`, `desktop_system_input`, and `shell_unrestricted` grants require a single-use local-auth proof bound to the exact canonical operation hash. A normal account session can still request read-only/observe grants, but it cannot elevate to host-impacting control without hardware-backed local approval on a trusted device.
+- **Hermes Gateway autonomous mode**: downgrades to supervised mode are normal authenticated account operations. Elevation to autonomous mode requires a trusted native escrow device, a high-risk callable nonce, a local-auth proof, and an audit event.
+- **Hermes Gateway tokens**: gateway clients are pinned to an agent signing public key. Access tokens are short lived, and refresh/rotation requires proof-of-possession over nonce, timestamp, method, path, body hash, and token hash. Legacy bearer-only clients must rotate/re-pair.
+- **Cloud Vault wrapping**: clients do not wrap new vault keys to a device merely because the server says it is trusted. A trusted local root pins its own Signal identity, and every additional device must carry a client-verifiable trust-chain signature over that device's escrow public key and Signal identity fingerprint before Mac, iOS, or Android will wrap future vault material to it.
+- **Cloud Vault revocation**: revoking a device is not considered complete until a surviving trusted device rotates the vault key, verifies the survivor trust chains, rewraps survivor wrappers, removes revoked wrappers, re-seals document envelopes, re-seals session-log Storage blobs, and rekeys the hosted search index. The server coordinates the job but never receives vault keys or plaintext.
+- **Signal/libsignal claims**: production activation remains blocked unless local gates, external crypto review, legal/store approval, and physical-device E2E evidence are all green. Until then, Signal paths are wired/readiness-gated, not marketed as live production coverage.
+
 ## Known Limitations
 
 - **Cost estimates**: Cost calculations use public pricing lists and do not reflect actual invoices. Do not use for financial reconciliation.
@@ -101,7 +112,7 @@ review; ✅ items have since landed):
    cross-device opens. (An independent cross-model adversarial review confirmed the
    forgery hole is closed and fail-closed; the open items above are coverage/interop, not
    forgery vectors.)
-6. **Revocation rewrap.** Revoking a device's trust flips its sessions to `revoked` but does
-   NOT re-seal existing at-rest documents (rewrap is planning-only). A revoked device retains
-   read access to previously-sealed content — identical to the legacy path. Do not claim a
-   revoke evicts a device from past content until a rewrap executor ships.
+6. **Revocation rewrap.** CloudVault rotation and client-side rewrap workers now exist, including
+   session-log Storage blob resealing and hosted-search index rekeying. Product copy must still say
+   revocation is complete only after the `cloud_vault_rotation_jobs/{jobId}` record reaches
+   `complete`; a device that already cached plaintext before revocation cannot be clawed back.

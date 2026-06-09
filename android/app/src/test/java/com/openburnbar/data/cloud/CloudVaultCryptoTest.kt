@@ -168,6 +168,122 @@ class CloudVaultCryptoTest {
     }
 
     @Test
+    fun rewrapCloudVaultDocumentResealsTopLevelEnvelopesWithPathBoundAad() {
+        val oldKey = ByteArray(SHA256_DIGEST_BYTES) { 0x71.toByte() }
+        val newKey = ByteArray(SHA256_DIGEST_BYTES) { 0x72.toByte() }
+        val oldVaultKeyID = CloudVaultCrypto.vaultKeyID(oldKey)
+        val newVaultKeyID = CloudVaultCrypto.vaultKeyID(newKey)
+        val uid = "userA"
+        val collection = "cli_agent_mission_requests"
+        val docID = "requestA"
+        val stateContext =
+            CloudVaultAADContext(
+                uid = uid,
+                collection = collection,
+                docID = docID,
+                field = "sealedStatePayload",
+            )
+        val document =
+            mapOf<String, Any?>(
+                "vaultKeyID" to oldVaultKeyID,
+                "sealedStateVaultKeyID" to oldVaultKeyID,
+                "sealedPayload" to
+                    CloudVaultCrypto.sealedPayloadMap(
+                        CloudVaultCrypto.sealPayload("""{"prompt":"fix launch"}""".toByteArray(), oldKey, oldVaultKeyID),
+                    ),
+                "sealedStatePayload" to
+                    CloudVaultCrypto.sealedPayloadMap(
+                        CloudVaultCrypto.sealPayload("""{"summary":"running"}""".toByteArray(), oldKey, oldVaultKeyID, stateContext),
+                    ),
+                "sealedDisplayLabel" to
+                    CloudVaultCrypto.sealedTextMap(
+                        CloudVaultCrypto.sealText("release policy", oldKey),
+                    ),
+                "plainStatus" to "queued",
+            )
+
+        val result =
+            CloudVaultCrypto.rewrapCloudVaultDocument(
+                data = document,
+                uid = uid,
+                collection = collection,
+                docID = docID,
+                oldKey = oldKey,
+                newKey = newKey,
+                newVaultKeyID = newVaultKeyID,
+                vaultGeneration = 7,
+                rotationJobId = "job-7",
+            )
+
+        assertEquals(setOf("sealedDisplayLabel", "sealedPayload", "sealedStatePayload"), result.changedFields.toSet())
+        assertEquals("queued", result.data["plainStatus"])
+        assertEquals(newVaultKeyID, result.data["vaultKeyID"])
+        assertEquals(newVaultKeyID, result.data["sealedStateVaultKeyID"])
+        assertEquals(7, result.data["vaultGeneration"])
+        assertEquals("job-7", result.data["rewrapJobId"])
+
+        val payloadEnvelope = CloudVaultCrypto.sealedPayloadFromMap(result.data["sealedPayload"] as? Map<*, *>)
+        requireNotNull(payloadEnvelope)
+        val payloadContext = CloudVaultAADContext(uid = uid, collection = collection, docID = docID, field = "sealedPayload")
+        assertEquals(newVaultKeyID, payloadEnvelope.vaultKeyID)
+        assertEquals(payloadContext.stringValue, payloadEnvelope.aad)
+        assertArrayEquals(
+            """{"prompt":"fix launch"}""".toByteArray(),
+            CloudVaultCrypto.openPayload(payloadEnvelope, newKey, payloadContext),
+        )
+        assertTrue(runCatching { CloudVaultCrypto.openPayload(payloadEnvelope, oldKey) }.isFailure)
+
+        val stateEnvelope = CloudVaultCrypto.sealedPayloadFromMap(result.data["sealedStatePayload"] as? Map<*, *>)
+        requireNotNull(stateEnvelope)
+        assertEquals(stateContext.stringValue, stateEnvelope.aad)
+        assertArrayEquals(
+            """{"summary":"running"}""".toByteArray(),
+            CloudVaultCrypto.openPayload(stateEnvelope, newKey, stateContext),
+        )
+
+        val labelEnvelope = CloudVaultCrypto.sealedTextFromMap(result.data["sealedDisplayLabel"] as? Map<*, *>)
+        requireNotNull(labelEnvelope)
+        val labelContext = CloudVaultAADContext(uid = uid, collection = collection, docID = docID, field = "sealedDisplayLabel")
+        assertEquals(labelContext.stringValue, labelEnvelope.aad)
+        assertEquals("release policy", CloudVaultCrypto.openText(labelEnvelope, newKey, labelContext))
+    }
+
+    @Test
+    fun rewrapCloudVaultDocumentResealsBlobEnvelopes() {
+        val oldKey = ByteArray(SHA256_DIGEST_BYTES) { 0x81.toByte() }
+        val newKey = ByteArray(SHA256_DIGEST_BYTES) { 0x82.toByte() }
+        val body = "session markdown body".toByteArray()
+        val document =
+            mapOf<String, Any?>(
+                "sealedSnapshot" to CloudVaultCrypto.blobEnvelopeMap(CloudVaultCrypto.sealBlob(body, oldKey)),
+            )
+
+        val result =
+            CloudVaultCrypto.rewrapCloudVaultDocument(
+                data = document,
+                uid = "userA",
+                collection = "project_memory_snapshots",
+                docID = "pm_fixture",
+                oldKey = oldKey,
+                newKey = newKey,
+            )
+
+        assertEquals(listOf("sealedSnapshot"), result.changedFields)
+        val envelope = CloudVaultCrypto.blobEnvelopeFromMap(result.data["sealedSnapshot"] as? Map<*, *>)
+        requireNotNull(envelope)
+        val context =
+            CloudVaultAADContext(
+                uid = "userA",
+                collection = "project_memory_snapshots",
+                docID = "pm_fixture",
+                field = "sealedSnapshot",
+            )
+        assertEquals(context.stringValue, envelope.aad)
+        assertArrayEquals(body, CloudVaultCrypto.openBlob(envelope, newKey, context))
+        assertTrue(runCatching { CloudVaultCrypto.openBlob(envelope, oldKey) }.isFailure)
+    }
+
+    @Test
     fun semanticHashesAreDeterministicKeyedAndUsefulForRecall() {
         val key = ByteArray(SHA256_DIGEST_BYTES) { 0x33.toByte() }
         val otherKey = ByteArray(SHA256_DIGEST_BYTES) { 0x44.toByte() }

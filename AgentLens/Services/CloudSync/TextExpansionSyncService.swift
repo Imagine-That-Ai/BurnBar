@@ -115,21 +115,33 @@ final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
         let scopeJSON = try OpenBurnBarDatabase.encodeJSON(snippet.scope)
         let triggerHash = try CloudVaultCrypto.tokenHashes(for: snippet.trigger, keyData: vaultKey, limit: 1).first
             ?? CloudVaultCrypto.sha256Hex(snippet.trigger)
+        func seal(_ value: String, field: String) throws -> [String: Any] {
+            try dictionary(CloudVaultCrypto.sealText(
+                value,
+                keyData: vaultKey,
+                aadContext: CloudVaultAADContext(
+                    uid: uid,
+                    collection: "text_snippets",
+                    docID: snippet.id,
+                    field: field
+                )
+            ))
+        }
         var data: [String: Any] = [
             "id": snippet.id,
             "uid": uid,
             "sourceDeviceID": snippet.sourceDeviceID ?? deviceID,
             "triggerHash": triggerHash,
-            "sealedTitle": try dictionary(CloudVaultCrypto.sealText(snippet.title, keyData: vaultKey)),
-            "sealedTrigger": try dictionary(CloudVaultCrypto.sealText(snippet.trigger, keyData: vaultKey)),
-            "sealedBody": try dictionary(CloudVaultCrypto.sealText(snippet.body, keyData: vaultKey)),
-            "sealedScope": try dictionary(CloudVaultCrypto.sealText(scopeJSON, keyData: vaultKey)),
+            "sealedTitle": try seal(snippet.title, field: "sealedTitle"),
+            "sealedTrigger": try seal(snippet.trigger, field: "sealedTrigger"),
+            "sealedBody": try seal(snippet.body, field: "sealedBody"),
+            "sealedScope": try seal(scopeJSON, field: "sealedScope"),
             "mode": snippet.mode.rawValue,
             "isEnabled": snippet.isEnabled,
             "revision": snippet.revision,
             "createdAt": snippet.createdAt,
             "updatedAt": snippet.updatedAt,
-            "schemaVersion": 1,
+            "schemaVersion": CloudVaultCrypto.currentSealedTextSchemaVersion,
             "encryption": [
                 "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
                 "keyVersion": CloudVaultCrypto.currentKeyVersion,
@@ -151,15 +163,42 @@ final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
               let updatedAt = date(from: data["updatedAt"]) else {
             return nil
         }
-        let scopeJSON = try CloudVaultCrypto.openText(sealedScope, keyData: vaultKey)
-        let scope = scopeJSON.data(using: .utf8).flatMap {
-            try? JSONDecoder().decode(TextExpansionScope.self, from: $0)
-        } ?? .global
+        let snippetID = (data["id"] as? String) ?? documentID
+        let snippetUID = data["uid"] as? String
+        func open(_ envelope: CloudVaultSealedText, field: String) throws -> String {
+            if (envelope.schemaVersion ?? 1) >= CloudVaultCrypto.currentSealedTextSchemaVersion {
+                guard let snippetUID, !snippetUID.isEmpty else {
+                    throw CloudVaultCryptoError.invalidEnvelope
+                }
+                return try CloudVaultCrypto.openText(
+                    envelope,
+                    keyData: vaultKey,
+                    aadContext: CloudVaultAADContext(
+                        uid: snippetUID,
+                        collection: "text_snippets",
+                        docID: snippetID,
+                        field: field
+                    )
+                )
+            }
+            return try CloudVaultCrypto.openText(envelope, keyData: vaultKey)
+        }
+        let scopeJSON = try open(sealedScope, field: "sealedScope")
+        let scope: TextExpansionScope
+        if let scopeData = scopeJSON.data(using: .utf8) {
+            do {
+                scope = try JSONDecoder().decode(TextExpansionScope.self, from: scopeData)
+            } catch {
+                scope = .global
+            }
+        } else {
+            scope = .global
+        }
         return TextExpansionSnippet(
-            id: (data["id"] as? String) ?? documentID,
-            title: try CloudVaultCrypto.openText(sealedTitle, keyData: vaultKey),
-            trigger: try CloudVaultCrypto.openText(sealedTrigger, keyData: vaultKey),
-            body: try CloudVaultCrypto.openText(sealedBody, keyData: vaultKey),
+            id: snippetID,
+            title: try open(sealedTitle, field: "sealedTitle"),
+            trigger: try open(sealedTrigger, field: "sealedTrigger"),
+            body: try open(sealedBody, field: "sealedBody"),
             mode: mode,
             isEnabled: (data["isEnabled"] as? Bool) ?? true,
             scope: scope,
@@ -180,11 +219,15 @@ final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
     }
 
     private static func sealedText(from value: Any?) -> CloudVaultSealedText? {
-        guard let dictionary = value as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dictionary) else {
+        guard let dictionary = value as? [String: Any] else {
             return nil
         }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
+        do {
+            let data = try JSONSerialization.data(withJSONObject: dictionary)
+            return try JSONDecoder().decode(CloudVaultSealedText.self, from: data)
+        } catch {
+            return nil
+        }
     }
 
     private static func date(from value: Any?) -> Date? {

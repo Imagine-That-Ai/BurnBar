@@ -37,7 +37,17 @@ CHANGED="$(printf '%s\n' "$CHANGED" | sort -u | sed '/^$/d')"
 # registered submodule gitlink (mode 160000) is reported by `git diff --name-only` /
 # `git status --porcelain` as the BARE path with no trailing slash. The old
 # `Vendor/libsignal/` (slash-required) form let a gitlink pointer-bump escape.
-RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi\.xcframework(/|$)|packages/libsignal-bridge/|third_party/|LICENSES/|THIRD_PARTY|REUSE\.toml|LICENSE|NOTICE|trust\.generated\.|website/src/data/trust)|(^|/)\.gitmodules$'
+#
+# Scope: LEGAL / SUPPLY-CHAIN tamper vectors only. The trust CLAIMS surface
+# (website/src/data/trust*, trust.generated.*) is intentionally NOT protected here:
+# it legitimately changes whenever the trust page is regenerated from registry.json,
+# and it is already gated by the registry drift gate (git diff --exit-code) plus
+# verify-signal-honesty-copy.sh. Hard-forbidding it via Rule-0 would block every
+# honest trust-page update — which is precisely why this guard could not previously
+# run as a wired, fail-closed PR gate. Keeping Rule-0 focused on ownership/legal
+# paths lets it enforce on every PR (its actual purpose: block a hostile libsignal
+# submodule/FFI swap or a license/third-party edit) without false-blocking copy.
+RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi\.xcframework(/|$)|packages/libsignal-bridge/|third_party/|LICENSES/|THIRD_PARTY|REUSE\.toml|LICENSE|NOTICE)|(^|/)\.gitmodules$'
 
 violations=0
 while IFS= read -r f; do

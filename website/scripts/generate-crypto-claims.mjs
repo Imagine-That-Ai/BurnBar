@@ -90,8 +90,12 @@ const LIBSIGNAL_ROLLOUT_STATUS = "wired in, not activated in production";
 
 // ---------------------------------------------------------------------------
 // "Wired in" is evidence-checked, not asserted: the at-rest dual-write code,
-// the per-domain kill switch, the rules-layer validator, and the bridge must
-// all exist in-tree, or the phrase may not ship.
+// the per-domain kill switch, the Admin-SDK validator, the rules-layer
+// direct-write block, and the bridge must all exist in-tree, or the phrase may
+// not ship. Firestore rules intentionally do NOT accept direct client
+// `signalEnvelope` writes anymore; sanctioned producers must go through the
+// Admin validator, which can deep-validate recipient wraps that rules cannot
+// iterate.
 // ---------------------------------------------------------------------------
 
 const WIRED_IN_EVIDENCE = [
@@ -113,8 +117,44 @@ if (!macPayloads.includes("signal_at_rest_")) {
   fail('the per-domain kill switch (signal_at_rest_<domain>_enabled) is gone from the Mac writer — "wired in" is unbacked');
 }
 const rules = readFileSync(join(REPO_ROOT, "firestore.rules"), "utf8");
-if (!rules.includes("validSignalAtRestEnvelope")) {
-  fail('firestore.rules no longer validates signal at-rest envelopes — "wired in" is unbacked');
+if (
+  !rules.includes("function forbidsDirectSignalEnvelope") ||
+  !rules.includes('!("signalEnvelope" in request.resource.data)')
+) {
+  fail('firestore.rules no longer blocks direct signalEnvelope writes — "wired in" is unbacked');
+}
+const adminValidator = readFileSync(join(REPO_ROOT, "functions", "src", "signalAtRestWrite.ts"), "utf8");
+if (
+  !adminValidator.includes("validateSignalAtRestEnvelopeForWrite") ||
+  !adminValidator.includes("assertSignalAtRestEnvelopeForWrite") ||
+  !adminValidator.includes("sanitizeCloudVaultSignalEnvelope")
+) {
+  fail(
+    'functions/src/signalAtRestWrite.ts no longer deep-validates Admin signalEnvelope writes — "wired in" is unbacked'
+  );
+}
+const adminValidatorTests = readFileSync(
+  join(REPO_ROOT, "functions", "src", "__tests__", "signalAtRestWrite.test.ts"),
+  "utf8"
+);
+if (
+  !adminValidatorTests.includes("rejects binding relocation") ||
+  !adminValidatorTests.includes("rejects deep per-wrap corruption") ||
+  !adminValidatorTests.includes("STRIPS additive pollution")
+) {
+  fail(
+    'signalAtRestWrite tests no longer prove relocation, wrap, and pollution rejection — "wired in" is unbacked'
+  );
+}
+const firestoreRulesTests = readFileSync(join(REPO_ROOT, "functions", "scripts", "test-firestore-rules.mjs"), "utf8");
+if (
+  !firestoreRulesTests.includes("signalEnvelope is rejected on mobile_assistant_chats direct writes") ||
+  !firestoreRulesTests.includes("signalEnvelope is rejected on cli_agent_mission_requests direct writes") ||
+  !firestoreRulesTests.includes("signalEnvelope is rejected on chat_threads + conversations direct writes")
+) {
+  fail(
+    'Firestore rules tests no longer prove direct signalEnvelope rejection on wired collections — "wired in" is unbacked'
+  );
 }
 
 // ---------------------------------------------------------------------------

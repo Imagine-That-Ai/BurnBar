@@ -11,6 +11,11 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 failed=0
 
+echo "=== Known vulnerable dependency floors ==="
+if ! node "$repo_root/scripts/security/check-known-vulnerability-floors.mjs"; then
+    failed=1
+fi
+
 audit_npm() {
     local dir="$1"
     local label="$2"

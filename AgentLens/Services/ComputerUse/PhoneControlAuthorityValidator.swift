@@ -40,6 +40,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         case localAuthProofReplay(proofId: String)
         case peerRevoked(peerNodeId: String)
         case escrowDeviceRevoked(deviceId: String)
+        case replayCounterPersistenceFailed
     }
 
     public struct ValidationResult: Sendable, Equatable {
@@ -86,16 +87,26 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     /// without reconstructing the validator.
     private let pinEnforcement: @Sendable () -> Bool
 
+    /// C3: file-backed high-water-mark for per-peer replay counters so the
+    /// strictly-monotonic replay guarantee survives daemon restarts. Without
+    /// persistence, `lastSeenCounter` reset to 0 on every restart and a captured
+    /// signed authority envelope could be replayed inside the freshness window.
+    private let replayCounterStore: PhoneControlReplayCounterStore
+
     public init(
         freshnessWindow: TimeInterval = 5.0,
         authorityMaxLifetime: TimeInterval = 300.0,
         controllerPinStore: ControllerKeyPinStore? = ControllerKeyPinStore(),
-        pinEnforcement: @escaping @Sendable () -> Bool = { ControllerKeyPinEnforcementFlag.isEnabled() }
+        pinEnforcement: @escaping @Sendable () -> Bool = { ControllerKeyPinEnforcementFlag.isEnabled() },
+        replayCounterStore: PhoneControlReplayCounterStore = .defaultStore()
     ) {
         self.freshnessWindow = freshnessWindow
         self.authorityMaxLifetime = authorityMaxLifetime
         self.controllerPinStore = controllerPinStore
         self.pinEnforcement = pinEnforcement
+        self.replayCounterStore = replayCounterStore
+        let restored = replayCounterStore.load()
+        self.lastSeenCounter = restored
     }
 
     /// Register the verified Ed25519 public key for a paired peer.
@@ -193,7 +204,6 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     public func deregisterPeer(nodeId: String) {
         queue.sync {
             peerPublicKeys.removeValue(forKey: nodeId)
-            lastSeenCounter.removeValue(forKey: nodeId)
         }
     }
 
@@ -201,7 +211,6 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         queue.sync {
             revokedPeerNodeIds.insert(nodeId)
             peerPublicKeys.removeValue(forKey: nodeId)
-            lastSeenCounter.removeValue(forKey: nodeId)
         }
     }
 
@@ -320,8 +329,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.signatureFailed
         }
 
-        // Commit the counter.
-        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
             validatedAt: now,
@@ -377,7 +385,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             now: now
         )
 
-        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
             validatedAt: now,
@@ -488,7 +496,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.signatureFailed
         }
 
-        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
             validatedAt: now,
@@ -531,7 +539,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.signatureFailed
         }
 
-        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
             validatedAt: now,
@@ -574,7 +582,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.signatureFailed
         }
 
-        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
             validatedAt: now,
@@ -620,7 +628,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         }
 
         if consumeCounter {
-            queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+            try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         }
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
@@ -665,12 +673,24 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.signatureFailed
         }
 
-        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
             validatedAt: now,
             counter: envelope.counter
         )
+    }
+
+    private func commitReplayCounter(peerNodeId: String, counter: UInt64) throws {
+        let snapshot = queue.sync {
+            lastSeenCounter[peerNodeId] = counter
+            return lastSeenCounter
+        }
+        do {
+            try replayCounterStore.persist(snapshot)
+        } catch {
+            throw ValidationError.replayCounterPersistenceFailed
+        }
     }
 }
 
@@ -680,7 +700,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
         case .signatureFailed, .missingPeerPubKey, .intentHashMismatch,
              .attestationMismatch, .missingAttestation, .macAttestationUnbound,
              .peerRevoked, .escrowDeviceRevoked,
-             .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay:
+             .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay,
+             .replayCounterPersistenceFailed:
             return .signatureFailure
         case .counterReplay:
             return .counterReplay
@@ -700,7 +721,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
         case .missingPeerPubKey, .signatureFailed, .intentHashMismatch,
              .attestationMismatch, .missingAttestation, .macAttestationUnbound,
              .peerRevoked, .escrowDeviceRevoked,
-             .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay:
+             .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay,
+             .replayCounterPersistenceFailed:
             return .signatureFailure
         }
     }
@@ -731,6 +753,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
             return "local_auth_proof_invalid"
         case .localAuthProofReplay:
             return "local_auth_proof_replay"
+        case .replayCounterPersistenceFailed:
+            return "replay_counter_persistence_failed"
         }
     }
 

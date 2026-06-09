@@ -164,7 +164,7 @@ final class CloudBudgetService {
         ]
         // Seal the private project name + label instead of writing them in clear.
         if let projectName = rule.projectName {
-            data["sealedProjectName"] = try CloudVaultCrypto.dictionary(
+            data["sealedProjectName"] = try CloudVaultCrypto.firestoreDictionary(
                 CloudVaultCrypto.sealText(projectName, keyData: vaultKey)
             )
             if let projectKeyHash = CloudVaultCrypto.projectKeyHash(for: projectName, keyData: vaultKey) {
@@ -172,7 +172,7 @@ final class CloudBudgetService {
             }
         }
         if let label = rule.label {
-            data["sealedLabel"] = try CloudVaultCrypto.dictionary(
+            data["sealedLabel"] = try CloudVaultCrypto.firestoreDictionary(
                 CloudVaultCrypto.sealText(label, keyData: vaultKey)
             )
         }

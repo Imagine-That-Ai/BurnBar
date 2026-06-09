@@ -149,7 +149,7 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
         // Seal the project name instead of writing it in clear. The server stays a
         // blind store-and-forward: only on-device key holders can recover the name.
         let sealedProjectName = try CloudVaultCrypto.sealText(usage.projectName, keyData: vaultKey)
-        data["sealedProjectName"] = try CloudVaultCrypto.dictionary(sealedProjectName)
+        data["sealedProjectName"] = try CloudVaultCrypto.firestoreDictionary(sealedProjectName)
         // Opaque keyed group-by trapdoor so readers can bucket usage by project
         // without decrypting every row. Absent for empty/blank names.
         if let projectKeyHash = CloudVaultCrypto.projectKeyHash(for: usage.projectName, keyData: vaultKey) {
@@ -165,20 +165,7 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
     }
 }
 
-enum CloudVaultProjectSealError: Error {
-    case encodingFailed
-}
-
 extension CloudVaultCrypto {
-    /// Serializes a `Codable` sealed envelope into a Firestore-native dictionary.
-    static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
-        let data = try JSONEncoder().encode(value)
-        guard let dictionary = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw CloudVaultProjectSealError.encodingFailed
-        }
-        return dictionary
-    }
-
     /// Stable opaque group-by token for a project name (32 hex chars), derived via
     /// the existing keyed search trapdoor. Collapses the name to a single ASCII
     /// `[a-z0-9]` term, then HMACs it under the per-user search key. Returns `nil`
@@ -214,15 +201,5 @@ extension CloudVaultCrypto {
             return nil
         }
         return data[legacyField] as? String
-    }
-
-    /// Decodes a `CloudVaultSealedText` envelope from a Firestore-native dictionary,
-    /// matching the JSON round-trip pattern used by the adjacent sync services.
-    static func decodeSealedText(from raw: Any?) -> CloudVaultSealedText? {
-        guard let dict = raw as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dict) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data)
     }
 }

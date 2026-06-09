@@ -218,7 +218,13 @@ final class SettingsManager {
         "computer_use_trust_modes_enabled": NSNumber(value: false),
         "computer_use_polish_enabled": NSNumber(value: false),
         "computer_use_kill_switch": NSNumber(value: false),
-        "computer_use_phone_control_respects_deny_regions": NSNumber(value: false),
+        // Secure default: a verified phone NEVER silently bypasses an
+        // accessibility deny region (password field / system auth sheet /
+        // login window). The gate also enforces this structurally — a deny
+        // region beats this flag regardless — but the Remote Config default
+        // must itself be the secure value so a fresh/offline install (where
+        // the server has not published the key) is not fail-open.
+        "computer_use_phone_control_respects_deny_regions": NSNumber(value: true),
         // Future SKU model evolution — individual feature gating.
         // Uncomment and wire into refreshEntitlement() when the SKU model
         // supports per-feature Remote Config overrides:

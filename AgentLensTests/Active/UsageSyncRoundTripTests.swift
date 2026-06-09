@@ -114,7 +114,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertFalse(serialized.contains("Top Secret Project"))
 
         // A key holder can recover the exact project name (seal → open round trip).
-        let envelope = try XCTUnwrap(CloudVaultCrypto.decodeSealedText(from: sealed))
+        let envelope = try XCTUnwrap(OpenBurnBarCore.CloudVaultCrypto.decodeSealedText(from: sealed))
         let opened = try CloudVaultCrypto.openText(envelope, keyData: vaultKeyProvider.keyData)
         XCTAssertEqual(opened, "Top Secret Project")
 

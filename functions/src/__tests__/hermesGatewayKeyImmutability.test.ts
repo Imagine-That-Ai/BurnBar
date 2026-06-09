@@ -11,6 +11,7 @@
  * Firestore double, with only the Pro/entitlement predicates stubbed true.
  */
 import { EventEmitter } from "node:events";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("firebase-functions/logger", () => ({
@@ -78,6 +79,21 @@ function docRef(path: string) {
 const dbMock = {
   doc: (path: string) => docRef(path),
   collection: () => ({ doc: (id: string) => docRef(id), get: async () => ({ docs: [], empty: true }) }),
+  runTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+    const tx = {
+      get: async (ref: { __path: string }) => snapFor(ref.__path),
+      set: (ref: { __path: string }, data: Record<string, unknown>) => {
+        stored.set(ref.__path, { ...stored.get(ref.__path), ...data });
+      },
+      create: (ref: { __path: string }, data: Record<string, unknown>) => {
+        if (stored.has(ref.__path)) {
+          throw new Error(`Document already exists: ${ref.__path}`);
+        }
+        stored.set(ref.__path, { ...data });
+      },
+    };
+    return fn(tx);
+  },
 };
 
 vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
@@ -92,6 +108,14 @@ const PHONE_KEY = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 3)]).toSt
 const UID = "userA";
 const CLIENT_ID = "hgw_runtime_client";
 const TOKEN = `obb_hgw_${"A".repeat(20)}`;
+const { publicKey: AGENT_SIGNING_PUBLIC_KEY, privateKey: AGENT_SIGNING_PRIVATE_KEY } = generateKeyPairSync("ed25519");
+const AGENT_SIGNING_PUBLIC_KEY_BASE64 = Buffer.from(
+  AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" }) as Buffer,
+)
+  .subarray(-32)
+  .toString("base64");
+const AGENT_SIGNING_KEY_ID = createHash("sha256").update(AGENT_SIGNING_PUBLIC_KEY_BASE64).digest("hex").slice(0, 32);
+let popNonceCounter = 0;
 
 // An Express/Node-response double sufficient for the firebase-functions onRequest
 // wrapper: the cors middleware (cors:true) reads/sets headers and the wrapper
@@ -139,14 +163,55 @@ function postRequest(path: string, body: Record<string, unknown>, headers: Recor
     body,
     query: {},
     headers,
+    socket: { remoteAddress: "127.0.0.1" },
     get(name: string) {
       return headers[name.toLowerCase()];
     },
   };
 }
 
+function stableJSONString(value: unknown): string {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJSONString).join(",")}]`;
+  }
+  if (!value || typeof value !== "object") return "{}";
+  return `{${Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => item !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${stableJSONString(item)}`)
+    .join(",")}}`;
+}
+
+function tokenHashFor(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function popHeaders(
+  method: string,
+  path: string,
+  body: Record<string, unknown>,
+  tokenHash = tokenHashFor(TOKEN),
+): Record<string, string> {
+  const timestamp = new Date().toISOString();
+  const nonce = `runtime-pop-nonce-${++popNonceCounter}`;
+  const bodyHash = createHash("sha256").update(stableJSONString(body)).digest("hex");
+  const payload = Buffer.from(
+    ["OpenBurnBar.HermesGatewayPoP.v1", tokenHash, method.toUpperCase(), path, bodyHash, nonce, timestamp].join("\n"),
+    "utf8",
+  );
+  return {
+    "x-openburnbar-pop-nonce": nonce,
+    "x-openburnbar-pop-timestamp": timestamp,
+    "x-openburnbar-pop-body-sha256": bodyHash,
+    "x-openburnbar-pop-signature-ed25519": sign(null, payload, AGENT_SIGNING_PRIVATE_KEY).toString("base64"),
+  };
+}
+
 function runtimeRequest(body: Record<string, unknown>) {
-  return postRequest("/runtime", body, { authorization: `Bearer ${TOKEN}` });
+  return postRequest("/runtime", body, { authorization: `Bearer ${TOKEN}`, ...popHeaders("POST", "/runtime", body) });
 }
 
 function devicePollRequest(body: Record<string, unknown>) {
@@ -189,6 +254,9 @@ async function seedPairedClient(tokenHash: string, agentKey: string | undefined)
     tokenPreview: "obb_hgw_...abcd",
     scopes: ["hermes.gateway.read", "hermes.gateway.write"],
     homeDestinationId: "burnbar:home",
+    agentClientSigningPublicKeyBase64: AGENT_SIGNING_PUBLIC_KEY_BASE64,
+    agentClientSigningKeyId: AGENT_SIGNING_KEY_ID,
+    popRequired: true,
     ...(agentKey
       ? { agentRelayPublicKey: agentKey, agentRelayKeyVersion: 1, agentRelayEncryption: "p256-hkdf-sha256-aesgcm" }
       : {}),
@@ -204,7 +272,10 @@ async function seedPairedClient(tokenHash: string, agentKey: string | undefined)
 }
 
 describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOFU)", () => {
-  beforeEach(() => stored.clear());
+  beforeEach(() => {
+    stored.clear();
+    popNonceCounter = 0;
+  });
   afterEach(() => vi.clearAllMocks());
 
   it("REFUSES to overwrite an already-pinned agentRelayPublicKey (no MITM swap)", async () => {

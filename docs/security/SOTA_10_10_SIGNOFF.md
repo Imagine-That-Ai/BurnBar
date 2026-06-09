@@ -22,6 +22,10 @@ Use this checklist before marketing or investor diligence claims **“SOTA secur
 - [x] `VirtualHIDBridgeCapabilityGate` unit tests
 - [x] Phone control 300s authority TTL + optional attestation digest binding
 - [x] Mac desktop grant requires LocalAuthentication for high-risk presets
+- [x] Server-enforced local-auth proof for high-risk queued grants and autonomous Hermes Gateway elevation
+- [x] Hermes Gateway proof-of-possession tokens with nonce replay defense and 24h access-token TTL
+- [x] Client-verifiable CloudVault trusted-device chain before Mac, iOS, or Android wraps vault keys
+- [x] CloudVault rotation callable plus client-side document, Storage-blob, and hosted-search-index rewrap workers
 - [x] **Ops:** Privileged socket red-team on RC ([`docs/runbooks/privileged-socket-redteam-rc.md`](../runbooks/privileged-socket-redteam-rc.md) → `launch-evidence/privileged-redteam-rc-20260602T003648Z.txt`, probe rejected + `PrivilegedSocketRedTeamIntegrationTests` passed)
 - [ ] **Ops:** Enable `computer_use_phone_control_attestation_required` per rollout ring after RC validation
 

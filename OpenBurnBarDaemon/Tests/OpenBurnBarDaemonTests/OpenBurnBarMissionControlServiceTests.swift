@@ -664,6 +664,45 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
     }
 
+    func testPersistedProjectionLoadsWithoutReplayingLargeJournal() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-mission-control-persisted-projection-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let eventsFileURL = rootURL.appendingPathComponent("controller-events.jsonl")
+        let projectionFileURL = rootURL.appendingPathComponent("controller-projection.json")
+        let persistedProject = project(slug: "persisted")
+        var projection = BurnBarMissionControlProjectionFile.empty(
+            now: Date(timeIntervalSince1970: 1_710_620_500)
+        )
+        projection.lastSequence = 42
+        projection.projects[persistedProject.projectSlug] = persistedProject
+        try JSONEncoder().encode(projection).write(to: projectionFileURL, options: .atomic)
+
+        let invalidJournalLine = String(repeating: "not-json", count: 512) + "\n"
+        try Array(repeating: invalidJournalLine, count: 2_048)
+            .joined()
+            .write(to: eventsFileURL, atomically: true, encoding: .utf8)
+
+        let store = BurnBarMissionControlStore(
+            eventsFileURL: eventsFileURL,
+            projectionFileURL: projectionFileURL,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests")
+        )
+
+        let loadedProject = try await store.project(slug: "persisted")
+        XCTAssertEqual(loadedProject?.projectSlug, "persisted")
+
+        let summary = try await store.controllerSummary(
+            BurnBarControllerSummaryRequest(
+                projectSlug: "persisted",
+                includeRecentEvents: false,
+                includeProjectionStatus: false
+            )
+        )
+        XCTAssertEqual(summary.summary.counts.projectCount, 1)
+    }
+
     func testVAL_CROSS_004_DaemonLifecycleApprovalRecoveryAndClosureFieldsStayDeterministic() async throws {
         let harness = try makeHarnessWithStore(name: "val-cross-004-daemon-parity")
         let baseline = Date(timeIntervalSince1970: 1_710_630_000)

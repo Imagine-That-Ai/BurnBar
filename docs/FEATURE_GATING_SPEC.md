@@ -24,8 +24,9 @@ existing premium design language (`LockedFeatureVeil`, `HolographicCrestAura`,
   veil (the `LockedFeatureVeil` pattern) so they *see* what they're unlocking.
 - **Honest by construction.** Use only the vetted copy below. Never claim chat is
   end-to-end encrypted (E2E is true **only** for Floo device-to-device). Agent memory is
-  "sealed on-device; the server searches without reading it." The cloak is **not**
-  "inversion-proof" or "fully unlinkable."
+  sealed on-device, and hosted recall is an explicit opt-in over cloaked vectors and
+  opaque keyed hashes. Those structures still reveal search/access patterns; the cloak is
+  **not** "inversion-proof" or "fully unlinkable."
 - **Consistent.** Same catalog, same anatomy, same per-tier holographic palette on all
   three platforms.
 
@@ -91,23 +92,23 @@ honesty guardrails. This is the data for the shared `GatedFeature` catalog.
 ### `hostedMCP` — Hosted Remote MCP — **cloud_pro**
 - **One-liner:** Give any agent, anywhere, a secure line into your sealed memory and tools — no Mac required.
 - Your hosted endpoint lets a remote agent recall your private knowledge without anything running on your Mac
-- The server runs the search and routes the tools, but never reads your content
+- The server routes tools and ranks over cloaked structures; plaintext and vault keys stay device-only, while search/access patterns remain visible
 - Always-on access from your phone, a cloud agent, or another tool — isolated to your account alone
-- **Honesty:** Server "searches without reading"; text AES-256-GCM sealed on-device, vectors cloaked. Do not imply the endpoint can read content.
+- **Honesty:** Hosted recall is opt-in and structural-leakage-bearing; text is AES-256-GCM sealed on-device, vectors are cloaked, and plaintext/vault keys stay device-only. Do not imply the server sees no patterns.
 
 ### `dataVault` — Data Vault / agent memory — **cloud_pro**
 - **One-liner:** A private memory your agents can recall — your repo docs, notes, and chats, sealed on your device.
 - Your agents quietly recall the repo docs, notes, and chat-derived memories that matter, mid-task
-- Every chunk of text is sealed on your device before it leaves — the server searches over the sealed structures, though some patterns stay visible
-- Nearest-neighbor recall finds the right memory by meaning, not by exposing a single word of your content
+- Every chunk of text is sealed on your device before it leaves; hosted recall searches cloaked structures, and some patterns stay visible
+- Nearest-neighbor recall finds candidates by meaning while exposing structural signals, not plaintext content
 - Sources, chunks, and storage you control, with one tap to delete any source or purge it all
-- **Honesty:** "sealed on-device; server searches without reading it." Cloak is NOT inversion-proof/fully-unlinkable. Vault key is device-only; loss = unrecoverable. Pro tier = 10 sources / 50,000 chunks / 1 GB.
+- **Honesty:** "sealed on-device; hosted recall searches cloaked structures." Cloak is NOT inversion-proof/fully-unlinkable, and hosted ANN is opt-in because structural signals remain visible. Vault key is device-only; loss = unrecoverable. Pro tier = 10 sources / 50,000 chunks / 1 GB.
 
 ### `tenXMemory` — 10× agent memory — **cloud_ultra**
 - **One-liner:** Give your agents a whole second brain — 10× the private memory they can recall while they work.
 - Jump from 10 sources to 100, from 50,000 memory chunks to 500,000, from 1 GB to 10 GB of recallable knowledge
 - Feed in far more repo docs, notes, and chat memories so your agents stay deeply in context across big projects
-- Same on-device seal and cloaked vectors — the server still searches without reading a word
+- Same on-device seal and cloaked vectors — hosted recall remains opt-in because structural signals stay visible
 - Everything in Cloud Pro stays included: Floo, Agent Control, and the same hosted action and relay allowance
 - **Honesty:** The 10× is the PENSIEVE_LIMITS jump pro{10,50000,1GB}→ultra{100,500000,10GB}. Same sealing/cloak honesty. No intro trial on Ultra.
 

@@ -148,7 +148,7 @@ final class OBBSignalSessionOverIrohTests: XCTestCase {
     ) throws -> OBBSignalProtocolStore {
         let dir = sessionDir ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         tempDirs.append(dir)
-        return try OBBSignalProtocolStore(
+        return try OBBSignalProtocolStore.testingTOFU(
             identityKeypair: identity,
             registrationId: registrationId,
             keychainService: service,

@@ -35,13 +35,14 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
     static let terminalMissionStatuses: Set<BurnBarMissionStatus> = [
         .completed, .failed, .cancelled
     ]
+    private static let maxActivitySnapshotBytes = 2 * 1024 * 1024
     var notificationLoopTask: Task<Void, Never>?
     var lastIngestedActivityDigest: String?
 
     public init(
         store: BurnBarMissionControlStore = BurnBarMissionControlStore(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "mission-control-service"),
-        activitySnapshotURL: URL? = BurnBarDaemonPaths.defaultControllerActivitySnapshotURL,
+        activitySnapshotURL: URL? = nil,
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
         runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
         usageLedgerURL: URL = BurnBarDaemonPaths.defaultUsageLedgerURL,
@@ -498,6 +499,7 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
         }
 
         for activityProject in snapshot.projects {
+            try Task.checkCancellation()
             try await syncActivityProject(activityProject, now: now)
         }
     }
@@ -507,8 +509,22 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
               FileManager.default.fileExists(atPath: activitySnapshotURL.path) else {
             return nil
         }
+        let attributes = try FileManager.default.attributesOfItem(atPath: activitySnapshotURL.path)
+        if let fileSize = attributes[.size] as? NSNumber,
+           fileSize.intValue > Self.maxActivitySnapshotBytes {
+            logger.error(
+                "mission_control_activity_snapshot_too_large",
+                metadata: [
+                    "path": activitySnapshotURL.path,
+                    "bytes": "\(fileSize.intValue)",
+                    "limit": "\(Self.maxActivitySnapshotBytes)"
+                ]
+            )
+            return nil
+        }
 
         let data = try Data(contentsOf: activitySnapshotURL)
+        try Task.checkCancellation()
         let digest = String(decoding: data, as: UTF8.self)
         guard digest != lastIngestedActivityDigest else {
             return nil

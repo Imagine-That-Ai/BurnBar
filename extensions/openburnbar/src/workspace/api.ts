@@ -2,7 +2,7 @@ import * as path from 'node:path';
 
 import * as vscode from 'vscode';
 
-import { OpenBurnBarWorkspaceRpcError, type BurnBarWorkspaceHostKind } from './types';
+import { OpenBurnBarWorkspaceRpcError, type BurnBarWorkspaceHostKind, type OpenBurnBarApplyPatchChange } from './types';
 
 export interface BurnBarWorkspaceUri {
   scheme: string;
@@ -53,6 +53,10 @@ export interface BurnBarWorkspaceApi {
   saveAll(includeUntitled?: boolean): Thenable<boolean>;
   createWorkspaceEdit(): BurnBarWorkspaceEditBuilder;
   createRange(startLine: number, startCharacter: number, endLine: number, endCharacter: number): BurnBarWorkspaceRange;
+  confirmWorkspaceEdit(
+    changes: readonly OpenBurnBarApplyPatchChange[],
+    changedFiles: readonly string[]
+  ): Thenable<boolean>;
   confirmTerminalCommand(command: string, cwd: string): Thenable<boolean>;
   createTerminal(options: { name: string; cwd?: string }): BurnBarWorkspaceTerminal;
   parseUri(value: string): BurnBarWorkspaceUri;
@@ -75,6 +79,17 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     createWorkspaceEdit: () => new vscode.WorkspaceEdit(),
     createRange: (startLine, startCharacter, endLine, endCharacter) =>
       new vscode.Range(startLine, startCharacter, endLine, endCharacter),
+    confirmWorkspaceEdit: async (changes, changedFiles) => {
+      const selection = await vscode.window.showWarningMessage(
+        'OpenBurnBar wants to edit workspace files.',
+        {
+          modal: true,
+          detail: summarizeWorkspaceEdit(changes, changedFiles)
+        },
+        'Apply Patch'
+      );
+      return selection === 'Apply Patch';
+    },
     confirmTerminalCommand: async (command, cwd) => {
       const selection = await vscode.window.showWarningMessage(
         'OpenBurnBar wants to run a terminal command.',
@@ -91,6 +106,18 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     fileUri: (value) => vscode.Uri.file(value),
     joinPath: (base, ...segments) => vscode.Uri.joinPath(toVSCodeUri(base), ...segments)
   };
+}
+
+function summarizeWorkspaceEdit(
+  changes: readonly OpenBurnBarApplyPatchChange[],
+  changedFiles: readonly string[]
+): string {
+  const fileSummary = changedFiles.length === 0
+    ? 'No resolved files.'
+    : changedFiles.slice(0, 12).join('\n');
+  const omitted = changedFiles.length > 12 ? `\n...and ${changedFiles.length - 12} more file(s).` : '';
+  const replacementBytes = changes.reduce((total, change) => total + change.text.length, 0);
+  return `Files: ${changedFiles.length}\nChanges: ${changes.length}\nReplacement bytes: ${replacementBytes}\n\n${fileSummary}${omitted}`;
 }
 
 function toVSCodeUri(uri: BurnBarWorkspaceUri): vscode.Uri {

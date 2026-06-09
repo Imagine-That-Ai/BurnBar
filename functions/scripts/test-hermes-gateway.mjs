@@ -193,10 +193,10 @@ assert.ok(
   Number.isFinite(HERMES_GATEWAY_TOKEN_TTL_MS) && HERMES_GATEWAY_TOKEN_TTL_MS > 0,
   "HERMES_GATEWAY_TOKEN_TTL_MS must be a positive finite number",
 );
-// Missing/empty expiresAt is grandfathered as non-expiring.
-assert.equal(isHermesGatewayTokenExpired(undefined), false);
-assert.equal(isHermesGatewayTokenExpired(null), false);
-assert.equal(isHermesGatewayTokenExpired(""), false);
+// Missing/empty expiresAt is a legacy credential and must rotate before use.
+assert.equal(isHermesGatewayTokenExpired(undefined), true);
+assert.equal(isHermesGatewayTokenExpired(null), true);
+assert.equal(isHermesGatewayTokenExpired(""), true);
 // A past ISO timestamp is expired; a future one is valid.
 assert.equal(isHermesGatewayTokenExpired("2000-01-01T00:00:00.000Z"), true);
 assert.equal(isHermesGatewayTokenExpired(new Date(Date.now() + 60_000).toISOString()), false);

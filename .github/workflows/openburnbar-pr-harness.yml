@@ -230,6 +230,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history so the Rule-0 guard can diff against the PR base ref
+          # (and resolve the libsignal submodule gitlink pointer change).
+          fetch-depth: 0
+
+      - name: Rule-0 supply-chain tamper guard (libsignal submodule / FFI / .gitmodules / licenses)
+        # Always-run, fail-closed. Previously this guard existed but was wired
+        # into ZERO workflows, so a PR repointing the libsignal submodule at a
+        # hostile fork (or swapping the FFI xcframework / license files) faced no
+        # PR-time enforcement. It runs on EVERY PR including forks (no secrets).
+        run: |
+          set -euo pipefail
+          BASE="origin/${GITHUB_BASE_REF:-main}"
+          echo "Rule-0 diff base: $BASE"
+          bash scripts/ci/verify-signal-rule0.sh "$BASE"
 
       - name: Run supply chain audit (SBOM + VEX + ecosystem deny)
         run: |
@@ -816,6 +831,7 @@ jobs:
   targeted-e2e-gate:
     name: Targeted E2E Gate
     needs:
+      - path-filter
       - hermes-gateway-e2ee-proof
       - hermes-iroh-e2e
       - computer-use-e2e
@@ -824,16 +840,45 @@ jobs:
     if: always()
     steps:
       - name: Check all targeted E2E jobs passed
+        env:
+          PF_HERMES_GATEWAY: ${{ needs.path-filter.outputs.hermes_gateway_e2ee }}
+          PF_HERMES_IROH: ${{ needs.path-filter.outputs.hermes_iroh }}
+          PF_COMPUTER_USE: ${{ needs.path-filter.outputs.computer_use }}
+          PF_MERCURY: ${{ needs.path-filter.outputs.mercury_media }}
         run: |
           results='${{ toJSON(needs) }}'
           failed=$(echo "$results" | python3 -c "
-          import json, sys
+          import json, os, sys
           data = json.load(sys.stdin)
-          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          # A SECURITY proof that was EXPECTED (its area changed, so the
+          # path-filter flag is 'true') but did NOT run — e.g. a fork PR, or a
+          # path the filter missed — must NOT silently pass. Previously every
+          # skip counted as success, so the required check went green having
+          # executed zero E2EE / Computer-Use / media security proofs.
+          expected = {
+              'hermes-gateway-e2ee-proof': os.environ.get('PF_HERMES_GATEWAY') == 'true',
+              'hermes-iroh-e2e': os.environ.get('PF_HERMES_IROH') == 'true',
+              'computer-use-e2e': os.environ.get('PF_COMPUTER_USE') == 'true',
+              'mercury-media-e2e': os.environ.get('PF_MERCURY') == 'true',
+          }
+          failed = []
+          for k, v in data.items():
+              r = v.get('result')
+              if k == 'path-filter':
+                  if r not in ('success', 'skipped'):
+                      failed.append(k + ' (path-filter job failed)')
+                  continue
+              if r == 'success':
+                  continue
+              if r == 'skipped':
+                  if expected.get(k):
+                      failed.append(k + ' (expected security proof skipped — fork PR or path miss; cannot auto-pass)')
+                  continue
+              failed.append(k + ' (result=' + str(r) + ')')
           print('\n'.join(failed))
           ")
           if [[ -n "$failed" ]]; then
-            echo "::error::The following targeted E2E jobs failed:"
+            echo "::error::The following targeted E2E security-proof gate checks failed:"
             echo "$failed"
             exit 1
           fi
