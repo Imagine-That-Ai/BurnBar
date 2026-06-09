@@ -3,6 +3,7 @@ import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
+import OSLog
 
 protocol ConversationCloudVaultKeyProviding: Sendable {
     func keyForWriting(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey
@@ -98,6 +99,11 @@ struct ConversationCloudPrivatePayload: Codable, Equatable, Sendable {
 }
 
 enum ConversationCloudSealer {
+    private static let logger = Logger(
+        subsystem: "com.openburnbar.cloudsync",
+        category: "ConversationCloudVaultPayload"
+    )
+
     static let sealedSchemaVersion = 2
 
     private static var encoder: JSONEncoder {
@@ -158,6 +164,7 @@ enum ConversationCloudSealer {
                 return nil
             } catch {
                 // Legacy AES-GCM fallback (rollout compatibility, matching iOS/Android).
+                logger.warning("Signal conversation payload open fell back to legacy vault payload: \(String(describing: error), privacy: .private)")
             }
         }
         guard let keyData,
