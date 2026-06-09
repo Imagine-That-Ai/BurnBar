@@ -117,6 +117,34 @@ enum MacCloudVaultSignalPayloads {
         )
     }
 
+    /// H2 — at-rest sender-auth downgrade classification. Given an error thrown
+    /// while opening a PRESENT `signalEnvelope`, decide whether the reader may
+    /// safely fall back to the unauthenticated legacy `sealedPayload`. A
+    /// forged/stripped/relocated sender block fails CLOSED (returns `false`);
+    /// structural / readiness-gap / cannot-verify errors stay legacy-eligible
+    /// (the legacy payload is still AES-GCM under the symmetric vault key, which
+    /// the server does not hold, so it is non-forgeable — only the
+    /// sender-authentication proof is being deferred). This centralizes the
+    /// `OpenBurnBarSignalCoreError` policy AND the wrapper's own binding/identity
+    /// errors so every Mac at-rest reader behaves identically.
+    static func allowsLegacyAtRestFallback(for error: Error, senderSetComplete: Bool) -> Bool {
+        if let coreError = error as? OpenBurnBarSignalCoreError {
+            return coreError.allowsLegacyAtRestFallback(senderSetComplete: senderSetComplete)
+        }
+        if let wrapError = error as? MacCloudVaultSignalPayloadError {
+            switch wrapError {
+            case .signalBindingMismatch, .trustedDeviceSignalIdentityMismatch:
+                // Relocated/replayed envelope, or a trusted device whose published
+                // identity does not match — treat as an attack, never downgrade.
+                return false
+            case .invalidSignalEnvelope, .signalIdentityUnavailable, .trustedDeviceMissingSignalIdentity:
+                // Structural / cannot-verify / readiness gap — legacy remains safe.
+                return true
+            }
+        }
+        return true
+    }
+
     /// Best-effort PINNED trusted-sender public keys for READ-time sender-auth verification:
     /// the local identity plus every trusted escrow device's published identity. Unlike the
     /// fail-closed producer resolver, a read is never blocked — if the trusted set cannot be

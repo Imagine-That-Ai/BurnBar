@@ -23,11 +23,19 @@ final class InsightMissionApprovalPolicyTests: XCTestCase {
         ))
     }
 
-    func testReadOnlyNeverRequiresPreDispatchApproval() {
-        XCTAssertFalse(InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+    func testReadOnlyRequiresApprovalWhenExecutionCapabilitiesRequested() {
+        XCTAssertTrue(InsightMissionApprovalPolicy.requiresPreDispatchApproval(
             approvalMode: "read_only",
             commandsAllowed: true,
             fileEditsAllowed: true
+        ))
+    }
+
+    func testReadOnlyWithoutExecutionCapabilitiesDoesNotPauseMission() {
+        XCTAssertFalse(InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+            approvalMode: "read_only",
+            commandsAllowed: false,
+            fileEditsAllowed: false
         ))
     }
 
@@ -36,6 +44,32 @@ final class InsightMissionApprovalPolicyTests: XCTestCase {
             approvalMode: "existing_policy",
             commandsAllowed: false,
             fileEditsAllowed: false
+        ))
+    }
+
+    func testUnknownApprovalModeFailsClosed() {
+        // A4: an unrecognized / spoofed approvalMode must require approval, not
+        // silently dispatch — even when no risky execution is flagged.
+        for mode in ["surprise", "MANUAL", "yolo", "auto_approve", "  weird  "] {
+            XCTAssertTrue(
+                InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+                    approvalMode: mode,
+                    commandsAllowed: false,
+                    fileEditsAllowed: false
+                ),
+                "approvalMode \(mode) should fail closed"
+            )
+        }
+    }
+
+    func testNilAndEmptyModeRemainNonBlockingWhenNotRisky() {
+        // The documented default (no mode / empty) is non-blocking for a
+        // read-only mission; only truly unknown strings fail closed.
+        XCTAssertFalse(InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+            approvalMode: nil, commandsAllowed: false, fileEditsAllowed: false
+        ))
+        XCTAssertFalse(InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+            approvalMode: "", commandsAllowed: false, fileEditsAllowed: false
         ))
     }
 }

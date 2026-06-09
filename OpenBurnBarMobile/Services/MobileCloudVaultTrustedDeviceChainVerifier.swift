@@ -1,3 +1,4 @@
+import CryptoKit
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
@@ -83,6 +84,13 @@ enum MobileCloudVaultTrustedDeviceChainVerifier {
             throw MobileCloudVaultTrustChainVerificationError.missingEscrowPublicKey(deviceId: deviceId, keyVersion: keyVersion)
         }
 
+        // H1: bind the server fingerprint to the actual escrow key bytes so a
+        // backend byte-swap (invisible to the fingerprint-only trust-chain
+        // signature) cannot get the vault key wrapped to an attacker key.
+        guard EscrowDeviceSafetyCode.isFingerprint(escrowFingerprint, boundTo: escrowPublicKeyBase64) else {
+            throw MobileCloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+        }
+
         let signalIdentityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(
             deviceId: deviceId,
             keyVersion: keyVersion
@@ -99,6 +107,11 @@ enum MobileCloudVaultTrustedDeviceChainVerifier {
               let signalPublicKeyBase64 = signalData["publicKeyData"] as? String,
               let signalPublicKey = Data(base64Encoded: signalPublicKeyBase64) else {
             throw MobileCloudVaultTrustChainVerificationError.missingSignalIdentity(deviceId: deviceId, keyVersion: keyVersion)
+        }
+
+        // H1: bind the Signal identity fingerprint to its actual key bytes.
+        guard Data(SHA256.hash(data: signalPublicKey)).base64EncodedString() == signalFingerprint else {
+            throw MobileCloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
         }
 
         let verified = MobileCloudVaultVerifiedTrustedDevice(

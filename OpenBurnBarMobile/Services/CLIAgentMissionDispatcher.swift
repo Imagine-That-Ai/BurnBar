@@ -122,6 +122,15 @@ private enum CLIAgentMissionCloudSealer {
                 ) {
                     return try decoder.decode(CLIAgentMissionPrivatePayload.self, from: payload)
                 }
+            } catch let signalError as OpenBurnBarSignalCoreError
+                where !signalError.allowsLegacyAtRestFallback(senderSetComplete: false) {
+                // C1: a stripped / forged sender-auth block (or relocated AAD
+                // binding) is a downgrade attack — fail CLOSED, never decode the
+                // sender-unauthenticated legacy payload for this mission request.
+                return nil
+            } catch MobileCloudVaultSignalPayloadError.signalBindingMismatch {
+                // Relocated / replayed envelope — fail CLOSED.
+                return nil
             } catch {
                 // Phase-C rollout keeps legacy AES-GCM `sealedPayload` alongside
                 // optional Signal envelopes. A missing local Signal identity or

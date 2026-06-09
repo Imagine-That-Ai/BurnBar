@@ -56,11 +56,12 @@ final class MercuryConsentStore: ObservableObject {
         connectionId: String,
         viewerDeviceId: String?,
         controlAuthorityPeerNodeId: String?,
+        remotePeerNodeId: String?,
         now: Date = Date()
     ) -> Bool {
-        guard Self.hasStrongPeerBinding(
-            viewerDeviceId: viewerDeviceId,
-            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
+        guard Self.peerNodeIDsMatch(
+            declaredPeerNodeId: controlAuthorityPeerNodeId,
+            remotePeerNodeId: remotePeerNodeId
         ) else {
             return false
         }
@@ -82,13 +83,14 @@ final class MercuryConsentStore: ObservableObject {
         connectionId: String,
         viewerDeviceId: String?,
         controlAuthorityPeerNodeId: String?,
+        remotePeerNodeId: String?,
         requesterName: String,
         now: Date = Date()
     ) {
         guard rememberAcceptedMirrorPeers else { return }
-        guard Self.hasStrongPeerBinding(
-            viewerDeviceId: viewerDeviceId,
-            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
+        guard Self.peerNodeIDsMatch(
+            declaredPeerNodeId: controlAuthorityPeerNodeId,
+            remotePeerNodeId: remotePeerNodeId
         ) else {
             return
         }
@@ -101,7 +103,7 @@ final class MercuryConsentStore: ObservableObject {
             key: key,
             connectionId: connectionId,
             viewerDeviceId: viewerDeviceId?.nilIfEmpty(),
-            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId?.nilIfEmpty(),
+            controlAuthorityPeerNodeId: Self.canonicalPeerNodeID(controlAuthorityPeerNodeId),
             requesterName: requesterName.nilIfEmpty() ?? "Mirror peer",
             grantedAt: now,
             expiresAt: now.addingTimeInterval(Self.grantTTL),
@@ -143,15 +145,26 @@ final class MercuryConsentStore: ObservableObject {
         [
             connectionId.nilIfEmpty() ?? "_",
             viewerDeviceId?.nilIfEmpty() ?? "_",
-            controlAuthorityPeerNodeId?.nilIfEmpty() ?? "_",
+            canonicalPeerNodeID(controlAuthorityPeerNodeId) ?? "_",
         ].joined(separator: "|")
     }
 
-    private static func hasStrongPeerBinding(
-        viewerDeviceId: String?,
-        controlAuthorityPeerNodeId: String?
+    private static func peerNodeIDsMatch(
+        declaredPeerNodeId: String?,
+        remotePeerNodeId: String?
     ) -> Bool {
-        viewerDeviceId?.nilIfEmpty() != nil || controlAuthorityPeerNodeId?.nilIfEmpty() != nil
+        guard let declared = canonicalPeerNodeID(declaredPeerNodeId),
+              let remote = canonicalPeerNodeID(remotePeerNodeId) else {
+            return false
+        }
+        return declared == remote
+    }
+
+    private static func canonicalPeerNodeID(_ value: String?) -> String? {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .nilIfEmpty()
     }
 }
 

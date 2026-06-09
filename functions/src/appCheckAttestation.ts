@@ -207,6 +207,18 @@ export async function consumeHighRiskNonceForUid(
 }
 
 /**
+ * Outcome of {@link enforceHighRiskComputerUseCallableWithNonce}.
+ *
+ * `nonceConsumed` reports whether a single-use nonce was actually presented and
+ * atomically consumed on this call. It is `false` only when App Check is not
+ * enforced (local/emulator) or when `requireHighRiskNonce` is off AND the client
+ * supplied no nonce (staged-rollout back-compat). Callers that need a HARD nonce
+ * requirement for a specific branch — e.g. bootstrap self-approval — must reject
+ * when this is `false`, independent of the global flag.
+ */
+export type HighRiskNonceEnforcementResult = { nonceConsumed: boolean };
+
+/**
  * High-risk enforcement layered with single-use nonce replay defense.
  *
  * Runs the existing synchronous guard, then (when App Check is enforced)
@@ -214,14 +226,18 @@ export async function consumeHighRiskNonceForUid(
  * missing nonce is tolerated for back-compat with in-flight clients; with the
  * flag on a missing nonce is rejected. A supplied-but-invalid nonce is ALWAYS
  * rejected (fail-closed) regardless of the flag.
+ *
+ * Returns whether a nonce was actually consumed so a caller can additionally
+ * require one for an especially sensitive sub-path (see
+ * {@link HighRiskNonceEnforcementResult}).
  */
 export async function enforceHighRiskComputerUseCallableWithNonce(
   request: CallableRequest,
   expectedUid: string,
   nonce: unknown,
-): Promise<void> {
+): Promise<HighRiskNonceEnforcementResult> {
   enforceHighRiskComputerUseCallable(request, expectedUid);
-  if (!getConfig().enforceAppCheck) return;
+  if (!getConfig().enforceAppCheck) return { nonceConsumed: false };
   const supplied = typeof nonce === "string" && nonce.length > 0 ? nonce : undefined;
   if (!supplied) {
     if (getConfig().requireHighRiskNonce) {
@@ -230,7 +246,8 @@ export async function enforceHighRiskComputerUseCallableWithNonce(
         "Call issueHighRiskActionNonce and supply the nonce before this high-risk action.",
       );
     }
-    return;
+    return { nonceConsumed: false };
   }
   await consumeHighRiskNonceForUid(expectedUid, supplied);
+  return { nonceConsumed: true };
 }

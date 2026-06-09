@@ -30,6 +30,14 @@ import ImageIO
 final class MercuryRouter: ObservableObject {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
     private static let remoteUnlockSessionRequiredDetail = "remote_unlock_session_required"
+    private static func peerNodeIDsMatch(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let lhs = lhs?.canonicalMercuryPeerNodeID,
+              let rhs = rhs?.canonicalMercuryPeerNodeID else {
+            return false
+        }
+        return lhs == rhs
+    }
+
     private static func debugTrace(_ message: String) {
         #if DEBUG
         NSLog("OpenBurnBarMercury \(message)")
@@ -62,6 +70,10 @@ final class MercuryRouter: ObservableObject {
         /// and Android can share a Mac pairing `connectionID`; this keeps
         /// ownership tied to the exact stream that requested it.
         fileprivate let controlStreamID: UUID?
+        /// Authenticated iroh NodeId for the remote endpoint that opened the
+        /// control stream. Request payload peer IDs are untrusted until they
+        /// match this transport identity.
+        fileprivate let remotePeerNodeID: String?
         fileprivate let agentTerminalApproved: Bool
 
         var requestsAgentTerminal: Bool {
@@ -83,6 +95,7 @@ final class MercuryRouter: ObservableObject {
                 frame: frame,
                 replySender: replySender,
                 controlStreamID: controlStreamID,
+                remotePeerNodeID: remotePeerNodeID,
                 agentTerminalApproved: true
             )
         }
@@ -150,6 +163,7 @@ final class MercuryRouter: ObservableObject {
         let controlStreamID: UUID?
         let viewerDeviceID: String?
         let controlAuthorityPeerNodeID: String?
+        let remotePeerNodeID: String?
         let remoteUnlockSessionID: String?
         let agentTerminalApproved: Bool
         /// Phase 12 — set when this viewer requested an interactive single-window
@@ -492,6 +506,7 @@ final class MercuryRouter: ObservableObject {
     func handleFrame(
         _ frame: HermesRealtimeRelayFrame,
         controlStreamID: UUID? = nil,
+        remotePeerNodeID: String? = nil,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         Self.log.info("router_handle_frame type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
@@ -543,6 +558,7 @@ final class MercuryRouter: ObservableObject {
             await handleMirrorRequest(
                 frame: frame,
                 controlStreamID: controlStreamID,
+                remotePeerNodeID: remotePeerNodeID,
                 replySender: replySender
             )
         case .mediaMirrorStop:
@@ -597,6 +613,7 @@ final class MercuryRouter: ObservableObject {
                 connectionId: request.frame.connectionId,
                 viewerDeviceId: mirrorRequest.viewerDeviceId,
                 controlAuthorityPeerNodeId: mirrorRequest.controlAuthorityPeerNodeId,
+                remotePeerNodeId: request.remotePeerNodeID,
                 requesterName: request.requesterName
             )
         }
@@ -609,6 +626,7 @@ final class MercuryRouter: ObservableObject {
                 connectionId: request.frame.connectionId,
                 viewerDeviceId: mirrorRequest.viewerDeviceId,
                 controlAuthorityPeerNodeId: mirrorRequest.controlAuthorityPeerNodeId,
+                remotePeerNodeId: request.remotePeerNodeID,
                 requesterName: request.requesterName
             )
         }
@@ -990,6 +1008,9 @@ final class MercuryRouter: ObservableObject {
                   let peerNodeID = viewer.controlAuthorityPeerNodeID else {
                 return false
             }
+            guard Self.peerNodeIDsMatch(peerNodeID, viewer.remotePeerNodeID) else {
+                return false
+            }
             return remoteUnlockReadiness.isRemoteUnlockSessionActive(
                 sessionId: sessionID,
                 peerNodeId: peerNodeID,
@@ -1004,6 +1025,9 @@ final class MercuryRouter: ObservableObject {
         return activeViewers.contains { viewer in
             guard let sessionID = viewer.remoteUnlockSessionID,
                   let peerNodeID = viewer.controlAuthorityPeerNodeID else {
+                return false
+            }
+            guard Self.peerNodeIDsMatch(peerNodeID, viewer.remotePeerNodeID) else {
                 return false
             }
             return remoteUnlockReadiness.isRemoteUnlockSessionActive(
@@ -1050,11 +1074,14 @@ final class MercuryRouter: ObservableObject {
 
     private func remoteUnlockMirrorDenialReason(
         request: HermesRealtimeRelayMirrorRequest,
-        session: HermesRealtimeRelayRemoteUnlockSession
+        session: HermesRealtimeRelayRemoteUnlockSession,
+        remotePeerNodeID: String?
     ) -> String? {
-        if let authorityPeerNodeID = request.controlAuthorityPeerNodeId?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !authorityPeerNodeID.isEmpty,
-           authorityPeerNodeID != session.authority.peerNodeId.trimmingCharacters(in: .whitespacesAndNewlines) {
+        guard Self.peerNodeIDsMatch(session.authority.peerNodeId, remotePeerNodeID) else {
+            return "remote_unlock_transport_peer_mismatch"
+        }
+        if let authorityPeerNodeID = request.controlAuthorityPeerNodeId?.canonicalMercuryPeerNodeID,
+           authorityPeerNodeID != session.authority.peerNodeId.canonicalMercuryPeerNodeID {
             return "remote_unlock_peer_mismatch"
         }
         switch remoteUnlockReadiness.validateRemoteUnlockSession(session, now: clock()) {
@@ -1068,6 +1095,7 @@ final class MercuryRouter: ObservableObject {
     private func handleMirrorRequest(
         frame: HermesRealtimeRelayFrame,
         controlStreamID: UUID?,
+        remotePeerNodeID: String?,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         guard let req = frame.media?.mirrorRequest else {
@@ -1080,7 +1108,11 @@ final class MercuryRouter: ObservableObject {
 
         let remoteUnlockSession = remoteUnlockSessionForLockedMirror(req)
         if let remoteUnlockSession {
-            if let reason = remoteUnlockMirrorDenialReason(request: req, session: remoteUnlockSession) {
+            if let reason = remoteUnlockMirrorDenialReason(
+                request: req,
+                session: remoteUnlockSession,
+                remotePeerNodeID: remotePeerNodeID
+            ) {
                 let state = remoteUnlockReadiness.currentState(
                     sessionId: remoteUnlockSession.sessionId,
                     controlOwnerViewerId: nil
@@ -1197,13 +1229,15 @@ final class MercuryRouter: ObservableObject {
             frame: frame,
             replySender: replySender,
             controlStreamID: controlStreamID,
+            remotePeerNodeID: remotePeerNodeID,
             agentTerminalApproved: false
         )
 
         let hasMirrorAutoAcceptGrant = consentStore.canAutoAccept(
             connectionId: frame.connectionId,
             viewerDeviceId: req.viewerDeviceId,
-            controlAuthorityPeerNodeId: req.controlAuthorityPeerNodeId
+            controlAuthorityPeerNodeId: req.controlAuthorityPeerNodeId,
+            remotePeerNodeId: remotePeerNodeID
         )
 
         // Consent fast-paths:
@@ -1381,6 +1415,7 @@ final class MercuryRouter: ObservableObject {
             frame: frame,
             replySender: replySender,
             controlStreamID: controlStreamID,
+            remotePeerNodeID: nil,
             agentTerminalApproved: false
         )
         pendingCall = pending
@@ -1412,7 +1447,11 @@ final class MercuryRouter: ObservableObject {
         }
         let remoteUnlockSession = remoteUnlockSessionForLockedMirror(mirrorRequest)
         if let remoteUnlockSession,
-           let reason = remoteUnlockMirrorDenialReason(request: mirrorRequest, session: remoteUnlockSession) {
+           let reason = remoteUnlockMirrorDenialReason(
+               request: mirrorRequest,
+               session: remoteUnlockSession,
+               remotePeerNodeID: request.remotePeerNodeID
+           ) {
             let state = remoteUnlockReadiness.currentState(
                 sessionId: remoteUnlockSession.sessionId,
                 controlOwnerViewerId: nil
@@ -1452,6 +1491,8 @@ final class MercuryRouter: ObservableObject {
             return
         }
         let viewerID = viewerID(for: mirrorRequest, frame: request.frame, controlStreamID: request.controlStreamID)
+        let controlAuthorityPeerNodeID = mirrorRequest.controlAuthorityPeerNodeId?.nilIfEmptyForMercury
+            ?? remoteUnlockSession?.authority.peerNodeId.nilIfEmptyForMercury
         guard activeMirrorViewers[viewerID] == nil else {
             await respond(
                 requestID: request.id,
@@ -1516,7 +1557,8 @@ final class MercuryRouter: ObservableObject {
                 replySender: request.replySender,
                 controlStreamID: request.controlStreamID,
                 viewerDeviceID: mirrorRequest.viewerDeviceId,
-                controlAuthorityPeerNodeID: mirrorRequest.controlAuthorityPeerNodeId,
+                controlAuthorityPeerNodeID: controlAuthorityPeerNodeID,
+                remotePeerNodeID: request.remotePeerNodeID,
                 remoteUnlockSessionID: remoteUnlockSession?.sessionId,
                 agentTerminalApproved: request.agentTerminalApproved
             )
@@ -2040,6 +2082,11 @@ private enum MercuryRemoteAccessAgentClientError: Error {
 
 private extension String {
     var nilIfEmptyForMercury: String? {
-        isEmpty ? nil : self
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var canonicalMercuryPeerNodeID: String? {
+        nilIfEmptyForMercury?.lowercased()
     }
 }
