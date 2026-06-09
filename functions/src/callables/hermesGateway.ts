@@ -125,7 +125,7 @@ function toHermesHttpRequest(req: Request): HttpRequest {
     body: req.body,
     headers: req.headers,
     ip: req.ip,
-    socket: { remoteAddress: req.socket.remoteAddress },
+    socket: { remoteAddress: req.socket?.remoteAddress },
     query: recordOrUndefined(req.query) ?? {},
     get: (name: string) => req.get(name),
   };

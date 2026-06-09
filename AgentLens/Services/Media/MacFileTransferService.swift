@@ -76,6 +76,7 @@ final class MacFileTransferService: ObservableObject {
     typealias MercuryControlFrameDispatcher = @Sendable (
         _ frame: HermesRealtimeRelayFrame,
         _ controlStreamID: UUID,
+        _ remotePeerNodeID: String?,
         _ replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async -> Void
     typealias MercuryControlStreamCloseHandler = @Sendable (
@@ -295,7 +296,7 @@ final class MacFileTransferService: ObservableObject {
                     if let mercuryDispatcher {
                         Self.log.info("mac_control_stream_dispatch_mercury type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
                         Self.debugTrace("mac_control_stream_dispatch_mercury type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")
-                        await mercuryDispatcher(frame, lease.id, ackSender)
+                        await mercuryDispatcher(frame, lease.id, lease.remotePeerNodeId, ackSender)
                     } else {
                         Self.log.error("mac_control_stream_missing_mercury_dispatcher type=\(frame.type.rawValue, privacy: .public) requestID=\(frame.requestId ?? "", privacy: .public)")
                         Self.debugTrace("mac_control_stream_missing_mercury_dispatcher type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "")")

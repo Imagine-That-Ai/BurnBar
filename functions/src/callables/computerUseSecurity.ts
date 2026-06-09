@@ -399,6 +399,216 @@ function verifyEd25519RawSignature(publicKeyRaw: Buffer, payload: Buffer, signat
   return verifySignature(null, payload, publicKey, signature);
 }
 
+// ---------------------------------------------------------------------------
+// LibSignal XEd25519 (XEdDSA over Curve25519) verification — server side.
+//
+// The CloudVault device-trust chain is signed with libsignal's
+// `PrivateKey.generateSignature` (algorithm `"signal-identity-xeddsa-v1"`,
+// CloudVaultDeviceTrustChain.swift:40,68) and the approver's public key is the
+// 33-byte libsignal DJB serialization `0x05 || Montgomery-u(32)`. That is NOT a
+// plain Ed25519-over-32-raw-bytes signature, so `verifyEd25519RawSignature`
+// cannot validate it. We implement the XEdDSA verify per libsignal's own
+// `curve25519::PrivateKey::verify_signature`
+// (Vendor/libsignal/rust/core/src/curve/curve25519.rs:119-159):
+//
+//   1. Take the Montgomery-u public key, recover the Edwards point using the
+//      sign bit carried in the HIGH bit of `signature[63]` (libsignal stores the
+//      Edwards x sign bit there at curve25519.rs:115). "XEd25519 signatures are
+//      valid Ed25519 signatures … provided the public keys are converted with
+//      the birational map." (Vendor/.../examples/ed_to_xed.rs).
+//   2. Clear the sign bit out of `s` (signature bytes 32..64) and reject if the
+//      top three bits of `s[31]` are set (libsignal malleability guard,
+//      curve25519.rs:136-139).
+//   3. Standard Ed25519 verify of `R || s` against the recovered compressed
+//      Edwards public key.
+//
+// This is proven byte-for-byte against vectors emitted by the real libsignal
+// library (both sign-bit-0 and sign-bit-1 cases) in
+// escrowDeviceTrustChainSignature.test.ts. Pure `node:crypto` — no new deps.
+const CURVE25519_FIELD_PRIME = (1n << 255n) - 19n;
+const ED25519_DJB_TYPE_BYTE = 0x05;
+const SIGNAL_DJB_PUBLIC_KEY_BYTE_LENGTH = 33;
+
+function curve25519FieldMod(value: bigint): bigint {
+  const reduced = value % CURVE25519_FIELD_PRIME;
+  return reduced < 0n ? reduced + CURVE25519_FIELD_PRIME : reduced;
+}
+
+function curve25519FieldPow(base: bigint, exponent: bigint): bigint {
+  let result = 1n;
+  let b = curve25519FieldMod(base);
+  let e = exponent;
+  while (e > 0n) {
+    if (e & 1n) result = curve25519FieldMod(result * b);
+    b = curve25519FieldMod(b * b);
+    e >>= 1n;
+  }
+  return result;
+}
+
+function curve25519FieldInverse(value: bigint): bigint {
+  return curve25519FieldPow(value, CURVE25519_FIELD_PRIME - 2n);
+}
+
+function littleEndianBytesToBigInt(buffer: Buffer): bigint {
+  let result = 0n;
+  for (let i = buffer.length - 1; i >= 0; i -= 1) {
+    result = (result << 8n) | BigInt(buffer[i]);
+  }
+  return result;
+}
+
+function bigIntToLittleEndian32(value: bigint): Buffer {
+  const out = Buffer.alloc(32);
+  let x = curve25519FieldMod(value);
+  for (let i = 0; i < 32; i += 1) {
+    out[i] = Number(x & 0xffn);
+    x >>= 8n;
+  }
+  return out;
+}
+
+/**
+ * Convert a Montgomery-u Curve25519 public key (32 little-endian bytes) to the
+ * compressed Edwards-Y form (32 bytes, Ed25519 wire form) with the supplied x
+ * sign bit set in bit 255. Birational map `y = (u - 1) / (u + 1) mod p`. Returns
+ * `null` when `u + 1 ≡ 0` (no Edwards image). Mirrors
+ * `MontgomeryPoint::to_edwards` from curve25519-dalek as used by libsignal.
+ */
+function montgomeryUToCompressedEdwards(montgomeryU: Buffer, edwardsXSignBit: number): Buffer | null {
+  const u = curve25519FieldMod(littleEndianBytesToBigInt(montgomeryU));
+  const denominator = curve25519FieldMod(u + 1n);
+  if (denominator === 0n) return null;
+  const y = curve25519FieldMod((u - 1n) * curve25519FieldInverse(denominator));
+  const compressed = bigIntToLittleEndian32(y);
+  if (edwardsXSignBit) {
+    compressed[31] |= 0x80;
+  } else {
+    compressed[31] &= 0x7f;
+  }
+  return compressed;
+}
+
+/**
+ * Verify a libsignal XEd25519 signature over `payload` against the approver's
+ * 33-byte serialized DJB public key (`0x05 || Montgomery-u(32)`). Fails CLOSED
+ * (returns false) on any length / encoding / curve / verify error.
+ */
+function verifyXEdDSACurve25519Signature(serializedPublicKey33: Buffer, payload: Buffer, signature64: Buffer): boolean {
+  if (serializedPublicKey33.length !== SIGNAL_DJB_PUBLIC_KEY_BYTE_LENGTH || serializedPublicKey33[0] !== ED25519_DJB_TYPE_BYTE) {
+    return false;
+  }
+  if (signature64.length !== 64) return false;
+  const montgomeryU = serializedPublicKey33.subarray(1);
+  const edwardsXSignBit = (signature64[63] & 0x80) >> 7;
+
+  // s = signature[32..64]; clear the borrowed sign bit (high bit of s[31]) and
+  // reject non-canonical scalars (libsignal malleability guard).
+  const scalarS = Buffer.from(signature64.subarray(32));
+  scalarS[31] &= 0x7f;
+  if ((scalarS[31] & 0xe0) !== 0) return false;
+
+  const compressedEdwards = montgomeryUToCompressedEdwards(montgomeryU, edwardsXSignBit);
+  if (!compressedEdwards) return false;
+
+  // Standard Ed25519 signature is R || s (sign bit already cleared from s).
+  const standardEd25519Signature = Buffer.concat([signature64.subarray(0, 32), scalarS]);
+  let publicKey;
+  try {
+    publicKey = createPublicKey({
+      key: Buffer.concat([ED25519_SPKI_DER_PREFIX, compressedEdwards]),
+      format: "der",
+      type: "spki",
+    });
+  } catch {
+    return false;
+  }
+  try {
+    return verifySignature(null, payload, publicKey, standardEd25519Signature);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reconstruct the EXACT canonical signing bytes the client produced in
+ * `CloudVaultDeviceTrustChain.canonicalPayload`
+ * (OpenBurnBarSignalCore/CloudVaultDeviceTrustChain.swift:43-61): a domain line
+ * followed by nine length-prefixed `{utf8ByteCount}:{segment}\n` pairs (keys AND
+ * values both prefixed by their UTF-8 byte count, NOT character count). Five of
+ * the nine fields are sourced from authoritative server context; the four
+ * Signal-identity id/fingerprint fields come from the validated proof.
+ */
+const CLOUD_VAULT_DEVICE_TRUST_CHAIN_DOMAIN = "OpenBurnBar-CloudVault-DeviceTrust-v1";
+
+function buildCloudVaultDeviceTrustChainCanonicalBytes(fields: {
+  uid: string;
+  targetDeviceId: string;
+  targetEscrowPublicKeyFingerprint: string;
+  targetKeyVersion: number;
+  targetSignalIdentityKeyId: string;
+  targetSignalIdentityPublicKeyFingerprint: string;
+  approverDeviceId: string;
+  approverSignalIdentityKeyId: string;
+  approverSignalIdentityPublicKeyFingerprint: string;
+}): Buffer {
+  const segments = [
+    "uid",
+    fields.uid,
+    "targetDeviceId",
+    fields.targetDeviceId,
+    "targetEscrowPublicKeyFingerprint",
+    fields.targetEscrowPublicKeyFingerprint,
+    "targetKeyVersion",
+    `${fields.targetKeyVersion}`,
+    "targetSignalIdentityKeyId",
+    fields.targetSignalIdentityKeyId,
+    "targetSignalIdentityPublicKeyFingerprint",
+    fields.targetSignalIdentityPublicKeyFingerprint,
+    "approverDeviceId",
+    fields.approverDeviceId,
+    "approverSignalIdentityKeyId",
+    fields.approverSignalIdentityKeyId,
+    "approverSignalIdentityPublicKeyFingerprint",
+    fields.approverSignalIdentityPublicKeyFingerprint,
+  ];
+  let canonical = `${CLOUD_VAULT_DEVICE_TRUST_CHAIN_DOMAIN}\n`;
+  for (const segment of segments) {
+    canonical += `${Buffer.byteLength(segment, "utf8")}:${segment}\n`;
+  }
+  return Buffer.from(canonical, "utf8");
+}
+
+/**
+ * Verify the device-trust-chain signature against the approver's PUBLISHED
+ * Signal identity key. Reconstructs the canonical bytes server-side, decodes the
+ * 33-byte DJB key from `publicKeyData`, and runs XEdDSA verify. Fail CLOSED.
+ */
+function verifyCloudVaultDeviceTrustChainSignature(args: {
+  approverPublicKeyDataBase64: unknown;
+  signatureBase64: string;
+  canonicalFields: Parameters<typeof buildCloudVaultDeviceTrustChainCanonicalBytes>[0];
+}): boolean {
+  if (typeof args.approverPublicKeyDataBase64 !== "string") return false;
+  const trimmedKey = args.approverPublicKeyDataBase64.trim();
+  if (!trimmedKey) return false;
+  const publicKey = Buffer.from(trimmedKey, "base64");
+  // Reject lenient base64 / wrong length / wrong type byte; fail closed.
+  if (
+    publicKey.length !== SIGNAL_DJB_PUBLIC_KEY_BYTE_LENGTH ||
+    publicKey[0] !== ED25519_DJB_TYPE_BYTE ||
+    publicKey.toString("base64") !== normalizeBase64(trimmedKey)
+  ) {
+    return false;
+  }
+  const signature = Buffer.from(args.signatureBase64, "base64");
+  if (signature.length !== 64 || signature.toString("base64") !== normalizeBase64(args.signatureBase64)) {
+    return false;
+  }
+  const payload = buildCloudVaultDeviceTrustChainCanonicalBytes(args.canonicalFields);
+  return verifyXEdDSACurve25519Signature(publicKey, payload, signature);
+}
+
 function grantPresetCapabilities(preset: string): string[] {
   switch (preset) {
     case "off":
@@ -722,7 +932,13 @@ export const approveEscrowDeviceTrust = onCall(
     ) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before approving device trust.");
-      await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+      // B2 — capture whether a single-use high-risk nonce was actually consumed.
+      // The bootstrap self-approval branch (a device approving ITSELF as the very
+      // first trusted device) below REQUIRES one regardless of the global
+      // `requireHighRiskNonce` flag, so a captured/replayed owner request cannot
+      // silently enroll the first trusted device within the App Check attestation
+      // window. Non-bootstrap approvals keep the existing staged-rollout behavior.
+      const { nonceConsumed } = await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
 
       const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
       const approverDeviceId = boundedTrimmedString(request.data.approverDeviceId, "approverDeviceId", 160, false);
@@ -837,6 +1053,36 @@ export const approveEscrowDeviceTrust = onCall(
         }
 
         const isBootstrapSelfApproval = trustedNativeDevices.empty && approvedByDeviceId === deviceId;
+
+        // B2 — bootstrap self-approval (the FIRST trusted device approving itself)
+        // is the single most replay-sensitive path: there is no second trusted
+        // device to gate it, so a captured owner request could silently enroll a
+        // trust root. Require a freshly-issued, single-use high-risk nonce here
+        // REGARDLESS of the global `requireHighRiskNonce` flag. `nonceConsumed` is
+        // true only when a valid nonce was actually presented and atomically
+        // consumed up front; if it is false (no nonce supplied while the global
+        // flag is still off), fail closed for this branch only. When App Check is
+        // not enforced (local emulator) `nonceConsumed` is also false — in that
+        // posture there is no attestation window to replay, so the requirement is
+        // scoped to enforced deployments to avoid bricking local/test flows.
+        //
+        // NOTE FOR PROD: `config.requireHighRiskNonce` defaults to FALSE
+        // (config.ts) for staged client rollout. Once all shipped clients send a
+        // nonce, set REQUIRE_HIGH_RISK_NONCE=true / openburnbar.require_high_risk_nonce=true
+        // so EVERY high-risk callable (not just this bootstrap branch) enforces the
+        // single-use nonce. This branch already does so unconditionally.
+        if (isBootstrapSelfApproval && getConfig().enforceAppCheck && !nonceConsumed) {
+          logWarn({
+            event: "callable_warning",
+            message: "escrow_device_trust_bootstrap_missing_nonce",
+            device_id: deviceId,
+          });
+          throw new HttpsError(
+            "failed-precondition",
+            "Bootstrap self-approval of the first trusted device requires a fresh single-use nonce. Call issueHighRiskActionNonce and supply the nonce.",
+          );
+        }
+
         const approverRef = db.doc(`users/${uid}/escrow_devices/${approvedByDeviceId}`);
         const approverSnap = approvedByDeviceId === deviceId ? snapshot : await transaction.get(approverRef);
         const approverPlatform = approverSnap.exists ? approverSnap.get("platform") : undefined;
@@ -866,6 +1112,54 @@ export const approveEscrowDeviceTrust = onCall(
           approverIdentitySnap.get("publicKeyFingerprint") !== trustChain.approverSignalIdentityPublicKeyFingerprint
         ) {
           throw new HttpsError("failed-precondition", "Trust-chain approver Signal identity is not published.");
+        }
+
+        // B1 — Cryptographically verify the trust-chain signature server-side.
+        //
+        // Historically only the four id/fingerprint fields were structurally
+        // matched against the published Firestore docs; `trustChain.signature`
+        // was stored verbatim and NEVER verified, so a trusted-device attacker
+        // who could pass App Check + the high-risk nonce could promote a device
+        // to `trustState:"trusted"` with garbage in the signature field. We now
+        // reconstruct the EXACT canonical bytes the approver signed (five fields
+        // from authoritative server context, four from the validated proof) and
+        // verify the libsignal XEd25519 signature against the approver's PUBLISHED
+        // identity public key (`publicKeyData`, base64 of the 33-byte DJB key —
+        // immutable once published). The approver public key is read from
+        // Firestore, never from the proof, so an attacker cannot supply a matching
+        // key/signature pair. Fail CLOSED on any mismatch.
+        //
+        // Bootstrap self-approval (approver == target) signs over the device's own
+        // identity; the same verification holds (approverPublicKeyData is the
+        // device's own published key).
+        const approverPublicKeyData = approverIdentitySnap.get("publicKeyData");
+        const trustChainSignatureVerified = verifyCloudVaultDeviceTrustChainSignature({
+          approverPublicKeyDataBase64: approverPublicKeyData,
+          signatureBase64: trustChain.signature,
+          canonicalFields: {
+            uid,
+            targetDeviceId: deviceId,
+            targetEscrowPublicKeyFingerprint: targetEscrowFingerprint,
+            targetKeyVersion: keyVersion,
+            targetSignalIdentityKeyId: trustChain.targetSignalIdentityKeyId,
+            targetSignalIdentityPublicKeyFingerprint: trustChain.targetSignalIdentityPublicKeyFingerprint,
+            approverDeviceId: approvedByDeviceId,
+            approverSignalIdentityKeyId: trustChain.approverSignalIdentityKeyId,
+            approverSignalIdentityPublicKeyFingerprint: trustChain.approverSignalIdentityPublicKeyFingerprint,
+          },
+        });
+        if (!trustChainSignatureVerified) {
+          logWarn({
+            event: "callable_warning",
+            message: "escrow_device_trust_chain_signature_invalid",
+            device_id: deviceId,
+            approved_by_device_id: approvedByDeviceId,
+            bootstrap: isBootstrapSelfApproval,
+          });
+          throw new HttpsError(
+            "permission-denied",
+            "Device trust-chain signature failed verification. The approver's signature does not match its published identity key.",
+          );
         }
 
         transaction.set(
@@ -1747,4 +2041,9 @@ export const __testing__ = {
   queuedAgentGrantRequiresMacApproval,
   queuedAgentGrantDeliveryRequiresMacApproval,
   verifyEd25519RawSignature,
+  buildCloudVaultDeviceTrustChainCanonicalBytes,
+  verifyXEdDSACurve25519Signature,
+  verifyCloudVaultDeviceTrustChainSignature,
+  montgomeryUToCompressedEdwards,
+  CLOUD_VAULT_DEVICE_TRUST_CHAIN_DOMAIN,
 };

@@ -54,6 +54,13 @@ enum CLIArgumentBuilder {
             } else if capabilityGrant.capabilities.contains(.workspaceWrite) {
                 arguments.append(contentsOf: ["--permission-mode", "acceptEdits"])
             }
+        } else {
+            arguments.append(contentsOf: [
+                "--permission-mode",
+                "plan",
+                "--disallowedTools",
+                "Bash,Write,Edit,MultiEdit,NotebookEdit"
+            ])
         }
         return arguments
     }
@@ -85,6 +92,13 @@ enum CLIArgumentBuilder {
             } else if capabilityGrant.capabilities.contains(.workspaceRead) {
                 arguments.insert(contentsOf: ["--sandbox", "read-only"], at: arguments.count - 1)
             }
+        } else {
+            arguments.insert(contentsOf: [
+                "--sandbox",
+                "read-only",
+                "--ignore-user-config",
+                "--ignore-rules"
+            ], at: arguments.count - 1)
         }
         return arguments
     }

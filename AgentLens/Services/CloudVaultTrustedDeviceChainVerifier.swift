@@ -1,3 +1,4 @@
+import CryptoKit
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
@@ -98,6 +99,17 @@ enum CloudVaultTrustedDeviceChainVerifier {
             throw CloudVaultTrustChainVerificationError.missingEscrowPublicKey(deviceId: deviceId, keyVersion: keyVersion)
         }
 
+        // Bind the server-advertised escrow fingerprint to the ACTUAL key bytes.
+        // The trust-chain signature only covers the fingerprint STRING, so without
+        // this a malicious backend could swap publicKeyData for an attacker key
+        // while leaving the legitimately-signed fingerprint in place — and the Mac
+        // would wrap the vault key to the attacker. Recompute base64(SHA256(key))
+        // and reject on mismatch (EscrowDeviceSafetyCode validates the 65-byte
+        // x9.63 P-256 structure and compares in constant time).
+        guard EscrowDeviceSafetyCode.isFingerprint(escrowFingerprint, boundTo: escrowPublicKeyBase64) else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+        }
+
         let signalIdentityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(
             deviceId: deviceId,
             keyVersion: keyVersion
@@ -114,6 +126,16 @@ enum CloudVaultTrustedDeviceChainVerifier {
               let signalPublicKeyBase64 = signalData["publicKeyData"] as? String,
               let signalPublicKey = Data(base64Encoded: signalPublicKeyBase64) else {
             throw CloudVaultTrustChainVerificationError.missingSignalIdentity(deviceId: deviceId, keyVersion: keyVersion)
+        }
+
+        // Same byte-binding for the Signal identity key: recompute the fingerprint
+        // from the bytes so the trust-chain signature (which covers only the
+        // fingerprint string) transitively authenticates the key the reader will
+        // trust for at-rest sender-auth. The Signal identity public key is a
+        // libsignal IdentityKey serialization (not 65-byte P-256), so SHA-256 the
+        // bytes directly rather than via EscrowDeviceSafetyCode.
+        guard Data(SHA256.hash(data: signalPublicKey)).base64EncodedString() == signalFingerprint else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
         }
 
         let verified = CloudVaultVerifiedTrustedDevice(

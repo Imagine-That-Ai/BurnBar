@@ -138,11 +138,26 @@ enum ConversationCloudSealer {
         // trustedSenderPublicKeys enables CROSS-DEVICE sender-auth verification (a doc written
         // by another trusted device); empty => only self-authored docs verify, others fall back.
         if data["signalEnvelope"] != nil, let uid, let docId {
-            if let bytes = try? MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                data, uid: uid, collection: "conversations", docId: docId,
-                signalIdentity: signalIdentity, trustedSenderPublicKeys: trustedSenderPublicKeys
-            ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) {
-                return payload
+            do {
+                if let bytes = try MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                    data, uid: uid, collection: "conversations", docId: docId,
+                    signalIdentity: signalIdentity, trustedSenderPublicKeys: trustedSenderPublicKeys
+                ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) {
+                    return payload
+                }
+            } catch let signalError as OpenBurnBarSignalCoreError
+                where !signalError.allowsLegacyAtRestFallback(senderSetComplete: false) {
+                // C1: stripped / forged sender-auth (or relocated AAD binding) is a
+                // downgrade attack — fail CLOSED, never decode the unauthenticated
+                // legacy payload. The hard sender-auth failures fail closed
+                // regardless of senderSetComplete; unknown-sender stays lenient for
+                // rollout since legacy needs the E2EE vault key an attacker lacks.
+                return nil
+            } catch MacCloudVaultSignalPayloadError.signalBindingMismatch {
+                // Relocated / replayed envelope — fail CLOSED.
+                return nil
+            } catch {
+                // Legacy AES-GCM fallback (rollout compatibility, matching iOS/Android).
             }
         }
         guard let keyData,

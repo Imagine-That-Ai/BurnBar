@@ -1192,6 +1192,12 @@ enum CloudSyncTrustedDeviceChainVerifier {
               let escrowPublicKey = Data(base64Encoded: escrowPublicKeyBase64) else {
             throw CloudVaultTrustChainVerificationError.missingEscrowPublicKey(deviceId: deviceId, keyVersion: keyVersion)
         }
+        // H1: bind the server fingerprint to the actual escrow key bytes — the
+        // trust-chain signature only covers the fingerprint string, so a backend
+        // byte-swap would otherwise be invisible. Recompute and reject on mismatch.
+        guard EscrowDeviceSafetyCode.isFingerprint(escrowFingerprint, boundTo: escrowPublicKeyBase64) else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+        }
         let signalIdentityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(deviceId: deviceId, keyVersion: keyVersion)
         guard let signalData = try await userRef.collection("signal_identity_public_keys")
             .document(signalIdentityKeyId)
@@ -1204,6 +1210,10 @@ enum CloudSyncTrustedDeviceChainVerifier {
               let signalPublicKeyBase64 = signalData["publicKeyData"] as? String,
               let signalPublicKey = Data(base64Encoded: signalPublicKeyBase64) else {
             throw CloudVaultTrustChainVerificationError.missingSignalIdentity(deviceId: deviceId, keyVersion: keyVersion)
+        }
+        // H1: bind the Signal identity fingerprint to its actual key bytes.
+        guard Data(SHA256.hash(data: signalPublicKey)).base64EncodedString() == signalFingerprint else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
         }
         let verified = CloudVaultVerifiedTrustedDevice(
             deviceId: deviceId,

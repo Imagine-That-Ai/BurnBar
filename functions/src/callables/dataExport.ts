@@ -143,6 +143,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "pi_agent_relay_requests",
       "iroh_pairing",
       "iroh_pairing_keys",
+      "relay_sender_keys",
       "runtime_connection_preferences",
     ],
     storagePrefixes: ["hermes_gateway_attachments"],
@@ -183,6 +184,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
     firestoreCollections: [
       "cloud_vault_state",
       "cloud_vault_key_wrappers",
+      "cloud_vault_rotation_jobs",
       "escrow_devices",
       "escrow_public_keys",
       "signal_identity_public_keys",

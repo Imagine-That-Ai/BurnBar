@@ -17,6 +17,7 @@
  *      onRequest end-to-end over an in-memory Firestore double (mirrors the
  *      harness in hermesGatewaySealedEvent.test.ts).
  */
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashHermesGatewayBearerToken } from "../hermesGateway.js";
@@ -105,6 +106,12 @@ const dbMock = {
       set: (ref: { __path: string }, data: Record<string, unknown>) => {
         stored.set(ref.__path, { ...stored.get(ref.__path), ...data });
       },
+      create: (ref: { __path: string }, data: Record<string, unknown>) => {
+        if (stored.has(ref.__path)) {
+          throw new Error(`Document already exists: ${ref.__path}`);
+        }
+        stored.set(ref.__path, { ...data });
+      },
     };
     return fn(tx);
   },
@@ -118,6 +125,45 @@ const UID = "userAtt";
 const CLIENT_ID = "hgw_attach_client";
 const TOKEN = "obb_hgw_test_token_attachments";
 const TOKEN_HASH = hashHermesGatewayBearerToken(TOKEN);
+const { publicKey: AGENT_SIGNING_PUBLIC_KEY, privateKey: AGENT_SIGNING_PRIVATE_KEY } = generateKeyPairSync("ed25519");
+const AGENT_SIGNING_PUBLIC_KEY_BASE64 = Buffer.from(
+  AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" }) as Buffer,
+)
+  .subarray(-32)
+  .toString("base64");
+const AGENT_SIGNING_KEY_ID = createHash("sha256").update(AGENT_SIGNING_PUBLIC_KEY_BASE64).digest("hex").slice(0, 32);
+let popNonceCounter = 0;
+
+function stableJSONString(value: unknown): string {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJSONString).join(",")}]`;
+  }
+  if (!value || typeof value !== "object") return "{}";
+  return `{${Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => item !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${stableJSONString(item)}`)
+    .join(",")}}`;
+}
+
+function popHeaders(method: string, path: string, body: Record<string, unknown>): Record<string, string> {
+  const timestamp = new Date().toISOString();
+  const nonce = `attach-pop-nonce-${++popNonceCounter}`;
+  const bodyHash = createHash("sha256").update(stableJSONString(body)).digest("hex");
+  const payload = Buffer.from(
+    ["OpenBurnBar.HermesGatewayPoP.v1", TOKEN_HASH, method.toUpperCase(), path, bodyHash, nonce, timestamp].join("\n"),
+    "utf8",
+  );
+  return {
+    "x-openburnbar-pop-nonce": nonce,
+    "x-openburnbar-pop-timestamp": timestamp,
+    "x-openburnbar-pop-body-sha256": bodyHash,
+    "x-openburnbar-pop-signature-ed25519": sign(null, payload, AGENT_SIGNING_PRIVATE_KEY).toString("base64"),
+  };
+}
 
 function seedGrant(): void {
   stored.set(`hermes_gateway_token_index/${TOKEN_HASH}`, { uid: UID, clientId: CLIENT_ID });
@@ -131,6 +177,10 @@ function seedGrant(): void {
     scopes: ["hermes.gateway.read", "hermes.gateway.write"],
     homeDestinationId: "burnbar:home",
     relayCapable: true,
+    agentClientSigningPublicKeyBase64: AGENT_SIGNING_PUBLIC_KEY_BASE64,
+    agentClientSigningKeyId: AGENT_SIGNING_KEY_ID,
+    popRequired: true,
+    expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
     schemaVersion: 2,
@@ -163,7 +213,7 @@ interface TestHttpResponse {
 }
 
 function makeReq(path: string, body: Record<string, unknown>) {
-  const headers: Record<string, string> = { authorization: `Bearer ${TOKEN}` };
+  const headers: Record<string, string> = { authorization: `Bearer ${TOKEN}`, ...popHeaders("POST", path, body) };
   return {
     method: "POST",
     path,
@@ -171,6 +221,7 @@ function makeReq(path: string, body: Record<string, unknown>) {
     body,
     headers: { ...headers },
     query: {},
+    socket: { remoteAddress: "127.0.0.1" },
     get: (name: string) => headers[name.toLowerCase()],
   };
 }
@@ -226,6 +277,7 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
   beforeEach(() => {
     stored.clear();
     signedUrlCounter = 0;
+    popNonceCounter = 0;
     seedGrant();
   });
   afterEach(() => vi.clearAllMocks());

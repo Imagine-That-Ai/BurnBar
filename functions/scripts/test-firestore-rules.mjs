@@ -1269,6 +1269,18 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       source: "android-insights",
     }))
   );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-readonly-shell"), sealedMissionBase("mission-readonly-shell", {
+      approvalMode: "read_only",
+      commandsAllowed: true,
+    }))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-readonly-edit"), sealedMissionBase("mission-readonly-edit", {
+      approvalMode: "read_only",
+      fileEditsAllowed: true,
+    }))
+  );
   await assertSucceeds(
     setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), sealedMissionEvent({
       source: "android",

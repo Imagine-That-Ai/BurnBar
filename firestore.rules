@@ -1360,6 +1360,22 @@ service cloud.firestore {
     // requests; the signed-in Mac claims them, runs the local agent, then
     // writes status and a small preview back for mobile.
     match /users/{userId}/cli_agent_mission_requests/{requestId} {
+      function validCliMissionApprovalControls() {
+        let approvalMode = request.resource.data.get("approvalMode", "existing_policy");
+        let commandsAllowed = request.resource.data.get("commandsAllowed", false);
+        let fileEditsAllowed = request.resource.data.get("fileEditsAllowed", false);
+        return approvalMode in ["existing_policy", "manual_all", "risky_only", "read_only"]
+          && commandsAllowed is bool
+          && fileEditsAllowed is bool
+          && (
+            approvalMode != "read_only"
+            || (
+              commandsAllowed == false
+              && fileEditsAllowed == false
+            )
+          );
+      }
+
       function validCliAgentMissionRequest() {
         return request.resource.data.keys().hasOnly([
           "id",
@@ -1426,9 +1442,7 @@ service cloud.firestore {
         && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed", "vault_key_unavailable"]
         && request.resource.data.schemaVersion is int
         && (!("depth" in request.resource.data) || request.resource.data.depth in ["light", "standard", "deep", "max"])
-        && (!("approvalMode" in request.resource.data) || request.resource.data.approvalMode in ["existing_policy", "manual_all", "risky_only", "read_only"])
-        && (!("commandsAllowed" in request.resource.data) || request.resource.data.commandsAllowed is bool)
-        && (!("fileEditsAllowed" in request.resource.data) || request.resource.data.fileEditsAllowed is bool)
+        && validCliMissionApprovalControls()
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
         && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
         && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])

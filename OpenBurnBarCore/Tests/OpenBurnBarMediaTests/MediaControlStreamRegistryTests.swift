@@ -18,6 +18,15 @@ final class MediaControlStreamRegistryTests: XCTestCase {
         XCTAssertEqual(count, 1)
     }
 
+    func testLeaseCarriesAuthenticatedRemotePeerNodeId() async {
+        let registry = MediaControlStreamRegistry()
+        let stream = RecordingStream(remotePeerNodeId: "ios-peer-node")
+
+        let lease = await registry.register(stream: stream, uid: "u", connectionID: "c1")
+
+        XCTAssertEqual(lease.remotePeerNodeId, "ios-peer-node")
+    }
+
     func testInvalidateRemoves() async {
         let registry = MediaControlStreamRegistry()
         let stream = RecordingStream()
@@ -149,6 +158,11 @@ private actor StreamLedger {
 
 private final class RecordingStream: IrohRelayStream, @unchecked Sendable {
     private let ledger = StreamLedger()
+    let remotePeerNodeId: String?
+
+    init(remotePeerNodeId: String? = nil) {
+        self.remotePeerNodeId = remotePeerNodeId
+    }
 
     func send(_ frame: HermesRealtimeRelayFrame) async throws {
         await ledger.recordSent(frame)
