@@ -16,7 +16,8 @@ includes:
   source needed to rebuild the covered work;
 - the dependency lockfiles used by Python, Node, Swift, Kotlin/Android, Rust,
   and any hosted gateway services;
-- this source-availability notice, `LICENSE`, and `THIRD_PARTY_NOTICES.md`.
+- this source-availability notice, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and
+  `LICENSES/Nous-hermes-agent-MIT.txt`.
 
 Build caches, private signing keys, production secrets, user data, and unrelated
 deployment credentials are not corresponding source and must not be published.

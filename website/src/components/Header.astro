@@ -147,7 +147,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
       root.setAttribute("data-theme", next);
       try {
         localStorage.setItem("burnbar-theme", next);
-      } catch (e) {
+      } catch {
         /* storage blocked */
       }
       const meta = document.querySelector('meta[name="theme-color"]');

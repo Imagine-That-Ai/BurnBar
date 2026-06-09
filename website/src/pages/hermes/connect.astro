@@ -534,8 +534,9 @@ import BaseLayout from "@layouts/BaseLayout.astro";
       const approve = httpsCallable(functions, "approveHermesGatewayDeviceGrant");
       await approve({ userCode: code, displayName: "Hermes Agent" });
       showState("success");
-    } catch (error: any) {
-      const codeText = String(error?.code || "");
+    } catch (error: unknown) {
+      const errorRecord = error as { code?: unknown; message?: unknown };
+      const codeText = String(errorRecord?.code || "");
       if (codeText.includes("permission-denied")) {
         setError("BurnBar Cloud or Cloud Pro is required to connect Hermes.");
       } else if (codeText.includes("not-found")) {
@@ -545,7 +546,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
       } else if (codeText.includes("deadline-exceeded")) {
         setError("That Hermes code expired. Start setup in Hermes again.");
       } else {
-        setError(error?.message || "The Hermes connection could not be approved.");
+        setError(String(errorRecord?.message || "The Hermes connection could not be approved."));
       }
     }
   });

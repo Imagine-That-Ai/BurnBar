@@ -46,7 +46,7 @@ const fullTitle =
           document.documentElement.setAttribute("data-theme", theme);
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute("content", theme === "light" ? "#f6f4ee" : "#07060a");
-        } catch (e) {}
+        } catch {}
       })();
     </script>
 
@@ -780,7 +780,7 @@ const fullTitle =
               }
             }
             sampled[ci] = dots.length ? dots : [];
-          } catch (e) {
+          } catch {
             sampled[ci] = [];
           }
         }
@@ -958,7 +958,6 @@ const fullTitle =
         function rand(a, b) { return a + Math.random() * (b - a); }
         function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
         function theme() { return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark"; }
-        function easeOutBack(x) { var c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
 
         /* shape sampling for the storm */
         var offc = document.createElement("canvas");
@@ -1061,7 +1060,7 @@ const fullTitle =
           }
           ensureLoop();
         }
-        function emit(now) {
+        function emit(_now) {
           for (var c = 0; c < clouds.length; c++) {
             var cl = clouds[c], n = 2 + ((Math.random() * 3) | 0);
             for (var j = 0; j < n; j++) {
@@ -1160,7 +1159,7 @@ const fullTitle =
         }
 
         /* ---------- boundary "end of page" ---------- */
-        function boundary(which, now) {
+        function boundary(which, _now) {
           var y0 = which === "top" ? 8 : H - 8, dir = which === "top" ? 1 : -1, n = 10;
           for (var i = 0; i < n; i++) {
             edge.push({ x: ((i + 0.5) / n) * W + rand(-14, 14), y: y0, vy: dir * rand(280, 460),

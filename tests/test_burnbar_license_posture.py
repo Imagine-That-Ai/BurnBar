@@ -37,7 +37,7 @@ def test_license_posture_workflow_runs_all_release_gates() -> None:
     # The posture lane must check out the libsignal submodule (or product-tree
     # detection silently skips every gate) and must actually run the
     # compliance test suite.
-    assert "submodules: true" in workflow
+    assert "submodules: recursive" in workflow
     assert "python -m pytest tests/ -q" in workflow
     assert "python scripts/verify_burnbar_mit_pr_clean.py --base" in workflow
     assert "Detect BurnBar AGPL product tree" in workflow

@@ -144,7 +144,14 @@ struct CLIAgentTranscriptView: View {
                         .foregroundStyle(accent)
                 }
                 if !message.text.isEmpty || message.toolUses.isEmpty {
-                    Text(message.text.isEmpty ? "…" : message.text)
+                    // Assistant turns arrive as markdown — render inline
+                    // emphasis instead of raw `**` markers. User and error
+                    // turns stay verbatim.
+                    Text(
+                        isUser || message.isError || message.text.isEmpty
+                            ? AttributedString(message.text.isEmpty ? "…" : message.text)
+                            : HermesInlineMarkdown.attributedString(message.text)
+                    )
                         .font(MobileTheme.Typography.body)
                         .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
                         .padding(.horizontal, MobileTheme.Spacing.md)

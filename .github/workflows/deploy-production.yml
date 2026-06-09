@@ -67,6 +67,9 @@ jobs:
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
 
+      - name: BurnBar product release preflight
+        run: python3 scripts/ci/check_burnbar_release_preflight.py
+
       - name: Authenticate to Google Cloud (service account)
         if: steps.tag.outputs.dry_run != 'true' && env.HAS_GCP_SA_KEY == 'true'
         uses: google-github-actions/auth@v2 # v2

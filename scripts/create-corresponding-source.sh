@@ -96,6 +96,7 @@ required=(
   "NOTICE"
   "THIRD_PARTY_NOTICES.md"
   "LICENSES/MIT-legacy.txt"
+  "LICENSES/Nous-hermes-agent-MIT.txt"
   "docs/legal/agpl-compliance.md"
   "scripts/create-corresponding-source.sh"
 )
@@ -134,6 +135,7 @@ manifest = {
         "dependency lockfiles",
         "SPDX SBOM inputs",
         "AGPL compliance docs",
+        "Nous Hermes Gateway MIT notice",
         "official Signal libsignal pin"
     ],
 }

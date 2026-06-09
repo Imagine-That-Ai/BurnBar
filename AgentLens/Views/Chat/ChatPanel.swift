@@ -729,7 +729,7 @@ struct ChatPanel: View {
                     }
                 }
 
-                Text(thread.preview)
+                Text(HermesAtomParser.plainText(thread.preview))
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineLimit(2)

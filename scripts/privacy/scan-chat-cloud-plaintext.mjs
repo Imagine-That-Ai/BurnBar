@@ -939,7 +939,7 @@ assertIncludes(
 );
 assertIncludes(
   HERMES_GATEWAY_CALLABLE,
-  "requireGatewayRatchetEnvelope(",
+  "requireProductionGatewayRatchetEnvelope(",
   "gateway callable must validate ratchetEnvelope before storing or forwarding it",
 );
 assertIncludes(

@@ -9,6 +9,12 @@ the MIT License remain available under the terms that applied to those
 snapshots. The preserved MIT notice for that legacy code is in
 LICENSES/MIT-legacy.txt.
 
+Portions of the Hermes Gateway component derive from NousResearch/hermes-agent,
+used under the MIT License. The preserved upstream notice is in
+LICENSES/Nous-hermes-agent-MIT.txt:
+
+Copyright (c) 2025 Nous Research
+
 Official Signal libsignal is recorded as an AGPL-3.0-only dependency in
 THIRD_PARTY_NOTICES.md. Any release artifact or hosted service that links or
 uses libsignal must ship with the matching corresponding source offer described

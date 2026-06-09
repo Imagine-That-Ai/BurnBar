@@ -256,7 +256,7 @@ private struct PiThreadRow: View {
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                     .lineLimit(1)
                 if !thread.preview.isEmpty {
-                    Text(thread.preview)
+                    Text(HermesAtomParser.plainText(thread.preview))
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                         .lineLimit(2)
