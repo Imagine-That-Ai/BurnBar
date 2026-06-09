@@ -125,5 +125,31 @@ public struct PrivilegedPeerAuthenticator: Sendable {
         guard validity == errSecSuccess else {
             throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: validity)
         }
+
+        // M-9: enforce hardened runtime + library validation PROGRAMMATICALLY.
+        // These are CodeDirectory signature flags that the Code Signing
+        // Requirement Language cannot express, so they cannot live in the
+        // designated requirement string above (attempting it produced an
+        // invalid requirement that rejected every peer). Read the running
+        // peer's CodeDirectory flags and require both bits.
+        var staticCode: SecStaticCode?
+        let staticStatus = SecCodeCopyStaticCode(code, [], &staticCode)
+        guard staticStatus == errSecSuccess, let staticCode else {
+            throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: staticStatus)
+        }
+        var infoCF: CFDictionary?
+        let infoStatus = SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: 0), &infoCF)
+        guard infoStatus == errSecSuccess,
+              let info = infoCF as? [String: Any],
+              let flags = info[kSecCodeInfoFlags as String] as? UInt32 else {
+            throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: infoStatus)
+        }
+        let hasHardenedRuntime = (flags & OpenBurnBarSigningIdentity.hardenedRuntimeFlag) != 0
+        let hasLibraryValidation = (flags & OpenBurnBarSigningIdentity.libraryValidationFlag) != 0
+        guard hasHardenedRuntime, hasLibraryValidation else {
+            // errSecCSReqFailed: signature is valid but does not meet our policy
+            // (missing hardened runtime and/or library validation).
+            throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
+        }
     }
 }

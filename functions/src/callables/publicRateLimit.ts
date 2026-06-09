@@ -13,6 +13,10 @@ export type PublicHttpRateLimitAction = "cli_link_start" | "hermes_gateway_devic
 
 export type CallableApprovalRateLimitAction = "cli_link_approve_fail" | "hermes_gateway_approve_fail";
 
+export type HermesGatewayBearerRateLimitAction =
+  | "hermes_gateway_message_send"
+  | "hermes_gateway_attachment_init";
+
 const PUBLIC_HTTP_LIMITS: Record<PublicHttpRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   cli_link_start: { windowSeconds: 3600, maxAttempts: 20 },
   hermes_gateway_device_start: { windowSeconds: 3600, maxAttempts: 20 },
@@ -21,6 +25,14 @@ const PUBLIC_HTTP_LIMITS: Record<PublicHttpRateLimitAction, { windowSeconds: num
 const APPROVAL_LIMITS: Record<CallableApprovalRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   cli_link_approve_fail: { windowSeconds: 900, maxAttempts: 10 },
   hermes_gateway_approve_fail: { windowSeconds: 900, maxAttempts: 10 },
+};
+
+const HERMES_GATEWAY_BEARER_LIMITS: Record<
+  HermesGatewayBearerRateLimitAction,
+  { windowSeconds: number; maxAttempts: number }
+> = {
+  hermes_gateway_message_send: { windowSeconds: 60, maxAttempts: 120 },
+  hermes_gateway_attachment_init: { windowSeconds: 600, maxAttempts: 20 },
 };
 
 function rateLimitDocId(keyMaterial: string, action: string): string {
@@ -81,6 +93,15 @@ async function incrementRateLimit(
 export async function checkPublicHttpRateLimit(keyMaterial: string, action: PublicHttpRateLimitAction): Promise<void> {
   const limit = PUBLIC_HTTP_LIMITS[action];
   await incrementRateLimit(rateLimitDocId(keyMaterial, action), action, limit);
+}
+
+export async function checkHermesGatewayBearerRateLimit(
+  uid: string,
+  clientId: string,
+  action: HermesGatewayBearerRateLimitAction,
+): Promise<void> {
+  const limit = HERMES_GATEWAY_BEARER_LIMITS[action];
+  await incrementRateLimit(rateLimitDocId(`${uid}:${clientId}`, action), action, limit);
 }
 
 export async function recordCallableApprovalFailure(

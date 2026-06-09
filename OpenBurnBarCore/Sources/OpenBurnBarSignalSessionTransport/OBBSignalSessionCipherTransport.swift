@@ -11,6 +11,9 @@ public enum OBBSignalSessionTransportError: LocalizedError, Equatable {
     case streamClosed
     case unexpectedFrameType(HermesRealtimeRelayFrameType)
     case unsupportedSignalMessageType(Int)
+    /// F6: the directory-advertised identity key does not match the key the
+    /// caller pinned out-of-band. Fail closed before establishing a session.
+    case identityPinMismatch
 
     public var errorDescription: String? {
         switch self {
@@ -24,6 +27,8 @@ public enum OBBSignalSessionTransportError: LocalizedError, Equatable {
             return "Expected signal.session.message frame, received \(type.rawValue)."
         case .unsupportedSignalMessageType(let type):
             return "Unsupported Signal session message type \(type)."
+        case .identityPinMismatch:
+            return "Remote identity key does not match the pinned key; refusing to establish a session."
         }
     }
 }
@@ -184,7 +189,10 @@ public struct OBBSignalDecodedRemotePreKeyBundle {
 }
 
 public enum OBBSignalRemoteBundleDecoder {
-    public static func decode(_ claimed: OBBSignalClaimedPreKeyBundle) throws -> OBBSignalDecodedRemotePreKeyBundle {
+    public static func decode(
+        _ claimed: OBBSignalClaimedPreKeyBundle,
+        pinnedIdentityPublicKey: Data? = nil
+    ) throws -> OBBSignalDecodedRemotePreKeyBundle {
         let peer = OBBSignalSessionPeer(
             uid: claimed.peerUid,
             deviceId: claimed.deviceId,
@@ -194,7 +202,15 @@ public enum OBBSignalRemoteBundleDecoder {
             registrationId: claimed.signalRegistrationId
         )
         let address = try peer.protocolAddress()
-        let identity = try IdentityKey(publicKey: PublicKey(decodeBase64(claimed.identityPublicKeyData, field: "identityPublicKeyData")))
+        let identityKeyData = try decodeBase64(claimed.identityPublicKeyData, field: "identityPublicKeyData")
+        // F6: out-of-band identity pin. Reject a server-supplied bundle whose
+        // identity key is not the operator-pinned key BEFORE `processPreKeyBundle`
+        // persists any session/identity state bound to it. The shipped at-rest
+        // path (`SignalAtRestSealer`) pins sender keys the same way.
+        if let pinnedIdentityPublicKey, identityKeyData != pinnedIdentityPublicKey {
+            throw OBBSignalSessionTransportError.identityPinMismatch
+        }
+        let identity = try IdentityKey(publicKey: PublicKey(identityKeyData))
         let signedPublic = try PublicKey(decodeBase64(claimed.signedPreKey.publicKeyB64, field: "signedPreKey.publicKeyB64"))
         let signedSignature = try decodeBase64(claimed.signedPreKey.signatureB64, field: "signedPreKey.signatureB64")
         let kyberPublic = try KEMPublicKey(decodeBase64(claimed.kyberPreKey.publicKeyB64, field: "kyberPreKey.publicKeyB64"))
@@ -271,10 +287,14 @@ public final class OBBSignalSessionCipherTransport: @unchecked Sendable {
         uid: String,
         connectionId: String,
         requestId: String? = nil,
+        pinnedIdentityPublicKey: Data? = nil,
         context: StoreContext = NullContext()
     ) async throws -> HermesRealtimeRelayFrame {
         let claimed = try await claimSignalPrekeyBundle()
-        let remote = try OBBSignalRemoteBundleDecoder.decode(claimed)
+        // F6: gate the server-supplied bundle on the out-of-band identity pin
+        // before any session state is created. The store's `identityTrustEvaluator`
+        // is the second, always-on gate that also covers the inbound path.
+        let remote = try OBBSignalRemoteBundleDecoder.decode(claimed, pinnedIdentityPublicKey: pinnedIdentityPublicKey)
         try processPreKeyBundle(
             remote.bundle,
             for: remote.address,

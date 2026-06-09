@@ -1,6 +1,7 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantLocalAuthProof
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import java.util.UUID
@@ -51,6 +52,7 @@ enum class AgentPermissionPreset(
         "Workspace",
         "Workspace files",
         setOf(AgentDesktopCapability.WORKSPACE_READ, AgentDesktopCapability.WORKSPACE_WRITE, AgentDesktopCapability.SHELL),
+        requiresDeviceAuth = true,
     ),
     DESKTOP(
         "Desktop",
@@ -95,6 +97,7 @@ data class AgentCapabilityGrantRequest(
     val sourceDeviceId: String,
     val clientIntentId: String = UUID.randomUUID().toString(),
     val localAuthenticationSatisfied: Boolean = false,
+    val localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = null,
 ) {
     val requestedAtSwiftReferenceSeconds: Double
         get() = swiftReferenceSeconds(requestedAtMillis)
@@ -119,6 +122,7 @@ data class AgentCapabilityGrantRequest(
         sourceDeviceId = sourceDeviceId,
         clientIntentId = clientIntentId,
         localAuthenticationSatisfied = localAuthenticationSatisfied,
+        localAuthProof = localAuthProof,
         authority = authority,
     )
 

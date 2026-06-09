@@ -10,12 +10,10 @@ import OpenBurnBarComputerUseCore
 /// - Important: Phone control is a trust-delegated path where the phone
 ///   IS the authenticated human operator. The Ed25519-signed authority
 ///   envelope establishes that a paired, verified peer device issued the
-///   intent — not an autonomous agent. This is the foundation for the
-///   deny-region bypass in `DefaultComputerUseCapabilityGate`: the operator
-///   is trusted to interact with any UI region on their own Mac, including
-///   login windows and secure text fields. If the threat model changes,
-///   set `computerUse_phoneControlRespectsDenyRegions = true` in Remote Config
-///   to re-enable deny-region checking for phone control intents.
+///   intent — not an autonomous agent — but the capability gate still
+///   respects AX deny regions by default. The narrow login-window recovery
+///   path requires the explicit operator opt-out flag
+///   `computer_use_phone_control_respects_deny_regions = false`.
 ///
 /// Threat model — three structural validations, all of which must pass:
 ///   1. Ed25519 signature verifies against the paired peer pubkey.
@@ -37,6 +35,9 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         case missingAttestation
         case macAttestationUnbound
         case intentHashMismatch(expected: String, observed: String)
+        case localAuthProofRequired
+        case localAuthProofInvalid(reason: String)
+        case localAuthProofReplay(proofId: String)
         case peerRevoked(peerNodeId: String)
         case escrowDeviceRevoked(deviceId: String)
     }
@@ -47,35 +48,134 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         public let counter: UInt64
     }
 
+    public enum RegistrationRefusal: Sendable, Equatable {
+        case revokedPeer(peerNodeId: String)
+        case pinMismatch(pinnedSafetyCode: String?)
+        case malformedAdvertisedKey
+        case keychainError(status: Int)
+    }
+
+    public enum RegistrationResult: Sendable, Equatable {
+        case admitted
+        case pendingConfirmation(safetyCode: String?)
+        case refused(RegistrationRefusal)
+
+        public var isAdmitted: Bool {
+            if case .admitted = self { return true }
+            return false
+        }
+    }
+
     public let freshnessWindow: TimeInterval
     /// Maximum wall-clock lifetime for a signed authority envelope (WS2 TTL binding).
     public let authorityMaxLifetime: TimeInterval
     private let queue = DispatchQueue(label: "com.openburnbar.phoneControl.validator")
     private var lastSeenCounter: [String: UInt64] = [:]
+    private var consumedLocalAuthProofIds: Set<String> = []
     private var peerPublicKeys: [String: Curve25519.Signing.PublicKey] = [:]
     private var revokedPeerNodeIds: Set<String> = []
     private var revokedEscrowDeviceIds: Set<String> = []
 
-    public init(freshnessWindow: TimeInterval = 5.0, authorityMaxLifetime: TimeInterval = 300.0) {
+    /// F1 keystone: the Mac-Keychain pin that makes this device the authoritative
+    /// root of trust for which controller key may drive it. `nil` disables pin
+    /// enforcement (legacy/unit-test validators that only exercise the signature
+    /// path); the shipping coordinator + grant listener pass the real store.
+    private let controllerPinStore: ControllerKeyPinStore?
+    /// Whether an unpinned/first-use key must be confirmed out-of-band before it
+    /// is admitted. Evaluated per registration so a flag flip takes effect
+    /// without reconstructing the validator.
+    private let pinEnforcement: @Sendable () -> Bool
+
+    public init(
+        freshnessWindow: TimeInterval = 5.0,
+        authorityMaxLifetime: TimeInterval = 300.0,
+        controllerPinStore: ControllerKeyPinStore? = ControllerKeyPinStore(),
+        pinEnforcement: @escaping @Sendable () -> Bool = { ControllerKeyPinEnforcementFlag.isEnabled() }
+    ) {
         self.freshnessWindow = freshnessWindow
         self.authorityMaxLifetime = authorityMaxLifetime
+        self.controllerPinStore = controllerPinStore
+        self.pinEnforcement = pinEnforcement
     }
 
     /// Register the verified Ed25519 public key for a paired peer.
-    /// Source: `users/{uid}/iroh_pairing/{connId}.peerPubKey` after
-    /// fingerprint verification in the existing pairing flow.
+    /// Source: `users/{uid}/iroh_pairing/{connId}/controllers/{peerNodeId}
+    /// .publicKeyBase64`, fetched by `FirestorePhoneControlAuthorityProvider`.
     ///
-    /// FAIL-CLOSED: a peer in the revocation set is refused — a revoked
-    /// device that reconnects (fresh `controlClassify`) cannot re-admit its
-    /// pubkey and therefore cannot pass `publicKeyForActivePeer`. Returns
-    /// `false` when the registration was refused due to revocation.
+    /// FAIL-CLOSED on two independent grounds:
+    ///  1. Revocation — a peer in the revocation set is refused so a revoked
+    ///     device that reconnects (fresh `controlClassify`) cannot re-admit its
+    ///     pubkey and therefore cannot pass `publicKeyForActivePeer`.
+    ///  2. F1 controller pin — when a `uid` is supplied and a pin store is
+    ///     configured, the advertised key is checked against the Mac-Keychain
+    ///     pin (``ControllerKeyPinStore``). A key that DIFFERS from the
+    ///     operator-pinned key is refused (a relay/Firestore key swap — the
+    ///     control-plane MITM this remediation closes); an unpinned key is
+    ///     pinned on first use and, when ``ControllerKeyPinEnforcementFlag`` is
+    ///     enabled, admitted only after the operator confirms the safety number
+    ///     out-of-band. Without a `uid` only revocation + in-memory admission
+    ///     apply (signature-only validators and legacy callers).
+    ///
+    /// Returns `false` when the registration was refused; the caller MUST treat
+    /// a `false` as "do not validate intents from this peer" and surface a denial.
     @discardableResult
-    public func registerPeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
-        queue.sync {
-            if revokedPeerNodeIds.contains(nodeId) { return false }
-            peerPublicKeys[nodeId] = publicKey
-            return true
+    public func registerPeer(
+        nodeId: String,
+        publicKey: Curve25519.Signing.PublicKey,
+        uid: String? = nil
+    ) -> Bool {
+        registerPeerDetailed(nodeId: nodeId, publicKey: publicKey, uid: uid).isAdmitted
+    }
+
+    @discardableResult
+    public func registerPeerDetailed(
+        nodeId: String,
+        publicKey: Curve25519.Signing.PublicKey,
+        uid: String? = nil
+    ) -> RegistrationResult {
+        if queue.sync(execute: { revokedPeerNodeIds.contains(nodeId) }) {
+            return .refused(.revokedPeer(peerNodeId: nodeId))
         }
+        if let controllerPinStore, let uid {
+            let advertised = publicKey.rawRepresentation.base64EncodedString()
+            let result = controllerPinStore.verifyOrPin(
+                advertisedKeyBase64: advertised,
+                uid: uid,
+                peerNodeId: nodeId
+            )
+            if !result.admits(requireConfirmation: pinEnforcement()) {
+                switch result {
+                case .matchesPendingConfirmation(let safetyCode), .pinnedFirstUse(let safetyCode):
+                    return .pendingConfirmation(safetyCode: safetyCode)
+                case .mismatch(let pinnedSafetyCode):
+                    return .refused(.pinMismatch(pinnedSafetyCode: pinnedSafetyCode))
+                case .malformedAdvertisedKey:
+                    return .refused(.malformedAdvertisedKey)
+                case .unknownKeychainError(let status):
+                    return .refused(.keychainError(status: status))
+                case .matchesConfirmedPin:
+                    break
+                }
+            }
+        }
+        return queue.sync {
+            if revokedPeerNodeIds.contains(nodeId) {
+                return .refused(.revokedPeer(peerNodeId: nodeId))
+            }
+            peerPublicKeys[nodeId] = publicKey
+            return .admitted
+        }
+    }
+
+    @discardableResult
+    public func confirmPeerPin(
+        nodeId: String,
+        publicKey: Curve25519.Signing.PublicKey,
+        uid: String
+    ) -> Bool {
+        guard let controllerPinStore else { return false }
+        let advertised = publicKey.rawRepresentation.base64EncodedString()
+        return controllerPinStore.confirm(advertisedKeyBase64: advertised, uid: uid, peerNodeId: nodeId)
     }
 
     public func hasPeer(nodeId: String) -> Bool {
@@ -270,6 +370,123 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         guard pubKey.isValidSignature(signatureData, for: toVerify) else {
             throw ValidationError.signatureFailed
         }
+        try validateLocalAuthProofIfNeeded(
+            grantRequest,
+            observedIntentHash: observedHex,
+            publicKey: pubKey,
+            now: now
+        )
+
+        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        return ValidationResult(
+            peerNodeId: envelope.peerNodeId,
+            validatedAt: now,
+            counter: envelope.counter
+        )
+    }
+
+    private func validateLocalAuthProofIfNeeded(
+        _ grantRequest: HermesRealtimeRelayAgentGrantRequest,
+        observedIntentHash: String,
+        publicKey: Curve25519.Signing.PublicKey,
+        now: Date
+    ) throws {
+        guard let trustMode = ComputerUseTrustMode(rawValue: grantRequest.trustMode) else {
+            throw ValidationError.localAuthProofInvalid(reason: "unsupported_trust_mode")
+        }
+        let capabilities = grantRequest.capabilities.compactMap(AgentDesktopCapability.init(rawValue:))
+        guard capabilities.count == grantRequest.capabilities.count else {
+            throw ValidationError.localAuthProofInvalid(reason: "unsupported_capability")
+        }
+        let requiresProof = AgentDesktopCapability.requiresLocalAuthentication(
+            capabilities: Set(capabilities),
+            trustMode: trustMode
+        )
+        guard requiresProof || grantRequest.localAuthProof != nil else { return }
+        guard grantRequest.localAuthenticationSatisfied else {
+            throw ValidationError.localAuthProofRequired
+        }
+        guard let proof = grantRequest.localAuthProof else {
+            throw ValidationError.localAuthProofRequired
+        }
+        guard proof.deviceId == grantRequest.sourceDeviceId else {
+            throw ValidationError.localAuthProofInvalid(reason: "wrong_device")
+        }
+        guard proof.signedIntentHash.lowercased() == observedIntentHash.lowercased() else {
+            throw ValidationError.localAuthProofInvalid(reason: "wrong_intent")
+        }
+        guard proof.authenticatedAt <= now.addingTimeInterval(30) else {
+            throw ValidationError.localAuthProofInvalid(reason: "future")
+        }
+        guard proof.expiresAt > now else {
+            throw ValidationError.localAuthProofInvalid(reason: "expired")
+        }
+        guard proof.expiresAt.timeIntervalSince(proof.authenticatedAt) <= AgentCapabilityGrantRequest.defaultRequestTTL,
+              proof.expiresAt > proof.authenticatedAt,
+              now.timeIntervalSince(proof.authenticatedAt) <= AgentCapabilityGrantRequest.defaultRequestTTL else {
+            throw ValidationError.localAuthProofInvalid(reason: "too_long")
+        }
+        guard let signature = Data(base64Encoded: proof.signatureEd25519) else {
+            throw ValidationError.localAuthProofInvalid(reason: "bad_signature_encoding")
+        }
+        let payload = ComputerUsePhoneControlSigner().localAuthProofSignablePayload(
+            proofId: proof.proofId,
+            deviceId: proof.deviceId,
+            signedIntentHash: proof.signedIntentHash,
+            authenticatedAt: proof.authenticatedAt,
+            expiresAt: proof.expiresAt
+        )
+        guard publicKey.isValidSignature(signature, for: payload) else {
+            throw ValidationError.localAuthProofInvalid(reason: "bad_signature")
+        }
+        let replay = queue.sync { !consumedLocalAuthProofIds.insert(proof.proofId).inserted }
+        guard !replay else {
+            throw ValidationError.localAuthProofReplay(proofId: proof.proofId)
+        }
+    }
+
+    public func validate(
+        envelope: HermesRealtimeRelayAuthorityEnvelope,
+        approvalResponse response: HermesRealtimeRelayApprovalResponse,
+        expectedRequestHashBlake3: String,
+        now: Date = Date()
+    ) throws -> ValidationResult {
+        let pubKey = try publicKeyForActivePeer(envelope)
+
+        try validateAuthorityEnvelope(envelope, now: now)
+
+        guard response.requestHashBlake3 == expectedRequestHashBlake3 else {
+            throw ValidationError.intentHashMismatch(
+                expected: expectedRequestHashBlake3,
+                observed: response.requestHashBlake3 ?? ""
+            )
+        }
+
+        let lastSeen = queue.sync { lastSeenCounter[envelope.peerNodeId] ?? 0 }
+        guard envelope.counter > lastSeen else {
+            throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
+        }
+
+        let observedHex = try ComputerUsePhoneControlSigner()
+            .canonicalApprovalResponseHashHex(response: response)
+        guard observedHex == envelope.intentHashBlake3 else {
+            throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
+        }
+
+        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
+            throw ValidationError.signatureFailed
+        }
+        var toVerify = Data()
+        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
+        var beCounter = envelope.counter.bigEndian
+        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
+        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
+        var beTs = timestampMs.bigEndian
+        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
+
+        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
+            throw ValidationError.signatureFailed
+        }
 
         queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
         return ValidationResult(
@@ -369,7 +586,8 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         envelope: HermesRealtimeRelayAuthorityEnvelope,
         clipboardRequest: HermesRealtimeRelayClipboardRequest,
         attestation: PhoneControlAttestationRequirement? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        consumeCounter: Bool = true
     ) throws -> ValidationResult {
         let pubKey = try publicKeyForActivePeer(envelope)
 
@@ -401,7 +619,9 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.signatureFailed
         }
 
-        queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        if consumeCounter {
+            queue.sync { lastSeenCounter[envelope.peerNodeId] = envelope.counter }
+        }
         return ValidationResult(
             peerNodeId: envelope.peerNodeId,
             validatedAt: now,
@@ -459,7 +679,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
         switch self {
         case .signatureFailed, .missingPeerPubKey, .intentHashMismatch,
              .attestationMismatch, .missingAttestation, .macAttestationUnbound,
-             .peerRevoked, .escrowDeviceRevoked:
+             .peerRevoked, .escrowDeviceRevoked,
+             .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay:
             return .signatureFailure
         case .counterReplay:
             return .counterReplay
@@ -478,7 +699,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
             return .expired
         case .missingPeerPubKey, .signatureFailed, .intentHashMismatch,
              .attestationMismatch, .missingAttestation, .macAttestationUnbound,
-             .peerRevoked, .escrowDeviceRevoked:
+             .peerRevoked, .escrowDeviceRevoked,
+             .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay:
             return .signatureFailure
         }
     }
@@ -503,6 +725,12 @@ extension PhoneControlAuthorityValidator.ValidationError {
             return "peer_revoked"
         case .escrowDeviceRevoked:
             return "escrow_device_revoked"
+        case .localAuthProofRequired:
+            return "local_auth_proof_required"
+        case .localAuthProofInvalid:
+            return "local_auth_proof_invalid"
+        case .localAuthProofReplay:
+            return "local_auth_proof_replay"
         }
     }
 

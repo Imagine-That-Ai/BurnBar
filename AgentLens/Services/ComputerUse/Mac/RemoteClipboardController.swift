@@ -69,6 +69,7 @@ public final class RemoteClipboardController {
         public var validator: PhoneControlAuthorityValidator
         public var isDirectPhoneControl: Bool
         public var attestation: PhoneControlAttestationRequirement
+        public var phoneSessionFirstActionConfirmed: Bool
 
         public init(
             activeSessionId: ComputerUseSessionID?,
@@ -78,7 +79,8 @@ public final class RemoteClipboardController {
             scopeRules: [ComputerUseScopeRule],
             validator: PhoneControlAuthorityValidator,
             isDirectPhoneControl: Bool,
-            attestation: PhoneControlAttestationRequirement = .none
+            attestation: PhoneControlAttestationRequirement = .none,
+            phoneSessionFirstActionConfirmed: Bool = false
         ) {
             self.activeSessionId = activeSessionId
             self.state = state
@@ -88,6 +90,7 @@ public final class RemoteClipboardController {
             self.validator = validator
             self.isDirectPhoneControl = isDirectPhoneControl
             self.attestation = attestation
+            self.phoneSessionFirstActionConfirmed = phoneSessionFirstActionConfirmed
         }
     }
 
@@ -131,7 +134,8 @@ public final class RemoteClipboardController {
                 envelope: request.authority,
                 clipboardRequest: request,
                 attestation: context.attestation,
-                now: Date()
+                now: Date(),
+                consumeCounter: context.phoneSessionFirstActionConfirmed
             )
         } catch let error as PhoneControlAuthorityValidator.ValidationError {
             return Result(
@@ -211,6 +215,7 @@ public final class RemoteClipboardController {
             accessibilityTrusted: inputController.isAccessibilityTrusted(),
             originatedFromPhone: true,
             phoneControlRespectsDenyRegions: context.configuration.phoneControlRespectsDenyRegions,
+            phoneSessionFirstActionConfirmed: context.phoneSessionFirstActionConfirmed,
             clipboardConsentGranted: context.configuration.clipboardConsentGranted
         )
 
@@ -237,7 +242,17 @@ public final class RemoteClipboardController {
                 rejected: true,
                 denyReason: reason
             )
-        case .allowed:
+        case .allowed(let approvedBy):
+            if approvedBy == .mac && !context.phoneSessionFirstActionConfirmed {
+                return Result(
+                    response: response(for: request, status: .denied, detail: "phone_first_action_approval_required"),
+                    action: action,
+                    auditEntry: nil,
+                    executed: false,
+                    rejected: false,
+                    denyReason: nil
+                )
+            }
             return perform(request: request, action: action, context: context, scopeContext: scopeContext)
         }
     }

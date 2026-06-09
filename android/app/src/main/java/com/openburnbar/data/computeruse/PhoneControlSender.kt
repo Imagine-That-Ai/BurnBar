@@ -81,7 +81,22 @@ class PhoneControlSender(
                 timestampMillis = timestampMillis,
                 privateKeySeed = privateKeySeed,
             )
-        val signedWire = agentGrant.toWire(authority.toRelayAuthority())
+        val signedGrant =
+            if (agentGrant.localAuthenticationSatisfied) {
+                agentGrant.copy(
+                    localAuthProof =
+                    PhoneControlSignerSign.signLocalAuthProof(
+                        deviceId = agentGrant.sourceDeviceId,
+                        signedIntentHash = authority.intentHashBlake3,
+                        authenticatedAtMillis = timestampMillis,
+                        expiresAtSwiftReferenceSeconds = agentGrant.expiresAtSwiftReferenceSeconds,
+                        privateKeySeed = privateKeySeed,
+                    ),
+                )
+            } else {
+                agentGrant
+            }
+        val signedWire = signedGrant.toWire(authority.toRelayAuthority())
         val frame =
             HermesRealtimeRelayFrame(
                 type = HermesRealtimeRelayFrameType.CONTROL_AGENT_GRANT_REQUEST,

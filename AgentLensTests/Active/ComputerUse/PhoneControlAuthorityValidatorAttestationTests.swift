@@ -8,6 +8,42 @@ import OpenBurnBarComputerUseCore
 final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
     private let phoneSigner = ComputerUsePhoneControlSigner()
 
+    // MARK: - F1 controller-key pin enforcement
+
+    /// A controller key that differs from the Mac-pinned key is refused — the
+    /// relay/Firestore control-plane key-swap MITM this remediation closes.
+    func test_registerPeerRefusesSwappedControllerKey() {
+        let pinStore = ControllerKeyPinStore(backing: InMemoryControllerKeyPinBacking())
+        let validator = PhoneControlAuthorityValidator(controllerPinStore: pinStore)
+        let real = Curve25519.Signing.PrivateKey().publicKey
+        let attacker = Curve25519.Signing.PrivateKey().publicKey
+
+        guard case .pendingConfirmation = validator.registerPeerDetailed(
+            nodeId: "ios-phone-aabb",
+            publicKey: real,
+            uid: "u1"
+        ) else {
+            return XCTFail("First contact must wait for Mac safety-code confirmation.")
+        }
+        XCTAssertTrue(validator.confirmPeerPin(nodeId: "ios-phone-aabb", publicKey: real, uid: "u1"))
+        XCTAssertTrue(validator.registerPeer(nodeId: "ios-phone-aabb", publicKey: real, uid: "u1"))
+        // A swapped key for the same peer is refused — always, regardless of the gate.
+        XCTAssertFalse(validator.registerPeer(nodeId: "ios-phone-aabb", publicKey: attacker, uid: "u1"))
+        // The genuine key still validates.
+        XCTAssertTrue(validator.registerPeer(nodeId: "ios-phone-aabb", publicKey: real, uid: "u1"))
+    }
+
+    /// Without a uid (signature-only / legacy callers) pin enforcement is skipped,
+    /// preserving backward compatibility.
+    func test_registerPeerWithoutUidSkipsPinEnforcement() {
+        let pinStore = ControllerKeyPinStore(backing: InMemoryControllerKeyPinBacking())
+        let validator = PhoneControlAuthorityValidator(controllerPinStore: pinStore)
+        let a = Curve25519.Signing.PrivateKey().publicKey
+        let b = Curve25519.Signing.PrivateKey().publicKey
+        XCTAssertTrue(validator.registerPeer(nodeId: "p", publicKey: a))
+        XCTAssertTrue(validator.registerPeer(nodeId: "p", publicKey: b))
+    }
+
     func test_rejectsAttestationMismatchWhenRequired() throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let validator = PhoneControlAuthorityValidator()
@@ -327,6 +363,103 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         validator.clearRevocations()
         XCTAssertFalse(validator.isPeerRevoked(nodeId: "peer-9"))
         XCTAssertFalse(validator.isEscrowDeviceRevoked(deviceId: "device-9"))
+    }
+
+    func test_signedApprovalResponseValidatesAndBindsPendingRequestHash() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let request = approvalRequest(toolKind: "desktop.click")
+        let requestHash = try phoneSigner.canonicalApprovalRequestHashHex(request: request)
+        var response = HermesRealtimeRelayApprovalResponse(
+            approvalId: request.approvalId,
+            decision: .approve,
+            respondedBy: "phone",
+            respondedAt: Date(),
+            note: nil,
+            requestHashBlake3: requestHash
+        )
+        let signed = try phoneSigner.sign(
+            approvalResponse: response,
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: response.respondedAt,
+            privateKey: privateKey
+        )
+        response.authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+
+        let result = try validator.validate(
+            envelope: response.authority!,
+            approvalResponse: response,
+            expectedRequestHashBlake3: requestHash,
+            now: response.respondedAt
+        )
+
+        XCTAssertEqual(result.peerNodeId, "peer-1")
+    }
+
+    func test_signedApprovalResponseRejectsWrongPendingRequestHash() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let validator = PhoneControlAuthorityValidator()
+        validator.registerPeer(nodeId: "peer-1", publicKey: privateKey.publicKey)
+        let request = approvalRequest(toolKind: "desktop.click")
+        let otherRequestHash = try phoneSigner.canonicalApprovalRequestHashHex(
+            request: approvalRequest(toolKind: "desktop.type")
+        )
+        var response = HermesRealtimeRelayApprovalResponse(
+            approvalId: request.approvalId,
+            decision: .approve,
+            respondedBy: "phone",
+            respondedAt: Date(),
+            note: nil,
+            requestHashBlake3: otherRequestHash
+        )
+        let signed = try phoneSigner.sign(
+            approvalResponse: response,
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: response.respondedAt,
+            privateKey: privateKey
+        )
+        response.authority = HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: signed.peerNodeId,
+            counter: signed.counter,
+            timestamp: signed.timestamp,
+            intentHashBlake3: signed.intentHashHex,
+            signatureEd25519: signed.signatureBase64
+        )
+
+        XCTAssertThrowsError(try validator.validate(
+            envelope: response.authority!,
+            approvalResponse: response,
+            expectedRequestHashBlake3: try phoneSigner.canonicalApprovalRequestHashHex(request: request),
+            now: response.respondedAt
+        )) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.intentHashMismatch = error else {
+                return XCTFail("Expected intentHashMismatch, got \(error)")
+            }
+        }
+    }
+
+    private func approvalRequest(toolKind: String) -> HermesRealtimeRelayApprovalRequest {
+        HermesRealtimeRelayApprovalRequest(
+            approvalId: "approval-1",
+            runId: "run-1",
+            sessionId: "session-1",
+            toolKind: toolKind,
+            title: "Approve action",
+            message: "Approve \(toolKind)",
+            beforeScreenshotBlake3: "screenshot-hash",
+            actionSummary: "Approve \(toolKind)",
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            trustMode: "manual"
+        )
     }
 
     private func signedTapIntent(

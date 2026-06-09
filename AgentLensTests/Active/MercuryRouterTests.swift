@@ -56,7 +56,9 @@ final class MercuryRouterTests: XCTestCase {
             capabilityGate: AlwaysAllowGate()
         )
         let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults())
-        consentStore.alwaysAllow = consent
+        if consent {
+            seedTestAutoAcceptGrants(in: consentStore)
+        }
 
         let router = MercuryRouter(
             sessionCoordinator: sessionCoordinator,
@@ -78,6 +80,28 @@ final class MercuryRouterTests: XCTestCase {
             RecordingMediaStreamSink()
         }
         return (router, AckSink(), consentStore)
+    }
+
+    private func seedTestAutoAcceptGrants(in consentStore: MercuryConsentStore) {
+        consentStore.rememberAcceptedMirrorPeers = true
+        let grants: [(connectionId: String, viewerDeviceId: String?, controlAuthorityPeerNodeId: String?, requesterName: String)] = [
+            ("c", "iphone-1", "ios-peer", "Alberto's iPhone"),
+            ("legacy-conn", "legacy-phone", "legacy-peer", "Legacy phone"),
+            ("iphone-1", "iphone-1", "ios-peer", "Alberto's iPhone"),
+            ("android-1", "android-device", "android-peer", "Samsung Galaxy"),
+            ("android-2", "android-device-2", "android-peer-2", "Samsung Galaxy"),
+            ("ipad-1", "ipad-device", "ipad-peer", "iPad"),
+            ("shared-mac", "iphone-1", "ios-peer", "Shared control stream"),
+            ("shared-mac", "android-device", "android-peer", "Shared control stream")
+        ]
+        for grant in grants {
+            consentStore.rememberAcceptedPeer(
+                connectionId: grant.connectionId,
+                viewerDeviceId: grant.viewerDeviceId,
+                controlAuthorityPeerNodeId: grant.controlAuthorityPeerNodeId,
+                requesterName: grant.requesterName
+            )
+        }
     }
 
     private func makeIsolatedDefaults() -> UserDefaults {
@@ -110,9 +134,10 @@ final class MercuryRouterTests: XCTestCase {
         streamClass: String = MediaStreamClass.screenVideo.rawValue,
         focusFollowMode: String? = nil,
         viewerID: String? = nil,
-        viewerDeviceID: String? = nil,
-        controlAuthorityPeerNodeID: String? = nil,
-        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil
+        viewerDeviceID: String? = "iphone-1",
+        controlAuthorityPeerNodeID: String? = "ios-peer",
+        remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil,
+        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = nil
     ) -> HermesRealtimeRelayFrame {
         let req = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,
@@ -124,7 +149,8 @@ final class MercuryRouterTests: XCTestCase {
             viewerId: viewerID,
             viewerDeviceId: viewerDeviceID,
             controlAuthorityPeerNodeId: controlAuthorityPeerNodeID,
-            remoteUnlockSession: remoteUnlockSession
+            remoteUnlockSession: remoteUnlockSession,
+            agentTerminal: agentTerminal
         )
         return HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
@@ -175,6 +201,29 @@ final class MercuryRouterTests: XCTestCase {
             "The accepted ack must not wait for ScreenCaptureKit startup."
         )
         await router.stopMirror()
+    }
+
+    func testTerminalMirrorRequestCannotUseMirrorAutoAcceptGrant() async throws {
+        let (router, sink) = makeRouter(consent: true)
+
+        await router.handleFrame(
+            mirrorRequestFrame(
+                agentTerminal: HermesRealtimeRelayAgentTerminalRequest(
+                    runtimeId: "codex",
+                    interactive: true
+                )
+            ),
+            replySender: sink.sender
+        )
+
+        let frames = await sink.frames
+        XCTAssertTrue(frames.isEmpty)
+        XCTAssertNotNil(router.pendingRequest)
+        XCTAssertEqual(router.phase, .ringing(
+            requestID: "req_test",
+            requesterName: "Alberto's iPhone",
+            requestedAt: router.pendingRequest?.requestedAt ?? Date()
+        ))
     }
 
     func testRegularScreenMirrorForcesFocusFollowOffBeforeComputerUseSession() async {
@@ -316,8 +365,11 @@ final class MercuryRouterTests: XCTestCase {
         await router.handleFrame(
             mirrorRequestFrame(
                 requestID: "req-legacy",
+                requesterName: "Legacy phone",
                 connectionID: "legacy-conn",
-                streamingCapabilities: nil
+                streamingCapabilities: nil,
+                viewerDeviceID: "legacy-phone",
+                controlAuthorityPeerNodeID: "legacy-peer"
             ),
             replySender: sink.sender
         )
@@ -457,16 +509,16 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(ackCount, 0, "ringing must not auto-ack")
     }
 
-    func testConsentToggleSkipsRingingAndAutoAccepts() async {
+    func testExistingPeerGrantSkipsRingingAndAutoAccepts() async {
         let (router, sink) = makeRouter(consent: true)
         await router.handleFrame(mirrorRequestFrame(), replySender: sink.sender)
-        // With consent on, no ringing phase — router admits the viewer
-        // immediately. Host capture may fail later on machines without
-        // ScreenCaptureKit permission, but the phone must not wait for
-        // that startup before receiving the admission ack.
+        // With a grant scoped to this verified peer, no ringing phase — router
+        // admits the viewer immediately. Host capture may fail later on
+        // machines without ScreenCaptureKit permission, but the phone must not
+        // wait for that startup before receiving the admission ack.
         XCTAssertNil(router.pendingRequest)
         if case .ringing = router.phase {
-            XCTFail("consent toggle must skip ringing, got \(router.phase)")
+            XCTFail("peer grant must skip ringing, got \(router.phase)")
         }
         let frames = await sink.frames
         XCTAssertGreaterThanOrEqual(frames.count, 1)
@@ -483,11 +535,22 @@ final class MercuryRouterTests: XCTestCase {
             XCTFail("expected pending request before first consent")
             return
         }
-        XCTAssertFalse(consentStore.alwaysAllow)
+        XCTAssertEqual(consentStore.activeGrantCount, 0)
 
+        consentStore.rememberAcceptedMirrorPeers = true
         await router.acceptMirror(pending)
 
-        XCTAssertTrue(consentStore.alwaysAllow)
+        XCTAssertEqual(consentStore.activeGrantCount, 1)
+        XCTAssertTrue(consentStore.canAutoAccept(
+            connectionId: "c",
+            viewerDeviceId: "iphone-1",
+            controlAuthorityPeerNodeId: "ios-peer"
+        ))
+        XCTAssertFalse(consentStore.canAutoAccept(
+            connectionId: "other-connection",
+            viewerDeviceId: "iphone-1",
+            controlAuthorityPeerNodeId: "ios-peer"
+        ))
         XCTAssertNil(router.pendingRequest)
         let frames = await sink.frames
         XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
@@ -557,7 +620,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(router.phase, .idle)
     }
 
-    func testPresenceHeartbeatAdvertisesMirrorAutoAcceptWhenConsented() async {
+    func testPresenceHeartbeatDoesNotAdvertiseMirrorAutoAcceptCapability() async {
         let (router, sink) = makeRouter(consent: true)
         await router.handleFrame(
             presenceHeartbeatFrame(connectionID: "c", streamingCapabilities: nil),
@@ -567,7 +630,10 @@ final class MercuryRouterTests: XCTestCase {
         let frames = await sink.frames
         let capabilities = frames.first?.media?.presence?.capabilities ?? []
         XCTAssertTrue(capabilities.contains(MercuryPeer.Feature.mirrorHost.rawValue))
-        XCTAssertTrue(capabilities.contains(MercuryPeer.Feature.mirrorAutoAccept.rawValue))
+        XCTAssertFalse(
+            capabilities.contains(MercuryPeer.Feature.mirrorAutoAccept.rawValue),
+            "auto-accept is now proven per request from the stored peer grant, not advertised as a blanket host capability"
+        )
     }
 
     func testControlStreamMirrorSinkEmitsHealthHeartbeatsWithoutVideoFrames() async throws {
@@ -733,7 +799,12 @@ final class MercuryRouterTests: XCTestCase {
 
         await sink.reset()
         await router.handleFrame(
-            mirrorRequestFrame(requestID: "req_android", connectionID: "android-1"),
+            mirrorRequestFrame(
+                requestID: "req_android",
+                connectionID: "android-1",
+                viewerDeviceID: "android-device",
+                controlAuthorityPeerNodeID: "android-peer"
+            ),
             replySender: sink.sender
         )
 
@@ -758,7 +829,9 @@ final class MercuryRouterTests: XCTestCase {
             mirrorRequestFrame(
                 requestID: "req_android",
                 requesterName: "Samsung Galaxy",
-                connectionID: "android-1"
+                connectionID: "android-1",
+                viewerDeviceID: "android-device",
+                controlAuthorityPeerNodeID: "android-peer"
             ),
             replySender: sink.sender
         )
@@ -886,7 +959,8 @@ final class MercuryRouterTests: XCTestCase {
                 requestID: "req_one",
                 connectionID: "android-1",
                 viewerID: "viewer-old",
-                viewerDeviceID: "android-device"
+                viewerDeviceID: "android-device",
+                controlAuthorityPeerNodeID: "android-peer"
             ),
             replySender: sink.sender
         )
@@ -898,7 +972,8 @@ final class MercuryRouterTests: XCTestCase {
                 requestID: "req_two",
                 connectionID: "android-1",
                 viewerID: "viewer-new",
-                viewerDeviceID: "android-device"
+                viewerDeviceID: "android-device",
+                controlAuthorityPeerNodeID: "android-peer"
             ),
             replySender: sink.sender
         )
@@ -921,14 +996,24 @@ final class MercuryRouterTests: XCTestCase {
         )
 
         await router.handleFrame(
-            mirrorRequestFrame(requestID: "req_one", connectionID: "android-1"),
+            mirrorRequestFrame(
+                requestID: "req_one",
+                connectionID: "android-1",
+                viewerDeviceID: "android-device",
+                controlAuthorityPeerNodeID: "android-peer"
+            ),
             replySender: sink.sender
         )
         XCTAssertEqual(try extractStreaming(from: router.phase), "req_one")
 
         await sink.reset()
         await router.handleFrame(
-            mirrorRequestFrame(requestID: "req_two", connectionID: "android-2"),
+            mirrorRequestFrame(
+                requestID: "req_two",
+                connectionID: "android-2",
+                viewerDeviceID: "android-device-2",
+                controlAuthorityPeerNodeID: "android-peer-2"
+            ),
             replySender: sink.sender
         )
 
@@ -960,13 +1045,23 @@ final class MercuryRouterTests: XCTestCase {
             replySender: sink.sender
         )
         await router.handleFrame(
-            mirrorRequestFrame(requestID: "req_two", connectionID: "android-1"),
+            mirrorRequestFrame(
+                requestID: "req_two",
+                connectionID: "android-1",
+                viewerDeviceID: "android-device",
+                controlAuthorityPeerNodeID: "android-peer"
+            ),
             replySender: sink.sender
         )
         await sink.reset()
 
         await router.handleFrame(
-            mirrorRequestFrame(requestID: "req_three", connectionID: "ipad-1"),
+            mirrorRequestFrame(
+                requestID: "req_three",
+                connectionID: "ipad-1",
+                viewerDeviceID: "ipad-device",
+                controlAuthorityPeerNodeID: "ipad-peer"
+            ),
             replySender: sink.sender
         )
 
@@ -1117,7 +1212,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(startCount, 0)
         XCTAssertNil(router.pendingRequest)
         XCTAssertEqual(router.phase, .idle)
-        XCTAssertFalse(consentStore.alwaysAllow)
+        XCTAssertEqual(consentStore.activeGrantCount, 0)
     }
 
     func testSignedRemoteUnlockSessionAutoAcceptsWhileMacLocked() async throws {
@@ -1157,7 +1252,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(startCount, 0)
         XCTAssertNil(router.pendingRequest)
         XCTAssertEqual(try extractStreaming(from: router.phase), "locked-with-session")
-        XCTAssertFalse(consentStore.alwaysAllow)
+        XCTAssertEqual(consentStore.activeGrantCount, 0)
     }
 
     func testSignedRemoteUnlockSessionDoesNotWaitForLockedScreenCaptureBeforeAck() async throws {
@@ -1355,7 +1450,12 @@ final class MercuryRouterTests: XCTestCase {
 
         await sink.reset()
         await router.handleFrame(
-            mirrorRequestFrame(requestID: "req_android", connectionID: "shared-mac"),
+            mirrorRequestFrame(
+                requestID: "req_android",
+                connectionID: "shared-mac",
+                viewerDeviceID: "android-device",
+                controlAuthorityPeerNodeID: "android-peer"
+            ),
             controlStreamID: siblingStreamID,
             replySender: sink.sender
         )

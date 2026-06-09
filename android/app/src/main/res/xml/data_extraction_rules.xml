@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenBurnBar Android backup / transfer policy (security remediation H-8).
+
+  This is a privacy-first app that holds key material: AndroidKeyStore-wrapped
+  CloudVault / relay / Signal-identity key blobs, auth tokens, and chat content.
+  With backup enabled, those blobs (and, in debug/App-Distribution builds, the
+  seeded App Check debug secret) are eligible for adb / cloud backup and for
+  device-to-device transfer — an extraction and a malicious-restore-injection
+  vector.
+
+  `android:allowBackup="false"` disables cloud (Auto + Key/Value) backup. On
+  Android 12+ (API 31), device-to-device (D2D) transfer is governed separately
+  by THIS file, so we exclude everything from D2D too. Net effect: no OpenBurnBar
+  app data leaves the device through the platform backup/transfer mechanisms.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="device_protected_root" />
+        <exclude domain="device_protected_file" />
+        <exclude domain="device_protected_database" />
+        <exclude domain="device_protected_sharedpref" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="device_protected_root" />
+        <exclude domain="device_protected_file" />
+        <exclude domain="device_protected_database" />
+        <exclude domain="device_protected_sharedpref" />
+    </device-transfer>
+</data-extraction-rules>

@@ -320,8 +320,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .online,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             capabilities: ["chat_completions", "remote_relay"]
         )
 
@@ -353,8 +353,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .online,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             capabilities: ["chat_completions", "remote_relay"],
             lastSeenAt: now.addingTimeInterval(-90),
             updatedAt: now.addingTimeInterval(-90)
@@ -365,8 +365,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .online,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             capabilities: ["chat_completions", "remote_relay"],
             lastSeenAt: now.addingTimeInterval(-15),
             updatedAt: now.addingTimeInterval(-15)
@@ -390,7 +390,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .online,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             realtimeRelayLastSeenAt: Date().addingTimeInterval(-60 * 60),
             capabilities: ["chat_completions", "remote_relay"],
             lastSeenAt: Date().addingTimeInterval(-60 * 60),
@@ -412,7 +413,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .online,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             realtimeRelayLastSeenAt: Date().addingTimeInterval(-12 * 60),
             capabilities: ["chat_completions", "remote_relay"],
             lastSeenAt: Date().addingTimeInterval(-12 * 60),
@@ -434,7 +436,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .offline,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             realtimeRelayLastSeenAt: Date().addingTimeInterval(-10 * 60),
             capabilities: ["chat_completions", "remote_relay"],
             lastSeenAt: Date().addingTimeInterval(-10 * 60),
@@ -536,8 +539,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .offline,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             capabilities: ["chat_completions", "remote_relay"],
             lastSeenAt: Date().addingTimeInterval(-60 * 60),
             updatedAt: Date().addingTimeInterval(-60 * 60)
@@ -719,8 +722,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .online,
             relayPublicKey: newPrivateKey.publicKeyBase64,
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             hostInstallationId: "installation-1",
             capabilities: ["chat_completions", "remote_relay"]
         )
@@ -730,8 +733,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .offline,
             relayPublicKey: legacyPrivateKey.publicKeyBase64,
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             hostInstallationId: "installation-1",
             replacedByConnectionId: replacementRelay.id,
             capabilities: ["remote_relay"]
@@ -776,8 +779,8 @@ final class HermesServiceTests: XCTestCase {
                 "status": "online",
                 "advertisedModel": "hermes",
                 "relayPublicKey": privateKey.publicKeyBase64,
-                "relayKeyVersion": HermesRelayCrypto.keyVersion,
-                "relayEncryption": HermesRelayCrypto.algorithm,
+                "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersionV3,
+                "relayEncryption": HermesRelayCrypto.relayEncryptionV3,
                 "realtimeRelayURL": "wss://hermes-relay.example.com",
                 "realtimeRelayStatus": "online",
                 "realtimeRelayLastSeenAt": "2026-05-07T12:34:56.789Z",
@@ -797,7 +800,7 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(record.mode, .relayLink)
         XCTAssertEqual(record.status, .online)
         XCTAssertEqual(record.relayPublicKey, privateKey.publicKeyBase64)
-        XCTAssertEqual(record.relayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(record.relayEncryption, HermesRelayCrypto.relayEncryptionV3)
         XCTAssertEqual(record.realtimeRelayURL, "wss://hermes-relay.example.com")
         XCTAssertEqual(record.realtimeRelayStatus, "online")
         XCTAssertEqual(record.realtimeRelayProtocolVersion, HermesRealtimeRelayProtocol.version)
@@ -1948,8 +1951,8 @@ final class HermesServiceTests: XCTestCase {
         let payload = HermesRelayPayload(
             connectionID: "relay-mac",
             relayPublicKey: "AAAA",
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             operation: .chatCompletions,
             method: "POST",
             path: "/v1/chat/completions",
@@ -1987,8 +1990,8 @@ final class HermesServiceTests: XCTestCase {
         let payload = HermesRelayPayload(
             connectionID: "relay-mac",
             relayPublicKey: "AAAA",
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             operation: .chatCompletions,
             method: "POST",
             path: "/v1/chat/completions",
@@ -2044,7 +2047,7 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.isReachable)
         XCTAssertEqual(relay.unaryPayloads.first?.operation, .models)
         XCTAssertEqual(relay.unaryPayloads.first?.connectionID, "relay-mac")
-        XCTAssertEqual(relay.unaryPayloads.first?.relayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertEqual(relay.unaryPayloads.first?.relayEncryption, HermesRelayCrypto.relayEncryptionV3)
         XCTAssertNotNil(relay.unaryPayloads.first?.relayPublicKey)
     }
 
@@ -2103,8 +2106,8 @@ final class HermesServiceTests: XCTestCase {
             status: .online,
             advertisedModel: "hermes",
             relayPublicKey: relayPublicKey,
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             capabilities: ["chat_completions", "remote_relay"]
         )
         let service = HermesService()
@@ -2369,8 +2372,8 @@ final class HermesServiceTests: XCTestCase {
             mode: .relayLink,
             status: .online,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
-            relayKeyVersion: HermesRelayCrypto.keyVersion,
-            relayEncryption: HermesRelayCrypto.algorithm,
+            relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            relayEncryption: HermesRelayCrypto.relayEncryptionV3,
             capabilities: ["chat_completions", "remote_relay"]
         )
     }

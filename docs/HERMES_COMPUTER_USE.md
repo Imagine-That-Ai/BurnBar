@@ -15,9 +15,16 @@ This document is the long-lived reference for what ships on the wire, what runs 
 | **A — Agent Watch** | Mac → iOS/Android | Read-only mirror + action overlay | 8 |
 | **B — Browser CU** | Agent → Playwright Chromium | Sandboxed inside Chromium | 9 |
 | **C — Mac System CU** | Agent → CGEvent + AX | Mac-wide, gated by Accessibility | 11 |
-| **D — Phone control** | iOS/Android → Mac | Ed25519-signed intent envelopes | 12 |
+| **D — Phone control** | iOS/Android → Mac | Server-owned trusted-device root + HPKE Auth v3 relay envelope + Ed25519 authority envelope | 12 |
 
-Every path rides the existing iroh QUIC transport. No new ALPN. No WebRTC. No new encryption hop.
+Every path rides the existing iroh QUIC transport. No new ALPN. No WebRTC.
+Relays, Firestore, and gateway servers are untrusted transport only: they can
+drop, delay, or replay packets, but the Mac treats them as unable to authorize,
+decrypt, inject, approve, or execute remote-control traffic. Any operation that
+can reach local agents, files, clipboard, screen, Accessibility, or CGEvent input
+must arrive inside a sender-authenticated v3 request envelope and must also bind
+to a verified trusted-device identity. Legacy v1/v2 request envelopes fail
+closed for Mac-dispatched operations.
 
 ---
 
@@ -51,7 +58,63 @@ control.denied                ← Mac → phone iroh accept-loop refusal
 
 The carrier struct is `HermesRealtimeRelayControlPayload` — a sibling of the existing `HermesRealtimeRelayMediaPayload`. Encoders omit absent optionals so pre-Computer-Use traffic stays byte-identical.
 
-### 2.3 `MediaFrame.Flags.hasCursorMetadata`
+### 2.3 Authenticated relay request envelope
+
+All Mac-bound relay request carriers (`HermesRealtimeRelayPayload`,
+`HermesRelayRequestRecord`, Firestore `hermes_connections/*/requests/*`, and
+iroh `request.start`) use the same authenticated request opener before any
+`HermesRelayOperation` is decoded or dispatched. The required fields are:
+
+```
+relayKeyVersion: 3
+relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm"
+payloadCiphertext
+wrappedKey
+enc
+senderPublicKey
+senderDeviceId
+senderPeerNodeId
+senderCounter
+keyId
+```
+
+`senderPublicKey` is an uncompressed P-256 X9.63 public key. The Mac resolves
+`senderDeviceId` through `users/{uid}/relay_sender_keys/{senderDeviceId}`, then
+requires the server-owned record to be active, version 3, bound to the same
+`senderPeerNodeId`, `keyId`, and public key, rooted in a trusted native
+iOS/iPadOS/Android escrow device, and backed by a verified non-TOFU Signal
+identity binding. Missing sender metadata, wrong sender keys, stale or
+unverified Signal identity, revoked devices, v1/v2 downgrade attempts, and
+unknown versions are denied before plaintext decode.
+
+The HPKE Auth key-wrap AAD and the payload AEAD AAD both bind `uid`,
+`connectionId`, `requestId`, `operation`, `senderDeviceId`,
+`senderPeerNodeId`, `senderCounter`, and `keyId`. The Mac persists a
+sender-scoped replay cache and rejects duplicate request IDs and counters that
+do not strictly advance for that sender/key pair.
+
+### 2.4 Server-owned trust roots
+
+Clients do not directly write live trust-root documents for remote control.
+Publication goes through App-Check/high-risk-nonce callables:
+
+| Callable | Server-owned write |
+|---|---|
+| `publishIrohPairingPublicKey` | `users/{uid}/iroh_pairing_keys/host` |
+| `publishIrohPairingRecord` | `users/{uid}/iroh_pairing/{connectionId}` |
+| `revokeIrohPairingRecord` | server tombstone/removal for `users/{uid}/iroh_pairing/{connectionId}` |
+| `publishPhoneControlAuthority` | `users/{uid}/iroh_pairing/{connectionId}/controllers/{peerNodeId}` |
+| `publishRelaySenderKey` | `users/{uid}/relay_sender_keys/{senderDeviceId}` |
+| `publishAgentGrantAuthority` | `users/{uid}/agent_grant_authorities/{deviceId}` |
+| `queueAgentCapabilityGrantRequest` | `users/{uid}/agent_capability_grant_requests/{requestId}` |
+
+The callable layer verifies Firebase Auth ownership, App Check, high-risk nonce,
+trusted native escrow-device state, key shape, peer-node/key-id derivation,
+fresh publication time, Signal identity readback where applicable, and
+proof-of-possession before writing. Firestore rules keep owner read access but
+reject direct client writes to these live roots.
+
+### 2.5 `MediaFrame.Flags.hasCursorMetadata`
 
 The cursor coords (i16 x, i16 y, both big-endian) live in 4 trailing bytes after the existing 18-byte header. Flag bit on the wire is **`0x08`** — `0x04` was already taken by `.muted`. Receivers that do not set the bit ignore the trailing 4 bytes, so the extension is backward-compatible.
 
@@ -172,19 +235,34 @@ intentHashBlake3 (hex SHA-256 of canonical-JSON intent)
 signatureEd25519 (base64 Ed25519 over UTF8(intentHash) ‖ u64BE(counter) ‖ i64BE(timestampMs))
 ```
 
-For `HermesRealtimeRelayInputIntent`, the signed `intentHashBlake3` covers the action fields and excludes the `authority` envelope. The phone signs before attaching the final envelope; the Mac verifier recomputes the same authority-free hash before checking the Ed25519 signature. The pure signer/verifier lives in `OpenBurnBarComputerUseCore.ComputerUsePhoneControlSigner` so iOS issuer and Mac validator share canonical signing semantics and the test target can prove sig + counter + freshness + intent-hash semantics from a single fixture. Android mirrors the same contract in `PhoneControlSigner.kt` with Tink Ed25519: sorted authority-free JSON, SHA-256 hex in the `intentHashBlake3` field, `UTF8(hash) || u64BE(counter) || i64BE(timestampMs)`, replay/freshness/tamper checks, and Swift Date reference-second conversion for the Mac-bound `timestamp` JSON field. `PhoneControlSender.kt` then wraps the signed authority in the Android relay model as a `control.input.intent` frame with `control.streamClass = "control.input"` and `control.inputIntent.authority` attached. Android publishes the verifier root with `PhoneControlAuthorityPublisher.kt` under `iroh_pairing/{connectionId}/controllers/{peerNodeId}`; `PhoneControlSigningKeyStore` keeps the Ed25519 seed wrapped by Android Keystore AES-GCM. iOS and Android both register the current phone under `escrow_devices/{deviceId}` and expose a mirror Trust action; Firestore rejects the controller authority document until that device is `trusted`, the pairing document exists, and the account has the hosted Computer Use entitlement.
+For `HermesRealtimeRelayInputIntent`, the signed `intentHashBlake3` covers the action fields and excludes the `authority` envelope. The phone signs before attaching the final envelope; the Mac verifier recomputes the same authority-free hash before checking the Ed25519 signature. The pure signer/verifier lives in `OpenBurnBarComputerUseCore.ComputerUsePhoneControlSigner` so iOS issuer and Mac validator share canonical signing semantics and the test target can prove sig + counter + freshness + intent-hash semantics from a single fixture. Android mirrors the same contract in `PhoneControlSigner.kt` with Tink Ed25519: sorted authority-free JSON, SHA-256 hex in the `intentHashBlake3` field, `UTF8(hash) || u64BE(counter) || i64BE(timestampMs)`, replay/freshness/tamper checks, and Swift Date reference-second conversion for the Mac-bound `timestamp` JSON field. `PhoneControlSender.kt` then wraps the signed authority in the Android relay model as a `control.input.intent` frame with `control.streamClass = "control.input"` and `control.inputIntent.authority` attached. iOS and Android publish the verifier root through `publishPhoneControlAuthority`; the server writes `iroh_pairing/{connectionId}/controllers/{peerNodeId}` only after the phone escrow device is trusted, the pairing document exists, the peer node is derived from the Ed25519 public key, proof-of-possession verifies, and the account has the hosted Computer Use entitlement. Android `PhoneControlSigningKeyStore` keeps the Ed25519 seed wrapped by Android Keystore AES-GCM.
+
+Remote approval responses are also signed. `control.approval.response` carries
+`requestHashBlake3` plus an authority envelope whose signed hash binds
+`approvalId`, `sessionId`, `runId`, decision, pending request hash, response
+timestamp, and authority counter. Mac-local presenter responses remain
+local-only and do not need this envelope. Remote responses without an authority
+envelope, or with the wrong session/request hash/counter, are ignored with
+`approval_signature_required`.
 
 Agent capability grants reuse the same authority envelope and signing payload,
 but the authority-free hash is computed over `AgentCapabilityGrantRequest`.
 iOS/iPadOS and Android first register the current device if needed, require the
 matching `escrow_devices/{deviceId}` record to be explicitly `trusted`, and
-then require platform local authentication before issuing Desktop, All, or YOLO
-grants. iOS/iPadOS use LocalAuthentication; Android uses AndroidX
+publish grant authority through `publishAgentGrantAuthority`. They require
+platform local authentication before issuing Desktop, All, or YOLO grants.
+iOS/iPadOS use LocalAuthentication; Android uses AndroidX
 BiometricPrompt from `FragmentActivity` and treats failed face/fingerprint
 attempts as retryable until the system reports success, cancellation, or a
 terminal error. Low and Workspace do not require biometric unlock, but still
 require a signed-in user, a paired Mac, the hosted Computer Use entitlement, and
 a trusted controller identity.
+
+Grant requests are fail-closed against preset/capability/trust-mode mismatch.
+`shell_unrestricted` is accepted only for the canonical YOLO preset, with fresh
+device authentication and a trusted signed authority. The Mac computes local
+authentication requirements from the actual requested capabilities and trust
+mode, never from the display preset alone.
 
 ### 6.1 Replay rejection contract
 

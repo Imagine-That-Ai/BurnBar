@@ -74,7 +74,13 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
         guard authority.peerNodeId == wireRequest.authority.peerNodeId else {
             throw QueueError.authorityMismatch
         }
-        validator.registerPeer(nodeId: authority.peerNodeId, publicKey: authority.publicKey)
+        // F1: the agent-grant authority key rides the SAME controller pin as
+        // phone-control intents. A refused registration (unpinned-under-enforcement
+        // or a key that differs from the operator-pinned key) must short-circuit
+        // to a denied receipt — never validate a grant signed by an unverified key.
+        guard validator.registerPeer(nodeId: authority.peerNodeId, publicKey: authority.publicKey, uid: uid) else {
+            throw QueueError.untrustedControllerKey
+        }
         _ = try validator.validate(
             envelope: wireRequest.authority,
             grantRequest: wireRequest,
@@ -108,7 +114,7 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
             "requestId", "runtime", "threadId", "preset", "capabilities",
             "trustMode", "deliveryMode", "requestedAt", "expiresAt",
             "grantDurationSeconds", "sourceDeviceId", "clientIntentId",
-            "localAuthenticationSatisfied", "authority"
+            "localAuthenticationSatisfied", "localAuthProof", "authority"
         ]
         var payload: [String: Any] = [:]
         for key in keys {
@@ -162,6 +168,10 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
     enum QueueError: Error {
         case missingAuthority
         case authorityMismatch
+        /// The grant authority's signing key was refused by the F1 controller
+        /// pin (unpinned-under-enforcement or a key that differs from the
+        /// operator-pinned key). The caller writes a denied receipt.
+        case untrustedControllerKey
     }
 }
 #endif

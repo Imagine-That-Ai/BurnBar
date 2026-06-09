@@ -18,6 +18,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
     private let accountManager: AccountManager
     private let settingsManager: SettingsManager
     private let relayKeyStore: HermesRelayKeyStore
+    private let authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener
     private let urlSession: URLSession
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -34,11 +35,13 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         accountManager: AccountManager = .shared,
         settingsManager: SettingsManager = .shared,
         relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore(),
+        authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener = HermesRelayAuthenticatedRequestOpeners.shared,
         urlSession: URLSession = .shared
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.relayKeyStore = relayKeyStore
+        self.authenticatedRequestOpener = authenticatedRequestOpener
         self.urlSession = urlSession
     }
 
@@ -196,26 +199,22 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
     ) async {
         guard let requestID = frame.requestId,
               let payload = frame.payload,
-              let operation = payload.operation,
-              let payloadCiphertext = payload.payloadCiphertext,
-              let wrappedKey = payload.wrappedKey,
-              payload.relayEncryption == HermesRelayCrypto.algorithm else {
+              let operation = payload.operation else {
             await sendError("Malformed realtime relay request.", frame: frame, socket: socket)
             return
         }
         do {
             let privateKey = try relayKeyStore.privateKey()
-            let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
-                wrappedKey,
-                privateKey: privateKey,
-                aad: HermesRelayCrypto.keyAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+            let opened = try await authenticatedRequestOpener.open(
+                payload: payload,
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                operation: operation,
+                recipientPrivateKey: privateKey
             )
-            let requestPlaintext = try HermesRelayCrypto.openBase64(
-                ciphertext: payloadCiphertext,
-                keyData: keyData,
-                aad: HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
-            )
-            let encryptedPayload = try JSONDecoder().decode(HermesRelayEncryptedRequestPayload.self, from: requestPlaintext)
+            let keyData = opened.keyData
+            let encryptedPayload = opened.encryptedPayload
             if operation == .chatCompletions {
                 try await forwardStreamingChat(
                     payload: encryptedPayload,

@@ -45,6 +45,64 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         return payload
     }
 
+    private func canonicalJSONNumber(_ value: Double) -> String {
+        guard value.isFinite else { return "0" }
+        if value.rounded(.towardZero) == value {
+            return String(Int64(value))
+        }
+        var rendered = String(format: "%.12f", locale: Locale(identifier: "en_US_POSIX"), value)
+        while rendered.last == "0" { rendered.removeLast() }
+        if rendered.last == "." { rendered.removeLast() }
+        return rendered
+    }
+
+    /// Domain-separated local-auth proof payload for high-risk queued agent grants.
+    /// This signs the canonical grant intent hash after the device has completed
+    /// user-presence authentication. The server consumes each proof once.
+    public func localAuthProofSignablePayload(
+        proofId: String,
+        deviceId: String,
+        signedIntentHash: String,
+        authenticatedAt: Date,
+        expiresAt: Date
+    ) -> Data {
+        let canonical = [
+            "OpenBurnBar.AgentGrantLocalAuthProof.v1",
+            proofId,
+            deviceId,
+            signedIntentHash.lowercased(),
+            canonicalJSONNumber(authenticatedAt.timeIntervalSinceReferenceDate),
+            canonicalJSONNumber(expiresAt.timeIntervalSinceReferenceDate)
+        ].joined(separator: "\n")
+        return Data(canonical.utf8)
+    }
+
+    public func signLocalAuthProof(
+        proofId: String = UUID().uuidString,
+        deviceId: String,
+        signedIntentHash: String,
+        authenticatedAt: Date,
+        expiresAt: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> HermesRealtimeRelayAgentGrantLocalAuthProof {
+        let payload = localAuthProofSignablePayload(
+            proofId: proofId,
+            deviceId: deviceId,
+            signedIntentHash: signedIntentHash,
+            authenticatedAt: authenticatedAt,
+            expiresAt: expiresAt
+        )
+        let signature = try privateKey.signature(for: payload)
+        return HermesRealtimeRelayAgentGrantLocalAuthProof(
+            proofId: proofId,
+            deviceId: deviceId,
+            signedIntentHash: signedIntentHash.lowercased(),
+            authenticatedAt: authenticatedAt,
+            expiresAt: expiresAt,
+            signatureEd25519: signature.base64EncodedString()
+        )
+    }
+
     /// Hex-encoded SHA-256 of canonical-JSON encoding of `intent`.
     /// The signer hashes the intent the receiver will replay,
     /// guaranteeing both sides agree on the bytes that authorize the
@@ -126,6 +184,56 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             sourceDeviceId: request.sourceDeviceId,
             clientIntentId: request.clientIntentId,
             localAuthenticationSatisfied: request.localAuthenticationSatisfied
+        ))
+    }
+
+    public func canonicalApprovalRequestHashHex(request: HermesRealtimeRelayApprovalRequest) throws -> String {
+        struct SignableApprovalRequest: Encodable {
+            let approvalId: String
+            let runId: String
+            let sessionId: String
+            let toolKind: String
+            let title: String
+            let message: String
+            let beforeScreenshotBlake3: String?
+            let beforeScreenshotMimeType: String?
+            let beforeScreenshotSizeBytes: Int?
+            let actionSummary: String
+            let requestedAt: Date
+            let trustMode: String?
+        }
+        return try canonicalIntentHashHex(intent: SignableApprovalRequest(
+            approvalId: request.approvalId,
+            runId: request.runId,
+            sessionId: request.sessionId,
+            toolKind: request.toolKind,
+            title: request.title,
+            message: request.message,
+            beforeScreenshotBlake3: request.beforeScreenshotBlake3,
+            beforeScreenshotMimeType: request.beforeScreenshotMimeType,
+            beforeScreenshotSizeBytes: request.beforeScreenshotSizeBytes,
+            actionSummary: request.actionSummary,
+            requestedAt: request.requestedAt,
+            trustMode: request.trustMode
+        ))
+    }
+
+    public func canonicalApprovalResponseHashHex(response: HermesRealtimeRelayApprovalResponse) throws -> String {
+        struct SignableApprovalResponse: Encodable {
+            let approvalId: String
+            let decision: HermesRealtimeRelayApprovalResponse.Decision
+            let respondedBy: String
+            let respondedAt: Date
+            let note: String?
+            let requestHashBlake3: String?
+        }
+        return try canonicalIntentHashHex(intent: SignableApprovalResponse(
+            approvalId: response.approvalId,
+            decision: response.decision,
+            respondedBy: response.respondedBy,
+            respondedAt: response.respondedAt,
+            note: response.note,
+            requestHashBlake3: response.requestHashBlake3
         ))
     }
 
@@ -316,6 +424,25 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         privateKey: Curve25519.Signing.PrivateKey
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalAgentGrantRequestHashHex(request: request)
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let signature = try privateKey.signature(for: payload)
+        return SignedAuthority(
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: timestamp,
+            intentHashHex: intentHashHex,
+            signatureBase64: signature.base64EncodedString()
+        )
+    }
+
+    public func sign(
+        approvalResponse response: HermesRealtimeRelayApprovalResponse,
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> SignedAuthority {
+        let intentHashHex = try canonicalApprovalResponseHashHex(response: response)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
         let signature = try privateKey.signature(for: payload)
         return SignedAuthority(

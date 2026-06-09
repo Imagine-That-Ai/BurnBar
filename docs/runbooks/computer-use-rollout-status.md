@@ -8,6 +8,45 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
 
 ## Cross-agent desktop permission grants
 
+- **Permanent remote-control trust-boundary remediation (2026-06-09):**
+  - Mac-dispatched relay/control operations now fail closed unless the request
+    opens through the shared HPKE Auth v3 request opener. WSS, Firestore, and
+    iroh `request.start` all require `relayKeyVersion = 3`,
+    `relayEncryption = "hpke-auth-p256-hkdfsha256-aes256gcm"`, `enc`,
+    `wrappedKey`, `payloadCiphertext`, `senderPublicKey`, `senderDeviceId`,
+    `senderPeerNodeId`, `senderCounter`, and `keyId` before decoding plaintext.
+  - The v3 AAD binds uid, connection, request, operation, sender device, sender
+    peer node, sender counter, and key id. The Mac persists a sender-scoped
+    replay cache and rejects v1/v2 downgrade attempts, missing sender fields,
+    wrong pinned sender keys, stale counters, duplicate request IDs, and
+    unverified/revoked Signal identity readback before dispatch.
+  - Live trust roots are server-owned. iOS, iPadOS, Android, and macOS now use
+    `publishIrohHostPairing`, `publishPhoneControlAuthority`,
+    `publishRelaySenderKey`, `publishAgentGrantAuthority`, and
+    `queueAgentCapabilityGrantRequest` instead of direct client writes to
+    pairing, controller, relay sender key, grant authority, or queued grant
+    documents.
+  - Firestore rules keep owner readback but reject direct client writes to
+    `iroh_pairing_keys`, `iroh_pairing`, `iroh_pairing/*/controllers`,
+    `relay_sender_keys`, `agent_grant_authorities`, and grant request creation.
+    Relay request writes must use the authenticated v3 schema and sender
+    identity metadata.
+  - Remote approval responses now carry a signed authority envelope binding the
+    approval id, session/run id, decision, pending request hash, timestamp, and
+    counter. Mac-local presenter approvals remain local-only.
+  - Grant hardening rejects preset/capability/trust-mode mismatch. Privileged
+    capabilities derive local-auth requirements from the actual requested
+    capability set; unrestricted shell is only accepted for canonical YOLO with
+    fresh device authentication and a trusted signed authority.
+- **Verification (2026-06-09):**
+  - `swift test --package-path OpenBurnBarCore --filter ComputerUsePhoneControlSignerTests --filter AgentCapabilityGrantTests --filter HermesRelayAuthenticatedRequestOpenerTests`
+  - `npm --prefix functions run build`
+  - `npm --prefix functions run test:security`
+  - `npm --prefix functions run test:firestore-rules`
+  - `./scripts/test-openburnbar-app.sh -only-testing:OpenBurnBarTests/PhoneControlAuthorityValidatorAttestationTests`
+  - `./scripts/test-openburnbar-mobile.sh`
+  - `./scripts/test-openburnbar-android.sh`
+
 - **Code landed (2026-05-22):**
   - Added `AgentCapabilityGrant` and `AgentDesktopToolDefinitions` to
     `OpenBurnBarComputerUseCore` so Hermes, OpenClaw, Pi, Codex, and Claude all

@@ -17,6 +17,7 @@ final class HermesRelayHostService {
     private let settingsManager: SettingsManager
     private let urlSession: URLSession
     private let relayKeyStore: HermesRelayKeyStore
+    private let authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener
     private let realtimeRelayClient: HermesRealtimeRelayHosting
     private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
     private let cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
@@ -46,6 +47,7 @@ final class HermesRelayHostService {
         settingsManager: SettingsManager = .shared,
         urlSession: URLSession = .shared,
         relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore(),
+        authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener = HermesRelayAuthenticatedRequestOpeners.shared,
         realtimeRelayClient: HermesRealtimeRelayHosting? = nil,
         cliChatDispatcher: CLIAgentRelayChatDispatcher? = nil,
         cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher? = nil,
@@ -56,6 +58,7 @@ final class HermesRelayHostService {
         self.settingsManager = settingsManager
         self.urlSession = urlSession
         self.relayKeyStore = relayKeyStore
+        self.authenticatedRequestOpener = authenticatedRequestOpener
         self.cliChatDispatcher = cliChatDispatcher
         self.cliModelCatalogDispatcher = cliModelCatalogDispatcher
         self.cliSessionActionDispatcher = cliSessionActionDispatcher
@@ -343,8 +346,8 @@ final class HermesRelayHostService {
             "hostInstallationId": relayHostInstallationID,
             "replacedByConnectionId": FieldValue.delete(),
             "relayPublicKey": relayPrivateKey.publicKeyBase64,
-            "relayKeyVersion": HermesRelayCrypto.keyVersion,
-            "relayEncryption": HermesRelayCrypto.algorithm,
+            "relayKeyVersion": HermesRelayCrypto.gatewayRelayKeyVersionV3,
+            "relayEncryption": HermesRelayCrypto.relayEncryptionV3,
             "realtimeRelayStatus": realtimeReady ? "online" : "offline",
             "updatedAt": now,
             "schemaVersion": 2
@@ -408,8 +411,8 @@ final class HermesRelayHostService {
         ]
         if let publicKey = try? relayKeyStore.existingPublicKeyBase64() {
             data["relayPublicKey"] = publicKey
-            data["relayKeyVersion"] = HermesRelayCrypto.keyVersion
-            data["relayEncryption"] = HermesRelayCrypto.algorithm
+            data["relayKeyVersion"] = HermesRelayCrypto.gatewayRelayKeyVersionV3
+            data["relayEncryption"] = HermesRelayCrypto.relayEncryptionV3
         }
         do {
             let snap = try await ref.getDocument()
@@ -482,7 +485,7 @@ final class HermesRelayHostService {
                 ], merge: true)
                 return
             }
-            let prepared = try decryptRelayRequest(data, uid: uid, requestID: requestID)
+            let prepared = try await decryptRelayRequest(data, uid: uid, requestID: requestID)
             context = prepared.context
             switch operation {
             case .chatCompletions:
@@ -620,39 +623,62 @@ final class HermesRelayHostService {
         _ data: [String: Any],
         uid: String,
         requestID: String
-    ) throws -> (data: [String: Any], context: HermesRelayRequestContext) {
+    ) async throws -> (data: [String: Any], context: HermesRelayRequestContext) {
         guard uid.isEmpty == false,
-              data["relayEncryption"] as? String == HermesRelayCrypto.algorithm,
-              let wrappedKey = data["wrappedKey"] as? String,
-              let payloadCiphertext = data["payloadCiphertext"] as? String else {
+              let operationText = data["operation"] as? String,
+              let operation = HermesRelayOperation(rawValue: operationText) else {
             throw HermesRelayHostError.encryptionRequired
         }
         let connectionID = (data["connectionId"] as? String) ?? self.connectionID
         let privateKey = try relayKeyStore.privateKey()
-        let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
-            wrappedKey,
-            privateKey: privateKey,
-            aad: HermesRelayCrypto.keyAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+        let payload = HermesRealtimeRelayPayload(
+            operation: operation,
+            method: data["method"] as? String,
+            payloadCiphertext: data["payloadCiphertext"] as? String,
+            enc: data["enc"] as? String,
+            wrappedKey: data["wrappedKey"] as? String,
+            relayEncryption: data["relayEncryption"] as? String,
+            relayKeyVersion: Self.intValue(data["relayKeyVersion"]),
+            senderPublicKey: data["senderPublicKey"] as? String,
+            senderDeviceId: data["senderDeviceId"] as? String,
+            senderPeerNodeId: data["senderPeerNodeId"] as? String,
+            senderCounter: Self.int64Value(data["senderCounter"]),
+            keyId: data["keyId"] as? String
         )
-        let plaintext = try HermesRelayCrypto.openBase64(
-            ciphertext: payloadCiphertext,
-            keyData: keyData,
-            aad: HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+        let opened = try await authenticatedRequestOpener.open(
+            payload: payload,
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            operation: operation,
+            recipientPrivateKey: privateKey
         )
-        let payload = try JSONDecoder().decode(HermesRelayEncryptedRequestPayload.self, from: plaintext)
         var decrypted = data
-        decrypted["path"] = payload.path
-        decrypted["sessionId"] = payload.sessionId
-        decrypted["body"] = payload.body
+        decrypted["path"] = opened.encryptedPayload.path
+        decrypted["sessionId"] = opened.encryptedPayload.sessionId
+        decrypted["body"] = opened.encryptedPayload.body
         return (
             decrypted,
             HermesRelayRequestContext(
                 uid: uid,
                 requestID: requestID,
                 connectionID: connectionID,
-                keyData: keyData
+                keyData: opened.keyData
             )
         )
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let int = value as? Int { return int }
+        if let number = value as? NSNumber { return number.intValue }
+        return nil
+    }
+
+    private static func int64Value(_ value: Any?) -> Int64? {
+        if let int64 = value as? Int64 { return int64 }
+        if let int = value as? Int { return Int64(int) }
+        if let number = value as? NSNumber { return number.int64Value }
+        return nil
     }
 
     private func claimRelayRequest(reference: DocumentReference) async throws -> ClaimedRelayRequest? {

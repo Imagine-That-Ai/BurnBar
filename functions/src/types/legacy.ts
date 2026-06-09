@@ -276,8 +276,10 @@ export interface HermesConnectionAuditEventDoc {
  *   4. Dial `nodeId` plus the signed relay/direct addresses over the QUIC ALPN advertised by
  *      `IrohRelayProtocol.alpn`.
  *
- * Firestore rules gate this collection so only the owning user can read or
- * write; see `firestore.rules`.
+ * Firestore rules keep owner read access, but live writes are server-owned and
+ * must flow through `publishIrohPairingRecord` / `revokeIrohPairingRecord`.
+ * The callable verifies ownership, trusted Mac escrow-device state, freshness,
+ * key shape, peer derivation, and proof-of-possession before writing.
  */
 export interface IrohPairingRecordDoc {
   /** Stable connection ID (matches `HermesConnectionDoc.id` on the Mac side). */
@@ -322,8 +324,8 @@ export const IROH_PAIRING_FRESHNESS_MS = 3 * 60 * 1000;
 export const IROH_PAIRING_SIGNATURE_PREFIX = "openburnbar.iroh.pairing.v1";
 
 /**
- * Singleton document published by the Mac at
- * `users/{uid}/iroh_pairing_keys/host` containing the Ed25519 public half of
+ * Singleton document published by the Mac through `publishIrohPairingPublicKey`
+ * at `users/{uid}/iroh_pairing_keys/host` containing the Ed25519 public half of
  * the pairing key. iOS clients fetch this once per session and verify every
  * `IrohPairingRecordDoc.signature` against it before dialing a NodeId.
  *
@@ -355,15 +357,16 @@ export interface IrohPairingPublicKeyDoc {
 export const IROH_PAIRING_KEY_HOST_ROLE = "host";
 
 /**
- * Phone-control authority key. Published by iOS/iPadOS before it opens the
- * Computer Use `control.input` stream; read by the Mac when it receives
- * `control.classify`.
+ * Phone-control authority key. Published by iOS/iPadOS/Android through
+ * `publishPhoneControlAuthority` before it opens the Computer Use
+ * `control.input` stream; read by the Mac when it receives `control.classify`.
  *
  * Lives at:
  *   /users/{uid}/iroh_pairing/{connectionId}/controllers/{peerNodeId}
  *
  * This keeps the Ed25519 verification root out of the stream it is supposed
- * to authenticate. Firestore rules require `connectionId` to name the current
+ * to authenticate. Firestore rules keep owner read access but reject direct
+ * client writes; the callable requires `connectionId` to name the current
  * pairing record and `deviceId` to refer to a trusted escrow device in the
  * same user namespace.
  */
@@ -388,6 +391,102 @@ export interface ComputerUsePhoneAuthorityDoc {
 
   /** Frame schema version the key is bound to. Default 1. */
   protocolVersion: number;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/**
+ * Relay sender key used by authenticated relay request envelopes. Published by
+ * iOS/iPadOS/Android through `publishRelaySenderKey`, then read by the Mac
+ * before opening any Mac-bound `HermesRelayOperation`.
+ *
+ * Lives at:
+ *   /users/{uid}/relay_sender_keys/{deviceId}
+ *
+ * Firestore rules keep owner read access but reject direct client writes. The
+ * callable verifies App Check, high-risk nonce, trusted native escrow-device
+ * state, P-256 key shape, key-id derivation, fresh publication time, proof of
+ * possession, and verified Signal identity readback.
+ */
+export interface RelaySenderKeyDoc {
+  /** Document id; equals `deviceId`. */
+  id: string;
+
+  /** Trusted native iOS/iPadOS/Android escrow device that owns the sender key. */
+  deviceId: string;
+
+  /** Stable phone-control peer id bound to the sender key. */
+  peerNodeId: string;
+
+  /** `relay-v3-` plus the expected SHA-256-derived key digest suffix. */
+  keyId: string;
+
+  /** Base64 of the uncompressed X9.63 P-256 public key (65 bytes, 0x04-prefixed). */
+  publicKeyBase64: string;
+
+  /** Authenticated relay request version. Must be 3 for live command traffic. */
+  relayKeyVersion: 3;
+
+  /** Today always `hpke-auth-p256-hkdfsha256-aes256gcm`. */
+  relayEncryption: "hpke-auth-p256-hkdfsha256-aes256gcm";
+
+  /** Matched Signal identity key version from the trusted-device binding. */
+  signalIdentityKeyVersion: number;
+
+  /** Matched verified Signal identity fingerprint. */
+  signalIdentityFingerprint: string;
+
+  /** Live command traffic requires verified, non-TOFU Signal identity. */
+  signalIdentityVerification: "verified";
+
+  /** Active until the device, sender key, or Signal identity is revoked. */
+  status: "active" | "revoked";
+
+  /** Milliseconds since epoch when the phone published/refreshed the doc. */
+  publishedAtMillis: number;
+
+  /** Server-stamped time. */
+  createdAt: string;
+  updatedAt: string;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/**
+ * Public verification root for queued agent capability grants. Published by
+ * iOS/iPadOS/Android through `publishAgentGrantAuthority`; read by the Mac
+ * before applying a live or queued grant.
+ *
+ * Lives at:
+ *   /users/{uid}/agent_grant_authorities/{deviceId}
+ */
+export interface AgentGrantAuthorityDoc {
+  /** Document id; equals `deviceId`. */
+  id: string;
+
+  /** Trusted native iOS/iPadOS/Android escrow device that owns the key. */
+  deviceId: string;
+
+  /** Stable peer id derived from the Ed25519 public key. */
+  peerNodeId: string;
+
+  /** Base64 of the 32-byte Ed25519 public key. */
+  publicKeyBase64: string;
+
+  /** Server-owned authority family. */
+  authorityKind: "agent_capability_grant";
+
+  /** Active until the device or authority key is revoked. */
+  status: "active" | "revoked";
+
+  /** Milliseconds since epoch when the phone published/refreshed the doc. */
+  publishedAtMillis: number;
+
+  /** Server-stamped time. */
+  createdAt: string;
+  updatedAt: string;
 
   /** Document schema version for forward compatibility. */
   schemaVersion: number;
@@ -546,6 +645,12 @@ export interface HermesRelayRequestDoc {
   body?: string;
   payloadCiphertext?: string;
   wrappedKey?: string;
+  enc?: string;
+  senderPublicKey?: string;
+  senderDeviceId?: string;
+  senderPeerNodeId?: string;
+  senderCounter?: number;
+  keyId?: string;
   relayEncryption?: string;
   relayKeyVersion?: number;
   error?: string;

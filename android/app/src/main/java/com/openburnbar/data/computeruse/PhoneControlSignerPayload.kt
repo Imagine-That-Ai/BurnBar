@@ -17,4 +17,20 @@ internal object PhoneControlSignerPayload {
                 .array()
         return hashBytes + suffix
     }
+
+    fun localAuthProofPayload(
+        proofId: String,
+        deviceId: String,
+        signedIntentHash: String,
+        authenticatedAtSwiftReferenceSeconds: Double,
+        expiresAtSwiftReferenceSeconds: Double,
+    ): ByteArray =
+        listOf(
+            "OpenBurnBar.AgentGrantLocalAuthProof.v1",
+            proofId,
+            deviceId,
+            signedIntentHash.lowercase(),
+            PhoneControlSignerJsonEncoding.number(authenticatedAtSwiftReferenceSeconds),
+            PhoneControlSignerJsonEncoding.number(expiresAtSwiftReferenceSeconds),
+        ).joinToString(separator = "\n").toByteArray(Charsets.UTF_8)
 }

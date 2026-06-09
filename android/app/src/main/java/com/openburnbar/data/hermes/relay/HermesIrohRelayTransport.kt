@@ -447,11 +447,7 @@ class FirestoreIrohPairingDirectory(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : IrohPairingDirectory {
     override suspend fun publish(record: IrohPairingRecord, uid: String) {
-        // Android is verify-only — but support manual publish for tests.
-        firestore.collection("users").document(uid)
-            .collection("iroh_pairing").document(record.connectionId)
-            .set(record.asMap())
-            .await()
+        throw IrohPairingDirectoryException.unsupportedOnReader()
     }
 
     override suspend fun fetch(uid: String, connectionId: String): IrohPairingRecord? {
@@ -468,21 +464,9 @@ class FirestoreIrohPairingDirectory(
     }
 
     override suspend fun revoke(uid: String, connectionId: String) {
-        firestore.collection("users").document(uid)
-            .collection("iroh_pairing").document(connectionId)
-            .delete().await()
+        throw IrohPairingDirectoryException.unsupportedOnReader()
     }
 }
-
-private fun IrohPairingRecord.asMap(): Map<String, Any?> = mapOf(
-    "id" to connectionId,
-    "nodeId" to nodeId,
-    "relayURL" to relayURL,
-    "directAddresses" to directAddresses,
-    "publishedAtMillis" to publishedAtMillis,
-    "protocolVersion" to protocolVersion,
-    "signature" to signature,
-)
 
 internal fun decodeIrohPairingRecord(documentId: String, uid: String, data: Map<String, Any?>): IrohPairingRecord? {
     val connectionId =

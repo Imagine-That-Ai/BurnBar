@@ -217,7 +217,7 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
     }
 
     @MainActor
-    func test_mediaControlClassifyTransfersUsingFrameConnectionIDWhenRouteDrifts() async throws {
+    func test_mediaControlClassifyRejectsConnectionIDDrift() async throws {
         let suiteName = "iroh.handler.media-control.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -248,12 +248,11 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
             connectionID: "relay-current-mac-route"
         )
 
-        XCTAssertEqual(disposition, .transferredStreamOwnership)
+        XCTAssertEqual(disposition, .callerOwnsStream)
         let registrations = await registrar.registrations
-        XCTAssertEqual(registrations.map(\.uid), ["uid-1"])
-        XCTAssertEqual(registrations.map(\.connectionID), ["relay-persisted-phone-route"])
-        let closeCount = await stream.closeCount
-        XCTAssertEqual(closeCount, 0)
+        XCTAssertTrue(registrations.isEmpty)
+        let sentFrames = await stream.sentFrames
+        XCTAssertEqual(sentFrames.last?.type, .responseError)
     }
 }
 
@@ -403,9 +402,11 @@ final class HermesIrohRelayHostClientRuntimeTests: XCTestCase {
 
 private actor RecordingIrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing {
     private(set) var publishCount = 0
+    private(set) var publishedDeviceIds: [String] = []
 
-    func publish(uid: String, publicKeyBase64: String) async throws {
+    func publish(uid: String, deviceId: String, publicKeyBase64: String) async throws {
         publishCount += 1
+        publishedDeviceIds.append(deviceId)
     }
 }
 

@@ -24,6 +24,7 @@ function expectedVaultKeyedHmac(label: "content" | "slug", value: string): strin
   const dedupKey = Buffer.from(hkdfSync("sha256", KEY, Buffer.alloc(0), `pensieve-dedup:${label}`, 32));
   return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
 }
+process.env.OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE = "true";
 process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64 = KEY.toString("base64");
 
 test("redactSecrets strips common secret shapes", () => {

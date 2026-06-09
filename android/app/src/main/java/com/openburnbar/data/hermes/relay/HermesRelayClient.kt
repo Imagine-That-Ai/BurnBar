@@ -5,6 +5,10 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
+import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
+import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Date
@@ -47,7 +51,7 @@ data class HermesRelayConnectionDescriptor(
     val displayName: String,
     val relayPublicKey: String,
     val relayKeyVersion: Int? = null,
-    val relayEncryption: String = HermesRelayCrypto.ALGORITHM,
+    val relayEncryption: String = HermesRelayCrypto.ALGORITHM_V3,
     val advertisedModel: String? = null,
     val capabilities: List<String> = emptyList(),
     val status: String = "online",
@@ -106,9 +110,9 @@ private fun Map<String, Any?>.millisField(vararg names: String): Long? = names.f
  * Envelope contract (`users/{uid}/hermes_relay_requests/{id}.*`) for
  * outbound requests:
  *   - `id`, `connectionId`, `operation`, `method`, `status`,
- *     `relayEncryption`, `relayKeyVersion`, `payloadCiphertext`,
- *     `wrappedKey`, `chunkCount`, `createdAt`, `updatedAt`, `expiresAt`,
- *     `expireAt`, `schemaVersion=2`.
+     *     `relayEncryption`, `relayKeyVersion=3`, `payloadCiphertext`,
+     *     `enc`, `wrappedKey`, sender identity metadata, `chunkCount`,
+     *     `createdAt`, `updatedAt`, `expiresAt`, `expireAt`, `schemaVersion=2`.
  *
  * Response chunks live in `.../{requestId}/chunks/{seq}` with fields
  * `requestId`, `sequence`, `kind` (`sse`|`data`|`error`), `ciphertext`,
@@ -118,6 +122,7 @@ class HermesRelayClient(
     private val keyStore: HermesRelayKeyStore,
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
     fun isUsable(): Boolean {
         val uid = auth.currentUser?.uid ?: return false
@@ -240,6 +245,11 @@ class HermesRelayClient(
         val requestId = "relay_${UUID.randomUUID().toString().lowercase()}"
         val now = System.currentTimeMillis()
         val expiresAt = HermesRelayTimeouts.expiresAtMillis(now, timeoutMillis)
+        if (connection.relayEncryption != HermesRelayCrypto.ALGORITHM_V3 ||
+            connection.relayKeyVersion != HermesRelayCrypto.KEY_VERSION_V3
+        ) {
+            throw HermesRelayException("Update OpenBurnBar on your Mac before using authenticated Android relay control.")
+        }
 
         val keyData = HermesRelayCrypto.generateSymmetricKey()
         val bodyString = if (body.isNotEmpty()) String(body, Charsets.UTF_8) else null
@@ -250,11 +260,57 @@ class HermesRelayClient(
                 bodyString?.let { put("body", it) }
             }.toString().toByteArray(Charsets.UTF_8)
 
-        val requestAad = HermesRelayCrypto.requestAAD(uid, connection.id, requestId)
-        val keyAad = HermesRelayCrypto.keyAAD(uid, connection.id, requestId)
+        val senderKeyPair = keyStore.loadOrCreateClientKeyPair()
+        val senderPublicKeyX963 = keyStore.clientPublicKeyX963()
+        val senderPublicKeyBase64 = Base64.encodeToString(senderPublicKeyX963, Base64.NO_WRAP)
+        val senderDevice = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+        val senderDeviceId = senderDevice.deviceId
+        val senderPeerNodeId = senderDeviceId
+        val keyId = relaySenderKeyId(senderPublicKeyX963)
+        val signalIdentity = AndroidSignalIdentityKeyStore.loadOrCreate(senderDeviceId, senderDevice.keyVersion)
+        AndroidSignalIdentityKeyStore.publishIfNeeded(
+            uid = uid,
+            deviceId = senderDeviceId,
+            identity = signalIdentity,
+            firestore = firestore,
+        )
+        securityCallables.publishRelaySenderKey(
+            deviceId = senderDeviceId,
+            peerNodeId = senderPeerNodeId,
+            keyId = keyId,
+            publicKeyBase64 = senderPublicKeyBase64,
+            relayKeyVersion = HermesRelayCrypto.KEY_VERSION_V3,
+            publishedAtMillis = now,
+            signalIdentityKeyId = signalIdentity.identityKeyId,
+            signalIdentityKeyVersion = signalIdentity.keyVersion,
+            signalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(signalIdentity.publicKeyData),
+        )
+        val senderCounter = keyStore.nextAuthenticatedSenderCounter(connection.id, keyId)
+        val requestAad =
+            HermesRelayCrypto.authenticatedRequestAAD(
+                uid = uid,
+                connectionId = connection.id,
+                requestId = requestId,
+                operation = operation,
+                senderDeviceId = senderDeviceId,
+                senderPeerNodeId = senderPeerNodeId,
+                senderCounter = senderCounter,
+                keyId = keyId,
+            )
+        val keyAad =
+            HermesRelayCrypto.authenticatedKeyAAD(
+                uid = uid,
+                connectionId = connection.id,
+                requestId = requestId,
+                operation = operation,
+                senderDeviceId = senderDeviceId,
+                senderPeerNodeId = senderPeerNodeId,
+                senderCounter = senderCounter,
+                keyId = keyId,
+            )
         val relayPubBytes = Base64.decode(connection.relayPublicKey, Base64.NO_WRAP)
         val payloadCiphertextB64 = HermesRelayCrypto.sealToBase64(plaintext, keyData, requestAad)
-        val wrappedKeyB64 = HermesRelayCrypto.wrapSymmetricKey(keyData, relayPubBytes, keyAad)
+        val wrapped = HermesRelayCrypto.wrapSymmetricKeyV3(keyData, relayPubBytes, senderKeyPair.private, keyAad)
 
         val envelope =
             mapOf(
@@ -264,9 +320,15 @@ class HermesRelayClient(
                 "method" to method.uppercase(),
                 "status" to "pending",
                 "payloadCiphertext" to payloadCiphertextB64,
-                "wrappedKey" to wrappedKeyB64,
-                "relayEncryption" to connection.relayEncryption.ifBlank { HermesRelayCrypto.ALGORITHM },
-                "relayKeyVersion" to (connection.relayKeyVersion ?: HermesRelayCrypto.KEY_VERSION),
+                "enc" to wrapped.enc,
+                "wrappedKey" to wrapped.wrappedKey,
+                "relayEncryption" to HermesRelayCrypto.ALGORITHM_V3,
+                "relayKeyVersion" to HermesRelayCrypto.KEY_VERSION_V3,
+                "senderPublicKey" to senderPublicKeyBase64,
+                "senderDeviceId" to senderDeviceId,
+                "senderPeerNodeId" to senderPeerNodeId,
+                "senderCounter" to senderCounter,
+                "keyId" to keyId,
                 "chunkCount" to 0,
                 "createdAt" to ISO8601.format(Instant.ofEpochMilli(now)),
                 "updatedAt" to ISO8601.format(Instant.ofEpochMilli(now)),
@@ -282,6 +344,9 @@ class HermesRelayClient(
 
         return RelayRequestHandle(uid = uid, requestId = requestId, connectionId = connection.id, keyData = keyData)
     }
+
+    private fun relaySenderKeyId(publicKeyX963: ByteArray): String =
+        "relay-v3-" + CloudVaultCrypto.sha256Hex(publicKeyX963).take(24)
 
     private data class DecryptedChunk(val kind: String, val sequence: Int, val text: String)
 
