@@ -38,5 +38,13 @@
     "nodeBridgePackage": "packages/libsignal-bridge",
     "status": "pinned-and-load-tested",
     "migrationPolicy": "New Signal-backed private-domain writes must use this manifest and the shared bridge; existing HPKE/CloudVault envelopes remain legacy read-only until migration telemetry proves old rows are gone."
+  },
+  "submoduleFork": {
+    "path": "Vendor/libsignal",
+    "forkRepository": "https://github.com/Ajnunezg/libsignal",
+    "forkCommit": "4e25728fb7d1fb35603f8f63a669113f82b22f21",
+    "basedOnOfficialCommit": "46d867c986f66201e34e7ae20ce423eec742bf3f",
+    "allowedDivergentFiles": ["swift/Package.swift"],
+    "rationale": "Security remediation M-6. The Vendor/libsignal git submodule is the OFFICIAL signalapp/libsignal v0.94.4 tree (basedOnOfficialCommit) plus exactly ONE build-integration commit (xcframework packaging for the OpenBurnBar Signal FFI). It MUST NOT diverge from official in any crypto-core file (rust/, java/, node/, etc.). scripts/ci/verify-libsignal-submodule-delta.sh enforces this allow-list in CI so a crypto-core change can never enter via the personal fork unnoticed."
   }
 }
