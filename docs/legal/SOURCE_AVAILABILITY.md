@@ -17,6 +17,8 @@ it is not legal approval and it is not launch authorization by itself.
 The Nous/Hermes MIT PR path remains separate from the BurnBar shipped product.
 The MIT upstream boundary checker prevents AGPL-only Signal/libsignal product
 materials from leaking into upstream Hermes Agent contributions.
+OpenBurnBar product source packets preserve the Nous Research MIT notice for
+Hermes Gateway code in `LICENSES/Nous-hermes-agent-MIT.txt`.
 
 ## Release documents
 
@@ -25,6 +27,7 @@ The source packet must include:
 - `docs/legal/AGPL_RELEASE_REVIEW_PACKET.md`
 - `docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md`
 - `THIRD_PARTY_NOTICES.md`
+- `LICENSES/Nous-hermes-agent-MIT.txt`
 - `Vendor/libsignal/LICENSE`
 - `third_party/libsignal/runtime-readiness.json`
 

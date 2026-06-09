@@ -383,6 +383,8 @@ def check_legal_docs() -> list[Check]:
     required = {
         "THIRD_PARTY_NOTICES.md": [
             "Nous Hermes / MIT-Origin Code",
+            "NousResearch/hermes-agent",
+            "Copyright (c) 2025 Nous Research",
             "Signal / libsignal / Sparse Post-Quantum Ratchet",
             "AGPL-3.0-only",
         ],
@@ -397,6 +399,7 @@ def check_legal_docs() -> list[Check]:
         "docs/legal/DEPENDENCY_LICENSE_MANIFEST.md": [
             "BurnBar shipped product",
             "Nous/Hermes MIT PR",
+            "LICENSES/Nous-hermes-agent-MIT.txt",
             "Signal libsignal",
             "Runtime readiness manifest",
             "AGPL release review packet",

@@ -10,6 +10,10 @@ materials only when the Runtime readiness manifest, AGPL release review packet,
 and Gateway Signal-required rollout runbook all show the relevant gates are
 complete.
 
+The shipped product also preserves the MIT notice for Hermes Gateway code derived
+from `NousResearch/hermes-agent`; see `LICENSES/Nous-hermes-agent-MIT.txt` and
+`THIRD_PARTY_NOTICES.md`.
+
 ## Nous/Hermes MIT PR
 
 The Nous/Hermes MIT PR lane must remain MIT-compatible and must not include
@@ -18,6 +22,8 @@ BurnBar product-only AGPL/libsignal release artifacts.
 ## Review artifacts
 
 - Signal libsignal license and pin evidence: `Vendor/libsignal/LICENSE`
+- Nous Hermes Gateway MIT-origin notice:
+  `LICENSES/Nous-hermes-agent-MIT.txt`
 - Runtime readiness manifest: `third_party/libsignal/runtime-readiness.json`
 - AGPL release review packet: `docs/legal/AGPL_RELEASE_REVIEW_PACKET.md`
 - Gateway Signal-required rollout runbook:
