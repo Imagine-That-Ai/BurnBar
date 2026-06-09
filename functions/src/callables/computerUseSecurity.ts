@@ -302,16 +302,6 @@ function requireDerivedPhoneControlPeerNodeId(peerNodeId: string, publicKey: Buf
   }
 }
 
-function canonicalJSONString(value: unknown): string {
-  if (value === undefined) return "null";
-  if (value == null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJSONString).join(",")}]`;
-  return `{${Object.entries(value)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalJSONString(entryValue)}`)
-    .join(",")}}`;
-}
-
 function canonicalJSONQuote(value: string): string {
   return JSON.stringify(value);
 }
