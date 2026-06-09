@@ -34,11 +34,10 @@ import Security
 ///
 /// **Rollout discipline.** The key-*change* rejection is always live (it only
 /// ever refuses a key that actually differs from what the operator first saw,
-/// so it cannot brick a stable pairing). The stricter first-use safety-number
-/// confirmation is gated behind ``ControllerKeyPinEnforcementFlag`` (default
-/// **off**) so it activates only once the cross-platform safety-number UI ships
-/// — mirroring ``EscrowDeviceTrustSafetyCheckFlag`` and the server-side
-/// `ESCROW_DEVICE_FINGERPRINT_ENFORCEMENT_ENABLED`.
+/// so it cannot brick a stable pairing). First-use safety-number confirmation is
+/// also on by default: a backend/relay record can introduce a controller
+/// candidate, but the Mac-local operator confirmation is what promotes it to a
+/// control authority.
 ///
 /// The pure decision lives in ``ControllerKeyPinStore/verifyOrPin(advertisedKeyBase64:uid:peerNodeId:)``
 /// over an injectable ``ControllerKeyPinBacking`` seam, so every branch is unit
@@ -87,14 +86,14 @@ public struct ControllerPinRecord: Codable, Equatable, Sendable {
 }
 
 /// Rollout flag for the stricter first-use safety-number confirmation, mirroring
-/// ``EscrowDeviceTrustSafetyCheckFlag``. Default **off**: the always-on key-change
-/// rejection ships immediately; the first-use confirmation gate turns on only once
-/// the Mac + phone safety-number UI is in place. A `UserDefaults` override lets QA /
-/// UI tests exercise the gated path before it is the default.
+/// ``EscrowDeviceTrustSafetyCheckFlag``. Default **on**: a server-published
+/// controller key is not enough to drive the Mac until the local operator
+/// confirms the safety number. A `UserDefaults` override lets QA or emergency
+/// rollback exercise the legacy path without changing code.
 public enum ControllerKeyPinEnforcementFlag {
     public static let userDefaultsKey = "openburnbar.controllerKeyPin.safetyConfirmation.enabled"
 
-    public nonisolated(unsafe) static var defaultEnabled = false
+    public nonisolated(unsafe) static var defaultEnabled = true
 
     public static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
         if defaults.object(forKey: userDefaultsKey) != nil {

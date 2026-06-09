@@ -18,8 +18,14 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         let real = Curve25519.Signing.PrivateKey().publicKey
         let attacker = Curve25519.Signing.PrivateKey().publicKey
 
-        // First contact pins the real key and is admitted (the safety-number gate
-        // is off by default, but the pin is recorded).
+        guard case .pendingConfirmation = validator.registerPeerDetailed(
+            nodeId: "ios-phone-aabb",
+            publicKey: real,
+            uid: "u1"
+        ) else {
+            return XCTFail("First contact must wait for Mac safety-code confirmation.")
+        }
+        XCTAssertTrue(validator.confirmPeerPin(nodeId: "ios-phone-aabb", publicKey: real, uid: "u1"))
         XCTAssertTrue(validator.registerPeer(nodeId: "ios-phone-aabb", publicKey: real, uid: "u1"))
         // A swapped key for the same peer is refused — always, regardless of the gate.
         XCTAssertFalse(validator.registerPeer(nodeId: "ios-phone-aabb", publicKey: attacker, uid: "u1"))

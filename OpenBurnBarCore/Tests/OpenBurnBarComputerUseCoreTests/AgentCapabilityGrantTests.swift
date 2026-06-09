@@ -63,7 +63,19 @@ final class AgentCapabilityGrantTests: XCTestCase {
     func test_customDangerousCapabilitySetRequiresLocalAuthentication() {
         XCTAssertFalse(
             AgentDesktopCapability.requiresLocalAuthentication(
-                capabilities: [.workspaceRead, .workspaceWrite, .shell],
+                capabilities: [.workspaceRead],
+                trustMode: .manual
+            )
+        )
+        XCTAssertTrue(
+            AgentDesktopCapability.requiresLocalAuthentication(
+                capabilities: [.workspaceRead, .workspaceWrite],
+                trustMode: .manual
+            )
+        )
+        XCTAssertTrue(
+            AgentDesktopCapability.requiresLocalAuthentication(
+                capabilities: [.workspaceRead, .shell],
                 trustMode: .manual
             )
         )
@@ -75,6 +87,33 @@ final class AgentCapabilityGrantTests: XCTestCase {
         )
         XCTAssertTrue(
             AgentDesktopCapability.requiresLocalAuthentication(
+                capabilities: [.workspaceRead],
+                trustMode: .trusted
+            )
+        )
+    }
+
+    func test_mobileGrantCapabilitiesAboveWorkspaceReadRequireMacApproval() {
+        XCTAssertFalse(
+            AgentDesktopCapability.requiresMacApproval(
+                capabilities: [.workspaceRead],
+                trustMode: .manual
+            )
+        )
+        XCTAssertTrue(
+            AgentDesktopCapability.requiresMacApproval(
+                capabilities: [.workspaceRead, .workspaceWrite],
+                trustMode: .manual
+            )
+        )
+        XCTAssertTrue(
+            AgentDesktopCapability.requiresMacApproval(
+                capabilities: [.shell],
+                trustMode: .manual
+            )
+        )
+        XCTAssertTrue(
+            AgentDesktopCapability.requiresMacApproval(
                 capabilities: [.workspaceRead],
                 trustMode: .trusted
             )

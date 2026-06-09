@@ -8,7 +8,10 @@ struct IncomingCallSheet: View {
     let initial: String
     let subtitle: String
     let actionNoun: String
+    let secondaryAcceptTitle: String?
+    let secondaryAcceptAccessibilityLabel: String?
     let onAccept: () -> Void
+    let onSecondaryAccept: (() -> Void)?
     let onDecline: () -> Void
 
     init(
@@ -16,14 +19,20 @@ struct IncomingCallSheet: View {
         initial: String,
         subtitle: String = "Pair-debug call",
         actionNoun: String = "call",
+        secondaryAcceptTitle: String? = nil,
+        secondaryAcceptAccessibilityLabel: String? = nil,
         onAccept: @escaping () -> Void,
+        onSecondaryAccept: (() -> Void)? = nil,
         onDecline: @escaping () -> Void
     ) {
         self.pairedDeviceName = pairedDeviceName
         self.initial = initial
         self.subtitle = subtitle
         self.actionNoun = actionNoun
+        self.secondaryAcceptTitle = secondaryAcceptTitle
+        self.secondaryAcceptAccessibilityLabel = secondaryAcceptAccessibilityLabel
         self.onAccept = onAccept
+        self.onSecondaryAccept = onSecondaryAccept
         self.onDecline = onDecline
     }
 
@@ -83,6 +92,22 @@ struct IncomingCallSheet: View {
                 .tint(Color(red: 0.63, green: 0.67, blue: 0.73))
                 .accessibilityLabel("Accept \(actionNoun) from \(pairedDeviceName)")
                 .keyboardShortcut(.defaultAction)
+            }
+
+            if let secondaryAcceptTitle, let onSecondaryAccept {
+                Button {
+                    onSecondaryAccept()
+                } label: {
+                    Text(secondaryAcceptTitle)
+                        .frame(width: 180)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(Color(red: 0.34, green: 0.48, blue: 0.64))
+                .accessibilityLabel(
+                    secondaryAcceptAccessibilityLabel
+                        ?? "\(secondaryAcceptTitle) from \(pairedDeviceName)"
+                )
             }
         }
         .padding(40)

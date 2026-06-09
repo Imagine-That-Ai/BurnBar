@@ -1,8 +1,11 @@
 #if canImport(AppKit)
 import FirebaseAuth
+import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
+import OpenBurnBarCore
 import OpenBurnBarIrohRelay
+import OpenBurnBarSignalCore
 
 /// WS4 Mac client for App Check attestation binding and escrow device trust callables.
 enum ComputerUseSecurityCallableClient {
@@ -87,21 +90,87 @@ enum ComputerUseSecurityCallableClient {
 
     /// Elevates an escrow device to `trusted` via the server-only callable (Firestore rules block client writes).
     static func approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = nil) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
+        guard let uid = Auth.auth().currentUser?.uid, Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
+        let resolvedApproverDeviceId = approverDeviceId?.isEmpty == false ? approverDeviceId! : deviceId
+        let trustChain = try await buildTrustChainProof(
+            uid: uid,
+            targetDeviceId: deviceId,
+            approverDeviceId: resolvedApproverDeviceId
+        )
         let nonce = try await issueHighRiskActionNonce()
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "nonce": nonce,
+            "trustChain": trustChain,
         ]
-        if let approverDeviceId, !approverDeviceId.isEmpty {
-            payload["approverDeviceId"] = approverDeviceId
-        }
+        payload["approverDeviceId"] = resolvedApproverDeviceId
         let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call(payload)
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust approval failed.")
         }
+    }
+
+    private static func buildTrustChainProof(
+        uid: String,
+        targetDeviceId: String,
+        approverDeviceId: String
+    ) async throws -> [String: Any] {
+        let userRef = Firestore.firestore().collection("users").document(uid)
+        let approverIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(
+            uid: uid,
+            deviceId: approverDeviceId
+        )
+        try await SignalIdentityPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: approverDeviceId,
+            platform: "macOS",
+            identity: approverIdentity
+        )
+
+        let targetDevice = try await userRef.collection("escrow_devices").document(targetDeviceId).getDocument()
+        guard let targetData = targetDevice.data(),
+              let targetKeyVersion = targetData["keyVersion"] as? Int,
+              let targetEscrowFingerprint = targetData["publicKeyFingerprint"] as? String else {
+            throw ClientError.invalidResponse("Target device escrow key is not published.")
+        }
+        let targetSignalIdentityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(
+            deviceId: targetDeviceId,
+            keyVersion: targetKeyVersion
+        )
+        let targetIdentity = try await userRef.collection("signal_identity_public_keys")
+            .document(targetSignalIdentityKeyId)
+            .getDocument()
+        guard let targetIdentityData = targetIdentity.data(),
+              targetIdentityData["deviceId"] as? String == targetDeviceId,
+              targetIdentityData["identityKeyId"] as? String == targetSignalIdentityKeyId,
+              targetIdentityData["keyVersion"] as? Int == targetKeyVersion,
+              let targetSignalFingerprint = targetIdentityData["publicKeyFingerprint"] as? String else {
+            throw ClientError.invalidResponse("Target device Signal identity is not published.")
+        }
+
+        let payload = CloudVaultDeviceTrustChainPayload(
+            uid: uid,
+            targetDeviceId: targetDeviceId,
+            targetEscrowPublicKeyFingerprint: targetEscrowFingerprint,
+            targetKeyVersion: targetKeyVersion,
+            targetSignalIdentityKeyId: targetSignalIdentityKeyId,
+            targetSignalIdentityPublicKeyFingerprint: targetSignalFingerprint,
+            approverDeviceId: approverDeviceId,
+            approverSignalIdentityKeyId: approverIdentity.identityKeyId,
+            approverSignalIdentityPublicKeyFingerprint: approverIdentity.publicKeyFingerprint
+        )
+        let signature = try CloudVaultDeviceTrustChain.sign(payload, approverIdentity: approverIdentity)
+        return [
+            "version": CloudVaultDeviceTrustChain.version,
+            "algorithm": CloudVaultDeviceTrustChain.algorithm,
+            "targetSignalIdentityKeyId": targetSignalIdentityKeyId,
+            "targetSignalIdentityPublicKeyFingerprint": targetSignalFingerprint,
+            "approverSignalIdentityKeyId": approverIdentity.identityKeyId,
+            "approverSignalIdentityPublicKeyFingerprint": approverIdentity.publicKeyFingerprint,
+            "signature": signature
+        ]
     }
 
     /// Revokes escrow device trust and active grants server-side.

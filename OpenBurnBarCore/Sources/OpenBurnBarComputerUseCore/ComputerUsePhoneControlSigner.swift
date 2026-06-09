@@ -45,6 +45,64 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         return payload
     }
 
+    private func canonicalJSONNumber(_ value: Double) -> String {
+        guard value.isFinite else { return "0" }
+        if value.rounded(.towardZero) == value {
+            return String(Int64(value))
+        }
+        var rendered = String(format: "%.12f", locale: Locale(identifier: "en_US_POSIX"), value)
+        while rendered.last == "0" { rendered.removeLast() }
+        if rendered.last == "." { rendered.removeLast() }
+        return rendered
+    }
+
+    /// Domain-separated local-auth proof payload for high-risk queued agent grants.
+    /// This signs the canonical grant intent hash after the device has completed
+    /// user-presence authentication. The server consumes each proof once.
+    public func localAuthProofSignablePayload(
+        proofId: String,
+        deviceId: String,
+        signedIntentHash: String,
+        authenticatedAt: Date,
+        expiresAt: Date
+    ) -> Data {
+        let canonical = [
+            "OpenBurnBar.AgentGrantLocalAuthProof.v1",
+            proofId,
+            deviceId,
+            signedIntentHash.lowercased(),
+            canonicalJSONNumber(authenticatedAt.timeIntervalSinceReferenceDate),
+            canonicalJSONNumber(expiresAt.timeIntervalSinceReferenceDate)
+        ].joined(separator: "\n")
+        return Data(canonical.utf8)
+    }
+
+    public func signLocalAuthProof(
+        proofId: String = UUID().uuidString,
+        deviceId: String,
+        signedIntentHash: String,
+        authenticatedAt: Date,
+        expiresAt: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> HermesRealtimeRelayAgentGrantLocalAuthProof {
+        let payload = localAuthProofSignablePayload(
+            proofId: proofId,
+            deviceId: deviceId,
+            signedIntentHash: signedIntentHash,
+            authenticatedAt: authenticatedAt,
+            expiresAt: expiresAt
+        )
+        let signature = try privateKey.signature(for: payload)
+        return HermesRealtimeRelayAgentGrantLocalAuthProof(
+            proofId: proofId,
+            deviceId: deviceId,
+            signedIntentHash: signedIntentHash.lowercased(),
+            authenticatedAt: authenticatedAt,
+            expiresAt: expiresAt,
+            signatureEd25519: signature.base64EncodedString()
+        )
+    }
+
     /// Hex-encoded SHA-256 of canonical-JSON encoding of `intent`.
     /// The signer hashes the intent the receiver will replay,
     /// guaranteeing both sides agree on the bytes that authorize the

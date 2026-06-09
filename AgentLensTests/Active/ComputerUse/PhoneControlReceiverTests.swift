@@ -33,6 +33,70 @@ final class PhoneControlReceiverTests: XCTestCase {
     }
 
     @MainActor
+    func testMobileLocalAuthProofDoesNotBypassMacApprovalForHighRiskGrants() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let threadID = "thread-\(UUID().uuidString)"
+        let request = AgentCapabilityGrantRequest(
+            requestID: "grant-\(UUID().uuidString)",
+            runtimeID: .codex,
+            threadID: threadID,
+            preset: .workspace,
+            deliveryMode: .live,
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(300),
+            sourceDeviceID: "iphone-1",
+            clientIntentID: "intent-\(UUID().uuidString)",
+            localAuthenticationSatisfied: true,
+            localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof(
+                proofId: "proof-\(UUID().uuidString)",
+                deviceId: "iphone-1",
+                signedIntentHash: String(repeating: "a", count: 64),
+                authenticatedAt: now,
+                expiresAt: now.addingTimeInterval(60),
+                signatureEd25519: "signature"
+            )
+        )
+
+        let receipt = AgentCapabilityGrantStore.shared.apply(request, now: now)
+
+        XCTAssertEqual(receipt.status, .denied)
+        XCTAssertEqual(receipt.denialReason, .macApprovalRequired)
+        XCTAssertNil(AgentCapabilityGrantStore.shared.activeGrant(runtimeID: .codex, threadID: threadID, now: now))
+    }
+
+    @MainActor
+    func testMacApprovedHighRiskGrantAppliesAfterLocalAuthProof() {
+        let now = Date(timeIntervalSince1970: 2_000)
+        let threadID = "thread-\(UUID().uuidString)"
+        let request = AgentCapabilityGrantRequest(
+            requestID: "grant-\(UUID().uuidString)",
+            runtimeID: .codex,
+            threadID: threadID,
+            preset: .workspace,
+            deliveryMode: .live,
+            requestedAt: now,
+            expiresAt: now.addingTimeInterval(300),
+            sourceDeviceID: "iphone-1",
+            clientIntentID: "intent-\(UUID().uuidString)",
+            localAuthenticationSatisfied: true,
+            localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof(
+                proofId: "proof-\(UUID().uuidString)",
+                deviceId: "iphone-1",
+                signedIntentHash: String(repeating: "b", count: 64),
+                authenticatedAt: now,
+                expiresAt: now.addingTimeInterval(60),
+                signatureEd25519: "signature"
+            )
+        )
+
+        let receipt = AgentCapabilityGrantStore.shared.apply(request, now: now, macApprovalSatisfied: true)
+
+        XCTAssertEqual(receipt.status, .applied)
+        let activeGrant = AgentCapabilityGrantStore.shared.activeGrant(runtimeID: .codex, threadID: threadID, now: now)
+        XCTAssertEqual(activeGrant?.capabilities, AgentPermissionPreset.workspace.capabilities)
+    }
+
+    @MainActor
     func testChaosSoftCapUpdateDoesNotShrinkActiveSessionActionCap() async throws {
         let browserCapture = BrowserActionCapture()
         let coordinator = ComputerUseSessionCoordinator(
@@ -204,6 +268,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 return .object(["ok": .bool(true), "kind": .string(action.kind.rawValue)])
             },
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-approval",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             approvalPresenter: { request, _ in
                 await deferredPresenter.waitForFallbackResponse(request)
             }
@@ -282,11 +351,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 control: HermesRealtimeRelayControlPayload(
                     streamClass: MediaStreamClass.controlApproval.rawValue,
                     sessionId: started.sessionId,
-                    approvalResponse: HermesRealtimeRelayApprovalResponse(
-                        approvalId: approvalRequest.approvalId,
-                        decision: .approve,
-                        respondedBy: "phone",
-                        respondedAt: Date()
+                    approvalResponse: try signedApprovalResponse(
+                        approvalRequest: approvalRequest,
+                        privateKey: privateKey,
+                        peerNodeId: peerNodeId,
+                        counter: 1
                     )
                 )
             ),
@@ -354,6 +423,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 macAppVersion: "test"
             ),
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-stream",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
             },
@@ -449,6 +523,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 macAppVersion: "test"
             ),
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-loopback",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
             },
@@ -606,6 +685,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 macAppVersion: "test"
             ),
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-denied",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
             },
@@ -1031,6 +1115,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 inspector: inspector
             ),
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-clipboard-paste",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
             },
@@ -1120,6 +1209,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 inspector: inspector
             ),
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-clipboard-grab",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
             },
@@ -1212,6 +1306,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 inspector: inspector
             ),
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-clipboard-noconsent",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
             },
@@ -1298,6 +1397,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 inspector: inspector
             ),
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-clipboard-attestation",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
             },
@@ -1381,6 +1485,11 @@ final class PhoneControlReceiverTests: XCTestCase {
                 inspector: inspector
             ),
             authorityProvider: provider,
+            phoneValidator: confirmedPhoneValidator(
+                uid: "uid-clipboard-replay",
+                peerNodeId: peerNodeId,
+                publicKey: privateKey.publicKey
+            ),
             displayBoundsProvider: {
                 [MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1_000, height: 500)]
             },
@@ -1501,6 +1610,32 @@ final class PhoneControlReceiverTests: XCTestCase {
         )
         request.authority = envelope(from: signed)
         return request
+    }
+
+    private func signedApprovalResponse(
+        approvalRequest: HermesRealtimeRelayApprovalRequest,
+        privateKey: Curve25519.Signing.PrivateKey,
+        peerNodeId: String,
+        counter: UInt64
+    ) throws -> HermesRealtimeRelayApprovalResponse {
+        let requestHash = try ComputerUsePhoneControlSigner()
+            .canonicalApprovalRequestHashHex(request: approvalRequest)
+        var response = HermesRealtimeRelayApprovalResponse(
+            approvalId: approvalRequest.approvalId,
+            decision: .approve,
+            respondedBy: "phone",
+            respondedAt: Date(),
+            requestHashBlake3: requestHash
+        )
+        let signed = try ComputerUsePhoneControlSigner().sign(
+            approvalResponse: response,
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: Date(),
+            privateKey: privateKey
+        )
+        response.authority = envelope(from: signed)
+        return response
     }
 
     private func auditChainText(baseDirectory: URL, sessionId: String) throws -> String {
@@ -1830,5 +1965,26 @@ private actor StaticPhoneControlAuthorityProvider: PhoneControlAuthorityPublicKe
         XCTAssertEqual(peerNodeId, expectedPeerNodeID)
         return publicKey
     }
+}
+
+private func confirmedPhoneValidator(
+    uid: String,
+    peerNodeId: String,
+    publicKey: Curve25519.Signing.PublicKey
+) -> PhoneControlAuthorityValidator {
+    let backing = InMemoryControllerKeyPinBacking()
+    let pinStore = ControllerKeyPinStore(backing: backing)
+    let advertisedKey = publicKey.rawRepresentation.base64EncodedString()
+    _ = pinStore.verifyOrPin(
+        advertisedKeyBase64: advertisedKey,
+        uid: uid,
+        peerNodeId: peerNodeId
+    )
+    _ = pinStore.confirm(
+        advertisedKeyBase64: advertisedKey,
+        uid: uid,
+        peerNodeId: peerNodeId
+    )
+    return PhoneControlAuthorityValidator(controllerPinStore: pinStore)
 }
 #endif

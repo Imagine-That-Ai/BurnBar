@@ -1104,6 +1104,18 @@ data class HermesRealtimeRelayApprovalResponse(
 }
 
 @Serializable
+data class HermesRealtimeRelayAgentGrantLocalAuthProof(
+    val proofId: String,
+    val deviceId: String,
+    val signedIntentHash: String,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val authenticatedAt: Double,
+    /** Swift JSONEncoder's default Date encoding: seconds since 2001-01-01 UTC. */
+    val expiresAt: Double,
+    val signatureEd25519: String,
+)
+
+@Serializable
 data class HermesRealtimeRelayAgentGrantRequest(
     val requestId: String,
     val runtime: String,
@@ -1120,6 +1132,7 @@ data class HermesRealtimeRelayAgentGrantRequest(
     val sourceDeviceId: String,
     val clientIntentId: String,
     val localAuthenticationSatisfied: Boolean,
+    val localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = null,
     val authority: HermesRealtimeRelayAuthorityEnvelope,
 )
 
