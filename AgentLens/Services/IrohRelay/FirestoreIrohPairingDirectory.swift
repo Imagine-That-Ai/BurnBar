@@ -27,38 +27,16 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
     static let shared = FirestoreIrohPairingDirectory()
 
     private let firestoreProvider: @Sendable () -> Firestore
-    private let isoFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
 
     init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
         self.firestoreProvider = firestoreProvider
     }
 
     func publish(_ record: IrohPairingRecord, for uid: String) async throws {
-        let now = isoFormatter.string(from: Date())
-        var payload: [String: Any] = [
-            "id": record.connectionId,
-            "nodeId": record.nodeId,
-            "directAddresses": record.directAddresses,
-            "publishedAtMillis": record.publishedAtMillis,
-            "protocolVersion": record.protocolVersion,
-            "signature": record.signature,
-            "createdAt": now,
-            "updatedAt": now,
-            "schemaVersion": 1
-        ]
-        if let relayURL = record.relayURL {
-            payload["relayURL"] = relayURL
-        }
-        try await firestoreProvider()
-            .collection("users")
-            .document(uid)
-            .collection("iroh_pairing")
-            .document(record.connectionId)
-            .setData(payload, merge: true)
+        try await ComputerUseSecurityCallableClient.publishIrohPairingRecord(
+            deviceId: AccountManager.shared.deviceId,
+            record: record
+        )
     }
 
     func fetch(uid: String, connectionId: String) async throws -> IrohPairingRecord? {
@@ -73,12 +51,10 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
     }
 
     func revoke(uid: String, connectionId: String) async throws {
-        try await firestoreProvider()
-            .collection("users")
-            .document(uid)
-            .collection("iroh_pairing")
-            .document(connectionId)
-            .delete()
+        try await ComputerUseSecurityCallableClient.revokeIrohPairingRecord(
+            deviceId: AccountManager.shared.deviceId,
+            connectionId: connectionId
+        )
     }
 
     static func decode(data: [String: Any], uid: String) -> IrohPairingRecord? {

@@ -23,6 +23,7 @@ function stableJson(value: Record<string, unknown>): string {
 
 test("hosted sealed resume response decrypts and renders locally", () => {
   const key = Buffer.alloc(32, 7);
+  process.env.OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE = "true";
   process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64 = key.toString("base64");
   const chunk = seal("**[USER]**\nPlease continue the auth work.", key);
   const rendered = renderHostedResumeResponse({
@@ -53,6 +54,7 @@ test("hosted sealed resume response decrypts and renders locally", () => {
 
 test("hosted sealed resume response rejects tampered chunk hashes", () => {
   const key = Buffer.alloc(32, 9);
+  process.env.OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE = "true";
   process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64 = key.toString("base64");
   const chunk = seal("trail", key);
 
@@ -72,6 +74,7 @@ test("hosted sealed resume response rejects tampered chunk hashes", () => {
 
 test("resume CLI checks local vault key before hosted network call", async () => {
   delete process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64;
+  delete process.env.OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE;
   process.env.OPENBURNBAR_MCP_ACCESS_TOKEN = "test-token";
   const originalFetch = globalThis.fetch;
   let called = false;
@@ -90,6 +93,7 @@ test("resume CLI checks local vault key before hosted network call", async () =>
 
 test("resume CLI sends local opaque query hashes for fuzzy OBB Resume", async () => {
   const key = Buffer.alloc(32, 11);
+  process.env.OPENBURNBAR_ALLOW_INSECURE_VAULT_KEY_SOURCE = "true";
   process.env.OPENBURNBAR_CLOUD_VAULT_KEY_BASE64 = key.toString("base64");
   process.env.OPENBURNBAR_MCP_ACCESS_TOKEN = "test-token";
   const originalFetch = globalThis.fetch;

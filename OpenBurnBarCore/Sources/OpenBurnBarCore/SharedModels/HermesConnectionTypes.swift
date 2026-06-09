@@ -538,9 +538,15 @@ public struct HermesRelayRequestRecord: Codable, Identifiable, Sendable, Equatab
     public var sessionId: String?
     public var body: String?
     public var payloadCiphertext: String?
+    public var enc: String?
     public var wrappedKey: String?
     public var relayEncryption: String?
     public var relayKeyVersion: Int?
+    public var senderPublicKey: String?
+    public var senderDeviceId: String?
+    public var senderPeerNodeId: String?
+    public var senderCounter: Int64?
+    public var keyId: String?
     public var error: String?
     public var chunkCount: Int
     public var claimedAt: Date?
@@ -561,9 +567,15 @@ public struct HermesRelayRequestRecord: Codable, Identifiable, Sendable, Equatab
         sessionId: String? = nil,
         body: String? = nil,
         payloadCiphertext: String? = nil,
+        enc: String? = nil,
         wrappedKey: String? = nil,
         relayEncryption: String? = nil,
         relayKeyVersion: Int? = nil,
+        senderPublicKey: String? = nil,
+        senderDeviceId: String? = nil,
+        senderPeerNodeId: String? = nil,
+        senderCounter: Int64? = nil,
+        keyId: String? = nil,
         error: String? = nil,
         chunkCount: Int = 0,
         claimedAt: Date? = nil,
@@ -583,9 +595,15 @@ public struct HermesRelayRequestRecord: Codable, Identifiable, Sendable, Equatab
         self.sessionId = sessionId
         self.body = body
         self.payloadCiphertext = payloadCiphertext
+        self.enc = enc
         self.wrappedKey = wrappedKey
         self.relayEncryption = relayEncryption
         self.relayKeyVersion = relayKeyVersion
+        self.senderPublicKey = senderPublicKey
+        self.senderDeviceId = senderDeviceId
+        self.senderPeerNodeId = senderPeerNodeId
+        self.senderCounter = senderCounter
+        self.keyId = keyId
         self.error = error
         self.chunkCount = chunkCount
         self.claimedAt = claimedAt

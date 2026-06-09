@@ -2,6 +2,7 @@
 import FirebaseAuth
 import FirebaseFunctions
 import Foundation
+import OpenBurnBarIrohRelay
 
 /// WS4 Mac client for App Check attestation binding and escrow device trust callables.
 enum ComputerUseSecurityCallableClient {
@@ -108,6 +109,7 @@ enum ComputerUseSecurityCallableClient {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
+        try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
             "deviceId": deviceId,
@@ -115,6 +117,68 @@ enum ComputerUseSecurityCallableClient {
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
+        }
+    }
+
+    static func publishIrohPairingPublicKey(
+        deviceId: String,
+        roleId: String = "host",
+        publicKeyBase64: String
+    ) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        let result = try await functions.httpsCallable("publishIrohPairingPublicKey").call([
+            "deviceId": deviceId,
+            "roleId": roleId,
+            "publicKeyBase64": publicKeyBase64,
+            "nonce": nonce,
+        ])
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Iroh pairing public-key publication failed.")
+        }
+    }
+
+    static func publishIrohPairingRecord(deviceId: String, record: IrohPairingRecord) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        var payload: [String: Any] = [
+            "deviceId": deviceId,
+            "connectionId": record.connectionId,
+            "nodeId": record.nodeId,
+            "directAddresses": record.directAddresses,
+            "publishedAtMillis": record.publishedAtMillis,
+            "protocolVersion": record.protocolVersion,
+            "signature": record.signature,
+            "nonce": nonce,
+        ]
+        if let relayURL = record.relayURL, !relayURL.isEmpty {
+            payload["relayURL"] = relayURL
+        }
+        let result = try await functions.httpsCallable("publishIrohPairingRecord").call(payload)
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Iroh pairing record publication failed.")
+        }
+    }
+
+    static func revokeIrohPairingRecord(deviceId: String, connectionId: String) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        let result = try await functions.httpsCallable("revokeIrohPairingRecord").call([
+            "deviceId": deviceId,
+            "connectionId": connectionId,
+            "nonce": nonce,
+        ])
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Iroh pairing record revocation failed.")
         }
     }
 }

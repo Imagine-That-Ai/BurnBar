@@ -164,6 +164,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             // the corresponding `iroh_pairing_keys/host` doc to verify it.
             try await publicKeyPublisher.publish(
                 uid: uid,
+                deviceId: accountManager.deviceId,
                 publicKeyBase64: pairingKeypair.publicKeyBase64
             )
             let publisher = IrohPairingPublisher(directory: directory)
@@ -397,6 +398,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             let pairingKeypair = try pairingKeyStore.keypair()
             try await publicKeyPublisher.publish(
                 uid: uid,
+                deviceId: accountManager.deviceId,
                 publicKeyBase64: pairingKeypair.publicKeyBase64
             )
             let publisher = IrohPairingPublisher(directory: directory)

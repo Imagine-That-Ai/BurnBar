@@ -1,12 +1,11 @@
 import Foundation
-@preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
 /// Surface a Firestore-backed publisher emits to so tests can stub out the
 /// network write. The host client depends only on this protocol.
 protocol IrohPairingPublicKeyPublishing: Sendable {
-    func publish(uid: String, publicKeyBase64: String) async throws
+    func publish(uid: String, deviceId: String, publicKeyBase64: String) async throws
 }
 
 /// Publishes the Mac's Ed25519 pairing public key to
@@ -20,33 +19,20 @@ protocol IrohPairingPublicKeyPublishing: Sendable {
 final class IrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing, @unchecked Sendable {
     static let shared = IrohPairingPublicKeyPublisher()
 
-    private let firestoreProvider: @Sendable () -> Firestore
     private let roleId: String
 
-    init(
-        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
-        roleId: String = "host"
-    ) {
-        self.firestoreProvider = firestoreProvider
+    init(roleId: String = "host") {
         self.roleId = roleId
     }
 
     /// Idempotent. Safe to call from the iroh host bootstrap and from each
     /// pairing-record heartbeat (overwrites timestamps but keeps the same
     /// public key bytes; the iOS reader caches the verified key in-memory).
-    func publish(uid: String, publicKeyBase64: String) async throws {
-        let payload: [String: Any] = [
-            "id": roleId,
-            "publicKeyBase64": publicKeyBase64,
-            "publishedAtMillis": Int64(Date().timeIntervalSince1970 * 1000),
-            "protocolVersion": IrohRelayProtocol.frameProtocolVersion,
-            "schemaVersion": 1
-        ]
-        try await firestoreProvider()
-            .collection("users")
-            .document(uid)
-            .collection("iroh_pairing_keys")
-            .document(roleId)
-            .setData(payload, merge: true)
+    func publish(uid: String, deviceId: String, publicKeyBase64: String) async throws {
+        try await ComputerUseSecurityCallableClient.publishIrohPairingPublicKey(
+            deviceId: deviceId,
+            roleId: roleId,
+            publicKeyBase64: publicKeyBase64
+        )
     }
 }

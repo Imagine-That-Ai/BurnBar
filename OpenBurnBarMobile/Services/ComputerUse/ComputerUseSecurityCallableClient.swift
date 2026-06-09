@@ -116,6 +116,7 @@ enum ComputerUseSecurityCallableClient {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
+        try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
             "deviceId": deviceId,
@@ -123,6 +124,33 @@ enum ComputerUseSecurityCallableClient {
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
+        }
+    }
+
+    static func publishPhoneControlAuthority(
+        deviceId: String,
+        connectionId: String,
+        peerNodeId: String,
+        publicKeyBase64: String,
+        publishedAtMillis: Int64,
+        protocolVersion: Int
+    ) async throws {
+        guard Auth.auth().currentUser?.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        let result = try await functions.httpsCallable("publishPhoneControlAuthority").call([
+            "deviceId": deviceId,
+            "connectionId": connectionId,
+            "peerNodeId": peerNodeId,
+            "publicKeyBase64": publicKeyBase64,
+            "publishedAtMillis": publishedAtMillis,
+            "protocolVersion": protocolVersion,
+            "nonce": nonce,
+        ])
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Phone-control authority publication failed.")
         }
     }
 

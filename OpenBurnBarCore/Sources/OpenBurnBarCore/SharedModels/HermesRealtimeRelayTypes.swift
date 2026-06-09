@@ -2302,9 +2302,15 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
     public var operation: HermesRelayOperation?
     public var method: String?
     public var payloadCiphertext: String?
+    public var enc: String?
     public var wrappedKey: String?
     public var relayEncryption: String?
     public var relayKeyVersion: Int?
+    public var senderPublicKey: String?
+    public var senderDeviceId: String?
+    public var senderPeerNodeId: String?
+    public var senderCounter: Int64?
+    public var keyId: String?
     public var sequence: Int?
     public var kind: HermesRelayChunkKind?
     public var ciphertext: String?
@@ -2322,9 +2328,15 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
         operation: HermesRelayOperation? = nil,
         method: String? = nil,
         payloadCiphertext: String? = nil,
+        enc: String? = nil,
         wrappedKey: String? = nil,
         relayEncryption: String? = nil,
         relayKeyVersion: Int? = nil,
+        senderPublicKey: String? = nil,
+        senderDeviceId: String? = nil,
+        senderPeerNodeId: String? = nil,
+        senderCounter: Int64? = nil,
+        keyId: String? = nil,
         sequence: Int? = nil,
         kind: HermesRelayChunkKind? = nil,
         ciphertext: String? = nil,
@@ -2336,9 +2348,15 @@ public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
         self.operation = operation
         self.method = method
         self.payloadCiphertext = payloadCiphertext
+        self.enc = enc
         self.wrappedKey = wrappedKey
         self.relayEncryption = relayEncryption
         self.relayKeyVersion = relayKeyVersion
+        self.senderPublicKey = senderPublicKey
+        self.senderDeviceId = senderDeviceId
+        self.senderPeerNodeId = senderPeerNodeId
+        self.senderCounter = senderCounter
+        self.keyId = keyId
         self.sequence = sequence
         self.kind = kind
         self.ciphertext = ciphertext
