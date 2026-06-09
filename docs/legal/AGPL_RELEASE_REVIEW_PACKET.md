@@ -1,64 +1,87 @@
-# AGPL Release Review Packet
+# BurnBar AGPL Release Review Packet
 
-This packet is for counsel review before any public release that links or ships
-Signal/libsignal/SPQR-backed E2EE in the BurnBar product.
+This packet is the counsel-facing release checklist for a Signal-enabled
+BurnBar release. It is not an approval record and must not be used to mark the
+`legal_release_review` readiness gate complete. The gate is complete only when
+external counsel returns an approved JSON evidence record that validates with:
 
-## Scope
+```bash
+python scripts/ci/check_agpl_legal_release_review.py <review-artifact>.json --repo-root .
+```
 
-The Nous/Hermes upstream contribution path remains a MIT-compatible encrypted
-gateway hardening only lane. This packet covers the BurnBar product lane.
+Do not market a Signal-enabled BurnBar release as fully cleared until that
+approved record exists and the runtime-readiness manifest is `ready`.
 
-The upstream PR lane is MIT-compatible encrypted gateway hardening only; it is
-not the Signal/libsignal product release lane.
+## Current Release Boundary
+
+- BurnBar shipped product: AGPL-3.0-only product lane with
+  Signal/libsignal/SPQR-backed E2EE.
+- Nous/Hermes upstream PR: MIT-compatible encrypted gateway hardening only. It
+  must not include Signal/libsignal/SPQR implementation code or AGPL backend
+  imports.
+- Current readiness is intentionally fail-closed while
+  `hermes_gateway_write_path` or `legal_release_review` remains `not_ready`.
 
 ## Required Review Scope
 
-Counsel must review:
+Counsel approval must cover each item exactly enough for the validator to prove
+the release scope was reviewed:
 
-- AGPL-3.0-only product license posture
-- official libsignal/SPQR dependency posture
-- corresponding source availability
+- AGPL-3.0-only product license
+- Signal/libsignal/SPQR product dependency
+- corresponding source for shipped apps
+- hosted gateway network source obligations
 - app store and commercial distribution terms
-- marketing and trust-copy claim boundaries
+- MIT-compatible Nous/Hermes upstream boundary
 
 ## Required Distribution Channels
 
-Required Distribution Channels include Mac App Store, iOS App Store, direct
-download, browser extension marketplaces, npm, Docker, and hosted services.
+The approval record must cover every distribution channel used by the release:
+
+- Apple App Store and TestFlight
+- Google Play
+- direct download
+- hosted gateway network service
+- commercial distribution
 
 ## Required Artifacts For Counsel
 
+Counsel should review the exact files listed below for the release revision and
+then include the same repo-relative paths in `reviewedArtifacts`:
+
+- `.github/workflows/license-posture.yml`
+- `LICENSE`
+- `THIRD_PARTY_NOTICES.md`
 - `docs/legal/SOURCE_AVAILABILITY.md`
-- `docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md`
+- `docs/legal/DEPENDENCY_LICENSE_MANIFEST.md`
+- `docs/legal/AGPL_RELEASE_REVIEW_PACKET.md`
 - `docs/legal/agpl-release-review.evidence.template.json`
+- `docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md`
+- `functions/package.json`
+- `packages/signal-envelope-contracts/package.json`
+- `scripts/ci/check_burnbar_license_posture.py`
+- `scripts/ci/check_libsignal_runtime_readiness.py`
+- `scripts/ci/write_burnbar_source_provenance.py`
+- `scripts/verify_burnbar_mit_pr_clean.py`
 - `third_party/libsignal/runtime-readiness.json`
-- `launch-evidence/latest-agpl-store-legal-packet.json`
 
-The reviewer role is `external_counsel`.
+The reviewer should also inspect the release-specific runtime evidence named by
+`third_party/libsignal/runtime-readiness.json`, including gateway migration-drain
+evidence and the Signal-required rollout runbook for hosted gateway releases. If
+the live gateway evidence still shows Signal-required mode disabled, legacy
+relay-envelope records, unreadable records, or only a dry-run drain plan, the
+release remains operationally not ready even if this packet has been reviewed.
 
-Approved release evidence must be a signed packet, not a self-reported JSON
-field. `scripts/ci/check_agpl_legal_release_review.py` requires:
+## Approval Record Requirements
 
-- `reviewStatus: "approved"`
-- `reviewerRole: "external_counsel"`
-- an `approval` object with reviewer name, approval timestamp, reviewed
-  document path, reviewed document SHA-256, detached signature path, public key
-  path, and `signatureFormat: "openssl-sha256-rsa"`
-- an OpenSSL SHA-256/RSA verification that succeeds against the reviewed
-  document bytes
+The approval record must be a JSON object matching
+`docs/legal/agpl-release-review.evidence.template.json` with:
 
-Pending evidence may pass CI only with `--allow-pending` and must explicitly
-state that it is not legal approval.
+- `reviewStatus` set to `approved`;
+- `reviewerRole` set to `external_counsel`;
+- a non-empty `reviewedAt` timestamp and counsel identifier;
+- the full required scope, distribution channels, and reviewed artifacts above;
+- release-decision notes that record the approval boundary.
 
-Run the aggregate product release gate before any Signal-enabled release:
-
-```bash
-python scripts/ci/check_burnbar_release_preflight.py
-```
-
-That command validates source provenance, runtime readiness, and this signed
-legal packet together. It intentionally returns `HOLD` while the legal packet is
-pending or missing.
-
-Do not market a Signal-enabled BurnBar release as fully cleared until counsel
-has approved the concrete distribution channels.
+Placeholder disclaimers such as "not legal advice" are rejected by the
+validator. Internal engineering review is not enough for this gate.

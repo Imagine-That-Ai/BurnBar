@@ -1,0 +1,235 @@
+---
+/**
+ * License-as-a-feature tile for the trust surface.
+ *
+ * Presents the AGPL license with the same pride as a product capability:
+ * the engraved SealBadge on the left, the plain-language pitch + SPDX chip +
+ * official FSF badge + CTAs on the right. All license facts render from
+ * `@data/licensing` (single source of truth — never hand-type the SPDX id
+ * or history line here). The official AGPLv3 artwork ships untouched per
+ * FSF usage norms; the GitHub mark is inlined one-color via currentColor.
+ */
+import SealBadge from "@components/SealBadge.astro";
+import { LICENSING } from "@data/licensing";
+
+interface Props {
+  class?: string;
+}
+
+const { class: className = "" } = Astro.props;
+---
+
+<article class:list={["glass-pane", "licard", className]}>
+  <div class="licard__seal">
+    <SealBadge variant="agpl" size={128} />
+  </div>
+
+  <div class="licard__copy">
+    <p class="eyebrow eyebrow--ember">The license is a feature</p>
+
+    <h3 class="licard__title">Source you can hold us to.</h3>
+
+    <p class="licard__body">
+      Run it, read it, fork it. And because it's AGPL, anyone serving you this software over a
+      network owes you the source — including us.
+    </p>
+
+    <div class="licard__meta">
+      <span class="licard__chip">{LICENSING.spdx}</span>
+      <img
+        class="licard__fsf"
+        src="/brand/ext/agplv3-with-text-162x68.png"
+        alt="GNU AGPLv3 — official Free Software Foundation license badge"
+        width="162"
+        height="68"
+        loading="lazy"
+      />
+    </div>
+
+    <p class="licard__history">{LICENSING.mitHistoryLine}</p>
+
+    <div class="licard__cta">
+      <a
+        class="btn btn--ember"
+        href={LICENSING.githubHref}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <svg
+          class="licard__gh"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
+          ></path>
+        </svg>
+        Read the source
+      </a>
+      <a class="btn btn--ghost" href={LICENSING.sourceOfferHref}>Corresponding source</a>
+    </div>
+  </div>
+</article>
+
+<style>
+  .licard {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--s-6);
+    align-items: center;
+    justify-items: center;
+    text-align: center;
+    padding: var(--s-7) var(--s-6);
+  }
+
+  @media (min-width: 720px) {
+    .licard {
+      grid-template-columns: auto 1fr;
+      gap: var(--s-8);
+      justify-items: stretch;
+      text-align: left;
+      padding: var(--s-8);
+    }
+  }
+
+  /* ----------------------------- seal side ----------------------------- */
+
+  .licard__seal {
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding: var(--s-4);
+  }
+
+  /* Hover flourish: a faint ember bloom behind the seal. Opacity only —
+     no transforms, no loops — so it needs no reduced-motion exception. */
+  .licard__seal::before {
+    content: "";
+    position: absolute;
+    inset: -18%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, var(--seal-ember-wash) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease);
+    pointer-events: none;
+  }
+
+  .licard:hover .licard__seal::before {
+    opacity: 1;
+  }
+
+  /* ----------------------------- copy stack ---------------------------- */
+
+  .licard__copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--s-4);
+    min-width: 0;
+  }
+
+  @media (min-width: 720px) {
+    .licard__copy {
+      align-items: flex-start;
+    }
+  }
+
+  .licard__title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-variation-settings:
+      "opsz" 80,
+      "wght" 480;
+    font-size: var(--t-h3);
+    letter-spacing: -0.022em;
+    line-height: var(--leading-tight);
+    color: var(--text-bright);
+  }
+
+  .licard__body {
+    margin: 0;
+    font-size: var(--t-body);
+    line-height: var(--leading-base);
+    color: var(--text-base);
+    max-width: 52ch;
+  }
+
+  /* ------------------------ chip row + FSF badge ----------------------- */
+
+  .licard__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-4);
+    margin-top: var(--s-2);
+  }
+
+  @media (min-width: 720px) {
+    .licard__meta {
+      justify-content: flex-start;
+    }
+  }
+
+  .licard__chip {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    line-height: 1;
+    padding: 0.45em 0.9em;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 45%, transparent);
+    background: var(--ink-surface);
+    color: var(--text-bright);
+    white-space: nowrap;
+  }
+
+  /* Official FSF artwork: scale only, never restyle or recolor. The plate is
+     presentation, not a restyle — the dark-purple marks need a light ground to
+     stay legible on the dark glass, so it sits on white in BOTH themes
+     (deliberate literal: artwork grounds don't theme-flip). */
+  .licard__fsf {
+    height: 38px;
+    width: auto;
+    display: block;
+    background: white;
+    padding: 4px 8px;
+    border-radius: var(--r-2);
+    box-sizing: content-box;
+  }
+
+  .licard__history {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.03em;
+    line-height: var(--leading-snug);
+    color: var(--text-mute);
+    max-width: 52ch;
+  }
+
+  /* ------------------------------ CTA row ------------------------------ */
+
+  .licard__cta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-3);
+    margin-top: var(--s-3);
+  }
+
+  @media (min-width: 720px) {
+    .licard__cta {
+      justify-content: flex-start;
+    }
+  }
+
+  .licard__gh {
+    flex-shrink: 0;
+  }
+</style>

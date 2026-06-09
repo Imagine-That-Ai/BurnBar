@@ -51,7 +51,7 @@ import {
   publicApprovalView,
   publicClientView,
   randomHermesGatewayUserCode,
-  requireGatewayRatchetEnvelope,
+  requireProductionGatewayRatchetEnvelope,
   requireProductionGatewaySignalEnvelope,
   requireProductionGatewayRelayEnvelope,
   safeEqualHex,
@@ -385,7 +385,7 @@ function resolveGatewayWriteBody(
     return { signalEnvelope: requireProductionGatewaySignalEnvelope(rawSignalEnvelope, "signalEnvelope") };
   }
   if (rawRatchetEnvelope != null) {
-    return { ratchetEnvelope: requireGatewayRatchetEnvelope(rawRatchetEnvelope, "ratchetEnvelope") };
+    return { ratchetEnvelope: requireProductionGatewayRatchetEnvelope(rawRatchetEnvelope, "ratchetEnvelope") };
   }
   if (rawEnvelope != null) {
     return { relayEnvelope: requireProductionGatewayRelayEnvelope(rawEnvelope, "relayEnvelope") };
@@ -1130,7 +1130,9 @@ async function handleAttachmentInit(req: HttpRequest, res: HttpResponse): Promis
   const sealedEnvelope =
     body.relayEnvelope != null ? requireProductionGatewayRelayEnvelope(body.relayEnvelope, "relayEnvelope") : undefined;
   const ratchetEnvelope =
-    body.ratchetEnvelope != null ? requireGatewayRatchetEnvelope(body.ratchetEnvelope, "ratchetEnvelope") : undefined;
+    body.ratchetEnvelope != null
+      ? requireProductionGatewayRatchetEnvelope(body.ratchetEnvelope, "ratchetEnvelope")
+      : undefined;
   const sealed = sealedEnvelope != null || ratchetEnvelope != null || signalEnvelope != null;
   if (!sealed && !gatewayPlaintextWriteAllowed(grant.client.relayCapable)) {
     throw new HttpsError(

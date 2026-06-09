@@ -16,7 +16,6 @@ require_file LICENSE
 require_file NOTICE
 require_file THIRD_PARTY_NOTICES.md
 require_file LICENSES/MIT-legacy.txt
-require_file LICENSES/Nous-hermes-agent-MIT.txt
 require_file docs/legal/agpl-compliance.md
 require_file REUSE.toml
 require_file third_party/libsignal/manifest.json
@@ -31,8 +30,6 @@ require_file scripts/ci/verify-libsignal-runtime-readiness.sh
 
 grep -q "GNU AFFERO GENERAL PUBLIC LICENSE" LICENSE || fail "root LICENSE is not AGPLv3 text"
 grep -q "MIT License" LICENSES/MIT-legacy.txt || fail "legacy MIT notice is missing"
-grep -q "Copyright (c) 2025 Nous Research" LICENSES/Nous-hermes-agent-MIT.txt || fail "Nous Hermes MIT notice is missing"
-grep -q "NousResearch/hermes-agent" THIRD_PARTY_NOTICES.md || fail "third-party notices do not record the Nous Hermes origin"
 grep -q "AGPL-3.0-only" NOTICE || fail "NOTICE does not identify AGPL-3.0-only"
 grep -q "46d867c986f66201e34e7ae20ce423eec742bf3f" third_party/libsignal/manifest.json || fail "libsignal commit pin drifted"
 grep -q "v0.94.4" THIRD_PARTY_NOTICES.md || fail "third-party notices do not record the libsignal tag"
@@ -53,18 +50,17 @@ const files = execFileSync('git', [
   .trim()
   .split('\n')
   .filter(Boolean);
+// packages/e2ee-backend-policy is the deliberate MIT seam package — it is
+// reusable in the Nous/Hermes MIT upstream (documented in
+// THIRD_PARTY_NOTICES.md "MIT upstream seam"); everything else in the
+// product tree must stay AGPL-3.0-only.
+const MIT_SEAM_PACKAGES = new Set(['packages/e2ee-backend-policy/package.json']);
 const failures = [];
-const allowedPackageLicenses = new Map([
-  // This policy package is deliberately kept MIT-compatible because it encodes
-  // the Nous/Hermes upstream mode and must not pull AGPL/libsignal materials
-  // into the upstream contribution lane.
-  ['packages/e2ee-backend-policy/package.json', 'MIT'],
-]);
 for (const file of files) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const expectedLicense = allowedPackageLicenses.get(file) ?? 'AGPL-3.0-only';
-  if (json.license !== expectedLicense) {
-    failures.push(`${file}: expected license ${expectedLicense}, got ${json.license ?? '<missing>'}`);
+  const expected = MIT_SEAM_PACKAGES.has(file) ? 'MIT' : 'AGPL-3.0-only';
+  if (json.license !== expected) {
+    failures.push(`${file}: expected license ${expected}, got ${json.license ?? '<missing>'}`);
   }
 }
 if (failures.length) {

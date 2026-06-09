@@ -434,9 +434,10 @@ jobs:
   ios-mobile:
     name: iOS Mobile
     runs-on: macos-26
-    # Cold macOS runners can spend more than 25 minutes compiling Firebase
-    # before the mobile tests start; keep this lane bounded without false timeouts.
-    timeout-minutes: 45
+    # Internal hosted macOS runs build the Signal FFI and then compile the full
+    # mobile target before tests start. Keep the lane bounded while allowing
+    # cold runners enough room to reach the test phase.
+    timeout-minutes: 90
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     env:
       INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}

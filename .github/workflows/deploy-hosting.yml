@@ -57,6 +57,18 @@ jobs:
           npm ci --prefix website
           npm ci --prefix apps/console
 
+      # Defense in depth for the public trust copy: even a bad merge cannot
+      # deploy drifted claims. These mirror the fast-feedback gates — the
+      # crypto-claims `--check` fails on stale/hand-edited/deleted copy, and
+      # the trust.generated.ts regenerate+diff catches registry drift.
+      - name: Trust copy drift gates (block deploy)
+        run: |
+          node website/scripts/generate-crypto-claims.mjs --check
+          git ls-files --error-unmatch website/src/data/trust.generated.ts
+          node packages/data-domains/codegen.mjs
+          git diff --exit-code -- website/src/data/trust.generated.ts \
+            || { echo "::error::website/src/data/trust.generated.ts is stale — refusing to deploy drifted trust copy."; exit 1; }
+
       - name: Authenticate to Google Cloud (service account)
         if: ${{ github.event.inputs.dry_run != 'true' && env.HAS_GCP_SA_KEY == 'true' }}
         uses: google-github-actions/auth@v2 # v2

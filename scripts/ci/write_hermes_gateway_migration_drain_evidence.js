@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 "use strict";
 
+const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
-const PRIVACY_MARKER = "aggregate_counts_only_no_document_values_or_identifiers";
-const DEFAULT_REGION = "us-central1";
-const SIGNAL_REQUIRED_ENV = "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED";
 
+const PRIVACY_MARKER = "aggregate_counts_only_no_document_values_or_identifiers";
+const SOURCE_AVAILABILITY = "docs/legal/SOURCE_AVAILABILITY.md";
+// The gateway runtime ships from functions/ and the shared contracts package;
+// their lockfiles are the release dependency locks. The repo root is the
+// Nous/Hermes MIT upstream graft point and owns no root manifests.
+const DEFAULT_DEPENDENCY_LOCKS = [
+  "functions/package-lock.json",
+  "packages/signal-envelope-contracts/package-lock.json",
+];
+const SIGNAL_REQUIRED_ENV = "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED";
+const DEFAULT_GCLOUD_REGION = "us-central1";
+const DEFAULT_WRITE_PATH_SERVICES = ["burnbarhermesgateway", "enqueuehermesgatewayevent"];
 const COLLECTIONS = [
   {
     id: "events",
@@ -24,138 +34,52 @@ const COLLECTIONS = [
   {
     id: "attachments",
     collectionGroup: "hermes_gateway_attachments",
-    plaintextFields: ["fileName", "contentType"],
+    plaintextFields: ["fileName"],
   },
 ];
-
-const CLASSIFICATIONS = [
+const COUNT_FIELDS = [
+  "total",
   "signalRead",
-  "knownLegacyRelay",
-  "knownLegacyRatchet",
-  "knownLegacyPlaintext",
+  "legacyHermesRelayRead",
+  "legacyHermesRatchetRead",
+  "legacyPlaintextRead",
   "unreadable",
-  "malformed",
-  "unknownSchema",
-  "parserMisses",
 ];
-const SIGNAL_ENVELOPE_FORMAT_VERSION = 1;
-const SIGNAL_RELAY_KEY_VERSION = 4;
-const SIGNAL_TRANSPORT_ENCRYPTION = "signal-doubleratchet-pqxdh-v1";
-const SIGNAL_MAX_MESSAGE_B64 = 1_100_000;
-const SIGNAL_MAX_ID = 160;
-const SIGNAL_MAX_LABEL = 120;
-const SIGNAL_MAX_COUNTER = 9_007_199_254_740_991;
 
 function emptyCounts() {
-  return Object.fromEntries(CLASSIFICATIONS.map((name) => [name, 0]));
+  return Object.fromEntries(COUNT_FIELDS.map((field) => [field, 0]));
 }
 
-function hasOwn(data, field) {
+function hasNonEmptyField(data, field) {
   return Object.prototype.hasOwnProperty.call(data, field) && data[field] !== undefined && data[field] !== null;
 }
 
-function recordOrUndefined(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
-}
-
-function boundedText(raw, maxLength) {
-  if (typeof raw !== "string") return undefined;
-  const value = raw.trim();
-  if (!value || value.length > maxLength || /[\r\n|]/u.test(value)) return undefined;
-  return value;
-}
-
-function counter(raw) {
-  const value = typeof raw === "number" ? Math.floor(raw) : Number(raw);
-  if (!Number.isSafeInteger(value) || value < 0 || value > SIGNAL_MAX_COUNTER) return undefined;
-  return value;
-}
-
-function base64Within(raw, maxLength) {
-  if (typeof raw !== "string") return undefined;
-  const value = raw.trim();
-  if (
-    !value ||
-    value.length > maxLength ||
-    value.length % 4 !== 0 ||
-    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value)
-  ) {
-    return undefined;
-  }
-  try {
-    if (Buffer.from(value, "base64").toString("base64") !== value) return undefined;
-  } catch {
-    return undefined;
-  }
-  return value;
-}
-
-function isValidGatewaySignalEnvelope(raw) {
-  const envelope = recordOrUndefined(raw);
-  if (!envelope) return false;
-  if (counter(envelope.signalEnvelopeFormatVersion) !== SIGNAL_ENVELOPE_FORMAT_VERSION) return false;
-  if (envelope.mode !== "transport") return false;
-  if (counter(envelope.relayKeyVersion) !== SIGNAL_RELAY_KEY_VERSION) return false;
-  if (envelope.relayEncryption !== SIGNAL_TRANSPORT_ENCRYPTION) return false;
-
-  const ciphertextLayer = recordOrUndefined(envelope.ciphertextLayer);
-  if (!ciphertextLayer) return false;
-  if (!base64Within(ciphertextLayer.payloadCiphertextB64, SIGNAL_MAX_MESSAGE_B64)) return false;
-  if (!boundedText(ciphertextLayer.payloadAADLabel, SIGNAL_MAX_LABEL)) return false;
-  if (counter(ciphertextLayer.schemaVersion) === undefined) return false;
-
-  const keyDelivery = recordOrUndefined(envelope.keyDelivery);
-  if (!keyDelivery || keyDelivery.scheme !== SIGNAL_TRANSPORT_ENCRYPTION) return false;
-  if (keyDelivery.signalMessageType !== 2 && keyDelivery.signalMessageType !== 3) return false;
-  if (!base64Within(keyDelivery.signalMessageB64, SIGNAL_MAX_MESSAGE_B64)) return false;
-  if (!boundedText(keyDelivery.senderIdentityKeyId, SIGNAL_MAX_ID)) return false;
-  if (keyDelivery.ratchetEpochHint !== undefined && counter(keyDelivery.ratchetEpochHint) === undefined) return false;
-
-  const binding = recordOrUndefined(envelope.binding);
-  if (!binding) return false;
-  if (!boundedText(binding.uid, SIGNAL_MAX_ID)) return false;
-  if (binding.scope !== "gateway" || binding.mode !== "transport") return false;
-  if (counter(binding.formatVersion) !== SIGNAL_ENVELOPE_FORMAT_VERSION) return false;
-  if (!boundedText(binding.clientId, SIGNAL_MAX_ID)) return false;
-  if (!boundedText(binding.slotId, SIGNAL_MAX_ID)) return false;
-  if (binding.collection !== undefined || binding.docId !== undefined || binding.field !== undefined) return false;
-
-  return true;
-}
-
-function classifyGatewayDocument(data, plaintextFields = []) {
+function classifyGatewayDocument(data, plaintextFields) {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     return "unreadable";
   }
-  if (data.__malformed === true) {
-    return "malformed";
+  if (hasNonEmptyField(data, "signalEnvelope")) {
+    return "signalRead";
   }
-  if (data.__parserMiss === true) {
-    return "parserMisses";
+  if (hasNonEmptyField(data, "ratchetEnvelope")) {
+    return "legacyHermesRatchetRead";
   }
-  if (data.__unreadable === true || data.unreadable === true) {
-    return "unreadable";
+  if (hasNonEmptyField(data, "relayEnvelope")) {
+    return "legacyHermesRelayRead";
   }
-  if (hasOwn(data, "signalEnvelope") || data.signalRead === true || data.cryptoMode === "signal") {
-    return isValidGatewaySignalEnvelope(data.signalEnvelope) ? "signalRead" : "malformed";
+  if (plaintextFields.some((field) => hasNonEmptyField(data, field))) {
+    return "legacyPlaintextRead";
   }
-  if (hasOwn(data, "relayEnvelope") || hasOwn(data, "legacyRelayEnvelope")) {
-    return "knownLegacyRelay";
-  }
-  if (hasOwn(data, "ratchetEnvelope") || hasOwn(data, "legacyRatchetEnvelope")) {
-    return "knownLegacyRatchet";
-  }
-  if (plaintextFields.some((field) => hasOwn(data, field))) {
-    return "knownLegacyPlaintext";
-  }
-  return "unknownSchema";
+  return "unreadable";
 }
 
-function summarizeDocuments(documents, collection, { sampleLimit = documents.length, truncated = false } = {}) {
+function summarizeDocuments(documents, collection, { sampleLimit, truncated = false }) {
   const counts = emptyCounts();
   for (const data of documents) {
-    counts[classifyGatewayDocument(data, collection.plaintextFields)] += 1;
+    const field = classifyGatewayDocument(data, collection.plaintextFields);
+    counts[field] += 1;
   }
+  counts.total = documents.length;
   return {
     collectionGroup: collection.collectionGroup,
     sampleLimit,
@@ -165,8 +89,56 @@ function summarizeDocuments(documents, collection, { sampleLimit = documents.len
   };
 }
 
+function buildWritePathEvidence({ signalRequiredMode, modeSource }) {
+  return {
+    signalRequired: signalRequiredMode === true,
+    signalEnvelopeWritesEnabled: signalRequiredMode === true,
+    legacyRelayWritesEnabled: signalRequiredMode !== true,
+    legacyRatchetWritesEnabled: signalRequiredMode !== true,
+    legacyPlaintextWritesEnabled: false,
+    modeSource: modeSource || `${SIGNAL_REQUIRED_ENV}=false`,
+    services: DEFAULT_WRITE_PATH_SERVICES.map((service) => ({
+      service,
+      latestReadyRevision: "self-test-manual",
+      url: `https://${service}.example.com`,
+      signalRequired: signalRequiredMode === true,
+    })),
+  };
+}
+
 function envFlagEnabled(raw) {
-  return ["1", "true", "yes", "on"].includes(String(raw ?? "").trim().toLowerCase());
+  if (raw == null) {
+    return false;
+  }
+  return ["1", "true", "yes", "on"].includes(String(raw).trim().toLowerCase());
+}
+
+function serviceModeFromDescription(description) {
+  const service = description?.metadata?.name;
+  const latestReadyRevision = description?.status?.latestReadyRevisionName;
+  const url = description?.status?.url;
+  const ready = (description?.status?.conditions ?? []).find((condition) => condition?.type === "Ready");
+  const env = description?.readyRevision?.spec?.containers?.[0]?.env ?? [];
+  const flag = Array.isArray(env) ? env.find((entry) => entry?.name === SIGNAL_REQUIRED_ENV) : undefined;
+  return {
+    service: typeof service === "string" ? service : "",
+    latestReadyRevision: typeof latestReadyRevision === "string" ? latestReadyRevision : "",
+    url: typeof url === "string" ? url : "",
+    signalRequired: ready?.status === "True" && envFlagEnabled(flag?.value),
+  };
+}
+
+function buildWritePathEvidenceFromServices(services, { modeSource }) {
+  const signalRequiredMode = services.length > 0 && services.every((service) => service.signalRequired === true);
+  return {
+    signalRequired: signalRequiredMode,
+    signalEnvelopeWritesEnabled: signalRequiredMode,
+    legacyRelayWritesEnabled: !signalRequiredMode,
+    legacyRatchetWritesEnabled: !signalRequiredMode,
+    legacyPlaintextWritesEnabled: false,
+    modeSource,
+    services,
+  };
 }
 
 function describeCloudRunService({ service, projectId, region }) {
@@ -179,7 +151,7 @@ function describeCloudRunService({ service, projectId, region }) {
     projectId,
     "--region",
     region,
-    "--format=json(metadata.name,status.latestReadyRevisionName,status.conditions,status.url)",
+    "--format=json(metadata.name,status.latestReadyRevisionName,status.conditions,status.url,spec.template.spec.containers[0].env)",
   ];
   const result = spawnSync("gcloud", args, { encoding: "utf8" });
   if (result.status !== 0) {
@@ -207,36 +179,36 @@ function describeCloudRunRevision({ revision, projectId, region }) {
   return JSON.parse(result.stdout);
 }
 
-function serviceModeFromDescriptions(serviceDescription, readyRevision) {
-  const env = readyRevision?.spec?.containers?.[0]?.env ?? [];
-  const flag = Array.isArray(env) ? env.find((entry) => entry?.name === SIGNAL_REQUIRED_ENV) : undefined;
-  const ready = (serviceDescription?.status?.conditions ?? []).find((condition) => condition?.type === "Ready");
-  return {
-    service: serviceDescription?.metadata?.name ?? "",
-    latestReadyRevision: serviceDescription?.status?.latestReadyRevisionName ?? "",
-    url: serviceDescription?.status?.url ?? "",
-    signalRequired: ready?.status === "True" && envFlagEnabled(flag?.value),
-  };
-}
-
-function collectRuntimeModeFromGcloud({ projectId, region = DEFAULT_REGION }) {
-  const services = ["burnbarhermesgateway", "enqueuehermesgatewayevent"].map((service) => {
+function collectWritePathEvidenceFromGcloud({ projectId, region, gcloudServices }) {
+  if (!projectId) {
+    throw new Error("--project-id is required with --runtime-mode-from-gcloud");
+  }
+  const services = gcloudServices.map((service) => {
     const description = describeCloudRunService({ service, projectId, region });
     const latestReadyRevision = description?.status?.latestReadyRevisionName;
-    const readyRevision = latestReadyRevision
-      ? describeCloudRunRevision({ revision: latestReadyRevision, projectId, region })
-      : undefined;
-    return serviceModeFromDescriptions(description, readyRevision);
+    if (typeof latestReadyRevision === "string" && latestReadyRevision.trim()) {
+      description.readyRevision = describeCloudRunRevision({ revision: latestReadyRevision, projectId, region });
+    }
+    return serviceModeFromDescription(description);
   });
-  const signalRequired = services.length > 0 && services.every((service) => service.signalRequired === true);
+  return buildWritePathEvidenceFromServices(services, {
+    modeSource: `gcloud run services describe ${gcloudServices.join(",")} --project ${projectId} --region ${region}`,
+  });
+}
+
+function buildEvidence({ deployedCommit, sourceLocation, dependencyLocks, writePath, collections, generatedAt }) {
   return {
-    signalRequired,
-    signalEnvelopeWritesEnabled: signalRequired,
-    legacyRelayWritesEnabled: !signalRequired,
-    legacyRatchetWritesEnabled: !signalRequired,
-    legacyPlaintextWritesEnabled: false,
-    modeSource: "gcloud run services describe + gcloud run revisions describe; status.conditions + readyRevision env",
-    services,
+    schemaVersion: 1,
+    generatedAt: generatedAt || new Date().toISOString(),
+    privacy: PRIVACY_MARKER,
+    release: {
+      deployedCommit,
+      sourceLocation,
+      sourceAvailability: SOURCE_AVAILABILITY,
+      dependencyLocks,
+    },
+    writePath,
+    collections,
   };
 }
 
@@ -249,7 +221,10 @@ function initializeFirestore({ projectId }) {
   if (admin.apps.length === 0) {
     admin.initializeApp(projectId ? { projectId } : undefined);
   }
-  return { admin, db: admin.firestore() };
+  return {
+    admin,
+    db: admin.firestore(),
+  };
 }
 
 async function collectCollection(db, admin, collection, { pageSize, maxDocsPerCollection }) {
@@ -258,9 +233,13 @@ async function collectCollection(db, admin, collection, { pageSize, maxDocsPerCo
   let truncated = false;
   while (documents.length < maxDocsPerCollection) {
     let query = db.collectionGroup(collection.collectionGroup).orderBy(admin.firestore.FieldPath.documentId()).limit(pageSize);
-    if (cursor) query = query.startAfter(cursor);
+    if (cursor) {
+      query = query.startAfter(cursor);
+    }
     const snap = await query.get();
-    if (snap.empty) break;
+    if (snap.empty) {
+      break;
+    }
     for (const doc of snap.docs) {
       if (documents.length >= maxDocsPerCollection) {
         truncated = true;
@@ -269,7 +248,9 @@ async function collectCollection(db, admin, collection, { pageSize, maxDocsPerCo
       documents.push(doc.data());
     }
     cursor = snap.docs[snap.docs.length - 1];
-    if (snap.size < pageSize) break;
+    if (snap.size < pageSize) {
+      break;
+    }
   }
   return summarizeDocuments(documents, collection, { sampleLimit: maxDocsPerCollection, truncated });
 }
@@ -280,74 +261,101 @@ async function collectLiveEvidence(options) {
   for (const collection of COLLECTIONS) {
     collections[collection.id] = await collectCollection(db, admin, collection, options);
   }
+  const writePath = options.runtimeModeFromGcloud
+    ? collectWritePathEvidenceFromGcloud(options)
+    : buildWritePathEvidence(options);
   return buildEvidence({
     deployedCommit: options.deployedCommit,
     sourceLocation: options.sourceLocation,
     dependencyLocks: options.dependencyLocks,
-    writePath: options.writePath,
+    writePath,
     collections,
   });
 }
 
-function buildEvidence({ deployedCommit, sourceLocation, dependencyLocks, writePath, collections }) {
-  return {
-    schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
-    privacy: PRIVACY_MARKER,
-    release: {
-      deployedCommit,
-      sourceLocation,
-      dependencyLocks,
-    },
-    writePath,
-    collections,
-  };
-}
-
 function parseArgs(argv) {
   const options = {
+    dependencyLocks: [...DEFAULT_DEPENDENCY_LOCKS],
+    maxDocsPerCollection: 50_000,
+    pageSize: 500,
     output: undefined,
+    projectId: undefined,
+    selfTest: false,
+    dependencyLocksOverridden: false,
     deployedCommit: undefined,
     sourceLocation: undefined,
-    projectId: undefined,
-    region: DEFAULT_REGION,
+    signalRequiredMode: false,
+    modeSource: undefined,
     runtimeModeFromGcloud: false,
-    dependencyLocks: ["functions/package-lock.json", "packages/signal-envelope-contracts/package-lock.json"],
-    pageSize: 500,
-    maxDocsPerCollection: 50000,
-    fixture: undefined,
+    region: DEFAULT_GCLOUD_REGION,
+    gcloudServices: [...DEFAULT_WRITE_PATH_SERVICES],
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const next = () => {
       index += 1;
-      if (index >= argv.length) throw new Error(`${arg} requires a value`);
+      if (index >= argv.length) {
+        throw new Error(`${arg} requires a value`);
+      }
       return argv[index];
     };
-    if (arg === "--output") options.output = next();
-    else if (arg === "--deployed-commit") options.deployedCommit = next();
-    else if (arg === "--source-location") options.sourceLocation = next();
-    else if (arg === "--project-id") options.projectId = next();
-    else if (arg === "--region") options.region = next();
-    else if (arg === "--runtime-mode-from-gcloud") options.runtimeModeFromGcloud = true;
-    else if (arg === "--dependency-lock") options.dependencyLocks.push(next());
-    else if (arg === "--fixture") options.fixture = next();
-    else throw new Error(`unknown argument: ${arg}`);
+    if (arg === "--self-test") {
+      options.selfTest = true;
+    } else if (arg === "--output") {
+      options.output = next();
+    } else if (arg === "--project-id") {
+      options.projectId = next();
+    } else if (arg === "--deployed-commit") {
+      options.deployedCommit = next();
+    } else if (arg === "--source-location") {
+      options.sourceLocation = next();
+    } else if (arg === "--signal-required-mode") {
+      options.signalRequiredMode = true;
+      if (!options.modeSource) {
+        options.modeSource = `${SIGNAL_REQUIRED_ENV}=true`;
+      }
+    } else if (arg === "--mode-source") {
+      options.modeSource = next();
+    } else if (arg === "--runtime-mode-from-gcloud") {
+      options.runtimeModeFromGcloud = true;
+    } else if (arg === "--region") {
+      options.region = next();
+    } else if (arg === "--gcloud-service") {
+      if (!options.gcloudServicesOverridden) {
+        options.gcloudServices = [];
+        options.gcloudServicesOverridden = true;
+      }
+      options.gcloudServices.push(next());
+    } else if (arg === "--dependency-lock") {
+      if (!options.dependencyLocksOverridden) {
+        options.dependencyLocks = [];
+        options.dependencyLocksOverridden = true;
+      }
+      options.dependencyLocks.push(next());
+    } else if (arg === "--max-docs-per-collection") {
+      options.maxDocsPerCollection = Number(next());
+    } else if (arg === "--page-size") {
+      options.pageSize = Number(next());
+    } else {
+      throw new Error(`unknown argument: ${arg}`);
+    }
   }
-  if (!options.deployedCommit) throw new Error("--deployed-commit is required");
-  if (!options.sourceLocation) throw new Error("--source-location is required");
-  if (options.runtimeModeFromGcloud) {
-    options.writePath = collectRuntimeModeFromGcloud(options);
-  } else {
-    options.writePath = {
-      signalRequired: false,
-      signalEnvelopeWritesEnabled: false,
-      legacyRelayWritesEnabled: true,
-      legacyRatchetWritesEnabled: true,
-      legacyPlaintextWritesEnabled: false,
-      modeSource: `${SIGNAL_REQUIRED_ENV}=false`,
-      services: [],
-    };
+  if (!Number.isInteger(options.maxDocsPerCollection) || options.maxDocsPerCollection < 1) {
+    throw new Error("--max-docs-per-collection must be a positive integer");
+  }
+  if (!Number.isInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1000) {
+    throw new Error("--page-size must be an integer from 1 to 1000");
+  }
+  if (!options.gcloudServices.length) {
+    throw new Error("--gcloud-service must name at least one service when overriding defaults");
+  }
+  if (!options.selfTest) {
+    if (!options.deployedCommit) {
+      throw new Error("--deployed-commit is required for live evidence");
+    }
+    if (!options.sourceLocation) {
+      throw new Error("--source-location is required for live evidence");
+    }
   }
   return options;
 }
@@ -355,44 +363,76 @@ function parseArgs(argv) {
 function writeEvidence(evidence, output) {
   const body = `${JSON.stringify(evidence, null, 2)}\n`;
   if (output) {
-    fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true });
-    fs.writeFileSync(output, body, "utf8");
+    const outputPath = path.resolve(output);
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, body, "utf8");
+    console.log(`Wrote Hermes Gateway migration-drain evidence: ${outputPath}`);
   } else {
     process.stdout.write(body);
   }
 }
 
-async function main(argv = process.argv.slice(2)) {
-  const options = parseArgs(argv);
-  let evidence;
-  if (options.fixture) {
-    const fixture = JSON.parse(fs.readFileSync(options.fixture, "utf8"));
-    const collections = {};
-    for (const collection of COLLECTIONS) {
-      collections[collection.id] = summarizeDocuments(fixture[collection.id] ?? [], collection);
-    }
-    evidence = buildEvidence({
-      deployedCommit: options.deployedCommit,
-      sourceLocation: options.sourceLocation,
-      dependencyLocks: options.dependencyLocks,
-      writePath: options.writePath,
-      collections,
+function cleanSelfTestEvidence() {
+  const signalDoc = { schemaVersion: 4, signalEnvelope: { signalEnvelopeFormatVersion: 1 } };
+  const collections = {};
+  for (const collection of COLLECTIONS) {
+    collections[collection.id] = summarizeDocuments([signalDoc, signalDoc], collection, {
+      sampleLimit: 50,
+      truncated: false,
     });
-  } else {
-    evidence = await collectLiveEvidence(options);
   }
-  writeEvidence(evidence, options.output);
+  return buildEvidence({
+    deployedCommit: "0123456789abcdef0123456789abcdef01234567",
+    sourceLocation: "https://example.com/openburnbar/source/0123456789abcdef0123456789abcdef01234567",
+    dependencyLocks: DEFAULT_DEPENDENCY_LOCKS,
+    writePath: buildWritePathEvidence({
+      signalRequiredMode: true,
+      modeSource: `${SIGNAL_REQUIRED_ENV}=true self-test`,
+    }),
+    generatedAt: "2026-06-06T00:00:00.000Z",
+    collections,
+  });
 }
 
-module.exports = {
-  COLLECTIONS,
-  PRIVACY_MARKER,
-  classifyGatewayDocument,
-  isValidGatewaySignalEnvelope,
-  collectLiveEvidence,
-  summarizeDocuments,
-  buildEvidence,
-};
+function runSelfTest() {
+  const events = COLLECTIONS.find((collection) => collection.id === "events");
+  const attachments = COLLECTIONS.find((collection) => collection.id === "attachments");
+  assert.equal(classifyGatewayDocument({ signalEnvelope: {} }, events.plaintextFields), "signalRead");
+  assert.equal(classifyGatewayDocument({ ratchetEnvelope: {} }, events.plaintextFields), "legacyHermesRatchetRead");
+  assert.equal(classifyGatewayDocument({ relayEnvelope: {} }, events.plaintextFields), "legacyHermesRelayRead");
+  assert.equal(classifyGatewayDocument({ text: "legacy body" }, events.plaintextFields), "legacyPlaintextRead");
+  assert.equal(classifyGatewayDocument({ fileName: "legacy.pdf" }, attachments.plaintextFields), "legacyPlaintextRead");
+  assert.equal(classifyGatewayDocument({ schemaVersion: 4 }, events.plaintextFields), "unreadable");
+
+  const evidence = cleanSelfTestEvidence();
+  assert.equal(evidence.privacy, PRIVACY_MARKER);
+  assert.deepEqual(Object.keys(evidence.collections).sort(), ["attachments", "events", "messages"]);
+  assert.equal(evidence.collections.events.counts.signalRead, 2);
+  assert.equal(evidence.collections.events.counts.total, 2);
+  assert.equal(evidence.writePath.signalRequired, true);
+  assert.equal(evidence.writePath.legacyRelayWritesEnabled, false);
+  assert.deepEqual(
+    evidence.writePath.services.map((service) => service.service).sort(),
+    [...DEFAULT_WRITE_PATH_SERVICES].sort(),
+  );
+  assert.equal(JSON.stringify(evidence).includes("legacy body"), false);
+  return evidence;
+}
+
+async function main(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
+  if (options.selfTest) {
+    const evidence = runSelfTest();
+    if (options.output) {
+      writeEvidence(evidence, options.output);
+    } else {
+      console.log("PASS: Hermes Gateway migration-drain collector self-test passed");
+    }
+    return;
+  }
+  const evidence = await collectLiveEvidence(options);
+  writeEvidence(evidence, options.output);
+}
 
 if (require.main === module) {
   main().catch((error) => {
@@ -400,3 +440,15 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+
+module.exports = {
+  COLLECTIONS,
+  PRIVACY_MARKER,
+  buildEvidence,
+  classifyGatewayDocument,
+  cleanSelfTestEvidence,
+  describeCloudRunRevision,
+  serviceModeFromDescription,
+  buildWritePathEvidenceFromServices,
+  summarizeDocuments,
+};

@@ -4,7 +4,7 @@
 # Usage:
 #   ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_SKIP_BUILD=1 ./scripts/build-signal-ffi-xcframework.sh
-#   SIGNAL_FFI_BUILD_TARGETS="aarch64-apple-darwin aarch64-apple-ios-sim" ./scripts/build-signal-ffi-xcframework.sh
+#   SIGNAL_FFI_BUILD_TARGETS="aarch64-apple-darwin x86_64-apple-darwin" ./scripts/build-signal-ffi-xcframework.sh
 #
 # Output:
 #   Vendor/OpenBurnBarSignalFfi.xcframework/
@@ -35,6 +35,7 @@ fi
 
 DEFAULT_TARGETS=(
   aarch64-apple-darwin
+  x86_64-apple-darwin
   aarch64-apple-ios
   aarch64-apple-ios-sim
   x86_64-apple-ios
@@ -149,9 +150,31 @@ stage_headers
 
 build_xcframework_args=()
 
+macos_library_args=()
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-darwin "* ]]; then
   stage_target aarch64-apple-darwin macos-arm64
-  build_xcframework_args+=(-library "${ARCHS_DIR}/macos-arm64/libsignal_ffi.dylib" -headers "${ARCHS_DIR}/macos-arm64/Headers")
+  macos_library_args+=("${ARCHS_DIR}/macos-arm64/libsignal_ffi.dylib")
+fi
+if [[ " ${TARGETS[*]} " == *" x86_64-apple-darwin "* ]]; then
+  stage_target x86_64-apple-darwin macos-x86_64
+  macos_library_args+=("${ARCHS_DIR}/macos-x86_64/libsignal_ffi.dylib")
+fi
+if [[ "${#macos_library_args[@]}" -eq 2 ]]; then
+  macos_universal_dir="${ARCHS_DIR}/macos-universal"
+  mkdir -p "${macos_universal_dir}/Headers"
+  /usr/bin/lipo -create \
+    "${ARCHS_DIR}/macos-arm64/libsignal_ffi.dylib" \
+    "${ARCHS_DIR}/macos-x86_64/libsignal_ffi.dylib" \
+    -output "${macos_universal_dir}/libsignal_ffi.dylib"
+  /usr/bin/install_name_tool -id "@rpath/libsignal_ffi.dylib" "${macos_universal_dir}/libsignal_ffi.dylib"
+  cp "${HEADERS_DIR}/"* "${macos_universal_dir}/Headers/"
+  build_xcframework_args+=(-library "${macos_universal_dir}/libsignal_ffi.dylib" -headers "${macos_universal_dir}/Headers")
+elif [[ "${#macos_library_args[@]}" -eq 1 ]]; then
+  macos_platform_id="macos-arm64"
+  if [[ " ${TARGETS[*]} " == *" x86_64-apple-darwin "* ]]; then
+    macos_platform_id="macos-x86_64"
+  fi
+  build_xcframework_args+=(-library "${ARCHS_DIR}/${macos_platform_id}/libsignal_ffi.dylib" -headers "${ARCHS_DIR}/${macos_platform_id}/Headers")
 fi
 
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios "* ]]; then

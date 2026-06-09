@@ -116,7 +116,7 @@ export const NAV_PRIMARY = [
   { href: "/platforms", label: "Platforms" },
   { href: "/providers", label: "Providers" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/privacy", label: "Privacy & trust" },
+  { href: "/trust", label: "Trust" },
   { href: "/download", label: "Download" },
   { href: "/faq", label: "FAQ" }
 ];
@@ -135,7 +135,7 @@ export const NAV_FOOTER = {
     { href: "/faq", label: "FAQ" }
   ],
   trust: [
-    { href: "/trust?v=20260607", label: "Trust center" },
+    { href: "/trust?v=20260607", label: "Open & secure" },
     { href: "/privacy", label: "Privacy model" },
     { href: "/privacy#data-domains", label: "What we can see" },
     { href: "/security", label: "Security model" },
