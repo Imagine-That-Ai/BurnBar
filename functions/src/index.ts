@@ -135,6 +135,10 @@ export {
   registerEscrowDevice,
   approveEscrowDeviceTrust,
   revokeEscrowDeviceTrust,
+  publishIrohPairingPublicKey,
+  publishIrohPairingRecord,
+  revokeIrohPairingRecord,
+  publishPhoneControlAuthority,
   respondMissionApproval,
 } from "./callables/computerUseSecurity.js";
 

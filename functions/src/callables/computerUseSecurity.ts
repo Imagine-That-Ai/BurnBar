@@ -21,13 +21,15 @@ import {
   readAppIdFromCallableRequest,
 } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
-import { logInfo, logWarn, wrapCallableHandler } from "../logging.js";
+import { logInfo, logWarn, onCallProduction, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { revokeSignalSessionsForDevice } from "../signalDirectoryRuntime.js";
 
 const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 const ESCROW_WEB_PLATFORM = "Web";
+const MAC_ESCROW_PLATFORMS = new Set(["macOS"]);
+const PHONE_CONTROL_ESCROW_PLATFORMS = new Set(["iOS", "iPadOS", "Android"]);
 
 function isNativeEscrowPlatform(raw: unknown): raw is string {
   return typeof raw === "string" && ESCROW_PLATFORMS.has(raw);
@@ -39,6 +41,47 @@ function parseEscrowPlatform(raw: unknown): string {
     throw new HttpsError("invalid-argument", "platform must be macOS, iOS, iPadOS, or Android.");
   }
   return platform;
+}
+
+function boundedInteger(raw: unknown, name: string, min: number, max: number, required = true): number | undefined {
+  if (raw == null) {
+    if (required) throw new HttpsError("invalid-argument", `${name} is required.`);
+    return undefined;
+  }
+  const value = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new HttpsError("invalid-argument", `${name} is invalid.`);
+  }
+  return value;
+}
+
+function boundedStringArray(raw: unknown, name: string, maxItems: number, maxItemLength: number): string[] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > maxItems) {
+    throw new HttpsError("invalid-argument", `${name} is invalid.`);
+  }
+  return raw.map((item, index) => boundedTrimmedString(item, `${name}[${index}]`, maxItemLength, true));
+}
+
+function requireBase64Like(raw: unknown, name: string, minLength: number, maxLength: number): string {
+  const value = boundedTrimmedString(raw, name, maxLength, true);
+  if (value.length < minLength || !/^[A-Za-z0-9+/=]+$/u.test(value)) {
+    throw new HttpsError("invalid-argument", `${name} must be base64.`);
+  }
+  return value;
+}
+
+async function requireTrustedEscrowDevice(
+  uid: string,
+  deviceId: string,
+  allowedPlatforms: Set<string>,
+): Promise<{ deviceId: string; platform: string }> {
+  const device = await db.doc(`users/${uid}/escrow_devices/${deviceId}`).get();
+  const platform = device.exists ? device.get("platform") : undefined;
+  if (!device.exists || device.get("trustState") !== "trusted" || typeof platform !== "string" || !allowedPlatforms.has(platform)) {
+    throw new HttpsError("permission-denied", "This mutation requires a trusted device for the requested trust root.");
+  }
+  return { deviceId, platform };
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +542,215 @@ export const revokeEscrowDeviceTrust = onCall(
       };
     },
   ),
+);
+
+export const publishIrohPairingPublicKey = onCallProduction(
+  "publishIrohPairingPublicKey",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      deviceId?: unknown;
+      roleId?: unknown;
+      publicKeyBase64?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh pairing key.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+    const roleId = boundedTrimmedString(request.data.roleId ?? "host", "roleId", 32, true);
+    if (roleId !== "host") {
+      throw new HttpsError("invalid-argument", "Only the host iroh pairing key role is client-publishable.");
+    }
+    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
+    const publicKeyBase64 = requireBase64Like(request.data.publicKeyBase64, "publicKeyBase64", 32, 128);
+
+    await db.doc(`users/${uid}/iroh_pairing_keys/${roleId}`).set(
+      {
+        id: roleId,
+        publicKeyBase64,
+        publishedAtMillis: Date.now(),
+        publishedByDeviceId: deviceId,
+        protocolVersion: 1,
+        schemaVersion: 2,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    logInfo({
+      event: "callable_info",
+      message: "iroh_pairing_public_key_published",
+      role_id: roleId,
+      device_id: deviceId,
+    });
+    return { ok: true, roleId };
+  },
+);
+
+export const publishIrohPairingRecord = onCallProduction(
+  "publishIrohPairingRecord",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      deviceId?: unknown;
+      connectionId?: unknown;
+      nodeId?: unknown;
+      relayURL?: unknown;
+      directAddresses?: unknown;
+      publishedAtMillis?: unknown;
+      protocolVersion?: unknown;
+      signature?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh pairing record.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
+    const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
+    const nodeId = boundedTrimmedString(request.data.nodeId, "nodeId", 128, true);
+    const relayURLRaw = request.data.relayURL == null ? undefined : boundedTrimmedString(request.data.relayURL, "relayURL", 512, false);
+    const relayURL = relayURLRaw && relayURLRaw.length > 0 ? relayURLRaw : undefined;
+    const directAddresses = boundedStringArray(request.data.directAddresses, "directAddresses", 16, 512);
+    const publishedAtMillis = boundedInteger(request.data.publishedAtMillis, "publishedAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? Date.now();
+    const protocolVersion = boundedInteger(request.data.protocolVersion, "protocolVersion", 1, 100, true) ?? 1;
+    const signature = requireBase64Like(request.data.signature, "signature", 32, 256);
+
+    const ref = db.doc(`users/${uid}/iroh_pairing/${connectionId}`);
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(ref);
+      const createdAt = existing.exists && existing.get("createdAt") != null ? existing.get("createdAt") : FieldValue.serverTimestamp();
+      const payload: Record<string, unknown> = {
+        id: connectionId,
+        nodeId,
+        directAddresses,
+        publishedAtMillis,
+        protocolVersion,
+        signature,
+        publishedByDeviceId: deviceId,
+        createdAt,
+        updatedAt: FieldValue.serverTimestamp(),
+        schemaVersion: 2,
+      };
+      if (relayURL) payload.relayURL = relayURL;
+      transaction.set(
+        ref,
+        payload,
+        { merge: true },
+      );
+    });
+
+    logInfo({
+      event: "callable_info",
+      message: "iroh_pairing_record_published",
+      connection_id: connectionId,
+      device_id: deviceId,
+    });
+    return { ok: true, connectionId };
+  },
+);
+
+export const revokeIrohPairingRecord = onCallProduction(
+  "revokeIrohPairingRecord",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (request: CallableRequest<{ deviceId?: unknown; connectionId?: unknown; nonce?: unknown }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking an iroh pairing record.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+    const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
+    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
+    await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).delete();
+
+    logInfo({
+      event: "callable_info",
+      message: "iroh_pairing_record_revoked",
+      connection_id: connectionId,
+      device_id: deviceId,
+    });
+    return { ok: true, connectionId };
+  },
+);
+
+export const publishPhoneControlAuthority = onCallProduction(
+  "publishPhoneControlAuthority",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      deviceId?: unknown;
+      connectionId?: unknown;
+      peerNodeId?: unknown;
+      publicKeyBase64?: unknown;
+      publishedAtMillis?: unknown;
+      protocolVersion?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing phone-control authority.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+    await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
+    const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
+    const peerNodeId = boundedTrimmedString(request.data.peerNodeId, "peerNodeId", 160, true);
+    const publicKeyBase64 = requireBase64Like(request.data.publicKeyBase64, "publicKeyBase64", 32, 128);
+    const publishedAtMillis =
+      boundedInteger(request.data.publishedAtMillis ?? Date.now(), "publishedAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? Date.now();
+    const protocolVersion = boundedInteger(request.data.protocolVersion ?? 1, "protocolVersion", 1, 100, true) ?? 1;
+
+    const pairing = await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).get();
+    if (!pairing.exists) {
+      throw new HttpsError("failed-precondition", "Phone-control authority must reference an existing iroh pairing.");
+    }
+
+    await db.doc(`users/${uid}/iroh_pairing/${connectionId}/controllers/${peerNodeId}`).set(
+      {
+        id: peerNodeId,
+        connectionId,
+        peerNodeId,
+        deviceId,
+        publicKeyBase64,
+        publishedAtMillis,
+        protocolVersion,
+        publishedByDeviceId: deviceId,
+        schemaVersion: 2,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    logInfo({
+      event: "callable_info",
+      message: "phone_control_authority_published",
+      connection_id: connectionId,
+      peer_node_id: peerNodeId,
+      device_id: deviceId,
+    });
+    return { ok: true, connectionId, peerNodeId };
+  },
 );
 
 const NATIVE_ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
