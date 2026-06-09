@@ -44,6 +44,13 @@ function assertSectionIncludes(relativePath, startNeedle, endNeedle, needle, not
   }
 }
 
+function assertSectionIncludesAny(relativePath, startNeedle, endNeedle, needles, note) {
+  const section = sectionBetween(relativePath, startNeedle, endNeedle);
+  if (!needles.some((needle) => section.includes(needle))) {
+    fail(`${relativePath}: ${note ?? "section assertion failed"}`);
+  }
+}
+
 function assertSectionNotIncludes(relativePath, startNeedle, endNeedle, needle, note) {
   const section = sectionBetween(relativePath, startNeedle, endNeedle);
   if (section.includes(needle)) {
@@ -1440,15 +1447,18 @@ for (const surface of W3_SEALED_SURFACES) {
     `${surface.label} must allowlist its keys with keys().hasOnly([ (fail closed)`,
   );
   // (b) Each private field must be sealed and validated as a sealed envelope.
-  for (const sealedField of surface.sealed) {
-    assertSectionIncludes(
-      "firestore.rules",
-      surface.start,
-      surface.end,
-      `validCloudSealedText(request.resource.data.${sealedField})`,
-      `${surface.label} must validate ${sealedField} as a sealed envelope`,
-    );
-  }
+	  for (const sealedField of surface.sealed) {
+	    assertSectionIncludesAny(
+	      "firestore.rules",
+	      surface.start,
+	      surface.end,
+	      [
+	        `validCloudSealedText(request.resource.data.${sealedField})`,
+	        `"${sealedField}", request.resource.data.${sealedField}`,
+	      ],
+	      `${surface.label} must validate ${sealedField} as a sealed envelope`,
+	    );
+	  }
   // Required sealed fields must not be optional migration gates. This prevents
   // plaintext-only create windows from passing the scan.
   for (const sealedField of surface.requiredSealed ?? []) {

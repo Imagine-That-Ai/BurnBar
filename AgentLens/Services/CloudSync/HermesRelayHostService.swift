@@ -151,10 +151,11 @@ final class HermesRelayHostService {
     private func installMercuryRouterIfPossible() {
         guard let router = mercuryRouter,
               let transfer = mercuryFileTransfer else { return }
-        transfer.setMercuryDispatcher { @Sendable frame, controlStreamID, reply in
+        transfer.setMercuryDispatcher { @Sendable frame, controlStreamID, remotePeerNodeID, reply in
             await router.handleFrame(
                 frame,
                 controlStreamID: controlStreamID,
+                remotePeerNodeID: remotePeerNodeID,
                 replySender: reply
             )
         }

@@ -18,6 +18,21 @@ final class AgentToolBroker: @unchecked Sendable {
     #endif
     private let grantStillActive: (@Sendable () async -> Bool)?
 
+    /// Human-in-the-loop gate invoked before a **privileged** broker tool
+    /// (shell / workspace write / desktop export) runs in a non-trusted grant.
+    /// Returns `true` to allow. When `nil`, privileged tools FAIL CLOSED — there
+    /// is no silent privileged execution under an active grant (finding A1).
+    typealias PrivilegedActionApprover = @Sendable (_ toolName: String, _ summary: String) async -> Bool
+    private let privilegedActionApprover: PrivilegedActionApprover?
+
+    /// Broker tools that perform privileged side effects (shell exec, writes,
+    /// exfiltration-capable export). Each requires explicit per-action approval
+    /// in every grant mode except `.trusted` (YOLO), which already required a
+    /// local-auth proof + Mac approval at grant time and opted into autonomy.
+    static let approvalGatedTools: Set<String> = [
+        "shell_run", "workspace_write_file", "desktop_export_file"
+    ]
+
     private var browserSessionID: String?
 
     private enum WorkspaceAccessMode {
@@ -35,6 +50,21 @@ final class AgentToolBroker: @unchecked Sendable {
         self.grant = grant
         self.workspaceURL = Self.canonicalFileURL(workspaceURL)
         self.grantStillActive = grantStillActive
+        self.privilegedActionApprover = nil
+        self.computerUseRuntimeController = computerUseRuntimeController
+    }
+
+    init(
+        grant: AgentCapabilityGrant,
+        workspaceURL: URL,
+        computerUseRuntimeController: ComputerUseRuntimeController? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        privilegedActionApprover: PrivilegedActionApprover?
+    ) {
+        self.grant = grant
+        self.workspaceURL = Self.canonicalFileURL(workspaceURL)
+        self.grantStillActive = grantStillActive
+        self.privilegedActionApprover = privilegedActionApprover
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         self.computerUseRuntimeController = computerUseRuntimeController
         #endif
@@ -48,6 +78,19 @@ final class AgentToolBroker: @unchecked Sendable {
         self.grant = grant
         self.workspaceURL = Self.canonicalFileURL(workspaceURL)
         self.grantStillActive = grantStillActive
+        self.privilegedActionApprover = nil
+    }
+
+    init(
+        grant: AgentCapabilityGrant,
+        workspaceURL: URL,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        privilegedActionApprover: PrivilegedActionApprover?
+    ) {
+        self.grant = grant
+        self.workspaceURL = Self.canonicalFileURL(workspaceURL)
+        self.grantStillActive = grantStillActive
+        self.privilegedActionApprover = privilegedActionApprover
     }
     #endif
 
@@ -90,6 +133,19 @@ final class AgentToolBroker: @unchecked Sendable {
 
         do {
             let object = try Self.jsonObject(fromArguments: arguments)
+            // A1: privileged broker tools require explicit per-action approval
+            // unless this is a trusted (YOLO) grant. Fail closed when no
+            // approver is wired — never execute a privileged tool silently.
+            if Self.approvalGatedTools.contains(name), grant.trustMode != .trusted {
+                let summary = Self.approvalSummary(tool: name, arguments: object)
+                guard let approver = privilegedActionApprover else {
+                    return denied(name: name, reason: "privileged action requires approval but no approver is available")
+                }
+                let approved = await approver(name, summary)
+                guard approved else {
+                    return denied(name: name, reason: "user declined this action")
+                }
+            }
             switch name {
             case "workspace_read_file":
                 return try readWorkspaceFile(arguments: object)
@@ -378,6 +434,25 @@ final class AgentToolBroker: @unchecked Sendable {
         return value
     }
 
+    /// Human-readable, one-line description of a privileged tool call, shown to
+    /// the operator in the approval prompt so consent is informed (not blind).
+    static func approvalSummary(tool: String, arguments: [String: Any]) -> String {
+        switch tool {
+        case "shell_run":
+            let command = (arguments["command"] as? String) ?? "(missing command)"
+            return "Run shell command: \(command)"
+        case "workspace_write_file":
+            let path = (arguments["path"] as? String) ?? "(missing path)"
+            let append = (arguments["append"] as? Bool) ?? false
+            return "\(append ? "Append to" : "Write") workspace file: \(path)"
+        case "desktop_export_file":
+            let source = (arguments["sourcePath"] as? String) ?? "(missing source)"
+            return "Export \(source) to your Desktop"
+        default:
+            return tool
+        }
+    }
+
     private func denied(name: String, reason: String) -> AgentToolExecutionPayload {
         jsonPayload(["ok": false, "tool": name, "status": "denied", "reason": reason], detail: reason)
     }
@@ -485,15 +560,91 @@ final class AgentToolBroker: @unchecked Sendable {
         }
 
         let workspacePath = canonicalFileURL(workspaceURL).path
-        let profile = """
-        (version 1)
-        (allow default)
-        (deny file-write* (require-not (subpath "\(escapeSandboxProfileString(workspacePath))")))
-        """
+        let profile = restrictedShellSandboxProfile(workspacePath: workspacePath)
         return ShellInvocation(
             executable: sandboxExecutable,
             arguments: ["-p", profile, "/bin/zsh", "-f", "-lc", command]
         )
+    }
+
+    /// Seatbelt profile for the **restricted** agent shell (`shell_run`).
+    ///
+    /// A prior version was `(allow default)` with only an out-of-workspace
+    /// *write* deny. That left intact the exact two primitives a prompt-injection
+    /// payload needs to turn an active shell grant into data exfiltration / RCE:
+    /// unrestricted outbound **network** (the exfil channel) and **reads** of
+    /// every secret store on disk (`~/.ssh`, Messages, Keychains, browser
+    /// profiles, …). This profile removes both while keeping ordinary local dev
+    /// tooling working:
+    ///   * `(deny network*)` — no outbound/inbound network from the restricted
+    ///     shell, so a `curl … | sh` / `… | curl -d @-` exfil cannot reach the
+    ///     wire. Network-dependent work belongs in the trusted (`shell_run_
+    ///     unrestricted`) path the operator explicitly opts into.
+    ///   * writes stay confined to the workspace (unchanged guarantee).
+    ///   * reads of well-known credential / private-data stores are denied.
+    /// Seatbelt evaluates the first matching operation rule here, so narrow
+    /// denies and workspace/device write allows must appear before the catch-all
+    /// `(allow default)`.
+    static func restrictedShellSandboxProfile(
+        workspacePath: String,
+        homePath: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) -> String {
+        let canonicalWorkspacePath = canonicalSandboxPath(workspacePath)
+        let canonicalHomePath = canonicalSandboxPath(homePath)
+        let ws = escapeSandboxProfileString(canonicalWorkspacePath)
+        // High-value secret / private-data stores. Reads are denied even though
+        // general reads stay allowed (so dev tooling keeps reading system libs,
+        // configs, etc.). Defense-in-depth behind `(deny network*)`.
+        let secretSubpaths = [
+            "/.ssh", "/.aws", "/.gnupg", "/.config/gh", "/.config/gcloud",
+            "/.kube", "/.docker", "/.azure", "/.config/op",
+            "/Library/Keychains", "/Library/Messages", "/Library/Mail",
+            "/Library/Cookies", "/Library/HTTPStorages", "/Library/Safari",
+            "/Library/Application Support/Google/Chrome",
+            "/Library/Application Support/Firefox",
+            "/Library/Application Support/BraveSoftware",
+            "/Library/Application Support/com.apple.sharedfilelist"
+        ].map { canonicalHomePath + $0 }
+        let secretLiterals = [
+            "/.netrc", "/.npmrc", "/.pypirc", "/.git-credentials"
+        ].map { canonicalHomePath + $0 }
+
+        var lines: [String] = [
+            "(version 1)",
+            "(deny network*)",
+            "(allow file-read* (subpath \"\(ws)\"))",
+            "(allow file-write* (subpath \"\(ws)\"))"
+        ]
+        // Re-allow only the null/stdio device nodes so ordinary redirects keep
+        // working (`… 2>/dev/null`). Writes otherwise stay strictly confined to
+        // the workspace — the anti-persistence guarantee that blocks ~/.ssh,
+        // LaunchAgents, and shell rc files. Temp dirs are intentionally NOT
+        // re-allowed (that would broaden writes and defeat confinement); tools
+        // can use the workspace as scratch.
+        for device in ["/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"] {
+            lines.append("(allow file-write* (literal \"\(device)\"))")
+        }
+        lines.append("(allow file-write* (subpath \"/dev/fd\"))")
+        for path in secretSubpaths {
+            lines.append("(deny file-read* (subpath \"\(escapeSandboxProfileString(path))\"))")
+        }
+        for path in secretLiterals {
+            lines.append("(deny file-read* (literal \"\(escapeSandboxProfileString(path))\"))")
+        }
+        lines.append("(deny file-write* (require-not (subpath \"\(ws)\")))")
+        lines.append("(allow default)")
+        return lines.joined(separator: "\n")
+    }
+
+    private static func canonicalSandboxPath(_ path: String) -> String {
+        let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
+        #if canImport(Darwin)
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        if realpath(standardized, &buffer) != nil {
+            return String(cString: buffer)
+        }
+        #endif
+        return URL(fileURLWithPath: standardized).resolvingSymlinksInPath().path
     }
 
     private static func escapeSandboxProfileString(_ value: String) -> String {

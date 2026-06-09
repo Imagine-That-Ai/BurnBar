@@ -301,17 +301,24 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             }
         }
 
-        // 6. Legacy phone escape hatch — explicit operator opt-out ONLY.
-        //    A verified phone-control intent is the operator acting in a live
-        //    mirror. Historically that short-circuited the AX deny-region and
-        //    approval checks so the operator could drive their own locked login
-        //    window. That bypass let a remote controller (or anything holding the
-        //    controller's signing key) silently type into a password field with
-        //    no approval, contradicting the "approval is the only ground truth"
-        //    invariant. It now survives ONLY when an operator explicitly sets
-        //    `phoneControlRespectsDenyRegions = false` via Remote Config — the
-        //    narrow login-window case — and is OFF by default.
-        if directPhoneControl && !context.phoneControlRespectsDenyRegions {
+        // 6. Legacy phone escape hatch — explicit operator opt-out ONLY, and it
+        //    can NEVER override an accessibility deny region. A verified
+        //    phone-control intent is the operator acting in a live mirror.
+        //    Historically that short-circuited the AX deny-region and approval
+        //    checks so the operator could drive their own non-secure windows
+        //    without re-approving every action. The dangerous part of that
+        //    bypass — letting a remote controller (or anything holding the
+        //    controller's signing key) silently type into a password field /
+        //    system auth sheet / login window — is now structurally impossible:
+        //    the escape hatch fires ONLY when `accessibilityDeny == nil`, so a
+        //    secure text field, system auth sheet, keychain prompt, or any
+        //    unknown (fail-closed) region beats it regardless of the Remote
+        //    Config flag. The narrow "drive my own locked login window" case is
+        //    served exclusively by the dedicated Remote Unlock signed-token
+        //    path, not by this hatch. The opt-out itself also defaults to the
+        //    secure posture (`phoneControlRespectsDenyRegions = true`) — see
+        //    SettingsManager's Remote Config default.
+        if directPhoneControl && !context.phoneControlRespectsDenyRegions && accessibilityDeny == nil {
             switch action {
             case .macInput, .phoneIntent:
                 return .allowed(approvedBy: .phone)

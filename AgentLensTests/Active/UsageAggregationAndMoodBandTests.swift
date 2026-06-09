@@ -369,14 +369,36 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     func test_cliBridge_claudeArguments_includeVerboseForStreamJSON() {
         XCTAssertEqual(
             CLIBridge.claudeArguments(prompt: "hello"),
-            ["-p", "hello", "--output-format", "stream-json", "--verbose"]
+            [
+                "-p",
+                "hello",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--permission-mode",
+                "plan",
+                "--disallowedTools",
+                "Bash,Write,Edit,MultiEdit,NotebookEdit"
+            ]
         )
     }
 
     func test_cliBridge_claudeArguments_includeExplicitModelWhenProvided() {
         XCTAssertEqual(
             CLIBridge.claudeArguments(prompt: "hello", model: "claude-sonnet-4-6"),
-            ["-p", "hello", "--model", "claude-sonnet-4-6", "--output-format", "stream-json", "--verbose"]
+            [
+                "-p",
+                "hello",
+                "--model",
+                "claude-sonnet-4-6",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--permission-mode",
+                "plan",
+                "--disallowedTools",
+                "Bash,Write,Edit,MultiEdit,NotebookEdit"
+            ]
         )
     }
 
@@ -390,6 +412,10 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
                 "--skip-git-repo-check",
                 "-c",
                 #"model_reasoning_effort="high""#,
+                "--sandbox",
+                "read-only",
+                "--ignore-user-config",
+                "--ignore-rules",
                 "hello"
             ]
         )
@@ -407,6 +433,10 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
                 "gpt-5.4",
                 "-c",
                 #"model_reasoning_effort="high""#,
+                "--sandbox",
+                "read-only",
+                "--ignore-user-config",
+                "--ignore-rules",
                 "hello"
             ]
         )
@@ -424,6 +454,10 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
                 "MiniMax-M2.7-highspeed",
                 "-c",
                 #"model_reasoning_effort="high""#,
+                "--sandbox",
+                "read-only",
+                "--ignore-user-config",
+                "--ignore-rules",
                 "hello"
             ]
         )

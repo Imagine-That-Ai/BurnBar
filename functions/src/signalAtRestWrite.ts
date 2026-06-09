@@ -8,11 +8,12 @@
  * {@link validateSignalAtRestEnvelopeForWrite} with the caller-derived EXPECTED
  * path coordinates BEFORE the admin write. This is the server half of L23 + L37.
  *
- * It mirrors the Firestore `validSignalAtRestEnvelope` rules function, but — unlike
- * Firestore rules, which cannot iterate a list — it ALSO deep-validates every
- * recipient wrap (recipientKind/id + base64 identity key + sealed content key) via
- * the shared {@link sanitizeCloudVaultSignalEnvelope} sanitizer. Rules + this
- * validator are intentional defense-in-depth, not redundancy.
+ * Firestore rules intentionally reject direct client `signalEnvelope` writes because
+ * rules cannot iterate a list and deep-validate every recipient wrap
+ * (recipientKind/id + base64 identity key + sealed content key). This validator is
+ * the only server-side path allowed to persist at-rest Signal envelopes, and it does
+ * that deep validation via the shared {@link sanitizeCloudVaultSignalEnvelope}
+ * sanitizer before the Admin SDK write.
  *
  * The server NEVER decrypts. It only proves (a) the strict at-rest CloudVault
  * shape and (b) that the binding is pinned to the EXACT doc path

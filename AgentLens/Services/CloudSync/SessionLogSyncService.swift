@@ -4,6 +4,7 @@ import FirebaseFirestore
 import Foundation
 import CryptoKit
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 
 private final class SessionLogSyncProcessGate: @unchecked Sendable {
     private let lock = NSLock()
@@ -1110,6 +1111,168 @@ enum CloudSyncEscrowPublicKeyPublisher {
     }
 }
 
+enum CloudSyncSignalIdentityPublicKeyPublisher {
+    static func publishIfNeeded(
+        userRef: CloudSyncDocumentGateway,
+        deviceId: String,
+        platform: String,
+        identity: OpenBurnBarSignalIdentityKeypair
+    ) async throws {
+        let documentRef = userRef.collection("signal_identity_public_keys").document(identity.identityKeyId)
+        if let data = try await documentRef.getData() {
+            guard data["deviceId"] as? String == deviceId,
+                  data["platform"] as? String == platform,
+                  data["identityKeyId"] as? String == identity.identityKeyId,
+                  data["publicKeyData"] as? String == identity.publicKeyBase64,
+                  data["publicKeyFingerprint"] as? String == identity.publicKeyFingerprint,
+                  data["keyVersion"] as? Int == identity.keyVersion,
+                  data["algorithm"] as? String == CloudVaultCrypto.signalAtRestEncryption else {
+                throw SignalIdentityPublicKeyPublishError.immutablePublicKeyConflict(
+                    deviceId: deviceId,
+                    keyVersion: identity.keyVersion
+                )
+            }
+            return
+        }
+        try await documentRef.setData([
+            "deviceId": deviceId,
+            "platform": platform,
+            "identityKeyId": identity.identityKeyId,
+            "publicKeyData": identity.publicKeyBase64,
+            "publicKeyFingerprint": identity.publicKeyFingerprint,
+            "keyVersion": identity.keyVersion,
+            "algorithm": CloudVaultCrypto.signalAtRestEncryption,
+            "createdAt": FieldValue.serverTimestamp()
+        ], merge: false)
+    }
+}
+
+enum CloudSyncTrustedDeviceChainVerifier {
+    static func verifiedTrustedDevice(
+        uid: String,
+        userRef: CloudSyncDocumentGateway,
+        deviceDocument: CloudSyncDocumentSnapshotGateway,
+        localIdentity: OpenBurnBarSignalIdentityKeypair
+    ) async throws -> CloudVaultVerifiedTrustedDevice {
+        let data = deviceDocument.data()
+        let deviceId = ((data["deviceId"] as? String) ?? deviceDocument.documentID)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await verifiedTrustedDevice(
+            uid: uid,
+            userRef: userRef,
+            deviceId: deviceId,
+            localIdentity: localIdentity,
+            visited: []
+        )
+    }
+
+    private static func verifiedTrustedDevice(
+        uid: String,
+        userRef: CloudSyncDocumentGateway,
+        deviceId: String,
+        localIdentity: OpenBurnBarSignalIdentityKeypair,
+        visited: Set<String>
+    ) async throws -> CloudVaultVerifiedTrustedDevice {
+        guard !deviceId.isEmpty, !visited.contains(deviceId) else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+        }
+        guard let deviceData = try await userRef.collection("escrow_devices").document(deviceId).getData(),
+              deviceData["trustState"] as? String == EscrowDeviceTrustState.trusted.rawValue,
+              let keyVersion = deviceData["keyVersion"] as? Int,
+              let escrowFingerprint = deviceData["publicKeyFingerprint"] as? String else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustedDevice(deviceId: deviceId)
+        }
+        guard let publicKeyData = try await userRef.collection("escrow_public_keys")
+            .document("\(deviceId)_\(keyVersion)")
+            .getData(),
+              publicKeyData["deviceId"] as? String == deviceId,
+              publicKeyData["keyVersion"] as? Int == keyVersion,
+              publicKeyData["publicKeyFingerprint"] as? String == escrowFingerprint,
+              let escrowPublicKeyBase64 = publicKeyData["publicKeyData"] as? String,
+              let escrowPublicKey = Data(base64Encoded: escrowPublicKeyBase64) else {
+            throw CloudVaultTrustChainVerificationError.missingEscrowPublicKey(deviceId: deviceId, keyVersion: keyVersion)
+        }
+        // H1: bind the server fingerprint to the actual escrow key bytes — the
+        // trust-chain signature only covers the fingerprint string, so a backend
+        // byte-swap would otherwise be invisible. Recompute and reject on mismatch.
+        guard EscrowDeviceSafetyCode.isFingerprint(escrowFingerprint, boundTo: escrowPublicKeyBase64) else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+        }
+        let signalIdentityKeyId = OpenBurnBarSignalIdentityKeyStore.identityKeyId(deviceId: deviceId, keyVersion: keyVersion)
+        guard let signalData = try await userRef.collection("signal_identity_public_keys")
+            .document(signalIdentityKeyId)
+            .getData(),
+              signalData["deviceId"] as? String == deviceId,
+              signalData["identityKeyId"] as? String == signalIdentityKeyId,
+              signalData["keyVersion"] as? Int == keyVersion,
+              signalData["algorithm"] as? String == CloudVaultCrypto.signalAtRestEncryption,
+              let signalFingerprint = signalData["publicKeyFingerprint"] as? String,
+              let signalPublicKeyBase64 = signalData["publicKeyData"] as? String,
+              let signalPublicKey = Data(base64Encoded: signalPublicKeyBase64) else {
+            throw CloudVaultTrustChainVerificationError.missingSignalIdentity(deviceId: deviceId, keyVersion: keyVersion)
+        }
+        // H1: bind the Signal identity fingerprint to its actual key bytes.
+        guard Data(SHA256.hash(data: signalPublicKey)).base64EncodedString() == signalFingerprint else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+        }
+        let verified = CloudVaultVerifiedTrustedDevice(
+            deviceId: deviceId,
+            keyVersion: keyVersion,
+            escrowPublicKeyFingerprint: escrowFingerprint,
+            escrowPublicKeyData: escrowPublicKey,
+            signalIdentityKeyId: signalIdentityKeyId,
+            signalIdentityPublicKeyFingerprint: signalFingerprint,
+            signalIdentityPublicKeyData: signalPublicKey
+        )
+        if signalIdentityKeyId == localIdentity.identityKeyId {
+            guard signalPublicKey == localIdentity.publicKeyData else {
+                throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+            }
+            return verified
+        }
+        guard deviceData["trustChainVersion"] as? Int == CloudVaultDeviceTrustChain.version,
+              deviceData["trustChainAlgorithm"] as? String == CloudVaultDeviceTrustChain.algorithm,
+              deviceData["targetSignalIdentityKeyId"] as? String == signalIdentityKeyId,
+              deviceData["targetSignalIdentityPublicKeyFingerprint"] as? String == signalFingerprint,
+              let approvedByDeviceId = deviceData["approvedByDeviceId"] as? String,
+              let approvedBySignalIdentityKeyId = deviceData["approvedBySignalIdentityKeyId"] as? String,
+              let approvedBySignalFingerprint = deviceData["approvedBySignalIdentityPublicKeyFingerprint"] as? String,
+              let signature = deviceData["trustChainSignature"] as? String else {
+            throw CloudVaultTrustChainVerificationError.missingTrustChain(deviceId: deviceId)
+        }
+        let approver = try await verifiedTrustedDevice(
+            uid: uid,
+            userRef: userRef,
+            deviceId: approvedByDeviceId,
+            localIdentity: localIdentity,
+            visited: visited.union([deviceId])
+        )
+        guard approver.signalIdentityKeyId == approvedBySignalIdentityKeyId,
+              approver.signalIdentityPublicKeyFingerprint == approvedBySignalFingerprint else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+        }
+        let payload = CloudVaultDeviceTrustChainPayload(
+            uid: uid,
+            targetDeviceId: deviceId,
+            targetEscrowPublicKeyFingerprint: escrowFingerprint,
+            targetKeyVersion: keyVersion,
+            targetSignalIdentityKeyId: signalIdentityKeyId,
+            targetSignalIdentityPublicKeyFingerprint: signalFingerprint,
+            approverDeviceId: approver.deviceId,
+            approverSignalIdentityKeyId: approver.signalIdentityKeyId,
+            approverSignalIdentityPublicKeyFingerprint: approver.signalIdentityPublicKeyFingerprint
+        )
+        guard CloudVaultDeviceTrustChain.verify(
+            payload,
+            signatureBase64: signature,
+            approverPublicKeyData: approver.signalIdentityPublicKeyData
+        ) else {
+            throw CloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
+        }
+        return verified
+    }
+}
+
 @MainActor
 struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
     func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws {
@@ -1144,6 +1307,13 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
             publicKeyFingerprint: keypair.publicKeyFingerprint,
             keyVersion: keypair.keyVersion
         )
+        let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: context.deviceId)
+        try await CloudSyncSignalIdentityPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: context.deviceId,
+            platform: "macOS",
+            identity: signalIdentity
+        )
         guard sourceIsTrusted else {
             return
         }
@@ -1152,30 +1322,25 @@ struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
             .getDocuments()
         for doc in trusted.documents {
-            let data = doc.data()
-            let targetDeviceId = (data["deviceId"] as? String) ?? doc.documentID
-            guard targetDeviceId.isEmpty == false,
-                  let keyVersion = data["keyVersion"] as? Int,
-                  let fingerprint = data["publicKeyFingerprint"] as? String else {
-                continue
-            }
-            let publicKeyDoc = try await userRef.collection("escrow_public_keys")
-                .document("\(targetDeviceId)_\(keyVersion)")
-                .getData()
-            guard let publicKeyBase64 = publicKeyDoc?["publicKeyData"] as? String,
-                  let publicKeyData = Data(base64Encoded: publicKeyBase64) else {
-                continue
-            }
-            let wrapped = try CloudVaultCrypto.wrapVaultKey(vaultKey, recipientPublicKey: publicKeyData)
+            let target = try await CloudSyncTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                uid: uid,
+                userRef: userRef,
+                deviceDocument: doc,
+                localIdentity: signalIdentity
+            )
+            let wrapped = try CloudVaultCrypto.wrapVaultKey(
+                vaultKey,
+                recipientPublicKey: target.escrowPublicKeyData
+            )
             try await userRef.collection("cloud_vault_key_wrappers")
-                .document("\(targetDeviceId)_\(keyVersion)")
+                .document("\(target.deviceId)_\(target.keyVersion)")
                 .setData([
                     "uid": uid,
                     "vaultKeyID": vaultKeyID,
-                    "targetDeviceId": targetDeviceId,
+                    "targetDeviceId": target.deviceId,
                     "sourceDeviceId": context.deviceId,
-                    "publicKeyFingerprint": fingerprint,
-                    "keyVersion": keyVersion,
+                    "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
+                    "keyVersion": target.keyVersion,
                     "wrappedVaultKey": wrapped.base64EncodedString(),
                     "algorithm": "ECIES-P256-AESGCM",
                     "status": "active",

@@ -29,11 +29,13 @@ public actor MediaControlStreamRegistry {
 
     public struct Lease: Sendable {
         public let key: Key
+        public let remotePeerNodeId: String?
         public var id: UUID { generation }
         fileprivate let generation: UUID
 
-        fileprivate init(key: Key, generation: UUID) {
+        fileprivate init(key: Key, remotePeerNodeId: String?, generation: UUID) {
             self.key = key
+            self.remotePeerNodeId = remotePeerNodeId
             self.generation = generation
         }
     }
@@ -70,7 +72,7 @@ public actor MediaControlStreamRegistry {
         streams[key, default: []].append(
             Entry(stream: stream, generation: generation, order: nextOrder)
         )
-        return Lease(key: key, generation: generation)
+        return Lease(key: key, remotePeerNodeId: stream.remotePeerNodeId, generation: generation)
     }
 
     @discardableResult

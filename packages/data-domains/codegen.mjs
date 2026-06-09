@@ -34,6 +34,11 @@ export function loadRegistry() {
 }
 
 const TIERS = ["server_readable", "zero_access", "end_to_end"];
+const CLOUD_VAULT_REWRAP_STRATEGIES = [
+  "document_envelopes",
+  "document_and_storage_envelopes",
+  "key_wrappers_only",
+];
 
 /** Validate the registry shape; throw on any structural problem (also used by the test). */
 export function validateRegistry(reg) {
@@ -48,6 +53,12 @@ export function validateRegistry(reg) {
     if (!d.title) errors.push(`${d.id}: missing title`);
     if (!Array.isArray(d.firestorePaths)) errors.push(`${d.id}: firestorePaths must be an array`);
     if (!Array.isArray(d.actions)) errors.push(`${d.id}: actions must be an array`);
+    if (
+      d.cloudVaultRewrapStrategy !== undefined &&
+      !CLOUD_VAULT_REWRAP_STRATEGIES.includes(d.cloudVaultRewrapStrategy)
+    ) {
+      errors.push(`${d.id}: invalid cloudVaultRewrapStrategy ${d.cloudVaultRewrapStrategy}`);
+    }
   }
   if (errors.length) throw new Error(`registry.json invalid:\n  - ${errors.join("\n  - ")}`);
   return reg;
@@ -86,6 +97,14 @@ function emitTs(reg) {
     "  suspensionSurface: string | null;",
     "  /** Optional reference to a tiered-limits table (e.g. PENSIEVE_LIMITS). */",
     "  tieredLimits?: string;",
+    "  /**",
+    "   * Internal rotation policy for CloudVault-key material in this domain.",
+    "   * document_envelopes: Firestore document envelopes must be opened locally",
+    "   * and resealed to the next vaultGeneration. document_and_storage_envelopes:",
+    "   * the same plus Storage blob envelopes. key_wrappers_only: the server rotates",
+    "   * wrapper docs and clients verify/wait for the rotation job.",
+    "   */",
+    "  cloudVaultRewrapStrategy?: \"document_envelopes\" | \"document_and_storage_envelopes\" | \"key_wrappers_only\";",
     "  /**",
     "   * Optional, apps-internal at-rest sealing scheme for an end_to_end domain",
     "   * (e.g. \"cloudvault-aesgcm-v2\"; the future \"signal-hpke-identity-seal-v1\").",
@@ -138,6 +157,7 @@ function emitSwift(reg) {
   out.push("    public let actions: [String]");
   out.push("    public let entitlementGate: String?");
   out.push("    public let suspensionSurface: String?");
+  out.push("    public let cloudVaultRewrapStrategy: String?");
   out.push("    public let sealingScheme: String?");
   out.push("}");
   out.push("");
@@ -152,6 +172,7 @@ function emitSwift(reg) {
     out.push(`            countSource: ${d.countSource ? `"${esc(d.countSource)}"` : "nil"}, byteSource: ${d.byteSource ? `"${esc(d.byteSource)}"` : "nil"},`);
     out.push(`            retention: "${esc(d.retention)}", actions: ${swiftStringArray(d.actions)},`);
     out.push(`            entitlementGate: ${d.entitlementGate ? `"${esc(d.entitlementGate)}"` : "nil"}, suspensionSurface: ${d.suspensionSurface ? `"${esc(d.suspensionSurface)}"` : "nil"},`);
+    out.push(`            cloudVaultRewrapStrategy: ${d.cloudVaultRewrapStrategy ? `"${esc(d.cloudVaultRewrapStrategy)}"` : "nil"},`);
     out.push(`            sealingScheme: ${d.sealingScheme ? `"${esc(d.sealingScheme)}"` : "nil"}`);
     out.push("        ),");
   }
@@ -189,6 +210,7 @@ function emitKotlin(reg) {
   out.push("    val actions: List<String>,");
   out.push("    val entitlementGate: String?,");
   out.push("    val suspensionSurface: String?,");
+  out.push("    val cloudVaultRewrapStrategy: String?,");
   out.push("    val sealingScheme: String?,");
   out.push(")");
   out.push("");
@@ -203,6 +225,7 @@ function emitKotlin(reg) {
     out.push(`            countSource = ${d.countSource ? `"${esc(d.countSource)}"` : "null"}, byteSource = ${d.byteSource ? `"${esc(d.byteSource)}"` : "null"},`);
     out.push(`            retention = "${esc(d.retention)}", actions = ${kotlinStringList(d.actions)},`);
     out.push(`            entitlementGate = ${d.entitlementGate ? `"${esc(d.entitlementGate)}"` : "null"}, suspensionSurface = ${d.suspensionSurface ? `"${esc(d.suspensionSurface)}"` : "null"},`);
+    out.push(`            cloudVaultRewrapStrategy = ${d.cloudVaultRewrapStrategy ? `"${esc(d.cloudVaultRewrapStrategy)}"` : "null"},`);
     out.push(`            sealingScheme = ${d.sealingScheme ? `"${esc(d.sealingScheme)}"` : "null"},`);
     out.push("        ),");
   }

@@ -246,10 +246,10 @@ function sealedMissionStatePatch(overrides = {}) {
   };
 }
 
-// Canonical at-rest CloudVault Signal envelope (validSignalAtRestEnvelope shape),
-// mirroring packages/signal-envelope-contracts at-rest wire shape. base64 fields are
-// length %4 == 0 so the rules base64 guard passes. The `binding` is path-bound by the
-// caller; per-coordinate overrides let a test relocate or pollute exactly one field.
+// Canonical at-rest CloudVault Signal envelope fixture, mirroring
+// packages/signal-envelope-contracts at-rest wire shape. Direct client writes must
+// reject even this well-formed shape; per-coordinate overrides let tests prove the
+// fail-closed posture stays in place for relocation and pollution attempts.
 function signalAtRestEnvelope({
   uid,
   collection,
@@ -1267,6 +1267,18 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       depth: "light",
       approvalMode: "read_only",
       source: "android-insights",
+    }))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-readonly-shell"), sealedMissionBase("mission-readonly-shell", {
+      approvalMode: "read_only",
+      commandsAllowed: true,
+    }))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-readonly-edit"), sealedMissionBase("mission-readonly-edit", {
+      approvalMode: "read_only",
+      fileEditsAllowed: true,
     }))
   );
   await assertSucceeds(
@@ -2378,6 +2390,100 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
   );
 });
 
+test("CloudVault rotation jobs are server-created and client-checkpointed only", async () => {
+  const db = authedDb("rotate-user");
+  const otherDb = authedDb("intruder");
+  const jobPath = "users/rotate-user/cloud_vault_rotation_jobs/job-1";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), jobPath), {
+      jobId: "job-1",
+      uid: "rotate-user",
+      status: "queued",
+      reason: "revocation_rewrap",
+      currentVaultKeyID: `v1_${"a".repeat(32)}`,
+      newVaultKeyID: `v1_${"b".repeat(32)}`,
+      fromVaultGeneration: 1,
+      toVaultGeneration: 2,
+      survivorDeviceIds: ["device-1"],
+      revokedDeviceIds: ["device-2"],
+      createdByDeviceId: "device-1",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    });
+  });
+
+  await assertSucceeds(getDoc(doc(db, jobPath)));
+  await assertFails(getDoc(doc(otherDb, jobPath)));
+  await assertFails(
+    setDoc(doc(db, "users/rotate-user/cloud_vault_rotation_jobs/client-created"), {
+      jobId: "client-created",
+      status: "queued",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  await assertSucceeds(
+    updateDoc(doc(db, jobPath), {
+      status: "rewrapping",
+      clientDeviceId: "device-1",
+      processedDocumentCount: 10,
+      rewrappedDocumentCount: 4,
+      changedFieldCount: 9,
+      documentRewrapComplete: false,
+      storageRewrapPending: true,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  await assertFails(
+    updateDoc(doc(db, jobPath), {
+      newVaultKeyID: `v1_${"c".repeat(32)}`,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    updateDoc(doc(otherDb, jobPath), {
+      status: "complete",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  const checkpointPath = `${jobPath}/checkpoints/conversations_chat`;
+  await assertSucceeds(
+    setDoc(doc(db, checkpointPath), {
+      domainID: "conversations_chat",
+      status: "documents_complete",
+      scannedDocumentCount: 10,
+      rewrappedDocumentCount: 4,
+      changedFieldCount: 9,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, `${jobPath}/checkpoints/bad-domain`), {
+      domainID: "different",
+      status: "documents_complete",
+      scannedDocumentCount: 1,
+      rewrappedDocumentCount: 1,
+      changedFieldCount: 1,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, `${jobPath}/checkpoints/session_logs`), {
+      domainID: "session_logs",
+      status: "documents_complete",
+      scannedDocumentCount: 1,
+      rewrappedDocumentCount: 1,
+      changedFieldCount: 1,
+      newVaultKeyID: `v1_${"d".repeat(32)}`,
+      updatedAt: serverTimestamp(),
+    })
+  );
+});
+
 test("remote MCP client grant audit and rate-limit docs are server-written only", async () => {
   const db = authedDb("mcp-user");
 
@@ -3198,12 +3304,10 @@ test("T2 mobile_assistant_chats denies plaintext content and unlisted keys", asy
   );
 });
 
-// L37 (rules half) — the optional additive Signal at-rest `signalEnvelope` field is
-// accepted ONLY when its binding matches the doc PATH, and every relocation / forgery /
-// pollution / mode-confusion fails closed. This is the named "Current Live Blocker"
-// (firestore.rules had CloudVault validators but no validSignalEnvelope path-binding
-// validator) and the rules dimension of L31 + L37.
-test("L37 signalEnvelope is path-bound on mobile_assistant_chats; relocation fails closed", async () => {
+// L37 (rules half) — client-direct writes must not carry Signal at-rest
+// `signalEnvelope`. Firestore rules cannot deep-validate every recipient wrap
+// or verify senderAuth signatures, so this surface is callable/Admin-only.
+test("L37 signalEnvelope is rejected on mobile_assistant_chats direct writes", async () => {
   const db = authedDb("sig-owner");
   await seedCloudVaultState("sig-owner");
   const threadPath = "users/sig-owner/mobile_assistant_chats/thread-1";
@@ -3226,10 +3330,14 @@ test("L37 signalEnvelope is path-bound on mobile_assistant_chats; relocation fai
     docId: "thread-1",
   });
 
-  // 1. Valid envelope bound to THIS exact path is accepted (alongside the legacy field).
-  await assertSucceeds(setDoc(doc(db, threadPath), { ...baseThread, signalEnvelope: goodEnvelope }));
+  // 1. Legacy sealed CloudVault writes still work without the Signal envelope.
+  await assertSucceeds(setDoc(doc(db, threadPath), baseThread));
 
-  // 2. The IDENTICAL envelope written at a DIFFERENT doc path fails closed (relocation):
+  // 2. Even a well-formed envelope bound to THIS exact path is rejected on the
+  // direct client path; it must be sanitized and persisted by an Admin/callable.
+  await assertFails(setDoc(doc(db, threadPath), { ...baseThread, signalEnvelope: goodEnvelope }));
+
+  // 3. The IDENTICAL envelope written at a DIFFERENT doc path fails closed (relocation):
   //    binding.docId="thread-1" no longer matches the path's threadId="thread-2".
   await assertFails(
     setDoc(doc(db, "users/sig-owner/mobile_assistant_chats/thread-2"), {
@@ -3239,7 +3347,7 @@ test("L37 signalEnvelope is path-bound on mobile_assistant_chats; relocation fai
     })
   );
 
-  // 3. Per-coordinate relocation of the binding — each must fail closed.
+  // 4. Per-coordinate relocation of the binding — each must fail closed.
   const relocations = [
     { binding: { uid: "attacker" } }, // wrong uid
     { binding: { collection: "cli_agent_mission_requests" } }, // wrong collection
@@ -3268,7 +3376,7 @@ test("L37 signalEnvelope is path-bound on mobile_assistant_chats; relocation fai
     );
   }
 
-  // 4. Envelope-level forgery / mode confusion / pollution — each must fail closed.
+  // 5. Envelope-level forgery / mode confusion / pollution — each must fail closed.
   const forgeries = [
     { envelope: { mode: "transport" } }, // top-level mode mismatch
     { envelope: { relayEncryption: "signal-doubleratchet-pqxdh-v1" } }, // transport scheme on at-rest
@@ -3302,7 +3410,7 @@ test("L37 signalEnvelope is path-bound on mobile_assistant_chats; relocation fai
     );
   }
 
-  // 5. A plaintext field smuggled INSIDE the envelope key slot (not the envelope shape)
+  // 6. A plaintext field smuggled INSIDE the envelope key slot (not the envelope shape)
   //    fails closed — the field must be a valid envelope, never arbitrary data.
   await assertFails(
     setDoc(doc(db, "users/sig-owner/mobile_assistant_chats/thread-plain"), {
@@ -3312,9 +3420,8 @@ test("L37 signalEnvelope is path-bound on mobile_assistant_chats; relocation fai
     })
   );
 
-  // 6. (Remediation R11) Type confusion — a NON-MAP signalEnvelope value (string,
-  //    number, bool, list) fails closed; validSignalAtRestEnvelope opens with
-  //    `value is map`, so a non-map can never substitute for an envelope.
+  // 7. (Remediation R11) Type confusion — a NON-MAP signalEnvelope value (string,
+  //    number, bool, list) fails closed; direct clients cannot write this field.
   const nonMapValues = ["not-a-map", 123, true, ["array", "not", "map"]];
   for (let i = 0; i < nonMapValues.length; i += 1) {
     await assertFails(
@@ -3327,10 +3434,9 @@ test("L37 signalEnvelope is path-bound on mobile_assistant_chats; relocation fai
   }
 });
 
-// L37 (rules half) — the same path-binding guard on the second client-writable at-rest
-// body collection (cli_agent_mission_requests), proving the validator is wired
-// per-collection, not just once.
-test("L37 signalEnvelope is path-bound on cli_agent_mission_requests; cross-collection fails", async () => {
+// L37 (rules half) — the same direct-write ban on the second client-writable
+// at-rest body collection (cli_agent_mission_requests).
+test("L37 signalEnvelope is rejected on cli_agent_mission_requests direct writes", async () => {
   const phoneDb = authedDb("ivy-sig");
   await seedCloudVaultState("ivy-sig");
   const requestPath = "users/ivy-sig/cli_agent_mission_requests/mission-1";
@@ -3341,8 +3447,12 @@ test("L37 signalEnvelope is path-bound on cli_agent_mission_requests; cross-coll
     docId: "mission-1",
   });
 
-  // Valid envelope bound to this mission doc is accepted alongside the sealed payload.
-  await assertSucceeds(
+  // Legacy sealed CloudVault mission writes still work without the Signal envelope.
+  await assertSucceeds(setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1")));
+
+  // Even a well-formed envelope bound to this mission doc is rejected on the
+  // direct client path; it must be sanitized and persisted by an Admin/callable.
+  await assertFails(
     setDoc(doc(phoneDb, requestPath), sealedMissionBase("mission-1", { signalEnvelope: goodEnvelope }))
   );
 
@@ -3361,6 +3471,9 @@ test("L37 signalEnvelope is path-bound on cli_agent_mission_requests; cross-coll
   );
 
   // Same-collection wrong docId (relocation within the collection) fails.
+  await assertSucceeds(
+    setDoc(doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-3"), sealedMissionBase("mission-3"))
+  );
   await assertFails(
     setDoc(
       doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-3"),
@@ -3539,12 +3652,10 @@ test("T5 conversations deny plaintext smuggled on the merge-update path", async 
   );
 });
 
-// L37b (rules half) — the Mac client-direct collections chat_threads + conversations
-// accept the optional additive Signal at-rest `signalEnvelope` ONLY when its binding
-// matches the doc PATH; relocation / wrong-collection forgery fails closed. These two
-// were the collections missing from the hasOnly allowlists (P0-2): without the field in
-// hasOnly the whole write (legacy sealedPayload included) was permission-denied.
-test("L37b signalEnvelope is path-bound on chat_threads + conversations; relocation fails closed", async () => {
+// L37b (rules half) — Mac client-direct collections chat_threads + conversations
+// also reject Signal at-rest `signalEnvelope`; normal sealed CloudVault writes
+// remain accepted.
+test("L37b signalEnvelope is rejected on chat_threads + conversations direct writes", async () => {
   const db = authedDb("sigb-owner");
   await seedCloudVaultState("sigb-owner");
   await seedHostedCloudEntitlement("sigb-owner");
@@ -3567,11 +3678,13 @@ test("L37b signalEnvelope is path-bound on chat_threads + conversations; relocat
     collection: "chat_threads",
     docId: "ct-1",
   });
-  // 1. Valid envelope bound to THIS exact path is accepted alongside the legacy field.
-  await assertSucceeds(
+  // 1. Legacy sealed CloudVault chat-thread writes still work without the Signal envelope.
+  await assertSucceeds(setDoc(doc(db, "users/sigb-owner/chat_threads/ct-1"), threadBase));
+  // 2. Even a well-formed envelope bound to THIS exact path is rejected direct.
+  await assertFails(
     setDoc(doc(db, "users/sigb-owner/chat_threads/ct-1"), { ...threadBase, signalEnvelope: goodThreadEnv })
   );
-  // 2. The SAME envelope at a different doc fails closed (binding.docId no longer matches).
+  // 3. The SAME envelope at a different doc fails closed (binding.docId no longer matches).
   await assertFails(
     setDoc(doc(db, "users/sigb-owner/chat_threads/ct-2"), {
       ...threadBase,
@@ -3579,7 +3692,7 @@ test("L37b signalEnvelope is path-bound on chat_threads + conversations; relocat
       signalEnvelope: goodThreadEnv,
     })
   );
-  // 3. An envelope bound to a DIFFERENT collection fails closed on chat_threads.
+  // 4. An envelope bound to a DIFFERENT collection fails closed on chat_threads.
   await assertFails(
     setDoc(doc(db, "users/sigb-owner/chat_threads/ct-3"), {
       ...threadBase,
@@ -3610,11 +3723,13 @@ test("L37b signalEnvelope is path-bound on chat_threads + conversations; relocat
     collection: "conversations",
     docId: "conv-sig-1",
   });
-  // 1. Valid envelope bound to THIS exact path is accepted.
-  await assertSucceeds(
+  // 1. Legacy sealed CloudVault conversation writes still work without the Signal envelope.
+  await assertSucceeds(setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-1"), convBase));
+  // 2. Even a well-formed envelope bound to THIS exact path is rejected direct.
+  await assertFails(
     setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-1"), { ...convBase, signalEnvelope: goodConvEnv })
   );
-  // 2. Relocation to a different conversation doc fails closed.
+  // 3. Relocation to a different conversation doc fails closed.
   await assertFails(
     setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-2"), {
       ...convBase,
@@ -3622,7 +3737,7 @@ test("L37b signalEnvelope is path-bound on chat_threads + conversations; relocat
       signalEnvelope: goodConvEnv,
     })
   );
-  // 3. Wrong-collection binding fails closed on conversations.
+  // 4. Wrong-collection binding fails closed on conversations.
   await assertFails(
     setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-3"), {
       ...convBase,

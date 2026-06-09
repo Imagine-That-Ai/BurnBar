@@ -23,6 +23,14 @@ export interface DataDomain {
   /** Optional reference to a tiered-limits table (e.g. PENSIEVE_LIMITS). */
   tieredLimits?: string;
   /**
+   * Internal rotation policy for CloudVault-key material in this domain.
+   * document_envelopes: Firestore document envelopes must be opened locally
+   * and resealed to the next vaultGeneration. document_and_storage_envelopes:
+   * the same plus Storage blob envelopes. key_wrappers_only: the server rotates
+   * wrapper docs and clients verify/wait for the rotation job.
+   */
+  cloudVaultRewrapStrategy?: "document_envelopes" | "document_and_storage_envelopes" | "key_wrappers_only";
+  /**
    * Optional, apps-internal at-rest sealing scheme for an end_to_end domain
    * (e.g. "cloudvault-aesgcm-v2"; the future "signal-hpke-identity-seal-v1").
    * NON-WEBSITED: this scheme codename never reaches the public trust surface
@@ -89,6 +97,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "export": "exportUserData",
       "delete": "deleteDomainData"
     },
+    "cloudVaultRewrapStrategy": "document_envelopes",
     "entitlementGate": null,
     "suspensionSurface": null
   },
@@ -150,6 +159,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "export": "exportUserData",
       "delete": "deleteDomainData"
     },
+    "cloudVaultRewrapStrategy": "document_envelopes",
     "entitlementGate": "burnbar_pro",
     "suspensionSurface": "burnbar_cloud"
   },
@@ -200,6 +210,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "export": "exportUserData",
       "delete": "deleteDomainData"
     },
+    "cloudVaultRewrapStrategy": "document_and_storage_envelopes",
     "entitlementGate": "burnbar_pro",
     "suspensionSurface": "burnbar_cloud"
   },
@@ -208,7 +219,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Pensieve Knowledge",
     "icon": "brain.head.profile",
     "encryptionTier": "end_to_end",
-    "summary": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Cloaked vectors + sealed text; the server runs ANN over them without reading your content, though these structures still reveal some recurrence/co-occurrence patterns. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
+    "summary": "Your private semantic memory: repo docs, notes, and chat-derived memories your agents recall. Text is sealed on-device; hosted ANN recall is an explicit opt-in over cloaked vectors and opaque keyed hashes. Those structures still reveal structural signals such as vector geometry, recurrence/co-occurrence patterns, counts, and access timing. Use local-only recall for sensitive memories when available. NOTE: a connected repo stores only an opaque keyed match token plus a sealed repo name — the cleartext repo name is observed transiently server-side only to route an inbound GitHub push webhook, never stored.",
     "serverSees": [
       "cloaked 384-dim vectors",
       "sourceKind",
@@ -249,6 +260,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "listRepos": "listKnowledgeRepos",
       "resync": "requestKnowledgeResync"
     },
+    "cloudVaultRewrapStrategy": "document_envelopes",
     "entitlementGate": "burnbar_pro_max",
     "tieredLimits": "PENSIEVE_LIMITS",
     "suspensionSurface": "burnbar_cloud_pro",
@@ -325,6 +337,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "pi_agent_relay_requests",
       "iroh_pairing",
       "iroh_pairing_keys",
+      "relay_sender_keys",
       "runtime_connection_preferences"
     ],
     "storagePaths": [
@@ -453,6 +466,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "callables": {
       "delete": "deleteDomainData"
     },
+    "cloudVaultRewrapStrategy": "document_envelopes",
     "entitlementGate": "burnbar_pro_max",
     "suspensionSurface": "floo_relay"
   },
@@ -503,6 +517,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "firestorePaths": [
       "cloud_vault_state",
       "cloud_vault_key_wrappers",
+      "cloud_vault_rotation_jobs",
       "escrow_devices",
       "escrow_public_keys",
       "signal_identity_public_keys",
@@ -526,6 +541,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "approve": "approveEscrowDeviceTrust",
       "revoke": "revokeEscrowDeviceTrust"
     },
+    "cloudVaultRewrapStrategy": "key_wrappers_only",
     "entitlementGate": null,
     "suspensionSurface": null
   },
@@ -570,6 +586,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "export": "exportUserData",
       "verify": "verifyAuditLog"
     },
+    "cloudVaultRewrapStrategy": "document_envelopes",
     "entitlementGate": null,
     "suspensionSurface": null
   }

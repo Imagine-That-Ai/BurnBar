@@ -613,101 +613,22 @@ service cloud.firestore {
         && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
     }
 
-    // ---- Signal at-rest (v4) CloudVault envelope validators ----------------------
-    // Mirrors the canonical wire contract in
-    // packages/signal-envelope-contracts/src/index.ts (sanitizeSignalEnvelope, "at-rest"
-    // branch) as a STRICTER SUPERSET, fail-closed — NOT byte-for-byte (Remediation R10):
-    // e.g. payloadAADLabel here is `^[A-Za-z0-9:_.-]+$`, tighter than the contract's
-    // boundedText, so a contract-valid-but-rules-rejected label is possible by design
-    // (a future producer must emit labels within this charset). ADDITIVE + flag-OFF: no producer writes a `signalEnvelope`
-    // field yet, so referencing this validator as an OPTIONAL field changes no existing
-    // write. This is the RULES half of L37 (relocation defense): the binding is pinned to
-    // the doc PATH (uid/collection/docId/field) so a server or relay cannot move a sealed
-    // value between users, docs, fields, or modes. `relayKeyVersion` absence for at-rest
-    // is enforced structurally by the top-level hasOnly() allowlist (it is not listed).
-    //
-    // LIMITATION (documented honestly): Firestore rules cannot iterate a list, so the
-    // per-WRAP deep validation (each wrap's recipientKind/id + base64 identity key +
-    // sealed content key) is NOT done here — the rules only bound the wraps LIST (size
-    // 1..32) and enforce the top-level shape, path-binding, caps, and base64 shape.
-    //
-    // The two wired collections below are OWNER-DIRECT writes (not callable-only), so on
-    // that path the RULES ARE THE SOLE ENFORCEMENT and wrap CONTENTS are unvalidated.
-    // That is acceptable ONLY because this field is flag-OFF/optional with NO producer
-    // today (no client writes it; the libsignal bridge is still a stub). Before any
-    // producer ships a `signalEnvelope`, EITHER route those writes through a callable
-    // that calls `validateSignalAtRestEnvelopeForWrite` (functions/src/signalAtRestWrite.ts,
-    // which DOES deep-validate every wrap via sanitizeCloudVaultSignalEnvelope) and persist
-    // its sanitized result, OR forbid the field on direct client writes. Do not assume the
-    // Admin validator covers this path — it is currently wired NOWHERE (see the handoff).
+    // ---- Signal at-rest CloudVault envelopes ------------------------------------
+    // Client-direct writes MUST NOT include `signalEnvelope`. Firestore rules cannot
+    // iterate and deep-validate every recipient wrap or verify senderAuth signatures,
+    // so production Signal-at-rest producers must route through an Admin/callable path
+    // that sanitizes the full envelope before persisting. This keeps the backend
+    // zero-plaintext while avoiding a shallow-rules validation bypass.
+    function forbidsDirectSignalEnvelope() {
+      return !("signalEnvelope" in request.resource.data);
+    }
+
     function validSignalBase64(value, maxLen) {
       return value is string
         && value.size() > 0
         && value.size() <= maxLen
         && value.size() % 4 == 0
         && value.matches("^[A-Za-z0-9+/]*={0,2}$");
-    }
-
-    function validSignalCiphertextLayer(value) {
-      return value is map
-        && value.keys().hasOnly(["payloadCiphertextB64", "payloadAADLabel", "schemaVersion"])
-        && validSignalBase64(value.payloadCiphertextB64, 1100000)
-        && value.payloadAADLabel is string
-        && value.payloadAADLabel.size() > 0
-        && value.payloadAADLabel.size() <= 120
-        && value.payloadAADLabel.matches("^[A-Za-z0-9:_.-]+$")
-        && value.schemaVersion is int
-        && value.schemaVersion >= 0;
-    }
-
-    function validSignalAtRestKeyDelivery(value) {
-      return value is map
-        && value.keys().hasOnly(["scheme", "wraps", "contentKeyLength"])
-        && value.scheme == "signal-hpke-identity-seal-v1"
-        && value.contentKeyLength == 32
-        && value.wraps is list
-        && value.wraps.size() >= 1
-        && value.wraps.size() <= 32;
-    }
-
-    // Path-binding equality is the relocation guard: every coordinate comes from the
-    // matched doc PATH, never from the envelope. scope/mode/formatVersion are pinned;
-    // gateway-only fields (clientId/slotId) are rejected by the hasOnly() allowlist.
-    function validSignalAtRestBinding(value, expectedUid, expectedCollection, expectedDocId, expectedField) {
-      return value is map
-        && value.keys().hasOnly(["uid", "scope", "collection", "docId", "field", "mode", "formatVersion"])
-        && value.uid == expectedUid
-        && value.scope == "cloudvault"
-        && value.collection == expectedCollection
-        && value.docId == expectedDocId
-        && value.field == expectedField
-        && value.mode == "at-rest"
-        && value.formatVersion == 1;
-    }
-
-    function validSignalAtRestEnvelope(value, expectedUid, expectedCollection, expectedDocId, expectedField) {
-      // The optional `senderAuth` block (writing-device signature over the envelope) is
-      // verified CLIENT-SIDE against the PINNED trusted-device key — the rules cannot do
-      // crypto and the block carries no plaintext, so they only bound its type. (Kept
-      // intentionally light: the per-evaluation expression budget is tight at the heaviest
-      // call site, cli_agent_mission_requests.)
-      return value is map
-        && value.keys().hasOnly([
-          "signalEnvelopeFormatVersion",
-          "mode",
-          "relayEncryption",
-          "ciphertextLayer",
-          "keyDelivery",
-          "binding",
-          "senderAuth"
-        ])
-        && value.signalEnvelopeFormatVersion == 1
-        && value.mode == "at-rest"
-        && value.relayEncryption == "signal-hpke-identity-seal-v1"
-        && validSignalCiphertextLayer(value.ciphertextLayer)
-        && validSignalAtRestKeyDelivery(value.keyDelivery)
-        && (!("senderAuth" in value) || value.senderAuth is map)
-        && validSignalAtRestBinding(value.binding, expectedUid, expectedCollection, expectedDocId, expectedField);
     }
 
     function matchesCurrentVaultKey(userId, vaultKeyID) {
@@ -794,14 +715,14 @@ service cloud.firestore {
         "contentSealed",
         "sealedSchemaVersion",
         "vaultKeyID",
-        "sealedPayload",
-        "signalEnvelope"
+        "sealedPayload"
       ]);
     }
 
     function validChatThreadSealedContent(userId) {
       return !chatThreadHasPlaintextContent()
         && validChatThreadKeys()
+        && forbidsDirectSignalEnvelope()
         && (!chatThreadIncludesBackedUpContent()
           || (
             request.resource.data.contentSealed == true
@@ -1291,8 +1212,7 @@ service cloud.firestore {
           "contentSealed",
           "sealedSchemaVersion",
           "vaultKeyID",
-          "sealedPayload",
-          "signalEnvelope"
+          "sealedPayload"
         ])
         && !request.resource.data.keys().hasAny([
           "projectName",
@@ -1326,23 +1246,18 @@ service cloud.firestore {
         && (!("version" in request.resource.data) || request.resource.data.version is int)
         && request.resource.data.contentSealed == true
         && request.resource.data.sealedSchemaVersion == 2
-        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload);
+        && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+        && forbidsDirectSignalEnvelope();
       }
       allow read: if ownsUserNamespace(userId);
-      // Optional additive Signal at-rest envelope, path-bound to this doc; a
-      // relocated/forged envelope fails closed (mirrors mobile_assistant_chats).
       allow create, update: if ownerWritableHostedCloudBackup(userId)
-        && validConversationMirror()
-        && (!("signalEnvelope" in request.resource.data) || validSignalAtRestEnvelope(request.resource.data.signalEnvelope, userId, "conversations", conversationId, "signalEnvelope"));
+        && validConversationMirror();
       allow delete: if false;
     }
 
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
-      // Optional additive Signal at-rest envelope, path-bound to this doc; a
-      // relocated/forged envelope fails closed (mirrors mobile_assistant_chats).
-      allow create, update: if ownerWritableChatThread(userId)
-        && (!("signalEnvelope" in request.resource.data) || validSignalAtRestEnvelope(request.resource.data.signalEnvelope, userId, "chat_threads", threadId, "signalEnvelope"));
+      allow create, update: if ownerWritableChatThread(userId);
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -1371,8 +1286,7 @@ service cloud.firestore {
           "isPinned",
           "priorityOrder",
           "lastMessageRole",
-          "lastAssistantMessageID",
-          "signalEnvelope"
+          "lastAssistantMessageID"
         ])
         && request.resource.data.id == threadId
         && request.resource.data.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
@@ -1387,9 +1301,7 @@ service cloud.firestore {
         && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)
         && (!("lastMessageRole" in request.resource.data) || request.resource.data.lastMessageRole in ["user", "assistant", "system", "tool"])
         && (!("lastAssistantMessageID" in request.resource.data) || (request.resource.data.lastAssistantMessageID is string && request.resource.data.lastAssistantMessageID.size() <= 512))
-        // L37 (rules half): optional additive Signal at-rest envelope, path-bound to this
-        // doc. flag-OFF — no producer writes it yet. A relocated/forged envelope fails closed.
-        && (!("signalEnvelope" in request.resource.data) || validSignalAtRestEnvelope(request.resource.data.signalEnvelope, userId, "mobile_assistant_chats", threadId, "signalEnvelope"));
+        && forbidsDirectSignalEnvelope();
       }
 
       allow read: if ownsUserNamespace(userId);
@@ -1448,6 +1360,22 @@ service cloud.firestore {
     // requests; the signed-in Mac claims them, runs the local agent, then
     // writes status and a small preview back for mobile.
     match /users/{userId}/cli_agent_mission_requests/{requestId} {
+      function validCliMissionApprovalControls() {
+        let approvalMode = request.resource.data.get("approvalMode", "existing_policy");
+        let commandsAllowed = request.resource.data.get("commandsAllowed", false);
+        let fileEditsAllowed = request.resource.data.get("fileEditsAllowed", false);
+        return approvalMode in ["existing_policy", "manual_all", "risky_only", "read_only"]
+          && commandsAllowed is bool
+          && fileEditsAllowed is bool
+          && (
+            approvalMode != "read_only"
+            || (
+              commandsAllowed == false
+              && fileEditsAllowed == false
+            )
+          );
+      }
+
       function validCliAgentMissionRequest() {
         return request.resource.data.keys().hasOnly([
           "id",
@@ -1496,8 +1424,7 @@ service cloud.firestore {
           "sealedStatePayload",
           "sealedStateSchemaVersion",
           "sealedStateVaultKeyID",
-          "approvedByDeviceId",
-          "signalEnvelope"
+          "approvedByDeviceId"
         ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
@@ -1515,9 +1442,7 @@ service cloud.firestore {
         && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed", "vault_key_unavailable"]
         && request.resource.data.schemaVersion is int
         && (!("depth" in request.resource.data) || request.resource.data.depth in ["light", "standard", "deep", "max"])
-        && (!("approvalMode" in request.resource.data) || request.resource.data.approvalMode in ["existing_policy", "manual_all", "risky_only", "read_only"])
-        && (!("commandsAllowed" in request.resource.data) || request.resource.data.commandsAllowed is bool)
-        && (!("fileEditsAllowed" in request.resource.data) || request.resource.data.fileEditsAllowed is bool)
+        && validCliMissionApprovalControls()
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
         && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
         && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
@@ -1527,9 +1452,7 @@ service cloud.firestore {
         && (!("siblingCount" in request.resource.data) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
         && (!("isGroupChild" in request.resource.data) || request.resource.data.isGroupChild is bool)
         && (!("resumeAction" in request.resource.data) || request.resource.data.resumeAction in ["new", "resume", "fork", "forward"])
-        // L37 (rules half): optional additive Signal at-rest envelope, path-bound to this
-        // doc. flag-OFF — no producer writes it yet. A relocated/forged envelope fails closed.
-        && (!("signalEnvelope" in request.resource.data) || validSignalAtRestEnvelope(request.resource.data.signalEnvelope, userId, "cli_agent_mission_requests", requestId, "signalEnvelope"));
+        && forbidsDirectSignalEnvelope();
       }
 
       function validCliAgentMissionCreate() {
@@ -2221,26 +2144,36 @@ service cloud.firestore {
       allow create, update: if ownerWritableNonSecret(userId)
         && stateId == "current"
         && request.resource.data.keys().hasOnly([
-          "uid",
-          "vaultKeyID",
-          "keyVersion",
-          "algorithm",
-          "status",
-          "createdByDeviceId",
-          "createdAt",
-          "updatedAt",
-          "schemaVersion"
+	          "uid",
+	          "vaultKeyID",
+	          "previousVaultKeyID",
+	          "vaultGeneration",
+	          "keyVersion",
+	          "algorithm",
+	          "status",
+	          "createdByDeviceId",
+	          "rotatedByDeviceId",
+	          "rotationJobId",
+	          "rotatedAt",
+	          "createdAt",
+	          "updatedAt",
+	          "schemaVersion"
         ])
         && request.resource.data.uid == userId
         && validVaultKeyID(request.resource.data.vaultKeyID)
-        && request.resource.data.keyVersion is int
-        && request.resource.data.keyVersion >= 1
-        && request.resource.data.keyVersion <= 100
-        && request.resource.data.algorithm == "AES-256-GCM"
-        && request.resource.data.status == "active"
-        && request.resource.data.createdByDeviceId is string
-        && request.resource.data.createdByDeviceId.size() <= 256
-        && request.resource.data.schemaVersion == 1
+	        && request.resource.data.keyVersion is int
+	        && request.resource.data.keyVersion >= 1
+	        && request.resource.data.keyVersion <= 100
+	        && (!("previousVaultKeyID" in request.resource.data) || validVaultKeyID(request.resource.data.previousVaultKeyID))
+	        && (!("vaultGeneration" in request.resource.data) || (request.resource.data.vaultGeneration is int && request.resource.data.vaultGeneration >= 1 && request.resource.data.vaultGeneration <= 10000))
+	        && request.resource.data.algorithm == "AES-256-GCM"
+	        && request.resource.data.status == "active"
+	        && request.resource.data.createdByDeviceId is string
+	        && request.resource.data.createdByDeviceId.size() <= 256
+	        && (!("rotatedByDeviceId" in request.resource.data) || (request.resource.data.rotatedByDeviceId is string && request.resource.data.rotatedByDeviceId.size() <= 256))
+	        && (!("rotationJobId" in request.resource.data) || (request.resource.data.rotationJobId is string && request.resource.data.rotationJobId.size() <= 200))
+	        && (!("rotatedAt" in request.resource.data) || request.resource.data.rotatedAt is timestamp)
+	        && request.resource.data.schemaVersion in [1, 2]
         && (!exists(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current)
           || get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data.vaultKeyID == request.resource.data.vaultKeyID);
       allow delete: if false;
@@ -2254,11 +2187,14 @@ service cloud.firestore {
           "targetDeviceId",
           "sourceDeviceId",
           "publicKeyFingerprint",
-          "keyVersion",
-          "wrappedVaultKey",
-          "vaultKeyID",
-          "algorithm",
-          "status",
+	          "keyVersion",
+	          "wrappedVaultKey",
+	          "vaultKeyID",
+	          "vaultGeneration",
+	          "rotationJobId",
+	          "revokedByRotationJobId",
+	          "algorithm",
+	          "status",
           "createdAt",
           "updatedAt",
           "schemaVersion"
@@ -2274,19 +2210,113 @@ service cloud.firestore {
         && request.resource.data.publicKeyFingerprint.size() <= 128
         && request.resource.data.keyVersion is int
         && request.resource.data.keyVersion >= 1
-        && request.resource.data.keyVersion <= 1000
-        && request.resource.data.wrappedVaultKey is string
+	        && request.resource.data.keyVersion <= 1000
+	        && (!("vaultGeneration" in request.resource.data) || (request.resource.data.vaultGeneration is int && request.resource.data.vaultGeneration >= 1 && request.resource.data.vaultGeneration <= 10000))
+	        && (!("rotationJobId" in request.resource.data) || (request.resource.data.rotationJobId is string && request.resource.data.rotationJobId.size() <= 200))
+	        && (!("revokedByRotationJobId" in request.resource.data) || (request.resource.data.revokedByRotationJobId is string && request.resource.data.revokedByRotationJobId.size() <= 200))
+	        && request.resource.data.wrappedVaultKey is string
         && request.resource.data.wrappedVaultKey.size() <= 8192
         && request.resource.data.wrappedVaultKey.matches("^[A-Za-z0-9+/=]+$")
         && request.resource.data.algorithm == "ECIES-P256-AESGCM"
         && request.resource.data.status in ["active", "revoked"]
-        && request.resource.data.schemaVersion == 2
+	        && request.resource.data.schemaVersion in [2, 3]
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
-      allow delete: if ownsUserNamespace(userId);
-    }
+	      allow delete: if ownsUserNamespace(userId);
+	    }
+
+	    match /users/{userId}/cloud_vault_rotation_jobs/{jobId} {
+	      function validCloudVaultRotationJobClientUpdate() {
+	        return ownerWritableNonSecret(userId)
+	          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+	            "status",
+	            "clientDeviceId",
+	            "documentRewrapComplete",
+	            "storageRewrapPending",
+	            "processedDocumentCount",
+	            "rewrappedDocumentCount",
+	            "changedFieldCount",
+	            "completedAt",
+	            "failedAt",
+	            "failureReason",
+	            "updatedAt"
+	          ])
+	          && (!("status" in request.resource.data) || request.resource.data.status in [
+	            "queued",
+	            "rewrapping",
+	            "documents_complete",
+	            "documents_complete_storage_pending",
+	            "complete",
+	            "failed"
+	          ])
+	          && (!("clientDeviceId" in request.resource.data) || (
+	            request.resource.data.clientDeviceId is string
+	            && request.resource.data.clientDeviceId.size() > 0
+	            && request.resource.data.clientDeviceId.size() <= 128
+	          ))
+	          && (!("documentRewrapComplete" in request.resource.data) || request.resource.data.documentRewrapComplete is bool)
+	          && (!("storageRewrapPending" in request.resource.data) || request.resource.data.storageRewrapPending is bool)
+	          && (!("processedDocumentCount" in request.resource.data) || (
+	            request.resource.data.processedDocumentCount is int
+	            && request.resource.data.processedDocumentCount >= 0
+	            && request.resource.data.processedDocumentCount <= 10000000
+	          ))
+	          && (!("rewrappedDocumentCount" in request.resource.data) || (
+	            request.resource.data.rewrappedDocumentCount is int
+	            && request.resource.data.rewrappedDocumentCount >= 0
+	            && request.resource.data.rewrappedDocumentCount <= 10000000
+	          ))
+	          && (!("changedFieldCount" in request.resource.data) || (
+	            request.resource.data.changedFieldCount is int
+	            && request.resource.data.changedFieldCount >= 0
+	            && request.resource.data.changedFieldCount <= 10000000
+	          ))
+	          && (!("failureReason" in request.resource.data) || (
+	            request.resource.data.failureReason is string
+	            && request.resource.data.failureReason.size() <= 500
+	          ));
+	      }
+
+	      function validCloudVaultRotationCheckpoint(checkpointId) {
+	        return ownerWritableNonSecret(userId)
+	          && request.resource.data.keys().hasOnly([
+	            "domainID",
+	            "status",
+	            "scannedDocumentCount",
+	            "rewrappedDocumentCount",
+	            "changedFieldCount",
+	            "updatedAt"
+	          ])
+	          && request.resource.data.domainID == checkpointId
+	          && request.resource.data.status in [
+	            "documents_pending_storage",
+	            "documents_complete",
+	            "storage_complete",
+	            "failed"
+	          ]
+	          && request.resource.data.scannedDocumentCount is int
+	          && request.resource.data.scannedDocumentCount >= 0
+	          && request.resource.data.scannedDocumentCount <= 10000000
+	          && request.resource.data.rewrappedDocumentCount is int
+	          && request.resource.data.rewrappedDocumentCount >= 0
+	          && request.resource.data.rewrappedDocumentCount <= 10000000
+	          && request.resource.data.changedFieldCount is int
+	          && request.resource.data.changedFieldCount >= 0
+	          && request.resource.data.changedFieldCount <= 10000000;
+	      }
+
+	      allow read: if ownsUserNamespace(userId);
+	      allow create, delete: if false;
+	      allow update: if validCloudVaultRotationJobClientUpdate();
+
+	      match /checkpoints/{checkpointId} {
+	        allow read: if ownsUserNamespace(userId);
+	        allow create, update: if validCloudVaultRotationCheckpoint(checkpointId);
+	        allow delete: if false;
+	      }
+	    }
 
     match /users/{userId}/devices/{deviceId} {
       allow read: if ownsUserNamespace(userId);
@@ -2800,8 +2830,30 @@ service cloud.firestore {
           && (!("appliedGrantId" in receipt) || (receipt.appliedGrantId is string && receipt.appliedGrantId.size() <= 160))
           && (!("grantExpiresAt" in receipt) || receipt.grantExpiresAt is number)
           && (!("sourceDeviceId" in receipt) || (receipt.sourceDeviceId is string && receipt.sourceDeviceId.size() <= 160))
-          && (!("denialReason" in receipt) || receipt.denialReason in ["malformed_request", "unsupported_runtime", "expired", "signature_failure", "counter_replay", "stale_timestamp", "no_paired_mac", "local_authentication_required", "yolo_unavailable", "grant_preset_mismatch", "unknown"])
+          && (!("denialReason" in receipt) || receipt.denialReason in ["malformed_request", "unsupported_runtime", "expired", "signature_failure", "counter_replay", "stale_timestamp", "no_paired_mac", "local_authentication_required", "local_auth_proof_required", "local_auth_proof_invalid", "mac_approval_required", "yolo_unavailable", "grant_preset_mismatch", "unknown"])
           && (!("message" in receipt) || (receipt.message is string && receipt.message.size() <= 2048));
+      }
+
+      function validAgentGrantLocalAuthProof(proof) {
+        return proof is map
+          && proof.keys().hasOnly([
+            "proofId",
+            "deviceId",
+            "signedIntentHash",
+            "authenticatedAt",
+            "expiresAt",
+            "signatureEd25519"
+          ])
+          && proof.proofId is string
+          && proof.proofId.size() <= 160
+          && proof.deviceId is string
+          && proof.deviceId.size() <= 160
+          && proof.signedIntentHash.matches("^[a-f0-9]{64}$")
+          && proof.authenticatedAt is number
+          && proof.expiresAt is number
+          && proof.expiresAt > proof.authenticatedAt
+          && proof.signatureEd25519 is string
+          && proof.signatureEd25519.size() <= 256;
       }
 
       function validAgentCapabilityGrantDocument() {
@@ -2819,6 +2871,8 @@ service cloud.firestore {
           "sourceDeviceId",
           "clientIntentId",
           "localAuthenticationSatisfied",
+          "localAuthProof",
+          "localAuthProofVerifiedAt",
           "authority",
           "status",
           "canonicalRequestHashSha256",
@@ -2857,6 +2911,8 @@ service cloud.firestore {
         && request.resource.data.clientIntentId is string
         && request.resource.data.clientIntentId.size() <= 160
         && request.resource.data.localAuthenticationSatisfied is bool
+        && (!("localAuthProof" in request.resource.data) || validAgentGrantLocalAuthProof(request.resource.data.localAuthProof))
+        && (!("localAuthProofVerifiedAt" in request.resource.data) || request.resource.data.localAuthProofVerifiedAt is timestamp)
         && (!("canonicalRequestHashSha256" in request.resource.data) || request.resource.data.canonicalRequestHashSha256.matches("^[a-f0-9]{64}$"))
         && request.resource.data.createdAt is timestamp
         && request.resource.data.updatedAt is timestamp
@@ -3301,7 +3357,14 @@ service cloud.firestore {
           "updatedAt",
           "publicKeyFingerprint",
           "keyVersion",
-          "approvedByDeviceId"
+          "approvedByDeviceId",
+          "trustChainVersion",
+          "trustChainAlgorithm",
+          "trustChainSignature",
+          "targetSignalIdentityKeyId",
+          "targetSignalIdentityPublicKeyFingerprint",
+          "approvedBySignalIdentityKeyId",
+          "approvedBySignalIdentityPublicKeyFingerprint"
         ])
         && request.resource.data.deviceId == deviceId
         && request.resource.data.deviceName is string
@@ -3313,6 +3376,23 @@ service cloud.firestore {
         && (!("publicKeyFingerprint" in request.resource.data) || (request.resource.data.publicKeyFingerprint is string && request.resource.data.publicKeyFingerprint.size() <= 256))
         && (!("keyVersion" in request.resource.data) || request.resource.data.keyVersion is int)
         && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
+        && (!("trustChainVersion" in request.resource.data) || request.resource.data.trustChainVersion == 1)
+        && (!("trustChainAlgorithm" in request.resource.data) || request.resource.data.trustChainAlgorithm == "signal-identity-xeddsa-v1")
+        && (!("trustChainSignature" in request.resource.data)
+          || (request.resource.data.trustChainSignature is string
+            && request.resource.data.trustChainSignature.size() >= 64
+            && request.resource.data.trustChainSignature.size() <= 256
+            && request.resource.data.trustChainSignature.matches("^[A-Za-z0-9+/=]+$")))
+        && (!("targetSignalIdentityKeyId" in request.resource.data)
+          || (request.resource.data.targetSignalIdentityKeyId is string && request.resource.data.targetSignalIdentityKeyId.size() <= 200))
+        && (!("targetSignalIdentityPublicKeyFingerprint" in request.resource.data)
+          || (request.resource.data.targetSignalIdentityPublicKeyFingerprint is string
+            && request.resource.data.targetSignalIdentityPublicKeyFingerprint.size() <= 128))
+        && (!("approvedBySignalIdentityKeyId" in request.resource.data)
+          || (request.resource.data.approvedBySignalIdentityKeyId is string && request.resource.data.approvedBySignalIdentityKeyId.size() <= 200))
+        && (!("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)
+          || (request.resource.data.approvedBySignalIdentityPublicKeyFingerprint is string
+            && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint.size() <= 128))
         && (!("approvedAt" in request.resource.data) || request.resource.data.approvedAt is timestamp)
         && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
         && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
@@ -3338,6 +3418,20 @@ service cloud.firestore {
             || request.resource.data.keyVersion == resource.data.keyVersion)
           && (!("approvedByDeviceId" in resource.data)
             || request.resource.data.approvedByDeviceId == resource.data.approvedByDeviceId)
+          && (!("trustChainVersion" in resource.data)
+            || request.resource.data.trustChainVersion == resource.data.trustChainVersion)
+          && (!("trustChainAlgorithm" in resource.data)
+            || request.resource.data.trustChainAlgorithm == resource.data.trustChainAlgorithm)
+          && (!("trustChainSignature" in resource.data)
+            || request.resource.data.trustChainSignature == resource.data.trustChainSignature)
+          && (!("targetSignalIdentityKeyId" in resource.data)
+            || request.resource.data.targetSignalIdentityKeyId == resource.data.targetSignalIdentityKeyId)
+          && (!("targetSignalIdentityPublicKeyFingerprint" in resource.data)
+            || request.resource.data.targetSignalIdentityPublicKeyFingerprint == resource.data.targetSignalIdentityPublicKeyFingerprint)
+          && (!("approvedBySignalIdentityKeyId" in resource.data)
+            || request.resource.data.approvedBySignalIdentityKeyId == resource.data.approvedBySignalIdentityKeyId)
+          && (!("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
+            || request.resource.data.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
           && (!("approvedAt" in resource.data)
             || request.resource.data.approvedAt == resource.data.approvedAt)
           && (!("createdAt" in resource.data)

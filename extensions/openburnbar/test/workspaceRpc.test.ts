@@ -205,11 +205,40 @@ describe("OpenBurnBar workspace RPC", () => {
 
     companion.dispose();
   });
+
+  it("requires explicit patch confirmation before editing workspace files", async () => {
+    const api = createFakeWorkspaceApi({ patchConfirmation: false });
+    const applyEditSpy = vi.spyOn(api, "applyEdit");
+    const companion = new OpenBurnBarWorkspaceCompanion(api);
+    const client = new OpenBurnBarWorkspaceRpcClient({
+      executeCommand: async (_command, request: BurnBarWorkspaceRpcRequest) => companion.handle(request)
+    });
+
+    await expect(
+      client.applyPatch({
+        changes: [
+          {
+            path: "src/example.ts",
+            text: "blocked"
+          }
+        ]
+      })
+    ).rejects.toMatchObject<OpenBurnBarWorkspaceRpcError>({
+      code: "APPLY_PATCH_CANCELLED"
+    });
+    expect(applyEditSpy).not.toHaveBeenCalled();
+    await expect(client.readFile({ path: "src/example.ts" })).resolves.toMatchObject({
+      content: "const value = 1;\nconsole.log(value);\n"
+    });
+
+    companion.dispose();
+  });
 });
 
 function createFakeWorkspaceApi(options: {
   isTrusted?: boolean;
   persistOnlyIfOpenedBeforeApply?: boolean;
+  patchConfirmation?: boolean;
   terminalConfirmation?: boolean;
 } = {}): BurnBarWorkspaceApi & {
   terminals: Array<FakeTerminal & BurnBarWorkspaceTerminal>;
@@ -286,6 +315,9 @@ function createFakeWorkspaceApi(options: {
         start: { line: startLine, character: startCharacter },
         end: { line: endLine, character: endCharacter }
       };
+    },
+    async confirmWorkspaceEdit() {
+      return options.patchConfirmation ?? true;
     },
     async confirmTerminalCommand() {
       return options.terminalConfirmation ?? true;

@@ -355,6 +355,20 @@ public struct CloudVaultSignalEnvelope: Codable, Hashable, Sendable {
     }
 }
 
+public struct CloudVaultDocumentRewrapResult {
+    public let data: [String: Any]
+    public let changedFields: [String]
+
+    public var changed: Bool {
+        changedFields.isEmpty == false
+    }
+
+    public init(data: [String: Any], changedFields: [String]) {
+        self.data = data
+        self.changedFields = changedFields
+    }
+}
+
 public enum CloudVaultCrypto {
     public static let aesGCMAlgorithm = "AES-256-GCM"
     /// At-rest Signal-envelope constants — the Swift mirror of the shared TS
@@ -642,6 +656,98 @@ public enum CloudVaultCrypto {
             sealedBoxBase64: sealedBoxBase64,
             aad: dict["aad"] as? String
         )
+    }
+
+    public static func firestoreDictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(value)
+        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        return dict
+    }
+
+    public static func decodeSealedText(from raw: Any?) -> CloudVaultSealedText? {
+        decodeEnvelope(raw, as: CloudVaultSealedText.self)
+    }
+
+    public static func decodeBlobEnvelope(from raw: Any?) -> CloudVaultBlobEnvelope? {
+        decodeEnvelope(raw, as: CloudVaultBlobEnvelope.self)
+    }
+
+    public static func rewrapCloudVaultDocument(
+        _ data: [String: Any],
+        uid: String,
+        collection: String,
+        docID: String,
+        oldKeyData: Data,
+        newKeyData: Data,
+        newVaultKeyID: String,
+        vaultGeneration: Int? = nil,
+        rotationJobId: String? = nil
+    ) throws -> CloudVaultDocumentRewrapResult {
+        guard try vaultKeyID(for: newKeyData) == newVaultKeyID else {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+
+        var updated = data
+        var changedFields: [String] = []
+
+        for field in data.keys.sorted() {
+            guard let rawMap = data[field] as? [String: Any] else { continue }
+            let context = try CloudVaultAADContext(uid: uid, collection: collection, docID: docID, field: field)
+
+            if let envelope = sealedPayload(from: rawMap) {
+                let plaintext = try openPayloadForRewrap(envelope, keyData: oldKeyData, aadContext: context)
+                let resealed = try sealPayload(
+                    plaintext,
+                    keyData: newKeyData,
+                    vaultKeyID: newVaultKeyID,
+                    aadContext: context
+                )
+                updated[field] = try firestoreDictionary(resealed)
+                applyVaultKeyCompanionUpdates(
+                    to: &updated,
+                    field: field,
+                    newVaultKeyID: newVaultKeyID
+                )
+                changedFields.append(field)
+                continue
+            }
+
+            if let envelope = decodeSealedText(from: rawMap) {
+                let plaintext = try openTextForRewrap(envelope, keyData: oldKeyData, aadContext: context)
+                let resealed = try sealText(
+                    plaintext,
+                    keyData: newKeyData,
+                    aadContext: context
+                )
+                updated[field] = try firestoreDictionary(resealed)
+                changedFields.append(field)
+                continue
+            }
+
+            if let envelope = decodeBlobEnvelope(from: rawMap) {
+                let plaintext = try openBlobForRewrap(envelope, keyData: oldKeyData, aadContext: context)
+                let resealed = try sealBlob(
+                    plaintext,
+                    keyData: newKeyData,
+                    aadContext: context
+                )
+                updated[field] = try firestoreDictionary(resealed)
+                changedFields.append(field)
+            }
+        }
+
+        if changedFields.isEmpty == false {
+            if let vaultGeneration {
+                updated["vaultGeneration"] = vaultGeneration
+            }
+            if let rotationJobId {
+                updated["rewrapJobId"] = rotationJobId
+            }
+        }
+
+        return CloudVaultDocumentRewrapResult(data: updated, changedFields: changedFields)
     }
 
     public static func signalEnvelopeDictionary(_ envelope: CloudVaultSignalEnvelope) throws -> [String: Any] {
@@ -1156,6 +1262,69 @@ public enum CloudVaultCrypto {
             return stem
         }
         return token
+    }
+
+    private static func decodeEnvelope<T: Decodable>(_ raw: Any?, as type: T.Type) -> T? {
+        guard let dict = raw as? [String: Any],
+              JSONSerialization.isValidJSONObject(dict),
+              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    private static func openTextForRewrap(
+        _ envelope: CloudVaultSealedText,
+        keyData: Data,
+        aadContext: CloudVaultAADContext
+    ) throws -> String {
+        if (envelope.schemaVersion ?? 1) >= currentSealedTextSchemaVersion {
+            return try openText(envelope, keyData: keyData, aadContext: aadContext)
+        }
+        return try openText(envelope, keyData: keyData)
+    }
+
+    private static func openBlobForRewrap(
+        _ envelope: CloudVaultBlobEnvelope,
+        keyData: Data,
+        aadContext: CloudVaultAADContext
+    ) throws -> Data {
+        if envelope.schemaVersion >= currentBlobEnvelopeSchemaVersion,
+           envelope.aad != blobEnvelopeAADContext {
+            return try openBlob(envelope, keyData: keyData, aadContext: aadContext)
+        }
+        return try openBlob(envelope, keyData: keyData)
+    }
+
+    private static func openPayloadForRewrap(
+        _ envelope: CloudVaultSealedPayload,
+        keyData: Data,
+        aadContext: CloudVaultAADContext
+    ) throws -> Data {
+        if envelope.schemaVersion >= currentSealedPayloadSchemaVersion,
+           envelope.aad != sealedPayloadAADContext {
+            return try openPayload(envelope, keyData: keyData, aadContext: aadContext)
+        }
+        return try openPayload(envelope, keyData: keyData)
+    }
+
+    private static func applyVaultKeyCompanionUpdates(
+        to data: inout [String: Any],
+        field: String,
+        newVaultKeyID: String
+    ) {
+        switch field {
+        case "sealedPayload", "sealedReplyPayload":
+            if data["vaultKeyID"] != nil {
+                data["vaultKeyID"] = newVaultKeyID
+            }
+        case "sealedStatePayload":
+            if data["sealedStateVaultKeyID"] != nil {
+                data["sealedStateVaultKeyID"] = newVaultKeyID
+            }
+        default:
+            break
+        }
     }
 
     private static func sealedText(

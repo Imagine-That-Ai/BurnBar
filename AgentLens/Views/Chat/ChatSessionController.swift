@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+#if canImport(AppKit)
+import AppKit
+#endif
 
 
 
@@ -371,7 +374,8 @@ final class ChatSessionController {
             computerUseRuntimeController: computerUseRuntimeController,
             grantStillActive: { [grantReference, grantID = grant.grantID] in
                 await grantReference.hasActiveGrant(id: grantID)
-            }
+            },
+            privilegedActionApprover: privilegedActionApprover
         )
         #else
         return AgentToolBroker(
@@ -379,10 +383,39 @@ final class ChatSessionController {
             workspaceURL: chatWorkspaceURL,
             grantStillActive: { [grantReference, grantID = grant.grantID] in
                 await grantReference.hasActiveGrant(id: grantID)
-            }
+            },
+            privilegedActionApprover: privilegedActionApprover
         )
         #endif
     }
+
+    /// A1: surfaces a Mac-local approval before a privileged broker tool
+    /// (shell / workspace write / desktop export) runs in a non-trusted grant.
+    /// `nil` when no UI surface is available, which makes the broker fail closed
+    /// (deny) rather than execute silently.
+    private var privilegedActionApprover: AgentToolBroker.PrivilegedActionApprover? {
+        #if canImport(AppKit)
+        return { _, summary in
+            await MainActor.run { ChatSessionController.presentPrivilegedActionApproval(summary: summary) }
+        }
+        #else
+        return nil
+        #endif
+    }
+
+    #if canImport(AppKit)
+    @MainActor
+    static func presentPrivilegedActionApproval(summary: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Allow this agent action?"
+        alert.informativeText = summary
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Allow Once")
+        alert.addButton(withTitle: "Deny")
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+    #endif
 
     private func assistantRuntimeID(for backend: ChatBackendID) -> AssistantRuntimeID {
         switch backend {

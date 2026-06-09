@@ -613,6 +613,19 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
                 ) {
                     return try cloudPayloadDecoder.decode(MobileChatThread.self, from: payload)
                 }
+            } catch let signalError as OpenBurnBarSignalCoreError
+                where !signalError.allowsLegacyAtRestFallback(senderSetComplete: false) {
+                // C1: a stripped / forged sender-auth block (or relocated AAD
+                // binding) is a downgrade attack — fail CLOSED. Never decode the
+                // sender-unauthenticated legacy payload for this document.
+                // senderSetComplete:false keeps an unknown sender rollout-lenient
+                // (legacy needs the E2EE vault key an attacker lacks), while the
+                // hard sender-auth failures fail closed regardless.
+                return nil
+            } catch MobileCloudVaultSignalPayloadError.signalBindingMismatch {
+                // Relocated / replayed envelope: its self-described binding does
+                // not match this document's coordinates — fail CLOSED.
+                return nil
             } catch {
                 // Rollout compatibility: direct client writes carry legacy AES-GCM
                 // `sealedPayload` alongside the optional Signal envelope until

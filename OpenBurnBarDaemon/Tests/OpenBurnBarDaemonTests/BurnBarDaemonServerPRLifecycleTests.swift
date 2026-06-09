@@ -6,7 +6,11 @@ final class BurnBarDaemonServerTestsPRLifecycle: XCTestCase {
     func testVAL_CROSS_007_DaemonRPCReconcilesPRLifecycleTransitions() async throws {
         let socketPath = makeSocketPath(name: "pr-lifecycle")
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token")
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            )
         )
 
         try await server.start()

@@ -176,6 +176,8 @@ export const commitEncryptedSearchIndexBatch = onCall(
       const documentsRef = db.collection(`users/${uid}/cloud_search_documents`);
       const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
       const postingsRef = db.collection(`users/${uid}/cloud_search_postings`);
+      const committedDocumentIDs: string[] = [];
+      const writePaths = new Set<string>();
 
       for (const raw of documents) {
         const documentID = safeCloudDocumentID(raw.documentID, "document.documentID");
@@ -231,8 +233,11 @@ export const commitEncryptedSearchIndexBatch = onCall(
           bodyHash: doc.bodyHash,
           encryptedByteCount: requestedEncryptedByteCount,
         });
-        writes.push((batch) => batch.set(documentsRef.doc(documentID), stripUndefinedObject(doc), { merge: true }));
+        const docRef = documentsRef.doc(documentID);
+        writes.push((batch) => batch.set(docRef, stripUndefinedObject(doc), { merge: true }));
+        writePaths.add(docRef.path);
         writeCount += 1;
+        committedDocumentIDs.push(documentID);
       }
 
       for (const raw of chunks) {
@@ -281,7 +286,9 @@ export const commitEncryptedSearchIndexBatch = onCall(
           schemaVersion: 1,
         };
         assertUserStoragePath(uid, chunk.storagePath, chunk.bodyHash, documentID);
-        writes.push((batch) => batch.set(chunksRef.doc(chunkID), stripUndefinedObject(chunk), { merge: true }));
+        const chunkRef = chunksRef.doc(chunkID);
+        writes.push((batch) => batch.set(chunkRef, stripUndefinedObject(chunk), { merge: true }));
+        writePaths.add(chunkRef.path);
         writeCount += 1;
         for (const edge of buildCloudSearchPostingEdges({
           source: {
@@ -303,9 +310,28 @@ export const commitEncryptedSearchIndexBatch = onCall(
           tokenHashes,
           semanticHashes,
         })) {
+          const postingRef = postingsRef.doc(edge.edgeID);
           writes.push((batch) =>
-            batch.set(postingsRef.doc(edge.edgeID), stripUndefinedObject(edge.data), { merge: true }),
+            batch.set(postingRef, stripUndefinedObject(edge.data), { merge: true }),
           );
+          writePaths.add(postingRef.path);
+          writeCount += 1;
+        }
+      }
+
+      for (const documentID of committedDocumentIDs) {
+        const [oldChunks, oldPostings] = await Promise.all([
+          chunksRef.where("documentID", "==", documentID).get(),
+          postingsRef.where("documentID", "==", documentID).get(),
+        ]);
+        for (const old of oldChunks.docs) {
+          if (writePaths.has(old.ref.path)) continue;
+          writes.push((batch) => batch.delete(old.ref));
+          writeCount += 1;
+        }
+        for (const old of oldPostings.docs) {
+          if (writePaths.has(old.ref.path)) continue;
+          writes.push((batch) => batch.delete(old.ref));
           writeCount += 1;
         }
       }

@@ -216,7 +216,7 @@ object GatedFeatureCatalog {
                 benefitBullets =
                     listOf(
                         "Your hosted endpoint lets a remote agent recall your private knowledge without anything running on your Mac",
-                        "The server runs the search and routes the tools, but never reads your content",
+                        "The server routes tools and ranks over cloaked structures; plaintext and vault keys stay device-only, while search patterns remain visible",
                         "Always-on access from your phone, a cloud agent, or another tool — isolated to your account alone",
                     ),
                 imageVector = Icons.Filled.Storage,
@@ -231,8 +231,8 @@ object GatedFeatureCatalog {
                 benefitBullets =
                     listOf(
                         "Your agents quietly recall the repo docs, notes, and chat-derived memories that matter, mid-task",
-                        "Every chunk of text is sealed on your device before it leaves — the server searches over the sealed structures, though some patterns stay visible",
-                        "Nearest-neighbor recall finds the right memory by meaning, not by exposing a single word of your content",
+                        "Every chunk of text is sealed on your device before it leaves — hosted recall searches cloaked structures, and some patterns stay visible",
+                        "Nearest-neighbor recall finds candidates by meaning while exposing structural signals, not plaintext content",
                         "Sources, chunks, and storage you control, with one tap to delete any source or purge it all",
                     ),
                 imageVector = Icons.Filled.Memory,

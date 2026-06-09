@@ -167,11 +167,26 @@ describe("high-risk action nonces", () => {
 });
 
 describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () => {
-  it("flag off + no nonce resolves (back-compat with in-flight clients)", async () => {
+  it("flag off + no nonce resolves with nonceConsumed:false (back-compat with in-flight clients)", async () => {
     store.clear();
     configMock.enforceAppCheck = true;
     configMock.requireHighRiskNonce = false;
-    await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined)).resolves.toBeUndefined();
+    await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined)).resolves.toEqual({
+      nonceConsumed: false,
+    });
+  });
+
+  it("App Check disabled (emulator) resolves with nonceConsumed:false", async () => {
+    store.clear();
+    configMock.enforceAppCheck = false;
+    configMock.requireHighRiskNonce = false;
+    try {
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", undefined)).resolves.toEqual({
+        nonceConsumed: false,
+      });
+    } finally {
+      configMock.enforceAppCheck = true;
+    }
   });
 
   it("flag on + no nonce throws", async () => {
@@ -202,7 +217,9 @@ describe("enforceHighRiskComputerUseCallableWithNonce — staged rollout", () =>
     configMock.requireHighRiskNonce = true;
     try {
       const { nonce } = await issueHighRiskNonceForUid("userA", Date.now());
-      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce)).resolves.toBeUndefined();
+      await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce)).resolves.toEqual({
+        nonceConsumed: true,
+      });
       // Replay of the same nonce now fails (single-use).
       await expect(enforceHighRiskComputerUseCallableWithNonce(fakeRequest, "userA", nonce)).rejects.toThrow(
         /expired or was already used/,

@@ -373,6 +373,39 @@ test("sealingScheme: self-encryption guard — only end_to_end domains may carry
   }
 });
 
+test("cloudVaultRewrapStrategy: every vault-backed domain has an explicit rotation posture", () => {
+  const strategies = Object.fromEntries(registry.domains.map((d) => [d.id, d.cloudVaultRewrapStrategy ?? null]));
+  assert.deepEqual(
+    strategies,
+    {
+      usage_spend: "document_envelopes",
+      conversations_chat: "document_envelopes",
+      session_logs: "document_and_storage_envelopes",
+      pensieve: "document_envelopes",
+      provider_accounts: null,
+      connected_devices: null,
+      external_mcp: null,
+      computer_use: null,
+      media: "document_envelopes",
+      entitlements_billing: null,
+      device_trust_keys: "key_wrappers_only",
+      audit_timeline: "document_envelopes",
+    },
+    "CloudVault rotation policy must be explicit for every domain that contains CloudVault-sealed material",
+  );
+});
+
+test("cloudVaultRewrapStrategy: storage-bearing strategies declare storage paths", () => {
+  for (const d of registry.domains) {
+    if (d.cloudVaultRewrapStrategy === "document_and_storage_envelopes") {
+      assert.ok(
+        Array.isArray(d.storagePaths) && d.storagePaths.length > 0,
+        `${d.id} includes Storage envelopes but has no storagePaths`,
+      );
+    }
+  }
+});
+
 // Producer-coverage honesty: the at-rest gate is keyed by DOMAIN id but producers are
 // per-collection. signalSealedCollections records the EXACT subset of a domain's
 // firestorePaths that actually emit a signalEnvelope, so the registry can never silently
@@ -415,6 +448,10 @@ test("sealingScheme: NON-WEBSITED — the scheme codename never reaches the publ
   // The field key and every scheme value must be absent from the generated
   // public trust module — burnbar.ai speaks the tier language only.
   assert.ok(!/sealingScheme/.test(trust), "trust.generated.ts must not contain the sealingScheme field");
+  assert.ok(
+    !/cloudVaultRewrapStrategy/.test(trust),
+    "trust.generated.ts must not contain the cloudVaultRewrapStrategy field",
+  );
   for (const d of registry.domains) {
     if (d.sealingScheme === undefined) continue;
     assert.ok(

@@ -166,7 +166,11 @@ for (const collection of ["hermes_relay_requests"]) {
   const block = rules.slice(start, rules.indexOf("function relayChunkWrite(userId, requestId, chunkId)", start));
   assert.match(block, /request\.resource\.data\.schemaVersion >= 2/);
   assert.match(block, /!\("path" in request\.resource\.data\)[\s\S]*!\("sessionId" in request\.resource\.data\)[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*!\("error" in request\.resource\.data\)/);
-  assert.match(block, /request\.resource\.data\.payloadCiphertext is string[\s\S]*request\.resource\.data\.wrappedKey is string[\s\S]*request\.resource\.data\.relayEncryption == "p256-hkdf-sha256-aesgcm"/);
+  assert.match(block, /request\.resource\.data\.payloadCiphertext is string[\s\S]*request\.resource\.data\.wrappedKey is string[\s\S]*request\.resource\.data\.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm"/);
+  assert.match(block, /request\.resource\.data\.relayKeyVersion == 3/);
+  assert.match(block, /request\.resource\.data\.senderPublicKey is string[\s\S]*request\.resource\.data\.senderDeviceId is string[\s\S]*request\.resource\.data\.senderPeerNodeId is string/);
+  assert.match(block, /request\.resource\.data\.senderCounter is int[\s\S]*request\.resource\.data\.senderCounter >= 0/);
+  assert.match(block, /request\.resource\.data\.keyId\.matches\("\^relay-v3-\[a-f0-9\]\{24\}\$"\)/);
   assert.doesNotMatch(block, /request\.resource\.data\.schemaVersion < 2/);
 }
 {

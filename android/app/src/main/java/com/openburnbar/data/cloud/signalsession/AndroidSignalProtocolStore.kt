@@ -33,6 +33,8 @@ class AndroidSignalProtocolStore(
     identityKeyPair: IdentityKeyPair,
     registrationId: Int,
     private val vault: SignalRecordVault,
+    private val identityTrustEvaluator: ((SignalProtocolAddress, IdentityKey) -> Boolean)? = null,
+    private val allowTestingTofu: Boolean = false,
 ) : SignalProtocolStore {
 
     // Backing fields named to avoid a JVM getter clash with the interface's
@@ -40,6 +42,27 @@ class AndroidSignalProtocolStore(
     private val backingIdentity: IdentityKeyPair = identityKeyPair
     private val backingRegistrationId: Int = registrationId
     private val lock = Any()
+
+    init {
+        require(identityTrustEvaluator != null || allowTestingTofu) {
+            "AndroidSignalProtocolStore production initialization requires an identity trust evaluator"
+        }
+    }
+
+    companion object {
+        fun testingTOFU(
+            identityKeyPair: IdentityKeyPair,
+            registrationId: Int,
+            vault: SignalRecordVault = InMemorySignalRecordVault(),
+        ): AndroidSignalProtocolStore =
+            AndroidSignalProtocolStore(
+                identityKeyPair = identityKeyPair,
+                registrationId = registrationId,
+                vault = vault,
+                identityTrustEvaluator = null,
+                allowTestingTofu = true,
+            )
+    }
 
     // MARK: - IdentityKeyStore
 
@@ -66,6 +89,7 @@ class AndroidSignalProtocolStore(
         identityKey: IdentityKey,
         direction: IdentityKeyStore.Direction,
     ): Boolean = synchronized(lock) {
+        identityTrustEvaluator?.let { return@synchronized it(address, identityKey) }
         val trusted = vault.read(identityAccount(address))?.let { IdentityKey(it) }
         // Trust-on-first-use: unknown peers are trusted; a changed key is rejected.
         trusted == null || trusted == identityKey
