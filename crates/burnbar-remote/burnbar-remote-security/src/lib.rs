@@ -577,6 +577,28 @@ impl ControlPolicyGate {
     }
 }
 
+/// ⚠️ TEST / PROTOTYPE ONLY — NOT a production authorizer (security
+/// remediation H-6).
+///
+/// This authorizer performs the binding checks but emits a [`SessionGrant`]
+/// with a **zeroed `handshake_nonce`** and an **unsigned `signed_policy_hash`
+/// (`"unsigned-in-memory-policy"`)** — it does not sign its policy or bind a
+/// real handshake nonce. It exists solely for the `burnbar-remote-network`
+/// tests and the `iroh-smoke` bench binary, and must NEVER be selected as the
+/// live control-path authorizer.
+///
+/// The shipping remote-control defense is **not in this crate at all**: it is
+/// the Swift `PhoneControlAuthorityValidator` (Ed25519-signed intents,
+/// monotonic counter, freshness window, intent-hash binding, peer revocation)
+/// plus the Firestore rules and the inbound NodeId allow-list. The entire
+/// `burnbar-remote-*` workspace is a non-shipping prototype and is NOT a
+/// dependency of `openburnbar-iroh` (the transport the app actually uses).
+/// See `../SECURITY.md`.
+///
+/// Tracked follow-up: feature-gate this type behind a non-default
+/// `insecure-in-memory-authorizer` Cargo feature so a release build cannot
+/// construct it; until then this `#[doc(hidden)]` marker is the guard.
+#[doc(hidden)]
 #[derive(Default)]
 pub struct InMemorySessionAuthorizer {
     devices_by_endpoint: RwLock<HashMap<EndpointId, AuthorizedDeviceRecord>>,
