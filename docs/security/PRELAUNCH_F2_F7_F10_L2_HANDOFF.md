@@ -1,6 +1,6 @@
 # Handoff — F2 / F7 / F10 / L2 pre-launch remediation
 
-**Branch:** `security/prelaunch-f2-f7-f10-l2` (5 commits on top of `main` @ `8a9f8ac47`)
+**Branch:** `security/prelaunch-f2-f7-f10-l2` (5 work commits + this handoff doc on top of `main` @ `8a9f8ac47`)
 **Status doc:** [`PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md`](./PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md) (status matrix near the top)
 **Date:** 2026-06-09
 
@@ -137,4 +137,5 @@ flip it from this repo.
 - **ECDSA P-256 is randomized** — KATs verify a frozen sig, never assert equality.
 - **`PhoneControlAuthorityValidator` + mobile signers are app/mobile targets** — `swift test` does NOT cover them; they have heavy `AgentLensTests`/Android unit suites you must run via xcodebuild/gradle before claiming done.
 - **Two Kotlin authority models:** iroh-relay `HermesRealtimeRelayFrame.kt:1208` (done) vs app-side `PhoneControlSignerModels.kt:118` (still needs keyKind/attestation).
+- **Commits on this branch are NOT clean per-finding diffs.** Concurrent agents were editing the tree, and `git add -A` swept their unrelated work into every commit (AgentLens InsightEngine/QuotaSettings/AgentsSettingsView UI, widget snapshots + LiveActivity, Mercury transfer thumbnails, Android Aurora components, BurnBarStatusIntent). Scope the security work by the **files named in §1**, not by `git show <commit>`.
 - The server **does not** verify proof-of-possession of the controller private key in `publishPhoneControlAuthority` (only peerNodeId-from-pubkey derivation) — out of scope here, but note it if you touch that path.
