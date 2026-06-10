@@ -75,6 +75,9 @@ if missing:
 print('{"diffCoverage":{"percent":100.0,"passed":true,"surface":"android","method":"test_file_presence","changedFiles":%d}}' % len(prod))
 sys.exit(0)
 PY
+    # The presence-gate verdict is authoritative when no JaCoCo report exists;
+    # set -e already aborted above on a failed gate, so reaching here is a pass.
+    exit 0
 fi
 
 export BASE_REF="$base_ref"

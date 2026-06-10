@@ -800,7 +800,9 @@ jobs:
     needs: [path-filter]
     if: needs.path-filter.outputs.mercury_media == 'true' && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: macos-26
-    timeout-minutes: 35
+    # 35 min was sized when this job failed at gradle config in 2 min; the full
+    # JVM-tests + Signal FFI prep + iOS suite path needs more headroom.
+    timeout-minutes: 60
     env:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
     steps:
