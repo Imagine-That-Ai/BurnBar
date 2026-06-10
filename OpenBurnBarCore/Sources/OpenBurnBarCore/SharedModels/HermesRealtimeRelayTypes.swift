@@ -1822,6 +1822,11 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     /// Terminal and pins the mirror to that single window. Older peers omit
     /// this field and keep the existing full-display mirror behavior.
     public var agentTerminal: HermesRealtimeRelayAgentTerminalRequest?
+    /// F7 — sealKeyV3-wrapped media-frame-AEAD session key, present when the
+    /// requester wants per-frame sealing and both peers advertise
+    /// `media_frame_aead_v1`. Pre-F7 Macs ignore it (frames stay plaintext at
+    /// the app layer over the iroh transport seal).
+    public var mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope?
 
     public init(
         requestId: String,
@@ -1834,7 +1839,8 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         viewerDeviceId: String? = nil,
         controlAuthorityPeerNodeId: String? = nil,
         remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil,
-        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = nil
+        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = nil,
+        mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = nil
     ) {
         self.requestId = requestId
         self.requestedAt = requestedAt
@@ -1847,6 +1853,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         self.controlAuthorityPeerNodeId = controlAuthorityPeerNodeId
         self.remoteUnlockSession = remoteUnlockSession
         self.agentTerminal = agentTerminal
+        self.mediaSealKey = mediaSealKey
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1861,6 +1868,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         case controlAuthorityPeerNodeId
         case remoteUnlockSession
         case agentTerminal
+        case mediaSealKey
     }
 
     public init(from decoder: Decoder) throws {
@@ -1885,6 +1893,10 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
             HermesRealtimeRelayAgentTerminalRequest.self,
             forKey: .agentTerminal
         )
+        self.mediaSealKey = try container.decodeIfPresent(
+            HermesRealtimeRelayControlSealKeyEnvelope.self,
+            forKey: .mediaSealKey
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1900,6 +1912,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         try container.encodeIfPresent(controlAuthorityPeerNodeId, forKey: .controlAuthorityPeerNodeId)
         try container.encodeIfPresent(remoteUnlockSession, forKey: .remoteUnlockSession)
         try container.encodeIfPresent(agentTerminal, forKey: .agentTerminal)
+        try container.encodeIfPresent(mediaSealKey, forKey: .mediaSealKey)
     }
 }
 

@@ -211,6 +211,22 @@ public enum HermesRelayCrypto {
         aad(["chunk", uid, connectionID, requestID, String(sequence), kind])
     }
 
+    /// F7 — AAD for wrapping the per-mirror media-frame-AEAD session key the
+    /// phone sends inside its mirror request (same wrap primitive and trust
+    /// path as the F10 control seal; distinct domain tag so neither wrap can
+    /// be replayed onto the other lane). `viewerId` binds the wrap to the
+    /// specific mirror viewer it was minted for.
+    public static func mediaSealKeyAAD(
+        uid: String,
+        connectionID: String,
+        viewerId: String,
+        senderDeviceID: String,
+        senderKeyID: String,
+        senderCounter: Int64
+    ) -> Data {
+        aad(["mediaSealKey", uid, connectionID, viewerId, senderDeviceID, senderKeyID, String(senderCounter)])
+    }
+
     /// F10 — AAD for wrapping the control-frame-seal session key the phone
     /// establishes at `control.classify` (sealKeyV3 to the Mac's pinned relay
     /// key, sender-authenticated by the phone's relay sender key). Binds owner,
