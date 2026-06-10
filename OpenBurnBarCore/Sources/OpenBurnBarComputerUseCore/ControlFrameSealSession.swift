@@ -33,6 +33,7 @@ public enum ControlFrameSealSession {
         connectionID: String,
         peerNodeId: String,
         senderDeviceID: String,
+        senderPeerNodeID: String,
         senderKeyID: String,
         senderCounter: Int64,
         recipientPublicKeyBase64: String,
@@ -56,6 +57,7 @@ public enum ControlFrameSealSession {
             encBase64: wrap.enc.base64EncodedString(),
             wrappedKeyBase64: wrap.wrappedKey.base64EncodedString(),
             senderDeviceId: senderDeviceID,
+            senderPeerNodeId: senderPeerNodeID,
             senderKeyId: senderKeyID,
             senderCounter: senderCounter,
             relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3

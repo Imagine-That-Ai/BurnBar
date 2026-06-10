@@ -143,6 +143,11 @@ public struct HermesRealtimeRelayControlSealKeyEnvelope: Codable, Sendable, Equa
     public var encBase64: String
     public var wrappedKeyBase64: String
     public var senderDeviceId: String
+    /// The peerNodeId the phone PUBLISHED in `relay_sender_keys/{deviceId}` —
+    /// the Mac's trust resolver matches it during pinned-key lookup. This is
+    /// the relay sender identity, NOT the phone-control controller peerNodeId
+    /// (which is bound separately into the wrap AAD).
+    public var senderPeerNodeId: String
     public var senderKeyId: String
     public var senderCounter: Int64
     public var relayKeyVersion: Int
@@ -151,6 +156,7 @@ public struct HermesRealtimeRelayControlSealKeyEnvelope: Codable, Sendable, Equa
         encBase64: String,
         wrappedKeyBase64: String,
         senderDeviceId: String,
+        senderPeerNodeId: String,
         senderKeyId: String,
         senderCounter: Int64,
         relayKeyVersion: Int
@@ -158,6 +164,7 @@ public struct HermesRealtimeRelayControlSealKeyEnvelope: Codable, Sendable, Equa
         self.encBase64 = encBase64
         self.wrappedKeyBase64 = wrappedKeyBase64
         self.senderDeviceId = senderDeviceId
+        self.senderPeerNodeId = senderPeerNodeId
         self.senderKeyId = senderKeyId
         self.senderCounter = senderCounter
         self.relayKeyVersion = relayKeyVersion
