@@ -32,6 +32,7 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
         "computer_use_phone_control_attestation_required": NSNumber(value: false),
         "computer_use_phone_control_secure_enclave_key": NSNumber(value: false),
         "computer_use_control_seal_enabled": NSNumber(value: false),
+        "computer_use_media_frame_aead_enabled": NSNumber(value: false),
         "computer_use_actions_per_run_normal": NSNumber(value: 50),
         "computer_use_actions_per_day_normal": NSNumber(value: 200),
         "computer_use_usd_per_user_day_normal": NSNumber(value: 5),

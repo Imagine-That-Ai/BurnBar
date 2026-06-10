@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 #if canImport(UIKit)
 import UIKit
@@ -32,6 +33,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// F7/F10 — capability strings from the most recent Mac presence-heartbeat
     /// reply on this control stream (empty until the first reply).
     private(set) var latestMacPresenceCapabilities: [String] = []
+    /// F7 — the negotiated media-frame-AEAD session key for the active mirror,
+    /// set by the mirror requester after establishment. Sealed frames that
+    /// arrive without (or fail under) this key are DROPPED, never decoded.
+    var mediaFrameSealKey: SymmetricKey?
 
     private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "Mercury")
     private static func debugTrace(_ message: String) {
@@ -534,11 +539,29 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     guard frame.media?.streamClass == MediaStreamClass.screenVideo.rawValue,
                           let encoded = frame.media?.encodedFrameBase64,
                           let chunkData = Data(base64Encoded: encoded),
-                          let data = frameChunkAssembler.accept(
+                          var data = frameChunkAssembler.accept(
                             chunk: frame.media?.frameChunk,
                             bytes: chunkData
                           ) else {
                         continue
+                    }
+                    // F7: a sealed (OBMFA1) frame must open under the
+                    // negotiated session key with the cleartext position
+                    // rebuilt into the AAD — fail closed on any mismatch.
+                    if MediaFrameAEAD.isSealedEnvelope(data) {
+                        guard let sealKey = mediaFrameSealKey,
+                              let position = frame.media?.sealedFramePosition,
+                              let opened = try? MediaFrameAEAD().open(
+                                envelope: data,
+                                key: sealKey,
+                                streamClass: MediaStreamClass.screenVideo.rawValue,
+                                kind: position.kind,
+                                gopID: position.gopId,
+                                frameIndex: position.frameIndex
+                              ) else {
+                            continue
+                        }
+                        data = opened
                     }
                     do {
                         if MediaFrameV2Codec.isEncodedEnvelope(data),

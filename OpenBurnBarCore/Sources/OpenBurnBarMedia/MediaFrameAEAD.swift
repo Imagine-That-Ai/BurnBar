@@ -136,6 +136,11 @@ public struct MediaFrameAEAD: Sendable {
 public enum MediaFrameAeadNegotiation {
     public static let capability = "media_frame_aead_v1"
 
+    /// F7 rollout gate (default-off). Phones consult this before wrapping a
+    /// media-seal key into their mirror requests; the Mac seal path arms only
+    /// when a request carries a wrap it can open.
+    public static let remoteConfigKey = "computer_use_media_frame_aead_enabled"
+
     /// Seal only when BOTH peers support it.
     public static func resolveSealingEnabled(localSupports: Bool, remoteSupports: Bool) -> Bool {
         localSupports && remoteSupports

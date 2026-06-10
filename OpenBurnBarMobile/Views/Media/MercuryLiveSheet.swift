@@ -1204,6 +1204,17 @@ struct MercuryLiveSheet: View {
         // heartbeat can wedge before the Mac ever sees that request.
         cooldownTickerTask?.cancel()
         cooldownTickerTask = nil
+        // F7: wrap a per-mirror frame key when the flag is on and the Mac
+        // advertised media_frame_aead_v1; the coordinator drops sealed frames
+        // that fail to open under this key.
+        let mediaSealSession = await MediaSealSessionEstablisher.establishIfNegotiated(
+            uid: uid,
+            connectionID: connectionID,
+            viewerId: viewerID,
+            macCapabilities: controlStreamCoordinator.latestMacPresenceCapabilities,
+            macRelayPublicKeyBase64: HermesService.shared.selectedConnection.relayPublicKey
+        )
+        controlStreamCoordinator.mediaFrameSealKey = mediaSealSession?.key
         let request = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,
             requestedAt: Date(),
@@ -1219,7 +1230,8 @@ struct MercuryLiveSheet: View {
             remoteUnlockSession: remoteUnlockSession,
             agentTerminal: terminalRuntime.map {
                 HermesRealtimeRelayAgentTerminalRequest(runtimeId: $0, interactive: true)
-            }
+            },
+            mediaSealKey: mediaSealSession?.envelope
         )
         let frame = HermesRealtimeRelayFrame(
             type: .mediaMirrorRequest,
