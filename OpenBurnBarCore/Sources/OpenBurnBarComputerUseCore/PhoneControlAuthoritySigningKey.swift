@@ -15,6 +15,14 @@ public protocol PhoneControlP256AuthoritySigning {
 extension P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
 extension SecureEnclave.P256.Signing.PrivateKey: PhoneControlP256AuthoritySigning {}
 
+/// F2 — Remote Config gate for minting biometry-gated Secure-Enclave /
+/// StrongBox phone-control signing keys. Default-off: no client mints an
+/// SE key (and therefore no client emits `keyKind: "se-p256"`) until the
+/// flag is ramped, so pre-F2 pairings keep working unchanged.
+public enum PhoneControlSecureEnclaveKeyPolicy {
+    public static let remoteConfigKey = "computer_use_phone_control_secure_enclave_key"
+}
+
 /// F2 — key-kind-aware signing identity: the private-key counterpart of
 /// `PhoneControlVerifyingKey`. The iOS/Android senders hold one of these and
 /// every envelope-producing path signs through it, so key custody (software

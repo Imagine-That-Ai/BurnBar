@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import CryptoKit
+import LocalAuthentication
 import Security
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
@@ -26,7 +27,11 @@ public final class PhoneControlSender: @unchecked Sendable {
 
     public let peerNodeId: String
     private let signer: ComputerUsePhoneControlSigner
-    private let signingKeyProvider: @Sendable () -> Curve25519SigningKey?
+    /// F2: key-kind-aware signing identity (legacy software Ed25519 or a
+    /// biometry-gated Secure Enclave P-256 key). Every envelope-producing
+    /// path signs through this, so key custody is a property of the stored
+    /// identity rather than of each call site.
+    private let signingIdentityProvider: @Sendable () -> PhoneControlAuthoritySigningKey?
     private let userDefaults: UserDefaults
     private let frameSink: FrameSink
     private let uid: String
@@ -38,7 +43,7 @@ public final class PhoneControlSender: @unchecked Sendable {
         peerNodeId: String,
         uid: String,
         connectionId: String,
-        signingKeyProvider: @escaping @Sendable () -> Curve25519SigningKey?,
+        signingIdentityProvider: @escaping @Sendable () -> PhoneControlAuthoritySigningKey?,
         userDefaults: UserDefaults = .standard,
         signer: ComputerUsePhoneControlSigner = ComputerUsePhoneControlSigner(),
         frameSink: @escaping FrameSink
@@ -46,10 +51,32 @@ public final class PhoneControlSender: @unchecked Sendable {
         self.peerNodeId = peerNodeId
         self.uid = uid
         self.connectionId = connectionId
-        self.signingKeyProvider = signingKeyProvider
+        self.signingIdentityProvider = signingIdentityProvider
         self.userDefaults = userDefaults
         self.signer = signer
         self.frameSink = frameSink
+    }
+
+    /// Pre-F2 convenience: wraps a legacy software Ed25519 key as the signing
+    /// identity. Wire output is byte-identical to the pre-F2 sender.
+    public convenience init(
+        peerNodeId: String,
+        uid: String,
+        connectionId: String,
+        signingKeyProvider: @escaping @Sendable () -> Curve25519SigningKey?,
+        userDefaults: UserDefaults = .standard,
+        signer: ComputerUsePhoneControlSigner = ComputerUsePhoneControlSigner(),
+        frameSink: @escaping FrameSink
+    ) {
+        self.init(
+            peerNodeId: peerNodeId,
+            uid: uid,
+            connectionId: connectionId,
+            signingIdentityProvider: { signingKeyProvider().map { .ed25519($0.privateKey) } },
+            userDefaults: userDefaults,
+            signer: signer,
+            frameSink: frameSink
+        )
     }
 
     /// Sign and write a `PhoneControlIntent`. Returns the signed
@@ -64,7 +91,7 @@ public final class PhoneControlSender: @unchecked Sendable {
 
     private func sendInputIntent(_ rawIntent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         try await ensureAttestationIfRequired()
-        guard let key = signingKeyProvider()?.privateKey else {
+        guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
         var intent = rawIntent
@@ -75,12 +102,12 @@ public final class PhoneControlSender: @unchecked Sendable {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                intent: intent,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalInputIntentHashHex(intent: intent),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key
+                key: identity
             )
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
@@ -93,7 +120,8 @@ public final class PhoneControlSender: @unchecked Sendable {
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: attestationDigest
+            attestationHashBlake3: attestationDigest,
+            keyKind: identity.wireKeyKind
         )
 
         var intentWithAuthority = intent
@@ -127,7 +155,7 @@ public final class PhoneControlSender: @unchecked Sendable {
 
     private func sendAgentGrant(_ request: AgentCapabilityGrantRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         try await ensureAttestationIfRequired()
-        guard let key = signingKeyProvider()?.privateKey else {
+        guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
@@ -142,12 +170,12 @@ public final class PhoneControlSender: @unchecked Sendable {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                request: unsignedWire,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalAgentGrantRequestHashHex(request: unsignedWire),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key
+                key: identity
             )
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
@@ -160,7 +188,8 @@ public final class PhoneControlSender: @unchecked Sendable {
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: attestationDigest
+            attestationHashBlake3: attestationDigest,
+            keyKind: identity.wireKeyKind
         )
         var signedRequest = request
         if request.localAuthenticationSatisfied {
@@ -169,7 +198,7 @@ public final class PhoneControlSender: @unchecked Sendable {
                 signedIntentHash: signed.intentHashHex,
                 authenticatedAt: signed.timestamp,
                 expiresAt: request.expiresAt,
-                privateKey: key
+                key: identity
             )
         }
         let frame = HermesRealtimeRelayFrame(
@@ -205,7 +234,7 @@ public final class PhoneControlSender: @unchecked Sendable {
         approvalRequest request: HermesRealtimeRelayApprovalRequest
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
         try await ensureAttestationIfRequired()
-        guard let key = signingKeyProvider()?.privateKey else {
+        guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
         var response = response
@@ -214,12 +243,12 @@ public final class PhoneControlSender: @unchecked Sendable {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                approvalResponse: response,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalApprovalResponseHashHex(response: response),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key
+                key: identity
             )
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
@@ -231,7 +260,8 @@ public final class PhoneControlSender: @unchecked Sendable {
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: attestationDigest
+            attestationHashBlake3: attestationDigest,
+            keyKind: identity.wireKeyKind
         )
         let frame = HermesRealtimeRelayFrame(
             type: .controlApprovalResponse,
@@ -250,7 +280,8 @@ public final class PhoneControlSender: @unchecked Sendable {
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: attestationDigest
+            attestationHashBlake3: attestationDigest,
+            keyKind: identity.wireKeyKind
         )
     }
 
@@ -266,7 +297,7 @@ public final class PhoneControlSender: @unchecked Sendable {
     }
 
     private func sendClipboardRequest(_ rawRequest: HermesRealtimeRelayClipboardRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        guard let key = signingKeyProvider()?.privateKey else {
+        guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
         let requestId = rawRequest.requestId.isEmpty ? UUID().uuidString : rawRequest.requestId
@@ -287,12 +318,12 @@ public final class PhoneControlSender: @unchecked Sendable {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                clipboardRequest: unsignedRequest,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalClipboardRequestHashHex(request: unsignedRequest),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key
+                key: identity
             )
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
@@ -305,7 +336,8 @@ public final class PhoneControlSender: @unchecked Sendable {
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: attestationDigest
+            attestationHashBlake3: attestationDigest,
+            keyKind: identity.wireKeyKind
         )
 
         var signedRequest = unsignedRequest
@@ -329,7 +361,7 @@ public final class PhoneControlSender: @unchecked Sendable {
 
     @discardableResult
     public func sign(remoteUnlockSession rawSession: HermesRealtimeRelayRemoteUnlockSession) throws -> HermesRealtimeRelayRemoteUnlockSession {
-        guard let key = signingKeyProvider()?.privateKey else {
+        guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
@@ -345,12 +377,12 @@ public final class PhoneControlSender: @unchecked Sendable {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                remoteUnlockSession: unsignedSession,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalRemoteUnlockSessionHashHex(session: unsignedSession),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key
+                key: identity
             )
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
@@ -360,7 +392,9 @@ public final class PhoneControlSender: @unchecked Sendable {
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            attestationHashBlake3: MobileAppCheckAttestationReader.cachedAttestationDigestForEnvelope(),
+            keyKind: identity.wireKeyKind
         )
         return unsignedSession
     }
@@ -377,7 +411,7 @@ public final class PhoneControlSender: @unchecked Sendable {
     private func sendRemoteUnlockCredential(
         _ rawCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        guard let key = signingKeyProvider()?.privateKey else {
+        guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
@@ -393,12 +427,12 @@ public final class PhoneControlSender: @unchecked Sendable {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                remoteUnlockCredential: unsignedCredential,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalRemoteUnlockCredentialHashHex(credential: unsignedCredential),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key
+                key: identity
             )
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
@@ -410,7 +444,8 @@ public final class PhoneControlSender: @unchecked Sendable {
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: attestationDigest
+            attestationHashBlake3: attestationDigest,
+            keyKind: identity.wireKeyKind
         )
         unsignedCredential.authority = authority
         let frame = HermesRealtimeRelayFrame(
@@ -446,7 +481,7 @@ public final class PhoneControlSender: @unchecked Sendable {
     private func sendSystemPermissionRequest(
         _ rawRequest: HermesRealtimeRelaySystemPermissionRequest
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        guard let key = signingKeyProvider()?.privateKey else {
+        guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
         let requestId = rawRequest.requestId.isEmpty ? UUID().uuidString : rawRequest.requestId
@@ -472,12 +507,12 @@ public final class PhoneControlSender: @unchecked Sendable {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                systemPermissionRequest: signableRequest,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalSystemPermissionRequestHashHex(request: signableRequest),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key
+                key: identity
             )
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
@@ -490,7 +525,8 @@ public final class PhoneControlSender: @unchecked Sendable {
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: attestationDigest
+            attestationHashBlake3: attestationDigest,
+            keyKind: identity.wireKeyKind
         )
         var signedRequest = unsignedRequest
         signedRequest.authority = authority
@@ -519,7 +555,7 @@ public final class PhoneControlSender: @unchecked Sendable {
     }
 
     private func sendContextTarget(_ rawTarget: HermesRealtimeRelayAgentContextTarget) async throws -> HermesRealtimeRelayAuthorityEnvelope {
-        guard let key = signingKeyProvider()?.privateKey else {
+        guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
         var target = rawTarget
@@ -538,12 +574,12 @@ public final class PhoneControlSender: @unchecked Sendable {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                target: target,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalAgentContextTargetHashHex(target: target),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key
+                key: identity
             )
         } catch {
             throw SendError.signingFailed(error.localizedDescription)
@@ -556,7 +592,8 @@ public final class PhoneControlSender: @unchecked Sendable {
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
             signatureEd25519: signed.signatureBase64,
-            attestationHashBlake3: attestationDigest
+            attestationHashBlake3: attestationDigest,
+            keyKind: identity.wireKeyKind
         )
 
         var targetWithAuthority = target
@@ -649,6 +686,10 @@ public struct Curve25519SigningKey: Sendable {
 protocol PhoneControlSigningKeyProviding: AnyObject {
     func signingKey() throws -> Curve25519SigningKey
     func peerNodeId(for key: Curve25519SigningKey) -> String
+    /// F2: the key-kind-aware identity (Secure Enclave P-256 when the gate is
+    /// on and the hardware exists, legacy software Ed25519 otherwise).
+    func signingIdentity() throws -> PhoneControlAuthoritySigningKey
+    func peerNodeId(for identity: PhoneControlAuthoritySigningKey) -> String
 }
 
 /// Persistent iOS signing identity for Phase 12 phone-control intents.
@@ -681,6 +722,104 @@ public final class PhoneControlSigningKeyStore: @unchecked Sendable {
 
     public func peerNodeId(for key: Curve25519SigningKey) -> String {
         "ios-phone-\(Self.hex(Data(key.privateKey.publicKey.rawRepresentation.prefix(12))))"
+    }
+
+    // MARK: - F2 Secure-Enclave identity
+
+    /// The key-kind-aware signing identity, gated by the
+    /// `computer_use_phone_control_secure_enclave_key` Remote Config flag.
+    public func signingIdentity() throws -> PhoneControlAuthoritySigningKey {
+        try signingIdentity(
+            secureEnclaveEnabled: MobileComputerUseRemoteConfig.phoneControlSecureEnclaveKeyEnabled()
+        )
+    }
+
+    /// Resolution order:
+    ///  1. An already-minted Secure Enclave key always wins (its peerNodeId is
+    ///     the published controller identity — never silently downgrade).
+    ///  2. With the gate on and enclave hardware present, mint a
+    ///     biometry-gated SE key (`.biometryCurrentSet` + `.privateKeyUsage` —
+    ///     the OS refuses to sign without a live biometric match, which is the
+    ///     F2 per-action step-up evidence).
+    ///  3. Otherwise the legacy software Ed25519 key (wire-identical to pre-F2).
+    public func signingIdentity(
+        secureEnclaveEnabled: Bool,
+        authenticationContext: LAContext? = nil
+    ) throws -> PhoneControlAuthoritySigningKey {
+        if let blob = try loadSecureEnclaveBlob() {
+            return .secureEnclaveP256(try SecureEnclave.P256.Signing.PrivateKey(
+                dataRepresentation: blob,
+                authenticationContext: authenticationContext
+            ))
+        }
+        if secureEnclaveEnabled, SecureEnclave.isAvailable {
+            return .secureEnclaveP256(try mintSecureEnclaveKey(authenticationContext: authenticationContext))
+        }
+        return .ed25519(try signingKey().privateKey)
+    }
+
+    public func peerNodeId(for identity: PhoneControlAuthoritySigningKey) -> String {
+        PhoneControlPeerNodeIdDerivation.derive(
+            kind: identity.kind,
+            platform: .iOS,
+            publicKeyRepresentation: identity.publicKeyRepresentation
+        )
+    }
+
+    private func mintSecureEnclaveKey(
+        authenticationContext: LAContext?
+    ) throws -> SecureEnclave.P256.Signing.PrivateKey {
+        var accessError: Unmanaged<CFError>?
+        guard let access = SecAccessControlCreateWithFlags(
+            kCFAllocatorDefault,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            [.privateKeyUsage, .biometryCurrentSet],
+            &accessError
+        ) else {
+            throw KeyStoreError.accessControlCreationFailed
+        }
+        let key = try SecureEnclave.P256.Signing.PrivateKey(
+            accessControl: access,
+            authenticationContext: authenticationContext
+        )
+        // `dataRepresentation` is the enclave-wrapped blob — useless outside
+        // this device's Secure Enclave, so generic-password storage is safe.
+        try saveSecureEnclaveBlob(key.dataRepresentation)
+        return key
+    }
+
+    private var secureEnclaveAccount: String { account + ".se-p256" }
+
+    private func loadSecureEnclaveBlob() throws -> Data? {
+        var query = baseQuery()
+        query[kSecAttrAccount as String] = secureEnclaveAccount
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = item as? Data else {
+            throw KeyStoreError.keychainStatus(status)
+        }
+        return data
+    }
+
+    private func saveSecureEnclaveBlob(_ data: Data) throws {
+        var query = baseQuery()
+        query[kSecAttrAccount as String] = secureEnclaveAccount
+        query[kSecValueData as String] = data
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            var match = baseQuery()
+            match[kSecAttrAccount as String] = secureEnclaveAccount
+            let updateStatus = SecItemUpdate(match as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+            guard updateStatus == errSecSuccess else { throw KeyStoreError.keychainStatus(updateStatus) }
+            return
+        }
+        guard status == errSecSuccess else { throw KeyStoreError.keychainStatus(status) }
     }
 
     private func load() throws -> Curve25519.Signing.PrivateKey? {
@@ -726,6 +865,9 @@ public final class PhoneControlSigningKeyStore: @unchecked Sendable {
 
     public enum KeyStoreError: Error, Equatable {
         case keychainStatus(OSStatus)
+        /// `SecAccessControlCreateWithFlags` refused the biometry-gated flags
+        /// (F2 Secure-Enclave mint path).
+        case accessControlCreationFailed
     }
 }
 
