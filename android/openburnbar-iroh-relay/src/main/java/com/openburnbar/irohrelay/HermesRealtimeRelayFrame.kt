@@ -1215,6 +1215,22 @@ data class HermesRealtimeRelayAuthorityEnvelope(
     val timestamp: Double,
     val intentHashBlake3: String,
     val signatureEd25519: String,
+    /**
+     * WS2 — optional App Attest / Play Integrity attestation digest. Android
+     * omitted this field pre-F2, which is why flipping
+     * `computer_use_phone_control_attestation_required` to strict would deny
+     * every Android controller. Carrying it (nullable, dropped when absent)
+     * lets the attestation-required ramp include Android once a reader emits a
+     * digest. Mirrors the Swift `HermesRealtimeRelayAuthorityEnvelope`.
+     */
+    val attestationHashBlake3: String? = null,
+    /**
+     * F2 — signing key custody class. Absent ⇒ `ed25519` (legacy software key);
+     * `"se-p256"` ⇒ a non-exportable StrongBox-backed P-256 key whose
+     * `signatureEd25519` field carries a raw ECDSA signature. Mirrors the Swift
+     * `PhoneControlSigningKeyKind` discriminator.
+     */
+    val keyKind: String? = null,
 )
 
 /**

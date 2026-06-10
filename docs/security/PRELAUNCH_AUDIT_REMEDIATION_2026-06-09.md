@@ -27,11 +27,20 @@ before beta.
 | Docs | Corrected stale SQLCipher recovery-file claims, the gateway-destinations writability claim, disclosed the post-revocation non-E2E token-TTL window, and added a precise media confidentiality model. | `SECURITY_PRIVACY_REVIEW.md`, `RELIABILITY_OPS_REVIEW.md`, `docs/HERMES_GATEWAY_PLATFORM.md`, `docs/PRIVACY.md`, `docs/HERMES_MEDIA_TRANSPORT.md` |
 | L7 | Already mitigated (backend hosts hard-deny cleartext; app-layer `validatedBaseURL` scopes HTTP to localhost/RFC1918). Flipping base-config to deny would regress the LAN-direct feature; tracked below. | `android/.../network_security_config.xml` |
 
-## Remaining — protocol / multi-client (gated before beta)
+## Progress — 2026-06-09 (F2 / F7 / F10 / L2 cores + server landed, tested)
 
-These require coordinated Swift + Kotlin + TypeScript changes with explicit version
-negotiation, cross-language known-answer tests, and physical-device validation. They
-are **not** safe to half-ship.
+Branch `security/prelaunch-f2-f7-f10-l2`. Every change below is **backward
+compatible and behind a default-off capability gate**, so paired clients never
+break and the tree stays shippable while the device/mobile/vendor wiring lands.
+Verified surfaces: **OpenBurnBarCore `swift test` (1437 pass / 3 skip)** and
+**functions `vitest` (435 pass / 4 skip)**, plus `tsc --noEmit` clean.
+
+| Finding | Shipped + tested this pass | Remaining (gated) |
+|---|---|---|
+| F2 | keyKind negotiation, Secure-Enclave P-256 verify/sign path, shared peerNodeId derivations, per-action step-up policy (18 core tests); server SE-P256 publish + atomic revoke + revocation receipt (5 vitest) | Mac validator accept-both verify; iOS Secure Enclave + Android StrongBox keygen + biometric; Kotlin signer P-256 mirror; shorten TTL + per-session rebind in the app validator. **Physical biometric/SE device validation.** |
+| F7 | per-frame media AEAD (HKDF key + AES-GCM seal/open + AAD position binding) + capability gate (8 core tests) | key agreement from pinned P-256 identities; Mac→phone capability advertisement (today missing); seal-before-chunk in `MacFileTransferService`; open in the iOS/Android coordinators; Kotlin mirror + KAT |
+| F10 | control-frame confidentiality seal (AES-GCM under HPKE session key + AAD binding) + capability gate (6 core tests) | seal in iOS/Android `PhoneControlSender`; open in `IrohRelayRequestHandler` control arm; capability advertisement; Kotlin mirror |
+| L2 | gateway PoP v2 query binding, accept-both transition, per-client downgrade protection (5 vitest) | Hermes adapter v2 signer (adapter signs Bearer-only today; ships as vendored `.pyc`) + re-vendor |
 
 ### F2 — Hardware-bind the phone control signing key + per-action step-up
 - **Now:** controller authority = possession of a software Ed25519 key + server
@@ -42,8 +51,35 @@ are **not** safe to half-ship.
   biometric per signing for sensitive action classes (`shell`, `desktop_system_input`,
   unrestricted); shorten authority TTL + re-bind per session; make `revokePeer`
   clear the pin + allowlist atomically and surface a revocation receipt.
-- **Why staged:** changes the key-custody model and the signing UX on both mobile
-  clients + the Mac validator; needs device biometric testing.
+- **Shipped (core + server, tested):**
+  - `PhoneControlSigningKeyKind` (`ed25519` | `se-p256`) on
+    `HermesRealtimeRelayAuthorityEnvelope` — optional, absent ⇒ legacy ed25519;
+    pre-F2 envelopes decode unchanged.
+  - `PhoneControlVerifyingKey` — one algorithm-aware verify path (Ed25519 +
+    P-256 raw/DER) used by the Mac validator and the cross-language KAT.
+  - `PhoneControlPeerNodeIdDerivation` — the four canonical derivations
+    (legacy iOS prefix-12, legacy Android sha256-24, SE iOS `ios-se-…`, SE
+    Android `android-se-…`) in one place, byte-mirrored in the server.
+  - `PhoneControlStepUpPolicy` — sensitive classes
+    (`shell`/`shell_unrestricted`/`desktop_system_input`) require a fresh
+    biometric step-up; an SE signature is self-proving (OS-enforced biometry),
+    a legacy key must attach an explicit single-use local-auth proof.
+  - Server: `publishPhoneControlAuthority` + `publishAgentGrantAuthority` accept
+    `keyKind=se-p256` (x9.63 key, SE peerNodeId derivation), persist
+    `signingKeyKind`, bump `schemaVersion` to 3. `revokeEscrowDeviceTrust`
+    **atomically deletes the controller record(s) + the agent-grant authority**
+    (closing the "revoked but still dialable" gap) and **emits a revocation
+    receipt** (audit event + `receiptId` in the response).
+- **Remaining (gated):** Mac `PhoneControlAuthorityValidator` must build a
+  `PhoneControlVerifyingKey` from the record's `signingKeyKind` and verify
+  se-p256 envelopes; iOS `PhoneControlSigningKeyStore` must mint a Secure
+  Enclave key (`kSecAttrTokenIDSecureEnclave` + `.biometryCurrentSet` access
+  control) and Android must use a StrongBox + `setUserAuthenticationRequired`
+  Keystore key, both emitting `keyKind:"se-p256"`; Kotlin `PhoneControlSigner`
+  P-256 mirror; shorten `authorityMaxLifetime` + re-run controller
+  `controlClassify` registration per session. **Needs physical biometric/SE
+  device testing.** No client emits se-p256 until this lands, so the foundation
+  is dormant + backward-compatible today.
 
 ### F7 — Per-frame AEAD for media/screen (defense-in-depth beyond iroh transport)
 - **Now:** media frames rely on iroh QUIC transport encryption between paired peers
@@ -53,6 +89,19 @@ are **not** safe to half-ship.
   future non-iroh fallback can never carry plaintext and media matches the chat
   lane's depth. Requires `MediaFrame` v-bump + both peers advertising support
   (mirror the existing MediaFrame v2 capability gate).
+- **Shipped (core, tested):** `OpenBurnBarMedia/MediaFrameAEAD` — `deriveSessionKey`
+  (HKDF-SHA256 over the paired ECDH shared secret + per-session salt), `seal`/`open`
+  (AES-256-GCM, `OBMFA1` envelope) with AAD binding `(streamClass, kind, gopID,
+  frameIndex)` so a sealed frame cannot be replayed in another position or stream;
+  `isSealedEnvelope` sniff; `MediaFrameAeadNegotiation` (`media_frame_aead_v1`,
+  both-peers-required). 8 core tests.
+- **Remaining (gated):** feed the key agreement from the pinned P-256 relay
+  identities (the same identities the HPKE chat lane authenticates); **add the
+  Mac→phone capability advertisement** (today the Mac never advertises
+  `streamingCapabilities` back to phones — `MercuryRouter` heartbeat reply /
+  `mediaMirrorAck`); seal before chunking in `MacFileTransferService`; open in
+  iOS `MediaControlStreamCoordinator` + Android `MediaControlFrameDispatcher`;
+  Kotlin `MediaFrameAEAD` mirror + a cross-language KAT.
 
 ### F10 — HPKE-wrap control iroh frames
 - **Now:** `control.*` frames are dispatched directly on the iroh stream; mutating
@@ -61,6 +110,18 @@ are **not** safe to half-ship.
 - **Target:** open control streams only after the HPKE authenticated-request opener
   (reuse `HermesRelayAuthenticatedRequest`), or seal control JSON with the session
   key. Coordinated Swift + Kotlin change.
+- **Shipped (core, tested):** `OpenBurnBarComputerUseCore/ControlFrameSeal` —
+  `deriveSessionKey` (HKDF over the HPKE authenticated-request session key),
+  `seal`/`open` (AES-256-GCM, `OBCFS1` envelope) with AAD binding
+  `(peerNodeId, frameType)` so a sealed control frame can't be replayed across
+  peers or re-typed; `ControlFrameSealNegotiation` (`control_seal_v1`). 6 core
+  tests. (The signature lane already gives authenticity + replay protection;
+  this adds the missing confidentiality.)
+- **Remaining (gated):** thread the HPKE opener's per-request session `keyData`
+  (already produced by `HermesRelayAuthenticatedRequestOpener.open`) to the
+  control lane; seal in iOS/Android `PhoneControlSender`; open in
+  `IrohRelayRequestHandler`'s `control.*` arm before `controlDispatcher`;
+  advertise `control_seal_v1`; Kotlin `ControlFrameSeal` mirror.
 
 ### L2 — Fold the query string into the gateway PoP signed payload
 - **Now:** the proof-of-possession signature covers `tokenHash | METHOD | path |
@@ -70,6 +131,18 @@ are **not** safe to half-ship.
   v2** that both the external Hermes client and the server negotiate, accepting v1
   during a transition window. A unilateral server change would reject all current
   paired clients.
+- **Shipped (server, tested):** `gatewayPopSignablePayloadV2` binds a canonical
+  query string (`canonicalGatewayQueryString` — decoded params sorted by
+  key/value, joined `k=v` with `&`, no percent-encoding variance). Version is
+  negotiated per request via `x-openburnbar-pop-version`; the server verifies v1
+  **or** v2 during the transition. The client doc carries a `popVersion`
+  capability (captured at device/start + approve); once a client registers v2 a
+  v1 downgrade is refused (`pop_v2_required`). 5 vitest cases incl. the proof
+  that a tampered query is now caught (`bad_pop_signature`).
+- **Remaining (out of this repo):** the Hermes platform adapter signs only a
+  Bearer header today (no PoP at all) and ships as a vendored `.pyc`
+  (`third_party/hermes-agent`); the v2 signer must be added to the adapter source
+  and re-vendored. Tracked alongside the F5 vendored-runtime gate below.
 
 ### Attestation default-on (remote-control F6) & full-key `peerNodeId` (remote-control F7)
 - Flipping `computer_use_phone_control_attestation_required` to default-true requires
@@ -79,6 +152,20 @@ are **not** safe to half-ship.
   identity-format change that must land on the phone, the Mac validator, and the
   `requireDerivedPhoneControlPeerNodeId` server check together, and re-pairs
   existing controllers. (Severity is LOW/5; collision is impractical at 96 bits.)
+- **Shipped (Android wire field, compiled + tests green):** the Kotlin
+  `HermesRealtimeRelayAuthorityEnvelope` now carries `attestationHashBlake3` (and
+  `keyKind`) as nullable fields — the field absence that would have denied **every
+  Android controller** under strict attestation is closed at the wire level (the
+  `:openburnbar-iroh-relay` module compiles and its unit tests pass with the new
+  fields). The SE `peerNodeId` derivations are also already defined and tested in
+  `PhoneControlPeerNodeIdDerivation` + the server (above), giving the full-key
+  identity change a versioned home.
+- **Remaining (gated):** an Android attestation **reader** (no equivalent of the
+  iOS `MobileAppCheckAttestationReader` exists) + an Android Remote Config read
+  (Android reads no RC today) before the attestation ramp can include Android;
+  iOS `sign(remoteUnlockSession:)` still omits the attestation field; the
+  full-key `peerNodeId` migration + Mac re-pair UX. None are launch-blocking
+  while the RC flag stays default-off.
 
 ### F5 follow-through (out of this repo)
 The C-4 agent command-guard and the server-side Telegram chat-ID allowlist live in
