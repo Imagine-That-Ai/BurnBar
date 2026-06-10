@@ -1,6 +1,7 @@
 import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarComputerUseCore
+import OpenBurnBarMedia
 
 enum MobileComputerUseRemoteConfig {
     static func phoneControlAttestationRequired() -> Bool {
@@ -21,5 +22,13 @@ enum MobileComputerUseRemoteConfig {
     static func controlSealEnabled() -> Bool {
         let remoteConfig = RemoteConfig.remoteConfig()
         return remoteConfig.configValue(forKey: ControlFrameSealNegotiation.remoteConfigKey).boolValue
+    }
+
+    /// F7: whether this phone wraps a media-frame-AEAD key into its mirror
+    /// requests (default-off ramp; both peers must also advertise
+    /// `media_frame_aead_v1`).
+    static func mediaFrameAeadEnabled() -> Bool {
+        let remoteConfig = RemoteConfig.remoteConfig()
+        return remoteConfig.configValue(forKey: MediaFrameAeadNegotiation.remoteConfigKey).boolValue
     }
 }

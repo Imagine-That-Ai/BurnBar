@@ -637,12 +637,17 @@ final class OpenBurnBarRuntimeContext {
             hudState: hud
         )
         router.setMirrorSinkFactory { request, frame, replySender in
-            MercuryControlStreamMediaSink(
+            // F7: when the phone wrapped a media-seal key into its mirror
+            // request, open it (pinned-sender trust path) and seal every
+            // frame; nil keeps the legacy plaintext-at-app-layer lane.
+            let frameSealKey = await MacMediaSealKeyOpener.frameSealKey(for: request, frame: frame)
+            return MercuryControlStreamMediaSink(
                 sender: replySender,
                 uid: frame.uid,
                 connectionID: frame.connectionId,
                 streamClass: MediaStreamClass(rawValue: request.streamClass),
-                extraHeartbeatCapabilities: []
+                extraHeartbeatCapabilities: [],
+                frameSealKey: frameSealKey
             )
         }
         self.voipCallTrigger = VoIPCallTrigger()

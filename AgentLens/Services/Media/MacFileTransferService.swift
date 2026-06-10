@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -429,6 +430,11 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
     private let extraHeartbeatCapabilities: [String]
     private let codec = MediaPacketCodec(maxPayloadBytes: MediaFrameV2Codec.defaultMaxPayloadBytes)
     private let frameV2Codec = MediaFrameV2Codec()
+    /// F7 — when present, every encoded frame is sealed (MediaFrameAEAD,
+    /// position-bound AAD) before chunking; nil keeps the legacy plaintext
+    /// lane (pre-F7 peers, or no negotiated media-seal session).
+    private let frameSealKey: SymmetricKey?
+    private let frameSealAEAD = MediaFrameAEAD()
     private var heartbeatTask: Task<Void, Never>?
 
     init(
@@ -437,7 +443,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
         connectionID: String,
         streamClass: MediaStreamClass,
         heartbeatInterval: TimeInterval = 2.5,
-        extraHeartbeatCapabilities: [String] = []
+        extraHeartbeatCapabilities: [String] = [],
+        frameSealKey: SymmetricKey? = nil
     ) {
         self.sendGate = MercuryControlStreamSendGate(stream: stream)
         self.uid = uid
@@ -445,6 +452,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
         self.streamClass = streamClass
         self.heartbeatInterval = heartbeatInterval
         self.extraHeartbeatCapabilities = extraHeartbeatCapabilities
+        self.frameSealKey = frameSealKey
         startHeartbeatLoop()
     }
 
@@ -454,7 +462,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
         connectionID: String,
         streamClass: MediaStreamClass,
         heartbeatInterval: TimeInterval = 2.5,
-        extraHeartbeatCapabilities: [String] = []
+        extraHeartbeatCapabilities: [String] = [],
+        frameSealKey: SymmetricKey? = nil
     ) {
         self.sendGate = MercuryControlStreamSendGate(sender: sender)
         self.uid = uid
@@ -462,6 +471,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
         self.streamClass = streamClass
         self.heartbeatInterval = heartbeatInterval
         self.extraHeartbeatCapabilities = extraHeartbeatCapabilities
+        self.frameSealKey = frameSealKey
         startHeartbeatLoop()
     }
 
@@ -488,8 +498,24 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
 
     func write(frame: MediaFrame) async {
         do {
-            let encoded = try codec.encode(frame)
-            try await sendEncodedFrame(encoded, frameIndex: frame.frameIndex)
+            var encoded = try codec.encode(frame)
+            var position: HermesRealtimeRelaySealedMediaFramePosition?
+            if let frameSealKey {
+                encoded = try frameSealAEAD.seal(
+                    plaintext: encoded,
+                    key: frameSealKey,
+                    streamClass: streamClass.rawValue,
+                    kind: frame.kind.rawValue,
+                    gopID: frame.gopID,
+                    frameIndex: frame.frameIndex
+                )
+                position = HermesRealtimeRelaySealedMediaFramePosition(
+                    kind: frame.kind.rawValue,
+                    gopId: frame.gopID,
+                    frameIndex: frame.frameIndex
+                )
+            }
+            try await sendEncodedFrame(encoded, frameIndex: frame.frameIndex, sealedPosition: position)
         } catch {
             // `MediaStreamSink.write` is intentionally fire-and-forget. The
             // session coordinator owns teardown; a failed send drops this
@@ -500,8 +526,24 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
 
     func write(frameV2: MediaFrameV2) async {
         do {
-            let encoded = try frameV2Codec.encode(frameV2, negotiatedVersion: .v2)
-            try await sendEncodedFrame(encoded, frameIndex: frameV2.frameIndex)
+            var encoded = try frameV2Codec.encode(frameV2, negotiatedVersion: .v2)
+            var position: HermesRealtimeRelaySealedMediaFramePosition?
+            if let frameSealKey {
+                encoded = try frameSealAEAD.seal(
+                    plaintext: encoded,
+                    key: frameSealKey,
+                    streamClass: streamClass.rawValue,
+                    kind: frameV2.kind.rawValue,
+                    gopID: frameV2.gopID,
+                    frameIndex: frameV2.frameIndex
+                )
+                position = HermesRealtimeRelaySealedMediaFramePosition(
+                    kind: frameV2.kind.rawValue,
+                    gopId: frameV2.gopID,
+                    frameIndex: frameV2.frameIndex
+                )
+            }
+            try await sendEncodedFrame(encoded, frameIndex: frameV2.frameIndex, sealedPosition: position)
         } catch {
             // `MediaStreamSink.write` is intentionally fire-and-forget. The
             // session coordinator owns teardown; a failed send drops this
@@ -515,9 +557,16 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
         heartbeatTask = nil
     }
 
-    private func sendEncodedFrame(_ encoded: Data, frameIndex: UInt32) async throws {
+    private func sendEncodedFrame(
+        _ encoded: Data,
+        frameIndex: UInt32,
+        sealedPosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
+    ) async throws {
         if encoded.count <= Self.maxInlineEncodedFrameBytes {
-            try await sendGate.send(makeRelayFrame(encodedFrameBase64: encoded.base64EncodedString()))
+            try await sendGate.send(makeRelayFrame(
+                encodedFrameBase64: encoded.base64EncodedString(),
+                sealedPosition: sealedPosition
+            ))
             return
         }
 
@@ -535,7 +584,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
             )
             try await sendGate.send(makeRelayFrame(
                 encodedFrameBase64: chunk.base64EncodedString(),
-                frameChunk: metadata
+                frameChunk: metadata,
+                sealedPosition: sealedPosition
             ))
         }
         Self.log.info("control_stream_media_frame_chunked connectionID=\(self.connectionID, privacy: .public) frameIndex=\(frameIndex, privacy: .public) bytes=\(encoded.count, privacy: .public) chunks=\(chunkCount, privacy: .public)")
@@ -543,7 +593,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
 
     private func makeRelayFrame(
         encodedFrameBase64: String,
-        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil
+        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil,
+        sealedPosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
     ) -> HermesRealtimeRelayFrame {
         HermesRealtimeRelayFrame(
             type: .mediaStreamFrame,
@@ -552,7 +603,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, @unchecked Sendable 
             media: HermesRealtimeRelayMediaPayload(
                 streamClass: streamClass.rawValue,
                 encodedFrameBase64: encodedFrameBase64,
-                frameChunk: frameChunk
+                frameChunk: frameChunk,
+                sealedFramePosition: sealedPosition
             )
         )
     }

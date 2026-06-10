@@ -1650,6 +1650,11 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// Optional Mac focus-follow context. Additive only: old peers ignore it,
     /// and media frames remain routable solely by `streamClass`.
     public var focusContext: HermesRealtimeRelayFocusContext?
+    /// F7 — present when `encodedFrameBase64` carries a MediaFrameAEAD-sealed
+    /// (OBMFA1) envelope instead of a plaintext encoded frame. The position
+    /// fields ride in clear so the receiver can rebuild the AAD; any tamper
+    /// fails the GCM tag, so their integrity is enforced by the seal itself.
+    public var sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition?
 
     public init(
         streamClass: String? = nil,
@@ -1666,7 +1671,8 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = nil,
         encodedFrameBase64: String? = nil,
         frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil,
-        focusContext: HermesRealtimeRelayFocusContext? = nil
+        focusContext: HermesRealtimeRelayFocusContext? = nil,
+        sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
     ) {
         self.streamClass = streamClass
         self.attachment = attachment
@@ -1683,6 +1689,23 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         self.encodedFrameBase64 = encodedFrameBase64
         self.frameChunk = frameChunk
         self.focusContext = focusContext
+        self.sealedFramePosition = sealedFramePosition
+    }
+}
+
+/// F7 — the cleartext AAD components of a sealed media frame (the frame's
+/// position in its stream). Authenticated by the seal's GCM tag — a receiver
+/// rebuilds the AAD from these and `streamClass`, and any mismatch refuses
+/// the frame.
+public struct HermesRealtimeRelaySealedMediaFramePosition: Codable, Sendable, Equatable {
+    public var kind: UInt8
+    public var gopId: UInt32
+    public var frameIndex: UInt32
+
+    public init(kind: UInt8, gopId: UInt32, frameIndex: UInt32) {
+        self.kind = kind
+        self.gopId = gopId
+        self.frameIndex = frameIndex
     }
 }
 
