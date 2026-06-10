@@ -84,6 +84,48 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   const dbMock = {
     doc: (path: string) => makeDocRef(path),
     collection: (path: string) => makeQuery(path, []),
+    async runTransaction<T>(fn: (transaction: unknown) => Promise<T>): Promise<T> {
+      // Reads happen live against the store; writes are buffered and applied
+      // on success, mirroring Firestore transaction semantics closely enough
+      // for the single-attempt handlers under test.
+      const writes: Array<() => void> = [];
+      const transaction = {
+        async get(refOrQuery: { path?: string; __isQuery?: boolean } & Record<string, unknown>) {
+          if (refOrQuery.__isQuery) {
+            return (refOrQuery as unknown as { get: () => Promise<unknown> }).get();
+          }
+          return snapshotFor((refOrQuery as { path: string }).path);
+        },
+        getAll(...refs: Array<{ path: string }>) {
+          return Promise.resolve(refs.map((ref) => snapshotFor(ref.path)));
+        },
+        set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
+          writes.push(() => {
+            const existing = opts?.merge ? store.get(ref.path) ?? {} : {};
+            store.set(ref.path, { ...existing, ...data });
+          });
+          return transaction;
+        },
+        create(ref: { path: string }, data: Record<string, unknown>) {
+          if (store.has(ref.path)) {
+            throw new Error(`ALREADY_EXISTS: ${ref.path}`);
+          }
+          writes.push(() => store.set(ref.path, { ...data }));
+          return transaction;
+        },
+        update(ref: { path: string }, data: Record<string, unknown>) {
+          writes.push(() => store.set(ref.path, { ...(store.get(ref.path) ?? {}), ...data }));
+          return transaction;
+        },
+        delete(ref: { path: string }) {
+          writes.push(() => store.delete(ref.path));
+          return transaction;
+        },
+      };
+      const result = await fn(transaction);
+      writes.forEach((write) => write());
+      return result;
+    },
     batch() {
       const ops: Array<() => void> = [];
       return {
@@ -239,5 +281,115 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
     expect(receipts).toHaveLength(1);
     expect(receipts[0][1].receiptId).toBe(res.receiptId);
     expect(receipts[0][1].revokedControllerPeerNodeIds).toContain(peerNodeId);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F2 — queued agent grants must verify SE-P256 authorities too (the queued
+// lane was Ed25519-only, so an SE controller's grants were rejected even
+// though publish accepted its key).
+// ---------------------------------------------------------------------------
+import { queueAgentCapabilityGrantRequest, __testing__ } from "../callables/computerUseSecurity.js";
+import { generateKeyPairSync, sign as cryptoSign } from "node:crypto";
+
+const COCOA_OFFSET = 978307200; // 2001-01-01 epoch offset, mirrors the server.
+
+function cocoaNow(): number {
+  return Date.now() / 1000 - COCOA_OFFSET;
+}
+
+function p256Pair(): { x963: Buffer; privateKey: import("node:crypto").KeyObject; peerNodeId: string } {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const jwk = publicKey.export({ format: "jwk" }) as { x: string; y: string };
+  const x963 = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x, "base64url"), Buffer.from(jwk.y, "base64url")]);
+  const digest = createHash("sha256").update(x963).digest("hex").slice(0, 24);
+  return { x963, privateKey, peerNodeId: `ios-se-${digest}` };
+}
+
+function queuedGrantData(options: {
+  peerNodeId: string;
+  signGrant: (payload: Buffer) => Buffer;
+}) {
+  const now = cocoaNow();
+  const grantRequest = {
+    requestId: `grant-${Math.random().toString(36).slice(2)}`,
+    runtime: "claude",
+    threadId: "thread-1",
+    preset: "low",
+    capabilities: ["workspace_read"],
+    trustMode: "manual",
+    deliveryMode: "queued",
+    requestedAt: now,
+    expiresAt: now + 120,
+    grantDurationSeconds: 120,
+    sourceDeviceId: DEVICE,
+    clientIntentId: "intent-queued-1",
+    localAuthenticationSatisfied: false,
+  };
+  const intentHashHex = __testing__.agentGrantRequestHashHex(grantRequest);
+  const payload = __testing__.agentGrantAuthoritySignablePayload(intentHashHex.toLowerCase(), 1, now);
+  const signature = options.signGrant(payload);
+  return {
+    ...grantRequest,
+    authority: {
+      peerNodeId: options.peerNodeId,
+      counter: 1,
+      timestamp: now,
+      intentHashBlake3: intentHashHex,
+      signatureEd25519: signature.toString("base64"),
+    },
+  };
+}
+
+describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {
+  beforeEach(seedTrustedDeviceAndPairing);
+
+  it("accepts a queued grant signed by an SE-P256 authority", async () => {
+    const { x963, privateKey, peerNodeId } = p256Pair();
+    store.set(`users/${UID}/agent_grant_authorities/${DEVICE}`, {
+      peerNodeId,
+      publicKeyBase64: x963.toString("base64"),
+      signingKeyKind: "se-p256",
+    });
+    const data = queuedGrantData({
+      peerNodeId,
+      signGrant: (payload) => cryptoSign("sha256", payload, { key: privateKey, dsaEncoding: "ieee-p1363" }),
+    });
+    const res = await (queueAgentCapabilityGrantRequest as never as { run: (r: unknown) => Promise<{ ok: boolean }> }).run(req(data));
+    expect(res.ok).toBe(true);
+  });
+
+  it("rejects a queued grant whose SE-P256 signature does not verify", async () => {
+    const { x963, peerNodeId } = p256Pair();
+    const attacker = p256Pair();
+    store.set(`users/${UID}/agent_grant_authorities/${DEVICE}`, {
+      peerNodeId,
+      publicKeyBase64: x963.toString("base64"),
+      signingKeyKind: "se-p256",
+    });
+    const data = queuedGrantData({
+      peerNodeId,
+      signGrant: (payload) => cryptoSign("sha256", payload, { key: attacker.privateKey, dsaEncoding: "ieee-p1363" }),
+    });
+    await expect(
+      (queueAgentCapabilityGrantRequest as never as { run: (r: unknown) => Promise<unknown> }).run(req(data)),
+    ).rejects.toThrow(/signature is invalid/i);
+  });
+
+  it("still accepts a legacy Ed25519 queued grant (no signingKeyKind on the doc)", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const jwk = publicKey.export({ format: "jwk" }) as { x: string };
+    const rawPub = Buffer.from(jwk.x, "base64url");
+    const peerNodeId = `ios-phone-${rawPub.subarray(0, 12).toString("hex")}`;
+    store.set(`users/${UID}/agent_grant_authorities/${DEVICE}`, {
+      peerNodeId,
+      publicKeyBase64: rawPub.toString("base64"),
+    });
+    const data = queuedGrantData({
+      peerNodeId,
+      signGrant: (payload) => cryptoSign(null, payload, privateKey),
+    });
+    const res = await (queueAgentCapabilityGrantRequest as never as { run: (r: unknown) => Promise<{ ok: boolean }> }).run(req(data));
+    expect(res.ok).toBe(true);
   });
 });

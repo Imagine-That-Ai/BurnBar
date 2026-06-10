@@ -440,6 +440,43 @@ function verifyEd25519RawSignature(publicKeyRaw: Buffer, payload: Buffer, signat
   return verifySignature(null, payload, publicKey, signature);
 }
 
+/// F2 — key-kind-aware authority signature verify, byte-mirroring the Swift
+/// `PhoneControlVerifyingKey`: legacy Ed25519 over raw 32-byte keys, or
+/// ECDSA-P256-over-SHA256 with the fixed-size raw `r‖s` wire form
+/// (`ieee-p1363`) under a 65-byte X9.63 public key. The `signatureEd25519`
+/// field is the carrier regardless of algorithm.
+function verifyPhoneControlAuthoritySignature(
+  publicKey: Buffer,
+  keyKind: PhoneControlSigningKeyKind,
+  payload: Buffer,
+  signatureBase64: string,
+): boolean {
+  if (keyKind !== "se-p256") {
+    return verifyEd25519RawSignature(publicKey, payload, signatureBase64);
+  }
+  const signature = Buffer.from(signatureBase64, "base64");
+  if (signature.length !== 64 || signature.toString("base64") !== normalizeBase64(signatureBase64)) {
+    return false;
+  }
+  if (publicKey.length !== P256_X963_PUBLIC_KEY_BYTE_LENGTH || publicKey[0] !== 0x04) {
+    return false;
+  }
+  try {
+    const key = createPublicKey({
+      key: {
+        kty: "EC",
+        crv: "P-256",
+        x: publicKey.subarray(1, 1 + P256_COORDINATE_BYTE_LENGTH).toString("base64url"),
+        y: publicKey.subarray(1 + P256_COORDINATE_BYTE_LENGTH).toString("base64url"),
+      },
+      format: "jwk",
+    });
+    return verifySignature("sha256", payload, { key, dsaEncoding: "ieee-p1363" }, signature);
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // LibSignal XEd25519 (XEdDSA over Curve25519) verification — server side.
 //
@@ -758,6 +795,9 @@ function verifyAgentGrantLocalAuthProof(
     observedIntentHashHex: string;
     nowReferenceSeconds: number;
     authorityPublicKey: Buffer;
+    /// F2: the proof is signed with the same controller key as the authority
+    /// envelope — verify with the matching algorithm (absent ⇒ legacy ed25519).
+    authorityKeyKind?: PhoneControlSigningKeyKind;
   },
 ): "ok" | "wrong_device" | "wrong_intent" | "expired" | "future" | "too_long" | "bad_signature" {
   if (proof.deviceId !== options.sourceDeviceId) return "wrong_device";
@@ -772,7 +812,14 @@ function verifyAgentGrantLocalAuthProof(
     return "too_long";
   }
   const payload = agentGrantLocalAuthProofSignablePayload(proof);
-  return verifyEd25519RawSignature(options.authorityPublicKey, payload, proof.signatureEd25519) ? "ok" : "bad_signature";
+  return verifyPhoneControlAuthoritySignature(
+    options.authorityPublicKey,
+    options.authorityKeyKind ?? "ed25519",
+    payload,
+    proof.signatureEd25519,
+  )
+    ? "ok"
+    : "bad_signature";
 }
 
 async function appendComputerUseAuditEvent(
@@ -1912,13 +1959,16 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
     ) {
       throw new HttpsError("permission-denied", "Agent grant authority is not trusted for this device.");
     }
-    const authorityPublicKey = requireExactBase64Bytes(
+    // F2: the published authority carries its custody class (`signingKeyKind`,
+    // absent ⇒ legacy ed25519); validate the key shape and verify with the
+    // matching algorithm so SE-P256 controllers work on the queued lane too.
+    const authorityKeyKind = parsePhoneControlSigningKeyKind(authoritySnapshot.get("signingKeyKind") ?? undefined);
+    const { bytes: authorityPublicKey } = requirePhoneControlAuthorityPublicKey(
       authoritySnapshot.get("publicKeyBase64"),
-      "agentGrantAuthority.publicKeyBase64",
-      ED25519_PUBLIC_KEY_BYTE_LENGTH,
+      authorityKeyKind,
     );
 	    const signablePayload = agentGrantAuthoritySignablePayload(intentHashBlake3.toLowerCase(), authorityCounter, authorityTimestamp);
-	    if (!verifyEd25519RawSignature(authorityPublicKey, signablePayload, signatureEd25519)) {
+	    if (!verifyPhoneControlAuthoritySignature(authorityPublicKey, authorityKeyKind, signablePayload, signatureEd25519)) {
 	      throw new HttpsError("permission-denied", "Agent grant authority signature is invalid.");
 	    }
 	    if (localAuthProof) {
@@ -1927,6 +1977,7 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
 	        observedIntentHashHex,
 	        nowReferenceSeconds,
 	        authorityPublicKey,
+	        authorityKeyKind,
 	      });
 	      if (proofStatus !== "ok") {
 	        await appendComputerUseAuditEvent(uid, {
@@ -2140,6 +2191,7 @@ export const __testing__ = {
   queuedAgentGrantRequiresMacApproval,
   queuedAgentGrantDeliveryRequiresMacApproval,
   verifyEd25519RawSignature,
+  verifyPhoneControlAuthoritySignature,
   buildCloudVaultDeviceTrustChainCanonicalBytes,
   verifyXEdDSACurve25519Signature,
   verifyCloudVaultDeviceTrustChainSignature,
