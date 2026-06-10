@@ -115,7 +115,7 @@ let package = Package(
     products: packageProducts,
     dependencies: [
         .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift"),
-        .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+        .package(url: "https://github.com/swiftlang/swift-testing", from: "6.3.2")
     ],
     targets: irohBinaryTargets + signalBinaryTargets + [
         .target(
