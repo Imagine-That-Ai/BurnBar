@@ -265,6 +265,10 @@ export interface HermesGatewayClientDoc {
   agentClientSigningPublicKeyBase64?: string;
   agentClientSigningKeyId?: string;
   popRequired?: boolean;
+  // L2 — proof-of-possession version the client signs with. Absent / 1 ⇒ PoP v1
+  // (query string NOT integrity-protected). 2 ⇒ PoP v2 (query bound into the
+  // signature). Once a client registers 2, the server refuses a v1 downgrade.
+  popVersion?: number;
   scopes: HermesGatewayScope[];
   homeDestinationId: string;
   expiresAt?: string;
@@ -1269,6 +1273,7 @@ export function isHermesGatewayClientDoc(raw: unknown): raw is HermesGatewayClie
 	      record.agentClientSigningPublicKeyBase64 === undefined) &&
 	    (typeof record.agentClientSigningKeyId === "string" || record.agentClientSigningKeyId === undefined) &&
 	    (typeof record.popRequired === "boolean" || record.popRequired === undefined) &&
+	    (typeof record.popVersion === "number" || record.popVersion === undefined) &&
 	    Array.isArray(record.scopes) &&
     typeof record.homeDestinationId === "string" &&
     (typeof record.expiresAt === "string" || record.expiresAt === undefined) &&
@@ -1467,6 +1472,7 @@ export function publicClientView(client: HermesGatewayClientDoc): Record<string,
     tokenPreview: client.tokenPreview,
     agentClientSigningKeyId: client.agentClientSigningKeyId,
     popRequired: client.popRequired === true,
+    popVersion: typeof client.popVersion === "number" ? client.popVersion : 1,
     scopes: client.scopes,
     homeDestinationId: client.homeDestinationId,
     expiresAt: client.expiresAt,
