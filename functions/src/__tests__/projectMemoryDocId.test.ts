@@ -74,7 +74,15 @@ vi.mock("../adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-type Runnable = { run: (request: unknown) => Promise<unknown> };
+/**
+ * Single typed seam for driving the real callables through `.run(request)`.
+ * Funnelling every invocation through this helper keeps the unavoidable
+ * mock-request widening to exactly one cast instead of one per call site.
+ */
+function invokeCallable<TRes = unknown>(callable: unknown, request: unknown): Promise<TRes> {
+  const runnable = callable as { run: (request: unknown) => Promise<TRes> };
+  return runnable.run(request);
+}
 
 // A vault-key-derived opaque doc id (matches projectMemoryDocID's shape:
 // "pm_" + 32 lowercase hex). The slug/name never travel to the server.
@@ -96,21 +104,22 @@ function sealedBlob() {
 }
 
 function commitRequest() {
+  const data: Record<string, unknown> = {
+    docID: DOC_ID,
+    contentHash: "b".repeat(64),
+    contentHashVersion: 2,
+    sourceSessionCount: 3,
+    sourceConversationCount: 5,
+    generatedAt: "2026-06-02T00:00:00.000Z",
+    freshness: "fresh",
+    visualKinds: ["timeline"],
+    sealedSnapshot: sealedBlob(),
+  };
   return {
     auth: { uid: "userA", token: {} },
     app: { appId: "test-app" },
     rawRequest: { headers: {} },
-    data: {
-      docID: DOC_ID,
-      contentHash: "b".repeat(64),
-      contentHashVersion: 2,
-      sourceSessionCount: 3,
-      sourceConversationCount: 5,
-      generatedAt: "2026-06-02T00:00:00.000Z",
-      freshness: "fresh",
-      visualKinds: ["timeline"],
-      sealedSnapshot: sealedBlob(),
-    },
+    data,
   };
 }
 
@@ -120,18 +129,17 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
 
   it("commit stores the row at the opaque docID with no plaintext slug/name", async () => {
     const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
-    const run = (commitEncryptedProjectMemorySnapshot as unknown as Runnable).run;
 
-    const res = (await run(commitRequest())) as { ok: boolean; docID: string };
+    const res = await invokeCallable<{ ok: boolean; docID: string }>(commitEncryptedProjectMemorySnapshot, commitRequest());
     expect(res.ok).toBe(true);
     expect(res.docID).toBe(DOC_ID);
 
     const record = stored.get(`users/userA/project_memory_snapshots/${DOC_ID}`);
     expect(record).toBeDefined();
     // schemaVersion bumped to 2; opaque docID present; sealed blob present.
-    expect(record!.schemaVersion).toBe(2);
-    expect(record!.docID).toBe(DOC_ID);
-    expect(record!.sealedSnapshot).toBeDefined();
+    expect(record?.schemaVersion).toBe(2);
+    expect(record?.docID).toBe(DOC_ID);
+    expect(record?.sealedSnapshot).toBeDefined();
     // No plaintext name/slug anywhere on the stored row.
     expect(record).not.toHaveProperty("projectSlug");
     expect(record).not.toHaveProperty("projectDisplayName");
@@ -148,42 +156,39 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
 
   it("commit rejects a missing docID", async () => {
     const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
-    const run = (commitEncryptedProjectMemorySnapshot as unknown as Runnable).run;
     const req = commitRequest();
-    delete (req.data as Record<string, unknown>).docID;
-    await expect(run(req)).rejects.toThrow(/docID/);
+    delete req.data.docID;
+    await expect(invokeCallable(commitEncryptedProjectMemorySnapshot, req)).rejects.toThrow(/docID/);
   });
 
   it("get round-trips by docID and echoes no plaintext name/slug", async () => {
     const mod = await import("../callables/encryptedSearch.js");
-    await (mod.commitEncryptedProjectMemorySnapshot as unknown as Runnable).run(commitRequest());
+    await invokeCallable(mod.commitEncryptedProjectMemorySnapshot, commitRequest());
 
-    const getRun = (mod.getEncryptedProjectMemorySnapshot as unknown as Runnable).run;
-    const res = (await getRun({
+    const res = await invokeCallable<{ snapshot: Record<string, unknown> | null }>(mod.getEncryptedProjectMemorySnapshot, {
       auth: { uid: "userA", token: {} },
       app: { appId: "test-app" },
       rawRequest: { headers: {} },
       data: { docID: DOC_ID },
-    })) as { snapshot: Record<string, unknown> | null };
+    });
 
     expect(res.snapshot).not.toBeNull();
-    expect(res.snapshot!.docID).toBe(DOC_ID);
-    expect(res.snapshot!.sealedSnapshot).toBeDefined();
+    expect(res.snapshot?.docID).toBe(DOC_ID);
+    expect(res.snapshot?.sealedSnapshot).toBeDefined();
     expect(res.snapshot).not.toHaveProperty("projectSlug");
     expect(res.snapshot).not.toHaveProperty("projectDisplayName");
   });
 
   it("list returns only opaque docID + sealed facets (no name/slug projection)", async () => {
     const mod = await import("../callables/encryptedSearch.js");
-    await (mod.commitEncryptedProjectMemorySnapshot as unknown as Runnable).run(commitRequest());
+    await invokeCallable(mod.commitEncryptedProjectMemorySnapshot, commitRequest());
 
-    const listRun = (mod.listEncryptedProjectMemorySnapshots as unknown as Runnable).run;
-    const res = (await listRun({
+    const res = await invokeCallable<{ snapshots: Array<Record<string, unknown>> }>(mod.listEncryptedProjectMemorySnapshots, {
       auth: { uid: "userA", token: {} },
       app: { appId: "test-app" },
       rawRequest: { headers: {} },
       data: { limit: 10 },
-    })) as { snapshots: Array<Record<string, unknown>> };
+    });
 
     expect(res.snapshots.length).toBe(1);
     const entry = res.snapshots[0];

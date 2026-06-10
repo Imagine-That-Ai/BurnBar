@@ -70,13 +70,14 @@ class FakeRes extends EventEmitter {
 }
 
 function getRequest(query: Record<string, string> = {}) {
+  const headers: Record<string, string> = {};
   return {
     method: "GET",
     path: "/latestRouterRundown",
     url: "/latestRouterRundown",
     body: undefined,
     query,
-    headers: {} as Record<string, string>,
+    headers,
     socket: { remoteAddress: "127.0.0.1" },
     get(_name: string): string | undefined {
       return undefined;

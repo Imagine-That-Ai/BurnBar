@@ -766,7 +766,9 @@ jobs:
   computer-use-e2e:
     needs: [path-filter]
     if: needs.path-filter.outputs.computer_use == 'true' && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: macos-14
+    # macos-26 like every other Swift job: Vendor/libsignal/swift declares
+    # swift-tools-version 6.0, which macos-14's default toolchain (5.10) rejects.
+    runs-on: macos-26
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -799,6 +801,8 @@ jobs:
     if: needs.path-filter.outputs.mercury_media == 'true' && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: macos-26
     timeout-minutes: 35
+    env:
+      HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -808,6 +812,28 @@ jobs:
           java-version: "21"
           distribution: temurin
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      # gradle's processDebugGoogleServices needs google-services.json; this job
+      # previously had no inject step, so it failed before any test ran.
+      - name: Inject Android Firebase config
+        if: env.HAS_ANDROID_SECRETS == 'true'
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config-android.sh
+      - name: Generate dummy google-services.json when secret unavailable
+        if: env.HAS_ANDROID_SECRETS != 'true'
+        run: |
+          python3 -c "
+          import json, pathlib
+          pathlib.Path('android/app').mkdir(parents=True, exist_ok=True)
+          pathlib.Path('android/app/google-services.json').write_text(json.dumps({
+              'project_info': {'project_id': 'burnbar-ci-dummy', 'project_number': '000000000000'},
+              'client': [{'client_info': {'mobilesdk_app_id': '1:000000000000:android:0000000000000000',
+              'android_client_info': {'package_name': 'com.openburnbar'}},
+              'api_key': [{'current_key': '*************************************'}],
+              'services': {}}],
+              'configuration_version': '1'
+          }))
+          "
       - name: Android media JVM tests
         run: |
           cd android

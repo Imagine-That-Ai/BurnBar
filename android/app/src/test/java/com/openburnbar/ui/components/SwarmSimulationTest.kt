@@ -5,10 +5,10 @@ package com.openburnbar.ui.components
 
 import androidx.compose.ui.geometry.Size
 import com.openburnbar.data.models.AgentProvider
-import org.junit.Assert.assertTrue
-import org.junit.Test
 import kotlin.math.abs
 import kotlin.math.sqrt
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class SwarmSimulationTest {
     @Test
