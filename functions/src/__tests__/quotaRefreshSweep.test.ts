@@ -32,7 +32,6 @@ import {
   mapWithConcurrency,
   resetQuotaRefreshSweepCachesForTests,
   runQuotaRefreshSweep,
-  type SweepAccountDoc,
   type SweepDb,
   type SweepDocRef,
   type SweepMarkerSnapshot,
@@ -65,10 +64,10 @@ class FakeSweepDb {
   }
 
   doc(path: string): SweepDocRef {
-    const db = this;
+    const store = this.store;
     return {
       async get(): Promise<SweepMarkerSnapshot> {
-        const data = db.store.get(path);
+        const data = store.get(path);
         return {
           exists: data !== undefined,
           // Real DocumentSnapshot exposes its location via `ref.path`.
@@ -77,7 +76,7 @@ class FakeSweepDb {
         };
       },
       async set(data: Record<string, unknown>) {
-        db.store.set(path, { ...data });
+        store.set(path, { ...data });
       },
     };
   }
