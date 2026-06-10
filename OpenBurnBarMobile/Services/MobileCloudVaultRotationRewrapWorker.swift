@@ -208,7 +208,12 @@ struct MobileCloudVaultRotationRewrapWorker {
                       let bodyHash = data["bodyHash"] as? String, bodyHash.isEmpty == false else {
                     continue
                 }
-                let aad = CloudVaultAADContext(uid: uid, collection: "session_logs", docID: document.documentID, field: "sealedBody")
+                // Init validates AAD parts and throws on malformed IDs; skip
+                // the document like the field guards above rather than abort
+                // the whole rewrap scan.
+                guard let aad = try? CloudVaultAADContext(uid: uid, collection: "session_logs", docID: document.documentID, field: "sealedBody") else {
+                    continue
+                }
                 let sealedData = try await blobClient.downloadEncryptedBody(storagePath: storagePath)
                 let envelope = try JSONDecoder().decode(CloudVaultBlobEnvelope.self, from: sealedData)
                 let plaintext: Data
@@ -348,7 +353,9 @@ struct MobileCloudVaultRotationRewrapWorker {
 
     private func titlePlaintext(from raw: Any?, uid: String, docID: String, oldKeyData: Data, newKeyData: Data) -> String? {
         guard let envelope = CloudVaultCrypto.decodeSealedText(from: raw) else { return nil }
-        let aad = CloudVaultAADContext(uid: uid, collection: "session_logs", docID: docID, field: "sealedTitle")
+        guard let aad = try? CloudVaultAADContext(uid: uid, collection: "session_logs", docID: docID, field: "sealedTitle") else {
+            return nil
+        }
         return openOptionalText(envelope, keyData: newKeyData, aadContext: aad)
             ?? openOptionalText(envelope, keyData: oldKeyData, aadContext: aad)
     }

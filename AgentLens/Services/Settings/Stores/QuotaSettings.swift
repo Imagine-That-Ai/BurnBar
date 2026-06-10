@@ -26,13 +26,50 @@ public enum QuotaPercentageDisplayMode: String, Codable, CaseIterable, Identifia
 @Observable
 @MainActor
 final class QuotaSettings {
+    private static let defaultProviderOrderCSV = AgentProvider.quotaSignalProviders
+        .map(\.persistedToken)
+        .joined(separator: ",")
+
+    private static func quotaProviderTokens(from csv: String) -> [String] {
+        csv
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func dedupedQuotaProviders(from providers: [AgentProvider]) -> [AgentProvider] {
+        var deduped: [AgentProvider] = []
+        for provider in providers where provider.isQuotaSignalProvider && !deduped.contains(provider) {
+            deduped.append(provider)
+        }
+        return deduped
+    }
+
+    private static func quotaProviders(fromTokens tokens: [String]) -> [AgentProvider] {
+        dedupedQuotaProviders(from: tokens.compactMap { AgentProvider.fromPersistedToken($0) })
+    }
+
+    private static func providerCSV(from providers: [AgentProvider]) -> String {
+        dedupedQuotaProviders(from: providers)
+            .map(\.persistedToken)
+            .joined(separator: ",")
+    }
+
+    private static func visibleProviderCSV(from providers: Set<AgentProvider>) -> String {
+        let visibleQuotaProviders = Set(providers.filter(\.isQuotaSignalProvider))
+        return AgentProvider.quotaSignalProviders
+            .filter { visibleQuotaProviders.contains($0) }
+            .map(\.persistedToken)
+            .joined(separator: ",")
+    }
+
     private let persistence: SettingsPersistenceCoordinator
 
-    var providerOrderCSV: String = "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai,mimo" {
+    var providerOrderCSV: String = QuotaSettings.defaultProviderOrderCSV {
         didSet { persistence.set(providerOrderCSV, forKey: "providerOrderCSV") }
     }
 
-    var visibleProvidersCSV: String = "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai,mimo" {
+    var visibleProvidersCSV: String = QuotaSettings.defaultProviderOrderCSV {
         didSet { persistence.set(visibleProvidersCSV, forKey: "visibleProvidersCSV") }
     }
 
@@ -61,41 +98,54 @@ final class QuotaSettings {
 
     var providerOrder: [AgentProvider] {
         get {
-            let parsed = providerOrderCSV
-                .split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-                .compactMap { AgentProvider.fromPersistedToken($0) }
+            let tokens = Self.quotaProviderTokens(from: providerOrderCSV)
+            let parsed = Self.quotaProviders(fromTokens: tokens)
             if parsed.isEmpty {
                 return AgentProvider.quotaSignalProviders
             }
-            var deduped: [AgentProvider] = []
-            for provider in parsed where !deduped.contains(provider) {
-                deduped.append(provider)
+            var ordered = parsed
+            for provider in AgentProvider.quotaSignalProviders where !ordered.contains(provider) {
+                ordered.append(provider)
             }
-            for provider in AgentProvider.quotaSignalProviders where !deduped.contains(provider) {
-                deduped.append(provider)
-            }
-            return deduped
+            return ordered
         }
         set {
-            providerOrderCSV = newValue.map(\.persistedToken).joined(separator: ",")
+            providerOrderCSV = Self.providerCSV(from: newValue)
         }
     }
 
     var visibleProviders: Set<AgentProvider> {
         get {
-            let parsed = visibleProvidersCSV
-                .split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-                .compactMap { AgentProvider.fromPersistedToken($0) }
-            if parsed.isEmpty {
+            let tokens = Self.quotaProviderTokens(from: visibleProvidersCSV)
+            guard !tokens.isEmpty else { return [] }
+            let parsed = Self.quotaProviders(fromTokens: tokens)
+            guard !parsed.isEmpty else {
                 return Set(AgentProvider.quotaSignalProviders)
             }
             return Set(parsed)
         }
         set {
-            visibleProvidersCSV = newValue.map(\.persistedToken).joined(separator: ",")
+            visibleProvidersCSV = Self.visibleProviderCSV(from: newValue)
         }
+    }
+
+    func setProvider(_ provider: AgentProvider, visible: Bool) {
+        guard provider.isQuotaSignalProvider else { return }
+        var providers = visibleProviders
+        if visible {
+            providers.insert(provider)
+        } else {
+            providers.remove(provider)
+        }
+        visibleProviders = providers
+    }
+
+    func showAllProviders() {
+        visibleProviders = Set(AgentProvider.quotaSignalProviders)
+    }
+
+    func resetProviderOrder() {
+        providerOrder = AgentProvider.quotaSignalProviders
     }
 
 
@@ -277,11 +327,11 @@ final class QuotaSettings {
         }
         self.providerOrderCSV = persistence.string(
             forKey: "providerOrderCSV",
-            defaultValue: "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai,mimo"
+            defaultValue: Self.defaultProviderOrderCSV
         )
         self.visibleProvidersCSV = persistence.string(
             forKey: "visibleProvidersCSV",
-            defaultValue: "codex,opencode,claudecode,openai,deepseek,copilot,minimax,zai,factory,cursor,warp,ollama,kimi,antigravity,xai,mimo"
+            defaultValue: Self.defaultProviderOrderCSV
         )
         if let raw = persistence.optionalString(forKey: "hiddenBucketsJSON"),
            let data = raw.data(using: .utf8),

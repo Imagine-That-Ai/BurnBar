@@ -1,6 +1,7 @@
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import os
 
 struct CloudVaultRotationRewrapProgress: Equatable, Sendable {
     let scannedDocuments: Int
@@ -22,6 +23,8 @@ enum CloudVaultRotationRewrapWorkerError: LocalizedError {
 }
 
 struct CloudVaultRotationRewrapWorker {
+    private static let logger = Logger(subsystem: "com.openburnbar.cloudsync", category: "CloudVaultRotationRewrapWorker")
+
     private static let cloudSearchChunkMaxBytes = 16_000
     private static let cloudSearchChunkTokenHashLimit = 1_024
     private static let cloudSearchIndexVersion = 5
@@ -163,12 +166,21 @@ struct CloudVaultRotationRewrapWorker {
                       let bodyHash = data["bodyHash"] as? String, bodyHash.isEmpty == false else {
                     continue
                 }
-                let aad = CloudVaultAADContext(
-                    uid: uid,
-                    collection: "session_logs",
-                    docID: document.documentID,
-                    field: "sealedBody"
-                )
+                // Init validates AAD parts and throws on malformed IDs; skip
+                // the document like the field guards above rather than abort
+                // the whole rewrap scan.
+                let aad: CloudVaultAADContext
+                do {
+                    aad = try CloudVaultAADContext(
+                        uid: uid,
+                        collection: "session_logs",
+                        docID: document.documentID,
+                        field: "sealedBody"
+                    )
+                } catch {
+                    Self.logger.warning("Skipping rewrap for malformed doc ID: \(error.localizedDescription, privacy: .public)")
+                    continue
+                }
                 let sealedData = try await encryptedCloudClient.downloadEncryptedBody(storagePath: storagePath)
                 let envelope = try JSONDecoder().decode(CloudVaultBlobEnvelope.self, from: sealedData)
                 let plaintext: Data
@@ -335,7 +347,13 @@ struct CloudVaultRotationRewrapWorker {
         newKeyData: Data
     ) -> String? {
         guard let envelope = CloudVaultCrypto.decodeSealedText(from: raw) else { return nil }
-        let aad = CloudVaultAADContext(uid: uid, collection: "session_logs", docID: docID, field: "sealedTitle")
+        let aad: CloudVaultAADContext
+        do {
+            aad = try CloudVaultAADContext(uid: uid, collection: "session_logs", docID: docID, field: "sealedTitle")
+        } catch {
+            Self.logger.warning("Skipping title open for malformed doc ID: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
         return openOptionalText(envelope, keyData: newKeyData, aadContext: aad)
             ?? openOptionalText(envelope, keyData: oldKeyData, aadContext: aad)
     }

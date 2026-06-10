@@ -19,6 +19,8 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.util.Base64
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -553,6 +555,61 @@ class MediaControlStreamCoordinatorTest {
 
         assertTrue(coordinator.ensureResponsive(freshnessIntervalMillis = 60_000, probeTimeoutMillis = 50))
         assertFalse(stream.closed)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class) // TestScope.testScheduler.currentTime
+    @Test
+    fun ensureResponsiveProbeResolvesOnFirstHeartbeatEmissionWithoutPolling() = runTest {
+        val stream = RecordingStream()
+        val coordinator =
+            MediaControlStreamCoordinator(
+                dialer = MediaControlStreamCoordinator.StreamDialer { _, _ -> stream },
+                scope = backgroundScope,
+                presenceHeartbeatIntervalMillis = 60_000,
+            )
+        fun heartbeatsSent() = stream.sent.count { it.type == HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT }
+
+        coordinator.start(uid = "uid-1", connectionID = "conn-1")
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (heartbeatsSent() == 0) {
+                kotlinx.coroutines.yield()
+            }
+        }
+
+        // No peer heartbeat has arrived yet, so ensureResponsive skips the freshness
+        // fast path and suspends on the probe awaiting the reply.
+        val heartbeatsBeforeProbe = heartbeatsSent()
+        val probe = async {
+            coordinator.ensureResponsive(freshnessIntervalMillis = 60_000, probeTimeoutMillis = 1_000)
+        }
+        kotlinx.coroutines.withTimeout(1_000) {
+            while (heartbeatsSent() <= heartbeatsBeforeProbe) {
+                kotlinx.coroutines.yield()
+            }
+        }
+
+        stream.incoming.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
+                uid = "uid-1",
+                connectionId = "conn-1",
+                media =
+                HermesRealtimeRelayMediaPayload(
+                    presence =
+                    HermesRealtimeRelayPresenceHeartbeat(
+                        deviceDisplayName = "Alberto's Mac",
+                        capabilities = listOf("mirror.host"),
+                        sentAt = "2026-05-25T00:00:00Z",
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(probe.await())
+        assertFalse(stream.closed)
+        // Event-driven probe: the reply resolves it at the emission itself, with no
+        // poll-cadence virtual time elapsing (the old delay(25) loop needed >= 25ms).
+        assertEquals(0L, testScheduler.currentTime)
     }
 
     @Test

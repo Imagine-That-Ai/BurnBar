@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Augment Parser
 
@@ -290,9 +291,7 @@ private struct AugmentSummary {
         case let value as Int64:
             return TimestampNormalizationUtility.date(fromEpoch: Double(value))
         case let value as String:
-            let fractional = ISO8601DateFormatter()
-            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+            return ThreadSafeISO8601DateFormatter.parse(value)
         default:
             return nil
         }

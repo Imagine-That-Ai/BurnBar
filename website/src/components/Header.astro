@@ -107,11 +107,17 @@ const path = Astro.url.pathname.replace(/\/$/, "");
 </header>
 
 <script>
-  // Elevation on scroll
+  // Elevation on scroll. Write the attribute only when the state flips:
+  // a per-event style write interleaves with other scroll handlers' rect
+  // reads and forces a synchronous style/layout recalc on every tick.
   const header = document.querySelector(".site-header");
   if (header) {
+    let elevated: boolean | null = null;
     const onScroll = () => {
-      header.setAttribute("data-elevated", window.scrollY > 8 ? "true" : "false");
+      const next = window.scrollY > 8;
+      if (next === elevated) return;
+      elevated = next;
+      header.setAttribute("data-elevated", next ? "true" : "false");
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });

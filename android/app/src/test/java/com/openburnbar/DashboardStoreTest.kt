@@ -32,6 +32,7 @@ class DashboardStoreTest {
         val mockRepo = mockk<FirestoreRepository>()
         val rollups = UsageRollups(today = 1.0, computedAt = Instant.now().toString())
         coEvery { mockRepo.fetchRollups() } returns rollups
+        coEvery { mockRepo.fetchNewestUsageEndTime() } returns null
         every { mockRepo.listenToRollups() } returns flowOf(rollups)
 
         val store = DashboardStore(mockRepo)
@@ -65,16 +66,14 @@ class DashboardStoreTest {
     }
 
     @Test
-    fun `refresh rebuilds stale rollups`() = runTest {
+    fun `refresh rebuilds rollups older than the newest usage event`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
-        val stale =
-            UsageRollups(
-                today = 1.0,
-                computedAt = Instant.now().minusSeconds(16 * 60).toString(),
-            )
+        val computedAt = Instant.now().minusSeconds(16 * 60)
+        val stale = UsageRollups(today = 1.0, computedAt = computedAt.toString())
         val rebuilt = UsageRollups(today = 14.0, computedAt = Instant.now().toString())
         coEvery { mockRepo.fetchRollups() } returnsMany listOf(stale, rebuilt)
-        coEvery { mockRepo.rebuildUsageRollups() } just Runs
+        coEvery { mockRepo.fetchNewestUsageEndTime() } returns computedAt.plusSeconds(60)
+        coEvery { mockRepo.rebuildUsageRollups(any()) } just Runs
 
         val store = DashboardStore(mockRepo)
         store.refresh()
@@ -82,6 +81,41 @@ class DashboardStoreTest {
 
         assertEquals(rebuilt, store.rollups.value)
         assertNull(store.error.value)
-        coVerify(exactly = 1) { mockRepo.rebuildUsageRollups() }
+        coVerify(exactly = 1) { mockRepo.rebuildUsageRollups(any()) }
+    }
+
+    // Regression (crosscut-001): wall-clock age alone is NOT staleness. Old
+    // rollups with no newer usage are legitimately old (idle user) and must
+    // not fire the rebuildUsageRollups callable on every app open.
+    @Test
+    fun `refresh keeps old rollups without newer usage and skips the server rebuild`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        val computedAt = Instant.now().minusSeconds(4 * 60 * 60)
+        val idle = UsageRollups(today = 1.0, computedAt = computedAt.toString())
+        coEvery { mockRepo.fetchRollups() } returns idle
+        coEvery { mockRepo.fetchNewestUsageEndTime() } returns computedAt.minusSeconds(60 * 60)
+
+        val store = DashboardStore(mockRepo)
+        store.refresh()
+        advanceUntilIdle()
+
+        assertEquals(idle, store.rollups.value)
+        assertNull(store.error.value)
+        coVerify(exactly = 0) { mockRepo.rebuildUsageRollups(any()) }
+    }
+
+    @Test
+    fun `forceRebuild requests the forced server-side counter rebuild`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        val rebuilt = UsageRollups(today = 14.0, computedAt = Instant.now().toString())
+        coEvery { mockRepo.rebuildUsageRollups(force = true) } just Runs
+        coEvery { mockRepo.fetchRollups() } returns rebuilt
+
+        val store = DashboardStore(mockRepo)
+        store.forceRebuild()
+        advanceUntilIdle()
+
+        assertEquals(rebuilt, store.rollups.value)
+        coVerify(exactly = 1) { mockRepo.rebuildUsageRollups(force = true) }
     }
 }

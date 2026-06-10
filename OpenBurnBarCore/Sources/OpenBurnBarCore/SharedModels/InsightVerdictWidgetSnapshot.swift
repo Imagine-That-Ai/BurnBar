@@ -38,6 +38,21 @@ public struct InsightVerdictWidgetSnapshot: Codable, Sendable, Hashable {
         self.lastSync = lastSync
     }
 
+    /// True when every field the widget renders data from matches `other`,
+    /// ignoring `lastSync` (stamped fresh on every write by construction, so
+    /// including it would defeat any unchanged-content comparison).
+    public func hasSameContent(as other: InsightVerdictWidgetSnapshot) -> Bool {
+        headline == other.headline
+            && spendCurrent == other.spendCurrent
+            && spendTarget == other.spendTarget
+            && cacheCurrent == other.cacheCurrent
+            && cacheTarget == other.cacheTarget
+            && sessionsCurrent == other.sessionsCurrent
+            && sessionsTarget == other.sessionsTarget
+            && windowLabel == other.windowLabel
+            && isStale == other.isStale
+    }
+
     /// Preview snapshot for design-time.
     public static let preview = InsightVerdictWidgetSnapshot(
         headline: "You spent $4.12 yesterday — 28% under average.",
@@ -72,6 +87,35 @@ public enum InsightWidgetShared {
         }
         let data = try JSONEncoder().encode(snapshot)
         try data.write(to: url, options: .atomic)
+    }
+
+    /// Pure decision for `writeVerdictSnapshotIfChanged`: write when there is
+    /// no readable on-disk snapshot or the content changed. No staleness
+    /// rewrite — unlike the dashboard widget, nothing the Insight Today
+    /// widget renders derives from `lastSync`.
+    public static func shouldWrite(
+        _ snapshot: InsightVerdictWidgetSnapshot,
+        replacing existing: InsightVerdictWidgetSnapshot?
+    ) -> Bool {
+        guard let existing else { return true }
+        return !existing.hasSameContent(as: snapshot)
+    }
+
+    /// Write `snapshot` only when the on-disk copy needs it (see `shouldWrite`).
+    /// Returns whether a write happened, so callers can reload the widget
+    /// timeline only for real changes — the verdict pipeline emits several
+    /// events per refresh (cached → rule-based → LLM) that often carry
+    /// identical content, and rewriting each would burn the WidgetCenter
+    /// reload budget.
+    @discardableResult
+    public static func writeVerdictSnapshotIfChanged(
+        _ snapshot: InsightVerdictWidgetSnapshot
+    ) throws -> Bool {
+        guard shouldWrite(snapshot, replacing: try? readVerdictSnapshot()) else {
+            return false
+        }
+        try writeVerdictSnapshot(snapshot)
+        return true
     }
 
     public static func readVerdictSnapshot() throws -> InsightVerdictWidgetSnapshot {

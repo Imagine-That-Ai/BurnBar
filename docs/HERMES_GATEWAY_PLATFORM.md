@@ -112,10 +112,14 @@ Server-owned collections:
 - root `hermes_gateway_device_sessions`
 - root `hermes_gateway_token_index`
 
-User-writable collection:
+Client-readable, server-written collection:
 
-- `users/{uid}/hermes_gateway_destinations`, restricted to non-secret display
-  metadata by Firestore rules.
+- `users/{uid}/hermes_gateway_destinations` — owner can **read**; **writes are
+  server-only** (`allow write: if false` in `firestore.rules`). Destinations are
+  created/maintained by Cloud Functions (`ensureDefaultDestination`), not by
+  direct client writes. (Earlier docs described this as a user-writable
+  non-secret-metadata collection; the rules are stricter than that and this was
+  corrected to match.)
 
 ## Upstream Hermes Plugin
 

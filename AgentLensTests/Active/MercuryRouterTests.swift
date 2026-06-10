@@ -689,7 +689,17 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(frames[0].type, .mediaPresenceHeartbeat)
         XCTAssertEqual(frames[0].media?.presence?.deviceDisplayName.isEmpty, false)
         XCTAssertNil(frames[0].media?.presence?.blurredWallpaperBase64)
-        XCTAssertNil(frames[0].media?.presence?.streamingCapabilities)
+        // F7: the reply advertises the Mac's cached streaming snapshot so
+        // phone-side negotiators (codec, wire version, frame AEAD) have a
+        // Mac snapshot. The probe is cached, so the heartbeat stays cheap.
+        let advertised = frames[0].media?.presence?.streamingCapabilities
+        XCTAssertNotNil(
+            advertised,
+            "heartbeat reply should advertise the Mac's cached streaming capabilities"
+        )
+        XCTAssertEqual(advertised?.mediaFrameVersions.supportsV1, true)
+        XCTAssertEqual(advertised?.mediaFrameVersions.supportsV2, true)
+        XCTAssertEqual(advertised?.source, "VideoToolbox")
         XCTAssertEqual(router.phase, .idle)
     }
 

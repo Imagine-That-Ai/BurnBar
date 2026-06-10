@@ -347,7 +347,8 @@
     }
     try {
       const url = ENDPOINT_BASE + encodeURIComponent(livePath);
-      const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+      // Default cache mode: the endpoint already serves public, max-age=300.
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
       if (!res.ok) {
         setState(
           root,

@@ -49,6 +49,64 @@ const usageDocs = [
   },
 ];
 
+// Mirrors Firestore set() semantics: merge:false replaces the document,
+// merge:true deep-merges plain maps, and FieldValue.increment sentinels apply
+// against the existing numeric value (nested increments included, which the
+// rolling all_time dailyTokens map relies on).
+function mergeFieldValue(existing, value) {
+  if (value && typeof value === "object" && "operand" in value) {
+    return (typeof existing === "number" ? existing : 0) + value.operand;
+  }
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    const next =
+      existing && typeof existing === "object" && Object.getPrototypeOf(existing) === Object.prototype
+        ? { ...existing }
+        : {};
+    for (const [key, entry] of Object.entries(value)) {
+      next[key] = mergeFieldValue(next[key], entry);
+    }
+    return next;
+  }
+  return value;
+}
+
+function applySet(store, path, data, options) {
+  const merge = options?.merge === true;
+  const next = merge ? { ...(store.get(path) ?? {}) } : {};
+  for (const [key, value] of Object.entries(data)) {
+    next[key] = mergeFieldValue(merge ? next[key] : undefined, value);
+  }
+  store.set(path, next);
+}
+
+function listCollectionDocs(fakeDb, path) {
+  const prefix = `${path}/`;
+  const expectedSegments = path.split("/").length + 1;
+  return [...fakeDb.store.entries()]
+    .filter(([key]) => key.startsWith(prefix) && key.split("/").length === expectedSegments)
+    .map(([key, data]) => ({
+      id: key.split("/").at(-1),
+      ref: fakeDb.doc(key),
+      data: () => data,
+    }));
+}
+
+// Supports the documentId range filters used by the rollup day-window fetch.
+function makeQuery(listDocs, clauses = []) {
+  return {
+    where(_field, op, value) {
+      return makeQuery(listDocs, [...clauses, [op, value]]);
+    },
+    async get() {
+      return {
+        docs: listDocs().filter((doc) =>
+          clauses.every(([op, value]) => (op === ">=" ? doc.id >= value : op === "<=" ? doc.id <= value : false)),
+        ),
+      };
+    },
+  };
+}
+
 const db = {
   store: new Map(),
   collection(path) {
@@ -68,19 +126,7 @@ const db = {
       doc(id) {
         return db.doc(`${path}/${id}`);
       },
-      async get() {
-        const prefix = `${path}/`;
-        const expectedSegments = path.split("/").length + 1;
-        return {
-          docs: [...db.store.entries()]
-            .filter(([key]) => key.startsWith(prefix) && key.split("/").length === expectedSegments)
-            .map(([key, data]) => ({
-              id: key.split("/").at(-1),
-              ref: db.doc(key),
-              data: () => data,
-            })),
-        };
-      },
+      ...makeQuery(() => listCollectionDocs(db, path)),
     };
   },
   doc(path) {
@@ -100,17 +146,8 @@ const db = {
   },
   batch() {
     return {
-      set(ref, data, _options) {
-        const existing = db.store.get(ref.path) ?? {};
-        const next = { ...existing };
-        for (const [key, value] of Object.entries(data)) {
-          if (value && typeof value === "object" && "operand" in value) {
-            next[key] = (typeof next[key] === "number" ? next[key] : 0) + value.operand;
-          } else {
-            next[key] = value;
-          }
-        }
-        db.store.set(ref.path, next);
+      set(ref, data, options) {
+        applySet(db.store, ref.path, data, options);
       },
       async commit() {},
     };
@@ -128,18 +165,9 @@ const db = {
           data: () => data,
         };
       },
-      set(ref, data, _options) {
+      set(ref, data, options) {
         hasWritten = true;
-        const existing = db.store.get(ref.path) ?? {};
-        const next = { ...existing };
-        for (const [key, value] of Object.entries(data)) {
-          if (value && typeof value === "object" && "operand" in value) {
-            next[key] = (typeof next[key] === "number" ? next[key] : 0) + value.operand;
-          } else {
-            next[key] = value;
-          }
-        }
-        db.store.set(ref.path, next);
+        applySet(db.store, ref.path, data, options);
       },
     };
     await work(transaction);
@@ -155,6 +183,7 @@ const db = {
 
 const rollups = await computeUserRollups(db, "test-uid");
 const today = rollups.today;
+const dayKey = now.toISOString().slice(0, 10);
 
 assert.equal(today.totals.requests, 2);
 assert.equal(today.totals.tokens, 1_875);
@@ -163,6 +192,10 @@ assert.equal(today.providerSummaries.find((p) => p.provider === "kimi")?.totalTo
 assert.equal(today.modelSummaries.find((m) => m.provider === "kimi")?.model, "kimi-for-coding");
 assert.equal(today.modelSummaries.find((m) => m.provider === "kimi")?.tokens, 1_750);
 assert.equal(today.totals.costUsd, 0.00291);
+assert.deepEqual(today.dailyPoints, { [dayKey]: 1_875 });
+assert.deepEqual(rollups.all_time.dailyPoints, { [dayKey]: 1_875 });
+// Full counter rebuilds regenerate the rolling dailyTokens map for free.
+assert.deepEqual(db.store.get("users/test-uid/usage_counter_totals/all_time").dailyTokens, { [dayKey]: 1_875 });
 
 await applyUsageCounterDelta(db, "test-uid", "usage-1", usageDocs[1], undefined);
 const repairedThenUpdated = await computeUserRollupsFromCounters(db, "test-uid");
@@ -182,6 +215,7 @@ function containsUndefined(value) {
 }
 
 const writes = [];
+const jobStore = new Map();
 const writeDb = {
   batch() {
     return {
@@ -194,16 +228,46 @@ const writeDb = {
   doc(path) {
     return { path };
   },
+  async runTransaction(work) {
+    const transaction = {
+      async get(ref) {
+        const data = jobStore.get(ref.path);
+        return { exists: data != null, data: () => data };
+      },
+      set(ref, data, options) {
+        writes.push({ path: ref.path, data, options });
+        jobStore.set(ref.path, { ...(jobStore.get(ref.path) ?? {}), ...data });
+      },
+    };
+    return work(transaction);
+  },
 };
 
-await writeUserRollups(writeDb, "test-uid", rollups);
+await writeUserRollups(writeDb, "test-uid", rollups, undefined);
 
 assert.equal(writes.length, 6);
 assert.equal(writes.find((write) => write.path.endsWith("/rollup_jobs/current"))?.data.dirty, false);
 assert.equal(writes.some((write) => containsUndefined(write.data)), false);
 
+// Dirty-clear race guard: a usage event landing mid-compute refreshes
+// `dirtiedAt`, so the clear must be skipped and the job stays dirty for the
+// next worker pass instead of silently dropping the event from rollups.
+jobStore.set("users/test-uid/rollup_jobs/current", {
+  dirty: true,
+  dirtiedAt: "2026-06-09T00:00:01.000Z",
+});
+await writeUserRollups(writeDb, "test-uid", rollups, "2026-06-09T00:00:00.000Z");
+const racedJob = jobStore.get("users/test-uid/rollup_jobs/current");
+assert.equal(racedJob.dirty, true);
+assert.equal(racedJob.dirtiedAt, "2026-06-09T00:00:01.000Z");
+assert.equal(typeof racedJob.lastComputedAt, "string");
+
 const incrementalDb = {
   store: new Map(),
+  // Read-amplification instrumentation: unfiltered scans of the whole
+  // usage_counter_days collection, and per-day point gets of its docs.
+  dayCollectionScans: 0,
+  dayDocPointGets: 0,
   collection(_path) {
     throw new Error("collection stub not initialized");
   },
@@ -214,6 +278,9 @@ const incrementalDb = {
         return incrementalDb.collection(`${path}/${name}`);
       },
       async get() {
+        if (/\/usage_counter_days\/[^/]+$/.test(path)) {
+          incrementalDb.dayDocPointGets += 1;
+        }
         const data = incrementalDb.store.get(path);
         return {
           exists: data != null,
@@ -238,18 +305,9 @@ const incrementalDb = {
           data: () => data,
         };
       },
-      set(ref, data, _options) {
+      set(ref, data, options) {
         hasWritten = true;
-        const existing = incrementalDb.store.get(ref.path) ?? {};
-        const next = { ...existing };
-        for (const [key, value] of Object.entries(data)) {
-          if (value && typeof value === "object" && "operand" in value) {
-            next[key] = (typeof next[key] === "number" ? next[key] : 0) + value.operand;
-          } else {
-            next[key] = value;
-          }
-        }
-        incrementalDb.store.set(ref.path, next);
+        applySet(incrementalDb.store, ref.path, data, options);
       },
     };
     await work(transaction);
@@ -257,22 +315,17 @@ const incrementalDb = {
 };
 
 incrementalDb.collection = function collection(path) {
+  const query = makeQuery(() => listCollectionDocs(incrementalDb, path));
   return {
     doc(id) {
       return incrementalDb.doc(`${path}/${id}`);
     },
+    where: query.where,
     async get() {
-      const prefix = `${path}/`;
-      const expectedSegments = path.split("/").length + 1;
-      return {
-        docs: [...incrementalDb.store.entries()]
-          .filter(([key]) => key.startsWith(prefix) && key.split("/").length === expectedSegments)
-          .map(([key, data]) => ({
-            id: key.split("/").at(-1),
-            ref: incrementalDb.doc(key),
-            data: () => data,
-          })),
-      };
+      if (path.endsWith("/usage_counter_days")) {
+        incrementalDb.dayCollectionScans += 1;
+      }
+      return query.get();
     },
   };
 };
@@ -320,5 +373,72 @@ await applyUsageCounterDelta(incrementalDb, "test-uid", "codex-moved", usageDocs
 incrementalRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
 assert.equal(incrementalRollups.today.totals.requests, 1);
 assert.equal(incrementalRollups.today.modelSummaries[0]?.model, "gpt-5.5");
+
+// crosscut-004 read-amplification regression: the counter compute fetches day
+// buckets through one documentId range query (zero per-day point gets) and
+// serves all_time dailyPoints from the rolling dailyTokens map on the totals
+// doc (zero unbounded usage_counter_days scans).
+incrementalDb.store.clear();
+incrementalDb.dayCollectionScans = 0;
+incrementalDb.dayDocPointGets = 0;
+await applyUsageCounterDelta(incrementalDb, "test-uid", "codex-good", undefined, usageDocs[1]);
+let perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
+assert.deepEqual(perfRollups.all_time.dailyPoints, { [dayKey]: 125 });
+assert.deepEqual(perfRollups.today.dailyPoints, { [dayKey]: 125 });
+assert.equal(perfRollups.today.totals.tokens, perfRollups.all_time.totals.tokens);
+assert.equal(incrementalDb.dayDocPointGets, 0);
+assert.equal(incrementalDb.dayCollectionScans, 0);
+
+// Totals docs that predate the dailyTokens map fall back to one legacy scan
+// and persist the derived map, so the next compute is incremental again.
+const totalsPath = "users/test-uid/usage_counter_totals/all_time";
+const legacyTotals = { ...incrementalDb.store.get(totalsPath) };
+delete legacyTotals.dailyTokens;
+incrementalDb.store.set(totalsPath, legacyTotals);
+perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
+assert.deepEqual(perfRollups.all_time.dailyPoints, { [dayKey]: 125 });
+assert.equal(incrementalDb.dayCollectionScans, 1);
+assert.deepEqual(incrementalDb.store.get(totalsPath).dailyTokens, { [dayKey]: 125 });
+perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
+assert.equal(incrementalDb.dayCollectionScans, 1);
+
+// The backfill persist is skipped when a counter write lands mid-scan
+// (updatedAt mismatch), so an in-flight increment is never overwritten by the
+// scan's absolute values; the next worker pass retries the backfill.
+const racedTotals = { ...incrementalDb.store.get(totalsPath) };
+delete racedTotals.dailyTokens;
+incrementalDb.store.set(totalsPath, racedTotals);
+const originalCollection = incrementalDb.collection;
+incrementalDb.collection = function collection(path) {
+  const result = originalCollection(path);
+  if (path === "users/test-uid/usage_counter_days") {
+    const originalGet = result.get;
+    result.get = async function get() {
+      const snapshot = await originalGet.call(result);
+      // Simulate a counter write landing while the legacy scan runs.
+      incrementalDb.store.set(totalsPath, {
+        ...incrementalDb.store.get(totalsPath),
+        updatedAt: "2099-01-01T00:00:00.000Z",
+      });
+      return snapshot;
+    };
+  }
+  return result;
+};
+perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
+incrementalDb.collection = originalCollection;
+assert.deepEqual(perfRollups.all_time.dailyPoints, { [dayKey]: 125 });
+assert.equal(incrementalDb.store.get(totalsPath).dailyTokens, undefined);
+
+// The retry pass persists the map; removing the only event then decrements
+// the day's dailyTokens entry to zero, and zero entries are filtered from
+// dailyPoints output exactly like the legacy day-doc filter.
+perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
+assert.deepEqual(incrementalDb.store.get(totalsPath).dailyTokens, { [dayKey]: 125 });
+await applyUsageCounterDelta(incrementalDb, "test-uid", "codex-good", usageDocs[1], undefined);
+perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
+assert.deepEqual(incrementalDb.store.get(totalsPath).dailyTokens, { [dayKey]: 0 });
+assert.deepEqual(perfRollups.all_time.dailyPoints, {});
+assert.deepEqual(perfRollups.today.dailyPoints, {});
 
 console.log("rollup normalization regression checks passed");

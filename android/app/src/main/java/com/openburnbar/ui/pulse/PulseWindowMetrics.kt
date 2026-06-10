@@ -72,25 +72,33 @@ private fun usageMetricsForWindow(
     trailingValue: Double,
     trailingTokenValue: Long,
 ): PulseWindowMetrics {
-    val usages =
-        recentUsages.filter {
-            val attributedAt = it.effectiveTimeMillis
-            attributedAt in cutoffMillis..nowMillis
+    // Single allocation-free pass: this aggregation runs on every live-clock
+    // tick over the whole 24h usage window, so intermediate lists add up.
+    var value = 0.0
+    var tokenValue = 0L
+    var requestValue = 0
+    for (usage in recentUsages) {
+        if (usage.effectiveTimeMillis in cutoffMillis..nowMillis) {
+            value += usage.effectiveCost
+            tokenValue += usage.effectiveTotalTokens
+            requestValue += 1
         }
+    }
     return PulseWindowMetrics(
-        value = usages.sumOf { it.effectiveCost },
+        value = value,
         trailingValue = trailingValue,
-        tokenValue = usages.sumOf { it.effectiveTotalTokens },
+        tokenValue = tokenValue,
         trailingTokenValue = trailingTokenValue,
-        requestValue = usages.size,
+        requestValue = requestValue,
     )
 }
 
 private val TokenUsage.effectiveTimeMillis: Long
     get() {
-        val eventTimes = listOf(timestamp, startTime, endTime).filter { it > 0L }
-        eventTimes.maxOrNull()?.let { return it }
-        return listOf(updatedAt, createdAt).firstOrNull { it > 0L } ?: 0L
+        val latestEventTime = maxOf(timestamp, startTime, endTime)
+        if (latestEventTime > 0L) return latestEventTime
+        if (updatedAt > 0L) return updatedAt
+        return if (createdAt > 0L) createdAt else 0L
     }
 
 private val TokenUsage.effectiveTotalTokens: Long

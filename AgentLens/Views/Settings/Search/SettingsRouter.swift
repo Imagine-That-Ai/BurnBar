@@ -1,5 +1,37 @@
 import SwiftUI
 
+enum SettingsDeepLinkRouting {
+    static let openSettingsItemNotification = Notification.Name("openburnbar.openSettingsItem")
+    static let pendingItemKey = "settings.pendingItemID"
+    static let pendingTabKey = "settings.pendingTab"
+    static let quotaDisplayItemID = "agents.quotaDisplay"
+
+    static func item(matching itemID: String?) -> SettingsItem? {
+        guard let normalizedID = itemID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalizedID.isEmpty else {
+            return nil
+        }
+        return SettingsManifest.all.first { $0.id == normalizedID }
+    }
+
+    @discardableResult
+    @MainActor
+    static func route(to itemID: String) -> Bool {
+        guard let item = item(matching: itemID) else {
+            UserDefaults.standard.removeObject(forKey: pendingItemKey)
+            return false
+        }
+        UserDefaults.standard.set(item.id, forKey: pendingItemKey)
+        NotificationCenter.default.post(name: openSettingsItemNotification, object: item.id)
+        return true
+    }
+
+    @MainActor
+    static func routeToQuotaDisplay() {
+        route(to: quotaDisplayItemID)
+    }
+}
+
 // MARK: - Settings Router (macOS)
 
 /// Drives programmatic navigation inside Settings when the search bar is used.

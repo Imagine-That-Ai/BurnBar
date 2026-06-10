@@ -78,7 +78,7 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
         // phone-control intents. A refused registration (unpinned-under-enforcement
         // or a key that differs from the operator-pinned key) must short-circuit
         // to a denied receipt — never validate a grant signed by an unverified key.
-        guard validator.registerPeer(nodeId: authority.peerNodeId, publicKey: authority.publicKey, uid: uid) else {
+        guard validator.registerPeer(nodeId: authority.peerNodeId, verifyingKey: authority.publicKey, uid: uid) else {
             throw QueueError.untrustedControllerKey
         }
         _ = try validator.validate(
@@ -93,7 +93,7 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
     private func authorityPublicKey(
         uid: String,
         sourceDeviceID: String
-    ) async throws -> (peerNodeId: String, publicKey: Curve25519.Signing.PublicKey) {
+    ) async throws -> (peerNodeId: String, publicKey: PhoneControlVerifyingKey) {
         let snapshot = try await firestoreProvider()
             .collection("users")
             .document(uid)
@@ -106,7 +106,18 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
               let raw = Data(base64Encoded: publicKeyBase64) else {
             throw QueueError.missingAuthority
         }
-        return (peerNodeId, try Curve25519.Signing.PublicKey(rawRepresentation: raw))
+        let keyKind = try Self.signingKeyKind(fromRecordValue: data["signingKeyKind"] as? String)
+        return (peerNodeId, try PhoneControlVerifyingKey(kind: keyKind, publicKeyRepresentation: raw))
+    }
+
+    /// F2: `signingKeyKind` mirrors the controller record. Absent ⇒ legacy
+    /// Ed25519; present-but-unrecognized fails closed (no silent downgrade).
+    static func signingKeyKind(fromRecordValue kindRaw: String?) throws -> PhoneControlSigningKeyKind {
+        guard let kindRaw else { return .ed25519 }
+        guard let parsed = PhoneControlSigningKeyKind(rawValue: kindRaw) else {
+            throw QueueError.missingAuthority
+        }
+        return parsed
     }
 
     private func decodeWireRequest(from data: [String: Any]) throws -> HermesRealtimeRelayAgentGrantRequest {

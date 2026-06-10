@@ -14,7 +14,6 @@ struct PulseView: View {
     @State private var hermesService = HermesService()
     @State private var displayMode: UsageDisplayMode = .currency
     @State private var timelineScope: PulseTimelineScope = .day
-    @State private var liveNow = Date()
     @State private var liveUsageStart = PulseWindowMetricBuilder.liveQueryStart()
     @State private var showCloudStore = false
     @AppStorage("cloudBannerDismissed") private var cloudBannerDismissed = false
@@ -53,21 +52,17 @@ struct PulseView: View {
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.0)
 
-                    let metrics = PulseWindowMetricBuilder.metrics(
-                        scope: timelineScope,
-                        rollupTotals: dashboard.windowTotals,
-                        liveUsages: liveUsagesForPulse,
-                        now: liveNow
-                    )
+                    // The hero owns the 1Hz live clock (TimelineView inside
+                    // PulseHeroBurnCard) so ticking never invalidates the
+                    // rest of the feed.
                     PulseHeroBurnCard(
-                        total: metrics.total,
-                        trailingTotal: metrics.trailingTotal,
+                        rollupTotals: dashboard.windowTotals,
                         dailyPoints: dashboard.dailyPoints,
                         liveUsages: liveUsagesForPulse,
                         topProvider: topProvider,
                         displayMode: displayMode,
                         scope: timelineScope,
-                        now: liveNow
+                        clockPaused: !shouldRunLivePulseClock
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.05)
@@ -164,7 +159,7 @@ struct PulseView: View {
             quotaStore.stopListening()
             sessionsStore.stopLiveUsageListening()
         }
-        .task(id: shouldRunLivePulseClock) { await runLivePulseClock() }
+        .task(id: shouldRunLivePulseClock) { await runLiveUsageWindowMaintenance() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await dashboard.refresh() }
@@ -175,14 +170,14 @@ struct PulseView: View {
             // the localhost default.
             Task { await hermesService.refreshRuntime() }
         }
+        // Toggles re-derive synchronously from the cached rollup docs
+        // (DashboardStore.reapplyCachedRollups) — no Firestore refetch.
         .onChange(of: displayMode) { _, mode in
             HapticBus.toggle()
             dashboard.setDisplayMode(mode)
-            Task { await dashboard.refresh() }
         }
         .onChange(of: timelineScope) { _, scope in
             dashboard.setWindow(scope.rollupKey)
-            Task { await dashboard.refresh() }
         }
     }
 
@@ -198,19 +193,20 @@ struct PulseView: View {
         showCloudStore ? MobileBackgroundVisibility.obscured : MobileBackgroundVisibility.prominent
     }
 
-    private func runLivePulseClock() async {
+    private func runLiveUsageWindowMaintenance() async {
         guard shouldRunLivePulseClock else { return }
         while !Task.isCancelled {
             await MainActor.run {
-                let now = Date()
-                liveNow = now
-                let queryStart = PulseWindowMetricBuilder.liveQueryStart(now: now)
+                let queryStart = PulseWindowMetricBuilder.liveQueryStart()
                 if queryStart != liveUsageStart {
                     liveUsageStart = queryStart
                     sessionsStore.startLiveUsageListening(since: queryStart)
                 }
             }
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            // `liveQueryStart` only moves at hour boundaries, so a 60s poll
+            // keeps the listener window a superset of the rolling day. A
+            // late re-subscribe is harmless — metrics filter by `now`.
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
         }
     }
 

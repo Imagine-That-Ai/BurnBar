@@ -121,6 +121,13 @@ android {
                     "META-INF/NOTICE.md"
                 )
         }
+        jniLibs {
+            // Vendor/openburnbar-iroh.aar ships the same cdylib under two names per ABI;
+            // only libopenburnbar_iroh.so is ever loaded (JNA findLibraryName +
+            // System.loadLibrary), so drop the byte-identical libuniffi_ duplicate
+            // (~41.6MB across the four ABIs in a fat APK).
+            excludes += "**/libuniffi_openburnbar_iroh.so"
+        }
     }
 
     testOptions {
@@ -264,6 +271,10 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")
+    // F2 — Remote Config gate for the StrongBox/TEE phone-control signing
+    // key ramp (`computer_use_phone_control_secure_enclave_key`, default
+    // false). See PhoneControlSecureEnclaveKeyPolicy.
+    implementation("com.google.firebase:firebase-config-ktx")
     // Sentry Android SDK — structured error tracking with crash reports,
     // ANR detection, breadcrumbs, and release health metrics. Captures
     // errors via the sentry-issue-sync CI workflow → GitHub issues pipeline.

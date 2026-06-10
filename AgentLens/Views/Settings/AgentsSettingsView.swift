@@ -654,6 +654,7 @@ struct AgentsAdvancedView: View {
     let cloudSyncService: CloudSyncService?
     let iCloudSessionMirrorService: ICloudSessionMirrorService?
 
+    @State private var quotaService = ProviderQuotaService.shared
     @State private var inventoryImportService: HermesInventoryImportService
 
     init(
@@ -679,138 +680,120 @@ struct AgentsAdvancedView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                // Routing strategy + local gateway (lifted from Connections advanced disclosure).
-                ConnectionsSettingsView(
-                    settingsManager: settingsManager,
-                    daemonManager: daemonManager,
-                    dataStore: dataStore,
-                    accountManager: accountManager,
-                    section: .advancedOnly
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Divider().background(DesignSystem.Colors.border)
-
-                // Quota display preferences.
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                    Text("Quota display")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("How OpenBurnBar summarises usage for providers with multiple accounts.")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    SettingsToggle(
-                        title: "Cumulative across accounts",
-                        subtitle: "When you have multiple accounts on the same provider, show one combined bar instead of one per account.",
-                        icon: "rectangle.stack",
-                        isOn: $settingsManager.cumulativeAcrossAccounts
-                    )
-                    .padding(DesignSystem.Spacing.md)
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.32))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
-                    )
-                }
-
-                Divider().background(DesignSystem.Colors.border)
-
-                // Browser profiles (Account Switcher embed in browserOnly mode).
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                    Text("Browser profiles")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("Launch isolated browser profiles for Chrome or Safari so you can keep separate sessions for different provider accounts.")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    AccountSwitcherSettingsView(
-                        dataStore: dataStore,
+        SettingsDeepLinkScrollContainer(route: .agentsAdvanced) { _ in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    // Routing strategy + local gateway (lifted from Connections advanced disclosure).
+                    ConnectionsSettingsView(
                         settingsManager: settingsManager,
-                        mode: .browserOnly
+                        daemonManager: daemonManager,
+                        dataStore: dataStore,
+                        accountManager: accountManager,
+                        section: .advancedOnly
                     )
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                Divider().background(DesignSystem.Colors.border)
+                    Divider().background(DesignSystem.Colors.border)
 
-                // Hermes follow-on settings as drill rows.
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                    Text("Chat surfaces & inventory")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("Which engines appear in the dashboard, which models Hermes routes through, and one-time setup tasks.")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
+                    QuotaDisplaySettingsPanel(
+                        settingsManager: settingsManager,
+                        quotaService: quotaService,
+                        dataStore: dataStore
+                    )
+                    .settingsAnchor(SettingsAnchor.agentsQuotaDisplay)
 
-                    VStack(spacing: 0) {
-                        NavigationLink {
-                            ChatEnginesDetailView(settingsManager: settingsManager)
-                        } label: {
-                            SettingsDrillRow(
-                                icon: "cpu",
-                                iconTint: DesignSystem.Colors.whimsy,
-                                title: "Chat engines",
-                                subtitle: "Toggle which engines appear in the dashboard and menu bar",
-                                value: "\(settingsManager.enabledChatBackends.count) on"
-                            )
-                        }
-                        Divider().background(DesignSystem.Colors.border)
-                        NavigationLink {
-                            HermesInventoryImportDetailView(
-                                inventoryImportService: inventoryImportService
-                            )
-                        } label: {
-                            SettingsDrillRow(
-                                icon: "tray.and.arrow.down.fill",
-                                iconTint: DesignSystem.Colors.hermesAureate,
-                                title: "Import Hermes chats",
-                                subtitle: "Bring pre-OpenBurnBar Hermes conversations into the local index",
-                                value: inventoryStatusValue,
-                                logoProvider: .hermes
-                            )
-                        }
-                        Divider().background(DesignSystem.Colors.border)
-                        NavigationLink {
-                            HermesSetupDetailView(
-                                settingsManager: settingsManager,
-                                dataStore: dataStore,
-                                cloudSyncService: cloudSyncService,
-                                iCloudSessionMirrorService: iCloudSessionMirrorService
-                            )
-                        } label: {
-                            SettingsDrillRow(
-                                icon: "wand.and.stars",
-                                iconTint: DesignSystem.Colors.amber,
-                                title: "Setup assistant",
-                                subtitle: "Guided Hermes setup, mark onboarding complete",
-                                value: settingsManager.hermesSetupWizardCompleted ? "Done" : "Pending",
-                                valueTint: settingsManager.hermesSetupWizardCompleted
-                                    ? DesignSystem.Colors.success
-                                    : DesignSystem.Colors.warning,
-                                logoProvider: .hermes
-                            )
-                        }
+                    Divider().background(DesignSystem.Colors.border)
+
+                    // Browser profiles (Account Switcher embed in browserOnly mode).
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Text("Browser profiles")
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Launch isolated browser profiles for Chrome or Safari so you can keep separate sessions for different provider accounts.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        AccountSwitcherSettingsView(
+                            dataStore: dataStore,
+                            settingsManager: settingsManager,
+                            mode: .browserOnly
+                        )
                     }
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.32))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
-                    )
+
+                    Divider().background(DesignSystem.Colors.border)
+
+                    // Hermes follow-on settings as drill rows.
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Text("Chat surfaces & inventory")
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Which engines appear in the dashboard, which models Hermes routes through, and one-time setup tasks.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        VStack(spacing: 0) {
+                            NavigationLink {
+                                ChatEnginesDetailView(settingsManager: settingsManager)
+                            } label: {
+                                SettingsDrillRow(
+                                    icon: "cpu",
+                                    iconTint: DesignSystem.Colors.whimsy,
+                                    title: "Chat engines",
+                                    subtitle: "Toggle which engines appear in the dashboard and menu bar",
+                                    value: "\(settingsManager.enabledChatBackends.count) on"
+                                )
+                            }
+                            Divider().background(DesignSystem.Colors.border)
+                            NavigationLink {
+                                HermesInventoryImportDetailView(
+                                    inventoryImportService: inventoryImportService
+                                )
+                            } label: {
+                                SettingsDrillRow(
+                                    icon: "tray.and.arrow.down.fill",
+                                    iconTint: DesignSystem.Colors.hermesAureate,
+                                    title: "Import Hermes chats",
+                                    subtitle: "Bring pre-OpenBurnBar Hermes conversations into the local index",
+                                    value: inventoryStatusValue,
+                                    logoProvider: .hermes
+                                )
+                            }
+                            Divider().background(DesignSystem.Colors.border)
+                            NavigationLink {
+                                HermesSetupDetailView(
+                                    settingsManager: settingsManager,
+                                    dataStore: dataStore,
+                                    cloudSyncService: cloudSyncService,
+                                    iCloudSessionMirrorService: iCloudSessionMirrorService
+                                )
+                            } label: {
+                                SettingsDrillRow(
+                                    icon: "wand.and.stars",
+                                    iconTint: DesignSystem.Colors.amber,
+                                    title: "Setup assistant",
+                                    subtitle: "Guided Hermes setup, mark onboarding complete",
+                                    value: settingsManager.hermesSetupWizardCompleted ? "Done" : "Pending",
+                                    valueTint: settingsManager.hermesSetupWizardCompleted
+                                        ? DesignSystem.Colors.success
+                                        : DesignSystem.Colors.warning,
+                                    logoProvider: .hermes
+                                )
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.32))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                                .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+                        )
+                    }
                 }
+                .padding(DesignSystem.Spacing.lg)
             }
-            .padding(DesignSystem.Spacing.lg)
         }
         .background(DesignSystem.Colors.background)
         .scrollContentBackground(.hidden)
@@ -827,5 +810,181 @@ struct AgentsAdvancedView: View {
         case .idle:
             return inventoryImportService.hasImportableInventory ? "Ready" : "—"
         }
+    }
+}
+
+private struct QuotaDisplaySettingsPanel: View {
+    @Bindable var settingsManager: SettingsManager
+    @Bindable var quotaService: ProviderQuotaService
+    let dataStore: DataStore
+
+    private var orderedProviders: [AgentProvider] {
+        settingsManager.quotas.providerOrder.filter(\.isQuotaSignalProvider)
+    }
+
+    private var visibleProviders: Set<AgentProvider> {
+        settingsManager.quotas.visibleProviders
+    }
+
+    private var selectedCountText: String {
+        let count = visibleProviders.count
+        return "\(count) of \(AgentProvider.quotaSignalProviders.count) shown"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            // Section header with badge count
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text("Quota popover")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Choose which provider quotas appear in the menu-bar drop-down.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Text(selectedCountText)
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(DesignSystem.Colors.amber.opacity(0.12))
+                            .overlay(
+                                Capsule()
+                                    .stroke(DesignSystem.Colors.amber.opacity(0.25), lineWidth: 0.5)
+                            )
+                    )
+            }
+
+            // Cumulative toggle card
+            SettingsToggle(
+                title: "Cumulative across accounts",
+                subtitle: "When you have multiple accounts on the same provider, show one combined bar instead of one per account.",
+                icon: "rectangle.stack",
+                isOn: $settingsManager.cumulativeAcrossAccounts
+            )
+            .padding(DesignSystem.Spacing.md)
+            .background(panelFill)
+            .overlay(panelStroke)
+
+            // Provider list card
+            VStack(spacing: 0) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Text("Popover providers")
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                    Spacer()
+
+                    Button("Show all") {
+                        settingsManager.quotas.showAllProviders()
+                    }
+                    .buttonStyle(.link)
+                    .font(DesignSystem.Typography.tiny)
+
+                    Button("Reset order") {
+                        settingsManager.quotas.resetProviderOrder()
+                    }
+                    .buttonStyle(.link)
+                    .font(DesignSystem.Typography.tiny)
+                }
+                .padding(DesignSystem.Spacing.md)
+
+                Divider().background(DesignSystem.Colors.border.opacity(0.55))
+
+                ForEach(Array(orderedProviders.enumerated()), id: \.element) { index, provider in
+                    QuotaPopoverProviderVisibilityRow(
+                        provider: provider,
+                        isVisible: visibleProviders.contains(provider),
+                        isConnected: quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore),
+                        onChange: { isVisible in
+                            settingsManager.quotas.setProvider(provider, visible: isVisible)
+                        }
+                    )
+                    if index < orderedProviders.count - 1 {
+                        Divider()
+                            .background(DesignSystem.Colors.border.opacity(0.35))
+                            .padding(.leading, 52)
+                    }
+                }
+            }
+            .background(panelFill)
+            .overlay(panelStroke)
+            .task {
+                await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
+            }
+        }
+    }
+
+    private var panelFill: some View {
+        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.32))
+    }
+
+    private var panelStroke: some View {
+        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+    }
+}
+
+private struct QuotaPopoverProviderVisibilityRow: View {
+    let provider: AgentProvider
+    let isVisible: Bool
+    let isConnected: Bool
+    let onChange: (Bool) -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { isVisible }, set: { newValue in onChange(newValue) })) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                // Connection dot + provider theme backdrop
+                ZStack {
+                    Circle()
+                        .fill(connectionDotBackdrop)
+                        .frame(width: 28, height: 28)
+                    ProviderLogoView(provider: provider, size: 16, useFallbackColor: false)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(provider.displayName)
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(isConnected ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                            .frame(width: 5, height: 5)
+                        Text(isConnected ? "Connected quota source" : "Show when a quota source connects")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(isConnected ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                    }
+                }
+
+                Spacer()
+            }
+        }
+        .toggleStyle(.switch)
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(isHovered ? DesignSystem.Colors.amber.opacity(0.04) : Color.clear)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .animation(DesignSystem.Animation.snappy, value: isHovered)
+        .accessibilityLabel("\(provider.displayName) quota in popover")
+    }
+
+    private var connectionDotBackdrop: Color {
+        let theme = ProviderTheme.theme(for: provider)
+        return theme.primaryColor.opacity(0.12)
     }
 }

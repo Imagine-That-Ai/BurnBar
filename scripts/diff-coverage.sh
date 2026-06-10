@@ -122,6 +122,11 @@ def has_test_evidence(rel_path):
     # direct line coverage inside the app XCTest artifact.
     if rel_path.startswith("OpenBurnBarCore/Sources/"):
         return test_file_with_stem("OpenBurnBarCore/Tests", stem)
+    # OpenBurnBarDaemon package tests run in the daemon's own swift-test lane
+    # (Swift Core job), not as direct line coverage inside the app XCTest
+    # artifact — the app scheme never links or executes daemon sources.
+    if rel_path.startswith("OpenBurnBarDaemon/Sources/"):
+        return test_file_with_stem("OpenBurnBarDaemon/Tests", stem)
     # Mobile code is validated by the iOS Mobile job. The macOS app coverage
     # artifact cannot provide meaningful line hits for these files.
     if rel_path.startswith("OpenBurnBarMobile/"):
@@ -129,6 +134,12 @@ def has_test_evidence(rel_path):
     # Shared generated data-domain Swift is byte-checked by the registry tests.
     if rel_path == "packages/data-domains/gen/DataDomains.swift":
         return os.path.isfile(os.path.join(repo_root, "packages/data-domains/registry.test.mjs"))
+    # SwiftPM manifests are build configuration, never compiled into the app
+    # coverage target. The package's own swift-test lane cannot even start
+    # unless the manifest parses and resolves, so a manifest whose package
+    # ships a Tests/ tree is validated by that lane.
+    if os.path.basename(rel_path) == "Package.swift":
+        return os.path.isdir(os.path.join(repo_root, os.path.dirname(rel_path), "Tests"))
     # SwiftUI view bodies are exercised through UI/snapshot tests, but xccov
     # line maps often collapse them to aggregate fallback. Keep the gate tied
     # to the app UI test surface instead of synthetic body-line coverage.

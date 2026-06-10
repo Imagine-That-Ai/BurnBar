@@ -5,6 +5,8 @@ package com.openburnbar.ui.components
 
 import androidx.compose.ui.geometry.Size
 import com.openburnbar.data.models.AgentProvider
+import kotlin.math.abs
+import kotlin.math.sqrt
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -124,10 +126,10 @@ class SwarmSimulationTest {
 
     @Test
     fun providerLogoMappingsUseRealVisualAssetsForInspectedAgents() {
-        assertTrue(ProviderLogo.drawableFor(AgentProvider.OPEN_CLAW) == com.openburnbar.R.drawable.open_claw_logo)
-        assertTrue(ProviderLogo.drawableFor(AgentProvider.HERMES) == com.openburnbar.R.drawable.hermes_logo)
-        assertTrue(ProviderLogo.drawableFor(AgentProvider.CODEX) == com.openburnbar.R.drawable.codex_logo)
-        assertTrue(ProviderLogo.drawableFor(AgentProvider.ANTIGRAVITY) == com.openburnbar.R.drawable.antigravity_logo)
+        assertTrue(ProviderLogo.drawableFor(AgentProvider.OPEN_CLAW) == com.openburnbar.R.drawable.logo_openclaw)
+        assertTrue(ProviderLogo.drawableFor(AgentProvider.HERMES) == com.openburnbar.R.drawable.logo_hermes)
+        assertTrue(ProviderLogo.drawableFor(AgentProvider.CODEX) == com.openburnbar.R.drawable.logo_codex)
+        assertTrue(ProviderLogo.drawableFor(AgentProvider.ANTIGRAVITY) == com.openburnbar.R.drawable.logo_antigravity)
     }
 
     @Test
@@ -224,5 +226,130 @@ class SwarmSimulationTest {
         // Since x is to the left of tx, attraction would pull right (vx > 0),
         // but rewinding repulsion should push it further left (vx < 0).
         assertTrue(p.vx < 0)
+    }
+
+    @Test
+    fun frameScaleAdvancesFlowTimeByElapsedSimTime() {
+        val canonical = SwarmSimulation(particleCount = 8, pace = SwarmPace.ENERGETIC)
+        val scaled = SwarmSimulation(particleCount = 8, pace = SwarmPace.ENERGETIC)
+        canonical.ensureBounds(Size(400f, 400f))
+        scaled.ensureBounds(Size(400f, 400f))
+        canonical.setShapeMode("swarm")
+        scaled.setShapeMode("swarm")
+
+        // Two canonical 60Hz steps must advance the noise-field clock exactly
+        // as far as one double-length (frame-capped) step.
+        canonical.advance(16_666_667L, pointer = null)
+        canonical.advance(33_333_334L, pointer = null)
+        scaled.advance(33_333_334L, pointer = null, frameScale = 2.0)
+
+        org.junit.Assert.assertEquals(canonical.flowTime, scaled.flowTime, 0.0)
+    }
+
+    @Test
+    fun frameScaledSteppingKeepsSwarmTravelRefreshRateIndependent() {
+        val simulation = SwarmSimulation(particleCount = 240, pace = SwarmPace.ENERGETIC)
+        simulation.ensureBounds(Size(1200f, 800f))
+        simulation.setShapeMode("swarm")
+
+        // Settle into steady-state murmuration at the canonical 60Hz step.
+        var nowNanos = 1_000_000_000L
+        repeat(180) {
+            nowNanos += 16_666_667L
+            simulation.advance(nowNanos, pointer = null)
+        }
+
+        val savedX = simulation.particles.map { it.x }
+        val savedY = simulation.particles.map { it.y }
+        val savedVx = simulation.particles.map { it.vx }
+        val savedVy = simulation.particles.map { it.vy }
+        val savedFlowTime = simulation.flowTime
+        val savedNowNanos = nowNanos
+
+        fun travel(frameScale: Double, steps: Int): Double {
+            simulation.particles.forEachIndexed { i, p ->
+                p.x = savedX[i]
+                p.y = savedY[i]
+                p.vx = savedVx[i]
+                p.vy = savedVy[i]
+            }
+            simulation.flowTime = savedFlowTime
+            var now = savedNowNanos
+            var total = 0.0
+            repeat(steps) {
+                val beforeX = simulation.particles.map { it.x }
+                val beforeY = simulation.particles.map { it.y }
+                now += (16_666_667L * frameScale).toLong()
+                simulation.advance(now, pointer = null, frameScale = frameScale)
+                simulation.particles.forEachIndexed { i, p ->
+                    val dx = p.x - beforeX[i]
+                    val dy = p.y - beforeY[i]
+                    val step = sqrt(dx * dx + dy * dy)
+                    if (step < 50.0) total += step // ignore edge wrap-around jumps
+                }
+            }
+            return total
+        }
+
+        // 120 canonical 60Hz steps vs 60 double-length steps span the same
+        // simulated time, so total distance travelled must match. The legacy
+        // fixed-per-frame step made distance proportional to step count (the
+        // 120Hz double-speed bug): the scaled run would cover ~half as much.
+        val canonicalTravel = travel(frameScale = 1.0, steps = 120)
+        val scaledTravel = travel(frameScale = 2.0, steps = 60)
+        assertTrue(canonicalTravel > 0.0)
+        assertTrue(abs(scaledTravel - canonicalTravel) / canonicalTravel < 0.15)
+    }
+
+    @Test
+    fun prewarmShapePointTablesWarmsEveryTableAndIsIdempotent() {
+        val simulation = SwarmSimulation(particleCount = 60, pace = SwarmPace.CINEMATIC)
+
+        val firstPass = simulation.prewarmShapePointTables()
+        assertTrue(firstPass > 0)
+        // The lazies cache: a second pass revisits the same tables and counts
+        // the same points without recomputing them.
+        org.junit.Assert.assertEquals(firstPass, simulation.prewarmShapePointTables())
+    }
+
+    @Test
+    fun backgroundPrewarmCachesTheExactTablesTheSyncAssignPathServes() {
+        val simulation = SwarmSimulation(particleCount = 60, pace = SwarmPace.CINEMATIC)
+
+        val warmedTables = mutableMapOf<AgentProvider, List<SwarmSimulation.ShapePoint>>()
+        val prewarmThread =
+            Thread {
+                simulation.prewarmShapePointTables()
+                AgentProvider.swarmGlyphProviders.forEach { provider ->
+                    warmedTables[provider] = simulation.providerLogoPoints(provider)
+                }
+            }
+        prewarmThread.start()
+        prewarmThread.join()
+
+        // The (UI-thread) assign path must serve the very instances the
+        // background prewarm cached — identical points, no second sampling.
+        AgentProvider.swarmGlyphProviders.forEach { provider ->
+            org.junit.Assert.assertSame(warmedTables[provider], simulation.providerLogoPoints(provider))
+        }
+    }
+
+    @Test
+    fun prewarmedTablesEqualTheTablesAColdSimulationComputesSynchronously() {
+        val warmed = SwarmSimulation(particleCount = 60, pace = SwarmPace.CINEMATIC)
+        val cold = SwarmSimulation(particleCount = 60, pace = SwarmPace.CINEMATIC)
+
+        val prewarmThread = Thread { warmed.prewarmShapePointTables() }
+        prewarmThread.start()
+        prewarmThread.join()
+
+        // Off-main prewarm must be pixel-identical to the historical
+        // synchronous-on-assign path, point for point.
+        AgentProvider.swarmGlyphProviders.forEach { provider ->
+            org.junit.Assert.assertEquals(
+                cold.providerLogoPoints(provider),
+                warmed.providerLogoPoints(provider),
+            )
+        }
     }
 }

@@ -14,6 +14,11 @@
  *   5. CSS reduced-motion — every animated component declares a
  *      `prefers-reduced-motion: reduce` rule.
  *   6. Static build smoke — `astro build` emits `/platforms/index.html`.
+ *   7. Data layer + nav wiring — surfaces/nav reference the platform pages.
+ *   8. Visibility gating — the hydrator's intervals only run while a
+ *      mockup intersects the viewport in a visible tab, resume repaints
+ *      the frozen frame, and reduced-motion still freezes everything
+ *      (vm harness, same style as test-idle-canvas-loops.mjs).
  *
  * Run via: `node scripts/test-platform-mockups.mjs`.
  */
@@ -21,6 +26,7 @@
 import assert from "node:assert/strict";
 import { readFile, access, stat } from "node:fs/promises";
 import path from "node:path";
+import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -193,4 +199,193 @@ const DIST = path.join(ROOT, "dist");
   assert.ok(/href:\s*"\/platforms#smart-displays"/.test(surfacesData), "smart-display surface must link to /platforms#smart-displays");
 }
 
-console.log("platform-mockups: 7 test groups passed");
+// ─────────────────────── 8. Visibility-gated intervals ────────────────────
+
+{
+  const hydratorSource = await readFile(path.join(PUBLIC, "platform-mockups.js"), "utf8");
+
+  // Boots the hydrator in a vm with stubbed DOM + timers, returning probes
+  // for interval state, IntersectionObserver triggers, and paint counters.
+  async function runHydrator({ reduceMotion = false } = {}) {
+    const counts = { clockWrites: 0, matrixPaints: 0 };
+
+    let clockText = "";
+    const clockEl = { getAttribute: () => "hm" };
+    Object.defineProperty(clockEl, "textContent", {
+      set(v) {
+        counts.clockWrites++;
+        clockText = v;
+      },
+      get: () => clockText,
+    });
+
+    const cells = Array.from({ length: 256 }, () => {
+      const classes = new Set();
+      const props = {};
+      return {
+        classList: {
+          add: (c) => classes.add(c),
+          remove: (c) => classes.delete(c),
+          contains: (c) => classes.has(c),
+        },
+        style: {
+          setProperty: (k, v) => {
+            props[k] = v;
+          },
+          removeProperty: (k) => {
+            delete props[k];
+          },
+        },
+        snapshot: () => (classes.has("px--on") ? props["--c"] ?? "on" : "off"),
+      };
+    });
+    const matrixConfig = JSON.stringify({
+      layout: "providerDashboard",
+      items: [
+        {
+          providerID: "anthropic",
+          providerName: "CLDE",
+          percentUsed: 40,
+          usageText: "60%",
+          windowLabel: "CD",
+        },
+      ],
+    });
+    const matrixRoot = {
+      getAttribute: (name) => (name === "data-matrix-config" ? matrixConfig : null),
+      querySelectorAll: () => {
+        counts.matrixPaints++;
+        return cells;
+      },
+    };
+
+    const listeners = {};
+    const observers = [];
+    const activeIntervals = new Map();
+    let nextIntervalId = 1;
+
+    const doc = {
+      readyState: "complete",
+      hidden: false,
+      addEventListener(type, fn) {
+        (listeners[type] ??= []).push(fn);
+      },
+      querySelectorAll(sel) {
+        if (sel.includes("data-platform-matrix")) return [matrixRoot];
+        if (sel.includes("data-platform-clock") && sel.includes("data-platform-date"))
+          return [clockEl];
+        if (sel.includes("data-platform-clock")) return [clockEl];
+        return [];
+      },
+    };
+
+    vm.runInNewContext(hydratorSource, {
+      window: {
+        // localhost short-circuits fetchRundown — no network in tests.
+        location: { hostname: "localhost" },
+        matchMedia: () => ({ matches: reduceMotion }),
+      },
+      document: doc,
+      setInterval(fn, ms) {
+        const id = nextIntervalId++;
+        activeIntervals.set(id, { fn, ms });
+        return id;
+      },
+      clearInterval(id) {
+        activeIntervals.delete(id);
+      },
+      IntersectionObserver: class {
+        constructor(cb) {
+          this.cb = cb;
+          this.targets = [];
+          observers.push(this);
+        }
+        observe(t) {
+          this.targets.push(t);
+        }
+      },
+    });
+    // Flush the fetchRundown().then(...) microtask before probing.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    return {
+      counts,
+      observers,
+      doc,
+      clockEl,
+      matrixRoot,
+      intervals: () => [...activeIntervals.values()],
+      tickAll() {
+        for (const { fn } of activeIntervals.values()) fn();
+      },
+      setIntersecting(el, isIntersecting) {
+        for (const ob of observers) {
+          if (ob.targets.includes(el)) ob.cb([{ target: el, isIntersecting }]);
+        }
+      },
+      fire(type) {
+        (listeners[type] ?? []).forEach((fn) => fn());
+      },
+      frame: () => cells.map((c) => c.snapshot()).join(","),
+    };
+  }
+
+  // 8a. Offscreen at load: initial paints land, but zero intervals run.
+  const run = await runHydrator();
+  assert.equal(run.counts.clockWrites, 1, "offscreen: clock painted once at init");
+  assert.equal(run.counts.matrixPaints, 1, "offscreen: matrix painted once at init");
+  assert.equal(run.intervals().length, 0, "offscreen: no intervals while nothing intersects");
+  assert.equal(run.observers.length, 2, "one observer gates the clock, one the matrix");
+
+  // 8b. Matrix enters the viewport: immediate repaint + 1500ms cadence.
+  run.setIntersecting(run.matrixRoot, true);
+  assert.equal(run.counts.matrixPaints, 2, "enter: matrix repainted immediately");
+  assert.deepEqual(
+    run.intervals().map((i) => i.ms),
+    [1500],
+    "enter: matrix interval armed at the original 1500ms cadence"
+  );
+  run.tickAll();
+  assert.equal(run.counts.matrixPaints, 3, "tick: interval advances the matrix");
+  const frozenFrame = run.frame();
+
+  // 8c. Exit freezes; re-enter repaints the SAME frame (no tick advance).
+  run.setIntersecting(run.matrixRoot, false);
+  assert.equal(run.intervals().length, 0, "exit: matrix interval cleared");
+  run.setIntersecting(run.matrixRoot, true);
+  assert.equal(run.frame(), frozenFrame, "re-enter: first visible frame is the frozen frame");
+  run.tickAll();
+  assert.notEqual(run.frame(), frozenFrame, "next tick: animation advances again");
+
+  // 8d. Clock enters: immediate tick + 1000ms cadence alongside the matrix.
+  run.setIntersecting(run.clockEl, true);
+  assert.equal(run.counts.clockWrites, 2, "enter: clock re-ticked immediately");
+  assert.deepEqual(
+    run
+      .intervals()
+      .map((i) => i.ms)
+      .sort((a, b) => a - b),
+    [1000, 1500],
+    "clock interval at 1000ms runs alongside the matrix interval"
+  );
+
+  // 8e. Hidden tab pauses everything; return resumes with immediate repaints.
+  run.doc.hidden = true;
+  run.fire("visibilitychange");
+  assert.equal(run.intervals().length, 0, "hidden tab: all intervals cleared");
+  const clockWritesHidden = run.counts.clockWrites;
+  run.doc.hidden = false;
+  run.fire("visibilitychange");
+  assert.equal(run.intervals().length, 2, "visible again: both intervals resume");
+  assert.equal(run.counts.clockWrites, clockWritesHidden + 1, "visible again: clock re-ticked");
+
+  // 8f. Reduced motion: frozen initial frames, no observers, no intervals.
+  const still = await runHydrator({ reduceMotion: true });
+  assert.equal(still.counts.clockWrites, 1, "reduced motion: clock painted once");
+  assert.equal(still.counts.matrixPaints, 1, "reduced motion: matrix painted once");
+  assert.equal(still.observers.length, 0, "reduced motion: no observers wired");
+  still.setIntersecting(still.matrixRoot, true);
+  assert.equal(still.intervals().length, 0, "reduced motion: nothing ever animates");
+}
+
+console.log("platform-mockups: 8 test groups passed");

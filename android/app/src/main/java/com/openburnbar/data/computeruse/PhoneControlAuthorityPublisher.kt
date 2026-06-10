@@ -22,26 +22,47 @@ data class PhoneControlAuthorityDoc(
     val publishedAtMillis: Long,
     val protocolVersion: Int = HermesRealtimeRelayProtocol.VERSION,
     val schemaVersion: Int = 1,
+    /**
+     * F2 — signing key custody class (`PhoneControlSigningKeyKind` wire
+     * value). `null` for the legacy Ed25519 key so legacy publishes stay
+     * byte-identical (the server treats absence as `ed25519`); `"se-p256"`
+     * for a StrongBox/TEE P-256 key published as 65-byte X9.63.
+     */
+    val keyKind: String? = null,
 ) {
-    fun asMap(): Map<String, Any> = mapOf(
-        "id" to id,
-        "connectionId" to connectionId,
-        "peerNodeId" to peerNodeId,
-        "deviceId" to deviceId,
-        "publicKeyBase64" to publicKeyBase64,
-        "publishedAtMillis" to publishedAtMillis,
-        "protocolVersion" to protocolVersion,
-        "schemaVersion" to schemaVersion,
-    )
+    fun asMap(): Map<String, Any> = buildMap {
+        put("id", id)
+        put("connectionId", connectionId)
+        put("peerNodeId", peerNodeId)
+        put("deviceId", deviceId)
+        put("publicKeyBase64", publicKeyBase64)
+        put("publishedAtMillis", publishedAtMillis)
+        put("protocolVersion", protocolVersion)
+        put("schemaVersion", schemaVersion)
+        keyKind?.let { put("keyKind", it) }
+    }
 }
 
 object PhoneControlAuthorityDocumentFactory {
     private const val VAL_24 = 24
-    private const val VAL_256 = 256
     private const val VAL_32 = 32
     fun peerNodeId(publicKey: ByteArray): String {
         require(publicKey.size == VAL_32) { "Ed25519 public key must be 32 bytes" }
         return "android-phone-${sha256Hex(publicKey).take(VAL_24)}"
+    }
+
+    /**
+     * F2 — canonical Android peerNodeId for a key-kind-aware identity. Must
+     * stay byte-identical to `PhoneControlPeerNodeIdDerivation` (Swift) and
+     * `requireDerivedPhoneControlPeerNodeId` (server):
+     *
+     * - Ed25519: `android-phone-<sha256hex(rawKey)[0..<24]>` (legacy)
+     * - SE-P256: `android-se-<sha256hex(x963Key)[0..<24]>`
+     */
+    fun peerNodeId(identity: PhoneControlSigningIdentity): String = when (identity.kind) {
+        PhoneControlSigningKeyKind.ED25519 -> peerNodeId(identity.publicKeyRepresentation)
+        PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 ->
+            "android-se-${sha256Hex(identity.publicKeyRepresentation).take(VAL_24)}"
     }
 
     fun document(connectionId: String, deviceId: String, publicKey: ByteArray, publishedAtMillis: Long): PhoneControlAuthorityDoc {
@@ -53,6 +74,30 @@ object PhoneControlAuthorityDocumentFactory {
             deviceId = deviceId,
             publicKeyBase64 = Base64.getEncoder().encodeToString(publicKey),
             publishedAtMillis = publishedAtMillis,
+        )
+    }
+
+    /**
+     * F2 — key-kind-aware twin of `document(...)`. Legacy Ed25519 identities
+     * produce the exact pre-F2 document (no `keyKind`); SE-P256 identities
+     * publish the 65-byte X9.63 key, the `android-se-` peerNodeId, and the
+     * `"se-p256"` discriminator the server persists as `signingKeyKind`.
+     */
+    fun document(
+        connectionId: String,
+        deviceId: String,
+        identity: PhoneControlSigningIdentity,
+        publishedAtMillis: Long,
+    ): PhoneControlAuthorityDoc {
+        val peerNodeId = peerNodeId(identity)
+        return PhoneControlAuthorityDoc(
+            id = peerNodeId,
+            connectionId = connectionId,
+            peerNodeId = peerNodeId,
+            deviceId = deviceId,
+            publicKeyBase64 = Base64.getEncoder().encodeToString(identity.publicKeyRepresentation),
+            publishedAtMillis = publishedAtMillis,
+            keyKind = identity.wireKeyKind,
         )
     }
 
@@ -74,6 +119,7 @@ class PhoneControlAuthorityPublisher(
             deviceId = sourceDeviceId,
             peerNodeId = authority.peerNodeId,
             publicKeyBase64 = authority.publicKeyBase64,
+            keyKind = authority.keyKind,
         )
     }
 }
@@ -90,11 +136,38 @@ class PhoneControlSigningKeyStore(context: Context) {
 
     fun publicKey(): ByteArray = PhoneControlSigner.publicKey(privateKeySeed())
 
-    fun peerNodeId(): String = PhoneControlAuthorityDocumentFactory.peerNodeId(publicKey())
+    fun peerNodeId(): String = peerNodeId(signingIdentity())
+
+    fun peerNodeId(identity: PhoneControlSigningIdentity): String = PhoneControlAuthorityDocumentFactory.peerNodeId(identity)
+
+    /**
+     * F2 — the key-kind-aware signing identity, gated by the
+     * `computer_use_phone_control_secure_enclave_key` Remote Config flag.
+     * Mirrors the iOS `PhoneControlSigningKeyStore.signingIdentity()`.
+     */
+    fun signingIdentity(): PhoneControlSigningIdentity =
+        signingIdentity(secureEnclaveEnabled = PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled())
+
+    /**
+     * Resolution order (identical to iOS):
+     *  1. An already-minted StrongBox/TEE key always wins (its peerNodeId is
+     *     the published controller identity — never silently downgrade).
+     *  2. With the gate on and the keystore available, mint a biometry-gated
+     *     hardware P-256 key (StrongBox preferred, TEE fallback).
+     *  3. Otherwise the legacy software Ed25519 key (wire-identical to pre-F2).
+     */
+    fun signingIdentity(secureEnclaveEnabled: Boolean): PhoneControlSigningIdentity {
+        PhoneControlSecureEnclaveKeystore.loadIdentity()?.let { return it }
+        if (secureEnclaveEnabled) {
+            PhoneControlSecureEnclaveKeystore.mintIdentity()?.let { return it }
+        }
+        return PhoneControlSigningIdentity.Ed25519(privateKeySeed())
+    }
 
     fun reset() {
         prefs.edit().clear().apply()
         runCatching { keystore().deleteEntry(KEY_ALIAS) }
+        PhoneControlSecureEnclaveKeystore.deleteKey()
     }
 
     private fun loadFromStore(): ByteArray? {

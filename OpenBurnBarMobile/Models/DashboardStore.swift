@@ -107,18 +107,22 @@ final class DashboardStore {
         startListening()
     }
 
-    func refresh() async {
-        await refresh(forceRebuild: false)
+    /// Fetch the latest rollups and re-derive the published fields.
+    ///
+    /// Pass `publishSideEffects: false` for pure reads (App Intents): the
+    /// fetched data then never touches WidgetCenter or ActivityKit.
+    func refresh(publishSideEffects: Bool = true) async {
+        await refresh(forceRebuild: false, publishSideEffects: publishSideEffects)
     }
 
     /// Force a full server-side rollup rebuild from raw usage events.
     func forceRebuild() async {
-        await refresh(forceRebuild: true)
+        await refresh(forceRebuild: true, publishSideEffects: true)
     }
 
-    private func refresh(forceRebuild: Bool) async {
+    private func refresh(forceRebuild: Bool, publishSideEffects: Bool) async {
         if AppStoreScreenshotMode.isEnabled {
-            applyRollups(AppStoreScreenshotData.usageRollups)
+            applyRollups(AppStoreScreenshotData.usageRollups, publishSideEffects: publishSideEffects)
             error = nil
             isLoading = false
             return
@@ -130,31 +134,43 @@ final class DashboardStore {
         do {
             var rollups = try await firestore.fetchRollups()
 
-            let shouldRebuild = forceRebuild
-                || rollups.isEmpty
-                || isRollupStale(rollups)
+            var shouldRebuild = forceRebuild || rollups.isEmpty
+            if !shouldRebuild {
+                shouldRebuild = await hasUsageNewerThanRollups(rollups)
+            }
 
             if shouldRebuild {
                 let now = Date()
                 guard now.timeIntervalSince(lastRebuildAttempt) >= Self.rebuildCooldown else {
-                    applyRollups(rollups)
+                    applyRollups(rollups, publishSideEffects: publishSideEffects)
                     return
                 }
                 lastRebuildAttempt = now
-                try await functions.rebuildUsageRollups()
+                try await functions.rebuildUsageRollups(force: forceRebuild)
                 rollups = try await firestore.fetchRollups()
             }
-            applyRollups(rollups)
+            applyRollups(rollups, publishSideEffects: publishSideEffects)
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    /// Returns true if the newest rollup's `computedAt` is older than 15 minutes,
-    /// suggesting the scheduled rollup worker may be stalled.
-    private func isRollupStale(_ rollups: [UsageRollupDoc]) -> Bool {
+    /// Returns true when a raw usage event is newer than the newest rollup's
+    /// `computedAt` — i.e. the rollups are genuinely missing usage (worker
+    /// stalled or not yet run). One limit-1 query; a failed read (offline)
+    /// counts as fresh. Wall-clock age alone is NOT staleness: an idle user's
+    /// rollups stay legitimately old, and treating them as stale fired a full
+    /// server-side rollup rebuild on every app open.
+    private func hasUsageNewerThanRollups(_ rollups: [UsageRollupDoc]) async -> Bool {
+        let newestUsage = try? await firestore.fetchNewestUsageEndTime()
+        return Self.rollupsAreStale(rollups, newestUsageEndTime: newestUsage)
+    }
+
+    /// Pure staleness rule shared by `refresh` and the rollup listener.
+    nonisolated static func rollupsAreStale(_ rollups: [UsageRollupDoc], newestUsageEndTime: Date?) -> Bool {
+        guard let newestUsageEndTime else { return false }
         let newestComputedAt = rollups.map(\.computedAt).max() ?? .distantPast
-        return Date().timeIntervalSince(newestComputedAt) > 900 // 15 min
+        return newestUsageEndTime > newestComputedAt
     }
 
     func startListening() {
@@ -167,7 +183,11 @@ final class DashboardStore {
                 guard let self else { return }
                 switch result {
                 case .success(let rollups):
-                    if rollups.isEmpty || self.isRollupStale(rollups) {
+                    if rollups.isEmpty {
+                        await self.refresh()
+                        return
+                    }
+                    if await self.hasUsageNewerThanRollups(rollups) {
                         await self.refresh()
                         return
                     }
@@ -191,10 +211,12 @@ final class DashboardStore {
 
     func setDisplayMode(_ mode: UsageDisplayMode) {
         displayMode = mode
+        reapplyCachedRollups()
     }
 
     func setWindow(_ window: RollupWindowKey) {
         selectedWindow = window
+        reapplyCachedRollups()
     }
 
     func rollup(for window: RollupWindowKey) -> UsageRollupDoc? {
@@ -202,6 +224,21 @@ final class DashboardStore {
     }
 
     // MARK: - Private
+
+    /// Re-derives every published field — and the widget snapshot / Live
+    /// Activity side effects — for the current selection from the cached
+    /// rollup docs, with zero network. `rollupsByWindow` already holds every
+    /// window's doc and the snapshot listener keeps it fresh, so toggling
+    /// display mode or window never needs a refetch. An empty cache (failed
+    /// initial load) falls back to a full refresh so a toggle can still
+    /// recover the dashboard.
+    private func reapplyCachedRollups() {
+        guard !rollupsByWindow.isEmpty else {
+            Task { await refresh() }
+            return
+        }
+        applyRollups(Array(rollupsByWindow.values))
+    }
 
     private func applyRollups(_ rollups: [UsageRollupDoc], publishSideEffects: Bool = true) {
         let byKey = Dictionary(uniqueKeysWithValues: rollups.map { ($0.windowKey, $0) })
@@ -248,8 +285,12 @@ final class DashboardStore {
         )
 
         do {
-            try BurnBarWidgetShared.writeSnapshot(snapshot)
-            WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
+            // Only reload timelines when the snapshot content actually changed
+            // (or the on-disk copy went stale): every listener tick used to
+            // rewrite an identical snapshot and burn the widget reload budget.
+            if try BurnBarWidgetShared.writeSnapshotIfChanged(snapshot) {
+                WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
+            }
         } catch {
             // Silently fail — widget will show placeholder until next successful write.
             // Do NOT surface widget I/O errors to the user dashboard.

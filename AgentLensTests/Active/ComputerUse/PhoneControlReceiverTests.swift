@@ -1959,12 +1959,12 @@ private actor StaticPhoneControlAuthorityProvider: PhoneControlAuthorityPublicKe
         uid: String,
         connectionId: String,
         peerNodeId: String
-    ) async throws -> Curve25519.Signing.PublicKey {
+    ) async throws -> PhoneControlVerifyingKey {
         fetchCount += 1
         XCTAssertEqual(uid, expectedUID)
         XCTAssertEqual(connectionId, expectedConnectionID)
         XCTAssertEqual(peerNodeId, expectedPeerNodeID)
-        return publicKey
+        return .ed25519(publicKey)
     }
 }
 
@@ -1999,5 +1999,189 @@ private func isolatedPhoneControlAuthorityValidator(
         controllerPinStore: controllerPinStore,
         replayCounterStore: PhoneControlReplayCounterStore(fileURL: storeURL)
     )
+}
+
+// MARK: - F10 control-frame seal (Mac open path)
+
+@MainActor
+final class ControlFrameSealCoordinatorTests: XCTestCase {
+    private final class ReplyBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var frames: [HermesRealtimeRelayFrame] = []
+        func append(_ frame: HermesRealtimeRelayFrame) {
+            lock.lock(); defer { lock.unlock() }
+            frames.append(frame)
+        }
+        var deniedDetails: [String] {
+            lock.lock(); defer { lock.unlock() }
+            return frames.compactMap { $0.control?.denied?.detail }
+        }
+    }
+
+    private func makeCoordinator(
+        recipientKey: HermesRelayPrivateKey,
+        pinnedSenderKeyBase64: String
+    ) -> ComputerUseSessionCoordinator {
+        // The classify arm continues into authority fetch + registration after
+        // seal establishment — keep both off Firestore/Keychain in tests.
+        let controllerKey = Curve25519.Signing.PrivateKey()
+        let coordinator = ComputerUseSessionCoordinator(
+            configuration: ComputerUseSessionCoordinator.Configuration(
+                userId: "uid-f10",
+                macHostNodeId: "mac-f10",
+                entitlement: ComputerUseEntitlementSnapshot(
+                    isActive: true,
+                    productId: "hosted_computer_use_sync",
+                    allowsBrowser: true
+                ),
+                quotaUsage: ComputerUseQuotaUsage(dayKey: "2026-06-10"),
+                auditBaseDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("computer-use-f10-\(UUID().uuidString)", isDirectory: true),
+                macAppVersion: "test"
+            ),
+            authorityProvider: StaticPhoneControlAuthorityProvider(
+                expectedUID: "uid-f10",
+                expectedConnectionID: "conn-f10",
+                expectedPeerNodeID: "ios-phone-f10aabbccddeeff0011223344",
+                publicKey: controllerKey.publicKey
+            ),
+            phoneValidator: isolatedPhoneControlAuthorityValidator(controllerPinStore: nil),
+            approvalPresenter: { request, _ in
+                HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "mac",
+                    respondedAt: Date()
+                )
+            }
+        )
+        coordinator.controlSealRecipientPrivateKeyProvider = { recipientKey }
+        coordinator.controlSealPinnedSenderKeyProvider = { _, _, _ in pinnedSenderKeyBase64 }
+        return coordinator
+    }
+
+    private func establishedSession(
+        coordinator: ComputerUseSessionCoordinator,
+        macKey: HermesRelayPrivateKey,
+        phoneKey: HermesRelayPrivateKey,
+        replies: ReplyBox
+    ) async throws -> SymmetricKey {
+        let (envelope, phoneSide) = try ControlFrameSealSession.establish(
+            uid: "uid-f10",
+            connectionID: "conn-f10",
+            peerNodeId: "ios-phone-f10aabbccddeeff0011223344",
+            senderDeviceID: "iphone-f10",
+            senderPeerNodeID: "iphone-f10",
+            senderKeyID: "relay-v3-f10",
+            senderCounter: 1,
+            recipientPublicKeyBase64: macKey.publicKeyBase64,
+            senderPrivateKey: phoneKey
+        )
+        let classify = HermesRealtimeRelayFrame(
+            type: .controlClassify,
+            uid: "uid-f10",
+            connectionId: "conn-f10",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.input",
+                authorityPeerNodeId: "ios-phone-f10aabbccddeeff0011223344",
+                controlSealKey: envelope
+            )
+        )
+        await coordinator.controlDispatcher(classify) { frame in replies.append(frame) }
+        return phoneSide
+    }
+
+    func testSealedFrameOpensAndTamperedOrSessionlessFramesFailClosed() async throws {
+        let macKey = HermesRelayCrypto.generatePrivateKey()
+        let phoneKey = HermesRelayCrypto.generatePrivateKey()
+        let replies = ReplyBox()
+        let coordinator = makeCoordinator(recipientKey: macKey, pinnedSenderKeyBase64: phoneKey.publicKeyBase64)
+
+        // Sealed frame BEFORE establishment: refused, never dispatched.
+        let preSession = HermesRealtimeRelayFrame(
+            type: .controlClipboardRequest,
+            uid: "uid-f10",
+            connectionId: "conn-f10",
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.clipboard",
+                sealedFrameBase64: Data("junk".utf8).base64EncodedString()
+            )
+        )
+        await coordinator.controlDispatcher(preSession) { frame in replies.append(frame) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(replies.deniedDetails.contains("control_seal_no_session"))
+
+        let phoneSeal = try await establishedSession(
+            coordinator: coordinator, macKey: macKey, phoneKey: phoneKey, replies: replies
+        )
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(replies.deniedDetails.contains("control_seal_establish_failed"))
+
+        // A correctly sealed clipboard request opens and reaches the normal
+        // pipeline (its denial, if any, is NOT a seal-layer denial).
+        let inner = HermesRealtimeRelayControlPayload(
+            streamClass: "control.clipboard",
+            clipboardRequest: HermesRealtimeRelayClipboardRequest(
+                requestId: "req-f10",
+                action: .pasteToMac,
+                contentType: "text/plain",
+                text: "sealed secret",
+                maxBytes: 65_536,
+                clientIntentId: "intent-f10",
+                authority: HermesRealtimeRelayAuthorityEnvelope(
+                    peerNodeId: "ios-phone-f10aabbccddeeff0011223344",
+                    counter: 2,
+                    timestamp: Date(),
+                    intentHashBlake3: String(repeating: "ab", count: 32),
+                    signatureEd25519: Data(repeating: 1, count: 64).base64EncodedString()
+                )
+            )
+        )
+        let shell = try ControlFrameSealSession.sealPayload(
+            inner,
+            key: phoneSeal,
+            peerNodeId: "ios-phone-f10aabbccddeeff0011223344",
+            frameType: HermesRealtimeRelayFrameType.controlClipboardRequest.rawValue
+        )
+        let sealedFrame = HermesRealtimeRelayFrame(
+            type: .controlClipboardRequest,
+            uid: "uid-f10",
+            connectionId: "conn-f10",
+            control: shell
+        )
+        await coordinator.controlDispatcher(sealedFrame) { frame in replies.append(frame) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(replies.deniedDetails.contains("control_seal_open_failed"))
+
+        // Tampering one ciphertext byte fails closed with the seal denial.
+        var tamperedData = Data(base64Encoded: shell.sealedFrameBase64!)!
+        tamperedData[tamperedData.count - 1] ^= 0x01
+        var tamperedShell = shell
+        tamperedShell.sealedFrameBase64 = tamperedData.base64EncodedString()
+        let tamperedFrame = HermesRealtimeRelayFrame(
+            type: .controlClipboardRequest,
+            uid: "uid-f10",
+            connectionId: "conn-f10",
+            control: tamperedShell
+        )
+        await coordinator.controlDispatcher(tamperedFrame) { frame in replies.append(frame) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(replies.deniedDetails.contains("control_seal_open_failed"))
+    }
+
+    func testEstablishWithWrongPinnedSenderRefusesClassify() async throws {
+        let macKey = HermesRelayCrypto.generatePrivateKey()
+        let phoneKey = HermesRelayCrypto.generatePrivateKey()
+        let attacker = HermesRelayCrypto.generatePrivateKey()
+        let replies = ReplyBox()
+        // Pin store says the sender's key is `attacker` — the phone's actual
+        // wrap (authenticated by phoneKey) must be refused.
+        let coordinator = makeCoordinator(recipientKey: macKey, pinnedSenderKeyBase64: attacker.publicKeyBase64)
+        _ = try await establishedSession(
+            coordinator: coordinator, macKey: macKey, phoneKey: phoneKey, replies: replies
+        )
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(replies.deniedDetails.contains("control_seal_establish_failed"))
+    }
 }
 #endif

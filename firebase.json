@@ -36,7 +36,7 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache, no-store, must-revalidate"
+              "value": "no-cache, must-revalidate"
             },
             {
               "key": "X-Content-Type-Options",
@@ -61,6 +61,28 @@
             {
               "key": "Strict-Transport-Security",
               "value": "max-age=63072000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(js|mjs)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=300"
+            }
+          ]
+        },
+        {
+          "source": "/data/models.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=300"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
             }
           ]
         },

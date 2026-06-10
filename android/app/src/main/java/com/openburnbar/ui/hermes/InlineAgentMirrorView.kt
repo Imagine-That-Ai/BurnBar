@@ -177,47 +177,30 @@ fun InlineAgentMirrorView(
         if (coordinator == null || requestID == null) return@LaunchedEffect
         coordinator.lastMirrorAck.collectLatest { ack ->
             if (ack != null && ack.requestId == requestID) {
-                when (ack.decision) {
-                    HermesRealtimeRelayMirrorAck.Decision.ACCEPTED -> {
-                        mirrorSessionID = ack.sessionId
-                        phase = InlineMirrorPhase.WAITING_FOR_FRAMES
-                        statusMessage = "Mac accepted request. Starting stream..."
+                val presentation = inlineMirrorAckPresentation(ack.decision, ack.detail)
+                phase = presentation.phase
+                statusMessage = presentation.statusMessage
+                if (ack.decision == HermesRealtimeRelayMirrorAck.Decision.ACCEPTED) {
+                    mirrorSessionID = ack.sessionId
 
-                        // Setup PhoneControlSender for interactive keyboard commands
-                        try {
-                            val activePair = coordinator.activePair.value
-                            if (activePair != null) {
-                                val keyStore = PhoneControlSigningKeyStore(context)
-                                val seed = keyStore.privateKeySeed()
-                                val peerNodeId = keyStore.peerNodeId()
-                                phoneControlSender = PhoneControlSender(
-                                    uid = activePair.uid,
-                                    connectionId = activePair.connectionID,
-                                    peerNodeId = peerNodeId,
-                                    privateKeySeedProvider = { seed },
-                                    counterStore = InMemoryPhoneControlCounterStore(),
-                                    frameSink = { frame -> coordinator.send(frame) }
-                                )
-                            }
-                        } catch (e: Exception) {
-                            Log.e("InlineMirror", "Failed to setup phone control sender: ${e.message}", e)
+                    // Setup PhoneControlSender for interactive keyboard commands
+                    try {
+                        val activePair = coordinator.activePair.value
+                        if (activePair != null) {
+                            val keyStore = PhoneControlSigningKeyStore(context)
+                            val identity = keyStore.signingIdentity()
+                            val peerNodeId = keyStore.peerNodeId(identity)
+                            phoneControlSender = PhoneControlSender(
+                                uid = activePair.uid,
+                                connectionId = activePair.connectionID,
+                                peerNodeId = peerNodeId,
+                                signingIdentityProvider = { identity },
+                                counterStore = InMemoryPhoneControlCounterStore(),
+                                frameSink = { frame -> coordinator.send(frame) }
+                            )
                         }
-                    }
-                    HermesRealtimeRelayMirrorAck.Decision.DENIED -> {
-                        phase = InlineMirrorPhase.ERROR
-                        statusMessage = ack.detail ?: "Request denied by Mac."
-                    }
-                    HermesRealtimeRelayMirrorAck.Decision.BUSY -> {
-                        phase = InlineMirrorPhase.ERROR
-                        statusMessage = ack.detail ?: "Mac is busy."
-                    }
-                    HermesRealtimeRelayMirrorAck.Decision.COOLING_DOWN -> {
-                        phase = InlineMirrorPhase.ERROR
-                        statusMessage = ack.detail ?: "Mac is cooling down."
-                    }
-                    HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED -> {
-                        phase = InlineMirrorPhase.ERROR
-                        statusMessage = ack.detail ?: "Mac cannot mirror right now."
+                    } catch (e: Exception) {
+                        Log.e("InlineMirror", "Failed to setup phone control sender: ${e.message}", e)
                     }
                 }
             }
@@ -419,4 +402,31 @@ private fun TerminalButton(
             fontWeight = FontWeight.Medium
         )
     }
+}
+
+/** Phase + status line for one mirror-request ack. Pure so it is unit-testable. */
+internal data class InlineMirrorAckPresentation(
+    val phase: InlineMirrorPhase,
+    val statusMessage: String,
+)
+
+/**
+ * Maps the Mac's mirror-request decision onto the inline mirror phase and the
+ * status line under the canvas. Any non-accepted decision is terminal for the
+ * attempt; the Mac's own `detail` copy wins when present.
+ */
+internal fun inlineMirrorAckPresentation(
+    decision: HermesRealtimeRelayMirrorAck.Decision,
+    detail: String?,
+): InlineMirrorAckPresentation = when (decision) {
+    HermesRealtimeRelayMirrorAck.Decision.ACCEPTED ->
+        InlineMirrorAckPresentation(InlineMirrorPhase.WAITING_FOR_FRAMES, "Mac accepted request. Starting stream...")
+    HermesRealtimeRelayMirrorAck.Decision.DENIED ->
+        InlineMirrorAckPresentation(InlineMirrorPhase.ERROR, detail ?: "Request denied by Mac.")
+    HermesRealtimeRelayMirrorAck.Decision.BUSY ->
+        InlineMirrorAckPresentation(InlineMirrorPhase.ERROR, detail ?: "Mac is busy.")
+    HermesRealtimeRelayMirrorAck.Decision.COOLING_DOWN ->
+        InlineMirrorAckPresentation(InlineMirrorPhase.ERROR, detail ?: "Mac is cooling down.")
+    HermesRealtimeRelayMirrorAck.Decision.UNSUPPORTED ->
+        InlineMirrorAckPresentation(InlineMirrorPhase.ERROR, detail ?: "Mac cannot mirror right now.")
 }

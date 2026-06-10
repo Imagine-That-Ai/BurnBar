@@ -54,6 +54,8 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun HermesAttachmentTray(
@@ -189,14 +191,44 @@ private fun AttachmentChipPreview(isImage: Boolean, thumbnail: androidx.compose.
     }
 }
 
+/**
+ * Short-edge pixel target for the 48dp attachment chip: 48dp at 3x density.
+ * Decoding to this size instead of full resolution keeps a 12MP photo's
+ * thumbnail under ~200KB instead of ~48MB.
+ */
+internal const val ATTACHMENT_THUMBNAIL_TARGET_PX = 144
+
+/**
+ * Largest power-of-two [BitmapFactory.Options.inSampleSize] that keeps the
+ * decoded short edge at or above [ATTACHMENT_THUMBNAIL_TARGET_PX], so the
+ * `ContentScale.Crop` chip never upscales. Unknown bounds fall back to 1.
+ */
+internal fun attachmentThumbnailSampleSize(width: Int, height: Int): Int {
+    if (width <= 0 || height <= 0) return 1
+    var sampleSize = 1
+    while (minOf(width, height) / (sampleSize * 2) >= ATTACHMENT_THUMBNAIL_TARGET_PX) {
+        sampleSize *= 2
+    }
+    return sampleSize
+}
+
 private suspend fun loadAttachmentThumbnail(
     context: android.content.Context,
     uriString: String,
-): androidx.compose.ui.graphics.ImageBitmap? {
-    return try {
+): androidx.compose.ui.graphics.ImageBitmap? = withContext(Dispatchers.IO) {
+    try {
         val uri = Uri.parse(uriString)
+        // Two-pass decode: read bounds only, then re-open the stream (content
+        // streams are not rewindable) and decode at the sampled size.
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream)?.asImageBitmap()
+            BitmapFactory.decodeStream(stream, null, bounds)
+        }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = attachmentThumbnailSampleSize(bounds.outWidth, bounds.outHeight)
+        }
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream, null, options)?.asImageBitmap()
         }
     } catch (_: Exception) {
         null

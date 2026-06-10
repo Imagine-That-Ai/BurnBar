@@ -156,38 +156,51 @@ fun AuroraBackdrop(isDark: Boolean = isSystemInDarkTheme(), density: AuroraDensi
  * infinite transition. Extracted so the `rememberInfiniteTransition` phase clocks
  * are created (and animating) ONLY while AURORA is the active background — they do
  * not run behind the SWARM or DOT_CONSTELLATION renderers.
+ *
+ * Phases flow down as `() -> Float` lambdas read in layout/draw scopes, so the
+ * 18s/12s loops never recompose this subtree; Reduce Motion renders the same
+ * static 0f frame without creating an infinite transition at all.
  */
 @Composable
 private fun AuroraAnimatedBackdrop(isDark: Boolean, density: AuroraDensity, reduceMotion: Boolean) {
+    AuroraBackdropGradientLayer(isDark = isDark)
+    if (reduceMotion) {
+        AuroraBackdropAnimatedLayers(
+            isDark = isDark,
+            density = density,
+            reduceMotion = true,
+            phase = { 0f },
+            ribbonPhase = { 0f },
+        )
+        return
+    }
     val infiniteTransition = rememberInfiniteTransition(label = "aurora")
-    val phase by infiniteTransition.animateFloat(
+    val phase = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec =
         infiniteRepeatable(
-            animation = tween(if (reduceMotion) 1 else 18000, easing = LinearEasing),
+            animation = tween(18000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "aurora-phase",
     )
-    val ribbonPhase by infiniteTransition.animateFloat(
+    val ribbonPhase = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
         animationSpec =
         infiniteRepeatable(
-            animation = tween(if (reduceMotion) 1 else 12000, easing = LinearEasing),
+            animation = tween(12000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "ribbon-phase",
     )
-
-    AuroraBackdropGradientLayer(isDark = isDark)
     AuroraBackdropAnimatedLayers(
         isDark = isDark,
         density = density,
-        reduceMotion = reduceMotion,
-        phase = phase,
-        ribbonPhase = ribbonPhase,
+        reduceMotion = false,
+        phase = { phase.value },
+        ribbonPhase = { ribbonPhase.value },
     )
 }
 
@@ -230,7 +243,7 @@ fun WebsiteBackground(
 }
 
 @Composable
-internal fun OrbLayer(isDark: Boolean, phase: Float, opacity: Float, modifier: Modifier = Modifier) {
+internal fun OrbLayer(isDark: Boolean, phase: () -> Float, opacity: Float, modifier: Modifier = Modifier) {
     Box(modifier = modifier) {
         // Ember orb
         Orb(
@@ -259,14 +272,24 @@ internal fun OrbLayer(isDark: Boolean, phase: Float, opacity: Float, modifier: M
 private data class OrbMotion(
     val offsetA: Offset,
     val offsetB: Offset,
-    val phase: Float,
+    val phase: () -> Float,
     val opacity: Float,
 )
 
+/**
+ * Pure drift interpolation for one aurora orb: phase 0 rests at [offsetA],
+ * phase 1 at [offsetB], linear in between (the website's 18s ease-in-out
+ * drift feeds the eased phase in). Extracted from the placement lambda so the
+ * math is unit-testable without a composition.
+ */
+internal fun auroraOrbDriftOffset(offsetA: Offset, offsetB: Offset, phase: Float): androidx.compose.ui.unit.IntOffset =
+    androidx.compose.ui.unit.IntOffset(
+        (offsetA.x + (offsetB.x - offsetA.x) * phase).toInt(),
+        (offsetA.y + (offsetB.y - offsetA.y) * phase).toInt(),
+    )
+
 @Composable
 private fun Orb(color: Color, baseAlpha: Float, size: androidx.compose.ui.unit.Dp, motion: OrbMotion) {
-    val interpolatedX = motion.offsetA.x + (motion.offsetB.x - motion.offsetA.x) * motion.phase
-    val interpolatedY = motion.offsetA.y + (motion.offsetB.y - motion.offsetA.y) * motion.phase
     val opacity = motion.opacity
     val displaySize = size * 1.4f // larger for softness
 
@@ -275,10 +298,9 @@ private fun Orb(color: Color, baseAlpha: Float, size: androidx.compose.ui.unit.D
         Modifier
             .size(displaySize)
             .offset {
-                androidx.compose.ui.unit.IntOffset(
-                    interpolatedX.toInt(),
-                    interpolatedY.toInt(),
-                )
+                // Phase is snapshot-read (and interpolated) inside the placement
+                // lambda so the 18s drift never recomposes the orb.
+                auroraOrbDriftOffset(motion.offsetA, motion.offsetB, motion.phase())
             }
             .background(
                 Brush.radialGradient(
@@ -297,12 +319,14 @@ private fun Orb(color: Color, baseAlpha: Float, size: androidx.compose.ui.unit.D
 }
 
 @Composable
-internal fun RibbonLayer(isDark: Boolean, ribbonPhase: Float, opacity: Float, modifier: Modifier = Modifier) {
+internal fun RibbonLayer(isDark: Boolean, ribbonPhase: () -> Float, opacity: Float, modifier: Modifier = Modifier) {
     val ember = if (isDark) AuroraColors.emberDark else AuroraColors.ember
     val amber = if (isDark) AuroraColors.amberDark else AuroraColors.amber
     val mercury = if (isDark) AuroraColors.hermesMercuryDark else AuroraColors.hermesMercury
 
     Canvas(modifier = modifier) {
+        // Snapshot-read here so the 12s drift invalidates draw only, never composition.
+        val phase = ribbonPhase()
         val amplitude = 24f
         val frequency = 2 * Math.PI.toFloat()
         val segments = 36
@@ -313,7 +337,7 @@ internal fun RibbonLayer(isDark: Boolean, ribbonPhase: Float, opacity: Float, mo
             val progress = i.toFloat() / segments
             val y =
                 size.height * 0.35f + kotlin.math.sin(
-                    progress * frequency + ribbonPhase,
+                    progress * frequency + phase,
                 ) * amplitude
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
@@ -322,7 +346,7 @@ internal fun RibbonLayer(isDark: Boolean, ribbonPhase: Float, opacity: Float, mo
             val progress = i.toFloat() / segments
             val y =
                 size.height * 0.35f + kotlin.math.sin(
-                    progress * frequency + ribbonPhase,
+                    progress * frequency + phase,
                 ) * amplitude + 38f
             path.lineTo(x, y)
         }
@@ -357,7 +381,7 @@ internal fun ParticleLayer(modifier: Modifier = Modifier) {
 @Composable
 private fun AuroraParticle(index: Int) {
     val infiniteTransition = rememberInfiniteTransition(label = "particle-$index")
-    val rise by infiniteTransition.animateFloat(
+    val rise = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 28f + index * 6f,
         animationSpec =
@@ -383,7 +407,14 @@ private fun AuroraParticle(index: Int) {
         modifier =
         Modifier
             .size(size)
-            .offset(x = startX, y = startY - rise.dp)
+            .offset {
+                // Lambda overload: `rise` is snapshot-read at placement so the bob
+                // never recomposes the particle. roundToPx matches the Dp overload.
+                androidx.compose.ui.unit.IntOffset(
+                    startX.roundToPx(),
+                    (startY - rise.value.dp).roundToPx(),
+                )
+            }
             .background(
                 particleColor.copy(alpha = alpha * (0.4f + index % 3 * 0.18f)),
                 shape = CircleShape,

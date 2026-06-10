@@ -166,6 +166,14 @@ internal fun rememberWallpaperGeneratorState(): WallpaperGeneratorState {
             )
         }
 
+    // Pre-warm every shape's point table OFF the main thread so the preview's
+    // first provider-logo reconvergence (and tap-to-cycle) never decodes the
+    // logo bitmaps synchronously on the UI thread; the SYNCHRONIZED lazies
+    // stay the cache-miss path, so a race just blocks as it did before.
+    LaunchedEffect(simulation) {
+        withContext(Dispatchers.Default) { simulation.prewarmShapePointTables() }
+    }
+
     LaunchedEffect(selectedStyle) {
         simulation.paletteName = selectedStyle.paletteName
     }

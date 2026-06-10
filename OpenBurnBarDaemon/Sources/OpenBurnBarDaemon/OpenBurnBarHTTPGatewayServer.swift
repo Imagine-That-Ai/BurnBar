@@ -307,7 +307,8 @@ public actor BurnBarHTTPGatewayServer {
         }
 
         if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
-            guard clientAuthToken(from: request) == requiredToken else {
+            let presented = clientAuthToken(from: request)
+            guard let presented, constantTimeTokensEqual(presented, requiredToken) else {
                 await writeResponse(on: connection, status: 401, headers: ["Content-Type": "application/json"], body: errorBody("unauthorized"))
                 connection.cancel()
                 return

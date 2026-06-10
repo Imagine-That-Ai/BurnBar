@@ -74,7 +74,9 @@ export const rebuildRollups = onSchedule(
           const rollups = needsFullRebuild
             ? await computeUserRollups(db, uid)
             : await computeUserRollupsFromCounters(db, uid);
-          await writeUserRollups(db, uid, rollups);
+          // `dirtiedAt` observed before compute: events that land mid-compute
+          // refresh it, which keeps the job dirty for the next pass.
+          await writeUserRollups(db, uid, rollups, job?.dirtiedAt);
         } catch (err) {
           logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
           const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);

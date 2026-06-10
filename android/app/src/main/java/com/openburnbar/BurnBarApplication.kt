@@ -43,6 +43,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.tasks.await
 
 internal object IrohPairingSelection {
+    /**
+     * Server-side window for the pairing listener query. 3 — not 1 — so the
+     * blank-connectionId / malformed-timestamp fallback in [newestCandidates]
+     * stays reachable: a corrupt newest record falls back to the next valid
+     * one instead of stopping the media coordinator.
+     */
+    const val QUERY_LIMIT = 3L
+
     data class Candidate(
         val connectionId: String,
         val publishedAtMillis: Long,
@@ -76,6 +84,15 @@ class BurnBarApplication : Application() {
     companion object {
         lateinit var appContext: Context
             private set
+
+        /**
+         * Whether [onCreate] has installed [appContext] yet. `lateinit`'s
+         * `::isInitialized` is only visible inside the declaring class, so
+         * early-running singletons (e.g. the global visual settings store)
+         * check this before touching context-backed prefs.
+         */
+        val isAppContextInitialized: Boolean
+            get() = ::appContext.isInitialized
 
         /** App-process scope used for FCM token persistence and pairing listener bookkeeping. */
         internal val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -202,6 +219,7 @@ class BurnBarApplication : Application() {
             .collection("users").document(uid)
             .collection(IROH_PAIRING_COLLECTION)
             .orderBy("publishedAtMillis", Query.Direction.DESCENDING)
+            .limit(IrohPairingSelection.QUERY_LIMIT)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.w("BurnBar", "Iroh pairing listener error: ${error.message}")

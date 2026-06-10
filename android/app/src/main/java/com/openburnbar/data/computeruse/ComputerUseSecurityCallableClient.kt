@@ -90,19 +90,23 @@ class ComputerUseSecurityCallableClient(
         requireAuthenticatedUser()
         bindAppCheckAttestation()
         val nonce = issueHighRiskActionNonce()
+        // F2: legacy publishes stay byte-identical (no keyKind field); an
+        // SE-P256 identity sends the discriminator the server persists as
+        // `signingKeyKind` (schemaVersion 3).
+        val payload =
+            buildMap<String, Any> {
+                put("deviceId", authority.deviceId)
+                put("connectionId", authority.connectionId)
+                put("peerNodeId", authority.peerNodeId)
+                put("publicKeyBase64", authority.publicKeyBase64)
+                put("publishedAtMillis", authority.publishedAtMillis)
+                put("protocolVersion", authority.protocolVersion)
+                put("nonce", nonce)
+                authority.keyKind?.let { put("keyKind", it) }
+            }
         val result =
             functions.getHttpsCallable("publishPhoneControlAuthority")
-                .call(
-                    mapOf(
-                        "deviceId" to authority.deviceId,
-                        "connectionId" to authority.connectionId,
-                        "peerNodeId" to authority.peerNodeId,
-                        "publicKeyBase64" to authority.publicKeyBase64,
-                        "publishedAtMillis" to authority.publishedAtMillis,
-                        "protocolVersion" to authority.protocolVersion,
-                        "nonce" to nonce,
-                    ),
-                )
+                .call(payload)
                 .await()
         requireOk(result.getData(), "Phone-control authority publication failed.")
     }
@@ -145,20 +149,24 @@ class ComputerUseSecurityCallableClient(
         deviceId: String,
         peerNodeId: String,
         publicKeyBase64: String,
+        keyKind: String? = null,
     ) {
         requireAuthenticatedUser()
         bindAppCheckAttestation()
         val nonce = issueHighRiskActionNonce()
+        // F2: omit keyKind entirely for legacy Ed25519 — the server treats
+        // absence as `ed25519`, keeping pre-F2 publishes byte-identical.
+        val payload =
+            buildMap<String, Any> {
+                put("deviceId", deviceId)
+                put("peerNodeId", peerNodeId)
+                put("publicKeyBase64", publicKeyBase64)
+                put("nonce", nonce)
+                keyKind?.let { put("keyKind", it) }
+            }
         val result =
             functions.getHttpsCallable("publishAgentGrantAuthority")
-                .call(
-                    mapOf(
-                        "deviceId" to deviceId,
-                        "peerNodeId" to peerNodeId,
-                        "publicKeyBase64" to publicKeyBase64,
-                        "nonce" to nonce,
-                    ),
-                )
+                .call(payload)
                 .await()
         requireOk(result.getData(), "Agent grant authority publication failed.")
     }

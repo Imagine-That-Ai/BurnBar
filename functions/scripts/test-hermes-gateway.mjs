@@ -44,7 +44,9 @@ import {
   sanitizeHermesGatewayScopes,
   sanitizedAttachmentIds,
   serializeHermesGatewayEvent,
+  shouldCoalesceHermesGatewayLastSeen,
   tokenPreview,
+  HERMES_GATEWAY_LAST_SEEN_COALESCE_MS,
 } from "../lib/hermesGateway.js";
 
 function assertCallable(source, exportName) {
@@ -253,6 +255,15 @@ assert.equal(isHermesGatewayClientOnline(undefined, presenceNow), false);
 assert.equal(isHermesGatewayClientOnline("", presenceNow), false);
 assert.equal(isHermesGatewayClientOnline("not-a-date", presenceNow), false);
 assert.equal(isHermesGatewayClientOnline(123, presenceNow), false);
+// Write coalescing: the per-request lastSeenAt bump is skipped while the stored
+// value is fresher than a third of the presence window (2x margin before offline)
+// and fails open to WRITING on missing/garbage/future values so presence self-repairs.
+assert.ok(HERMES_GATEWAY_LAST_SEEN_COALESCE_MS * 3 <= HERMES_GATEWAY_PRESENCE_WINDOW_MS);
+assert.equal(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:01:29.000Z", presenceNow), true); // 1s ago -> skip write
+assert.equal(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:01:00.000Z", presenceNow), false); // exactly the coalesce boundary -> write
+assert.equal(shouldCoalesceHermesGatewayLastSeen(undefined, presenceNow), false);
+assert.equal(shouldCoalesceHermesGatewayLastSeen("not-a-date", presenceNow), false);
+assert.equal(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:01:31.000Z", presenceNow), false); // future -> write repairs
 
 // ── Feature 2: model switching — catalog membership + pending-switch settling.
 const catalogClient = {
@@ -366,6 +377,16 @@ for (const name of [
 // resolveGatewayGrant must reject expired tokens fail-closed.
 assert.match(source, /expired_bearer_token/);
 assert.match(source, /isHermesGatewayTokenExpired\(client\.expiresAt\)/);
+// resolveGatewayGrant hot path: the presence bump is coalesced, and the entitlement
+// reads overlap PoP via allSettled with the PoP failure thrown FIRST so a
+// bearer-token holder without the PoP key sees 401 — never a 403 leaking
+// subscription state.
+assert.match(source, /shouldCoalesceHermesGatewayLastSeen\(client\.lastSeenAt\)/);
+assert.match(
+  source,
+  /popResult\.status === "rejected"\) throw popResult\.reason;[\s\S]*?missing_scope[\s\S]*?entitlementResult\.status === "rejected"\) throw entitlementResult\.reason;/,
+  "PoP failure must outrank scope and entitlement failures in resolveGatewayGrant",
+);
 assert.match(source, /export const burnBarHermesGateway = onRequest/);
 assert.match(source, /\/device\/start/);
 assert.match(source, /\/device\/poll/);
@@ -432,7 +453,7 @@ assert.match(source, /assertActiveHermesGatewayEntitlement/);
 assert.match(source, /assertActiveHermesGatewayClient/);
 assert.match(source, /targetClientId/);
 assert.match(source, /event\.targetClientId === grant\.client\.id/);
-assert.match(source, /await assertActiveHermesGatewayEntitlement\(index\.uid\);/);
+assert.match(source, /const entitlementCheck = assertActiveHermesGatewayEntitlement\(index\.uid\);/);
 assert.match(source, /getSignedUrl\(\{/);
 assert.match(source, /attachment_size_mismatch/);
 assert.match(source, /sha256ForStorageFile/);

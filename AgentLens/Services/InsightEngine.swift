@@ -95,30 +95,70 @@ private struct RollupContext {
 
 @MainActor
 final class WorkflowInsightRollupService {
-    private let dataStore: DataStore
-    private let nowProvider: () -> Date
+    // `nonisolated` so the snapshot pipeline can run off the main actor:
+    // `DataStore` is a `@MainActor` class (hence Sendable) and every store
+    // accessor the pipeline touches is itself `nonisolated`.
+    private nonisolated let dataStore: DataStore
+    private nonisolated let nowProvider: @Sendable () -> Date
 
-    init(dataStore: DataStore, nowProvider: @escaping () -> Date = Date.init) {
+    init(dataStore: DataStore, nowProvider: @escaping @Sendable () -> Date = Date.init) {
         self.dataStore = dataStore
         self.nowProvider = nowProvider
     }
 
+    /// Value snapshot of the main-actor state the pipeline needs, captured
+    /// once so the GRDB I/O and any stale-path recompute can leave the
+    /// main actor.
+    private struct MainActorInputs: Sendable {
+        let usages: [TokenUsage]
+        let latestUsageAt: Date?
+        let totalUsageSessionCount: Int
+    }
+
+    private func captureInputs() -> MainActorInputs {
+        let usages = dataStore.usages
+        return MainActorInputs(
+            usages: usages,
+            latestUsageAt: usages.map(\.endTime).max(),
+            totalUsageSessionCount: dataStore.totalUsageSessionCount
+        )
+    }
+
     func snapshot(refreshIfStale: Bool = true) -> WorkflowInsightRollupSnapshot {
+        buildSnapshot(inputs: captureInputs(), refreshIfStale: refreshIfStale)
+    }
+
+    /// Off-main variant for hot UI paths (popover open, `usagesVersion`
+    /// ticks, chat brief refresh): captures the main-actor inputs once,
+    /// then runs every GRDB read/write — and the stale-path recompute —
+    /// on a background task so the main thread never blocks on SQLite.
+    func snapshotAsync(refreshIfStale: Bool = true) async -> WorkflowInsightRollupSnapshot {
+        let inputs = captureInputs()
+        return await Task.detached { [self] in
+            buildSnapshot(inputs: inputs, refreshIfStale: refreshIfStale)
+        }.value
+    }
+
+    private nonisolated func buildSnapshot(
+        inputs: MainActorInputs,
+        refreshIfStale: Bool
+    ) -> WorkflowInsightRollupSnapshot {
+        // Single health-row read feeds both the materialized payload and
+        // the write-skip comparison in `upsertHealthIfChanged`.
+        let existingHealth = loadHealthRecord()
+
         let context: RollupContext
         do {
-            context = try buildContext()
+            context = try buildContext(inputs: inputs)
         } catch {
             let message = "Workflow insights are unavailable: \(error.localizedDescription)"
-            do {
-                try upsertHealth(
-                    payload: nil,
-                    status: .failed,
-                    errorCode: "INSIGHT_ROLLUP_CONTEXT_FAILED",
-                    errorMessage: message
-                )
-            } catch {
-                AppLogger.dataStore.silentFailure("upsertHealth", error: error)
-            }
+            upsertHealthIfChanged(
+                existing: existingHealth,
+                payloadJSON: nil,
+                status: .failed,
+                errorCode: "INSIGHT_ROLLUP_CONTEXT_FAILED",
+                errorMessage: message
+            )
             return WorkflowInsightRollupSnapshot(
                 insights: [],
                 freshness: .unavailable,
@@ -127,7 +167,10 @@ final class WorkflowInsightRollupService {
             )
         }
 
-        var payload = loadMaterializedPayload()
+        var payload = decodePayload(from: existingHealth)
+        // Carry the stored JSON verbatim while the payload is unchanged so
+        // the write-skip comparison never trips on encoder nondeterminism.
+        var payloadJSON = payload != nil ? existingHealth?.detailsJSON : nil
         var freshness = freshness(for: payload, context: context)
 
         let canRefreshSynchronously = context.hasInputs
@@ -137,21 +180,19 @@ final class WorkflowInsightRollupService {
 
         if refreshIfStale, freshness == .stale, canRefreshSynchronously {
             do {
-                let refreshed = try materialize(context: context)
-                payload = refreshed
+                let refreshed = try materialize(context: context, usages: inputs.usages)
+                payload = refreshed.payload
+                payloadJSON = refreshed.json
                 freshness = .fresh
             } catch {
                 let message = "Workflow insights could not refresh: \(error.localizedDescription)"
-                do {
-                    try upsertHealth(
-                        payload: payload,
-                        status: .failed,
-                        errorCode: "INSIGHT_ROLLUP_MATERIALIZE_FAILED",
-                        errorMessage: message
-                    )
-                } catch {
-                    AppLogger.dataStore.silentFailure("upsertHealth", error: error)
-                }
+                upsertHealthIfChanged(
+                    existing: existingHealth,
+                    payloadJSON: payloadJSON,
+                    status: .failed,
+                    errorCode: "INSIGHT_ROLLUP_MATERIALIZE_FAILED",
+                    errorMessage: message
+                )
                 return WorkflowInsightRollupSnapshot(
                     insights: payload?.insights ?? [],
                     freshness: payload == nil ? .unavailable : .stale,
@@ -161,17 +202,13 @@ final class WorkflowInsightRollupService {
             }
         }
 
-        let status = healthStatus(for: freshness)
-        do {
-            try upsertHealth(
-                payload: payload,
-                status: status,
-                errorCode: nil,
-                errorMessage: nil
-            )
-        } catch {
-            AppLogger.dataStore.silentFailure("upsertHealth", error: error)
-        }
+        upsertHealthIfChanged(
+            existing: existingHealth,
+            payloadJSON: payloadJSON,
+            status: healthStatus(for: freshness),
+            errorCode: nil,
+            errorMessage: nil
+        )
 
         return WorkflowInsightRollupSnapshot(
             insights: payload?.insights ?? [],
@@ -181,7 +218,7 @@ final class WorkflowInsightRollupService {
         )
     }
 
-    private func buildContext() throws -> RollupContext {
+    private nonisolated func buildContext(inputs: MainActorInputs) throws -> RollupContext {
         let pendingCount = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
         let failedCount = try dataStore.countProjectionJobs(statuses: [.failed, .canceled])
         let rebuildInProgress = try dataStore.hasProjectionJobs(
@@ -189,10 +226,9 @@ final class WorkflowInsightRollupService {
             jobTypes: [.rebuild, .reembed]
         )
         let latestIndexedAt = try dataStore.fetchSearchDocuments(limit: 1).first?.indexedAt
-        let latestUsageAt = dataStore.usages.map(\.endTime).max()
-        let hasInputs = dataStore.totalUsageSessionCount > 0 || latestIndexedAt != nil
+        let hasInputs = inputs.totalUsageSessionCount > 0 || latestIndexedAt != nil
         return RollupContext(
-            latestUsageAt: latestUsageAt,
+            latestUsageAt: inputs.latestUsageAt,
             latestIndexedAt: latestIndexedAt,
             pendingJobCount: pendingCount,
             failedJobCount: failedCount,
@@ -201,7 +237,7 @@ final class WorkflowInsightRollupService {
         )
     }
 
-    private func freshness(
+    private nonisolated func freshness(
         for payload: MaterializedInsightRollupPayload?,
         context: RollupContext
     ) -> InsightRollupFreshness {
@@ -225,57 +261,74 @@ final class WorkflowInsightRollupService {
         return .fresh
     }
 
-    private func materialize(context: RollupContext) throws -> MaterializedInsightRollupPayload {
+    /// Builds a fresh payload without persisting it — the single gated
+    /// health write in `buildSnapshot` persists the result, so the stale
+    /// path no longer writes the health row twice per refresh.
+    private nonisolated func materialize(
+        context: RollupContext,
+        usages: [TokenUsage]
+    ) throws -> (payload: MaterializedInsightRollupPayload, json: String?) {
         let computedAt = nowProvider()
         let payload = MaterializedInsightRollupPayload(
             schemaVersion: 1,
-            insights: InsightEngine.generate(from: dataStore),
+            insights: InsightEngine.generate(usages: usages),
             computedAt: computedAt,
             latestUsageAt: context.latestUsageAt,
             latestIndexedAt: context.latestIndexedAt
         )
-        try upsertHealth(payload: payload, status: .healthy, errorCode: nil, errorMessage: nil)
-        return payload
+        let json = String(data: try JSONEncoder().encode(payload), encoding: .utf8)
+        return (payload, json)
     }
 
-    private func loadMaterializedPayload() -> MaterializedInsightRollupPayload? {
-        guard
-            let row = try? dataStore.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups }),
-            let json = row.detailsJSON?.data(using: .utf8)
-        else {
-            return nil
-        }
+    private nonisolated func loadHealthRecord() -> RetrievalHealthRecord? {
+        guard let rows = try? dataStore.fetchRetrievalHealth() else { return nil }
+        return rows.first(where: { $0.subsystem == .insightRollups })
+    }
+
+    private nonisolated func decodePayload(
+        from record: RetrievalHealthRecord?
+    ) -> MaterializedInsightRollupPayload? {
+        guard let json = record?.detailsJSON?.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(MaterializedInsightRollupPayload.self, from: json)
     }
 
-    private func upsertHealth(
-        payload: MaterializedInsightRollupPayload?,
+    /// Persists the insight-rollup health row only when its semantic content
+    /// (status, payload JSON, error fields) actually changed. The fresh path
+    /// used to rewrite an identical row on every popover open, taking the
+    /// DatabasePool single-writer queue for nothing.
+    private nonisolated func upsertHealthIfChanged(
+        existing: RetrievalHealthRecord?,
+        payloadJSON: String?,
         status: RetrievalHealthStatus,
         errorCode: String?,
         errorMessage: String?
-    ) throws {
-        let detailsJSON: String?
-        if let payload {
-            let data = try JSONEncoder().encode(payload)
-            detailsJSON = String(data: data, encoding: .utf8)
-        } else {
-            detailsJSON = nil
+    ) {
+        if let existing,
+           existing.status == status,
+           existing.detailsJSON == payloadJSON,
+           existing.errorCode == errorCode,
+           existing.errorMessage == errorMessage {
+            return
         }
         let now = nowProvider()
-        try dataStore.upsertRetrievalHealth(
-            RetrievalHealthRecord(
-                subsystem: .insightRollups,
-                status: status,
-                errorCode: errorCode,
-                errorMessage: errorMessage,
-                detailsJSON: detailsJSON,
-                observedAt: now,
-                updatedAt: now
+        do {
+            try dataStore.upsertRetrievalHealth(
+                RetrievalHealthRecord(
+                    subsystem: .insightRollups,
+                    status: status,
+                    errorCode: errorCode,
+                    errorMessage: errorMessage,
+                    detailsJSON: payloadJSON,
+                    observedAt: now,
+                    updatedAt: now
+                )
             )
-        )
+        } catch {
+            AppLogger.dataStore.silentFailure("upsertHealth", error: error)
+        }
     }
 
-    private func healthStatus(for freshness: InsightRollupFreshness) -> RetrievalHealthStatus {
+    private nonisolated func healthStatus(for freshness: InsightRollupFreshness) -> RetrievalHealthStatus {
         switch freshness {
         case .fresh:
             return .healthy
@@ -286,7 +339,7 @@ final class WorkflowInsightRollupService {
         }
     }
 
-    private func statusMessage(for freshness: InsightRollupFreshness, context: RollupContext) -> String? {
+    private nonisolated func statusMessage(for freshness: InsightRollupFreshness, context: RollupContext) -> String? {
         switch freshness {
         case .fresh:
             return nil
@@ -312,9 +365,14 @@ final class WorkflowInsightRollupService {
 enum InsightEngine {
 
     static func generate(from dataStore: DataStore) -> [Insight] {
+        generate(usages: dataStore.usages)
+    }
+
+    /// Value-snapshot variant so the rollup pipeline can run the O(N)
+    /// passes over the usage array off the main actor.
+    nonisolated static func generate(usages: [TokenUsage]) -> [Insight] {
         let calendar = Calendar.current
         let now = Date()
-        let usages = dataStore.usages
 
         guard !usages.isEmpty else { return [] }
 
@@ -502,13 +560,13 @@ enum InsightEngine {
         )
     }
 
-    private static func distinctSessionCount(in usages: [TokenUsage]) -> Int {
+    private nonisolated static func distinctSessionCount(in usages: [TokenUsage]) -> Int {
         Set(usages.map { usage in
             "\(usage.provider.rawValue)|\(canonicalSessionID(for: usage))"
         }).count
     }
 
-    private static func canonicalSessionID(for usage: TokenUsage) -> String {
+    private nonisolated static func canonicalSessionID(for usage: TokenUsage) -> String {
         if usage.provider == .claudeCode {
             return usage.sessionId.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
                 .first
@@ -517,7 +575,7 @@ enum InsightEngine {
         return usage.sessionId
     }
 
-    private static func topProvider(in usages: [TokenUsage]) -> AgentProvider? {
+    private nonisolated static func topProvider(in usages: [TokenUsage]) -> AgentProvider? {
         var costs: [AgentProvider: Double] = [:]
         for usage in usages {
             costs[usage.provider, default: 0] += usage.cost

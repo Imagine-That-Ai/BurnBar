@@ -10,7 +10,7 @@ import OpenBurnBarCore
 //   1. Base gradient (mode-aware)
 //   2. iOS 26 MeshGradient (12 anchor points, ember/amber/blaze/whimsy)
 //      → fallback to radial orbs on iOS 17/18
-//   3. Slow-drifting "aurora ribbon" along the top edge
+//   3. Static "aurora ribbon" along the top edge
 //   4. Subtle ember particles (drift only when motion allowed)
 //   5. Optional vignette
 //
@@ -30,8 +30,10 @@ struct AuroraBackdrop: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.uiMode) private var uiMode
 
-    @State private var phase: CGFloat = 0
-    @State private var ribbonPhase: CGFloat = 0
+    /// Wall-clock anchor for the mesh drift. Reset whenever the animation
+    /// (re)starts so the drift always begins from its resting phase, matching
+    /// the retired `withAnimation` driver.
+    @State private var driftStart = Date()
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
@@ -171,17 +173,35 @@ struct AuroraBackdrop: View {
 
     // MARK: - Mesh Layer (iOS 18+) / Orb Fallback
 
-    @ViewBuilder
+    /// Drives the drift at a capped 24Hz instead of letting `withAnimation`
+    /// interpolate the mesh at native refresh (up to 120Hz): every phase
+    /// change re-renders the full-screen `MeshGradient` + 36pt blur, and the
+    /// drift moves sub-pixel per frame, so the extra frames were pure GPU cost.
     private var meshLayer: some View {
+        TimelineView(.animation(
+            minimumInterval: AuroraDesign.Motion.auroraDriftFrameInterval,
+            paused: !shouldAnimate
+        )) { context in
+            // Zero the phase while paused — `paused:` alone freezes the last value.
+            meshContent(
+                phase: shouldAnimate
+                    ? Self.driftPhase(elapsed: context.date.timeIntervalSince(driftStart))
+                    : 0
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func meshContent(phase: CGFloat) -> some View {
         if #available(iOS 18.0, *) {
             AuroraMeshGradient(
-                phase: shouldAnimate ? phase : 0,
+                phase: phase,
                 tilt: shouldAnimate ? motion.tilt : .zero,
                 colorScheme: colorScheme
             )
             .opacity(layerOpacity)
         } else {
-            AuroraOrbFallback(phase: shouldAnimate ? phase : 0, colorScheme: colorScheme)
+            AuroraOrbFallback(phase: phase, colorScheme: colorScheme)
                 .opacity(layerOpacity)
         }
     }
@@ -189,7 +209,11 @@ struct AuroraBackdrop: View {
     // MARK: - Aurora Ribbon
 
     private var ribbonLayer: some View {
-        AuroraRibbon(phase: shouldAnimate ? ribbonPhase : 0, colorScheme: colorScheme)
+        // Intentionally static: `Canvas` closures are not animatable, and the
+        // old `withAnimation` ribbon drive shifted the sine term by a full 2π —
+        // phase 0 and phase 1 render identical pixels — so the ribbon has
+        // always been static. Animating it for real would be a visible change.
+        AuroraRibbon(phase: 0, colorScheme: colorScheme)
             .opacity(density == .full ? 0.55 : 0.35)
     }
 
@@ -222,13 +246,21 @@ struct AuroraBackdrop: View {
     // MARK: - Animation Driver
 
     private func startAnimating() {
-        guard shouldAnimate else {
-            phase = 0
-            ribbonPhase = 0
-            return
-        }
-        withAnimation(AuroraDesign.Motion.auroraDrift) { phase = 1 }
-        withAnimation(AuroraDesign.Motion.auroraRibbon) { ribbonPhase = 1 }
+        // While idle the timeline is paused and `meshLayer` pins the phase to 0,
+        // mirroring the old `phase = 0` reset.
+        guard shouldAnimate else { return }
+        driftStart = Date()
+    }
+
+    /// Triangle wave reproducing the retired
+    /// `Animation.linear(duration: 18).repeatForever(autoreverses: true)` drive:
+    /// 0 → 1 over the first leg, back to 0 over the next, forever.
+    /// `nonisolated` + internal so tests can pin the parity curve.
+    nonisolated static func driftPhase(elapsed: TimeInterval) -> CGFloat {
+        guard elapsed > 0 else { return 0 }
+        let leg = AuroraDesign.Motion.auroraDriftDuration
+        let cycle = elapsed.truncatingRemainder(dividingBy: leg * 2) / leg
+        return CGFloat(cycle <= 1 ? cycle : 2 - cycle)
     }
 }
 

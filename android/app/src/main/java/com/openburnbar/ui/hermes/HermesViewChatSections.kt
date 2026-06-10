@@ -12,12 +12,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.openburnbar.data.hermes.HermesMessage
 import com.openburnbar.ui.theme.AuroraSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,6 +111,14 @@ private fun ColumnScope.HermesChatMessagePane(
                 .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp)
         )
     } else {
+        // Collected once for the whole transcript (not per bubble) so an inbox change only
+        // recomposes bubbles whose matched item actually changed.
+        val permissionItems by com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder.store.items
+            .collectAsState()
+        val inboxByToolCallId =
+            remember(permissionItems, content.threadId) {
+                systemPermissionItemsByToolCallId(permissionItems, content.threadId)
+            }
         LazyColumn(
             modifier = Modifier.weight(1f),
             state = local.listState,
@@ -129,9 +141,19 @@ private fun ColumnScope.HermesChatMessagePane(
                     onTriggerPrompt = { prompt -> actions.onSend(prompt, local.selectedModel) },
                 )
             }
-            items(content.messages) { message ->
-                ChatBubble(message = message, threadId = content.threadId, viewMode = local.chatViewMode)
+            itemsIndexed(content.messages, key = { index, message -> hermesChatMessageKey(index, message) }) { _, message ->
+                ChatBubble(
+                    message = message,
+                    viewMode = local.chatViewMode,
+                    permissionItem = matchingSystemPermissionItem(inboxByToolCallId, message),
+                )
             }
         }
     }
 }
+
+// LazyColumn keys must be unique and stable across list mutations (retry truncates and
+// re-appends; stale streaming rows are dropped mid-list). Legacy messages may carry an
+// empty id, so fall back to positional identity for those instead of crashing on
+// duplicate keys.
+internal fun hermesChatMessageKey(index: Int, message: HermesMessage): Any = message.id.ifEmpty { "hermes-msg-$index" }

@@ -23,6 +23,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -42,13 +44,14 @@ import com.openburnbar.ui.components.ShimmerCard
 import com.openburnbar.ui.components.StaggeredEntrance
 import com.openburnbar.ui.pulse.atlas.TrendAtlasCard
 import com.openburnbar.ui.theme.AuroraSpacing
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 internal data class PulseContentModel(
     val rollups: UsageRollups,
     val displayMode: UsageDisplayMode,
     val timelineScope: PulseTimelineScope,
-    val nowMillis: Long,
+    val liveMetricsStore: PulseLiveMetricsStore,
     val quotaStore: QuotaStore,
     val activityStore: ActivityStore,
     val demoIsSeeding: Boolean,
@@ -67,24 +70,12 @@ internal data class PulseContentNavigation(
 )
 
 @Composable
-internal fun PulseViewLiveClock(onTick: (Long, Long) -> Unit) {
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1_000L)
-            val now = System.currentTimeMillis()
-            val queryStart = livePulseUsageQueryStartMillis(now)
-            onTick(now, queryStart)
-        }
-    }
-}
-
-@Composable
 internal fun PulseViewDataEffects(
     isSignedIn: Boolean,
     dashboardStore: DashboardStore,
     quotaStore: QuotaStore,
     activityStore: ActivityStore,
-    liveUsageStartMillis: Long,
+    liveMetricsStore: PulseLiveMetricsStore,
 ) {
     LaunchedEffect(isSignedIn) {
         if (isSignedIn) {
@@ -96,10 +87,14 @@ internal fun PulseViewDataEffects(
         }
     }
 
-    LaunchedEffect(isSignedIn, liveUsageStartMillis) {
-        if (isSignedIn) {
-            activityStore.startLiveUsageListening(liveUsageStartMillis)
-        }
+    LaunchedEffect(isSignedIn) {
+        if (!isSignedIn) return@LaunchedEffect
+        // The 1Hz clock lives in PulseLiveMetricsStore; the Firestore live
+        // listener only restarts when the hour-quantized window start moves.
+        liveMetricsStore.tick
+            .map { it.liveUsageQueryStartMillis }
+            .distinctUntilChanged()
+            .collect { activityStore.startLiveUsageListening(it) }
     }
 }
 
@@ -199,53 +194,49 @@ private fun rememberPulseViewContentDerived(model: PulseContentModel): PulseView
     val snapshots by model.quotaStore.snapshots.collectAsState()
     val recentUsages by model.activityStore.usages.collectAsState()
     val liveUsages by model.activityStore.liveUsages.collectAsState()
-    val pulseUsages = liveUsages.ifEmpty { recentUsages }
-    val windowMetrics =
-        pulseWindowMetrics(
-            scope = model.timelineScope,
-            rollups = model.rollups,
-            recentUsages = pulseUsages,
-            nowMillis = model.nowMillis,
-        )
+    val pulseUsages = pulseUsagesForDisplay(liveUsages = liveUsages, recentUsages = recentUsages)
     val context = LocalContext.current
-    val hermesService = androidx.compose.runtime.remember(context) {
+    val hermesService = remember(context) {
         HermesService(appContext = context.applicationContext)
     }
     return PulseViewContentDerived(
         snapshots = snapshots,
         recentUsages = recentUsages,
         pulseUsages = pulseUsages,
-        shouldOfferDemoData = model.rollups.isEmpty() && snapshots.isEmpty() && pulseUsages.isEmpty(),
-        windowMetrics = windowMetrics,
+        shouldOfferDemoData = shouldOfferPulseDemoData(model.rollups, snapshots, pulseUsages),
         topProvider = model.rollups.topProviders.firstOrNull(),
         hermesService = hermesService,
-        heroMetrics =
-        PulseHeroCardMetrics(
-            displayMode = model.displayMode,
-            value = windowMetrics.value,
-            trailingValue = windowMetrics.trailingValue,
-            tokenValue = windowMetrics.tokenValue,
-            trailingTokenValue = windowMetrics.trailingTokenValue,
-            requestValue = windowMetrics.requestValue,
-            totals = model.rollups.totals,
-            timelineScope = model.timelineScope,
-            topProvider = model.rollups.topProviders.firstOrNull(),
-            liveUsages = pulseUsages,
-            dailyPoints = model.rollups.dailyPoints,
-            nowMillis = model.nowMillis,
-        ),
     )
 }
+
+/**
+ * The usage rows the Pulse hero/forecast aggregate over: the live listener
+ * window when it has data, otherwise the paged recents (cold start, listener
+ * still attaching). Extracted for unit tests.
+ */
+internal fun pulseUsagesForDisplay(
+    liveUsages: List<com.openburnbar.data.models.TokenUsage>,
+    recentUsages: List<com.openburnbar.data.models.TokenUsage>,
+): List<com.openburnbar.data.models.TokenUsage> = liveUsages.ifEmpty { recentUsages }
+
+/**
+ * The demo-data prompt shows only for a genuinely empty account: no rollups,
+ * no quota snapshots, and no usage rows on either feed. Extracted for unit
+ * tests.
+ */
+internal fun shouldOfferPulseDemoData(
+    rollups: com.openburnbar.data.models.UsageRollups,
+    snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>,
+    pulseUsages: List<com.openburnbar.data.models.TokenUsage>,
+): Boolean = rollups.isEmpty() && snapshots.isEmpty() && pulseUsages.isEmpty()
 
 private data class PulseViewContentDerived(
     val snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>,
     val recentUsages: List<com.openburnbar.data.models.TokenUsage>,
     val pulseUsages: List<com.openburnbar.data.models.TokenUsage>,
     val shouldOfferDemoData: Boolean,
-    val windowMetrics: PulseWindowMetrics,
     val topProvider: com.openburnbar.data.models.RollupSummary?,
     val hermesService: HermesService,
-    val heroMetrics: PulseHeroCardMetrics,
 )
 
 @Composable
@@ -279,7 +270,7 @@ private fun PulseViewContentColumn(
             onDisplayModeChange = navigation.onDisplayModeChange,
         )
 
-        PulseViewHeroSection(heroMetrics = derived.heroMetrics)
+        PulseViewHeroSection(model = model, derived = derived)
 
         PulseViewForecastSection(rollups = model.rollups, pulseUsages = derived.pulseUsages)
 
@@ -350,9 +341,50 @@ private fun PulseViewControlsSection(
 }
 
 @Composable
-private fun PulseViewHeroSection(heroMetrics: PulseHeroCardMetrics) {
+private fun PulseViewHeroSection(model: PulseContentModel, derived: PulseViewContentDerived) {
     StaggeredEntrance(delay = 25) {
-        PulseHeroBurnCard(metrics = heroMetrics)
+        // The 1Hz tick state is read only inside this leaf, so the live clock
+        // recomposes the hero card alone instead of restarting the whole
+        // Pulse tree (and the O(N) window aggregation runs in the store).
+        val tick = model.liveMetricsStore.collectLiveTick(
+            timelineScope = model.timelineScope,
+            rollups = model.rollups,
+            usages = derived.pulseUsages,
+        )
+        PulseHeroBurnCard(
+            metrics =
+            PulseHeroCardMetrics(
+                displayMode = model.displayMode,
+                value = tick.windowMetrics.value,
+                trailingValue = tick.windowMetrics.trailingValue,
+                tokenValue = tick.windowMetrics.tokenValue,
+                trailingTokenValue = tick.windowMetrics.trailingTokenValue,
+                requestValue = tick.windowMetrics.requestValue,
+                totals = model.rollups.totals,
+                timelineScope = model.timelineScope,
+                topProvider = derived.topProvider,
+                liveUsages = derived.pulseUsages,
+                dailyPoints = model.rollups.dailyPoints,
+                nowMillis = tick.nowMillis,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun PulseLiveMetricsStore.collectLiveTick(
+    timelineScope: PulseTimelineScope,
+    rollups: UsageRollups,
+    usages: List<com.openburnbar.data.models.TokenUsage>,
+): PulseLiveTick {
+    // The in-composition push plus `key` re-keying the collector keep input
+    // changes (scope taps, usage snapshots) skew-free within the same frame —
+    // matching the old synchronous in-composition aggregation — while the
+    // store's ticker owns the 1Hz updates between input changes.
+    return key(timelineScope, rollups, usages) {
+        remember { updateInputs(timelineScope = timelineScope, rollups = rollups, usages = usages) }
+        val current by tick.collectAsState()
+        current
     }
 }
 

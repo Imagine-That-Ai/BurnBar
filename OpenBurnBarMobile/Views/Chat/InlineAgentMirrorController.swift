@@ -3,6 +3,7 @@ import AVFoundation
 import Combine
 import FirebaseAuth
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarMedia
 import OSLog
@@ -212,8 +213,8 @@ final class InlineAgentMirrorController: ObservableObject {
     ) async {
         let requestID = UUID().uuidString
         let viewerID = UUID().uuidString
-        let signingKey = try? PhoneControlSigningKeyStore.shared.signingKey()
-        let controlAuthorityPeerNodeId = signingKey.map {
+        let signingIdentity = try? PhoneControlSigningKeyStore.shared.signingIdentity()
+        let controlAuthorityPeerNodeId = signingIdentity.map {
             PhoneControlSigningKeyStore.shared.peerNodeId(for: $0)
         }
 
@@ -223,6 +224,17 @@ final class InlineAgentMirrorController: ObservableObject {
         activeMirrorViewerId = viewerID
         phase = .askingMirror
 
+        // F7: wrap a per-mirror frame key when the flag is on and the Mac
+        // advertised media_frame_aead_v1 (the coordinator's read loop drops
+        // sealed frames that fail to open under it).
+        let mediaSealSession = await MediaSealSessionEstablisher.establishIfNegotiated(
+            uid: uid,
+            connectionID: connectionID,
+            viewerId: viewerID,
+            macCapabilities: coordinator.latestMacPresenceCapabilities,
+            macRelayPublicKeyBase64: hermesService?.selectedConnection.relayPublicKey
+        )
+        coordinator.mediaFrameSealKey = mediaSealSession?.key
         let request = HermesRealtimeRelayMirrorRequest(
             requestId: requestID,
             requestedAt: Date(),
@@ -238,7 +250,8 @@ final class InlineAgentMirrorController: ObservableObject {
             agentTerminal: HermesRealtimeRelayAgentTerminalRequest(
                 runtimeId: agentRuntimeID,
                 interactive: true
-            )
+            ),
+            mediaSealKey: mediaSealSession?.envelope
         )
 
         let frame = HermesRealtimeRelayFrame(
@@ -406,14 +419,25 @@ final class InlineAgentMirrorController: ObservableObject {
             do {
                 await LiveDeviceTrustGateway().registerSelfIfNeeded()
                 try await coordinator.ensureResponsive(uid: uid, connectionID: connectionID)
-                let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
-                let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+                let signingIdentity = try PhoneControlSigningKeyStore.shared.signingIdentity()
+                let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingIdentity)
                 try await PhoneControlAuthorityPublisher.shared.publish(
                     uid: uid,
                     connectionId: connectionID,
                     deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
                     peerNodeId: peerNodeId,
-                    publicKey: signingKey.privateKey.publicKey
+                    publicKeyRepresentation: signingIdentity.publicKeyRepresentation,
+                    keyKind: signingIdentity.kind
+                )
+                // F10: establish the control-frame seal when the flag is on
+                // and the Mac's heartbeat reply advertised control_seal_v1
+                // (ensureResponsive completed a heartbeat round trip above).
+                let sealSession = await ControlSealSessionEstablisher.establishIfNegotiated(
+                    uid: uid,
+                    connectionID: connectionID,
+                    controllerPeerNodeId: peerNodeId,
+                    macCapabilities: coordinator.latestMacPresenceCapabilities,
+                    macRelayPublicKeyBase64: self.hermesService?.selectedConnection.relayPublicKey
                 )
                 try await coordinator.send(frame: HermesRealtimeRelayFrame(
                     type: .controlClassify,
@@ -421,15 +445,17 @@ final class InlineAgentMirrorController: ObservableObject {
                     connectionId: connectionID,
                     control: HermesRealtimeRelayControlPayload(
                         streamClass: MediaStreamClass.controlInput.rawValue,
-                        authorityPeerNodeId: peerNodeId
+                        authorityPeerNodeId: peerNodeId,
+                        controlSealKey: sealSession?.envelope
                     )
                 ))
+                let baseSink: PhoneControlSender.FrameSink = { frame in try await coordinator.send(frame: frame) }
                 self.controlSender = PhoneControlSender(
                     peerNodeId: peerNodeId,
                     uid: uid,
                     connectionId: connectionID,
-                    signingKeyProvider: { signingKey },
-                    frameSink: { frame in try await coordinator.send(frame: frame) }
+                    signingIdentityProvider: { signingIdentity },
+                    frameSink: sealSession.map { ControlSealSessionEstablisher.sealingFrameSink(baseSink, session: $0) } ?? baseSink
                 )
                 self.controlInputReady = true
                 Self.log.info("inline_mirror_control_ready connectionID=\(connectionID, privacy: .public)")

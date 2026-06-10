@@ -181,6 +181,50 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(today.providerSummaries.map(\.provider), [.codex])
     }
 
+    func test_dashboardSnapshotQueryCount_isIndependentOfRowCount() throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        let now = Date()
+
+        func insertUsages(count: Int, idPrefix: String) throws {
+            for index in 0..<count {
+                let start = now.addingTimeInterval(Double(-index) * 3_600)
+                try usageStore.insert(ViewTestFixtures.makeUsage(
+                    provider: .codex,
+                    sessionId: "\(idPrefix)-\(index)",
+                    model: "gpt-5",
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    costUSD: 1,
+                    startTime: start,
+                    endTime: start.addingTimeInterval(60)
+                ))
+            }
+        }
+
+        try insertUsages(count: 6, idPrefix: "tracer-baseline")
+        // Warm-up absorbs GRDB's one-time schema introspection statements.
+        _ = try usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+
+        tracer.resetLog()
+        _ = try usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let baseline = tracer.queryCount
+        XCTAssertGreaterThan(baseline, 0, "Query tracer recorded nothing — tracing is not installed")
+
+        try insertUsages(count: 40, idPrefix: "tracer-scaled")
+        tracer.resetLog()
+        _ = try usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+
+        XCTAssertEqual(
+            tracer.queryCount,
+            baseline,
+            "Dashboard snapshot must run a constant number of queries — growth with row count is an N+1 regression"
+        )
+        tracer.assertMaxQueries(count: 64)
+    }
+
     func test_sqliteDateStringFormatsCanonicalUTCForDashboardWindows() {
         let utcMidnight = Date(timeIntervalSince1970: 1_779_580_800)
         let rendered = OpenBurnBarDatabase.sqliteDateString(utcMidnight)

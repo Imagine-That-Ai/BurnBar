@@ -68,7 +68,15 @@ echo "OK: vendored Hermes agent runtime corresponds to reviewed source"
 echo "  commit: $pinned_commit"
 echo "  source-tree sha256: $actual_hash"
 
-# 3) Advisory: warn while the C-4 hardening is not yet in the pinned commit.
+# 3) BLOCKING gate (F5): the on-host agent command-guard (C-4: secret-read/exfil
+#    gating, fail-closed tirith, smart-mode escalation) is the control that stops a
+#    prompt-injected agent from running destructive/exfil commands. While
+#    manifest.pendingHardening.blocking is true that guard is NOT in the pinned
+#    runtime, so we FAIL CLOSED rather than merely warn. This makes shipping the
+#    un-hardened agent impossible: to clear it, merge C-4 into the fork, re-vendor,
+#    update pinnedCommit + vendoredSourceTreeSha256, and set blocking=false.
+#    Set ALLOW_PENDING_AGENT_HARDENING=1 only for an explicit, time-boxed local
+#    override (never in the protected-branch CI gate).
 pending="$(python3 - "$manifest" <<'PY'
 import json, sys
 m = json.load(open(sys.argv[1]))
@@ -77,7 +85,13 @@ print("1" if p.get("blocking") else "0")
 PY
 )"
 if [[ "$pending" == "1" ]]; then
-  echo "WARNING: manifest.pendingHardening.blocking is true — the C-4 agent" >&2
-  echo "command-guard hardening is not yet in the pinned commit. Merge it and" >&2
-  echo "update the pin before beta." >&2
+  echo "ERROR: manifest.pendingHardening.blocking is true — the C-4 agent" >&2
+  echo "command-guard hardening is NOT in the pinned runtime. The shipped agent" >&2
+  echo "cannot be trusted to refuse destructive/exfil commands. Merge C-4 into the" >&2
+  echo "fork, re-vendor, and update the pin before this gate passes." >&2
+  if [[ "${ALLOW_PENDING_AGENT_HARDENING:-0}" == "1" ]]; then
+    echo "ALLOW_PENDING_AGENT_HARDENING=1 set — proceeding under explicit local override." >&2
+  else
+    exit 1
+  fi
 fi

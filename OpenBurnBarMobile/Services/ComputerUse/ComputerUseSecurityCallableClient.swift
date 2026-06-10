@@ -204,14 +204,15 @@ enum ComputerUseSecurityCallableClient {
         peerNodeId: String,
         publicKeyBase64: String,
         publishedAtMillis: Int64,
-        protocolVersion: Int
+        protocolVersion: Int,
+        keyKind: PhoneControlSigningKeyKind = .ed25519
     ) async throws {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
-        let result = try await functions.httpsCallable("publishPhoneControlAuthority").call([
+        var payload: [String: Any] = [
             "deviceId": deviceId,
             "connectionId": connectionId,
             "peerNodeId": peerNodeId,
@@ -219,7 +220,14 @@ enum ComputerUseSecurityCallableClient {
             "publishedAtMillis": publishedAtMillis,
             "protocolVersion": protocolVersion,
             "nonce": nonce,
-        ])
+        ]
+        // F2: legacy publishes stay byte-identical (no keyKind field); an
+        // SE-P256 identity sends the discriminator the server persists as
+        // `signingKeyKind` (schemaVersion 3).
+        if keyKind != .ed25519 {
+            payload["keyKind"] = keyKind.rawValue
+        }
+        let result = try await functions.httpsCallable("publishPhoneControlAuthority").call(payload)
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Phone-control authority publication failed.")
         }
@@ -261,19 +269,24 @@ enum ComputerUseSecurityCallableClient {
     static func publishAgentGrantAuthority(
         deviceId: String,
         peerNodeId: String,
-        publicKeyBase64: String
+        publicKeyBase64: String,
+        keyKind: PhoneControlSigningKeyKind = .ed25519
     ) async throws {
         guard Auth.auth().currentUser?.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
-        let result = try await functions.httpsCallable("publishAgentGrantAuthority").call([
+        var payload: [String: Any] = [
             "deviceId": deviceId,
             "peerNodeId": peerNodeId,
             "publicKeyBase64": publicKeyBase64,
             "nonce": nonce,
-        ])
+        ]
+        if keyKind != .ed25519 {
+            payload["keyKind"] = keyKind.rawValue
+        }
+        let result = try await functions.httpsCallable("publishAgentGrantAuthority").call(payload)
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Agent grant authority publication failed.")
         }

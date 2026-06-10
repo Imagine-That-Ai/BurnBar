@@ -97,8 +97,8 @@ struct ChatPanel: View {
         }
         .onChange(of: dataStore.usagesVersion) { _, _ in
             Task { @MainActor in
-                brief = controller.buildInsightBriefSnapshot(refreshRollups: false)
                 controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+                brief = await controller.buildInsightBriefSnapshotAsync(refreshRollups: false)
             }
         }
         .onChange(of: sharedFeaturesAvailable) { _, available in
