@@ -60,8 +60,8 @@ The `release.yml` workflow enforces **strict fail-hard signing**: it validates e
 *Evidence:*
 - `AgentLens/Services/Telemetry/OpenBurnBarTelemetryService.swift`
 
-### 7. Database Encryption Key Recovery with Integrity Checks
-`DatabaseEncryptionService` stores SQLCipher keys in the Keychain (`kSecAttrAccessibleAfterFirstUnlock`) and also writes a recovery file at `~/.encryption-key-recovery` with SHA-256 integrity validation and strict permissions (`0o600`). If Keychain access is lost, recovery is possible.
+### 7. Database Encryption Key (device-local, no plaintext recovery file)
+`DatabaseEncryptionService` stores the SQLCipher key in the Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. There is **no** automatic plaintext recovery file (the legacy `~/.encryption-key-recovery` path was removed). If the Keychain entry is lost the database is unrecoverable unless the user previously exported a passphrase-protected recovery bundle (`exportRecoveryBundle(password:)`, PBKDF2-HMAC-SHA256 100k iterations + AES-GCM). This trades automatic recoverability for confidentiality — a deliberate, stronger posture than the earlier recovery-file design described in prior drafts.
 
 *Evidence:*
 - `AgentLens/Services/DataStore/DatabaseEncryptionService.swift`

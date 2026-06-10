@@ -191,10 +191,12 @@ final class DashboardStore {
 
     func setDisplayMode(_ mode: UsageDisplayMode) {
         displayMode = mode
+        reapplyCachedRollups()
     }
 
     func setWindow(_ window: RollupWindowKey) {
         selectedWindow = window
+        reapplyCachedRollups()
     }
 
     func rollup(for window: RollupWindowKey) -> UsageRollupDoc? {
@@ -202,6 +204,21 @@ final class DashboardStore {
     }
 
     // MARK: - Private
+
+    /// Re-derives every published field — and the widget snapshot / Live
+    /// Activity side effects — for the current selection from the cached
+    /// rollup docs, with zero network. `rollupsByWindow` already holds every
+    /// window's doc and the snapshot listener keeps it fresh, so toggling
+    /// display mode or window never needs a refetch. An empty cache (failed
+    /// initial load) falls back to a full refresh so a toggle can still
+    /// recover the dashboard.
+    private func reapplyCachedRollups() {
+        guard !rollupsByWindow.isEmpty else {
+            Task { await refresh() }
+            return
+        }
+        applyRollups(Array(rollupsByWindow.values))
+    }
 
     private func applyRollups(_ rollups: [UsageRollupDoc], publishSideEffects: Bool = true) {
         let byKey = Dictionary(uniqueKeysWithValues: rollups.map { ($0.windowKey, $0) })

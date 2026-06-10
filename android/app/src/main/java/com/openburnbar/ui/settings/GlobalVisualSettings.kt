@@ -1,6 +1,6 @@
 package com.openburnbar.ui.settings
 
-import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -19,7 +19,7 @@ import com.openburnbar.ui.theme.UIMode
  * properties that trigger UI recomposition instantly when updated.
  */
 object GlobalVisualSettings {
-    private const val PREFS_NAME = "global_visual_settings"
+    private const val TAG = "BurnBarVisualSettings"
     private const val KEY_PREMIUM_SOTA_UX = "usePremiumSOTAUX"
     private const val KEY_WEBSITE_BACKGROUND = "useWebsiteBackground"
     private const val KEY_BACKGROUND_STYLE = "backgroundStyle"
@@ -27,11 +27,9 @@ object GlobalVisualSettings {
     private const val KEY_PROVIDER_GLYPHS = "providerGlyphs"
     private const val KEY_EXCLUDE_BRAND_SHAPES = "excludeBrandShapesFromSwarm"
 
+    @Volatile
     private var loaded = false
-
-    private val prefs by lazy {
-        BurnBarApplication.appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    }
+    private val loadLock = Any()
 
     // Underlying Compose mutable states to trigger reactive updates globally.
     private val _usePremiumSOTAUX = mutableStateOf(false)
@@ -45,9 +43,14 @@ object GlobalVisualSettings {
     private val _excludeBrandShapesFromSwarm = mutableStateOf(false)
 
     private fun ensureLoaded() {
-        if (!loaded) {
-            try {
-                // Safely load initial persisted values if appContext is ready.
+        if (loaded) return
+        synchronized(loadLock) {
+            if (loaded) return
+            // appContext is installed in Application.onCreate; until then keep
+            // the in-memory defaults and retry on the next access.
+            if (!GlobalVisualSettingsPersistence.isReady) return
+            runCatching {
+                val prefs = GlobalVisualSettingsPersistence.sharedPrefs()
                 _usePremiumSOTAUX.value = prefs.getBoolean(KEY_PREMIUM_SOTA_UX, false)
                 // Migrate the legacy boolean toggle into the richer style enum: an
                 // explicit style key wins, otherwise fall back to the old boolean.
@@ -68,10 +71,12 @@ object GlobalVisualSettings {
                 GlobalVisualSettingsAppearance.loadFromPrefs(prefs)
                 _providerGlyphs.value = decodeProviderGlyphs(prefs.getString(KEY_PROVIDER_GLYPHS, null))
                 GlobalVisualSettingsTabs.loadFromPrefs(prefs)
-                loaded = true
-            } catch (_: Throwable) {
-                // If lateinit appContext is not initialized yet, swallow and retry on next access
+            }.onFailure { error ->
+                // A real read failure (e.g. a wrong-typed pref): keep the defaults,
+                // log once, and stop re-reading the whole file on every getter.
+                Log.w(TAG, "Android visual settings load failed; keeping defaults error=${error.message}", error)
             }
+            loaded = true
         }
     }
 
@@ -123,20 +128,14 @@ object GlobalVisualSettings {
         ensureLoaded()
         val normalized = AgentProvider.swarmGlyphProviders.filter { value.contains(it) }.toSet()
         _providerGlyphs.value = normalized
-        try {
-            prefs.edit().putString(KEY_PROVIDER_GLYPHS, encodeProviderGlyphs(normalized)).apply()
-        } catch (_: Throwable) {
-        }
+        GlobalVisualSettingsPersistence.persistString(KEY_PROVIDER_GLYPHS, encodeProviderGlyphs(normalized))
     }
 
     /** Sets the Premium SOTA UX value and persists it. */
     fun setPremiumSOTAUX(value: Boolean) {
         ensureLoaded()
         _usePremiumSOTAUX.value = value
-        try {
-            prefs.edit().putBoolean(KEY_PREMIUM_SOTA_UX, value).apply()
-        } catch (_: Throwable) {
-        }
+        GlobalVisualSettingsPersistence.persistBoolean(KEY_PREMIUM_SOTA_UX, value)
     }
 
     /** Selects a background style and persists it (keeps the legacy flag in sync). */
@@ -144,13 +143,10 @@ object GlobalVisualSettings {
         ensureLoaded()
         _backgroundStyle.value = value
         _useWebsiteBackground.value = value.usesCustomBackdrop
-        try {
-            prefs.edit()
-                .putString(KEY_BACKGROUND_STYLE, value.key)
-                // Mirror into the legacy boolean so older reads/migrations stay coherent.
-                .putBoolean(KEY_WEBSITE_BACKGROUND, value.usesCustomBackdrop)
-                .apply()
-        } catch (_: Throwable) {
+        GlobalVisualSettingsPersistence.persist(KEY_BACKGROUND_STYLE) {
+            putString(KEY_BACKGROUND_STYLE, value.key)
+            // Mirror into the legacy boolean so older reads/migrations stay coherent.
+            putBoolean(KEY_WEBSITE_BACKGROUND, value.usesCustomBackdrop)
         }
     }
 
@@ -173,20 +169,14 @@ object GlobalVisualSettings {
     fun setSwarmSparkles(value: Boolean) {
         ensureLoaded()
         _enableSwarmSparkles.value = value
-        try {
-            prefs.edit().putBoolean(KEY_SWARM_SPARKLES, value).apply()
-        } catch (_: Throwable) {
-        }
+        GlobalVisualSettingsPersistence.persistBoolean(KEY_SWARM_SPARKLES, value)
     }
 
     /** Sets the Exclude Brand Shapes value and persists it. */
     fun setExcludeBrandShapesFromSwarm(value: Boolean) {
         ensureLoaded()
         _excludeBrandShapesFromSwarm.value = value
-        try {
-            prefs.edit().putBoolean(KEY_EXCLUDE_BRAND_SHAPES, value).apply()
-        } catch (_: Throwable) {
-        }
+        GlobalVisualSettingsPersistence.persistBoolean(KEY_EXCLUDE_BRAND_SHAPES, value)
     }
 
     private fun encodeProviderGlyphs(providers: Set<AgentProvider>): String = AgentProvider.swarmGlyphProviders

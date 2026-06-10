@@ -86,22 +86,60 @@ public actor ThreadSafeISO8601DateFormatter {
 
 /// Extension providing non-isolated, synchronous access to thread-safe date parsing.
 ///
-/// These methods create temporary formatter instances for one-off use.
-/// They are thread-safe but less efficient than using the actor directly for batch operations.
+/// These methods share lock-guarded cached formatters. Allocating and configuring
+/// an `ISO8601DateFormatter` per call costs ~4-5x more than a guarded parse, and
+/// the log-ingestion hot paths call these once per timestamp across the whole
+/// session corpus.
 extension ThreadSafeISO8601DateFormatter {
 
+    /// Lock-guarded formatter pair backing the synchronous static helpers.
+    /// Both formatters are configured once at init and never mutated afterwards;
+    /// every parse still happens under the lock because `ISO8601DateFormatter`
+    /// is not documented as thread-safe.
+    private final class SyncFormatterCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private let fractionalFormatter: ISO8601DateFormatter
+        private let basicFormatter: ISO8601DateFormatter
+
+        init() {
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            fractionalFormatter = fractional
+            let basic = ISO8601DateFormatter()
+            basic.formatOptions = [.withInternetDateTime]
+            basicFormatter = basic
+        }
+
+        func parseFractionalOrBasic(_ string: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return fractionalFormatter.date(from: string) ?? basicFormatter.date(from: string)
+        }
+
+        func parseBasic(_ string: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return basicFormatter.date(from: string)
+        }
+    }
+
+    private static let syncCache = SyncFormatterCache()
+
     /// Synchronously parses an ISO8601 string, trying fractional first then basic.
-    /// Creates a temporary formatter for this operation.
     ///
     /// - Parameter string: The ISO8601-formatted date string.
     /// - Returns: A `Date` if parsing succeeds, `nil` otherwise.
     public static func parse(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: string) {
-            return date
-        }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: string)
+        syncCache.parseFractionalOrBasic(string)
+    }
+
+    /// Synchronously parses an ISO8601 string without fractional seconds.
+    /// Matches the acceptance of a default-configured `ISO8601DateFormatter()`
+    /// (`[.withInternetDateTime]` only) for parsers that rely on that exact behavior.
+    ///
+    /// - Parameter string: The ISO8601-formatted date string without fractional seconds.
+    /// - Returns: A `Date` if parsing succeeds, `nil` otherwise.
+    public static func parseBasic(_ string: String) -> Date? {
+        syncCache.parseBasic(string)
     }
 }

@@ -69,6 +69,7 @@ import {
   sanitizedGatewayDisplayName,
   serializeHermesGatewayEvent,
   serializeHermesGatewayTypingDoc,
+  shouldCoalesceHermesGatewayLastSeen,
   tokenPreview,
   type GatewayRelayEnvelopeDoc,
   type GatewayRatchetEnvelopeDoc,
@@ -726,6 +727,12 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   if (!indexSnap.exists || !index || typeof index.uid !== "string" || typeof index.clientId !== "string") {
     throw httpError(401, "invalid_bearer_token");
   }
+  // The entitlement reads need only the uid, so they overlap the client get and
+  // PoP replay-guard round-trips below instead of serializing after them. The
+  // detached handler keeps a rejection from surfacing as unhandled when one of
+  // the intervening 401 checks throws first; the outcome is awaited further down.
+  const entitlementCheck = assertActiveHermesGatewayEntitlement(index.uid);
+  void entitlementCheck.catch(() => undefined);
   const clientRef = db.doc(`users/${index.uid}/hermes_gateway_clients/${index.clientId}`);
   const clientSnap = await clientRef.get();
   const client = clientSnap.data();
@@ -742,18 +749,29 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   if (isHermesGatewayTokenExpired(client.expiresAt)) {
     throw httpError(401, "expired_bearer_token");
   }
-  await verifyGatewayRequestPoP(req, {
-    uid: index.uid,
-    clientId: index.clientId,
-    client,
-    tokenHash,
-  });
+  // allSettled, NOT Promise.all: a PoP failure must always be thrown before an
+  // entitlement failure so a bearer-token holder without the PoP signing key
+  // sees 401 — never a 403 that leaks the account's subscription state.
+  const [popResult, entitlementResult] = await Promise.allSettled([
+    verifyGatewayRequestPoP(req, {
+      uid: index.uid,
+      clientId: index.clientId,
+      client,
+      tokenHash,
+    }),
+    entitlementCheck,
+  ]);
+  if (popResult.status === "rejected") throw popResult.reason;
   if (!hasHermesGatewayScope(client.scopes, scope)) {
     throw httpError(403, "missing_scope", scope);
   }
-  await assertActiveHermesGatewayEntitlement(index.uid);
-  const now = nowISO();
-  await clientRef.set({ lastSeenAt: now, updatedAt: now }, { merge: true });
+  if (entitlementResult.status === "rejected") throw entitlementResult.reason;
+  // Presence bump, coalesced: skip the write while lastSeenAt is fresher than a
+  // third of the presence window — the dominant write on the 1s polling hot path.
+  if (!shouldCoalesceHermesGatewayLastSeen(client.lastSeenAt)) {
+    const now = nowISO();
+    await clientRef.set({ lastSeenAt: now, updatedAt: now }, { merge: true });
+  }
   return { uid: index.uid, client };
 }
 
@@ -784,6 +802,13 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
   }
   const generatedSecret = providedSecretHash ? undefined : generateHermesGatewayDeviceSecret();
   const deviceSecretHash = generatedSecret ? hashHermesGatewayDeviceSecret(generatedSecret) : providedSecretHash;
+  // L4: behind Firebase Hosting -> Cloud Run, req.ip can collapse to a small set
+  // of front-end addresses, making the IP bucket coarse. Add a second rate-limit
+  // dimension keyed on the supplied device-secret hash so a single stuck/abusive
+  // client is throttled independently of how its source IP is observed.
+  if (providedSecretHash) {
+    await checkPublicHttpRateLimit(`devhash:${providedSecretHash}`, "hermes_gateway_device_start");
+  }
   const deviceCode = generateHermesGatewayDeviceCode();
   const userCode = randomHermesGatewayUserCode();
   const now = Timestamp.now();
@@ -2130,6 +2155,10 @@ export const enqueueHermesGatewayEvent = onCall(
       if (!targetClient) {
         throw new HttpsError("invalid-argument", "targetClientId is required for sealed Hermes Gateway events.");
       }
+      // L3: throttle owner-authenticated event dispatch per (uid, clientId). Every
+      // enqueued event/model-switch can wake the paired agent and drive billable
+      // LLM work, so cap the rate even though the surface is uid-scoped.
+      await checkHermesGatewayBearerRateLimit(uid, targetClient.id, "hermes_gateway_event_enqueue");
       const targetIsRelayCapable = targetClient.relayCapable === true;
       // A non-relay-capable (legacy pre-E2E) target is only tolerable while the
       // plaintext grace window is open. New deployments have it closed, so an

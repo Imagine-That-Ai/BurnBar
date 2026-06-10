@@ -37,4 +37,7 @@ node tools/schema-sync/check-hand-mirror.mjs
 echo "==> Checking hand-maintained TS surface budget…"
 node tools/schema-sync/check-legacy-budget.mjs
 
+echo "==> Checking Firestore collection-group index coverage…"
+node tools/firestore-indexes/check-collection-group-coverage.mjs
+
 echo "==> Schema sync check passed ==="

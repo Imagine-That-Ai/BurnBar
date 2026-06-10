@@ -121,6 +121,13 @@ android {
                     "META-INF/NOTICE.md"
                 )
         }
+        jniLibs {
+            // Vendor/openburnbar-iroh.aar ships the same cdylib under two names per ABI;
+            // only libopenburnbar_iroh.so is ever loaded (JNA findLibraryName +
+            // System.loadLibrary), so drop the byte-identical libuniffi_ duplicate
+            // (~41.6MB across the four ABIs in a fat APK).
+            excludes += "**/libuniffi_openburnbar_iroh.so"
+        }
     }
 
     testOptions {

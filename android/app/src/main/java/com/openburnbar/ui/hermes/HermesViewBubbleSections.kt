@@ -26,7 +26,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,13 +50,17 @@ import java.io.IOException
 import org.json.JSONObject
 
 @Composable
-fun ChatBubble(message: HermesMessage, viewMode: ChatViewMode = ChatViewMode.AGENT, threadId: String = "") {
+fun ChatBubble(
+    message: HermesMessage,
+    viewMode: ChatViewMode = ChatViewMode.AGENT,
+    permissionItem: com.openburnbar.data.computeruse.SystemPermissionItem? = null,
+) {
     if (viewMode == ChatViewMode.CLI) {
         HermesCLIMessageRow(message = message, isUser = message.role == "user")
         return
     }
 
-    val permissionState = rememberChatBubblePermissionState(message = message, threadId = threadId)
+    val permissionState = rememberChatBubblePermissionState(matchingItem = permissionItem)
     ChatBubbleAgentLayout(message = message, permissionState = permissionState)
     ChatBubblePermissionSheet(permissionState = permissionState)
 }
@@ -69,26 +72,45 @@ private data class ChatBubblePermissionState(
 )
 
 @Composable
-private fun rememberChatBubblePermissionState(message: HermesMessage, threadId: String): ChatBubblePermissionState {
-    val permissionItems by com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder.store.items
-        .collectAsState()
-    val matchingPermissionItem =
-        remember(permissionItems, message.id, threadId) {
-            val threadItems = permissionItems[threadId]?.values ?: emptyList()
-            threadItems.firstOrNull { item ->
-                item.originatingToolCallId == message.id ||
-                    message.toolCalls.any { tc -> tc.id == item.originatingToolCallId }
-            }
-        }
+private fun rememberChatBubblePermissionState(
+    matchingItem: com.openburnbar.data.computeruse.SystemPermissionItem?,
+): ChatBubblePermissionState {
     var presentedPermissionItem by remember {
         mutableStateOf<com.openburnbar.data.computeruse.SystemPermissionItem?>(null)
     }
     return ChatBubblePermissionState(
-        matchingItem = matchingPermissionItem,
+        matchingItem = matchingItem,
         presentedItem = presentedPermissionItem,
         setPresentedItem = { presentedPermissionItem = it },
     )
 }
+
+/**
+ * Pending system-permission items for [threadId], keyed by originating tool call.
+ * First occurrence wins so lookups keep the previous first-match-in-inbox-order
+ * semantics; items without an originating tool call never matched a bubble and
+ * are skipped.
+ */
+internal fun systemPermissionItemsByToolCallId(
+    itemsByThread: Map<String, Map<String, com.openburnbar.data.computeruse.SystemPermissionItem>>,
+    threadId: String,
+): Map<String, com.openburnbar.data.computeruse.SystemPermissionItem> {
+    val threadItems = itemsByThread[threadId]?.values ?: return emptyMap()
+    return buildMap {
+        threadItems.forEach { item ->
+            val toolCallId = item.originatingToolCallId ?: return@forEach
+            if (toolCallId !in this) put(toolCallId, item)
+        }
+    }
+}
+
+/** A message owns an item when the originating tool call is the message itself or one of its tool calls. */
+internal fun matchingSystemPermissionItem(
+    inboxByToolCallId: Map<String, com.openburnbar.data.computeruse.SystemPermissionItem>,
+    message: HermesMessage,
+): com.openburnbar.data.computeruse.SystemPermissionItem? =
+    inboxByToolCallId[message.id]
+        ?: message.toolCalls.firstNotNullOfOrNull { tc -> inboxByToolCallId[tc.id] }
 
 @Composable
 private fun ChatBubbleAgentLayout(message: HermesMessage, permissionState: ChatBubblePermissionState) {

@@ -1265,6 +1265,19 @@ final class ChatSessionController {
         return InsightBriefSnapshot.build(from: dataStore, refreshRollups: refreshRollups)
     }
 
+    /// Off-main variant — the rollup GRDB I/O runs on a background task.
+    /// See `InsightBriefSnapshot.buildAsync`.
+    func buildInsightBriefSnapshotAsync(refreshRollups: Bool = true) async -> InsightBriefSnapshot {
+        if let typed = typedSearchService {
+            return await InsightBriefSnapshot.buildAsync(
+                from: dataStore,
+                intelligenceService: typed,
+                refreshRollups: refreshRollups
+            )
+        }
+        return await InsightBriefSnapshot.buildAsync(from: dataStore, refreshRollups: refreshRollups)
+    }
+
     /// Fire-and-forget variant of `send()` — launches a Task not tied to any view lifecycle.
     func fireAndForgetSend() {
         Task { await send() }

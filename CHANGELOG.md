@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added a daemon-backed Route log in Settings -> Agents -> CLIs for the local proxy, showing the requested model slug/name, the upstream model/provider/logo identity actually used, provider-reported model slug, exact-route invariant status, attempts, and usage metadata without logging prompt or response bodies.
+- Added Settings -> Agents -> Advanced quota-popover controls so users can choose which provider quotas appear in the menu-bar drop-down, with a compact quick-access button in the popover header.
 
 ### Security
 

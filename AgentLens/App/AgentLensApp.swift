@@ -4,6 +4,7 @@ import FirebaseCore
 import FirebaseAppCheck
 import FirebaseFirestore
 import GoogleSignIn
+import LocalAuthentication
 import OpenBurnBarCore
 import OSLog
 import SwiftUI
@@ -204,62 +205,117 @@ final class AppCommandRouter {
         }
     }
 
+    /// Handles `openburnbar://link-cli`.
+    ///
+    /// SECURITY (F1): exporting the Cloud Vault key into the external CLI keychain
+    /// item is a high-impact key migration — that key decrypts ALL synced E2E
+    /// content. The `openburnbar://` scheme is reachable by any local process or a
+    /// crafted web link, so the export MUST NOT happen silently. We require an
+    /// explicit confirmation AND a device-owner (Touch ID / login password) proof
+    /// BEFORE the key is read or copied, and only surface success after the gated
+    /// copy completes. A drive-by link can no longer provision the key without a
+    /// human physically authenticating at the Mac.
     @discardableResult
     func handleLinkCli() -> Bool {
         guard let uid = AccountManager.shared.userID else {
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = "Sign In Required"
-                alert.informativeText = "Please sign in to the OpenBurnBar app before linking your CLI."
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
-            }
-            return false
+            presentLinkCliAlert(
+                style: .warning,
+                title: "Sign In Required",
+                message: "Please sign in to the OpenBurnBar app before linking your CLI."
+            )
+            // The URL was recognized and handled (we showed guidance); returning
+            // true prevents fall-through to a generic "unhandled URL" path.
+            return true
         }
 
+        let confirm = NSAlert()
+        confirm.messageText = "Link this Mac's CLI to your secure vault?"
+        confirm.informativeText = """
+        This copies your Cloud Vault encryption key into the local OpenBurnBar CLI \
+        keychain item so the CLI can decrypt your synced data on this Mac. That key \
+        unlocks all of your end-to-end encrypted cloud content. Only continue if you \
+        started CLI linking yourself from your terminal. You'll confirm with Touch ID \
+        or your login password.
+        """
+        confirm.alertStyle = .warning
+        confirm.addButton(withTitle: "Continue")
+        confirm.addButton(withTitle: "Cancel")
+        guard confirm.runModal() == .alertFirstButtonReturn else {
+            return true
+        }
+
+        // Fail-closed device-owner authentication gate before any key read/copy.
+        let context = LAContext()
+        var policyError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
+            presentLinkCliAlert(
+                style: .critical,
+                title: "Linking Unavailable",
+                message: "This Mac can't verify your identity (Touch ID or a login password is required). Your vault key was not exported."
+            )
+            return true
+        }
+        context.evaluatePolicy(
+            .deviceOwnerAuthentication,
+            localizedReason: "Authorize copying your Cloud Vault key to the OpenBurnBar CLI."
+        ) { [weak self] success, _ in
+            DispatchQueue.main.async {
+                guard success else {
+                    self?.presentLinkCliAlert(
+                        style: .warning,
+                        title: "Linking Cancelled",
+                        message: "Identity check failed or was cancelled. Your vault key was not exported."
+                    )
+                    return
+                }
+                self?.performLinkCliExport(uid: uid)
+            }
+        }
+        return true
+    }
+
+    @MainActor
+    private func performLinkCliExport(uid: String) {
         let keyStore = CloudVaultKeyStore(service: "com.openburnbar.cloud-vault")
         do {
             guard let keyData = try keyStore.loadKey(uid: uid) else {
-                DispatchQueue.main.async {
-                    let alert = NSAlert()
-                    alert.messageText = "No Vault Key Found"
-                    alert.informativeText = "No cloud vault key was found for your account. Please enable cloud sync first."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    alert.runModal()
-                }
-                return false
+                presentLinkCliAlert(
+                    style: .warning,
+                    title: "No Vault Key Found",
+                    message: "No cloud vault key was found for your account. Please enable cloud sync first."
+                )
+                return
             }
 
             let base64Key = keyData.base64EncodedString()
-
             let keychain = SecurityKeychainStoreBackend()
             if let utf8Data = base64Key.data(using: .utf8) {
                 try keychain.set(utf8Data, service: "com.openburnbar.mcp-remote", account: "vault-key")
             }
             try removeLegacyMCPVaultKeyFallback()
 
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = "CLI Linked Successfully!"
-                alert.informativeText = "Your Mac's CLI has been successfully linked with your secure cloud vault key. You can now return to your terminal."
-                alert.alertStyle = .informational
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
-            }
-            return true
+            presentLinkCliAlert(
+                style: .informational,
+                title: "CLI Linked Successfully!",
+                message: "Your Mac's CLI has been linked with your secure cloud vault key. You can now return to your terminal."
+            )
         } catch {
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = "Linking Failed"
-                alert.informativeText = "Failed to link your CLI: \(error.localizedDescription)"
-                alert.alertStyle = .critical
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
-            }
-            return false
+            presentLinkCliAlert(
+                style: .critical,
+                title: "Linking Failed",
+                message: "Failed to link your CLI: \(error.localizedDescription)"
+            )
         }
+    }
+
+    @MainActor
+    private func presentLinkCliAlert(style: NSAlert.Style, title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = style
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func removeLegacyMCPVaultKeyFallback() throws {

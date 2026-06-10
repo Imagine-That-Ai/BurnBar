@@ -23,7 +23,9 @@ import {
   negotiateGatewayRelayEnvelopeCapabilities,
   serializeHermesGatewayTypingDoc,
   serializeHermesGatewayEvent,
+  shouldCoalesceHermesGatewayLastSeen,
   HERMES_GATEWAY_APPROVAL_TTL_MS,
+  HERMES_GATEWAY_LAST_SEEN_COALESCE_MS,
   HERMES_GATEWAY_MAX_APPROVAL_TTL_MS,
   HERMES_GATEWAY_MIN_APPROVAL_TTL_MS,
   HERMES_GATEWAY_PRESENCE_WINDOW_MS,
@@ -124,6 +126,31 @@ describe("Hermes Gateway runtime-state presence (feature 1)", () => {
     expect(isHermesGatewayClientOnline("", now)).toBe(false);
     expect(isHermesGatewayClientOnline("nope", now)).toBe(false);
     expect(HERMES_GATEWAY_PRESENCE_WINDOW_MS).toBe(90_000);
+  });
+});
+
+describe("Hermes Gateway lastSeenAt write coalescing", () => {
+  const now = Date.parse("2026-06-01T00:01:30.000Z");
+  it("skips the bump while lastSeenAt is fresh and resumes at the coalesce boundary", () => {
+    expect(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:01:30.000Z", now)).toBe(true);
+    expect(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:01:29.000Z", now)).toBe(true);
+    expect(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:01:01.000Z", now)).toBe(true);
+    expect(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:01:00.000Z", now)).toBe(false);
+    expect(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:00:00.000Z", now)).toBe(false);
+  });
+  it("fails open to WRITING on missing, garbage, or future timestamps (self-repairs)", () => {
+    expect(shouldCoalesceHermesGatewayLastSeen(undefined, now)).toBe(false);
+    expect(shouldCoalesceHermesGatewayLastSeen("", now)).toBe(false);
+    expect(shouldCoalesceHermesGatewayLastSeen("nope", now)).toBe(false);
+    expect(shouldCoalesceHermesGatewayLastSeen("2026-06-01T00:01:31.000Z", now)).toBe(false);
+  });
+  it("never flips a fast poller offline: coalesce interval keeps a 2x presence margin", () => {
+    // Worst-case staleness for a poller faster than the coalesce interval is
+    // just under 2x the interval; presence must still read online there.
+    expect(HERMES_GATEWAY_LAST_SEEN_COALESCE_MS * 3).toBeLessThanOrEqual(HERMES_GATEWAY_PRESENCE_WINDOW_MS);
+    expect(isHermesGatewayClientOnline("2026-06-01T00:01:30.000Z", now + 2 * HERMES_GATEWAY_LAST_SEEN_COALESCE_MS)).toBe(
+      true,
+    );
   });
 });
 

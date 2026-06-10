@@ -99,4 +99,38 @@ final class SettingsManifestCoverageTests: XCTestCase {
             "Pi Remote Relay must stay Pi-specific."
         )
     }
+
+    func test_quotaDisplayDeepLinkIDResolvesToManifestItem() {
+        let item = SettingsDeepLinkRouting.item(matching: SettingsDeepLinkRouting.quotaDisplayItemID)
+
+        XCTAssertEqual(item?.id, "agents.quotaDisplay")
+        XCTAssertEqual(item?.tab, .agents)
+        XCTAssertEqual(item?.pageRoute, .agentsAdvanced)
+        XCTAssertEqual(item?.anchorID, SettingsAnchor.agentsQuotaDisplay)
+    }
+
+    @MainActor
+    func test_deepLinkRoutingStoresOnlyValidManifestItems() {
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
+        defer { UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey) }
+
+        let routed = SettingsDeepLinkRouting.route(to: "  \(SettingsDeepLinkRouting.quotaDisplayItemID)  ")
+
+        XCTAssertTrue(routed)
+        XCTAssertEqual(
+            UserDefaults.standard.string(forKey: SettingsDeepLinkRouting.pendingItemKey),
+            SettingsDeepLinkRouting.quotaDisplayItemID
+        )
+    }
+
+    @MainActor
+    func test_deepLinkRoutingRejectsUnknownManifestItemsAndClearsStalePendingItem() {
+        UserDefaults.standard.set("agents.quotaDisplay", forKey: SettingsDeepLinkRouting.pendingItemKey)
+        defer { UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey) }
+
+        let routed = SettingsDeepLinkRouting.route(to: "missing.settings.item")
+
+        XCTAssertFalse(routed)
+        XCTAssertNil(UserDefaults.standard.string(forKey: SettingsDeepLinkRouting.pendingItemKey))
+    }
 }

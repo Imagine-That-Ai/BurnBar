@@ -133,6 +133,12 @@ class BurnBarWallpaperService : WallpaperService() {
                     pace = SwarmPace.CINEMATIC, // Default, updated via settings
                     context = applicationContext,
                 )
+            // Pre-warm every shape's point table off this (main) thread so a
+            // "providers"/"grok" shape preference never decodes + flood-fills
+            // the provider-logo bitmaps synchronously inside updateSettings()
+            // or the draw handler. The SYNCHRONIZED lazies stay the cache-miss
+            // path, so a racing first assignment just blocks as it did before.
+            Thread({ simulation.prewarmShapePointTables() }, "burnbar-swarm-prewarm").start()
             wallpaperPrefs.registerOnSharedPreferenceChangeListener(preferenceListener)
             globalPrefs.registerOnSharedPreferenceChangeListener(globalPreferenceListener)
             // Bind snapshot store so the StateFlow hydrates from disk.

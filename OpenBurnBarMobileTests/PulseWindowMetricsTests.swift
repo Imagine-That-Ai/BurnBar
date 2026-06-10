@@ -70,6 +70,24 @@ final class PulseWindowMetricsTests: XCTestCase {
         XCTAssertEqual(calendar.component(.second, from: start), 0)
     }
 
+    func testLiveQueryStartIsStableAcrossMinutePollsWithinTheHour() {
+        var calendar = gregorianUTC()
+        calendar.timeZone = TimeZone(secondsFromGMT: -5 * 3_600)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 13, hour: 14, minute: 12, second: 7))!
+
+        let start = PulseWindowMetricBuilder.liveQueryStart(now: now, calendar: calendar)
+
+        // PulseView's maintenance task polls every 60s: the query start must
+        // hold steady between polls inside an hour (no listener-restart
+        // thrash) and advance exactly one hour after the boundary.
+        XCTAssertEqual(PulseWindowMetricBuilder.liveQueryStart(now: now.addingTimeInterval(59), calendar: calendar), start)
+        XCTAssertEqual(PulseWindowMetricBuilder.liveQueryStart(now: now.addingTimeInterval(45 * 60), calendar: calendar), start)
+        XCTAssertEqual(
+            PulseWindowMetricBuilder.liveQueryStart(now: now.addingTimeInterval(60 * 60), calendar: calendar),
+            start.addingTimeInterval(60 * 60)
+        )
+    }
+
     func testMinuteWindowAgesOutWithoutNewUsage() {
         let calendar = gregorianUTC()
         let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 13, hour: 12, minute: 0, second: 0))!

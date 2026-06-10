@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,7 +44,9 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.withContext
 
 /**
  * The active, reconverging token-ember swarm from burnbar.ai, ported to Compose.
@@ -97,12 +100,29 @@ fun SwarmBackground(
         }
 
     var pointer by remember { mutableStateOf<Offset?>(null) }
-    var version by remember { mutableStateOf(0) }
+    var version by remember { mutableIntStateOf(0) }
+
+    // Pre-warm every shape's point table OFF the main thread before the first
+    // reconvergence, so assignMode() never decodes + flood-fills the provider
+    // logo bitmaps synchronously inside the awaitFrame loop (the same prewarm
+    // DotConstellationBackground does). Each table is a SYNCHRONIZED lazy that
+    // stays the cache-miss path: a racing first formation just blocks exactly
+    // as it did before, and the sampled points are identical either way.
+    LaunchedEffect(simulation) {
+        withContext(Dispatchers.Default) { simulation.prewarmShapePointTables() }
+    }
 
     LaunchedEffect(reduceMotion) {
+        var lastStepNanos = 0L
         while (!reduceMotion) {
-            awaitFrame()
-            simulation.advance(System.nanoTime(), pointer)
+            val frameNanos = awaitFrame()
+            // Cap physics + redraw at ~60Hz so 90/120Hz panels skip vsyncs
+            // instead of running extra simulation steps; matches the live
+            // wallpaper's ENERGETIC cadence (FRAME_INTERVAL_ENERGETIC_MS).
+            val elapsedNanos = frameNanos - lastStepNanos
+            if (elapsedNanos < MIN_STEP_INTERVAL_NANOS) continue
+            lastStepNanos = frameNanos
+            simulation.advance(frameNanos, pointer, frameScaleFor(elapsedNanos))
             version++ // trigger recomposition for the Canvas
         }
     }
@@ -201,6 +221,21 @@ fun SwarmBackground(
 
 enum class SwarmPace { ENERGETIC, CINEMATIC }
 
+// Step cadence: the swarm physics were tuned at 60Hz, so simulation steps are
+// capped at ~60Hz (the live wallpaper's BurnBarWallpaperConstants
+// .FRAME_INTERVAL_ENERGETIC_MS cadence) and each step is scaled by the real
+// elapsed time so motion speed is identical on 60/90/120Hz panels.
+private const val MIN_STEP_INTERVAL_NANOS = 16_000_000L
+private const val CANONICAL_FRAME_NANOS = 16_666_667.0
+
+private fun frameScaleFor(elapsedNanos: Long): Double {
+    val scale = elapsedNanos / CANONICAL_FRAME_NANOS
+    // Snap near-canonical steps to exactly 1.0 so 60Hz panels (and capped
+    // 120Hz panels) run the bit-identical historical step; long gaps (first
+    // frame, resume from background) collapse to at most two steps.
+    return if (scale in 0.98..1.02) 1.0 else scale.coerceIn(0.5, 2.0)
+}
+
 @Composable
 private fun adaptiveParticleCount(): Int {
     val ctx = LocalContext.current
@@ -286,6 +321,15 @@ internal class SwarmSimulation(
     private var cycleIntervalNanos: Long = 0L
     private var mouseForceMultiplier: Double = 0.0
     private var isEnergetic: Boolean = false
+
+    // Per-advance dt scaling: 1.0 == one canonical 60Hz step (the cadence the
+    // constants above were tuned at). Velocities stay in canonical
+    // px-per-60Hz-frame units so the maxSpeed clamps keep their tuned meaning;
+    // forces and position integration scale by stepScale, and drag — an
+    // exponential per-step decay — is exponentiated, not multiplied.
+    private var stepScale: Double = 1.0
+    private var swarmDragStep: Double = 0.0
+    private var morphDragStep: Double = 0.0
 
     private val speedMultiplier: Double
         get() = if (isEnergetic) 1.0 else 0.35
@@ -451,6 +495,35 @@ internal class SwarmSimulation(
 
     private fun normalizeProviderGlyphs(providers: Set<AgentProvider>): List<AgentProvider> = providerLogoShowcase.filter { providers.contains(it) }
 
+    /**
+     * Forces every shape point table this configuration can form — the
+     * bitmap-sampled provider logos (one decode + getPixels scan + flood fill
+     * per showcase logo), the Grok/xAI marks, and the "$"/"</>" text rasters —
+     * so the work runs on the calling (background) thread instead of inside
+     * the first [assignMode] on the UI frame loop. Each table is a
+     * SYNCHRONIZED lazy and remains the cache-miss path: a racing dereference
+     * from the UI thread blocks exactly as it did historically and serves the
+     * identical points. Returns the number of points warmed.
+     */
+    fun prewarmShapePointTables(): Int {
+        if (uiMode == UIMode.COOKING) {
+            // Cooking cycles only ever form the generated splines.
+            return appleSplinePoints.size + cherrySplinePoints.size + bananaSplinePoints.size +
+                cookieSplinePoints.size + cupcakeSplinePoints.size
+        }
+        var warmed =
+            providerLogoPointCache.values.sumOf { it.size } +
+                grokLogoPoints.size + xAiLogoPoints.size +
+                ringPoints.size + routerFlowPoints.size
+        if (appContext != null) {
+            // The text rasters draw through android.graphics, which the
+            // context-less JVM unit-test construction cannot host; the bitmap
+            // tables above already short-circuit to generated fallbacks there.
+            warmed += dollarPoints.size + codePoints.size
+        }
+        return warmed
+    }
+
     fun ensureBounds(size: Size) {
         if (size == bounds) return
         if (!initialized) {
@@ -476,12 +549,15 @@ internal class SwarmSimulation(
         bounds = size
     }
 
-    fun advance(nowNanos: Long, pointer: Offset?) {
+    fun advance(nowNanos: Long, pointer: Offset?, frameScale: Double = 1.0) {
         if (!initialized) {
             lastTickNanos = nowNanos
             nextCycleAtNanos = nowNanos + cycleIntervalNanos
             return
         }
+        stepScale = frameScale
+        swarmDragStep = Math.pow(swarmDrag, frameScale)
+        morphDragStep = Math.pow(morphDrag, frameScale)
         if (nowNanos >= nextCycleAtNanos && activeModes.size > 1) {
             if (shouldDelayCycleForAdmireHold(nowNanos)) {
                 nextCycleAtNanos = nowNanos + SHAPE_SETTLE_RECHECK_NANOS
@@ -493,7 +569,7 @@ internal class SwarmSimulation(
         } else if (nowNanos >= nextCycleAtNanos) {
             nextCycleAtNanos = nowNanos + cycleIntervalNanos
         }
-        flowTime += timeStep * 1000.0
+        flowTime += timeStep * 1000.0 * frameScale
 
         val width = bounds.width.toDouble()
         val height = bounds.height.toDouble()
@@ -526,18 +602,18 @@ internal class SwarmSimulation(
 
         when (mode) {
             Mode.SWARM -> {
-                p.vx += noiseX * swarmNoise + pushX
-                p.vy += noiseY * swarmNoise + pushY
-                p.vx *= swarmDrag
-                p.vy *= swarmDrag
+                p.vx += (noiseX * swarmNoise + pushX) * stepScale
+                p.vy += (noiseY * swarmNoise + pushY) * stepScale
+                p.vx *= swarmDragStep
+                p.vy *= swarmDragStep
                 val speed = sqrt(p.vx * p.vx + p.vy * p.vy)
                 val maxSpeed = if (p.isGlyph) maxSpeedGlyph else maxSpeedPixel
                 if (speed > maxSpeed && speed > 0) {
                     p.vx = (p.vx / speed) * maxSpeed
                     p.vy = (p.vy / speed) * maxSpeed
                 }
-                p.x += p.vx
-                p.y += p.vy
+                p.x += p.vx * stepScale
+                p.y += p.vy * stepScale
                 if (p.x < 0) p.x = width
                 if (p.x > width) p.x = 0.0
                 if (p.y < 0) p.y = height
@@ -575,7 +651,7 @@ internal class SwarmSimulation(
                                     "path-3" -> 0.28
                                     else -> 0.0
                                 }
-                            p.flowProgress += if (isEnergetic) 0.006 else 0.003
+                            p.flowProgress += (if (isEnergetic) 0.006 else 0.003) * stepScale
                             if (p.flowProgress > 1.0) p.flowProgress = 0.0
                             val t = p.flowProgress
                             val pxn = -0.45 + 0.9 * t
@@ -594,26 +670,26 @@ internal class SwarmSimulation(
                     val dist = sqrt(dx * dx + dy * dy)
                     if (dist > 1) {
                         val attract = if (isRewinding) -morphAttract * 1.5 else morphAttract
-                        p.vx += (dx / dist) * attract
-                        p.vy += (dy / dist) * attract
+                        p.vx += (dx / dist) * attract * stepScale
+                        p.vy += (dy / dist) * attract * stepScale
                     }
-                    p.vx += noiseX * morphNoise + pushX
-                    p.vy += noiseY * morphNoise + pushY
-                    p.vx *= morphDrag
-                    p.vy *= morphDrag
-                    p.x += p.vx
-                    p.y += p.vy
+                    p.vx += (noiseX * morphNoise + pushX) * stepScale
+                    p.vy += (noiseY * morphNoise + pushY) * stepScale
+                    p.vx *= morphDragStep
+                    p.vy *= morphDragStep
+                    p.x += p.vx * stepScale
+                    p.y += p.vy * stepScale
                     if (p.x < 0) p.x = width
                     if (p.x > width) p.x = 0.0
                     if (p.y < 0) p.y = height
                     if (p.y > height) p.y = 0.0
                 } else {
-                    p.vx += noiseX * swarmNoise * 0.75 + pushX
-                    p.vy += noiseY * swarmNoise * 0.75 + pushY
-                    p.vx *= swarmDrag
-                    p.vy *= swarmDrag
-                    p.x += p.vx
-                    p.y += p.vy
+                    p.vx += (noiseX * swarmNoise * 0.75 + pushX) * stepScale
+                    p.vy += (noiseY * swarmNoise * 0.75 + pushY) * stepScale
+                    p.vx *= swarmDragStep
+                    p.vy *= swarmDragStep
+                    p.x += p.vx * stepScale
+                    p.y += p.vy * stepScale
                     if (p.x < 0) p.x = width
                     if (p.x > width) p.x = 0.0
                     if (p.y < 0) p.y = height
@@ -930,7 +1006,8 @@ internal class SwarmSimulation(
         return closeFraction >= SHAPE_SETTLED_PARTICLE_FRACTION && averageDistance <= threshold * 1.75
     }
 
-    private fun providerLogoPoints(provider: AgentProvider): List<ShapePoint> {
+    // Internal (not private) so unit tests can assert prewarm/sync parity.
+    internal fun providerLogoPoints(provider: AgentProvider): List<ShapePoint> {
         if (provider == AgentProvider.XAI) return xAiLogoPoints
         return providerLogoPointCache[provider] ?: logoPoints(provider, fallbackLogoPoints(provider))
     }

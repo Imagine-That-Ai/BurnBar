@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Gemini CLI Parser
 
@@ -117,7 +118,7 @@ final class GeminiCLIParser: LogParser, Sendable {
     private func ingestLine(_ json: [String: Any], into acc: inout GeminiSessionAccumulator) {
         // Timestamp
         if let ts = json["timestamp"] as? String {
-            let date = ISO8601DateFormatter().date(from: ts)
+            let date = ThreadSafeISO8601DateFormatter.parseBasic(ts)
             if acc.startTime == nil { acc.startTime = date }
             acc.endTime = date
         } else if let ts = json["timestamp"] as? Double {
@@ -125,7 +126,7 @@ final class GeminiCLIParser: LogParser, Sendable {
             if acc.startTime == nil { acc.startTime = date }
             acc.endTime = date
         } else if let ts = json["createTime"] as? String {
-            let date = ISO8601DateFormatter().date(from: ts)
+            let date = ThreadSafeISO8601DateFormatter.parseBasic(ts)
             if acc.startTime == nil { acc.startTime = date }
             acc.endTime = date
         }

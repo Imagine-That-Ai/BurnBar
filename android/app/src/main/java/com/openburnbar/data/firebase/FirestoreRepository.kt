@@ -38,6 +38,7 @@ import kotlinx.coroutines.tasks.await
 
 private const val NANOS_PER_MILLIS = 1_000_000
 private const val VAL_20 = 20
+private const val LIVE_USAGE_DOC_LIMIT = 2_000L
 
 data class QuotaSnapshotUpdate(
     val snapshots: List<ProviderQuotaSnapshot>,
@@ -213,6 +214,11 @@ class FirestoreRepository {
             usageCollection
                 .whereGreaterThanOrEqualTo("endTime", Timestamp(Date(startDate)))
                 .orderBy("endTime", Query.Direction.DESCENDING)
+                // Newest-first cap bounds the live snapshot: the rolling ~25h
+                // window is otherwise unbounded, and every Pulse burn window
+                // re-aggregates this list each clock tick. 2000 docs covers a
+                // usage row every ~45s sustained for the whole window.
+                .limit(LIVE_USAGE_DOC_LIMIT)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
                         close(error)

@@ -42,15 +42,40 @@ struct InsightBriefSnapshot {
     @MainActor
     static func build(
         from dataStore: DataStore,
-        intelligenceService _: SearchService? = nil,
+        intelligenceService: SearchService? = nil,
         rollupService: WorkflowInsightRollupService? = nil,
         refreshRollups: Bool = true
+    ) -> InsightBriefSnapshot {
+        let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
+        return assemble(
+            from: dataStore,
+            rollupSnapshot: rollups.snapshot(refreshIfStale: refreshRollups)
+        )
+    }
+
+    /// Off-main variant for chat refresh paths: the rollup GRDB I/O (and
+    /// any stale-path recompute) runs on a background task instead of
+    /// blocking the main thread.
+    @MainActor
+    static func buildAsync(
+        from dataStore: DataStore,
+        intelligenceService: SearchService? = nil,
+        rollupService: WorkflowInsightRollupService? = nil,
+        refreshRollups: Bool = true
+    ) async -> InsightBriefSnapshot {
+        let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
+        let rollupSnapshot = await rollups.snapshotAsync(refreshIfStale: refreshRollups)
+        return assemble(from: dataStore, rollupSnapshot: rollupSnapshot)
+    }
+
+    @MainActor
+    private static func assemble(
+        from dataStore: DataStore,
+        rollupSnapshot: WorkflowInsightRollupSnapshot
     ) -> InsightBriefSnapshot {
         let calendar = Calendar.current
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         let weekUsages = dataStore.usages.filter { $0.startTime >= weekAgo }
-        let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
-        let rollupSnapshot = rollups.snapshot(refreshIfStale: refreshRollups)
         // Chat bootstrap only needs lightweight conversation metadata; avoid hydrating transcript bodies.
         let conversations = (try? dataStore.fetchSessionLogSummaries(limit: 200)) ?? []
         let latestConv = latestConversation(in: conversations)

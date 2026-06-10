@@ -173,6 +173,10 @@ public struct ComputerUseAuditChain: Sendable {
         case truncatedFile = "truncated_file"
         case unsupportedSchema = "unsupported_schema"
         case headHashMismatch = "head_hash_mismatch"
+        /// L8b: strict verification was requested but no signed terminal head
+        /// (`signed_head.json`) was supplied, so a truncation of the final
+        /// entry could not be ruled out. Fail closed rather than pass.
+        case headAnchorMissing = "head_anchor_missing"
     }
 
     public let hasher: ComputerUseAuditHasher
@@ -191,13 +195,32 @@ public struct ComputerUseAuditChain: Sendable {
     public func validate(
         at url: URL,
         sessionManifestHashHex: String,
-        expectedHeadHashHex: String? = nil
+        expectedHeadHashHex: String? = nil,
+        requireExpectedHead: Bool = false
     ) throws -> ValidationResult {
         let raw = try Data(contentsOf: url)
         return validate(
             rawJSONLines: raw,
             sessionManifestHashHex: sessionManifestHashHex,
-            expectedHeadHashHex: expectedHeadHashHex
+            expectedHeadHashHex: expectedHeadHashHex,
+            requireExpectedHead: requireExpectedHead
+        )
+    }
+
+    /// L8b: strict verification that REQUIRES the signed terminal head anchor
+    /// (`signed_head.json`). Use this for dispute/export verification so a
+    /// last-entry truncation cannot pass unnoticed when the caller forgot to
+    /// pass the head. Equivalent to `validate(..., requireExpectedHead: true)`.
+    public func validateRequiringSignedHead(
+        at url: URL,
+        sessionManifestHashHex: String,
+        expectedHeadHashHex: String?
+    ) throws -> ValidationResult {
+        try validate(
+            at: url,
+            sessionManifestHashHex: sessionManifestHashHex,
+            expectedHeadHashHex: expectedHeadHashHex,
+            requireExpectedHead: true
         )
     }
 
@@ -205,8 +228,15 @@ public struct ComputerUseAuditChain: Sendable {
     public func validate(
         rawJSONLines: Data,
         sessionManifestHashHex: String,
-        expectedHeadHashHex: String? = nil
+        expectedHeadHashHex: String? = nil,
+        requireExpectedHead: Bool = false
     ) -> ValidationResult {
+        // L8b: when strict head anchoring is requested, a missing anchor is a
+        // verification failure, not a silent pass — the terminal entry could have
+        // been truncated and a parent-chain walk alone cannot detect that.
+        if requireExpectedHead, (expectedHeadHashHex ?? "").isEmpty {
+            return ValidationResult(entryCount: 0, isValid: false, firstInvalidReason: .headAnchorMissing)
+        }
         guard let text = String(data: rawJSONLines, encoding: .utf8) else {
             return ValidationResult(entryCount: 0, isValid: false, firstInvalidReason: .decodeFailure)
         }
