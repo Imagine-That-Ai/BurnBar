@@ -1898,6 +1898,10 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
     public var controlOwnerViewerId: String?
     public var remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
     public var remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities?
+    /// F7: the host's streaming capability snapshot (codecs, wire versions,
+    /// frame-AEAD support) so the viewer can negotiate without an extra round
+    /// trip. Optional — pre-F7 hosts omit it and pre-F7 viewers ignore it.
+    public var streamingCapabilities: HermesRealtimeRelayStreamingCapabilities?
 
     public init(
         requestId: String,
@@ -1913,7 +1917,8 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         maxViewers: Int? = nil,
         controlOwnerViewerId: String? = nil,
         remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
-        remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil
+        remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil,
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil
     ) {
         self.requestId = requestId
         self.decision = decision
@@ -1929,6 +1934,7 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         self.controlOwnerViewerId = controlOwnerViewerId
         self.remoteUnlockState = remoteUnlockState
         self.remoteUnlockCapabilities = remoteUnlockCapabilities
+        self.streamingCapabilities = streamingCapabilities
     }
 }
 
