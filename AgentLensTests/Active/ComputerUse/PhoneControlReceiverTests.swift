@@ -1959,12 +1959,12 @@ private actor StaticPhoneControlAuthorityProvider: PhoneControlAuthorityPublicKe
         uid: String,
         connectionId: String,
         peerNodeId: String
-    ) async throws -> Curve25519.Signing.PublicKey {
+    ) async throws -> PhoneControlVerifyingKey {
         fetchCount += 1
         XCTAssertEqual(uid, expectedUID)
         XCTAssertEqual(connectionId, expectedConnectionID)
         XCTAssertEqual(peerNodeId, expectedPeerNodeID)
-        return publicKey
+        return .ed25519(publicKey)
     }
 }
 

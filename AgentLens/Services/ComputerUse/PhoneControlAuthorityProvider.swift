@@ -3,9 +3,12 @@ import CryptoKit
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 
 public protocol PhoneControlAuthorityPublicKeyProviding: Sendable {
-    func fetchPublicKey(uid: String, connectionId: String, peerNodeId: String) async throws -> Curve25519.Signing.PublicKey
+    /// F2: returns a key-kind-aware verifying key (legacy Ed25519 or
+    /// Secure-Enclave P-256, per the record's `signingKeyKind`).
+    func fetchPublicKey(uid: String, connectionId: String, peerNodeId: String) async throws -> PhoneControlVerifyingKey
 }
 
 public enum PhoneControlAuthorityProviderError: Error, Sendable, Equatable {
@@ -45,7 +48,7 @@ public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthority
         uid: String,
         connectionId: String,
         peerNodeId: String
-    ) async throws -> Curve25519.Signing.PublicKey {
+    ) async throws -> PhoneControlVerifyingKey {
         let db = firestoreProvider()
         let snapshot = try await db
             .collection("users")
@@ -71,9 +74,28 @@ public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthority
               let publishedAtMillis = data["publishedAtMillis"] as? Int64
                 ?? (data["publishedAtMillis"] as? NSNumber)?.int64Value,
               let base64 = data["publicKeyBase64"] as? String,
-              let raw = Data(base64Encoded: base64),
-              raw.count == 32 else {
+              let raw = Data(base64Encoded: base64) else {
             throw PhoneControlAuthorityProviderError.malformed
+        }
+        // F2: `signingKeyKind` selects the custody class. Absent ⇒ legacy
+        // Ed25519 (32-byte raw). A PRESENT-but-unrecognized kind fails closed —
+        // never silently downgrade a record that claims a stronger key.
+        let keyKind: PhoneControlSigningKeyKind
+        if let kindRaw = data["signingKeyKind"] as? String {
+            guard let parsed = PhoneControlSigningKeyKind(rawValue: kindRaw) else {
+                throw PhoneControlAuthorityProviderError.malformed
+            }
+            keyKind = parsed
+        } else {
+            keyKind = .ed25519
+        }
+        switch keyKind {
+        case .ed25519:
+            guard raw.count == 32 else { throw PhoneControlAuthorityProviderError.malformed }
+        case .secureEnclaveP256:
+            // 65-byte X9.63 (0x04‖X‖Y) — the exact bytes the SE peerNodeId
+            // derivation and the server's schemaVersion-3 publish path use.
+            guard raw.count == 65 else { throw PhoneControlAuthorityProviderError.malformed }
         }
         guard Date().timeIntervalSince1970 - (Double(publishedAtMillis) / 1000.0) <= maximumAge else {
             throw PhoneControlAuthorityProviderError.expired
@@ -94,7 +116,7 @@ public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthority
             throw PhoneControlAuthorityProviderError.unsupportedPlatform(platform)
         }
         do {
-            return try Curve25519.Signing.PublicKey(rawRepresentation: raw)
+            return try PhoneControlVerifyingKey(kind: keyKind, publicKeyRepresentation: raw)
         } catch {
             throw PhoneControlAuthorityProviderError.malformed
         }

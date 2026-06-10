@@ -24,6 +24,17 @@ public enum PhoneControlVerifyingKey: Sendable {
         }
     }
 
+    /// The canonical published bytes for this key — exactly what
+    /// `controllers/{peerNodeId}.publicKeyBase64` carries and what the
+    /// controller pin store pins: 32-byte raw for Ed25519, 65-byte X9.63
+    /// (`0x04‖X‖Y`) for SE-P256.
+    public var publicKeyRepresentation: Data {
+        switch self {
+        case .ed25519(let key): return key.rawRepresentation
+        case .secureEnclaveP256(let key): return key.x963Representation
+        }
+    }
+
     /// Build a verifying key from a wire `keyKind` discriminator and the raw
     /// public-key bytes stored in the controller record (`publicKeyBase64`).
     ///

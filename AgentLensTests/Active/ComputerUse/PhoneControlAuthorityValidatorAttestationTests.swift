@@ -505,6 +505,169 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
         XCTAssertEqual(store.load()["peer-2"], 3)
     }
 
+    // MARK: - F2 key-kind (Secure-Enclave P-256) validation
+
+    /// An SE-P256-signed envelope (raw r‖s ECDSA, `keyKind: "se-p256"`)
+    /// validates against a registered SE verifying key.
+    func test_seP256SignedIntentValidates() throws {
+        let validator = makeValidator()
+        let identity = PhoneControlAuthoritySigningKey.secureEnclaveP256(P256.Signing.PrivateKey())
+        XCTAssertTrue(validator.registerPeer(nodeId: "peer-1", verifyingKey: identity.verifyingKey))
+
+        let intent = try seSignedTapIntent(identity: identity)
+        let result = try validator.validate(envelope: intent.authority, intent: intent)
+        XCTAssertEqual(result.peerNodeId, "peer-1")
+        XCTAssertEqual(result.counter, 1)
+    }
+
+    /// An envelope that claims legacy `ed25519` against an SE-registered key
+    /// (the downgrade an attacker would attempt) fails closed — and so does the
+    /// reverse mismatch.
+    func test_envelopeKeyKindMismatchFailsClosed() throws {
+        let validator = makeValidator()
+        let identity = PhoneControlAuthoritySigningKey.secureEnclaveP256(P256.Signing.PrivateKey())
+        XCTAssertTrue(validator.registerPeer(nodeId: "peer-1", verifyingKey: identity.verifyingKey))
+
+        var downgraded = try seSignedTapIntent(identity: identity)
+        downgraded.authority.keyKind = nil // claim pre-F2 legacy ed25519
+        XCTAssertThrowsError(
+            try validator.validate(envelope: downgraded.authority, intent: downgraded)
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.signatureFailed = error else {
+                return XCTFail("Expected signatureFailed, got \(error)")
+            }
+        }
+
+        let legacyValidator = makeValidator()
+        let legacyKey = Curve25519.Signing.PrivateKey()
+        legacyValidator.registerPeer(nodeId: "peer-1", publicKey: legacyKey.publicKey)
+        var escalated = try signedTapIntent(privateKey: legacyKey, attestationDigest: nil)
+        escalated.authority.keyKind = .secureEnclaveP256
+        XCTAssertThrowsError(
+            try legacyValidator.validate(envelope: escalated.authority, intent: escalated)
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.signatureFailed = error else {
+                return XCTFail("Expected signatureFailed, got \(error)")
+            }
+        }
+    }
+
+    /// F2 step-up: a sensitive grant (shell) signed by a biometry-gated SE key
+    /// needs no explicit local-auth proof — the signature is the user-presence
+    /// proof. The same grant signed by a legacy software key still demands one.
+    func test_stepUpEvidencePerKeyKindOnSensitiveGrant() throws {
+        let now = Date()
+        func grant(authority: HermesRealtimeRelayAuthorityEnvelope) -> HermesRealtimeRelayAgentGrantRequest {
+            HermesRealtimeRelayAgentGrantRequest(
+                requestId: UUID().uuidString,
+                runtime: "claude",
+                threadId: "thread-1",
+                preset: "default",
+                capabilities: [AgentDesktopCapability.shell.rawValue],
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                deliveryMode: "push",
+                requestedAt: now,
+                expiresAt: now.addingTimeInterval(60),
+                grantDurationSeconds: 60,
+                sourceDeviceId: "escrow-device-1",
+                clientIntentId: UUID().uuidString,
+                localAuthenticationSatisfied: false,
+                authority: authority
+            )
+        }
+
+        // SE key: validates without any proof attached.
+        let seValidator = makeValidator()
+        let identity = PhoneControlAuthoritySigningKey.secureEnclaveP256(P256.Signing.PrivateKey())
+        XCTAssertTrue(seValidator.registerPeer(nodeId: "peer-1", verifyingKey: identity.verifyingKey))
+        var seRequest = grant(authority: HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: now,
+            intentHashBlake3: "",
+            signatureEd25519: "",
+            keyKind: .secureEnclaveP256
+        ))
+        let seHash = try phoneSigner.canonicalAgentGrantRequestHashHex(request: seRequest)
+        let seSigned = try phoneSigner.signAuthority(
+            intentHashHex: seHash,
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: now,
+            key: identity
+        )
+        seRequest.authority.intentHashBlake3 = seSigned.intentHashHex
+        seRequest.authority.signatureEd25519 = seSigned.signatureBase64
+        XCTAssertNoThrow(try seValidator.validate(envelope: seRequest.authority, grantRequest: seRequest, now: now))
+
+        // Legacy key: the identical grant fails for want of the explicit proof.
+        let legacyValidator = makeValidator()
+        let legacyKey = Curve25519.Signing.PrivateKey()
+        legacyValidator.registerPeer(nodeId: "peer-1", publicKey: legacyKey.publicKey)
+        var legacyRequest = grant(authority: HermesRealtimeRelayAuthorityEnvelope(
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: now,
+            intentHashBlake3: "",
+            signatureEd25519: ""
+        ))
+        let legacySigned = try phoneSigner.sign(
+            request: legacyRequest,
+            peerNodeId: "peer-1",
+            counter: 1,
+            timestamp: now,
+            privateKey: legacyKey
+        )
+        legacyRequest.authority.intentHashBlake3 = legacySigned.intentHashHex
+        legacyRequest.authority.signatureEd25519 = legacySigned.signatureBase64
+        XCTAssertThrowsError(
+            try legacyValidator.validate(envelope: legacyRequest.authority, grantRequest: legacyRequest, now: now)
+        ) { error in
+            guard case PhoneControlAuthorityValidator.ValidationError.localAuthProofRequired = error else {
+                return XCTFail("Expected localAuthProofRequired, got \(error)")
+            }
+        }
+    }
+
+    private func seSignedTapIntent(
+        identity: PhoneControlAuthoritySigningKey,
+        counter: UInt64 = 1,
+        timestamp: Date = Date()
+    ) throws -> HermesRealtimeRelayInputIntent {
+        var intent = HermesRealtimeRelayInputIntent(
+            kind: .tap,
+            displayId: nil,
+            normalizedX: 0.5,
+            normalizedY: 0.5,
+            normalizedX2: nil,
+            normalizedY2: nil,
+            text: nil,
+            key: nil,
+            modifiers: nil,
+            mouseButton: nil,
+            clientIntentId: UUID().uuidString,
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: "peer-1",
+                counter: counter,
+                timestamp: timestamp,
+                intentHashBlake3: "",
+                signatureEd25519: "",
+                keyKind: .secureEnclaveP256
+            )
+        )
+        let hashHex = try phoneSigner.canonicalInputIntentHashHex(intent: intent)
+        let signed = try phoneSigner.signAuthority(
+            intentHashHex: hashHex,
+            peerNodeId: "peer-1",
+            counter: counter,
+            timestamp: timestamp,
+            key: identity
+        )
+        intent.authority.intentHashBlake3 = signed.intentHashHex
+        intent.authority.signatureEd25519 = signed.signatureBase64
+        return intent
+    }
+
     private func makeValidator(
         freshnessWindow: TimeInterval = 5.0,
         authorityMaxLifetime: TimeInterval = 300.0,
