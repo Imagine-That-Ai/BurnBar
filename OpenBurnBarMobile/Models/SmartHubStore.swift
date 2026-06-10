@@ -145,15 +145,24 @@ final class SmartHubStore {
                 Task { @MainActor in
                     // Listener fires for every server update; replace
                     // `config` so `publishedAt` always reflects the
-                    // most recent heartbeat the Mac wrote.
-                    self.config = freshest ?? self.config
+                    // most recent heartbeat the Mac wrote. (Every 10s
+                    // heartbeat rewrites `publishedAt`, so the equality
+                    // guard only skips the rare byte-identical delivery —
+                    // it must NOT split freshness into a separate field,
+                    // or the stale-cast-button bug documented above
+                    // returns.)
+                    guard let freshest, freshest != self.config else { return }
+                    self.config = freshest
                 }
             }
     }
 
-    /// Detach the listener. Safe to call when none is attached. Callers
-    /// don't currently need to invoke this — `deinit` handles cleanup
-    /// — but it's exposed for tests and explicit teardown paths.
+    /// Detach the listener. Safe to call when none is attached. This is
+    /// the ONLY teardown path — there is deliberately no `deinit` cleanup
+    /// (see the note above `init`): `@MainActor` isolation forbids touching
+    /// the listener from a nonisolated deinit, and the owning `@State`
+    /// keeps the store alive for the screen's lifetime anyway. Tests and
+    /// explicit view-model teardown paths call this directly.
     func stopListening() {
         configListener?.remove()
         configListener = nil

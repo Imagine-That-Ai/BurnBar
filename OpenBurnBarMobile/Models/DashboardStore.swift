@@ -22,6 +22,10 @@ final class DashboardStore {
     private(set) var selectedWindow: RollupWindowKey = .today
     private(set) var rollupsByWindow: [RollupWindowKey: UsageRollupDoc] = [:]
     private(set) var isListening = false
+    /// True once a load/refresh completed without error. Hoisted stores
+    /// (`RootTabView`) use this so a tab-return remount only restarts the
+    /// listener instead of re-fetching (`loadIfNeeded`).
+    private(set) var hasLoadedOnce = false
 
     // MARK: - Swarm Color Driver
 
@@ -98,12 +102,27 @@ final class DashboardStore {
         self.functions = functions
         if !initialRollups.isEmpty {
             applyRollups(initialRollups, publishSideEffects: false)
+            // Seeded stores start warm: `loadIfNeeded` treats the seed as a
+            // completed load (previews, tests, screenshot fixtures).
+            hasLoadedOnce = true
         }
     }
 
     /// Initial load called on first view appear.
     func load() async {
         await refresh()
+        startListening()
+    }
+
+    /// Idempotent variant of `load()` for stores hoisted above the owning
+    /// view: a warm store (successful prior load) only restarts the
+    /// listener that `onDisappear` tore down — zero refetches on a tab
+    /// return. A store whose last load failed retries the full load.
+    func loadIfNeeded() async {
+        guard hasLoadedOnce else {
+            await load()
+            return
+        }
         startListening()
     }
 
@@ -125,6 +144,7 @@ final class DashboardStore {
             applyRollups(AppStoreScreenshotData.usageRollups, publishSideEffects: publishSideEffects)
             error = nil
             isLoading = false
+            hasLoadedOnce = true
             return
         }
         isLoading = true
@@ -143,6 +163,7 @@ final class DashboardStore {
                 let now = Date()
                 guard now.timeIntervalSince(lastRebuildAttempt) >= Self.rebuildCooldown else {
                     applyRollups(rollups, publishSideEffects: publishSideEffects)
+                    hasLoadedOnce = true
                     return
                 }
                 lastRebuildAttempt = now
@@ -150,6 +171,7 @@ final class DashboardStore {
                 rollups = try await firestore.fetchRollups()
             }
             applyRollups(rollups, publishSideEffects: publishSideEffects)
+            hasLoadedOnce = true
         } catch {
             self.error = error.localizedDescription
         }

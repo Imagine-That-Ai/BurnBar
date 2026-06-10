@@ -30,7 +30,7 @@ struct RootTabView: View {
     @State private var router = PulseRouter()
     @State private var settingsRouter = SettingsRouter()
     @State private var motionStore = MotionStore()
-    @State private var hermesService = HermesService()
+    @State private var hermesService = HermesService(runtimeStore: .shared)
     @State private var studioPresenter = ChartStudioPresenter()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var missionConsoleHost = MobileMissionConsoleHost()
@@ -241,6 +241,21 @@ struct RootTabView: View {
 
     @State private var insightsDashboardStore = DashboardStore()
 
+    // Pulse/Burn data stores hoisted to the tab root (precedent:
+    // `insightsDashboardStore`) so a tab return reuses warm stores: the
+    // remounted view restarts the listeners its `onDisappear` tore down
+    // instead of re-running the full network load (previously ~10+
+    // round-trips per return to Pulse).
+    @State private var pulseDashboardStore = DashboardStore()
+    @State private var pulseQuotaStore = QuotaStore()
+    @State private var pulseSessionsStore = ActivityStore()
+    /// Pulse quick-ask keeps its own conversation surface (per-surface
+    /// transcript, shared runtime catalog) and now survives tab swaps.
+    @State private var pulseHermesService = HermesService(runtimeStore: .shared)
+    @State private var burnQuotaStore = QuotaStore()
+    @State private var burnDashboardStore = DashboardStore()
+    @State private var burnActivityStore = ActivityStore()
+
     private var insightsStack: some View {
         AgentInsightsTabScreen(
             dashboardStore: insightsDashboardStore,
@@ -252,7 +267,13 @@ struct RootTabView: View {
 
     private var pulseStack: some View {
         NavigationStack(path: $pulsePath) {
-            PulseView(router: router)
+            PulseView(
+                router: router,
+                dashboard: pulseDashboardStore,
+                quotaStore: pulseQuotaStore,
+                sessionsStore: pulseSessionsStore,
+                hermesService: pulseHermesService
+            )
                 .navigationDestination(for: TokenUsage.self) { SessionDetailView(usage: $0) }
                 .navigationDestination(for: AgentProvider.self) { ProviderDashboardView(provider: $0) }
         }
@@ -260,7 +281,11 @@ struct RootTabView: View {
 
     private var burnStack: some View {
         NavigationStack(path: $burnPath) {
-            BurnView()
+            BurnView(
+                quotaStore: burnQuotaStore,
+                dashboard: burnDashboardStore,
+                activityStore: burnActivityStore
+            )
                 .navigationDestination(for: AgentProvider.self) { ProviderDashboardView(provider: $0) }
         }
     }

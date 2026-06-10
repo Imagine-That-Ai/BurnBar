@@ -20,6 +20,12 @@ final class ActivityStore {
     private(set) var searchHits: [StreamSearchHit] = []
     private(set) var cloudSearchHits: [CloudConversationSearchRow] = []
     private(set) var hasMore = true
+    /// True once an initial page load completed without error — see
+    /// `loadInitialIfNeeded`.
+    private(set) var hasLoadedOnce = false
+    /// True once a one-shot live-usage fetch completed without error — see
+    /// `loadLiveUsageIfNeeded`.
+    private var hasLoadedLiveUsageOnce = false
     private var lastDoc: DocumentSnapshot?
     private var liveUsageListener: ListenerRegistration?
     private static let serverSearchLimit = 50
@@ -48,6 +54,27 @@ final class ActivityStore {
         await refresh()
     }
 
+    /// Idempotent variant of `loadInitial()` for stores hoisted above the
+    /// owning view: a warm store keeps its paged rows on a tab return; a
+    /// store whose last load failed retries.
+    func loadInitialIfNeeded() async {
+        guard hasLoadedOnce else {
+            await loadInitial()
+            return
+        }
+    }
+
+    /// Idempotent variant of `loadLiveUsage(since:)`: the one-shot seed
+    /// fetch only matters before the live listener has ever delivered —
+    /// on a warm tab return the restarted listener replays the current
+    /// window by itself.
+    func loadLiveUsageIfNeeded(since startDate: Date) async {
+        guard hasLoadedLiveUsageOnce else {
+            await loadLiveUsage(since: startDate)
+            return
+        }
+    }
+
     /// Fetches the next page when the user reaches the bottom of the list.
     func loadNext() async {
         await loadMore()
@@ -62,6 +89,7 @@ final class ActivityStore {
             usages = Self.summarizeSessions(rawUsages)
             lastDoc = nil
             hasMore = false
+            hasLoadedOnce = true
             return
         }
         isLoading = true
@@ -77,6 +105,7 @@ final class ActivityStore {
             usages = Self.summarizeSessions(rawUsages)
             lastDoc = batch.last
             hasMore = batch.hasMore
+            hasLoadedOnce = true
         } catch {
             self.error = error.localizedDescription
         }
@@ -111,16 +140,22 @@ final class ActivityStore {
         rawUsages = []
         usages = []
         hasMore = true
+        // A refresh empties the store, so until `load()` succeeds again the
+        // store must read as cold — otherwise a failed pull-to-refresh would
+        // leave `loadIfNeeded` skipping the retry on the next mount.
+        hasLoadedOnce = false
         await load()
     }
 
     func loadLiveUsage(since startDate: Date) async {
         if AppStoreScreenshotMode.isEnabled {
             liveUsages = AppStoreScreenshotData.recentUsage
+            hasLoadedLiveUsageOnce = true
             return
         }
         do {
             liveUsages = try await firestore.fetchUsageSince(startDate)
+            hasLoadedLiveUsageOnce = true
         } catch {
             self.error = error.localizedDescription
         }
@@ -137,6 +172,7 @@ final class ActivityStore {
             switch result {
             case .success(let rows):
                 self.liveUsages = rows
+                self.hasLoadedLiveUsageOnce = true
                 self.error = nil
             case .failure(let error):
                 self.error = error.localizedDescription

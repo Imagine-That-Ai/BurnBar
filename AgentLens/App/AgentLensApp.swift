@@ -182,7 +182,18 @@ final class AppCommandRouter {
     var openConversationSearch: (() -> Void)?
     var openChatPanel: (() -> Void)?
     var openSettings: (() -> Void)?
-    var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)?
+    var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)? {
+        didSet {
+            // Lets AppDelegate (re)prime the menu-bar popover content off
+            // the click path the moment the real factory lands (i.e. when
+            // `startupState.runtimeContext` becomes ready) — and
+            // invalidate a prewarm that captured a stale factory, such as
+            // the startup-recovery `EmptyView` fallback.
+            onMenuBarPopoverFactoryChanged?()
+        }
+    }
+    /// Installed by `AppDelegate`; invoked after every factory (re)install.
+    var onMenuBarPopoverFactoryChanged: (() -> Void)?
 
     func handle(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "openburnbar" else { return false }

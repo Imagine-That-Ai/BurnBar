@@ -445,7 +445,8 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .controllerSummary, .controllerProjectsList, .controllerProjectGet,
+            case .controllerSummary, .controllerRuntimeSnapshot,
+                 .controllerProjectsList, .controllerProjectGet,
                  .controllerProjectUpsert, .reviewRunRecord,
                  .questionCreate, .questionGet, .questionsList, .questionAnswer,
                  .followupCreate, .followupsList, .followupDone, .followupSnooze, .followupCalendar,
@@ -660,9 +661,11 @@ private enum BurnBarUnixDomainSocket {
 
     static func readRequest(from fileDescriptor: Int32, maxBytes: Int) throws -> Data {
         var buffer = Data()
-        buffer.reserveCapacity(1024)
+        buffer.reserveCapacity(4_096)
 
-        var chunk = [UInt8](repeating: 0, count: 1024)
+        // 64KB chunks: large requests (mission packets, simulator runs)
+        // used to cost one read() syscall per KB.
+        var chunk = [UInt8](repeating: 0, count: 65_536)
 
         while true {
             let bytesRead = read(fileDescriptor, &chunk, chunk.count)

@@ -131,6 +131,49 @@ final class FirestoreRepository {
     /// Injects the Firestore document ID as `id` when the payload lacks it,
     /// remaps `deviceId` → `sourceDeviceId`, sanitizes for JSON, then decodes.
     nonisolated func decodeWithDocID<T: Decodable>(_ type: T.Type, from data: [String: Any], docID: String) -> T? {
+        decodeWithDocID(type, from: data, docID: docID, projectNameOpener: nil)
+    }
+
+    /// `TokenUsage` decode for the incremental live listener: identical to
+    /// `decodeWithDocID` but routes the sealed-project-name open through a
+    /// per-listener `(docID, updatedAt)` memo, so a MODIFIED delivery that
+    /// only advances token totals skips the AEAD open.
+    nonisolated func decodeTokenUsage(
+        from data: [String: Any],
+        docID: String,
+        updatedAtMillis: Int64,
+        projectNames: SealedProjectNameCache
+    ) -> TokenUsage? {
+        decodeWithDocID(TokenUsage.self, from: data, docID: docID) { enriched in
+            projectNames.openOrCached(docID: docID, updatedAtMillis: updatedAtMillis) {
+                CloudVaultCrypto.openSealedProjectName(
+                    from: enriched,
+                    keyData: Self.cachedVaultKey()
+                )
+            }
+        }
+    }
+
+    /// Millisecond epoch for a Firestore `updatedAt` value. Returns 0 when
+    /// absent/unparseable so the sealed-name memo fails open (bypasses the
+    /// cache rather than ever serving a stale name).
+    nonisolated static func updatedAtMillis(_ value: Any?) -> Int64 {
+        switch value {
+        case let timestamp as Timestamp:
+            return Int64(timestamp.dateValue().timeIntervalSince1970 * 1_000)
+        case let date as Date:
+            return Int64(date.timeIntervalSince1970 * 1_000)
+        default:
+            return 0
+        }
+    }
+
+    nonisolated private func decodeWithDocID<T: Decodable>(
+        _ type: T.Type,
+        from data: [String: Any],
+        docID: String,
+        projectNameOpener: (([String: Any]) -> String?)?
+    ) -> T? {
         var enriched = data
         if enriched["id"] == nil {
             enriched["id"] = docID
@@ -151,10 +194,15 @@ final class FirestoreRepository {
             // legacy plaintext fallback for in-flight / pre-migration rows. The
             // decoder consumes plaintext `projectName`, so write the opened value
             // back into the enriched payload and drop the sealed envelope.
-            let openedProject = CloudVaultCrypto.openSealedProjectName(
-                from: enriched,
-                keyData: Self.cachedVaultKey()
-            )
+            let openedProject: String?
+            if let projectNameOpener {
+                openedProject = projectNameOpener(enriched)
+            } else {
+                openedProject = CloudVaultCrypto.openSealedProjectName(
+                    from: enriched,
+                    keyData: Self.cachedVaultKey()
+                )
+            }
             enriched["projectName"] = openedProject ?? ""
             enriched["sealedProjectName"] = nil
         }
@@ -645,6 +693,13 @@ final class FirestoreRepository {
         }
     }
 
+    /// Newest-first cap shared by the live-usage fetch and listener. The
+    /// rolling ~25h window is otherwise unbounded, and every Pulse burn
+    /// window re-aggregates this list each clock tick. 2,000 docs covers a
+    /// usage row every ~45s sustained for the whole window. Matches the
+    /// Android `LIVE_USAGE_DOC_LIMIT`.
+    nonisolated static let liveUsageDocumentLimit = 2_000
+
     func fetchUsageSince(_ startDate: Date) async throws -> [TokenUsage] {
         let uid = try uid()
         // `endTime` is written everywhere as a Firestore `Timestamp` (see
@@ -657,6 +712,7 @@ final class FirestoreRepository {
         let snapshot = try await db.collection("users/\(uid)/usage")
             .whereField("endTime", isGreaterThanOrEqualTo: Timestamp(date: startDate))
             .order(by: "endTime", descending: true)
+            .limit(to: Self.liveUsageDocumentLimit)
             .getDocuments()
         return snapshot.documents.compactMap { doc -> TokenUsage? in
             decodeWithDocID(TokenUsage.self, from: doc.data(), docID: doc.documentID)
@@ -680,26 +736,79 @@ final class FirestoreRepository {
 
     func listenToUsageSince(
         _ startDate: Date,
-        onUpdate: @escaping @MainActor (Result<[TokenUsage], Error>) -> Void
+        onUpdate: @escaping @MainActor @Sendable (Result<[TokenUsage], Error>) -> Void
     ) -> ListenerRegistration? {
         guard let uid = try? uid() else {
             Task { @MainActor in onUpdate(.failure(FirestoreError.notAuthenticated)) }
             return nil
         }
+        // Snapshot deliveries decode on this serial queue instead of the
+        // main actor, so the per-doc JSON sanitize + Codable decode + sealed
+        // project-name AEAD open never run as main-thread work while an
+        // agent streams usage writes. The queue's FIFO order also confines
+        // all accumulator/cache access — no locking needed — and the
+        // main-queue publish hop preserves delivery order.
+        let decodeQueue = DispatchQueue(
+            label: "com.openburnbar.mobile.live-usage-decode",
+            qos: .userInitiated
+        )
+        // O(changes) per delivery instead of O(window): `documentChanges`
+        // patches the docID-keyed accumulator, and unchanged docs skip the
+        // decrypt via the (docID, updatedAt) memo. Matches the Android
+        // incremental listener design (shared Firestore query shape).
+        let accumulator = LiveUsageAccumulator()
+        let projectNames = SealedProjectNameCache()
         return db.collection("users/\(uid)/usage")
             .whereField("endTime", isGreaterThanOrEqualTo: Timestamp(date: startDate))
             .order(by: "endTime", descending: true)
+            // With a capped listener Firestore also emits `.removed`
+            // changes when rows fall off the limit boundary — handled in
+            // the delta loop below.
+            .limit(to: Self.liveUsageDocumentLimit)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
-                Task { @MainActor in
-                    if let error {
-                        onUpdate(.failure(error))
-                        return
+                if let error {
+                    Task { @MainActor in onUpdate(.failure(error)) }
+                    return
+                }
+                guard let snapshot else { return }
+                let changes = snapshot.documentChanges.map { change -> LiveUsageDocumentChange in
+                    let removed = change.type == .removed
+                    let payload = removed ? nil : change.document.data()
+                    return LiveUsageDocumentChange(
+                        kind: removed ? .removed : .upsert,
+                        docID: change.document.documentID,
+                        payload: payload,
+                        updatedAtMillis: Self.updatedAtMillis(payload?["updatedAt"])
+                    )
+                }
+                decodeQueue.async {
+                    for change in changes {
+                        switch change.kind {
+                        case .upsert:
+                            if let payload = change.payload,
+                               let usage = self.decodeTokenUsage(
+                                   from: payload,
+                                   docID: change.docID,
+                                   updatedAtMillis: change.updatedAtMillis,
+                                   projectNames: projectNames
+                               ) {
+                                accumulator.upsert(usage, docID: change.docID)
+                            } else {
+                                accumulator.remove(docID: change.docID)
+                                projectNames.remove(docID: change.docID)
+                            }
+                        case .removed:
+                            accumulator.remove(docID: change.docID)
+                            projectNames.remove(docID: change.docID)
+                        }
                     }
-                    let rows = snapshot?.documents.compactMap { doc -> TokenUsage? in
-                        self.decodeWithDocID(TokenUsage.self, from: doc.data(), docID: doc.documentID)
-                    } ?? []
-                    onUpdate(.success(rows))
+                    let rows = accumulator.snapshot()
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            onUpdate(.success(rows))
+                        }
+                    }
                 }
             }
     }
