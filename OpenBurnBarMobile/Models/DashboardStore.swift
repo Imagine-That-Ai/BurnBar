@@ -107,18 +107,22 @@ final class DashboardStore {
         startListening()
     }
 
-    func refresh() async {
-        await refresh(forceRebuild: false)
+    /// Fetch the latest rollups and re-derive the published fields.
+    ///
+    /// Pass `publishSideEffects: false` for pure reads (App Intents): the
+    /// fetched data then never touches WidgetCenter or ActivityKit.
+    func refresh(publishSideEffects: Bool = true) async {
+        await refresh(forceRebuild: false, publishSideEffects: publishSideEffects)
     }
 
     /// Force a full server-side rollup rebuild from raw usage events.
     func forceRebuild() async {
-        await refresh(forceRebuild: true)
+        await refresh(forceRebuild: true, publishSideEffects: true)
     }
 
-    private func refresh(forceRebuild: Bool) async {
+    private func refresh(forceRebuild: Bool, publishSideEffects: Bool) async {
         if AppStoreScreenshotMode.isEnabled {
-            applyRollups(AppStoreScreenshotData.usageRollups)
+            applyRollups(AppStoreScreenshotData.usageRollups, publishSideEffects: publishSideEffects)
             error = nil
             isLoading = false
             return
@@ -137,14 +141,14 @@ final class DashboardStore {
             if shouldRebuild {
                 let now = Date()
                 guard now.timeIntervalSince(lastRebuildAttempt) >= Self.rebuildCooldown else {
-                    applyRollups(rollups)
+                    applyRollups(rollups, publishSideEffects: publishSideEffects)
                     return
                 }
                 lastRebuildAttempt = now
                 try await functions.rebuildUsageRollups()
                 rollups = try await firestore.fetchRollups()
             }
-            applyRollups(rollups)
+            applyRollups(rollups, publishSideEffects: publishSideEffects)
         } catch {
             self.error = error.localizedDescription
         }
