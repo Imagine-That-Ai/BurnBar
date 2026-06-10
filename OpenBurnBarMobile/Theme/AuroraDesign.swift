@@ -103,10 +103,13 @@ enum AuroraDesign {
         static let auroraSpring  = Animation.spring(response: 0.42, dampingFraction: 0.82)
         /// Snap-to-state — toggles, taps, chip-rail switches.
         static let auroraSnap    = Animation.spring(response: 0.28, dampingFraction: 0.78)
-        /// Ambient drift used by the backdrop layer.
-        static let auroraDrift   = Animation.linear(duration: 18).repeatForever(autoreverses: true)
-        /// Aurora ribbon sweep across the top edge (slower for cinematic feel).
-        static let auroraRibbon  = Animation.linear(duration: 22).repeatForever(autoreverses: true)
+        /// One leg of the backdrop's autoreversing ambient drift (0 → 1), in seconds.
+        /// Driven by the frame-capped `TimelineView` in `AuroraBackdrop`, not `withAnimation`.
+        static let auroraDriftDuration: TimeInterval = 18
+        /// Frame cap for the backdrop drift. The drift moves sub-pixel per frame, so
+        /// ticking above 24Hz only re-renders the full-screen mesh blur for nothing;
+        /// matches the `TimelineView` cadence in `AuroraNavigationIcons`.
+        static let auroraDriftFrameInterval: TimeInterval = 1.0 / 24
         /// Card hover — keep in sync with `UnifiedDesignSystem.Animation.hover`.
         static let cardHover     = Animation.spring(response: 0.25, dampingFraction: 0.82)
         /// Card press feedback.

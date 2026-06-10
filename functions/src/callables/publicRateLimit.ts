@@ -15,7 +15,11 @@ export type CallableApprovalRateLimitAction = "cli_link_approve_fail" | "hermes_
 
 export type HermesGatewayBearerRateLimitAction =
   | "hermes_gateway_message_send"
-  | "hermes_gateway_attachment_init";
+  | "hermes_gateway_attachment_init"
+  // L3: owner-authenticated event enqueue (phone -> paired agent). Scoped per
+  // (uid, clientId); prevents an account from flooding its own paired agent with
+  // dispatched events / model switches (self-inflicted LLM spend amplification).
+  | "hermes_gateway_event_enqueue";
 
 const PUBLIC_HTTP_LIMITS: Record<PublicHttpRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   cli_link_start: { windowSeconds: 3600, maxAttempts: 20 },
@@ -33,6 +37,7 @@ const HERMES_GATEWAY_BEARER_LIMITS: Record<
 > = {
   hermes_gateway_message_send: { windowSeconds: 60, maxAttempts: 120 },
   hermes_gateway_attachment_init: { windowSeconds: 600, maxAttempts: 20 },
+  hermes_gateway_event_enqueue: { windowSeconds: 60, maxAttempts: 120 },
 };
 
 function rateLimitDocId(keyMaterial: string, action: string): string {

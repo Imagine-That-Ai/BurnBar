@@ -34,6 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -228,9 +229,7 @@ class MediaControlStreamCoordinator(
             pendingHeartbeatSentAtMillis = sentAtMillis
 
             val replied = withTimeoutOrNull(probeTimeoutMillis.coerceAtLeast(1L)) {
-                while (_lastPeerHeartbeatAtMillis.value <= beforeProbe) {
-                    delay(25)
-                }
+                _lastPeerHeartbeatAtMillis.first { it > beforeProbe }
                 true
             } == true
 

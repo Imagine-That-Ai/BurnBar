@@ -31,7 +31,6 @@ import {
   creditCloudProTopUp,
   writeBurnBarProEntitlement,
 } from "./shared.js";
-import { google } from "googleapis";
 import Stripe from "stripe";
 import { isStripeCheckoutSession, isStripeSubscription, jsonObject, stripUndefinedObject } from "../guards.js";
 import type { CloudProTopUpKind } from "../cloudProAllowanceCore.js";
@@ -295,6 +294,8 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
         boundedTrimmedString(request.data.productID, "productID", 256, false) ?? cfg.googlePlaySubscriptionProductID;
       const entitlementTarget = googlePlaySubscriptionEntitlement(productID);
 
+      // Lazy-load googleapis (~500ms) so every other function skips it on cold start.
+      const { google } = await import("googleapis");
       const authClient = await google.auth.getClient({
         scopes: ["https://www.googleapis.com/auth/androidpublisher"],
       });
@@ -390,6 +391,7 @@ export const verifyGooglePlayCloudProTopUp = onCall(
         kind: "topup",
       });
 
+      const { google } = await import("googleapis");
       const authClient = await google.auth.getClient({
         scopes: ["https://www.googleapis.com/auth/androidpublisher"],
       });

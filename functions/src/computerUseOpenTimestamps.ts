@@ -156,9 +156,14 @@ async function fetchGoogleIdentityToken(audience: string): Promise<string> {
   const url = new URL("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity");
   url.searchParams.set("audience", audience);
   url.searchParams.set("format", "full");
-  const response = await resilientFetch("gcp.metadata.identity", url, {
-    headers: { "Metadata-Flavor": "Google" },
-  });
+  // L5: this is the ONE legitimate internal-host fetch (GCP workload identity);
+  // it opts past the SSRF guard explicitly. No user input reaches this URL.
+  const response = await resilientFetch(
+    "gcp.metadata.identity",
+    url,
+    { headers: { "Metadata-Flavor": "Google" } },
+    { allowPrivateHosts: true },
+  );
   if (!response.ok) {
     throw new Error(`metadata identity token request failed: HTTP ${response.status}`);
   }

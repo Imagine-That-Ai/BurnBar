@@ -26,6 +26,7 @@ struct MenuBarPopoverView: View {
     @State private var showScanFlash = false
     @State private var listAppeared = false
     @State private var insightSnapshot: WorkflowInsightRollupSnapshot = .unavailable
+    @State private var insightRefreshToken = 0
     @State private var hermesChatActive = false
     @State private var isCastingSmartHub = false
     @State private var smartHubCastStatusMessage: String?
@@ -111,7 +112,17 @@ struct MenuBarPopoverView: View {
     }
 
     private func refreshInsightRollups() {
-        insightSnapshot = WorkflowInsightRollupService(dataStore: dataStore).snapshot(refreshIfStale: true)
+        // Snapshot building runs off the main actor (popover open,
+        // usagesVersion ticks, and scan completion all land here). The
+        // token keeps a slower older snapshot from overwriting a newer one.
+        insightRefreshToken &+= 1
+        let token = insightRefreshToken
+        let service = WorkflowInsightRollupService(dataStore: dataStore)
+        Task {
+            let snapshot = await service.snapshotAsync(refreshIfStale: true)
+            guard token == insightRefreshToken else { return }
+            insightSnapshot = snapshot
+        }
     }
 
     private var smartHubCastTooltip: String {
@@ -178,7 +189,12 @@ struct MenuBarPopoverView: View {
                     QuotaPopoverBar(
                         quotaService: quotaService ?? ProviderQuotaService.shared,
                         settingsManager: settingsManager,
-                        dataStore: dataStore
+                        dataStore: dataStore,
+                        onCustomizeQuotas: {
+                            SettingsDeepLinkRouting.routeToQuotaDisplay()
+                            dismiss()
+                            onOpenSettings()
+                        }
                     )
                     Divider().background(DesignSystem.Colors.border)
 

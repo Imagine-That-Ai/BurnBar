@@ -40,6 +40,23 @@ class IrohPairingSelectionTest {
     }
 
     @Test
+    fun newestCandidatesRecoversValidRecordWithinServerLimitedWindow() {
+        // The pairing listener queries with orderBy(publishedAtMillis DESC)
+        // + limit(QUERY_LIMIT); a corrupt newest record inside that window
+        // must still fall back to the next valid one — this is why the
+        // server limit is 3, not 1.
+        val serverWindow =
+            listOf(
+                IrohPairingSelection.Candidate("   ", 1_900_000_000_000),
+                IrohPairingSelection.Candidate("mac-live", 1_800_000_000_000),
+                IrohPairingSelection.Candidate("mac-old", 1_700_000_000_000),
+            )
+        assertEquals(IrohPairingSelection.QUERY_LIMIT, serverWindow.size.toLong())
+
+        assertEquals("mac-live", IrohPairingSelection.newestCandidates(serverWindow)?.connectionId)
+    }
+
+    @Test
     fun newestCandidatesReturnsNullWhenNoUsablePairingRecordExists() {
         assertNull(IrohPairingSelection.newestCandidates(emptyList()))
         assertNull(IrohPairingSelection.newestCandidates(listOf(IrohPairingSelection.Candidate("", 1))))

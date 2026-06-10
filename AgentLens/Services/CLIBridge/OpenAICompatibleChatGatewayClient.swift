@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import OSLog
 #if canImport(Darwin)
 import Darwin
 #endif
@@ -32,6 +34,20 @@ final class AgentToolBroker: @unchecked Sendable {
     static let approvalGatedTools: Set<String> = [
         "shell_run", "workspace_write_file", "desktop_export_file"
     ]
+
+    /// F3: forensic audit log for unsandboxed unrestricted-shell execution.
+    static let unrestrictedShellAudit = Logger(
+        subsystem: "com.openburnbar.AgentLens",
+        category: "agent.shell.unrestricted"
+    )
+
+    /// Short, non-reversible digest of an executed command for the audit trail.
+    /// We log the hash (not the plaintext) so the trail cannot itself leak secrets
+    /// embedded in a command line.
+    static func commandAuditDigest(_ command: String) -> String {
+        let digest = SHA256.hash(data: Data(command.utf8))
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
 
     private var browserSessionID: String?
 
@@ -355,6 +371,20 @@ final class AgentToolBroker: @unchecked Sendable {
         let command = try requiredString("command", in: arguments)
         let requestedTimeout = (arguments["timeoutSeconds"] as? Int) ?? 30
         let timeout = max(1, min(requestedTimeout, 120))
+        // F3: unrestricted shell under YOLO runs unsandboxed at full user privilege
+        // and skips the per-action approver by design. It is the single highest
+        // agent-execution risk surface (a prompt injection the model obeys can run
+        // arbitrary commands). We cannot block it without defeating YOLO's purpose,
+        // but we ALWAYS leave a forensic record: a command hash (never the plaintext,
+        // which may contain secrets), grant id, and runtime. This gives post-incident
+        // attribution and is the audit-trail half of the F3 control; a per-N-action
+        // re-auth UX is the tracked follow-up.
+        let auditLine = "shell_run_unrestricted dispatched"
+            + " grant=\(self.grant.grantID)"
+            + " runtime=\(self.grant.runtimeID.rawValue)"
+            + " cmd_sha256=\(Self.commandAuditDigest(command))"
+            + " cmd_len=\(command.count)"
+        Self.unrestrictedShellAudit.warning("\(auditLine, privacy: .public)")
         let result = try await Self.runProcess(
             executable: "/bin/zsh",
             arguments: ["-f", "-lc", command],
@@ -598,15 +628,29 @@ final class AgentToolBroker: @unchecked Sendable {
         let secretSubpaths = [
             "/.ssh", "/.aws", "/.gnupg", "/.config/gh", "/.config/gcloud",
             "/.kube", "/.docker", "/.azure", "/.config/op",
+            "/.terraform.d", "/.cloudflared", "/.config/git",
             "/Library/Keychains", "/Library/Messages", "/Library/Mail",
             "/Library/Cookies", "/Library/HTTPStorages", "/Library/Safari",
             "/Library/Application Support/Google/Chrome",
             "/Library/Application Support/Firefox",
             "/Library/Application Support/BraveSoftware",
-            "/Library/Application Support/com.apple.sharedfilelist"
+            "/Library/Application Support/Slack",
+            "/Library/Application Support/com.apple.sharedfilelist",
+            // F9: deny the restricted agent shell read access to OpenBurnBar's OWN
+            // on-disk state (encrypted DB, replay counters, audit chain, queued
+            // grants, cloud-vault fallbacks). A prompt-injected `shell_run` must not
+            // be able to read the app's secrets just because they're not Keychain
+            // items. Dev tooling never needs to read these.
+            "/Library/Application Support/com.openburnbar.AgentLens",
+            "/.openburnbar",
+            "/.config/openburnbar"
         ].map { canonicalHomePath + $0 }
         let secretLiterals = [
-            "/.netrc", "/.npmrc", "/.pypirc", "/.git-credentials"
+            "/.netrc", "/.npmrc", "/.pypirc", "/.git-credentials",
+            // F9: common credential files that live at the home root.
+            "/.env", "/.envrc",
+            "/.cargo/credentials", "/.cargo/credentials.toml",
+            "/.gem/credentials", "/.config/configstore/firebase-tools.json"
         ].map { canonicalHomePath + $0 }
 
         var lines: [String] = [

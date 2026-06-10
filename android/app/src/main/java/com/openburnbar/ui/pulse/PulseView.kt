@@ -13,7 +13,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,6 +43,7 @@ fun PulseView(
     onNavigateToHermes: (() -> Unit)? = null,
     onNavigateToStreams: (() -> Unit)? = null,
     userStore: UserStore = viewModel(),
+    liveMetricsStore: PulseLiveMetricsStore = viewModel(),
 ) {
     val uiState = collectPulseViewUiState(dashboardStore, demoDataStore, userStore)
     PulseViewDataEffects(
@@ -51,11 +51,8 @@ fun PulseView(
         dashboardStore = dashboardStore,
         quotaStore = quotaStore,
         activityStore = activityStore,
-        liveUsageStartMillis = uiState.liveUsageStartMillis,
+        liveMetricsStore = liveMetricsStore,
     )
-    PulseViewLiveClock { now, queryStart ->
-        uiState.onLiveClockTick(now, queryStart)
-    }
     PulseViewScaffold(
         state =
         PulseViewScaffoldState(
@@ -75,7 +72,7 @@ fun PulseView(
                     rollups = rollups,
                     displayMode = uiState.displayMode,
                     timelineScope = uiState.timelineScope,
-                    nowMillis = uiState.liveNowMillis,
+                    liveMetricsStore = liveMetricsStore,
                     quotaStore = quotaStore,
                     activityStore = activityStore,
                     demoIsSeeding = uiState.demoIsSeeding,
@@ -118,8 +115,6 @@ private fun collectPulseViewUiState(
     val currentUser by userStore.user.collectAsState()
     var timelineScope by remember { mutableStateOf(PulseTimelineScope.DAY) }
     var displayMode by remember { mutableStateOf(UsageDisplayMode.CURRENCY) }
-    var liveNowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var liveUsageStartMillis by remember { mutableLongStateOf(livePulseUsageQueryStartMillis(liveNowMillis)) }
 
     return PulseViewUiState(
         isSignedIn = currentUser.isSignedIn,
@@ -133,16 +128,8 @@ private fun collectPulseViewUiState(
         demoError = demoError,
         displayMode = displayMode,
         timelineScope = timelineScope,
-        liveNowMillis = liveNowMillis,
-        liveUsageStartMillis = liveUsageStartMillis,
         onDisplayModeChange = { displayMode = it },
         onTimelineChange = { timelineScope = it },
-        onLiveClockTick = { now, queryStart ->
-            liveNowMillis = now
-            if (queryStart != liveUsageStartMillis) {
-                liveUsageStartMillis = queryStart
-            }
-        },
     )
 }
 
@@ -158,11 +145,8 @@ private data class PulseViewUiState(
     val demoError: String?,
     val displayMode: UsageDisplayMode,
     val timelineScope: PulseTimelineScope,
-    val liveNowMillis: Long,
-    val liveUsageStartMillis: Long,
     val onDisplayModeChange: (UsageDisplayMode) -> Unit,
     val onTimelineChange: (PulseTimelineScope) -> Unit,
-    val onLiveClockTick: (Long, Long) -> Unit,
 )
 
 @Composable

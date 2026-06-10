@@ -73,6 +73,10 @@ import { getConfig } from "./config.js";
 import { assertAppCheck, assertAuth } from "./auth.js";
 import { assertCloudFeatureNotSuspended } from "./cloudFeatureSuspensions.js";
 import { wrapCallableHandler } from "./logging.js";
+import {
+  INSIGHTS_HOSTED_DEFAULT_INPUT_PRICE_PER_MTOKEN,
+  INSIGHTS_HOSTED_DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
+} from "./pricing.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
@@ -97,17 +101,8 @@ const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const DEFAULT_MODEL_SLUG = "minimax/minimax-m2";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_DISPLAY_NAME = "MiniMax 2.7 · BurnBar Hosted";
-/**
- * Per-million-token USD pricing for the default model. Lets us
- * stamp `estimatedCostUSD` on the audit + token-usage record so the
- * client's "what did this turn cost?" reporting works without
- * round-tripping through OpenRouter's separate cost-report endpoint.
- * Sourced 2026-05-14 from
- * https://openrouter.ai/minimax/minimax-m2 — keep in sync when the
- * pricing page changes.
- */
-const DEFAULT_INPUT_PRICE_PER_MTOKEN = 0.255;
-const DEFAULT_OUTPUT_PRICE_PER_MTOKEN = 1.0;
+// Default-model pricing lives in pricing.ts (single source of truth for
+// hardcoded USD rates in functions).
 
 // Stable error-code marker for the client. The Firebase callable
 // error envelope ships `details` as a JSON-safe payload alongside
@@ -538,11 +533,11 @@ export const insightsHostedAnswer = onCall(
       const outputTokens = openRouterRaw.usage?.completion_tokens ?? 0;
       const inputPrice = parseNumericEnv(
         "INSIGHTS_HOSTED_FALLBACK_INPUT_PRICE_PER_MTOKEN",
-        DEFAULT_INPUT_PRICE_PER_MTOKEN,
+        INSIGHTS_HOSTED_DEFAULT_INPUT_PRICE_PER_MTOKEN,
       );
       const outputPrice = parseNumericEnv(
         "INSIGHTS_HOSTED_FALLBACK_OUTPUT_PRICE_PER_MTOKEN",
-        DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
+        INSIGHTS_HOSTED_DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
       );
       const estimatedCostUSD = (inputTokens / 1_000_000) * inputPrice + (outputTokens / 1_000_000) * outputPrice;
 

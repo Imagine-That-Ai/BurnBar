@@ -7,7 +7,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { computeUserRollups, writeUserRollups } from "../rollups.js";
+import { computeUserRollups, readRollupJobDirtiedAt, writeUserRollups } from "../rollups.js";
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "../demoSeed.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -30,8 +30,9 @@ export const rebuildUsageRollups = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     try {
+      const observedDirtiedAt = await readRollupJobDirtiedAt(db, uid);
       const rollups = await computeUserRollups(db, uid);
-      await writeUserRollups(db, uid, rollups);
+      await writeUserRollups(db, uid, rollups, observedDirtiedAt);
       logInfo({
         event: "callable_info",
         message: "rebuild_usage_rollups_succeeded",

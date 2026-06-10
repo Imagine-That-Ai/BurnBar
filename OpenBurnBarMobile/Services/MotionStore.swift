@@ -34,6 +34,10 @@ final class MotionStore {
 
     private let maxTiltRadians: Double = 8.0 * .pi / 180.0   // 8° clamp
     private let updateInterval: TimeInterval = 1.0 / 30.0    // 30 Hz
+    // Normalized deadband for sensor noise. 0.01 ≈ 0.08° of attitude;
+    // at the strongest consumer multiplier (28pt specular drift) that is
+    // 0.28pt — under one device pixel, so freezing inside it is invisible.
+    private let tiltDeadband: CGFloat = 0.01
 
     #if canImport(CoreMotion)
     private let manager = CMMotionManager()
@@ -41,6 +45,7 @@ final class MotionStore {
 
     private var subscriberCount: Int = 0
     private var isReduceMotionEnabled = false
+    private var isTiltSettled = false
 
     #if canImport(UIKit)
     private var isApplicationActive = UIApplication.shared.applicationState == .active
@@ -100,17 +105,40 @@ final class MotionStore {
             guard let self, let motion else { return }
             let roll = max(min(motion.attitude.roll, self.maxTiltRadians), -self.maxTiltRadians)
             let pitch = max(min(motion.attitude.pitch, self.maxTiltRadians), -self.maxTiltRadians)
-            // Smooth toward the new value to avoid jitter.
-            let normalizedX = CGFloat(roll / self.maxTiltRadians)
-            let normalizedY = CGFloat(pitch / self.maxTiltRadians)
-            let smoothing: CGFloat = 0.18
-            self.tilt = CGSize(
-                width: self.tilt.width  + (normalizedX - self.tilt.width)  * smoothing,
-                height: self.tilt.height + (normalizedY - self.tilt.height) * smoothing
+            self.applyTilt(
+                normalizedX: CGFloat(roll / self.maxTiltRadians),
+                normalizedY: CGFloat(pitch / self.maxTiltRadians)
             )
         }
         isActive = true
         #endif
+    }
+
+    /// Smooths `tilt` toward the normalized target, with a noise deadband.
+    ///
+    /// `@Observable` setters invalidate consumers even when the new value
+    /// equals the old, and the exponential approach never reaches its target,
+    /// so an unconditional assignment re-renders every tilt consumer 30×/s
+    /// while the device sits still. Once both axes are within `tiltDeadband`
+    /// of the target, snap to it exactly once (terminating the asymptotic
+    /// tail at its limit) and then skip the mutation entirely until the
+    /// device actually moves.
+    func applyTilt(normalizedX: CGFloat, normalizedY: CGFloat) {
+        let dx = normalizedX - tilt.width
+        let dy = normalizedY - tilt.height
+        if abs(dx) < tiltDeadband, abs(dy) < tiltDeadband {
+            guard !isTiltSettled else { return }
+            isTiltSettled = true
+            tilt = CGSize(width: normalizedX, height: normalizedY)
+            return
+        }
+        isTiltSettled = false
+        // Smooth toward the new value to avoid jitter.
+        let smoothing: CGFloat = 0.18
+        tilt = CGSize(
+            width: tilt.width + dx * smoothing,
+            height: tilt.height + dy * smoothing
+        )
     }
 
     private func stopUpdates() {
@@ -118,6 +146,7 @@ final class MotionStore {
         if manager.isDeviceMotionActive { manager.stopDeviceMotionUpdates() }
         #endif
         tilt = .zero
+        isTiltSettled = false
         isActive = false
     }
 

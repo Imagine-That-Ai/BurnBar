@@ -218,7 +218,8 @@ final class DataStoreCoordinator {
         let encryptionEnabled = (defaults.object(forKey: "databaseEncryptionEnabled") as? Bool) ?? true
 
         guard encryptionEnabled else {
-            let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+            var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+            installDebugQueryTracer(on: &config)
             return try DatabasePool(path: path, configuration: config)
         }
 
@@ -239,7 +240,8 @@ final class DataStoreCoordinator {
 
         let encryptionKey = DatabaseEncryptionService.getOrCreateKey()
         do {
-            let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+            var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+            installDebugQueryTracer(on: &config)
             return try DatabasePool(path: path, configuration: config)
         } catch is DatabaseEncryptionError {
             // SQLCipher not active in this build. Hard-failing the whole app is the
@@ -260,8 +262,19 @@ final class DataStoreCoordinator {
         defaults: UserDefaults
     ) throws -> DatabasePool {
         defaults.set(true, forKey: plaintextAcknowledgedDefaultsKey)
-        let config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+        var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+        installDebugQueryTracer(on: &config)
         return try DatabasePool(path: path, configuration: config)
+    }
+
+    /// DEBUG-only N+1 detection (`OpenBurnBarQueryTracer`). Must run AFTER
+    /// `makeConfiguration`: GRDB chains `prepareDatabase` closures in install
+    /// order, so the SQLCipher `PRAGMA key` executes before the trace hook
+    /// registers and the cipher key never reaches the trace log.
+    private static func installDebugQueryTracer(on config: inout Configuration) {
+        #if DEBUG
+        OpenBurnBarQueryTracer.shared.configure(in: &config)
+        #endif
     }
 
     /// Post-open WAL mode configuration (idempotent).

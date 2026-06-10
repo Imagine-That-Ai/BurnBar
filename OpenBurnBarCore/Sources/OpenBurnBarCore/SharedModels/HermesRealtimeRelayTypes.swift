@@ -304,6 +304,24 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
     }
 }
 
+/// Which signing-key custody class produced an authority envelope's signature
+/// (F2 hardware-bind). `ed25519` (or an absent `keyKind` on the wire, for
+/// backward compatibility with pre-F2 controllers) is the legacy software
+/// CryptoKit Curve25519 key. `secureEnclaveP256` is a non-exportable NIST
+/// P-256 key held in the iOS Secure Enclave / Android StrongBox Keystore; its
+/// `signatureEd25519` field carries a raw (r‖s) 64-byte ECDSA-over-SHA256
+/// signature instead of an Ed25519 signature. The field name is historical —
+/// it is the signature carrier regardless of algorithm, mirroring the
+/// `intentHashBlake3`/`attestationHashBlake3` naming.
+public enum PhoneControlSigningKeyKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case ed25519
+    case secureEnclaveP256 = "se-p256"
+
+    /// The value to assume when an envelope omits `keyKind` entirely — every
+    /// controller paired before F2 signs with the software Ed25519 key.
+    public static let legacyDefault: PhoneControlSigningKeyKind = .ed25519
+}
+
 public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable {
     public var peerNodeId: String
     public var counter: UInt64
@@ -312,6 +330,16 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
     public var signatureEd25519: String
     /// Optional App Attest / Play Integrity digest bound into capability-token minting (WS2).
     public var attestationHashBlake3: String?
+    /// F2: which key-custody class signed this envelope. Absent ⇒ `.ed25519`
+    /// (legacy software key). Present `se-p256` ⇒ the signature is a raw
+    /// P-256 ECDSA signature from a Secure Enclave / StrongBox key.
+    public var keyKind: PhoneControlSigningKeyKind?
+
+    /// The effective signing key kind, resolving an absent wire field to the
+    /// legacy Ed25519 default so receivers can branch on a non-optional value.
+    public var resolvedKeyKind: PhoneControlSigningKeyKind {
+        keyKind ?? .legacyDefault
+    }
 
     public init(
         peerNodeId: String,
@@ -319,7 +347,8 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
         timestamp: Date,
         intentHashBlake3: String,
         signatureEd25519: String,
-        attestationHashBlake3: String? = nil
+        attestationHashBlake3: String? = nil,
+        keyKind: PhoneControlSigningKeyKind? = nil
     ) {
         self.peerNodeId = peerNodeId
         self.counter = counter
@@ -327,6 +356,7 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
         self.intentHashBlake3 = intentHashBlake3
         self.signatureEd25519 = signatureEd25519
         self.attestationHashBlake3 = attestationHashBlake3
+        self.keyKind = keyKind
     }
 }
 

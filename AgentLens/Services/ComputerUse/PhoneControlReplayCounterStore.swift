@@ -40,13 +40,40 @@ public final class PhoneControlReplayCounterStore: @unchecked Sendable {
         PhoneControlReplayCounterStore()
     }
 
-    public func load() -> [String: UInt64] {
+    /// Result of restoring persisted high-water marks.
+    ///
+    /// SECURITY (F6): callers MUST distinguish "the file is genuinely absent"
+    /// (a legitimate first run → an empty baseline is safe) from "the file exists
+    /// but could not be read/decoded" (corruption, truncation, or a hostile delete
+    /// of the contents). In the latter case returning an empty map silently resets
+    /// every per-peer counter to 0, which re-opens the restart replay window for a
+    /// captured, still-fresh authority envelope. `unreadable` lets the validator
+    /// fail CLOSED instead of trusting a zeroed baseline.
+    public enum LoadOutcome: Sendable {
+        case absent
+        case loaded([String: UInt64])
+        case unreadable(any Error)
+    }
+
+    public func loadOutcome() -> LoadOutcome {
         queue.sync {
+            guard fileManager.fileExists(atPath: fileURL.path) else { return .absent }
             do {
-                return try readUnlocked()
+                let data = try Data(contentsOf: fileURL)
+                let snapshot = try decoder.decode(SnapshotFile.self, from: data)
+                return .loaded(snapshot.counters.filter { $0.key.isEmpty == false })
             } catch {
-                return [:]
+                return .unreadable(error)
             }
+        }
+    }
+
+    public func load() -> [String: UInt64] {
+        switch loadOutcome() {
+        case .absent, .unreadable:
+            return [:]
+        case .loaded(let counters):
+            return counters
         }
     }
 

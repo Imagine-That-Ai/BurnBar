@@ -29,6 +29,12 @@ public final class MacActionDispatcher: @unchecked Sendable {
     }
 
     public func dispatch(_ action: MacInputAction) throws -> BurnBarJSONValue {
+        // L8a: re-check the leaf kill flag at the actual input-synthesis chokepoint.
+        // Panic teardown clears the active session and sets this flag for the Virtual
+        // HID leaf, but an in-flight CGEvent dispatch (a phone intent mid-invoke when
+        // panic fires) previously had no re-check here. Asserting on every dispatch
+        // closes that race so no synthetic event is posted after a panic.
+        try PrivilegedInputKillSwitch.assertNotActive()
         let elapsedMillis: Double
         switch action.kind {
         case .click:

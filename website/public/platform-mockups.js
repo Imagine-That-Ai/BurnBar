@@ -12,6 +12,11 @@
  * Respects `prefers-reduced-motion`: clock freezes at the SSR value, the
  * pixel matrix holds its initial frame, no intervals fire.
  *
+ * Intervals are visibility-gated: each timer only runs while its mockup
+ * intersects the viewport in a visible tab (IntersectionObserver +
+ * visibilitychange). Resume repaints immediately, so the first visible
+ * frame is identical to the always-on behavior.
+ *
  * No inline scripts (CSP `script-src 'self'` is enforced via firebase.json),
  * no external dependencies. ~6 KB minified.
  */
@@ -686,9 +691,9 @@
 
   function fetchRundown() {
     if (isLocalPreviewHost()) return Promise.resolve(null);
+    // Default cache mode: the endpoint already serves public, max-age=300.
     return fetch("/api/router-rundown/latest", {
-      headers: { Accept: "application/json" },
-      cache: "no-store"
+      headers: { Accept: "application/json" }
     })
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
@@ -704,6 +709,53 @@
   }
 
   // ─────────────────────────── Wire it up ────────────────────────
+
+  // Runs `onTick` on an interval only while at least one target is on
+  // screen and the tab is visible; `onResume` fires immediately on each
+  // activation so the first visible frame matches the always-on output.
+  // The rootMargin pre-trigger lands the resume paint just before the
+  // mockup scrolls into view. Without IntersectionObserver, falls back
+  // to the original always-on interval.
+  function runWhileVisible(targets, intervalMs, onResume, onTick) {
+    if (targets.length === 0) return;
+    var timer = null;
+    var visible = 0;
+    function update() {
+      var active = visible > 0 && !document.hidden;
+      if (active && timer === null) {
+        onResume();
+        timer = setInterval(onTick, intervalMs);
+      } else if (!active && timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+    if (typeof IntersectionObserver !== "function") {
+      visible = 1;
+      update();
+      return;
+    }
+    var states = [];
+    for (var i = 0; i < targets.length; i++) states.push(false);
+    var observer = new IntersectionObserver(
+      function (entries) {
+        for (var k = 0; k < entries.length; k++) {
+          var idx = Array.prototype.indexOf.call(targets, entries[k].target);
+          if (idx === -1) continue;
+          var next = entries[k].isIntersecting;
+          if (next !== states[idx]) {
+            states[idx] = next;
+            visible += next ? 1 : -1;
+          }
+        }
+        update();
+      },
+      { rootMargin: "100px" }
+    );
+    for (var j = 0; j < targets.length; j++) observer.observe(targets[j]);
+    document.addEventListener("visibilitychange", update);
+  }
+
   function init() {
     var reduceMotion = false;
     try {
@@ -711,7 +763,14 @@
     } catch (e) {}
 
     tickClocks();
-    if (!reduceMotion) setInterval(tickClocks, 1000);
+    if (!reduceMotion) {
+      runWhileVisible(
+        document.querySelectorAll("[data-platform-clock], [data-platform-date]"),
+        1000,
+        tickClocks,
+        tickClocks
+      );
+    }
 
     fetchRundown().then(function (rundown) {
       if (rundown) applyRundownToScreens(rundown);
@@ -736,10 +795,19 @@
         if (!reduceMotion) {
           (function (rootEl, l, its) {
             var t = 0;
-            setInterval(function () {
-              t = (t + 1) % 1000;
-              paintMatrix(rootEl, buildFrame(l, its, t));
-            }, 1500);
+            runWhileVisible(
+              [rootEl],
+              1500,
+              function () {
+                // Repaint the frozen frame (no tick advance) so the
+                // first visible frame matches the always-on output.
+                paintMatrix(rootEl, buildFrame(l, its, t));
+              },
+              function () {
+                t = (t + 1) % 1000;
+                paintMatrix(rootEl, buildFrame(l, its, t));
+              }
+            );
           })(root, layout, items);
         }
       }

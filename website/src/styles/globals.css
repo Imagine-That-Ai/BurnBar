@@ -4,13 +4,16 @@
 
 @import "@fontsource-variable/geist/index.css";
 @import "@fontsource-variable/jetbrains-mono/index.css";
-/* Fraunces drives every heading via --font-display. The `full` files carry the
-   complete variable axes (opsz / SOFT / WONK / wght) — index.css ships a
-   wght-only face that would silently no-op the site's "opsz"/"SOFT"
-   font-variation-settings. Italic is a separate @font-face (font-style:
-   italic), needed wherever display type goes italic (hero second line). */
-@import "@fontsource-variable/fraunces/full.css";
-@import "@fontsource-variable/fraunces/full-italic.css";
+/* Fraunces drives every heading via --font-display. The `opsz` files carry
+   the wght + opsz variable axes — index.css ships a wght-only face that would
+   silently no-op the site's "opsz" font-variation-settings. The ~45%-heavier
+   `full` files add SOFT/WONK, but the opsz face is instanced at their
+   defaults (SOFT 0, WONK 1) and the site never moves either axis, so both
+   render identically. Italic is a separate @font-face (font-style: italic),
+   needed wherever display type goes italic (hero second line). The two latin
+   faces are preloaded in BaseLayout.astro (display font gates LCP). */
+@import "@fontsource-variable/fraunces/opsz.css";
+@import "@fontsource-variable/fraunces/opsz-italic.css";
 
 @import "./tokens.css";
 @import "./reset.css";
@@ -353,7 +356,6 @@ section {
   font-family: var(--font-display);
   font-variation-settings:
     "opsz" 144,
-    "SOFT" 0,
     "wght" 420;
 }
 

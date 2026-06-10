@@ -2,6 +2,23 @@
 
 Architecture spec for the Mac ⇄ iPhone/iPad/Android media capabilities (file transfer, screen share, 1:1 video calling) layered on the existing iroh QUIC mesh.
 
+## Confidentiality model (read before describing media as "encrypted")
+
+Media frames (`media.screen.video`, `MediaFrame`, file blobs, call audio/video) are
+protected by **iroh's QUIC transport encryption between the two authenticated
+device endpoints** — not by an additional application-layer libsignal/HPKE seal
+like the chat/gateway lane. In practice this is end-to-end for confidentiality:
+the two paired devices hold the keys, iroh relay fallbacks forward only encrypted
+QUIC packets, and the legacy WSS relay is retired and ignores media frames, so no
+server in the middle can read screen or call content. The accurate phrasing is
+"end-to-end encrypted in transit between your paired devices" — do NOT describe
+media as "Signal/libsignal-sealed," which is reserved for the chat/gateway and
+at-rest lanes. Confidentiality therefore depends on iroh peer authentication plus
+the inbound controller allowlist; compromising a paired endpoint exposes plaintext
+(true of any E2E system). A per-frame AEAD keyed from the paired identity (so media
+matches the chat lane's defense-in-depth) is a tracked hardening item (audit F7),
+not a shipped guarantee.
+
 The plan of record — including locked decisions, capability matrix, premium gating, privacy posture, observability, phasing, tests, and risks — lives at `plans/2026-05-15-mercury-media-master-plan.md`. **Read that first.** This document is the operator/engineer reference: it stays narrow on transport, codec, frame layout, and on-disk contract. Surfaces, copy, and SKU policy live in the plan.
 
 The Mercury Mirror streaming upgrade is evidence-gated by

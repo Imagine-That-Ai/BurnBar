@@ -1045,6 +1045,76 @@ export async function buildAndPersistRouterRundown(db: Firestore, now: Date = ne
 }
 
 /**
+ * Cost/abuse hardening for the public endpoint below.
+ *
+ * The raw cloudfunctions.net URL bypasses the Hosting CDN, so without an
+ * in-process cache every GET is an invocation + a Firestore read. The cache is
+ * keyed by rundown date ("latest" included) and bounded; `latest` and today's
+ * doc are overwritten by every scheduled run so they get a short TTL, while
+ * past dates are immutable after the day rolls over and can cache long.
+ * 404s are negative-cached so missing-doc probes stop costing reads.
+ */
+const RUNDOWN_CACHE_MUTABLE_TTL_MS = 60_000;
+const RUNDOWN_CACHE_IMMUTABLE_TTL_MS = 24 * 60 * 60 * 1000;
+const RUNDOWN_CACHE_NEGATIVE_TTL_MS = 60_000;
+const RUNDOWN_CACHE_MAX_ENTRIES = 64;
+
+/** No rundown can exist before the feature shipped; earlier dates 404 without a read. */
+const RUNDOWN_EARLIEST_DATE = "2025-01-01";
+
+interface RundownCacheEntry {
+  status: 200 | 404;
+  body: unknown;
+  expiresAtMillis: number;
+}
+
+const rundownResponseCache = new Map<string, RundownCacheEntry>();
+
+/**
+ * True when `candidate` (already regex-shaped YYYY-MM-DD) is a real calendar
+ * date inside the window rundowns can exist in. The regex alone admits an
+ * unbounded key space (e.g. 9999-99-99) that would defeat both the Hosting CDN
+ * cache and this in-memory cache while still costing a Firestore read per key.
+ */
+export function isPlausibleRundownDate(candidate: string, now: Date): boolean {
+  const [year, month, day] = candidate.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) return false;
+  if (candidate < RUNDOWN_EARLIEST_DATE) return false;
+  // Allow one day ahead of server UTC "today" for clock skew; anything later
+  // cannot have been written yet.
+  const upperBound = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return candidate <= upperBound;
+}
+
+function cachedRundownResponse(key: string, now: Date): RundownCacheEntry | undefined {
+  const entry = rundownResponseCache.get(key);
+  if (!entry) return undefined;
+  if (now.getTime() >= entry.expiresAtMillis) {
+    rundownResponseCache.delete(key);
+    return undefined;
+  }
+  return entry;
+}
+
+function storeRundownResponse(key: string, status: 200 | 404, body: unknown, now: Date): void {
+  // Delete-then-set keeps Map insertion order usable as an eviction queue.
+  rundownResponseCache.delete(key);
+  if (rundownResponseCache.size >= RUNDOWN_CACHE_MAX_ENTRIES) {
+    const oldest = rundownResponseCache.keys().next().value;
+    if (oldest !== undefined) rundownResponseCache.delete(oldest);
+  }
+  const today = now.toISOString().slice(0, 10);
+  const ttlMillis =
+    status !== 200
+      ? RUNDOWN_CACHE_NEGATIVE_TTL_MS
+      : key === "latest" || key === today
+        ? RUNDOWN_CACHE_MUTABLE_TTL_MS
+        : RUNDOWN_CACHE_IMMUTABLE_TTL_MS;
+  rundownResponseCache.set(key, { status, body, expiresAtMillis: now.getTime() + ttlMillis });
+}
+
+/**
  * Public HTTPS endpoint serving the latest rundown as JSON.
  *
  * - GET /latestRouterRundown            → router_rundowns/latest
@@ -1056,6 +1126,9 @@ export const latestRouterRundown = onRequest(
   {
     region: FUNCTIONS_REGION,
     cors: true,
+    // Unauthenticated endpoint: maxInstances is the only hard cap on
+    // invocation spend if someone hammers the raw function URL.
+    maxInstances: 10,
   },
   async (req, res) => {
     if (req.method !== "GET") {
@@ -1063,21 +1136,37 @@ export const latestRouterRundown = onRequest(
       return;
     }
     try {
-      const { getFirestore } = await import("firebase-admin/firestore");
-      const db = getFirestore();
       // Accept the date from either ?date=YYYY-MM-DD or the trailing path
       // segment (e.g. /api/router-rundown/2026-05-13).
       const pathSegment = (req.path ?? "").split("/").filter(Boolean).pop() ?? "";
       const candidate = typeof req.query.date === "string" ? req.query.date : pathSegment;
       const date = /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : "latest";
-      const docRef = db.doc(`router_rundowns/${date}`);
-      const snap = await docRef.get();
-      if (!snap.exists) {
+      const now = new Date();
+      if (date !== "latest" && !isPlausibleRundownDate(date, now)) {
+        // Same response a missing doc would get, without the Firestore read.
         res.status(404).json({ error: "not_found", date });
         return;
       }
+      const cached = cachedRundownResponse(date, now);
+      if (cached) {
+        if (cached.status === 200) res.set("Cache-Control", "public, max-age=300, s-maxage=300");
+        res.status(cached.status).json(cached.body);
+        return;
+      }
+      const { getFirestore } = await import("firebase-admin/firestore");
+      const db = getFirestore();
+      const docRef = db.doc(`router_rundowns/${date}`);
+      const snap = await docRef.get();
+      if (!snap.exists) {
+        const body = { error: "not_found", date };
+        storeRundownResponse(date, 404, body, now);
+        res.status(404).json(body);
+        return;
+      }
+      const body = snap.data();
+      storeRundownResponse(date, 200, body, now);
       res.set("Cache-Control", "public, max-age=300, s-maxage=300");
-      res.status(200).json(snap.data());
+      res.status(200).json(body);
     } catch (err) {
       logError({ event: "router_rundown.latest_failed", error: String(err) });
       res.status(500).json({ error: "internal" });

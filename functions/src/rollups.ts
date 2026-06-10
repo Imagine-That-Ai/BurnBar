@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
+import { FieldPath, FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type {
   UsageEventDoc,
   UsageRollupDoc,
@@ -23,10 +23,12 @@ import {
   isTimestampWithToMillis,
   isProviderAccountStorageScope,
   parseProvider,
+  parseRollupJobDoc,
   parseUsageEventDoc,
   recordOrUndefined,
   stripUndefinedObject,
 } from "./guards.js";
+import { LEGACY_KIMI_WIRE_MODEL, LEGACY_KIMI_WIRE_PRICING } from "./pricing.js";
 
 const ROLLUP_SCHEMA_VERSION = 3;
 const COUNTER_SCHEMA_VERSION = 1;
@@ -171,16 +173,17 @@ function kimiCost(
   cacheCreationTokens: number,
   cacheReadTokens: number,
 ): number {
+  const rates = LEGACY_KIMI_WIRE_PRICING;
   return (
-    (inputTokens / 1_000_000) * 0.6 +
-    (outputTokens / 1_000_000) * 2.5 +
-    (cacheCreationTokens / 1_000_000) * 0.6 +
-    (cacheReadTokens / 1_000_000) * 0.15
+    (inputTokens / 1_000_000) * rates.inputPerMToken +
+    (outputTokens / 1_000_000) * rates.outputPerMToken +
+    (cacheCreationTokens / 1_000_000) * rates.cacheCreationPerMToken +
+    (cacheReadTokens / 1_000_000) * rates.cacheReadPerMToken
   );
 }
 
 function eventModel(ev: UsageEventDoc): string | undefined {
-  return isLegacyKimiWireEvent(ev) ? "kimi-for-coding" : ev.model;
+  return isLegacyKimiWireEvent(ev) ? LEGACY_KIMI_WIRE_MODEL : ev.model;
 }
 
 function eventMetrics(ev: UsageEventDoc): { tokens: number; cost?: number } {
@@ -436,7 +439,7 @@ function addContributionToBucket(
   contribution: UsageCounterContribution,
   direction: 1 | -1,
   now: string,
-  bucketFields: Record<string, string>,
+  bucketFields: DocumentData,
 ): void {
   const deltaRequests = direction * contribution.requests;
   const deltaTokens = direction * contribution.tokens;
@@ -537,6 +540,9 @@ function addContribution(
   const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
   addContributionToBucket(writer, allTimeRef, contribution, direction, now, {
     windowKey: "all_time",
+    // Rolling per-day token series: lets rollup reads derive the all_time
+    // dailyPoints map without scanning every usage_counter_days doc.
+    dailyTokens: { [contribution.day]: FieldValue.increment(direction * contribution.tokens) },
   });
 }
 
@@ -685,6 +691,67 @@ export async function computeUserRollups(db: Firestore, uid: string): Promise<Re
   return computeUserRollupsFromCounters(db, uid);
 }
 
+type CounterBucketDocs = {
+  providers: DocumentData[];
+  accounts: DocumentData[];
+  models: DocumentData[];
+  devices: DocumentData[];
+};
+
+async function fetchCounterBucketDocs(db: Firestore, bucketPaths: string[]): Promise<CounterBucketDocs> {
+  const [providers, accounts, models, devices] = await Promise.all([
+    queryCounterDocs(db, "providers", bucketPaths),
+    queryCounterDocs(db, "accounts", bucketPaths),
+    queryCounterDocs(db, "models", bucketPaths),
+    queryCounterDocs(db, "devices", bucketPaths),
+  ]);
+  return { providers, accounts, models, devices };
+}
+
+/**
+ * Returns the `[day, tokens]` series backing the all_time `dailyPoints` map.
+ *
+ * `addContribution` maintains a rolling `dailyTokens` map on the all_time
+ * totals doc so this read is O(1) instead of an unbounded scan of
+ * `usage_counter_days` (day docs are never deleted, so that scan grows with
+ * account age forever). Totals docs written before the map existed fall back
+ * to one legacy scan, and the derived map is persisted so the next compute
+ * reads it incrementally. The persist is skipped when `updatedAt` moved
+ * between the caller's totals read and the transaction — a counter write
+ * landed mid-scan and an absolute write could overwrite its increment; the
+ * next worker pass retries the backfill.
+ */
+async function allTimeDailyTokenEntries(
+  db: Firestore,
+  uid: string,
+  allTimeData: DocumentData | undefined,
+): Promise<(readonly [string, number])[]> {
+  const dailyTokens = recordOrUndefined(allTimeData?.dailyTokens);
+  if (dailyTokens) {
+    return Object.entries(dailyTokens)
+      .map(([day, tokens]) => [day, sumNumber(tokens)] as const)
+      .sort(([dayA], [dayB]) => (dayA < dayB ? -1 : dayA > dayB ? 1 : 0));
+  }
+
+  const scannedDays = (await db.collection(`users/${uid}/usage_counter_days`).get()).docs.map(
+    (doc) => doc.data() ?? {},
+  );
+  const entries = scannedDays.map((doc) => [String(doc.day), sumNumber(doc.tokens)] as const);
+
+  if (allTimeData) {
+    const observedUpdatedAt = allTimeData.updatedAt;
+    const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
+    await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(allTimeRef);
+      const data = snap.exists ? (snap.data() ?? {}) : undefined;
+      if (!data || recordOrUndefined(data.dailyTokens) || data.updatedAt !== observedUpdatedAt) return;
+      transaction.set(allTimeRef, { dailyTokens: Object.fromEntries(entries) }, { merge: true });
+    });
+  }
+
+  return entries;
+}
+
 export async function computeUserRollupsFromCounters(
   db: Firestore,
   uid: string,
@@ -692,41 +759,64 @@ export async function computeUserRollupsFromCounters(
   const now = new Date();
   const results: Partial<Record<WindowKey, UsageRollupDoc>> = {};
 
-  for (const key of WINDOW_KEYS) {
-    const days = windowDays(key, now);
-    const allTimePath = `users/${uid}/usage_counter_totals/all_time`;
-    const bucketPaths: string[] = [];
-    const bucketDocs =
-      key === "all_time"
-        ? await db
-            .doc(allTimePath)
-            .get()
-            .then((snap) => {
-              if (!snap.exists) return [];
-              bucketPaths.push(allTimePath);
-              return [snap.data() ?? {}];
-            })
-        : await Promise.all((days ?? []).map((day) => db.doc(`users/${uid}/usage_counter_days/${day}`).get())).then(
-            (snapshots) =>
-              snapshots
-                .filter(
-                  (snap): snap is FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> =>
-                    "exists" in snap && snap.exists,
-                )
-                .map((snap) => {
-                  const data = snap.data() ?? {};
-                  const day = typeof data.day === "string" ? data.day : "";
-                  if (day) bucketPaths.push(`users/${uid}/usage_counter_days/${day}`);
-                  return data;
-                }),
-          );
+  // The day-keyed windows nest (today ⊂ 7d ⊂ 30d ⊂ 90d), so fetch the 90-day
+  // union once — one documentId range query instead of per-window point gets
+  // (which also bills nothing for days with no usage) — and read each day
+  // bucket's subcollections once, then aggregate every window in memory.
+  const daysPath = `users/${uid}/usage_counter_days`;
+  const unionDays = windowDays("90d", now) ?? [];
+  const unionDaySet = new Set(unionDays);
+  const daySnapshot = await db
+    .collection(daysPath)
+    .where(FieldPath.documentId(), ">=", unionDays[unionDays.length - 1])
+    .where(FieldPath.documentId(), "<=", unionDays[0])
+    .get();
+  const dayDataById = new Map<string, DocumentData>();
+  for (const doc of daySnapshot.docs) {
+    if (unionDaySet.has(doc.id)) dayDataById.set(doc.id, doc.data() ?? {});
+  }
 
-    const [providers, accounts, models, devices] = await Promise.all([
-      queryCounterDocs(db, "providers", bucketPaths),
-      queryCounterDocs(db, "accounts", bucketPaths),
-      queryCounterDocs(db, "models", bucketPaths),
-      queryCounterDocs(db, "devices", bucketPaths),
-    ]);
+  // unionDays is newest-first and each window's day list is a prefix of it,
+  // so filtering preserves the per-window iteration order of the old per-day
+  // point gets (and therefore the emitted aggregation order).
+  const dayBuckets = await Promise.all(
+    unionDays
+      .filter((id) => dayDataById.has(id))
+      .map(async (id) => {
+        const data = dayDataById.get(id) ?? {};
+        const day = typeof data.day === "string" ? data.day : "";
+        const docs = await fetchCounterBucketDocs(db, day ? [`${daysPath}/${day}`] : []);
+        return { id, data, ...docs };
+      }),
+  );
+
+  const allTimePath = `users/${uid}/usage_counter_totals/all_time`;
+  const allTimeSnap = await db.doc(allTimePath).get();
+  const allTimeData = allTimeSnap.exists ? (allTimeSnap.data() ?? {}) : undefined;
+  const allTimeDocs = await fetchCounterBucketDocs(db, allTimeData ? [allTimePath] : []);
+  const allTimeDailyEntries = await allTimeDailyTokenEntries(db, uid, allTimeData);
+
+  for (const key of WINDOW_KEYS) {
+    let bucketDocs: DocumentData[];
+    let counterDocs: CounterBucketDocs;
+    let dailyPointEntries: (readonly [string, number])[];
+    if (key === "all_time") {
+      bucketDocs = allTimeData ? [allTimeData] : [];
+      counterDocs = allTimeDocs;
+      dailyPointEntries = allTimeDailyEntries;
+    } else {
+      const windowSet = new Set(windowDays(key, now) ?? []);
+      const windowBuckets = dayBuckets.filter((bucket) => windowSet.has(bucket.id));
+      bucketDocs = windowBuckets.map((bucket) => bucket.data);
+      counterDocs = {
+        providers: windowBuckets.flatMap((bucket) => bucket.providers),
+        accounts: windowBuckets.flatMap((bucket) => bucket.accounts),
+        models: windowBuckets.flatMap((bucket) => bucket.models),
+        devices: windowBuckets.flatMap((bucket) => bucket.devices),
+      };
+      dailyPointEntries = bucketDocs.map((doc) => [String(doc.day), sumNumber(doc.tokens)] as const);
+    }
+    const { providers, accounts, models, devices } = counterDocs;
 
     const totals = bucketDocs.reduce(
       (acc, doc) => {
@@ -738,15 +828,7 @@ export async function computeUserRollupsFromCounters(
       { requests: 0, tokens: 0, costUsd: 0 },
     );
 
-    const dailyPointDocs =
-      key === "all_time"
-        ? (await db.collection(`users/${uid}/usage_counter_days`).get()).docs.map((doc) => doc.data())
-        : bucketDocs;
-    const dailyPoints = Object.fromEntries(
-      dailyPointDocs
-        .map((doc) => [String(doc.day), sumNumber(doc.tokens)] as const)
-        .filter(([day, tokens]) => day && tokens !== 0),
-    );
+    const dailyPoints = Object.fromEntries(dailyPointEntries.filter(([day, tokens]) => day && tokens !== 0));
 
     const providerMap = new Map<string, ProviderSummary>();
     for (const doc of providers) {
@@ -929,10 +1011,24 @@ export async function rebuildUserRollupCounters(db: Firestore, uid: string): Pro
   }
 }
 
+/**
+ * Reads the rollup job's current `dirtiedAt` marker.
+ *
+ * Callers capture this BEFORE computing rollups and pass it to
+ * {@link writeUserRollups}, which only clears the dirty flag when the marker
+ * is unchanged — i.e. no usage event landed while the compute was running.
+ */
+export async function readRollupJobDirtiedAt(db: Firestore, uid: string): Promise<string | undefined> {
+  const snap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
+  const job = snap.exists ? parseRollupJobDoc(snap.data()) : undefined;
+  return job?.dirtiedAt;
+}
+
 export async function writeUserRollups(
   db: Firestore,
   uid: string,
   rollups: Record<WindowKey, UsageRollupDoc>,
+  observedDirtiedAt: string | undefined,
 ): Promise<void> {
   const batch = db.batch();
 
@@ -941,16 +1037,24 @@ export async function writeUserRollups(
     batch.set(ref, stripUndefinedDocument(rollups[key]), { merge: true });
   }
 
-  const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
-  batch.set(
-    jobRef,
-    {
-      dirty: false,
-      lastComputedAt: new Date().toISOString(),
-      lastErrorCode: FieldValue.delete(),
-    },
-    { merge: true },
-  );
-
   await batch.commit();
+
+  // Clear the dirty flag transactionally, and only when `dirtiedAt` still
+  // matches the value the caller observed at compute start. Every usage event
+  // refreshes `dirtiedAt` (see onUsageWritten), so a mismatch means an event
+  // landed mid-compute and the rollups just written may not include it: leave
+  // the job dirty so the next worker pass recomputes instead of silently
+  // dropping the event. A mid-compute `lastErrorCode` is likewise preserved
+  // so that pass falls back to a full counter rebuild.
+  const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(jobRef);
+    const job = snap.exists ? parseRollupJobDoc(snap.data()) : undefined;
+    const lastComputedAt = new Date().toISOString();
+    if (job?.dirtiedAt === observedDirtiedAt) {
+      transaction.set(jobRef, { dirty: false, lastComputedAt, lastErrorCode: FieldValue.delete() }, { merge: true });
+    } else {
+      transaction.set(jobRef, { lastComputedAt }, { merge: true });
+    }
+  });
 }

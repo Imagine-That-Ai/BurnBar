@@ -15,6 +15,7 @@ struct QuotaPopoverBar: View {
     @Bindable var settingsManager: SettingsManager
     let dataStore: DataStore
     var autoRefreshOnAppear = true
+    var onCustomizeQuotas: () -> Void = {}
     @State private var expandedProvider: AgentProvider?
     @State private var isWorking = false
     // Local state for inline setup fields
@@ -47,11 +48,28 @@ struct QuotaPopoverBar: View {
         expandedProvider == nil ? 146 : 220
     }
 
+    private func hiddenProviderSummaryText(selectionHidden: Int, collapseHidden: Int) -> String {
+        switch (selectionHidden, collapseHidden) {
+        case (let selection, let collapse) where selection > 0 && collapse > 0:
+            return "+\(collapse) more, \(selection) hidden in Settings"
+        case (let selection, _) where selection > 0:
+            return "+\(selection) hidden in Settings"
+        case (_, let collapse) where collapse > 0:
+            return "+\(collapse) more available"
+        default:
+            return ""
+        }
+    }
+
     var body: some View {
         let connectedProviderIDs = connectedQuotaProviderIDs
-        let providers = quotaService.visiblePopoverProviders(dataStore: dataStore)
+        let availableProviders = quotaService.visiblePopoverProviders(dataStore: dataStore)
+        let selectedProviders = settingsManager.quotas.visibleProviders
+        let providers = availableProviders.filter { selectedProviders.contains($0) }
         let displayedProviders = visibleRows(from: providers)
-        let hiddenProviderCount = max(0, providers.count - displayedProviders.count)
+        let hiddenBySelectionCount = max(0, availableProviders.count - providers.count)
+        let hiddenByCollapseCount = max(0, providers.count - displayedProviders.count)
+        let hiddenProviderCount = hiddenBySelectionCount + hiddenByCollapseCount
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             // Header
@@ -67,6 +85,21 @@ struct QuotaPopoverBar: View {
                     ProgressView()
                         .controlSize(.mini)
                 }
+
+                Button(action: onCustomizeQuotas) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(DesignSystem.Colors.amber)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(DesignSystem.Colors.amber.opacity(0.14)))
+                        .overlay(
+                            Circle()
+                                .stroke(DesignSystem.Colors.amber.opacity(0.38), lineWidth: 0.8)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Customize quota popover")
+                .popoverTooltip("Choose quotas shown in this popover")
 
                 Button {
                     Task { await quotaService.refreshAll(dataStore: dataStore) }
@@ -84,7 +117,7 @@ struct QuotaPopoverBar: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: DesignSystem.Spacing.xs) {
                     if providers.isEmpty {
-                        Text("No connected quota providers")
+                        Text(availableProviders.isEmpty ? "No connected quota providers" : "No quota providers selected")
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -107,7 +140,7 @@ struct QuotaPopoverBar: View {
                 HStack(spacing: DesignSystem.Spacing.xs) {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 10, weight: .semibold))
-                    Text("+\(hiddenProviderCount) more in Settings")
+                    Text(hiddenProviderSummaryText(selectionHidden: hiddenBySelectionCount, collapseHidden: hiddenByCollapseCount))
                         .font(DesignSystem.Typography.tiny)
                         .fontWeight(.medium)
                 }

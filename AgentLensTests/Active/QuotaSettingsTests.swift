@@ -94,6 +94,26 @@ final class QuotaSettingsTests: XCTestCase {
         XCTAssertEqual(settings2.providerOrder.prefix(4), ArraySlice(newOrder))
     }
 
+    func test_providerOrder_recoversDefaultWhenPersistedTokensAreMalformed() {
+        defaults.set("not-a-provider,also-invalid", forKey: "providerOrderCSV")
+
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        XCTAssertEqual(settings.providerOrder, AgentProvider.quotaSignalProviders)
+    }
+
+    func test_providerOrder_filtersDuplicatesAndNonQuotaProviders() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        settings.providerOrder = [.cursor, .aider, .codex, .cursor]
+
+        XCTAssertEqual(Array(settings.providerOrder.prefix(2)), [.cursor, .codex])
+        XCTAssertFalse(settings.providerOrder.contains(.aider))
+        XCTAssertEqual(settings.providerOrderCSV, "cursor,codex")
+    }
+
     func test_visibleProviders_persistsAcrossRecreate() {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
         let settings = QuotaSettings(persistence: coordinator)
@@ -106,6 +126,62 @@ final class QuotaSettingsTests: XCTestCase {
         let settings2 = QuotaSettings(persistence: coordinator2)
 
         XCTAssertEqual(settings2.visibleProviders, newVisible)
+    }
+
+    func test_visibleProviders_serializesInCanonicalQuotaOrder() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        settings.visibleProviders = [.cursor, .codex, .claudeCode]
+
+        let expectedCSV = [AgentProvider.codex, .claudeCode, .cursor]
+            .map(\.persistedToken)
+            .joined(separator: ",")
+        XCTAssertEqual(settings.visibleProvidersCSV, expectedCSV)
+    }
+
+    func test_visibleProviders_canPersistEmptySelection() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        settings.visibleProviders = []
+        coordinator.flush()
+
+        let coordinator2 = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings2 = QuotaSettings(persistence: coordinator2)
+
+        XCTAssertEqual(settings2.visibleProviders, [])
+    }
+
+    func test_visibleProviders_recoversDefaultWhenPersistedTokensAreMalformed() {
+        defaults.set("not-a-provider,also-invalid", forKey: "visibleProvidersCSV")
+
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        XCTAssertEqual(settings.visibleProviders, Set(AgentProvider.quotaSignalProviders))
+    }
+
+    func test_visibleProviders_filtersNonQuotaProviders() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        settings.visibleProviders = [.codex, .aider]
+
+        XCTAssertEqual(settings.visibleProviders, [.codex])
+        XCTAssertEqual(settings.visibleProvidersCSV, "codex")
+    }
+
+    func test_setProvider_togglesSingleProviderVisibility() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+
+        settings.visibleProviders = [.codex]
+        settings.setProvider(.claudeCode, visible: true)
+        XCTAssertEqual(settings.visibleProviders, [.codex, .claudeCode])
+
+        settings.setProvider(.codex, visible: false)
+        XCTAssertEqual(settings.visibleProviders, [.claudeCode])
     }
 
     func test_hiddenBuckets_persistsAcrossRecreate() {

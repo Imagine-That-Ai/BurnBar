@@ -12,8 +12,47 @@ import OpenBurnBarCore
 //
 // The hero is intentionally taller than other Pulse cards — it sets the
 // emotional tone for the rest of the feed.
+//
+// The hero also OWNS the 1Hz live clock: the per-second tick lives in a
+// pausable `TimelineView` here so it only re-evaluates this subtree, never
+// the rest of the Pulse feed (docs/architecture/macos-performance.md §5).
 
 struct PulseHeroBurnCard: View {
+    let rollupTotals: [RollupWindowKey: RollupTotals]
+    let dailyPoints: [RollupDailyPoint]
+    let liveUsages: [TokenUsage]
+    let topProvider: AgentProvider?
+    let displayMode: UsageDisplayMode
+    var scope: PulseTimelineScope = .day
+    /// Mirrors `PulseView.shouldRunLivePulseClock` — freezes the tick while
+    /// the CloudStore sheet is up or the render policy disallows live effects.
+    var clockPaused: Bool = false
+
+    var body: some View {
+        // `.animation(minimumInterval:paused:)` rather than `.periodic`
+        // because periodic schedules cannot pause.
+        TimelineView(.animation(minimumInterval: 1.0, paused: clockPaused)) { context in
+            let metrics = PulseWindowMetricBuilder.metrics(
+                scope: scope,
+                rollupTotals: rollupTotals,
+                liveUsages: liveUsages,
+                now: context.date
+            )
+            PulseHeroBurnCardContent(
+                total: metrics.total,
+                trailingTotal: metrics.trailingTotal,
+                dailyPoints: dailyPoints,
+                liveUsages: liveUsages,
+                topProvider: topProvider,
+                displayMode: displayMode,
+                scope: scope,
+                now: context.date
+            )
+        }
+    }
+}
+
+private struct PulseHeroBurnCardContent: View {
     let total: RollupTotals?
     let trailingTotal: RollupTotals?
     let dailyPoints: [RollupDailyPoint]

@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var wallpaperPollTimer: Timer?
     private var dataStoreObservation: Any?
     private var daemonObservation: Any?
-    private var batteryTimer: Timer?
+    private var batteryNotificationSource: CFRunLoopSource?
     private var wallpaperActivityTimer: Timer?
     private var wallpaperAgentStatusObserver: NSObjectProtocol?
     private var wallpaperSpaceChangeObserver: NSObjectProtocol?
@@ -737,10 +737,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             name: Notification.Name.NSProcessInfoPowerStateDidChange,
             object: nil
         )
-        batteryTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        // Event-driven AC <-> battery detection. IOPSCreateLimitedPowerNotification
+        // fires only on limited-power transitions, replacing a 5 s polling timer
+        // (~17k IOKit snapshots/day at idle). The callback is a C function pointer,
+        // so `self` round-trips through an Unmanaged context pointer and hops back
+        // to the main actor before touching the wallpaper view model.
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        if let source = IOPSCreateLimitedPowerNotification({ context in
+            guard let context else { return }
+            let delegate = Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue()
             Task { @MainActor in
-                self?.syncBatteryState()
+                delegate.syncBatteryState()
             }
+        }, context)?.takeRetainedValue() {
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
+            batteryNotificationSource = source
         }
         syncBatteryState()
     }
@@ -761,17 +772,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
             return false
         }
-        for source in sources {
-            guard let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] else {
-                continue
-            }
-            if let state = desc[kIOPSPowerSourceStateKey] as? String {
-                if state == kIOPSBatteryPowerValue {
-                    return true
-                }
-            }
+        let descriptions = sources.compactMap {
+            IOPSGetPowerSourceDescription(snapshot, $0)?.takeUnretainedValue() as? [String: Any]
         }
-        return false
+        return Self.isOnBattery(powerSourceDescriptions: descriptions)
+    }
+
+    nonisolated static func isOnBattery(powerSourceDescriptions: [[String: Any]]) -> Bool {
+        powerSourceDescriptions.contains { description in
+            description[kIOPSPowerSourceStateKey] as? String == kIOPSBatteryPowerValue
+        }
     }
 
     private func setupWallpaperObservers() {
@@ -944,8 +954,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         wallpaperActivityTimer = nil
         wallpaperColorDriverTask?.cancel()
         wallpaperColorDriverTask = nil
-        batteryTimer?.invalidate()
-        batteryTimer = nil
+        if let batteryNotificationSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), batteryNotificationSource, .defaultMode)
+            CFRunLoopSourceInvalidate(batteryNotificationSource)
+            self.batteryNotificationSource = nil
+        }
         NotificationCenter.default.removeObserver(self, name: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil)
         NotificationCenter.default.removeObserver(self, name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }

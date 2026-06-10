@@ -46,10 +46,17 @@ export const HERMES_GATEWAY_DEFAULT_DESTINATION_DOC_ID = "home";
 // a newer gateway contract without inspecting individual document fields.
 export const HERMES_GATEWAY_PROTOCOL_VERSION = 2;
 // A client counts as "online" when it last checked in within this window.
-// Presence is DERIVED from lastSeenAt at read time and never persisted — a poll
-// bumps lastSeenAt on every authenticated request, so a stored online flag would
-// cause continuous write amplification and stale-on-crash presence.
+// Presence is DERIVED from lastSeenAt at read time and never persisted — a stored
+// online flag would cause continuous write amplification and stale-on-crash
+// presence. Authenticated requests bump lastSeenAt, but the bump is COALESCED to
+// the interval below so a 1s poller costs one write per ~30s instead of one per
+// request.
 export const HERMES_GATEWAY_PRESENCE_WINDOW_MS = 90 * 1000;
+// Skip the per-request lastSeenAt bump while the stored value is fresher than
+// this. Must stay <= PRESENCE_WINDOW_MS / 3 so any client polling faster than
+// the coalesce interval keeps a 2x margin inside the presence window and never
+// flips offline because of a skipped write.
+export const HERMES_GATEWAY_LAST_SEEN_COALESCE_MS = HERMES_GATEWAY_PRESENCE_WINDOW_MS / 3;
 // A requested model switch the runtime has not acknowledged within this window
 // is treated as settled (the pending marker is ignored), so a dropped/invalid
 // switch never pins the client in a permanent "switching…" state.
@@ -506,6 +513,20 @@ export function isHermesGatewayClientOnline(lastSeenAt: unknown, now = Date.now(
   const ms = Date.parse(lastSeenAt);
   if (!Number.isFinite(ms)) return false;
   return now - ms <= HERMES_GATEWAY_PRESENCE_WINDOW_MS;
+}
+
+/**
+ * Whether the per-request lastSeenAt bump may be skipped because the stored
+ * value is already fresh (within HERMES_GATEWAY_LAST_SEEN_COALESCE_MS). Fail-open
+ * to WRITING: a missing, unparseable, or future timestamp returns false so the
+ * next request always repairs lastSeenAt and presence never sticks stale.
+ */
+export function shouldCoalesceHermesGatewayLastSeen(lastSeenAt: unknown, now = Date.now()): boolean {
+  if (typeof lastSeenAt !== "string" || lastSeenAt === "") return false;
+  const ms = Date.parse(lastSeenAt);
+  if (!Number.isFinite(ms)) return false;
+  const age = now - ms;
+  return age >= 0 && age < HERMES_GATEWAY_LAST_SEEN_COALESCE_MS;
 }
 
 /**

@@ -54,18 +54,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
             .onAppear {
-                // Consume a deep-link tab parked in UserDefaults by callers
-                // like the menu-bar popover whisper — e.g. tapping "Cloud
-                // Member" should drop the user straight on the Cloud pane.
-                // `resolving(legacyRawValue:)` maps the retired `providers`
-                // and `routingPools` raw values onto the unified
-                // `.connections` tab so old deep links still resolve.
-                let key = "settings.pendingTab"
-                if let raw = UserDefaults.standard.string(forKey: key),
-                   let tab = SettingsTab.resolving(legacyRawValue: raw) {
-                    router.selectedTab = tab
-                    UserDefaults.standard.removeObject(forKey: key)
-                }
+                consumePendingSettingsDestination()
             }
         } detail: {
             NavigationStack(path: $router.path) {
@@ -108,7 +97,11 @@ struct SettingsView: View {
             // parked `settings.pendingTab` only resolves on a fresh appear).
             router.selectedTab = .cloud
             router.path.removeAll()
-            UserDefaults.standard.removeObject(forKey: "settings.pendingTab")
+            UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SettingsDeepLinkRouting.openSettingsItemNotification)) { notification in
+            let itemID = notification.object as? String
+            routeToSettingsItem(id: itemID)
         }
     }
 
@@ -281,6 +274,38 @@ struct SettingsView: View {
             conversationCloudEnabled: settingsManager.conversationCloudBackupEnabled,
             iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled
         )
+    }
+
+    private func consumePendingSettingsDestination() {
+        if let itemID = UserDefaults.standard.string(forKey: SettingsDeepLinkRouting.pendingItemKey),
+           routeToSettingsItem(id: itemID) {
+            return
+        }
+
+        // Consume a deep-link tab parked in UserDefaults by callers like the
+        // menu-bar popover whisper. Legacy raw values resolve into the unified
+        // Agents tab so old links still land somewhere useful.
+        if let raw = UserDefaults.standard.string(forKey: SettingsDeepLinkRouting.pendingTabKey),
+           let tab = SettingsTab.resolving(legacyRawValue: raw) {
+            router.selectedTab = tab
+            router.path.removeAll()
+            UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
+        }
+    }
+
+    @discardableResult
+    private func routeToSettingsItem(id itemID: String?) -> Bool {
+        guard itemID != nil else {
+            return false
+        }
+        guard let item = SettingsDeepLinkRouting.item(matching: itemID) else {
+            UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
+            return false
+        }
+        router.navigate(to: item)
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
+        return true
     }
 
     @ViewBuilder

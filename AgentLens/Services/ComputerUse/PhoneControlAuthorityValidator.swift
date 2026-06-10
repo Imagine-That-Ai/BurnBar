@@ -41,6 +41,10 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         case peerRevoked(peerNodeId: String)
         case escrowDeviceRevoked(deviceId: String)
         case replayCounterPersistenceFailed
+        /// The persisted replay high-water-mark file exists but could not be
+        /// read/decoded at startup. We refuse all phone-control intents rather
+        /// than trust a zeroed baseline (which would re-open the replay window).
+        case replayStoreUnavailable
     }
 
     public struct ValidationResult: Sendable, Equatable {
@@ -93,20 +97,45 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     /// signed authority envelope could be replayed inside the freshness window.
     private let replayCounterStore: PhoneControlReplayCounterStore
 
+    /// False when the persisted replay counter file existed at startup but could
+    /// not be read/decoded. While false, every validate path fails closed.
+    private let replayStoreHealthy: Bool
+
+    /// L9: persists consumed single-use local-auth proof IDs across restarts.
+    private let consumedProofStore: PhoneControlConsumedProofStore
+
     public init(
         freshnessWindow: TimeInterval = 5.0,
         authorityMaxLifetime: TimeInterval = 300.0,
         controllerPinStore: ControllerKeyPinStore? = ControllerKeyPinStore(),
         pinEnforcement: @escaping @Sendable () -> Bool = { ControllerKeyPinEnforcementFlag.isEnabled() },
-        replayCounterStore: PhoneControlReplayCounterStore = .defaultStore()
+        replayCounterStore: PhoneControlReplayCounterStore = .defaultStore(),
+        consumedProofStore: PhoneControlConsumedProofStore = .defaultStore()
     ) {
         self.freshnessWindow = freshnessWindow
         self.authorityMaxLifetime = authorityMaxLifetime
         self.controllerPinStore = controllerPinStore
         self.pinEnforcement = pinEnforcement
         self.replayCounterStore = replayCounterStore
-        let restored = replayCounterStore.load()
-        self.lastSeenCounter = restored
+        self.consumedProofStore = consumedProofStore
+        // L9: restore still-valid consumed proof IDs so "single-use" survives a
+        // restart within the proof's validity window (expired IDs are pruned).
+        self.consumedLocalAuthProofIds = consumedProofStore.loadActiveProofIds()
+        // SECURITY (F6): fail closed when the persisted counter file exists but is
+        // unreadable. `.absent` is a legitimate first run (empty baseline is safe);
+        // `.unreadable` means corruption/tampering, so we must NOT trust a zeroed
+        // baseline — every validate path is gated on `replayStoreHealthy` below.
+        switch replayCounterStore.loadOutcome() {
+        case .loaded(let restored):
+            self.lastSeenCounter = restored
+            self.replayStoreHealthy = true
+        case .absent:
+            self.lastSeenCounter = [:]
+            self.replayStoreHealthy = true
+        case .unreadable:
+            self.lastSeenCounter = [:]
+            self.replayStoreHealthy = false
+        }
     }
 
     /// Register the verified Ed25519 public key for a paired peer.
@@ -232,6 +261,12 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         now: Date,
         attestation: PhoneControlAttestationRequirement = .none
     ) throws {
+        // SECURITY (F6): if the persisted replay baseline was unreadable at
+        // startup, deny everything. This is the single chokepoint every validate
+        // path flows through, so the fail-closed posture covers all intents.
+        guard replayStoreHealthy else {
+            throw ValidationError.replayStoreUnavailable
+        }
         if queue.sync(execute: { revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
             throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
         }
@@ -451,6 +486,10 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         guard !replay else {
             throw ValidationError.localAuthProofReplay(proofId: proof.proofId)
         }
+        // L9: persist the consumed proof (best-effort) so it cannot be reused after
+        // a restart within its validity window. The monotonic counter remains the
+        // hard guarantee, so a transient persist failure does not fail the request.
+        consumedProofStore.record(proofId: proof.proofId, expiresAt: proof.expiresAt)
     }
 
     public func validate(
@@ -701,7 +740,7 @@ extension PhoneControlAuthorityValidator.ValidationError {
              .attestationMismatch, .missingAttestation, .macAttestationUnbound,
              .peerRevoked, .escrowDeviceRevoked,
              .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay,
-             .replayCounterPersistenceFailed:
+             .replayCounterPersistenceFailed, .replayStoreUnavailable:
             return .signatureFailure
         case .counterReplay:
             return .counterReplay
@@ -722,7 +761,7 @@ extension PhoneControlAuthorityValidator.ValidationError {
              .attestationMismatch, .missingAttestation, .macAttestationUnbound,
              .peerRevoked, .escrowDeviceRevoked,
              .localAuthProofRequired, .localAuthProofInvalid, .localAuthProofReplay,
-             .replayCounterPersistenceFailed:
+             .replayCounterPersistenceFailed, .replayStoreUnavailable:
             return .signatureFailure
         }
     }
@@ -755,6 +794,8 @@ extension PhoneControlAuthorityValidator.ValidationError {
             return "local_auth_proof_replay"
         case .replayCounterPersistenceFailed:
             return "replay_counter_persistence_failed"
+        case .replayStoreUnavailable:
+            return "replay_store_unavailable"
         }
     }
 

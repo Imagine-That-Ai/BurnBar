@@ -8,7 +8,12 @@
  *
  * ## Setup
  *
- * Configure the tracer on a `Configuration` *before* opening the database:
+ * The app installs the tracer automatically in DEBUG builds:
+ * `DataStoreCoordinator.makeDatabasePool` configures it on every pool it
+ * opens, *after* `DatabaseEncryptionService.makeConfiguration` so the
+ * SQLCipher `PRAGMA key` never reaches the trace log.
+ *
+ * For ad-hoc queues (tests), configure a `Configuration` before opening:
  * ```swift
  * var config = Configuration()
  * OpenBurnBarQueryTracer.shared.configure(in: &config)
@@ -102,9 +107,21 @@ public final class OpenBurnBarQueryTracer: @unchecked Sendable {
 
     // MARK: - Recording
 
+    /// Upper bound on retained trace entries. The tracer stays installed for
+    /// the whole DEBUG session, so the log must not grow without bound.
+    /// Trimming drops the oldest half; any sane `assertMaxQueries` budget or
+    /// N+1 threshold sits orders of magnitude below this cap, so a traced
+    /// block that overflows it still fails the assertion.
+    private static let maxRetainedQueries = 5_000
+
     private func record(sql: String) {
         let query = TracedQuery(sql: sql.trimmingCharacters(in: .whitespacesAndNewlines))
-        lock.withLock { _queryLog.append(query) }
+        lock.withLock {
+            _queryLog.append(query)
+            if _queryLog.count > Self.maxRetainedQueries {
+                _queryLog.removeFirst(Self.maxRetainedQueries / 2)
+            }
+        }
         os_log(.debug, log: log, "[GRDB] %{public}@", query.sql)
     }
 
