@@ -106,18 +106,18 @@ final class AgentCapabilityGrantQueueListener: @unchecked Sendable {
               let raw = Data(base64Encoded: publicKeyBase64) else {
             throw QueueError.missingAuthority
         }
-        // F2: `signingKeyKind` mirrors the controller record. Absent ⇒ legacy
-        // Ed25519; present-but-unrecognized fails closed (no silent downgrade).
-        let keyKind: PhoneControlSigningKeyKind
-        if let kindRaw = data["signingKeyKind"] as? String {
-            guard let parsed = PhoneControlSigningKeyKind(rawValue: kindRaw) else {
-                throw QueueError.missingAuthority
-            }
-            keyKind = parsed
-        } else {
-            keyKind = .ed25519
-        }
+        let keyKind = try Self.signingKeyKind(fromRecordValue: data["signingKeyKind"] as? String)
         return (peerNodeId, try PhoneControlVerifyingKey(kind: keyKind, publicKeyRepresentation: raw))
+    }
+
+    /// F2: `signingKeyKind` mirrors the controller record. Absent ⇒ legacy
+    /// Ed25519; present-but-unrecognized fails closed (no silent downgrade).
+    static func signingKeyKind(fromRecordValue kindRaw: String?) throws -> PhoneControlSigningKeyKind {
+        guard let kindRaw else { return .ed25519 }
+        guard let parsed = PhoneControlSigningKeyKind(rawValue: kindRaw) else {
+            throw QueueError.missingAuthority
+        }
+        return parsed
     }
 
     private func decodeWireRequest(from data: [String: Any]) throws -> HermesRealtimeRelayAgentGrantRequest {
