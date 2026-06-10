@@ -805,6 +805,7 @@ jobs:
     timeout-minutes: 60
     env:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
+      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -852,6 +853,15 @@ jobs:
           protoc --version
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+      # The OpenBurnBarMobile target declares GoogleService-Info.plist as a
+      # build input, so the iOS test step needs the same inject the other
+      # iOS jobs run.
+      - name: Inject Firebase config
+        if: env.HAS_FIREBASE_SECRETS == 'true'
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
       - name: iOS Mercury/media unit tests
         # GitHub macOS runners have no USB physical devices; the script falls back to iOS Simulator in CI.
         run: ./scripts/test-openburnbar-mobile.sh
