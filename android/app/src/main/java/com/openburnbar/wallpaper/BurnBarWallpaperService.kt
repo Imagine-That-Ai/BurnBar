@@ -284,21 +284,15 @@ class BurnBarWallpaperService : WallpaperService() {
                 for (pw in providerWeights) {
                     accumulated += pw.weight
                     if (p.colorIndex < accumulated) {
-                        return applyOpacity(pw.argb, p.opacity)
+                        return applyWallpaperParticleOpacity(pw.argb, p.opacity)
                     }
                 }
                 // Rounding residual — use last provider
-                return applyOpacity(providerWeights.last().argb, p.opacity)
+                return applyWallpaperParticleOpacity(providerWeights.last().argb, p.opacity)
             }
 
             // Fallback: use simulation's colorFor which correctly respects the selected palette!
             return simulation.colorFor(p, Color(BurnBarWallpaperConstants.DEFAULT_EMBER_COLOR_ARGB), isDark = true).toArgb()
-        }
-
-        private fun applyOpacity(argb: Int, opacity: Double): Int {
-            val alpha = (min(1.0, max(0.0, opacity)) * BurnBarWallpaperConstants.FULL_OPACITY_ALPHA).toInt()
-            return argb and BurnBarWallpaperConstants.RGB_COLOR_MASK or
-                (alpha shl BurnBarWallpaperConstants.ALPHA_CHANNEL_SHIFT_BITS)
         }
 
         // MARK: - Provider Data
@@ -311,22 +305,48 @@ class BurnBarWallpaperService : WallpaperService() {
             val snapshot =
                 BurnBarWidgetSnapshotStore.snapshot.value
                     ?: return
-
-            val providers = snapshot.topProviders.take(BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS)
-            val tokens = snapshot.topProviderTokens.take(BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS)
-            val totalTokens = tokens.sum().coerceAtLeast(1)
-
             providerWeights =
-                providers.zip(tokens).mapNotNull { pair ->
-                    val name = pair.first
-                    val tokenCount = pair.second
-                    val agent = AgentProvider.fromKey(name) ?: return@mapNotNull null
-                    ProviderColorWeight(
-                        provider = agent,
-                        weight = tokenCount.toDouble() / totalTokens.toDouble(),
-                        argb = agent.brandColor.toInt(),
-                    )
-                }
+                wallpaperProviderColorWeights(
+                    topProviders = snapshot.topProviders,
+                    topProviderTokens = snapshot.topProviderTokens,
+                )
         }
+    }
+}
+
+/**
+ * Stamps a particle's clamped opacity into the alpha channel of a provider
+ * brand color, leaving the RGB lanes untouched. Extracted from the engine so
+ * the alpha math is unit-testable.
+ */
+internal fun applyWallpaperParticleOpacity(argb: Int, opacity: Double): Int {
+    val alpha = (min(1.0, max(0.0, opacity)) * BurnBarWallpaperConstants.FULL_OPACITY_ALPHA).toInt()
+    return argb and BurnBarWallpaperConstants.RGB_COLOR_MASK or
+        (alpha shl BurnBarWallpaperConstants.ALPHA_CHANNEL_SHIFT_BITS)
+}
+
+/**
+ * Builds the token-share-weighted brand palette from the widget snapshot's
+ * top-provider lists: at most [BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS]
+ * bands, weights normalized over the kept providers, and unknown provider
+ * keys dropped. Extracted from the engine so the weighting is unit-testable.
+ */
+internal fun wallpaperProviderColorWeights(
+    topProviders: List<String>,
+    topProviderTokens: List<Long>,
+): List<ProviderColorWeight> {
+    val providers = topProviders.take(BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS)
+    val tokens = topProviderTokens.take(BurnBarWallpaperConstants.MAX_PROVIDER_COLOR_WEIGHTS)
+    val totalTokens = tokens.sum().coerceAtLeast(1)
+
+    return providers.zip(tokens).mapNotNull { pair ->
+        val name = pair.first
+        val tokenCount = pair.second
+        val agent = AgentProvider.fromKey(name) ?: return@mapNotNull null
+        ProviderColorWeight(
+            provider = agent,
+            weight = tokenCount.toDouble() / totalTokens.toDouble(),
+            argb = agent.brandColor.toInt(),
+        )
     }
 }
