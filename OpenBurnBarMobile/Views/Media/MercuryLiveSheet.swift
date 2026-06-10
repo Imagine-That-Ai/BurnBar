@@ -1660,15 +1660,31 @@ struct MercuryLiveSheet: View {
                 publicKeyRepresentation: signingIdentity.publicKeyRepresentation,
                 keyKind: signingIdentity.kind
             )
-            try await sendPhoneControlClassify(uid: uid, connectionID: connectionID, peerNodeId: peerNodeId)
+            // F10: establish the control-frame seal when the flag is on and
+            // the Mac's heartbeat reply advertised control_seal_v1 (the
+            // ensurePhoneControlStreamResponsive round trip above received it).
+            let sealSession = await ControlSealSessionEstablisher.establishIfNegotiated(
+                uid: uid,
+                connectionID: connectionID,
+                controllerPeerNodeId: peerNodeId,
+                macCapabilities: controlStreamCoordinator.latestMacPresenceCapabilities,
+                macRelayPublicKeyBase64: HermesService.shared.selectedConnection.relayPublicKey
+            )
+            try await sendPhoneControlClassify(
+                uid: uid,
+                connectionID: connectionID,
+                peerNodeId: peerNodeId,
+                sealKey: sealSession?.envelope
+            )
+            let basePhoneControlSink: PhoneControlSender.FrameSink = { frame in
+                try await controlStreamCoordinator.send(frame: frame)
+            }
             phoneControlSender = PhoneControlSender(
                 peerNodeId: peerNodeId,
                 uid: uid,
                 connectionId: connectionID,
                 signingIdentityProvider: { signingIdentity },
-                frameSink: { frame in
-                    try await controlStreamCoordinator.send(frame: frame)
-                }
+                frameSink: sealSession.map { ControlSealSessionEstablisher.sealingFrameSink(basePhoneControlSink, session: $0) } ?? basePhoneControlSink
             )
             phoneControlConnectionID = connectionID
             phoneControlError = nil
@@ -1772,14 +1788,20 @@ struct MercuryLiveSheet: View {
         )
     }
 
-    private func sendPhoneControlClassify(uid: String, connectionID: String, peerNodeId: String) async throws {
+    private func sendPhoneControlClassify(
+        uid: String,
+        connectionID: String,
+        peerNodeId: String,
+        sealKey: HermesRealtimeRelayControlSealKeyEnvelope? = nil
+    ) async throws {
         try await controlStreamCoordinator.send(frame: HermesRealtimeRelayFrame(
             type: .controlClassify,
             uid: uid,
             connectionId: connectionID,
             control: HermesRealtimeRelayControlPayload(
                 streamClass: MediaStreamClass.controlInput.rawValue,
-                authorityPeerNodeId: peerNodeId
+                authorityPeerNodeId: peerNodeId,
+                controlSealKey: sealKey
             )
         ))
     }

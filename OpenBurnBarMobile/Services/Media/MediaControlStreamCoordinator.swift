@@ -29,6 +29,10 @@ import OSLog
 /// piggyback inside `HermesIrohRelayTransport`.
 @MainActor
 final class MediaControlStreamCoordinator: ObservableObject {
+    /// F7/F10 — capability strings from the most recent Mac presence-heartbeat
+    /// reply on this control stream (empty until the first reply).
+    private(set) var latestMacPresenceCapabilities: [String] = []
+
     private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "Mercury")
     private static func debugTrace(_ message: String) {
         #if DEBUG
@@ -556,9 +560,15 @@ final class MediaControlStreamCoordinator: ObservableObject {
                         lastRoundTripMillis = max(0, Int(Date().timeIntervalSince(pendingHeartbeatSentAt) * 1_000))
                         self.pendingHeartbeatSentAt = nil
                     }
-                    if let heartbeat = frame.media?.presence,
-                       let handler = presenceHeartbeatHandler {
-                        await handler(heartbeat)
+                    if let heartbeat = frame.media?.presence {
+                        // F7/F10: the Mac's heartbeat reply advertises its
+                        // capability strings (media_frame_aead_v1 /
+                        // control_seal_v1); control-setup call sites read
+                        // them to negotiate the app-layer seals.
+                        latestMacPresenceCapabilities = heartbeat.capabilities
+                        if let handler = presenceHeartbeatHandler {
+                            await handler(heartbeat)
+                        }
                     }
                     continue
                 case .controlDenied:
