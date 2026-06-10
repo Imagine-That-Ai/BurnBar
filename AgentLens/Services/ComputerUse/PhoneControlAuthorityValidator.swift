@@ -77,7 +77,10 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.openburnbar.phoneControl.validator")
     private var lastSeenCounter: [String: UInt64] = [:]
     private var consumedLocalAuthProofIds: Set<String> = []
-    private var peerPublicKeys: [String: Curve25519.Signing.PublicKey] = [:]
+    /// F2: registered peers carry a key-kind-aware verifying key (legacy
+    /// Ed25519 or Secure-Enclave P-256) so one validator accepts both custody
+    /// classes during the migration.
+    private var peerPublicKeys: [String: PhoneControlVerifyingKey] = [:]
     private var revokedPeerNodeIds: Set<String> = []
     private var revokedEscrowDeviceIds: Set<String> = []
 
@@ -106,7 +109,9 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
 
     public init(
         freshnessWindow: TimeInterval = 5.0,
-        authorityMaxLifetime: TimeInterval = 300.0,
+        // F2: 120 s (was 300) — a captured envelope's wall-clock validity is
+        // bounded tighter now that controllers re-register per session.
+        authorityMaxLifetime: TimeInterval = 120.0,
         controllerPinStore: ControllerKeyPinStore? = ControllerKeyPinStore(),
         pinEnforcement: @escaping @Sendable () -> Bool = { ControllerKeyPinEnforcementFlag.isEnabled() },
         replayCounterStore: PhoneControlReplayCounterStore = .defaultStore(),
@@ -164,7 +169,16 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         publicKey: Curve25519.Signing.PublicKey,
         uid: String? = nil
     ) -> Bool {
-        registerPeerDetailed(nodeId: nodeId, publicKey: publicKey, uid: uid).isAdmitted
+        registerPeerDetailed(nodeId: nodeId, verifyingKey: .ed25519(publicKey), uid: uid).isAdmitted
+    }
+
+    @discardableResult
+    public func registerPeer(
+        nodeId: String,
+        verifyingKey: PhoneControlVerifyingKey,
+        uid: String? = nil
+    ) -> Bool {
+        registerPeerDetailed(nodeId: nodeId, verifyingKey: verifyingKey, uid: uid).isAdmitted
     }
 
     @discardableResult
@@ -173,11 +187,23 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         publicKey: Curve25519.Signing.PublicKey,
         uid: String? = nil
     ) -> RegistrationResult {
+        registerPeerDetailed(nodeId: nodeId, verifyingKey: .ed25519(publicKey), uid: uid)
+    }
+
+    @discardableResult
+    public func registerPeerDetailed(
+        nodeId: String,
+        verifyingKey: PhoneControlVerifyingKey,
+        uid: String? = nil
+    ) -> RegistrationResult {
         if queue.sync(execute: { revokedPeerNodeIds.contains(nodeId) }) {
             return .refused(.revokedPeer(peerNodeId: nodeId))
         }
         if let controllerPinStore, let uid {
-            let advertised = publicKey.rawRepresentation.base64EncodedString()
+            // F2: the pin covers the canonical published bytes — raw for
+            // Ed25519 (unchanged), X9.63 for SE-P256 — so a key-kind swap for
+            // an already-pinned controller is a pin mismatch, not a re-pin.
+            let advertised = verifyingKey.publicKeyRepresentation.base64EncodedString()
             let result = controllerPinStore.verifyOrPin(
                 advertisedKeyBase64: advertised,
                 uid: uid,
@@ -202,7 +228,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             if revokedPeerNodeIds.contains(nodeId) {
                 return .refused(.revokedPeer(peerNodeId: nodeId))
             }
-            peerPublicKeys[nodeId] = publicKey
+            peerPublicKeys[nodeId] = verifyingKey
             return .admitted
         }
     }
@@ -213,8 +239,17 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         publicKey: Curve25519.Signing.PublicKey,
         uid: String
     ) -> Bool {
+        confirmPeerPin(nodeId: nodeId, verifyingKey: .ed25519(publicKey), uid: uid)
+    }
+
+    @discardableResult
+    public func confirmPeerPin(
+        nodeId: String,
+        verifyingKey: PhoneControlVerifyingKey,
+        uid: String
+    ) -> Bool {
         guard let controllerPinStore else { return false }
-        let advertised = publicKey.rawRepresentation.base64EncodedString()
+        let advertised = verifyingKey.publicKeyRepresentation.base64EncodedString()
         return controllerPinStore.confirm(advertisedKeyBase64: advertised, uid: uid, peerNodeId: nodeId)
     }
 
@@ -233,6 +268,16 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     public func deregisterPeer(nodeId: String) {
         queue.sync {
             peerPublicKeys.removeValue(forKey: nodeId)
+        }
+    }
+
+    /// F2: drop every in-memory peer registration (pins, revocations, and
+    /// replay counters are untouched). Called at session boundaries so a
+    /// controller's authority is re-established per session via a fresh
+    /// `controlClassify` registration instead of riding a stale admission.
+    public func deregisterAllPeers() {
+        queue.sync {
+            peerPublicKeys.removeAll()
         }
     }
 
@@ -298,7 +343,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
 
     private func publicKeyForActivePeer(
         _ envelope: HermesRealtimeRelayAuthorityEnvelope
-    ) throws -> Curve25519.Signing.PublicKey {
+    ) throws -> PhoneControlVerifyingKey {
         if queue.sync(execute: { revokedPeerNodeIds.contains(envelope.peerNodeId) }) {
             throw ValidationError.peerRevoked(peerNodeId: envelope.peerNodeId)
         }
@@ -306,6 +351,31 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.missingPeerPubKey
         }
         return pubKey
+    }
+
+    /// F2: the single signature chokepoint, key-kind aware. The envelope's
+    /// declared `keyKind` must match the registered key's custody class — a
+    /// mismatch is either a downgrade attempt against an SE-pinned controller
+    /// or a stale registration, and both must fail closed. The payload bytes
+    /// and the per-algorithm verification live in
+    /// `ComputerUsePhoneControlSigner.isValidAuthoritySignature`, shared with
+    /// the cross-language known-answer test.
+    private func verifyEnvelopeSignature(
+        _ envelope: HermesRealtimeRelayAuthorityEnvelope,
+        key: PhoneControlVerifyingKey
+    ) throws {
+        guard envelope.resolvedKeyKind == key.kind else {
+            throw ValidationError.signatureFailed
+        }
+        guard ComputerUsePhoneControlSigner().isValidAuthoritySignature(
+            intentHashHex: envelope.intentHashBlake3,
+            counter: envelope.counter,
+            timestamp: envelope.timestamp,
+            signatureBase64: envelope.signatureEd25519,
+            key: key
+        ) else {
+            throw ValidationError.signatureFailed
+        }
     }
 
     private static func attestationRequirement(
@@ -348,21 +418,8 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }
 
-        // 4. Ed25519 signature.
-        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
-            throw ValidationError.signatureFailed
-        }
-        var toVerify = Data()
-        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
-        var beCounter = envelope.counter.bigEndian
-        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
-        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
-        var beTs = timestampMs.bigEndian
-        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
-
-        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
-            throw ValidationError.signatureFailed
-        }
+        // 4. Envelope signature (Ed25519 or SE-P256 per the registered key).
+        try verifyEnvelopeSignature(envelope, key: pubKey)
 
         try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
@@ -399,20 +456,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }
 
-        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
-            throw ValidationError.signatureFailed
-        }
-        var toVerify = Data()
-        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
-        var beCounter = envelope.counter.bigEndian
-        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
-        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
-        var beTs = timestampMs.bigEndian
-        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
-
-        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
-            throw ValidationError.signatureFailed
-        }
+        try verifyEnvelopeSignature(envelope, key: pubKey)
         try validateLocalAuthProofIfNeeded(
             grantRequest,
             observedIntentHash: observedHex,
@@ -431,7 +475,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
     private func validateLocalAuthProofIfNeeded(
         _ grantRequest: HermesRealtimeRelayAgentGrantRequest,
         observedIntentHash: String,
-        publicKey: Curve25519.Signing.PublicKey,
+        publicKey: PhoneControlVerifyingKey,
         now: Date
     ) throws {
         guard let trustMode = ComputerUseTrustMode(rawValue: grantRequest.trustMode) else {
@@ -441,10 +485,21 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
         guard capabilities.count == grantRequest.capabilities.count else {
             throw ValidationError.localAuthProofInvalid(reason: "unsupported_capability")
         }
-        let requiresProof = AgentDesktopCapability.requiresLocalAuthentication(
-            capabilities: Set(capabilities),
-            trustMode: trustMode
-        )
+        // F2 step-up: a biometry-gated Secure-Enclave signature is itself the
+        // user-presence proof (the OS will not sign without a live biometric
+        // match), so SE-signed grants never demand the explicit proof. Legacy
+        // software keys keep the exact pre-F2 rule, which already covers every
+        // sensitive class in `PhoneControlStepUpPolicy` and is stricter.
+        let requiresProof: Bool
+        switch PhoneControlStepUpPolicy().stepUpEvidence(for: publicKey.kind) {
+        case .enforcedBySecureEnclaveSignature:
+            requiresProof = false
+        case .requiresExplicitLocalAuthProof:
+            requiresProof = AgentDesktopCapability.requiresLocalAuthentication(
+                capabilities: Set(capabilities),
+                trustMode: trustMode
+            )
+        }
         guard requiresProof || grantRequest.localAuthProof != nil else { return }
         guard grantRequest.localAuthenticationSatisfied else {
             throw ValidationError.localAuthProofRequired
@@ -520,20 +575,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }
 
-        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
-            throw ValidationError.signatureFailed
-        }
-        var toVerify = Data()
-        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
-        var beCounter = envelope.counter.bigEndian
-        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
-        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
-        var beTs = timestampMs.bigEndian
-        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
-
-        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
-            throw ValidationError.signatureFailed
-        }
+        try verifyEnvelopeSignature(envelope, key: pubKey)
 
         try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
@@ -563,20 +605,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }
 
-        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
-            throw ValidationError.signatureFailed
-        }
-        var toVerify = Data()
-        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
-        var beCounter = envelope.counter.bigEndian
-        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
-        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
-        var beTs = timestampMs.bigEndian
-        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
-
-        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
-            throw ValidationError.signatureFailed
-        }
+        try verifyEnvelopeSignature(envelope, key: pubKey)
 
         try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
@@ -606,20 +635,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }
 
-        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
-            throw ValidationError.signatureFailed
-        }
-        var toVerify = Data()
-        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
-        var beCounter = envelope.counter.bigEndian
-        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
-        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
-        var beTs = timestampMs.bigEndian
-        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
-
-        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
-            throw ValidationError.signatureFailed
-        }
+        try verifyEnvelopeSignature(envelope, key: pubKey)
 
         try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(
@@ -651,20 +667,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }
 
-        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
-            throw ValidationError.signatureFailed
-        }
-        var toVerify = Data()
-        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
-        var beCounter = envelope.counter.bigEndian
-        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
-        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
-        var beTs = timestampMs.bigEndian
-        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
-
-        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
-            throw ValidationError.signatureFailed
-        }
+        try verifyEnvelopeSignature(envelope, key: pubKey)
 
         if consumeCounter {
             try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
@@ -697,20 +700,7 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }
 
-        guard let signatureData = Data(base64Encoded: envelope.signatureEd25519) else {
-            throw ValidationError.signatureFailed
-        }
-        var toVerify = Data()
-        toVerify.append(contentsOf: envelope.intentHashBlake3.utf8)
-        var beCounter = envelope.counter.bigEndian
-        withUnsafeBytes(of: &beCounter) { toVerify.append(contentsOf: $0) }
-        let timestampMs = Int64((envelope.timestamp.timeIntervalSince1970 * 1000).rounded())
-        var beTs = timestampMs.bigEndian
-        withUnsafeBytes(of: &beTs) { toVerify.append(contentsOf: $0) }
-
-        guard pubKey.isValidSignature(signatureData, for: toVerify) else {
-            throw ValidationError.signatureFailed
-        }
+        try verifyEnvelopeSignature(envelope, key: pubKey)
 
         try commitReplayCounter(peerNodeId: envelope.peerNodeId, counter: envelope.counter)
         return ValidationResult(

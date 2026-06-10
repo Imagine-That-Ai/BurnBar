@@ -278,17 +278,22 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     @discardableResult
     public func registerPhonePeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
+        registerPhonePeer(nodeId: nodeId, verifyingKey: .ed25519(publicKey))
+    }
+
+    @discardableResult
+    public func registerPhonePeer(nodeId: String, verifyingKey: PhoneControlVerifyingKey) -> Bool {
         // F1: scope the controller-key pin to this account so the Mac refuses a
         // relay/Firestore-swapped signing key for an already-paired controller.
-        phoneValidator.registerPeer(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId)
+        phoneValidator.registerPeer(nodeId: nodeId, verifyingKey: verifyingKey, uid: configuration.userId)
     }
 
     private func registerPhonePeerForControlClassify(
         nodeId: String,
-        publicKey: Curve25519.Signing.PublicKey,
+        publicKey: PhoneControlVerifyingKey,
         connectionID: String
     ) async -> (admitted: Bool, denialDetail: String?) {
-        switch phoneValidator.registerPeerDetailed(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId) {
+        switch phoneValidator.registerPeerDetailed(nodeId: nodeId, verifyingKey: publicKey, uid: configuration.userId) {
         case .admitted:
             return (true, nil)
         case .pendingConfirmation(let safetyCode):
@@ -306,11 +311,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 actionSummary: "Approve phone controller \(nodeId)"
             )
             guard approval.decision == .approve,
-                  phoneValidator.confirmPeerPin(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId)
+                  phoneValidator.confirmPeerPin(nodeId: nodeId, verifyingKey: publicKey, uid: configuration.userId)
             else {
                 return (false, "controller_confirmation_rejected")
             }
-            switch phoneValidator.registerPeerDetailed(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId) {
+            switch phoneValidator.registerPeerDetailed(nodeId: nodeId, verifyingKey: publicKey, uid: configuration.userId) {
             case .admitted:
                 return (true, nil)
             case .pendingConfirmation:
@@ -514,6 +519,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         cancelPendingApprovals(decision: .reject, note: "session ended")
         finalizeAuditSignedHeadIfPossible()
         activeSessionId = nil
+        // F2: controller authority is per-session — drop every admitted peer so
+        // the next session must re-establish it via a fresh controlClassify
+        // registration (pins, revocations, and replay counters persist).
+        phoneValidator.deregisterAllPeers()
         phoneReceiver = nil
         systemPermissionReceiver = nil
         SystemPermissionMonitor.shared.detach()
@@ -551,6 +560,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             finalizeAuditSignedHeadIfPossible()
         }
         activeSessionId = nil
+        phoneValidator.deregisterAllPeers()
         phoneReceiver = nil
         systemPermissionReceiver = nil
         SystemPermissionMonitor.shared.detach()
@@ -1424,7 +1434,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                         connectionId: frame.connectionId,
                         peerNodeId: credentialPeerNodeId
                     )
-                    registerPhonePeer(nodeId: credentialPeerNodeId, publicKey: publicKey)
+                    registerPhonePeer(nodeId: credentialPeerNodeId, verifyingKey: publicKey)
                     recordE2EProofEvent([
                         "event": "remote_unlock_peer_registered",
                         "peerNodeId": credentialPeerNodeId,
