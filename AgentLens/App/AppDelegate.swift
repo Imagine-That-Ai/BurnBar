@@ -18,6 +18,7 @@ import OpenBurnBarCore
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
+    private var popoverPrewarmer: PopoverContentPrewarmer?
     private var statusItemLocalMouseMonitor: Any?
     private var statusItemGlobalMouseMonitor: Any?
     private var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
@@ -84,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
         installStatusItem()
+        installPopoverPrewarming()
 
         // Start wallpaper orchestration
         observeDesktopWallpaper()
@@ -202,26 +204,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func showPopover(_ sender: NSStatusBarButton) {
-        if popover == nil {
-            let popover = NSPopover()
-            popover.behavior = .transient
-            popover.animates = true
-            popover.delegate = self
-            self.popover = popover
-        }
+        let popover = ensurePopover()
 
-        guard let popover else { return }
-
+        // Fallback only: the prewarmer rebuilds content off the click path
+        // after launch and after every close (§15 of
+        // docs/architecture/macos-performance.md). This branch covers a
+        // click that outruns the scheduled prime.
         if popover.contentViewController == nil {
-            let content = AppCommandRouter.shared.makeMenuBarPopoverContent?({ [weak popover] in
-                popover?.performClose(nil)
-            }) ?? AnyView(Text("No Content"))
-
-            let host = NSHostingController(rootView: content)
-            popover.contentViewController = host
+            installPopoverContent(into: popover)
         }
 
-        // Ensure we have a reasonable size before showing
+        // Cheap when prewarmed (layout already ran during the prime);
+        // re-reading keeps the size honest for data that changed since.
         let size = popover.contentViewController?.view.fittingSize ?? .zero
         if size.width > 1 && size.height > 1 {
             popover.contentSize = size
@@ -233,6 +227,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func ensurePopover() -> NSPopover {
+        if let popover {
+            return popover
+        }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = true
+        popover.delegate = self
+        self.popover = popover
+        return popover
+    }
+
+    /// Builds a brand-new content controller from the CURRENT router
+    /// factory and installs it. Shared by the click-path fallback and the
+    /// off-click prewarm.
+    private func installPopoverContent(into popover: NSPopover) {
+        let content = AppCommandRouter.shared.makeMenuBarPopoverContent?({ [weak popover] in
+            popover?.performClose(nil)
+        }) ?? AnyView(Text("No Content"))
+
+        let host = NSHostingController(rootView: content)
+        popover.contentViewController = host
+    }
+
+    private func installPopoverPrewarming() {
+        let prewarmer = PopoverContentPrewarmer(
+            isPopoverShown: { [weak self] in self?.popover?.isShown ?? false },
+            prime: { [weak self] in self?.primePopoverContent() }
+        )
+        popoverPrewarmer = prewarmer
+        AppCommandRouter.shared.onMenuBarPopoverFactoryChanged = { [weak prewarmer] in
+            prewarmer?.schedulePrime()
+        }
+        // The real factory can land before this hook installs (SwiftUI body
+        // vs. applicationDidFinishLaunching ordering is not guaranteed).
+        if AppCommandRouter.shared.makeMenuBarPopoverContent != nil {
+            prewarmer.schedulePrime()
+        }
+    }
+
+    /// Rebuilds the popover content from the current factory and primes the
+    /// expensive first layout — all off the click path. Rebuilding (rather
+    /// than keeping a stale controller) preserves the deliberate
+    /// fresh-state-on-show behavior from fd19d53ac and guarantees a factory
+    /// reinstall (e.g. EmptyView fallback → real runtime content) never
+    /// freezes stale content into the popover.
+    private func primePopoverContent() {
+        guard AppCommandRouter.shared.makeMenuBarPopoverContent != nil else { return }
+        let popover = ensurePopover()
+        installPopoverContent(into: popover)
+        _ = popover.contentViewController?.view.fittingSize
     }
 
     private func installStatusItemMouseFallback() {
@@ -972,7 +1019,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         // Clear content when closed to ensure fresh state on next show
+        // (fd19d53ac) — then rebuild it on the next main-queue turn so the
+        // following open pays no construction or first-layout cost on the
+        // click path (§15).
         popover?.contentViewController = nil
+        popoverPrewarmer?.schedulePrime()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

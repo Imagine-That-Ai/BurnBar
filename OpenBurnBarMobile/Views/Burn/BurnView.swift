@@ -11,8 +11,13 @@ import OpenBurnBarCore
 struct BurnView: View {
     var initialFocus: String?
 
-    @State private var quotaStore = QuotaStore()
-    @State private var dashboard = DashboardStore()
+    // Stores are owned by the tab root and injected so they survive tab
+    // swaps — a remount restarts listeners against warm data instead of
+    // re-running the full load (see `initialLoad()`).
+    let quotaStore: QuotaStore
+    let dashboard: DashboardStore
+    /// Backs the `.timeline` view; only loaded when that view is first shown.
+    let activityStore: ActivityStore
     @State private var displayMode: UsageDisplayMode = .currency
     @State private var selectedWindow: RollupWindowKey = .today
     @State private var expandedProvider: String?
@@ -22,9 +27,6 @@ struct BurnView: View {
 
     /// Persisted per-device choice of how the Burn tab is visualized.
     @AppStorage("burnLayoutStyle") private var layoutRaw: String = BurnLayoutStyle.cards.rawValue
-    /// Backs the `.timeline` view; only loaded when that view is first shown.
-    @State private var activityStore = ActivityStore()
-    @State private var activityLoaded = false
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -378,9 +380,10 @@ struct BurnView: View {
 
     /// Lazily loads recent usage the first time the timeline view is shown.
     private func loadActivityIfNeeded() {
-        guard layoutStyle == .timeline, !activityLoaded else { return }
-        activityLoaded = true
-        Task { await activityStore.load() }
+        // `hasLoadedOnce` lives on the (hoisted) store rather than view
+        // `@State`, so a tab return doesn't refetch the timeline rows.
+        guard layoutStyle == .timeline, !activityStore.hasLoadedOnce, !activityStore.isLoading else { return }
+        Task { await activityStore.loadInitialIfNeeded() }
     }
 
     // MARK: - Hero derivations
@@ -577,8 +580,18 @@ struct BurnView: View {
     // MARK: - Loading
 
     private func initialLoad() async {
-        async let q: Void = quotaStore.load()
-        async let d: Void = dashboard.load()
+        // Re-sync the store to this view's freshly-reset selection chips
+        // (cache-only; on a cold mount both sides hold the defaults).
+        if dashboard.selectedWindow != selectedWindow {
+            dashboard.setWindow(selectedWindow)
+        }
+        if dashboard.displayMode != displayMode {
+            dashboard.setDisplayMode(displayMode)
+        }
+        // Warm stores skip the refetch and only restart listeners — a tab
+        // return costs zero network round-trips.
+        async let q: Void = quotaStore.loadIfNeeded()
+        async let d: Void = dashboard.loadIfNeeded()
         _ = await (q, d)
         quotaStore.startListening()
     }
