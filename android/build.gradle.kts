@@ -14,4 +14,8 @@ plugins {
     id("io.gitlab.arturbosch.detekt") version "1.23.7" apply false
     // dependency-analysis: detect unused Android Gradle dependencies
     id("com.autonomousapps.dependency-analysis") version "2.3.0" apply false
+    // Macrobenchmark + baseline-profile capture (:macrobenchmark, on-device only).
+    // benchmark 1.3.4 is the latest 1.3.x line, compatible with AGP 8.7.3 + Gradle 8.9.
+    id("com.android.test") version "8.7.3" apply false
+    id("androidx.baselineprofile") version "1.3.4" apply false
 }

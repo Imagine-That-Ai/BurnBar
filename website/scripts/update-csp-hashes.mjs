@@ -29,6 +29,14 @@ function sortedSources(values) {
   return [...values].sort((a, b) => a.localeCompare(b));
 }
 
+// Fail-closed (perf round 2, website-013): hashing an inline script that
+// imports cross-origin code would produce a CSP that allows the script to
+// START but blocks its import at runtime — the exact silent-failure mode that
+// killed the esm.sh pretext module in production while every QA pass on
+// dev/preview rendered it. Refuse to generate such a CSP. From-aware so
+// named-binding static imports (`import { x } from "https://…"`) are caught.
+const CROSS_ORIGIN_IMPORT = /\b(?:import|from)\s*\(?\s*["'`](?:https?:)?\/\/(?!burnbar\.ai)/;
+
 function inlineHashesFromDist() {
   assert.ok(statSync(DIST).isDirectory(), `${relative(REPO_ROOT, DIST)} must exist; run npm --prefix website run build:offline first`);
   const scriptHashes = new Set();
@@ -38,6 +46,12 @@ function inlineHashesFromDist() {
   for (const file of walk(DIST).filter((candidate) => candidate.endsWith(".html"))) {
     const body = readFileSync(file, "utf8");
     for (const match of body.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
+      assert.ok(
+        !CROSS_ORIGIN_IMPORT.test(match[1]),
+        `${relative(REPO_ROOT, file)}: inline script imports cross-origin code (${
+          match[1].match(CROSS_ORIGIN_IMPORT)?.[0]
+        }…) — the generated CSP (script-src 'self' + hashes) would block that import at runtime; bundle the dependency instead of hashing a script this CSP will break`,
+      );
       scriptHashes.add(sha256Source(match[1]));
     }
     for (const match of body.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {

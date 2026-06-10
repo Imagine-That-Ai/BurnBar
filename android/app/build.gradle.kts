@@ -12,6 +12,11 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
     id("io.gitlab.arturbosch.detekt")
     id("com.autonomousapps.dependency-analysis")
+    // Baseline-profile consumer: wires the :macrobenchmark producer so
+    // `./gradlew :app:generateBaselineProfile` captures an app-specific
+    // profile (library profiles for Compose/activity already ship via the
+    // transitive profileinstaller; this adds AOT for BurnBar's own code).
+    id("androidx.baselineprofile")
     jacoco
 }
 
@@ -232,6 +237,13 @@ dependencies {
         implementation(files(irohAar))
     }
 
+    // Baseline profiles: explicit profileinstaller pin (already present
+    // transitively via androidx.activity — explicit so the app-specific
+    // profile install path is owned, not inherited) + the macrobenchmark
+    // module that generates baseline-prof rules on device.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    "baselineProfile"(project(":macrobenchmark"))
+
     // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
@@ -442,4 +454,17 @@ tasks.register("syncGeneratedSources") {
 // hand-edited copy can never reach the compiler.
 tasks.named("preBuild") {
     dependsOn("syncGeneratedSources")
+}
+
+// syncGeneratedSources writes two files inside src/main/java, which the
+// ktlint/detekt source scans also read. Without an explicit ordering, Gradle
+// 8 fails the build with an implicit-dependency validation error whenever
+// scheduling happens to start a scan before the sync in the same invocation
+// (surfaced when :macrobenchmark joined the task graph).
+tasks.matching {
+    it.name.startsWith("runKtlintCheckOver") ||
+        it.name.startsWith("runKtlintFormatOver") ||
+        it is io.gitlab.arturbosch.detekt.Detekt
+}.configureEach {
+    mustRunAfter("syncGeneratedSources")
 }

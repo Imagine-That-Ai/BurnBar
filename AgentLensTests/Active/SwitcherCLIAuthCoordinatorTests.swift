@@ -1814,6 +1814,23 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(AccountManager.isFirebaseAuthKeychainErrorForTesting(error))
     }
 
+    func test_userFacingAuthErrorMessage_sanitizesFirebaseKeychainFailure() {
+        let error = NSError(
+            domain: "FIRAuthErrorDomain",
+            code: 17995,
+            userInfo: [
+                NSLocalizedDescriptionKey: """
+                An error occurred when accessing the keychain. The NSLocalizedFailureReasonErrorKey field in the NSError.userInfo dictionary will contain more information about the error encountered
+                """
+            ]
+        )
+
+        XCTAssertEqual(
+            AccountManager.userFacingAuthErrorMessageForTesting(error),
+            "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If this is a local debug build, run it with Keychain Sharing enabled."
+        )
+    }
+
     func test_isFirebaseAuthKeychainError_ignoresNonKeychainFailure() {
         let error = NSError(
             domain: "FIRAuthErrorDomain",
@@ -1839,6 +1856,20 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertEqual(query[kSecAttrAccount as String] as? String, "firebase_auth_firebase_user")
         XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
         XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, true)
+    }
+
+    func test_firebaseAuthDefaultAccessGrouplessStoredUserDeleteQuery_targetsFirebaseDataProtectionKeychainRow() {
+        let query = AccountManager.firebaseAuthDefaultAccessGrouplessStoredUserDeleteQueryForTesting(
+            service: "test-api-key",
+            synchronizable: false
+        )
+
+        XCTAssertEqual(query[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertNil(query[kSecAttrAccessGroup as String])
+        XCTAssertEqual(query[kSecAttrService as String] as? String, "test-api-key")
+        XCTAssertEqual(query[kSecAttrAccount as String] as? String, "firebase_auth_firebase_user")
+        XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
+        XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, false)
     }
 
     func test_firebaseAuthDefaultStoredUserDeleteQuery_targetsCurrentFirebaseSwiftRow() {

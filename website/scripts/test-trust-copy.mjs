@@ -5,7 +5,9 @@
  *
  * 1. TRACKER-FREE: the footer says "No analytics, no trackers, no third-party
  *    fonts loaded remotely" — enforce it on what actually ships: no external
- *    <script src> in any built page, and no tracker SDK tokens in the built JS.
+ *    <script src> in any built page, no cross-origin import in any inline
+ *    script body or built JS module (the esm.sh lesson — see 1b), and no
+ *    tracker SDK tokens in the built JS.
  * 2. PAGE ↔ MODULE BINDING: /trust must render every generated claim line and
  *    not-claim verbatim. The drift gates guarantee module == registry; this
  *    closes the remaining gap (page == module) so trust.astro cannot quietly
@@ -50,6 +52,57 @@ for (const file of htmlFiles) {
   assert.ok(
     !externalScript.test(html),
     `${relative(ROOT, file)} loads a third-party script — the footer's "no trackers" claim must stay verbatim true`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Cross-origin CODE LOADING beyond <script src> — the esm.sh lesson
+//     (perf round 2, website-013).
+// ---------------------------------------------------------------------------
+// The src-only regex above read green for weeks while an inline module's
+// `import { prepareWithSegments, layoutWithLines } from
+// "https://esm.sh/@chenglou/pretext"` shipped on all 33 pages — and the
+// deployed CSP (script-src 'self' + hashes, no esm.sh) silently blocked it,
+// so prod rendered DIFFERENT typography than every dev/preview QA pass.
+// Scan everything that can execute: inline script bodies in built HTML and
+// every built JS file. The pattern is from-aware on purpose: a plain
+// `import\s*["']https?:` regex misses named-binding static imports
+// (`import { x } from "https://…"`), which is exactly the shipped instance.
+// Covers side-effect imports, re-exports, dynamic import(), and
+// protocol-relative URLs.
+const crossOriginImport = /\b(?:import|from)\s*\(?\s*["'`](?:https?:)?\/\/(?!burnbar\.ai)/;
+
+const describeMatch = (content, match) => {
+  const start = Math.max(0, match.index - 40);
+  return JSON.stringify(content.slice(start, match.index + match[0].length + 60));
+};
+
+for (const file of htmlFiles) {
+  const html = readFileSync(file, "utf8");
+  for (const tag of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const [, attrs, body] = tag;
+    if (/\bsrc\s*=/i.test(attrs)) continue; // external tags handled above
+    if (/\btype\s*=\s*["'][^"']*json[^"']*["']/i.test(attrs)) continue; // JSON-LD etc. cannot execute
+    const match = body.match(crossOriginImport);
+    assert.ok(
+      !match,
+      `${relative(ROOT, file)} has an inline script importing cross-origin code near ${describeMatch(
+        body,
+        match ?? { index: 0, 0: "" }
+      )} — the CSP (script-src 'self') blocks it at runtime and the "no trackers" claim forbids it; bundle the dependency instead`
+    );
+  }
+}
+
+for (const file of jsFiles) {
+  const js = readFileSync(file, "utf8");
+  const match = js.match(crossOriginImport);
+  assert.ok(
+    !match,
+    `${relative(ROOT, file)} imports cross-origin code near ${describeMatch(
+      js,
+      match ?? { index: 0, 0: "" }
+    )} — the CSP (script-src 'self') blocks it at runtime and the "no trackers" claim forbids it; bundle the dependency instead`
   );
 }
 
@@ -142,7 +195,7 @@ for (const file of htmlFiles) {
 }
 
 console.log(
-  `✓ trust copy gates: ${htmlFiles.length} pages tracker-free, /trust renders all ${
+  `✓ trust copy gates: ${htmlFiles.length} pages tracker-free (incl. ${jsFiles.length} JS files + inline bodies scanned for cross-origin imports), /trust renders all ${
     publicLines.length + notClaims.length
   } generated claim lines verbatim, banned vocabulary absent.`
 );

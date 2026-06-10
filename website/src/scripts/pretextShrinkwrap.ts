@@ -1,13 +1,16 @@
 // chenglou/pretext-powered text shrinkwrap layout engine.
 // Relocated verbatim from a BaseLayout.astro `<script type="module">` (see
-// emberSwarm.ts for the delivery rationale). The https://esm.sh import is kept
-// as-is and marked rollup-external in astro.config.mjs: the marketing CSP
-// (script-src 'self' + hashes) blocks esm.sh, so this module stays the same
-// silent no-op it has always been in production. Bundling the npm package
-// instead would ACTIVATE the shrinkwrap and change rendered text layout —
-// that is a separate, visible-change decision, not a delivery optimization.
+// emberSwarm.ts for the delivery rationale). History: this module originally
+// imported from https://esm.sh/@chenglou/pretext, which the marketing CSP
+// (script-src 'self' + hashes) silently blocked — the shrinkwrap had NEVER
+// run on burnbar.ai while running in every dev/preview QA pass. Approved
+// 2026-06-10 (perf round 2, website-012): import the npm package so Vite
+// bundles it into the hashed /_assets module, served from 'self' under the
+// existing CSP. This ACTIVATES the treatment in production — an intentional,
+// visible typography change. scripts/test-trust-copy.mjs fails the build if
+// a cross-origin import ever ships again (website-013).
 // @ts-nocheck — verbatim JS; strict-TS conversion deferred.
-import { prepareWithSegments, layoutWithLines } from "https://esm.sh/@chenglou/pretext";
+import { prepareWithSegments, layoutWithLines } from "@chenglou/pretext";
 
 async function initPretextShrinkwrap() {
   try {
