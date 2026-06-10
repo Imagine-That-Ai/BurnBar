@@ -127,10 +127,8 @@ class FakeFirestore {
 
   asFirestore(): Firestore {
     // `refreshUserRollups` takes the nominal admin `Firestore` class, which a
-    // structural in-memory fake can never satisfy; widen through an
-    // `unknown`-typed binding so the file carries exactly one unsafe cast.
-    const handle: unknown = this;
-    return handle as Firestore;
+    // structural in-memory fake can never satisfy; widen through `unknown`.
+    return this as unknown as Firestore;
   }
 }
 
