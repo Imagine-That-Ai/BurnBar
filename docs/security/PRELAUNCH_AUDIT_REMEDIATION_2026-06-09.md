@@ -139,10 +139,24 @@ Verified surfaces: **OpenBurnBarCore `swift test` (1437 pass / 3 skip)** and
   capability (captured at device/start + approve); once a client registers v2 a
   v1 downgrade is refused (`pop_v2_required`). 5 vitest cases incl. the proof
   that a tampered query is now caught (`bad_pop_signature`).
-- **Remaining (out of this repo):** the Hermes platform adapter signs only a
-  Bearer header today (no PoP at all) and ships as a vendored `.pyc`
-  (`third_party/hermes-agent`); the v2 signer must be added to the adapter source
-  and re-vendored. Tracked alongside the F5 vendored-runtime gate below.
+- **Shipped (adapter source, tested 2026-06-10):** the BurnBar platform adapter
+  (`tools/hermes-platform-burnbar/adapter.py`, byte-identical copy synced to
+  `~/.hermes/hermes-agent/plugins/platforms/burnbar/adapter.py`) now signs
+  **every** gateway request with PoP v2: Ed25519 client signing key
+  (Keychain-stored, minted + registered as `agentClientSigningPublicKeyBase64`
+  with `popVersion: 2` at `device/start`), byte-locked mirrors of the server's
+  `stableJSONString` (incl. ICU `localeCompare` key order), canonical query
+  builder, `gatewayPath`, and payload lines; all 10 token-bearing call sites
+  (`/events`, `/destinations`, `/state`, `/runtime`, `/approvals` GET+POST,
+  `/messages`, `/typing`, `/attachments/init|finalize`) attach the headers. No
+  key ⇒ falls back to bare Bearer (the pre-PoP wire, no new failure mode).
+  13 unittest cases in `tools/hermes-platform-burnbar/test_adapter_pop.py`
+  (run with `PYTHONPATH=~/.hermes/hermes-agent`), incl. the
+  lowercase-before-uppercase ICU vector and a tampered-query negative.
+- **Remaining (out of this repo):** re-vendor the runtime: hermes-agent fork
+  commit → bump `third_party/hermes-agent/manifest.json` `pinnedCommit` +
+  `vendoredSourceTreeSha256` → `scripts/ci/verify-vendored-agent-source.sh`
+  green. Tracked alongside the F5 vendored-runtime gate below.
 
 ### Attestation default-on (remote-control F6) & full-key `peerNodeId` (remote-control F7)
 - Flipping `computer_use_phone_control_attestation_required` to default-true requires
