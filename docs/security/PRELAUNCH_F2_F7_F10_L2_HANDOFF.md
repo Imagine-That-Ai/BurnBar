@@ -1,5 +1,15 @@
 # Handoff — F2 / F7 / F10 / L2 pre-launch remediation
 
+> **2026-06-10 update:** §4's F2 items 1–6 are DONE on all platforms (commits
+> `bd8be99cb`, `aecb303b8`, `dc508b0c0`, `23c1424cf`), L2's adapter signer is
+> DONE (`42e405b1a`), the Kotlin AEAD mirrors + KATs are DONE (`8ca013c21`),
+> and the Mac→phone capability/snapshot advertisement is DONE (`f5b796158`).
+> See the 2026-06-10 matrix in `PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md`.
+> Still open: F7 seal/open call-site wiring + key agreement, F10 session
+> establishment + seal/open wiring (both sides of each are spec'd in §4),
+> Android attestation reader, `third_party/hermes-agent` re-vendor (F5 gate),
+> and physical biometric/SE device validation.
+
 **Branch:** `security/prelaunch-f2-f7-f10-l2` (5 work commits + this handoff doc on top of `main` @ `8a9f8ac47`)
 **Status doc:** [`PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md`](./PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md) (status matrix near the top)
 **Date:** 2026-06-09

@@ -37,10 +37,29 @@ Verified surfaces: **OpenBurnBarCore `swift test` (1437 pass / 3 skip)** and
 
 | Finding | Shipped + tested this pass | Remaining (gated) |
 |---|---|---|
-| F2 | keyKind negotiation, Secure-Enclave P-256 verify/sign path, shared peerNodeId derivations, per-action step-up policy (18 core tests); server SE-P256 publish + atomic revoke + revocation receipt (5 vitest) | Mac validator accept-both verify; iOS Secure Enclave + Android StrongBox keygen + biometric; Kotlin signer P-256 mirror; shorten TTL + per-session rebind in the app validator. **Physical biometric/SE device validation.** |
-| F7 | per-frame media AEAD (HKDF key + AES-GCM seal/open + AAD position binding) + capability gate (8 core tests) | key agreement from pinned P-256 identities; Mac→phone capability advertisement (today missing); seal-before-chunk in `MacFileTransferService`; open in the iOS/Android coordinators; Kotlin mirror + KAT |
-| F10 | control-frame confidentiality seal (AES-GCM under HPKE session key + AAD binding) + capability gate (6 core tests) | seal in iOS/Android `PhoneControlSender`; open in `IrohRelayRequestHandler` control arm; capability advertisement; Kotlin mirror |
-| L2 | gateway PoP v2 query binding, accept-both transition, per-client downgrade protection (5 vitest) | Hermes adapter v2 signer (adapter signs Bearer-only today; ships as vendored `.pyc`) + re-vendor |
+| F2 | keyKind negotiation, Secure-Enclave P-256 verify/sign path, shared peerNodeId derivations, per-action step-up policy (18 core tests); server SE-P256 publish + atomic revoke + revocation receipt (5 vitest) | ~~Mac validator accept-both verify; iOS Secure Enclave + Android StrongBox keygen + biometric; Kotlin signer P-256 mirror; shorten TTL + per-session rebind~~ **all landed 2026-06-10 (below)**. **Physical biometric/SE device validation remains.** |
+| F7 | per-frame media AEAD (HKDF key + AES-GCM seal/open + AAD position binding) + capability gate (8 core tests); **2026-06-10:** Kotlin mirror + frozen cross-language KATs; Mac→phone capability + streaming-snapshot advertisement (heartbeat reply + mirror ack) | key agreement from pinned P-256 identities; seal-before-chunk in `MacFileTransferService`; open in the iOS `MediaControlStreamCoordinator` / Android dispatcher |
+| F10 | control-frame confidentiality seal (AES-GCM under HPKE session key + AAD binding) + capability gate (6 core tests); **2026-06-10:** Kotlin mirror + frozen cross-language KATs; Mac advertises `control_seal_v1` | sealKeyV3 session establishment at classify; seal in iOS/Android `PhoneControlSender`; open before `controlDispatcher` on the Mac |
+| L2 | gateway PoP v2 query binding, accept-both transition, per-client downgrade protection (5 vitest); **2026-06-10:** adapter PoP v2 signer on all 10 call sites + pairing key registration (13 unittest) | re-vendor `third_party/hermes-agent` (F5 gate) |
+
+### Progress — 2026-06-10 (wiring pass: F2 all-platform activation, L2 adapter)
+
+Nine commits (`bd8be99cb..23c1424cf`). All default-off / both-peers-gated; legacy
+wire bytes proven unchanged by tests on every surface. Verified: OpenBurnBarCore
+`swift test` 1456+ green; AgentLens validator/receiver suites green via
+xcodebuild; iOS `OpenBurnBarMobileUnitTests` 969+ cases green; Android
+`:app:testDebugUnitTest` 742/742; functions vitest 443 + tsc clean; adapter
+13/13 unittest.
+
+| Lane | Landed |
+|---|---|
+| F2 Mac | Validator stores `PhoneControlVerifyingKey`; one key-kind-aware signature chokepoint (envelope `keyKind` must match the registered key — downgrade/escalation fail closed); SE-signed sensitive grants skip the explicit local-auth proof (the biometry-gated signature IS the step-up); `authorityMaxLifetime` 300→120 s; `deregisterAllPeers()` per session end/panic; provider + grant-queue listener parse `signingKeyKind` fail-closed. |
+| F2 iOS | Keystore vends `PhoneControlAuthoritySigningKey`; SE-P256 mint (`.biometryCurrentSet`+`.privateKeyUsage`) behind default-off RC `computer_use_phone_control_secure_enclave_key`; all 8 sender paths + publishes carry `keyKind`; remote-unlock envelopes attach the cached attestation digest. |
+| F2 Android | `PhoneControlSigningIdentity` + StrongBox/TEE Keystore mint (biometric-bound, fail-closed fallbacks) behind the same RC key (the app's first RC read); DER→r‖s converters; keyKind on app-side envelope/publish; frozen `android-se-…` vector. |
+| F2 server | Queued agent grants verify SE-P256 authorities (`verifyPhoneControlAuthoritySignature`, key-kind-aware local-auth-proof verify) — closes the Ed25519-only queued-lane gap. |
+| F7/F10 shared | Kotlin `MediaFrameAead`/`ControlFrameSeal` mirrors with Swift-emitted frozen fixtures (Swift seal → Kotlin open proven); Mac advertises `media_frame_aead_v1` + `control_seal_v1` + its streaming snapshot to phones. |
+| L2 | Adapter signs every gateway request with PoP v2 (byte-locked canonical-query/stable-JSON/path mirrors incl. ICU key order); pairing registers the Ed25519 key + `popVersion: 2`; fork copy sha256-identical. |
+| Tree fix | `CloudVaultRotationRewrapWorker` missing `try` (broken by 87d2a5230) — Mac app compiles again. |
 
 ### F2 — Hardware-bind the phone control signing key + per-action step-up
 - **Now:** controller authority = possession of a software Ed25519 key + server
