@@ -194,7 +194,7 @@ private fun rememberPulseViewContentDerived(model: PulseContentModel): PulseView
     val snapshots by model.quotaStore.snapshots.collectAsState()
     val recentUsages by model.activityStore.usages.collectAsState()
     val liveUsages by model.activityStore.liveUsages.collectAsState()
-    val pulseUsages = liveUsages.ifEmpty { recentUsages }
+    val pulseUsages = pulseUsagesForDisplay(liveUsages = liveUsages, recentUsages = recentUsages)
     val context = LocalContext.current
     val hermesService = remember(context) {
         HermesService(appContext = context.applicationContext)
@@ -203,11 +203,32 @@ private fun rememberPulseViewContentDerived(model: PulseContentModel): PulseView
         snapshots = snapshots,
         recentUsages = recentUsages,
         pulseUsages = pulseUsages,
-        shouldOfferDemoData = model.rollups.isEmpty() && snapshots.isEmpty() && pulseUsages.isEmpty(),
+        shouldOfferDemoData = shouldOfferPulseDemoData(model.rollups, snapshots, pulseUsages),
         topProvider = model.rollups.topProviders.firstOrNull(),
         hermesService = hermesService,
     )
 }
+
+/**
+ * The usage rows the Pulse hero/forecast aggregate over: the live listener
+ * window when it has data, otherwise the paged recents (cold start, listener
+ * still attaching). Extracted for unit tests.
+ */
+internal fun pulseUsagesForDisplay(
+    liveUsages: List<com.openburnbar.data.models.TokenUsage>,
+    recentUsages: List<com.openburnbar.data.models.TokenUsage>,
+): List<com.openburnbar.data.models.TokenUsage> = liveUsages.ifEmpty { recentUsages }
+
+/**
+ * The demo-data prompt shows only for a genuinely empty account: no rollups,
+ * no quota snapshots, and no usage rows on either feed. Extracted for unit
+ * tests.
+ */
+internal fun shouldOfferPulseDemoData(
+    rollups: com.openburnbar.data.models.UsageRollups,
+    snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>,
+    pulseUsages: List<com.openburnbar.data.models.TokenUsage>,
+): Boolean = rollups.isEmpty() && snapshots.isEmpty() && pulseUsages.isEmpty()
 
 private data class PulseViewContentDerived(
     val snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>,
