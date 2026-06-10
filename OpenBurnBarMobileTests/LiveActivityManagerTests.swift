@@ -79,6 +79,68 @@ final class LiveActivityManagerTests: XCTestCase {
         XCTAssertEqual(backend.requests.count, 1)
     }
 
+    /// Regression for ios-009: every rollup listener tick re-sends the same
+    /// numbers, so updates whose state matches what the activity already
+    /// displays must skip the ActivityKit round trip entirely.
+    func test_updateActivity_skipsRedundantStateUpdates() async throws {
+        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") }
+        let backend = StubBurnBarLiveActivityBackend()
+        let manager = LiveActivityManager(backend: backend)
+
+        manager.startActivity(cost: 1.0, tokens: 100, provider: "anthropic", sessionActive: true)
+        let handle = try XCTUnwrap(backend.handles.first)
+
+        // Re-sending the start state is skipped — the activity already shows it.
+        manager.updateActivity(cost: 1.0, tokens: 100, provider: "anthropic", sessionActive: true)
+
+        let updated = expectation(description: "changed state routed to handle")
+        handle.onUpdate = { updated.fulfill() }
+
+        manager.updateActivity(cost: 2.0, tokens: 200, provider: "anthropic", sessionActive: true)
+        await fulfillment(of: [updated], timeout: 1.0)
+
+        // Replaying the just-sent state is skipped too.
+        manager.updateActivity(cost: 2.0, tokens: 200, provider: "anthropic", sessionActive: true)
+
+        XCTAssertEqual(
+            handle.updates,
+            [
+                BurnBarLiveActivityAttributes.ContentState(
+                    heroCost: 2.0,
+                    heroTokens: 200,
+                    topProvider: "anthropic",
+                    sessionActive: true
+                )
+            ]
+        )
+
+        // A restarted activity dedupes against ITS start state, not the dead
+        // activity's last state.
+        manager.endActivity()
+        manager.startActivity(cost: 2.0, tokens: 200, provider: "anthropic", sessionActive: true)
+        let secondHandle = try XCTUnwrap(backend.handles.last)
+
+        manager.updateActivity(cost: 2.0, tokens: 200, provider: "anthropic", sessionActive: true)
+        XCTAssertTrue(secondHandle.updates.isEmpty)
+
+        let secondUpdated = expectation(description: "changed state routed to new handle")
+        secondHandle.onUpdate = { secondUpdated.fulfill() }
+
+        manager.updateActivity(cost: 3.0, tokens: 300, provider: "anthropic", sessionActive: true)
+        await fulfillment(of: [secondUpdated], timeout: 1.0)
+        XCTAssertEqual(
+            secondHandle.updates,
+            [
+                BurnBarLiveActivityAttributes.ContentState(
+                    heroCost: 3.0,
+                    heroTokens: 300,
+                    topProvider: "anthropic",
+                    sessionActive: true
+                )
+            ]
+        )
+    }
+
     /// Regression for the end/start race: an in-flight `end` Task must never
     /// nil out an activity requested after `endActivity()` returned, which
     /// previously orphaned the new Lock Screen activity and made the next
