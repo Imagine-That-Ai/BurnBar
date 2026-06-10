@@ -4128,6 +4128,23 @@ private actor AgentWatchFakeAuthorityPublisher: PhoneControlAuthorityPublishing 
         ))
     }
 
+    func publish(
+        uid: String,
+        connectionId: String,
+        deviceId: String,
+        peerNodeId: String,
+        publicKeyRepresentation: Data,
+        keyKind: PhoneControlSigningKeyKind
+    ) async throws {
+        values.append(Published(
+            uid: uid,
+            connectionId: connectionId,
+            deviceId: deviceId,
+            peerNodeId: peerNodeId,
+            publicKeyData: publicKeyRepresentation
+        ))
+    }
+
     func published() -> [Published] {
         values
     }
@@ -4199,6 +4216,14 @@ private final class AgentWatchFakeSigningKeyStore: PhoneControlSigningKeyProvidi
 
     func peerNodeId(for key: Curve25519SigningKey) -> String {
         "ios-phone-test-\(key.privateKey.publicKey.rawRepresentation.prefix(4).map { String(format: "%02x", $0) }.joined())"
+    }
+
+    func signingIdentity() throws -> PhoneControlAuthoritySigningKey {
+        .ed25519(key.privateKey)
+    }
+
+    func peerNodeId(for identity: PhoneControlAuthoritySigningKey) -> String {
+        "ios-phone-test-\(identity.publicKeyRepresentation.prefix(4).map { String(format: "%02x", $0) }.joined())"
     }
 }
 
@@ -4425,5 +4450,44 @@ final class SwarmBackgroundPowerPolicyTests: XCTestCase {
             isLowPowerModeEnabled: false,
             reduceMotion: reduceMotion
         )
+    }
+}
+
+// MARK: - F2 phone-control signing identity (key-kind-aware keystore)
+
+final class PhoneControlSigningIdentityStoreTests: XCTestCase {
+    /// With the Secure-Enclave gate off (the default), the identity is the
+    /// legacy software Ed25519 key: same peerNodeId as the pre-F2 derivation
+    /// and no `keyKind` on the wire — byte-identical envelopes.
+    func testLegacyIdentityMatchesPreF2Derivation() throws {
+        let store = PhoneControlSigningKeyStore(
+            service: "ai.openburnbar.tests.phone-control-\(UUID().uuidString)",
+            account: "identity-test"
+        )
+        let identity = try store.signingIdentity(secureEnclaveEnabled: false)
+        guard case .ed25519 = identity else {
+            return XCTFail("expected legacy ed25519 identity with the gate off")
+        }
+        XCTAssertNil(identity.wireKeyKind)
+        let legacyKey = try store.signingKey()
+        XCTAssertEqual(store.peerNodeId(for: identity), store.peerNodeId(for: legacyKey))
+        XCTAssertTrue(store.peerNodeId(for: identity).hasPrefix("ios-phone-"))
+        // Stable across loads: the same key (and identity) comes back.
+        let reloaded = try store.signingIdentity(secureEnclaveEnabled: false)
+        XCTAssertEqual(reloaded.publicKeyRepresentation, identity.publicKeyRepresentation)
+    }
+
+    /// With the gate ON but no enclave hardware (simulator), the store must
+    /// fall back to the legacy key rather than fail — a device without an SE
+    /// keeps controlling Macs.
+    func testGateOnWithoutSecureEnclaveFallsBackToLegacy() throws {
+        try XCTSkipIf(SecureEnclave.isAvailable, "requires an environment without a Secure Enclave")
+        let store = PhoneControlSigningKeyStore(
+            service: "ai.openburnbar.tests.phone-control-\(UUID().uuidString)",
+            account: "identity-fallback-test"
+        )
+        let identity = try store.signingIdentity(secureEnclaveEnabled: true)
+        XCTAssertEqual(identity.kind, .ed25519)
+        XCTAssertNil(identity.wireKeyKind)
     }
 }

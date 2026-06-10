@@ -1172,8 +1172,8 @@ struct MercuryLiveSheet: View {
             remoteUnlockMirrorRequestIDs.insert(requestID)
         } else {
             remoteUnlockSession = nil
-            if let signingKey = try? PhoneControlSigningKeyStore.shared.signingKey() {
-                controlAuthorityPeerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+            if let signingIdentity = try? PhoneControlSigningKeyStore.shared.signingIdentity() {
+                controlAuthorityPeerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingIdentity)
             } else {
                 controlAuthorityPeerNodeId = nil
             }
@@ -1500,8 +1500,8 @@ struct MercuryLiveSheet: View {
         uid: String,
         requestID: String
     ) async throws -> (session: HermesRealtimeRelayRemoteUnlockSession, peerNodeId: String) {
-        let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
-        let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+        let signingIdentity = try PhoneControlSigningKeyStore.shared.signingIdentity()
+        let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingIdentity)
         let trustGateway = LiveDeviceTrustGateway()
         await trustGateway.registerSelfIfNeeded()
         if try await !trustGateway.isSelfTrustedForComputerUseControl() {
@@ -1511,14 +1511,14 @@ struct MercuryLiveSheet: View {
         try await publishPhoneControlAuthorityWithTrustRetry(
             uid: uid,
             peerNodeId: peerNodeId,
-            signingKey: signingKey,
+            signingIdentity: signingIdentity,
             trustGateway: trustGateway
         )
         let sessionSigner = PhoneControlSender(
             peerNodeId: peerNodeId,
             uid: uid,
             connectionId: connectionID,
-            signingKeyProvider: { signingKey },
+            signingIdentityProvider: { signingIdentity },
             frameSink: { _ in }
         )
         let issuedAt = Date()
@@ -1544,14 +1544,14 @@ struct MercuryLiveSheet: View {
     private func publishPhoneControlAuthorityWithTrustRetry(
         uid: String,
         peerNodeId: String,
-        signingKey: Curve25519SigningKey,
+        signingIdentity: PhoneControlAuthoritySigningKey,
         trustGateway: LiveDeviceTrustGateway = LiveDeviceTrustGateway()
     ) async throws {
         do {
             try await publishPhoneControlAuthority(
                 uid: uid,
                 peerNodeId: peerNodeId,
-                signingKey: signingKey
+                signingIdentity: signingIdentity
             )
         } catch {
             guard PhoneControlSetupMessage.isFirestorePermissionDenied(error) else { throw error }
@@ -1559,7 +1559,7 @@ struct MercuryLiveSheet: View {
             try await publishPhoneControlAuthority(
                 uid: uid,
                 peerNodeId: peerNodeId,
-                signingKey: signingKey
+                signingIdentity: signingIdentity
             )
         }
     }
@@ -1567,33 +1567,34 @@ struct MercuryLiveSheet: View {
     private func publishPhoneControlAuthority(
         uid: String,
         peerNodeId: String,
-        signingKey: Curve25519SigningKey
+        signingIdentity: PhoneControlAuthoritySigningKey
     ) async throws {
         try await PhoneControlAuthorityPublisher.shared.publish(
             uid: uid,
             connectionId: connectionID,
             deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
             peerNodeId: peerNodeId,
-            publicKey: signingKey.privateKey.publicKey
+            publicKeyRepresentation: signingIdentity.publicKeyRepresentation,
+            keyKind: signingIdentity.kind
         )
     }
 
     private func makeRemoteUnlockCredentialSender(uid: String) async throws -> PhoneControlSender {
-        let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
-        let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+        let signingIdentity = try PhoneControlSigningKeyStore.shared.signingIdentity()
+        let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingIdentity)
         let trustGateway = LiveDeviceTrustGateway()
         await trustGateway.registerSelfIfNeeded()
         try await publishPhoneControlAuthorityWithTrustRetry(
             uid: uid,
             peerNodeId: peerNodeId,
-            signingKey: signingKey,
+            signingIdentity: signingIdentity,
             trustGateway: trustGateway
         )
         return PhoneControlSender(
             peerNodeId: peerNodeId,
             uid: uid,
             connectionId: connectionID,
-            signingKeyProvider: { signingKey },
+            signingIdentityProvider: { signingIdentity },
             frameSink: { frame in
                 try await controlStreamCoordinator.send(frame: frame, timeout: 6)
             }
@@ -1649,21 +1650,22 @@ struct MercuryLiveSheet: View {
         do {
             await LiveDeviceTrustGateway().registerSelfIfNeeded()
             try await ensurePhoneControlStreamResponsive(uid: uid, connectionID: connectionID)
-            let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
-            let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+            let signingIdentity = try PhoneControlSigningKeyStore.shared.signingIdentity()
+            let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingIdentity)
             try await PhoneControlAuthorityPublisher.shared.publish(
                 uid: uid,
                 connectionId: connectionID,
                 deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
                 peerNodeId: peerNodeId,
-                publicKey: signingKey.privateKey.publicKey
+                publicKeyRepresentation: signingIdentity.publicKeyRepresentation,
+                keyKind: signingIdentity.kind
             )
             try await sendPhoneControlClassify(uid: uid, connectionID: connectionID, peerNodeId: peerNodeId)
             phoneControlSender = PhoneControlSender(
                 peerNodeId: peerNodeId,
                 uid: uid,
                 connectionId: connectionID,
-                signingKeyProvider: { signingKey },
+                signingIdentityProvider: { signingIdentity },
                 frameSink: { frame in
                     try await controlStreamCoordinator.send(frame: frame)
                 }
@@ -1678,7 +1680,7 @@ struct MercuryLiveSheet: View {
             startAuthorityRefreshTimer(
                 uid: uid,
                 peerNodeId: peerNodeId,
-                signingKey: signingKey
+                signingIdentity: signingIdentity
             )
         } catch {
             phoneControlSender = nil
@@ -1734,7 +1736,7 @@ struct MercuryLiveSheet: View {
     private func startAuthorityRefreshTimer(
         uid: String,
         peerNodeId: String,
-        signingKey: Curve25519SigningKey
+        signingIdentity: PhoneControlAuthoritySigningKey
     ) {
         authorityRefreshTask?.cancel()
         authorityRefreshTask = Task { @MainActor in
@@ -1749,7 +1751,8 @@ struct MercuryLiveSheet: View {
                         connectionId: self.connectionID,
                         deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
                         peerNodeId: peerNodeId,
-                        publicKey: signingKey.privateKey.publicKey
+                        publicKeyRepresentation: signingIdentity.publicKeyRepresentation,
+                        keyKind: signingIdentity.kind
                     )
                     Self.debugTrace("phone_control_authority_refreshed connectionID=\(self.connectionID)")
                 } catch {

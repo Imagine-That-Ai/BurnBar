@@ -3,6 +3,7 @@ import AVFoundation
 import Combine
 import FirebaseAuth
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarMedia
 import OSLog
@@ -212,8 +213,8 @@ final class InlineAgentMirrorController: ObservableObject {
     ) async {
         let requestID = UUID().uuidString
         let viewerID = UUID().uuidString
-        let signingKey = try? PhoneControlSigningKeyStore.shared.signingKey()
-        let controlAuthorityPeerNodeId = signingKey.map {
+        let signingIdentity = try? PhoneControlSigningKeyStore.shared.signingIdentity()
+        let controlAuthorityPeerNodeId = signingIdentity.map {
             PhoneControlSigningKeyStore.shared.peerNodeId(for: $0)
         }
 
@@ -406,14 +407,15 @@ final class InlineAgentMirrorController: ObservableObject {
             do {
                 await LiveDeviceTrustGateway().registerSelfIfNeeded()
                 try await coordinator.ensureResponsive(uid: uid, connectionID: connectionID)
-                let signingKey = try PhoneControlSigningKeyStore.shared.signingKey()
-                let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingKey)
+                let signingIdentity = try PhoneControlSigningKeyStore.shared.signingIdentity()
+                let peerNodeId = PhoneControlSigningKeyStore.shared.peerNodeId(for: signingIdentity)
                 try await PhoneControlAuthorityPublisher.shared.publish(
                     uid: uid,
                     connectionId: connectionID,
                     deviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
                     peerNodeId: peerNodeId,
-                    publicKey: signingKey.privateKey.publicKey
+                    publicKeyRepresentation: signingIdentity.publicKeyRepresentation,
+                    keyKind: signingIdentity.kind
                 )
                 try await coordinator.send(frame: HermesRealtimeRelayFrame(
                     type: .controlClassify,
@@ -428,7 +430,7 @@ final class InlineAgentMirrorController: ObservableObject {
                     peerNodeId: peerNodeId,
                     uid: uid,
                     connectionId: connectionID,
-                    signingKeyProvider: { signingKey },
+                    signingIdentityProvider: { signingIdentity },
                     frameSink: { frame in try await coordinator.send(frame: frame) }
                 )
                 self.controlInputReady = true
