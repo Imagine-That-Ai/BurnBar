@@ -113,6 +113,11 @@ public struct ControlFrameSeal: Sendable {
 public enum ControlFrameSealNegotiation {
     public static let capability = "control_seal_v1"
 
+    /// F10 rollout gate (default-off). Phones consult this before
+    /// establishing/sealing; the Mac open path is always armed (opening is
+    /// harmless without sealers).
+    public static let remoteConfigKey = "computer_use_control_seal_enabled"
+
     public static func resolveSealingEnabled(localSupports: Bool, remoteSupports: Bool) -> Bool {
         localSupports && remoteSupports
     }

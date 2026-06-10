@@ -417,21 +417,33 @@ final class InlineAgentMirrorController: ObservableObject {
                     publicKeyRepresentation: signingIdentity.publicKeyRepresentation,
                     keyKind: signingIdentity.kind
                 )
+                // F10: establish the control-frame seal when the flag is on
+                // and the Mac's heartbeat reply advertised control_seal_v1
+                // (ensureResponsive completed a heartbeat round trip above).
+                let sealSession = await ControlSealSessionEstablisher.establishIfNegotiated(
+                    uid: uid,
+                    connectionID: connectionID,
+                    controllerPeerNodeId: peerNodeId,
+                    macCapabilities: coordinator.latestMacPresenceCapabilities,
+                    macRelayPublicKeyBase64: self.hermesService?.selectedConnection.relayPublicKey
+                )
                 try await coordinator.send(frame: HermesRealtimeRelayFrame(
                     type: .controlClassify,
                     uid: uid,
                     connectionId: connectionID,
                     control: HermesRealtimeRelayControlPayload(
                         streamClass: MediaStreamClass.controlInput.rawValue,
-                        authorityPeerNodeId: peerNodeId
+                        authorityPeerNodeId: peerNodeId,
+                        controlSealKey: sealSession?.envelope
                     )
                 ))
+                let baseSink: PhoneControlSender.FrameSink = { frame in try await coordinator.send(frame: frame) }
                 self.controlSender = PhoneControlSender(
                     peerNodeId: peerNodeId,
                     uid: uid,
                     connectionId: connectionID,
                     signingIdentityProvider: { signingIdentity },
-                    frameSink: { frame in try await coordinator.send(frame: frame) }
+                    frameSink: sealSession.map { ControlSealSessionEstablisher.sealingFrameSink(baseSink, session: $0) } ?? baseSink
                 )
                 self.controlInputReady = true
                 Self.log.info("inline_mirror_control_ready connectionID=\(connectionID, privacy: .public)")
