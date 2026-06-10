@@ -126,10 +126,10 @@ class SwarmSimulationTest {
 
     @Test
     fun providerLogoMappingsUseRealVisualAssetsForInspectedAgents() {
-        assertTrue(ProviderLogo.drawableFor(AgentProvider.OPEN_CLAW) == com.openburnbar.R.drawable.open_claw_logo)
-        assertTrue(ProviderLogo.drawableFor(AgentProvider.HERMES) == com.openburnbar.R.drawable.hermes_logo)
-        assertTrue(ProviderLogo.drawableFor(AgentProvider.CODEX) == com.openburnbar.R.drawable.codex_logo)
-        assertTrue(ProviderLogo.drawableFor(AgentProvider.ANTIGRAVITY) == com.openburnbar.R.drawable.antigravity_logo)
+        assertTrue(ProviderLogo.drawableFor(AgentProvider.OPEN_CLAW) == com.openburnbar.R.drawable.logo_openclaw)
+        assertTrue(ProviderLogo.drawableFor(AgentProvider.HERMES) == com.openburnbar.R.drawable.logo_hermes)
+        assertTrue(ProviderLogo.drawableFor(AgentProvider.CODEX) == com.openburnbar.R.drawable.logo_codex)
+        assertTrue(ProviderLogo.drawableFor(AgentProvider.ANTIGRAVITY) == com.openburnbar.R.drawable.logo_antigravity)
     }
 
     @Test

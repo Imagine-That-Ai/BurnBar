@@ -467,27 +467,20 @@ final class FirestoreRepository {
 
     func fetchRollups() async throws -> [UsageRollupDoc] {
         let uid = try uid()
-        let keys = RollupWindowKey.allCases.map(\.rawValue)
-        var results: [UsageRollupDoc] = []
-        var lastError: Error?
-
-        for key in keys {
-            do {
-                let doc = try await db.document("users/\(uid)/usage_rollups/\(key)").getDocument()
-                if let data = doc.data(),
-                   let rollup = decodeUsageRollup(from: data, docID: doc.documentID) {
-                    results.append(rollup)
-                }
-            } catch {
-                logger.error("Failed to fetch usage rollup for window \(key): \(error.localizedDescription)")
-                lastError = error
-            }
+        // One collection read replaces five serial per-window getDocument
+        // round-trips — same query + decode semantics as listenToRollups
+        // (decodeUsageRollup drops any doc whose ID is not a window key).
+        let snapshot: QuerySnapshot
+        do {
+            snapshot = try await db.collection("users/\(uid)/usage_rollups").getDocuments()
+        } catch {
+            logger.error("Failed to fetch usage rollups: \(error.localizedDescription)")
+            throw error
         }
-
-        if results.isEmpty, let lastError {
-            throw lastError
+        let results = snapshot.documents.compactMap { doc in
+            decodeUsageRollup(from: doc.data(), docID: doc.documentID)
         }
-        logger.info("Fetched \(results.count)/\(keys.count) usage rollups")
+        logger.info("Fetched \(results.count)/\(RollupWindowKey.allCases.count) usage rollups")
         return results
     }
 
@@ -668,6 +661,21 @@ final class FirestoreRepository {
         return snapshot.documents.compactMap { doc -> TokenUsage? in
             decodeWithDocID(TokenUsage.self, from: doc.data(), docID: doc.documentID)
         }
+    }
+
+    /// `endTime` of the newest usage event, or nil when the user has no usage
+    /// yet. One limit-1 query; backs the dashboard rollup-staleness check
+    /// (rollups older than the newest usage event are stale — wall-clock age
+    /// alone is not). `endTime` is the same live attribution field the Pulse
+    /// queries above order by.
+    func fetchNewestUsageEndTime() async throws -> Date? {
+        let uid = try uid()
+        let snapshot = try await db.collection("users/\(uid)/usage")
+            .order(by: "endTime", descending: true)
+            .limit(to: 1)
+            .getDocuments()
+        guard let doc = snapshot.documents.first else { return nil }
+        return (doc.data()["endTime"] as? Timestamp)?.dateValue()
     }
 
     func listenToUsageSince(

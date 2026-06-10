@@ -833,9 +833,10 @@ private struct QuotaDisplaySettingsPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            // Section header with badge count
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("Quota display")
+                    Text("Quota popover")
                         .font(DesignSystem.Typography.headline)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                     Text("Choose which provider quotas appear in the menu-bar drop-down.")
@@ -852,9 +853,17 @@ private struct QuotaDisplaySettingsPanel: View {
                     .foregroundStyle(DesignSystem.Colors.amber)
                     .padding(.horizontal, DesignSystem.Spacing.sm)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(DesignSystem.Colors.amber.opacity(0.12)))
+                    .background(
+                        Capsule()
+                            .fill(DesignSystem.Colors.amber.opacity(0.12))
+                            .overlay(
+                                Capsule()
+                                    .stroke(DesignSystem.Colors.amber.opacity(0.25), lineWidth: 0.5)
+                            )
+                    )
             }
 
+            // Cumulative toggle card
             SettingsToggle(
                 title: "Cumulative across accounts",
                 subtitle: "When you have multiple accounts on the same provider, show one combined bar instead of one per account.",
@@ -865,6 +874,7 @@ private struct QuotaDisplaySettingsPanel: View {
             .background(panelFill)
             .overlay(panelStroke)
 
+            // Provider list card
             VStack(spacing: 0) {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     Text("Popover providers")
@@ -878,11 +888,13 @@ private struct QuotaDisplaySettingsPanel: View {
                         settingsManager.quotas.showAllProviders()
                     }
                     .buttonStyle(.link)
+                    .font(DesignSystem.Typography.tiny)
 
                     Button("Reset order") {
                         settingsManager.quotas.resetProviderOrder()
                     }
                     .buttonStyle(.link)
+                    .font(DesignSystem.Typography.tiny)
                 }
                 .padding(DesignSystem.Spacing.md)
 
@@ -900,7 +912,7 @@ private struct QuotaDisplaySettingsPanel: View {
                     if index < orderedProviders.count - 1 {
                         Divider()
                             .background(DesignSystem.Colors.border.opacity(0.35))
-                            .padding(.leading, 48)
+                            .padding(.leading, 52)
                     }
                 }
             }
@@ -929,11 +941,18 @@ private struct QuotaPopoverProviderVisibilityRow: View {
     let isConnected: Bool
     let onChange: (Bool) -> Void
 
+    @State private var isHovered = false
+
     var body: some View {
         Toggle(isOn: Binding(get: { isVisible }, set: { newValue in onChange(newValue) })) {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                ProviderLogoView(provider: provider, size: 20, useFallbackColor: false)
-                    .frame(width: 28, height: 28)
+                // Connection dot + provider theme backdrop
+                ZStack {
+                    Circle()
+                        .fill(connectionDotBackdrop)
+                        .frame(width: 28, height: 28)
+                    ProviderLogoView(provider: provider, size: 16, useFallbackColor: false)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(provider.displayName)
@@ -941,15 +960,31 @@ private struct QuotaPopoverProviderVisibilityRow: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    Text(isConnected ? "Connected quota source" : "Show when a quota source connects")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(isConnected ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(isConnected ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                            .frame(width: 5, height: 5)
+                        Text(isConnected ? "Connected quota source" : "Show when a quota source connects")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(isConnected ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                    }
                 }
+
+                Spacer()
             }
         }
         .toggleStyle(.switch)
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(isHovered ? DesignSystem.Colors.amber.opacity(0.04) : Color.clear)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .animation(DesignSystem.Animation.snappy, value: isHovered)
         .accessibilityLabel("\(provider.displayName) quota in popover")
+    }
+
+    private var connectionDotBackdrop: Color {
+        let theme = ProviderTheme.theme(for: provider)
+        return theme.primaryColor.opacity(0.12)
     }
 }

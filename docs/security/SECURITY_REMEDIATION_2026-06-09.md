@@ -205,3 +205,29 @@ check` · M-6 + C-5: guards executed & pass · H-7/H-8: XML + SDK validated · L
 `bash -n` + guards. No regressions attributable to these changes; the only `tsc`
 errors in `functions/` are 12 pre-existing type-mock issues in the untouched
 `knowledgeRepoMatchToken.test.ts`.
+
+---
+
+## Cross-lane status notes — 2026-06-09 invisible-perf sweep
+
+Recorded by the concurrent performance/quality sweep that validated on this
+shared tree (the sweep itself is perf-scoped; see `CHANGELOG.md` and
+`docs/architecture/macos-performance.md` §7–13). Two items touch this lane:
+
+- **Forward-fix to this lane's CloudVault rotation/re-wrap work (C-2/C-3
+  implementation).** Commit `87d2a5230` made `CloudVaultAADContext.init`
+  throwing; `48af34db4` repaired the Mac caller but missed the mobile twin,
+  leaving `OpenBurnBarMobile/Services/MobileCloudVaultRotationRewrapWorker.swift`
+  (lines 211 and 351) failing to compile and blocking the iOS test lane. The
+  perf-validation lane applied this lane's own committed `try?`-guard pattern
+  from `48af34db4` verbatim at both call sites (uncommitted working-tree edit;
+  no behaviour change beyond restoring compile). Fold into the next
+  security-lane commit.
+- **Adjacent hardening landed by the sweep (not part of this taxonomy).** The
+  public unauthenticated `latestRouterRundown` HTTP endpoint is now cost-DoS
+  bounded: 64-entry in-memory response cache (60 s mutable / 24 h immutable /
+  60 s negative TTLs), zero-Firestore-read 404s for implausible dates, and
+  `maxInstances: 10` as the hard invocation-spend cap
+  (`functions/src/routerRundown.ts`, 7 regression tests in
+  `routerRundownEndpoint.test.ts`). Firestore-transaction rate limiting was
+  deliberately not used (it would cost more per request than it caps).

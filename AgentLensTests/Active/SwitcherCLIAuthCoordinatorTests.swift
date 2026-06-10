@@ -1431,7 +1431,7 @@ final class SwitcherAuthStoreTests: XCTestCase {
         XCTAssertEqual(fallbackRequests.first?.1, "test-user")
     }
 
-    func test_claudeCodeOAuthImporter_nonInteractiveProfileLoadCanUseExternalSecurityFallback() throws {
+    func test_claudeCodeOAuthImporter_nonInteractiveProfileLoadDoesNotInvokeExternalSecurityFallback() throws {
         let backend = try XCTUnwrap(testBackend)
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-claude-noninteractive-profile-keychain-\(UUID().uuidString)", isDirectory: true)
@@ -1474,12 +1474,13 @@ final class SwitcherAuthStoreTests: XCTestCase {
             allowDefaultKeychainFallback: false
         )
 
-        let credentials = try importer.load(allowUserInteraction: false)
-        XCTAssertEqual(credentials.accessToken, "security-tool-background-token")
-        XCTAssertEqual(credentials.organizationUuid, "security-tool-background-org")
-        XCTAssertEqual(fallbackRequests.count, 1)
-        XCTAssertEqual(fallbackRequests.first?.0, profileService)
-        XCTAssertEqual(fallbackRequests.first?.1, "test-user")
+        XCTAssertThrowsError(try importer.load(allowUserInteraction: false)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                ClaudeCodeOAuthCredentialImportError.missing.localizedDescription
+            )
+        }
+        XCTAssertEqual(fallbackRequests.count, 0)
     }
 
     func test_claudeCodeOAuthImporter_usesSecurityToolFallbackWhenProfileKeychainReturnsNil() throws {

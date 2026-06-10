@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 private const val SECONDS = 60
-private const val VAL_15 = 15
 
 class DashboardStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
@@ -72,7 +71,7 @@ class DashboardStore(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                repo.rebuildUsageRollups()
+                repo.rebuildUsageRollups(force = true)
                 _rollups.value = repo.fetchRollups()
                 _error.value = null
             } catch (e: FirebaseException) {
@@ -114,11 +113,20 @@ class DashboardStore(
         }
     }
 
-    private fun isRollupStale(rollups: UsageRollups): Boolean {
+    /**
+     * Rollups are stale only when a raw usage event is newer than
+     * `computedAt` — i.e. they are genuinely missing usage (worker stalled or
+     * not yet run). One limit-1 query; a failed read counts as fresh.
+     * Wall-clock age alone is NOT staleness: an idle user's rollups stay
+     * legitimately old, and treating them as stale fired a full server-side
+     * rollup rebuild on every app open.
+     */
+    private suspend fun isRollupStale(rollups: UsageRollups): Boolean {
         val computedAt = rollups.computedAt ?: return false
         return try {
             val computedInstant = Instant.parse(computedAt)
-            Duration.between(computedInstant, Instant.now()).toMinutes() > VAL_15
+            val newestUsage = repo.fetchNewestUsageEndTime() ?: return false
+            newestUsage.isAfter(computedInstant)
         } catch (_: Exception) {
             false
         }

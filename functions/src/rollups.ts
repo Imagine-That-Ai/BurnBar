@@ -1024,6 +1024,41 @@ export async function readRollupJobDirtiedAt(db: Firestore, uid: string): Promis
   return job?.dirtiedAt;
 }
 
+export type RefreshUserRollupsResult = {
+  rollups: Record<WindowKey, UsageRollupDoc>;
+  rebuiltCounters: boolean;
+};
+
+/**
+ * Serves a client-initiated rollup refresh (the `rebuildUsageRollups`
+ * callable) without unconditionally paying for a full counter rebuild.
+ *
+ * The full path ({@link computeUserRollups}) recursively deletes all three
+ * counter collections and rescans the user's entire usage history, so it only
+ * runs when the counters cannot be trusted: an explicit `force` (the clients'
+ * repair entry point), a missing/unparseable job doc, or a recorded
+ * incremental-delta failure (`lastErrorCode`) — the same fallback rule as the
+ * scheduled `rebuildRollups` worker. Otherwise the incrementally maintained
+ * counters already include every usage event (dirty merely means the rollup
+ * docs lag the counters), so a counters-only recompute is sufficient.
+ *
+ * The recomputed rollups are ALWAYS written, even when nothing changed:
+ * clients treat a stale `computedAt` as a rebuild signal, so serving without
+ * refreshing it would put an open dashboard into a callable polling loop.
+ */
+export async function refreshUserRollups(
+  db: Firestore,
+  uid: string,
+  options: { force?: boolean } = {},
+): Promise<RefreshUserRollupsResult> {
+  const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
+  const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : undefined;
+  const rebuiltCounters = options.force === true || job == null || job.lastErrorCode != null;
+  const rollups = rebuiltCounters ? await computeUserRollups(db, uid) : await computeUserRollupsFromCounters(db, uid);
+  await writeUserRollups(db, uid, rollups, job?.dirtiedAt);
+  return { rollups, rebuiltCounters };
+}
+
 export async function writeUserRollups(
   db: Firestore,
   uid: string,

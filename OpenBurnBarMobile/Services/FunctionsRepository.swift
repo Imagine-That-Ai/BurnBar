@@ -1842,9 +1842,12 @@ final class FunctionsRepository: HermesGatewayRepository {
         _ = try await callable.call(["accountID": accountID])
     }
 
-    func rebuildUsageRollups() async throws {
+    /// `force` is the explicit repair path: the server rebuilds the usage
+    /// counters from raw history. Routine refreshes omit it and are served
+    /// from the incremental counters when those are healthy.
+    func rebuildUsageRollups(force: Bool = false) async throws {
         let callable = functions.httpsCallable("rebuildUsageRollups")
-        _ = try await callable.call([:])
+        _ = try await callable.call(["force": force])
     }
 
     func searchStreams(query: String, limit: Int = 25) async throws -> [StreamSearchHit] {

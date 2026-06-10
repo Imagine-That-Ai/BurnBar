@@ -134,9 +134,10 @@ final class DashboardStore {
         do {
             var rollups = try await firestore.fetchRollups()
 
-            let shouldRebuild = forceRebuild
-                || rollups.isEmpty
-                || isRollupStale(rollups)
+            var shouldRebuild = forceRebuild || rollups.isEmpty
+            if !shouldRebuild {
+                shouldRebuild = await hasUsageNewerThanRollups(rollups)
+            }
 
             if shouldRebuild {
                 let now = Date()
@@ -145,7 +146,7 @@ final class DashboardStore {
                     return
                 }
                 lastRebuildAttempt = now
-                try await functions.rebuildUsageRollups()
+                try await functions.rebuildUsageRollups(force: forceRebuild)
                 rollups = try await firestore.fetchRollups()
             }
             applyRollups(rollups, publishSideEffects: publishSideEffects)
@@ -154,11 +155,22 @@ final class DashboardStore {
         }
     }
 
-    /// Returns true if the newest rollup's `computedAt` is older than 15 minutes,
-    /// suggesting the scheduled rollup worker may be stalled.
-    private func isRollupStale(_ rollups: [UsageRollupDoc]) -> Bool {
+    /// Returns true when a raw usage event is newer than the newest rollup's
+    /// `computedAt` — i.e. the rollups are genuinely missing usage (worker
+    /// stalled or not yet run). One limit-1 query; a failed read (offline)
+    /// counts as fresh. Wall-clock age alone is NOT staleness: an idle user's
+    /// rollups stay legitimately old, and treating them as stale fired a full
+    /// server-side rollup rebuild on every app open.
+    private func hasUsageNewerThanRollups(_ rollups: [UsageRollupDoc]) async -> Bool {
+        let newestUsage = try? await firestore.fetchNewestUsageEndTime()
+        return Self.rollupsAreStale(rollups, newestUsageEndTime: newestUsage)
+    }
+
+    /// Pure staleness rule shared by `refresh` and the rollup listener.
+    nonisolated static func rollupsAreStale(_ rollups: [UsageRollupDoc], newestUsageEndTime: Date?) -> Bool {
+        guard let newestUsageEndTime else { return false }
         let newestComputedAt = rollups.map(\.computedAt).max() ?? .distantPast
-        return Date().timeIntervalSince(newestComputedAt) > 900 // 15 min
+        return newestUsageEndTime > newestComputedAt
     }
 
     func startListening() {
@@ -171,7 +183,11 @@ final class DashboardStore {
                 guard let self else { return }
                 switch result {
                 case .success(let rollups):
-                    if rollups.isEmpty || self.isRollupStale(rollups) {
+                    if rollups.isEmpty {
+                        await self.refresh()
+                        return
+                    }
+                    if await self.hasUsageNewerThanRollups(rollups) {
                         await self.refresh()
                         return
                     }
