@@ -265,8 +265,12 @@ final class DashboardStore {
         )
 
         do {
-            try BurnBarWidgetShared.writeSnapshot(snapshot)
-            WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
+            // Only reload timelines when the snapshot content actually changed
+            // (or the on-disk copy went stale): every listener tick used to
+            // rewrite an identical snapshot and burn the widget reload budget.
+            if try BurnBarWidgetShared.writeSnapshotIfChanged(snapshot) {
+                WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
+            }
         } catch {
             // Silently fail — widget will show placeholder until next successful write.
             // Do NOT surface widget I/O errors to the user dashboard.

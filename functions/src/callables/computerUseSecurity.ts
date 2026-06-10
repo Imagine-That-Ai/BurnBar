@@ -294,10 +294,51 @@ function requireFreshPublicationMillis(raw: unknown, name: string): number {
   return value;
 }
 
-function requireDerivedPhoneControlPeerNodeId(peerNodeId: string, publicKey: Buffer): void {
-  const iosPeerNodeId = `ios-phone-${publicKey.subarray(0, 12).toString("hex")}`;
-  const androidPeerNodeId = `android-phone-${createHash("sha256").update(publicKey).digest("hex").slice(0, 24)}`;
-  if (peerNodeId !== iosPeerNodeId && peerNodeId !== androidPeerNodeId) {
+// F2 — hardware-bind the phone-control signing key. `ed25519` is the legacy
+// software CryptoKit key; `se-p256` is a non-exportable NIST P-256 key held in
+// the iOS Secure Enclave / Android StrongBox Keystore. An absent wire value is
+// treated as the legacy default so pre-F2 clients keep working unchanged.
+type PhoneControlSigningKeyKind = "ed25519" | "se-p256";
+
+function parsePhoneControlSigningKeyKind(raw: unknown): PhoneControlSigningKeyKind {
+  if (raw === undefined || raw === null || raw === "" || raw === "ed25519") return "ed25519";
+  if (raw === "se-p256") return "se-p256";
+  throw new HttpsError("invalid-argument", "Unsupported phone-control signing keyKind.");
+}
+
+/// Validate the published controller public key for the given key kind and
+/// return its bytes plus the canonical base64 to persist. Ed25519 keys are
+/// 32-byte raw; SE-P256 keys are x9.63 (65-byte, 0x04-prefixed, on-curve).
+function requirePhoneControlAuthorityPublicKey(
+  raw: unknown,
+  keyKind: PhoneControlSigningKeyKind,
+): { bytes: Buffer; base64: string } {
+  if (keyKind === "se-p256") {
+    const { encoded, decoded } = requireP256X963PublicKey(raw, "publicKeyBase64");
+    return { bytes: decoded, base64: encoded };
+  }
+  const base64 = requireBase64Like(raw, "publicKeyBase64", 32, 128);
+  const bytes = requireExactBase64Bytes(base64, "publicKeyBase64", ED25519_PUBLIC_KEY_BYTE_LENGTH);
+  return { bytes, base64: bytes.toString("base64") };
+}
+
+function requireDerivedPhoneControlPeerNodeId(
+  peerNodeId: string,
+  publicKey: Buffer,
+  keyKind: PhoneControlSigningKeyKind = "ed25519",
+): void {
+  // Must stay byte-identical to PhoneControlPeerNodeIdDerivation (Swift) and
+  // the Kotlin mirror; the peerNodeId pins the key, keys replay counters, and
+  // gates revocation, so a divergence between client and server is a fail-open.
+  const candidates: string[] = [];
+  if (keyKind === "se-p256") {
+    const digest = createHash("sha256").update(publicKey).digest("hex").slice(0, 24);
+    candidates.push(`ios-se-${digest}`, `android-se-${digest}`);
+  } else {
+    candidates.push(`ios-phone-${publicKey.subarray(0, 12).toString("hex")}`);
+    candidates.push(`android-phone-${createHash("sha256").update(publicKey).digest("hex").slice(0, 24)}`);
+  }
+  if (!candidates.includes(peerNodeId)) {
     throw new HttpsError("invalid-argument", "peerNodeId does not match the published authority key.");
   }
 }
@@ -1238,9 +1279,34 @@ export const revokeEscrowDeviceTrust = onCall(
           { merge: true },
         );
       }
-      if (!grants.empty) {
-        await batch.commit();
+
+      // F2 — atomic revoke. A revoked device's controller record must be
+      // cleared in the same pass, not left dialable: the Mac builds its iroh
+      // inbound allowlist + phone-control key pin from
+      // `iroh_pairing/{conn}/controllers/{peer}`, so a surviving doc keeps a
+      // revoked phone connectable until the relay restarts. Scoped to this uid
+      // by iterating the user's own pairings (no cross-tenant collectionGroup).
+      const revokedControllerPeerNodeIds: string[] = [];
+      const pairings = await db.collection(`users/${uid}/iroh_pairing`).get();
+      for (const pairing of pairings.docs) {
+        const controllers = await pairing.ref.collection("controllers").where("deviceId", "==", deviceId).get();
+        for (const controller of controllers.docs) {
+          batch.delete(controller.ref);
+          const peer = controller.get("peerNodeId");
+          if (typeof peer === "string" && peer.length > 0) revokedControllerPeerNodeIds.push(peer);
+        }
       }
+
+      // F2 — also retire the device's agent-grant authority (doc id == deviceId)
+      // so a queued grant can no longer be minted against the revoked key.
+      const agentGrantAuthorityRef = db.doc(`users/${uid}/agent_grant_authorities/${deviceId}`);
+      const agentGrantAuthoritySnap = await agentGrantAuthorityRef.get();
+      const clearedAgentGrantAuthority = agentGrantAuthoritySnap.exists;
+      if (clearedAgentGrantAuthority) {
+        batch.delete(agentGrantAuthorityRef);
+      }
+
+      await batch.commit();
 
       // L41: also retire the device's Signal session-directory entries (sessions
       // it owns + sessions where it is the peer). Best-effort — a failure here
@@ -1263,21 +1329,42 @@ export const revokeEscrowDeviceTrust = onCall(
         });
       }
 
+      // F2 — emit a revocation receipt: a durable, tamper-evident audit record
+      // of exactly what this revocation cleared, returned to the operator so a
+      // revoke is observable and attributable rather than silent.
+      const receiptId = `revoke_${Date.now()}_${randomBytes(6).toString("hex")}`;
+      await appendComputerUseAuditEvent(uid, {
+        message: "phone_control_peer_revoked_receipt",
+        receiptId,
+        deviceId,
+        revokedGrants: grants.size,
+        revokedControllerPeerNodeIds,
+        clearedAgentGrantAuthority,
+        revokedSignalSessions,
+        signalSessionRevokeFailed,
+      });
+
       logInfo({
         event: "callable_info",
         message: "escrow_device_trust_revoked",
         device_id: deviceId,
         revoked_grants: grants.size,
+        revoked_controllers: revokedControllerPeerNodeIds.length,
+        cleared_agent_grant_authority: clearedAgentGrantAuthority,
         revoked_signal_sessions: revokedSignalSessions,
         signal_session_revoke_failed: signalSessionRevokeFailed,
+        receipt_id: receiptId,
       });
       return {
         ok: true,
         deviceId,
         trustState: "revoked",
         revokedGrants: grants.size,
+        revokedControllerPeerNodeIds,
+        clearedAgentGrantAuthority,
         revokedSignalSessions,
         signalSessionRevokeFailed,
+        receiptId,
       };
     },
   ),
@@ -1441,6 +1528,7 @@ export const publishPhoneControlAuthority = onCallProduction(
       connectionId?: unknown;
       peerNodeId?: unknown;
       publicKeyBase64?: unknown;
+      keyKind?: unknown;
       publishedAtMillis?: unknown;
       protocolVersion?: unknown;
       nonce?: unknown;
@@ -1454,9 +1542,12 @@ export const publishPhoneControlAuthority = onCallProduction(
     await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
     const peerNodeId = boundedTrimmedString(request.data.peerNodeId, "peerNodeId", 160, true);
-    const publicKeyBase64 = requireBase64Like(request.data.publicKeyBase64, "publicKeyBase64", 32, 128);
-    const publicKeyBytes = requireExactBase64Bytes(publicKeyBase64, "publicKeyBase64", ED25519_PUBLIC_KEY_BYTE_LENGTH);
-    requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes);
+    const keyKind = parsePhoneControlSigningKeyKind(request.data.keyKind);
+    const { bytes: publicKeyBytes, base64: publicKeyBase64 } = requirePhoneControlAuthorityPublicKey(
+      request.data.publicKeyBase64,
+      keyKind,
+    );
+    requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes, keyKind);
     const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
     const protocolVersion = boundedInteger(request.data.protocolVersion ?? 1, "protocolVersion", 1, 100, true) ?? 1;
 
@@ -1472,10 +1563,12 @@ export const publishPhoneControlAuthority = onCallProduction(
         peerNodeId,
         deviceId,
         publicKeyBase64,
+        // F2: persist the key custody class. Absent on legacy records ⇒ ed25519.
+        signingKeyKind: keyKind,
         publishedAtMillis,
         protocolVersion,
         publishedByDeviceId: deviceId,
-        schemaVersion: 2,
+        schemaVersion: keyKind === "se-p256" ? 3 : 2,
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
@@ -1608,6 +1701,7 @@ export const publishAgentGrantAuthority = onCallProduction(
       deviceId?: unknown;
       peerNodeId?: unknown;
       publicKeyBase64?: unknown;
+      keyKind?: unknown;
       nonce?: unknown;
     }>,
   ) => {
@@ -1618,16 +1712,21 @@ export const publishAgentGrantAuthority = onCallProduction(
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
     const peerNodeId = boundedTrimmedString(request.data.peerNodeId, "peerNodeId", 160, true);
-    const publicKeyBytes = requireExactBase64Bytes(request.data.publicKeyBase64, "publicKeyBase64", ED25519_PUBLIC_KEY_BYTE_LENGTH);
-    requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes);
+    const keyKind = parsePhoneControlSigningKeyKind(request.data.keyKind);
+    const { bytes: publicKeyBytes, base64: publicKeyBase64 } = requirePhoneControlAuthorityPublicKey(
+      request.data.publicKeyBase64,
+      keyKind,
+    );
+    requireDerivedPhoneControlPeerNodeId(peerNodeId, publicKeyBytes, keyKind);
 
     await db.doc(`users/${uid}/agent_grant_authorities/${deviceId}`).set(
       {
         sourceDeviceId: deviceId,
         peerNodeId,
-        publicKeyBase64: publicKeyBytes.toString("base64"),
+        publicKeyBase64,
+        signingKeyKind: keyKind,
         publishedAtMillis: Date.now(),
-        schemaVersion: 2,
+        schemaVersion: keyKind === "se-p256" ? 3 : 2,
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },

@@ -12,6 +12,10 @@ final class LiveActivityManager {
 
     private let backend: any BurnBarLiveActivityBackend
     private var activity: (any BurnBarLiveActivityHandle)?
+    /// The state the current activity already displays. Redundant updates
+    /// (every rollup listener tick re-sends the same numbers) are skipped so
+    /// ActivityKit's update budget is spent only on real changes.
+    private var lastSentState: BurnBarLiveActivityAttributes.ContentState?
     var hasActiveActivity: Bool { activity != nil }
 
     init(backend: any BurnBarLiveActivityBackend = ActivityKitBurnBarLiveActivityBackend()) {
@@ -34,12 +38,14 @@ final class LiveActivityManager {
 
         do {
             activity = try backend.request(attributes: attributes, state: state)
+            lastSentState = state
         } catch {
             // Live Activity failures are non-critical; do not surface to user.
         }
     }
 
-    /// Update the current Live Activity with new data.
+    /// Update the current Live Activity with new data. Skips the ActivityKit
+    /// round trip entirely when the state matches what is already displayed.
     func updateActivity(cost: Double, tokens: Int, provider: String, sessionActive: Bool) {
         guard let activity else { return }
 
@@ -49,6 +55,8 @@ final class LiveActivityManager {
             topProvider: provider,
             sessionActive: sessionActive
         )
+        guard state != lastSentState else { return }
+        lastSentState = state
 
         Task {
             await activity.update(state)
@@ -62,6 +70,7 @@ final class LiveActivityManager {
         // never nil out an activity requested after this call (mirrors
         // ActivityKitAgentWatchLiveActivityBackend.end()).
         self.activity = nil
+        lastSentState = nil
 
         Task {
             await activity.end()

@@ -70,20 +70,23 @@ internal fun AuroraBackdropAnimatedLayers(
     isDark: Boolean,
     density: AuroraDensity,
     reduceMotion: Boolean,
-    phase: Float,
-    ribbonPhase: Float,
+    phase: () -> Float,
+    ribbonPhase: () -> Float,
 ) {
     if (density == AuroraDensity.MINIMAL) return
+    // Phases arrive as lambdas read in layout/draw scope; the capture-less static
+    // clamp keeps the Reduce Motion contract even for callers passing a live phase.
+    val staticPhase: () -> Float = { 0f }
     Box(modifier = Modifier.fillMaxSize()) {
         OrbLayer(
             isDark = isDark,
-            phase = if (reduceMotion) 0f else phase,
+            phase = if (reduceMotion) staticPhase else phase,
             opacity = if (density == AuroraDensity.SUBTLE) 0.55f else 1f,
             modifier = Modifier.fillMaxSize(),
         )
         RibbonLayer(
             isDark = isDark,
-            ribbonPhase = if (reduceMotion) 0f else ribbonPhase,
+            ribbonPhase = if (reduceMotion) staticPhase else ribbonPhase,
             opacity = if (density == AuroraDensity.SUBTLE) 0.35f else 0.55f,
             modifier =
             Modifier
