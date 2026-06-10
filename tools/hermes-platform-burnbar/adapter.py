@@ -29,8 +29,10 @@ import secrets
 import subprocess
 import sys
 import time
+import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:
     import httpx
@@ -62,6 +64,7 @@ except ImportError:  # pragma: no cover - older Hermes checkouts do not yet ship
 try:
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
     CRYPTOGRAPHY_PRIMITIVES_AVAILABLE = True
@@ -70,6 +73,7 @@ except ImportError:  # pragma: no cover - same environment that disables relay c
     hashes = None  # type: ignore[assignment]
     serialization = None  # type: ignore[assignment]
     ec = None  # type: ignore[assignment]
+    Ed25519PrivateKey = None  # type: ignore[assignment]
     HKDF = None  # type: ignore[assignment]
 
 from gateway.config import Platform, PlatformConfig
@@ -170,6 +174,28 @@ RATCHET_SESSION_ID_DOMAIN = b"OpenBurnBar-HermesRatchet-v1-session"
 RATCHET_CHAT_LANE = "chat"
 # Env var recording that this link negotiated E2E at pairing time.
 RELAY_E2E_ENV = "BURNBAR_RELAY_E2E"
+
+# --- Gateway proof-of-possession (PoP) -----------------------------------
+# Every authenticated Hermes Gateway request is signed with this agent's
+# Ed25519 client signing key (registered at pairing via
+# `agentClientSigningPublicKeyBase64`), so a stolen bearer token alone cannot
+# replay the API. PoP v2 (L2) additionally binds the canonical query string
+# into the signature; v1 left GET query params unprotected. The payload-line
+# contract is byte-locked with the server's gatewayPopSignablePayload(V2) in
+# functions/src/callables/hermesGateway.ts — change NEITHER side alone.
+GATEWAY_POP_VERSION = 2
+POP_PAYLOAD_PREFIX_V1 = "OpenBurnBar.HermesGatewayPoP.v1"
+POP_PAYLOAD_PREFIX_V2 = "OpenBurnBar.HermesGatewayPoP.v2"
+# Server contract: /^[A-Za-z0-9._:-]{16,160}$/ — anything else 401s as
+# missing_pop_nonce.
+POP_NONCE_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{16,160}$")
+# Private key storage mirrors the relay/ratchet pattern: macOS Keychain is the
+# production store; the env var is a read/import source (and the non-macOS
+# persistence target, alongside BURNBAR_ACCESS_TOKEN in ~/.hermes/.env).
+POP_SIGNING_PRIVATE_KEY_ENV = "BURNBAR_POP_SIGNING_PRIVATE_KEY"
+POP_SIGNING_KEYCHAIN_SERVICE = "com.openburnbar.hermes-gateway-pop"
+POP_SIGNING_KEYCHAIN_ACCOUNT = "agent-client-pop-signing-private-key"
+POP_SIGNING_KEY_LABEL = "BurnBar gateway PoP signing private key"
 APPROVAL_DECISION_KIND = "approval_decision"
 OVERSIGHT_MODE_KIND = "oversight_mode"
 
@@ -829,6 +855,431 @@ def _headers(token: str) -> Dict[str, str]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Gateway proof-of-possession (PoP) signing
+#
+# The server (functions/src/callables/hermesGateway.ts) verifies, on EVERY
+# authenticated request, an Ed25519 signature over:
+#
+#   v2: [POP_PAYLOAD_PREFIX_V2, sha256hex(token), METHOD, path, canonicalQuery,
+#        sha256hex(stableJSON(body)), nonce, timestamp].join("\n")
+#   v1: same lines without canonicalQuery (and the v1 prefix).
+#
+# Every helper below is a byte-locked mirror of the server's TypeScript:
+#  - `_stable_json_string`     ⇄ stableJSONString (incl. localeCompare key sort)
+#  - `_canonical_query_string` ⇄ canonicalGatewayQueryString (decoded params
+#    sorted by key then value via UTF-16 code-unit `<`, joined k=v with `&`,
+#    repeated params as multiple pairs, no percent re-encoding)
+#  - `_gateway_signable_path`  ⇄ gatewayPath (prefix strips + trailing-slash)
+# Frozen Node-generated vectors in test_adapter_pop.py pin the parity.
+# ---------------------------------------------------------------------------
+
+# ICU root single-character order for printable ASCII as produced by Node's
+# default `String.prototype.localeCompare` (punctuation < digits < letters,
+# lowercase before uppercase at the tertiary level). Captured empirically from
+# the same ICU the server runs; letters appear as lower/upper pairs.
+_ICU_ROOT_ASCII_ORDER = (
+    "\t\n\x0b\x0c\r _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$"
+    "0123456789aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ"
+)
+
+
+def _build_icu_ascii_weights() -> Tuple[Dict[str, int], Dict[str, int]]:
+    primary: Dict[str, int] = {}
+    tertiary: Dict[str, int] = {}
+    rank = 1
+    index = 0
+    order = _ICU_ROOT_ASCII_ORDER
+    while index < len(order):
+        char = order[index]
+        primary[char] = rank
+        tertiary[char] = 0
+        if char.isalpha() and index + 1 < len(order) and order[index + 1].lower() == char:
+            upper = order[index + 1]
+            primary[upper] = rank
+            tertiary[upper] = 1
+            index += 2
+        else:
+            index += 1
+        rank += 1
+    return primary, tertiary
+
+
+_ICU_ASCII_PRIMARY, _ICU_ASCII_TERTIARY = _build_icu_ascii_weights()
+
+
+def _icu_locale_sort_key(value: str) -> Tuple[Tuple[Tuple[int, int], ...], Tuple[int, ...], Tuple[int, ...]]:
+    """Sort key approximating Node's default ``localeCompare`` (ICU root).
+
+    Exact for printable-ASCII strings (the entire gateway body-key domain):
+    primaries are compared across the whole string first, then secondaries
+    (Latin diacritics via NFD), then tertiaries (case). Characters outside the
+    table fall back to code-point order *after* all tabled characters — the
+    documented approximation boundary; protocol object keys never reach it.
+    """
+    primaries: List[Tuple[int, int]] = []
+    secondaries: List[int] = []
+    tertiaries: List[int] = []
+    for char in value:
+        weight = _ICU_ASCII_PRIMARY.get(char)
+        if weight is not None:
+            primaries.append((0, weight))
+            secondaries.append(0)
+            tertiaries.append(_ICU_ASCII_TERTIARY[char])
+            continue
+        decomposed = unicodedata.normalize("NFD", char)
+        base = decomposed[0] if decomposed else char
+        base_weight = _ICU_ASCII_PRIMARY.get(base)
+        if base_weight is not None:
+            primaries.append((0, base_weight))
+            secondaries.append(ord(decomposed[1]) if len(decomposed) > 1 else 0)
+            tertiaries.append(_ICU_ASCII_TERTIARY[base])
+        else:
+            primaries.append((1, ord(char)))
+            secondaries.append(0)
+            tertiaries.append(0)
+    return (tuple(primaries), tuple(secondaries), tuple(tertiaries))
+
+
+def _utf16_code_unit_key(value: str) -> bytes:
+    """JS ``<`` on strings compares UTF-16 code units; this key matches it."""
+    return value.encode("utf-16-be", "surrogatepass")
+
+
+def _js_number_string(value: Any) -> str:
+    """ECMA-262 Number-to-string (what JSON.stringify/String emit server-side).
+
+    The server re-parses the wire JSON and re-serializes numbers as doubles, so
+    the client must hash the JS rendering (2.0 → "2", 1e-7 → "1e-7",
+    1e21 → "1e+21"), not Python's.
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        if -(2**53) < value < 2**53:
+            return str(value)
+        value = float(value)  # JSON.parse precision loss past 2^53.
+    number = float(value)
+    if number != number or number in (float("inf"), float("-inf")):
+        return "null"  # JSON.stringify(NaN/Infinity) === "null".
+    if number == 0:
+        return "0"  # Covers -0.0 the way String(-0) does.
+    sign = "-" if number < 0 else ""
+    mantissa = repr(abs(number))  # Shortest round-trip decimal, like JS.
+    if "e" in mantissa:
+        mantissa, _, exponent_text = mantissa.partition("e")
+        exponent = int(exponent_text)
+    else:
+        exponent = 0
+    integer_part, _, fraction_part = mantissa.partition(".")
+    digits = (integer_part + fraction_part).lstrip("0")
+    # n: value == 0.digits × 10^n (ECMA-262 6.1.6.1.20 notation).
+    n = exponent + len(integer_part.lstrip("0")) - (len(integer_part) - len(integer_part.lstrip("0")) and 0)
+    leading_zeros = len(integer_part) - len(integer_part.lstrip("0"))
+    if integer_part.lstrip("0"):
+        n = exponent + len(integer_part)
+    else:
+        stripped_fraction = fraction_part.lstrip("0")
+        n = exponent - (len(fraction_part) - len(stripped_fraction))
+    del leading_zeros
+    digits = digits.rstrip("0") or "0"
+    k = len(digits)
+    if k <= n <= 21:
+        return sign + digits + "0" * (n - k)
+    if 0 < n <= 21:
+        return sign + digits[:n] + "." + digits[n:]
+    if -6 < n <= 0:
+        return sign + "0." + "0" * (-n) + digits
+    exponent_value = n - 1
+    exponent_repr = ("+" if exponent_value >= 0 else "-") + str(abs(exponent_value))
+    if k == 1:
+        return sign + digits + "e" + exponent_repr
+    return sign + digits[0] + "." + digits[1:] + "e" + exponent_repr
+
+
+def _js_json_quote(value: str) -> str:
+    """JSON.stringify string escaping (escape only what JSON requires)."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _stable_json_string(value: Any) -> str:
+    """Byte mirror of the server's stableJSONString (the PoP body-hash input)."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return _js_json_quote(value)
+    if isinstance(value, (int, float)):
+        return _js_number_string(value)
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_stable_json_string(item) for item in value) + "]"
+    if isinstance(value, dict):
+        entries = sorted(
+            ((str(key), item) for key, item in value.items()),
+            key=lambda pair: _icu_locale_sort_key(pair[0]),
+        )
+        return "{" + ",".join(f"{_js_json_quote(key)}:{_stable_json_string(item)}" for key, item in entries) + "}"
+    return "{}"  # Server collapses anything non-JSON-shaped to "{}".
+
+
+def _query_param_wire_string(value: Any) -> Optional[str]:
+    """How the param crosses the wire (httpx encode → Express decode)."""
+    if value is None:
+        return None  # httpx drops None params; the server never sees them.
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)  # httpx stringifies with str(); the server signs the decoded text.
+    return str(value)
+
+
+def _canonical_query_string(params: Optional[Dict[str, Any]]) -> str:
+    """Mirror of canonicalGatewayQueryString over the DECODED params.
+
+    Repeated params (list/tuple values) expand to multiple pairs; pairs sort by
+    key then value using UTF-16 code-unit order (the server's plain JS ``<``);
+    pairs join as ``key=value`` with ``&`` and are never percent re-encoded.
+    """
+    pairs: List[Tuple[str, str]] = []
+    for key, value in (params or {}).items():
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                rendered = _query_param_wire_string(item)
+                if rendered is not None:
+                    pairs.append((str(key), rendered))
+        else:
+            rendered = _query_param_wire_string(value)
+            if rendered is not None:
+                pairs.append((str(key), rendered))
+    pairs.sort(key=lambda pair: (_utf16_code_unit_key(pair[0]), _utf16_code_unit_key(pair[1])))
+    return "&".join(f"{key}={value}" for key, value in pairs)
+
+
+def _gateway_signable_path(url_or_path: str) -> str:
+    """Mirror of gatewayPath: the endpoint suffix the server signs over."""
+    path = url_or_path
+    if "://" in path:
+        path = "/" + path.split("://", 1)[1].split("/", 1)[1] if "/" in path.split("://", 1)[1] else "/"
+    path = path.split("?", 1)[0].split("#", 1)[0]
+    path = re.sub(r"^/burnBarHermesGateway\b", "", path)
+    path = re.sub(r"^/v1/hermes-gateway\b", "", path)
+    return path.rstrip("/") or "/"
+
+
+def _generate_pop_nonce() -> str:
+    nonce = f"hermes-pop-{secrets.token_hex(16)}"
+    if not POP_NONCE_PATTERN.match(nonce):  # pragma: no cover - charset is fixed.
+        raise RuntimeError("generated PoP nonce violates the server nonce contract")
+    return nonce
+
+
+def _pop_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _pop_signable_payload(
+    *,
+    version: int,
+    token: str,
+    method: str,
+    path: str,
+    canonical_query: str,
+    body_hash: str,
+    nonce: str,
+    timestamp: str,
+) -> bytes:
+    token_hash = _sha256(token)
+    if version >= 2:
+        lines = [POP_PAYLOAD_PREFIX_V2, token_hash, method.upper(), path, canonical_query, body_hash, nonce, timestamp]
+    else:
+        lines = [POP_PAYLOAD_PREFIX_V1, token_hash, method.upper(), path, body_hash, nonce, timestamp]
+    return "\n".join(lines).encode("utf-8")
+
+
+def _ed25519_private_key_from_base64(raw_base64: str, label: str):
+    if not CRYPTOGRAPHY_PRIMITIVES_AVAILABLE:
+        raise RuntimeError("cryptography primitives are unavailable")
+    try:
+        raw = base64.b64decode(raw_base64.strip(), validate=True)
+    except Exception as exc:
+        raise ValueError(f"{label} is not valid base64") from exc
+    if len(raw) != 32:
+        raise ValueError(f"{label} must be a 32-byte Ed25519 private key seed")
+    return Ed25519PrivateKey.from_private_bytes(raw)  # type: ignore[union-attr]
+
+
+def _load_pop_signing_private_key_base64() -> Optional[str]:
+    """Load (never create) the PoP signing key: Keychain first, env import second."""
+    if not CRYPTOGRAPHY_PRIMITIVES_AVAILABLE:
+        return None
+    keychain_value = _load_private_key_base64_from_keychain(
+        POP_SIGNING_KEYCHAIN_SERVICE,
+        POP_SIGNING_KEYCHAIN_ACCOUNT,
+        POP_SIGNING_KEY_LABEL,
+    )
+    if keychain_value:
+        _ed25519_private_key_from_base64(keychain_value, POP_SIGNING_KEY_LABEL)
+        return keychain_value.strip()
+    legacy_value = (os.getenv(POP_SIGNING_PRIVATE_KEY_ENV) or "").strip()
+    if legacy_value:
+        _ed25519_private_key_from_base64(legacy_value, POP_SIGNING_KEY_LABEL)
+        if _relay_keychain_command() is not None:
+            _store_private_key_base64_to_keychain(
+                POP_SIGNING_KEYCHAIN_SERVICE,
+                POP_SIGNING_KEYCHAIN_ACCOUNT,
+                legacy_value,
+                POP_SIGNING_KEY_LABEL,
+            )
+        return legacy_value
+    return None
+
+
+def _ensure_pop_signing_key_for_pairing(persist_env: Optional[Callable[[str, str], None]] = None) -> str:
+    """Load-or-create the PoP signing key at pairing; return the public key base64.
+
+    Creation persists the private seed to macOS Keychain (production) or, on
+    non-macOS hosts, to ~/.hermes/.env via ``persist_env`` — the same file that
+    already holds BURNBAR_ACCESS_TOKEN, so this widens no trust boundary.
+    """
+    if not CRYPTOGRAPHY_PRIMITIVES_AVAILABLE:
+        raise RuntimeError("cryptography primitives are unavailable; cannot mint the PoP signing key")
+    raw_base64 = _load_pop_signing_private_key_base64()
+    if raw_base64 is None:
+        private_key = Ed25519PrivateKey.generate()  # type: ignore[union-attr]
+        raw_base64 = base64.b64encode(
+            private_key.private_bytes(
+                encoding=serialization.Encoding.Raw,  # type: ignore[union-attr]
+                format=serialization.PrivateFormat.Raw,  # type: ignore[union-attr]
+                encryption_algorithm=serialization.NoEncryption(),  # type: ignore[union-attr]
+            )
+        ).decode("ascii")
+        if _relay_keychain_command() is not None:
+            _store_private_key_base64_to_keychain(
+                POP_SIGNING_KEYCHAIN_SERVICE,
+                POP_SIGNING_KEYCHAIN_ACCOUNT,
+                raw_base64,
+                POP_SIGNING_KEY_LABEL,
+            )
+        elif sys.platform == "darwin":
+            raise RuntimeError(f"cannot persist {POP_SIGNING_KEY_LABEL}: Keychain is unavailable")
+        elif persist_env is not None:
+            persist_env(POP_SIGNING_PRIVATE_KEY_ENV, raw_base64)
+            os.environ[POP_SIGNING_PRIVATE_KEY_ENV] = raw_base64
+        else:
+            raise RuntimeError(f"cannot persist {POP_SIGNING_KEY_LABEL}: no secret store is available")
+    _reset_pop_signer_cache()
+    private_key = _ed25519_private_key_from_base64(raw_base64, POP_SIGNING_KEY_LABEL)
+    public_raw = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,  # type: ignore[union-attr]
+        format=serialization.PublicFormat.Raw,  # type: ignore[union-attr]
+    )
+    return base64.b64encode(public_raw).decode("ascii")
+
+
+class GatewayPopSigner:
+    """Signs gateway requests with the registered Ed25519 client signing key."""
+
+    def __init__(self, private_key) -> None:
+        self._private_key = private_key
+
+    @property
+    def public_key_base64(self) -> str:
+        raw = self._private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,  # type: ignore[union-attr]
+            format=serialization.PublicFormat.Raw,  # type: ignore[union-attr]
+        )
+        return base64.b64encode(raw).decode("ascii")
+
+    def headers(
+        self,
+        *,
+        token: str,
+        method: str,
+        url_or_path: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+        version: int = GATEWAY_POP_VERSION,
+        nonce: Optional[str] = None,
+        timestamp: Optional[str] = None,
+    ) -> Dict[str, str]:
+        nonce = nonce or _generate_pop_nonce()
+        timestamp = timestamp or _pop_timestamp()
+        body_hash = _sha256(_stable_json_string(json_body if isinstance(json_body, dict) else {}))
+        payload = _pop_signable_payload(
+            version=version,
+            token=token,
+            method=method,
+            path=_gateway_signable_path(url_or_path),
+            canonical_query=_canonical_query_string(params),
+            body_hash=body_hash,
+            nonce=nonce,
+            timestamp=timestamp,
+        )
+        signature = base64.b64encode(self._private_key.sign(payload)).decode("ascii")
+        headers = {
+            "x-openburnbar-pop-nonce": nonce,
+            "x-openburnbar-pop-timestamp": timestamp,
+            "x-openburnbar-pop-body-sha256": body_hash,
+            "x-openburnbar-pop-signature-ed25519": signature,
+        }
+        if version >= 2:
+            headers["x-openburnbar-pop-version"] = str(version)
+        return headers
+
+
+_POP_SIGNER_CACHE: Dict[str, Any] = {"loaded": False, "signer": None, "warned": False}
+
+
+def _reset_pop_signer_cache() -> None:
+    _POP_SIGNER_CACHE.update({"loaded": False, "signer": None, "warned": False})
+
+
+def _pop_signer() -> Optional[GatewayPopSigner]:
+    if not _POP_SIGNER_CACHE["loaded"]:
+        _POP_SIGNER_CACHE["loaded"] = True
+        try:
+            raw_base64 = _load_pop_signing_private_key_base64()
+            if raw_base64:
+                _POP_SIGNER_CACHE["signer"] = GatewayPopSigner(
+                    _ed25519_private_key_from_base64(raw_base64, POP_SIGNING_KEY_LABEL)
+                )
+        except Exception:
+            logger.debug("Could not load the BurnBar gateway PoP signing key", exc_info=True)
+    return _POP_SIGNER_CACHE["signer"]
+
+
+def _signed_headers(
+    token: str,
+    method: str,
+    url_or_path: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    json_body: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
+    """Bearer + PoP v2 headers for one gateway request.
+
+    Falls back to bare Bearer headers when no signing key is available (the
+    server then 401s exactly as it does for today's unsigned adapter — no new
+    failure mode, but a paired client always has the key).
+    """
+    headers = _headers(token)
+    signer = _pop_signer()
+    if signer is None:
+        if not _POP_SIGNER_CACHE["warned"]:
+            _POP_SIGNER_CACHE["warned"] = True
+            logger.warning(
+                "BurnBar gateway PoP signing key is unavailable; sending unsigned requests "
+                "(the server will refuse them). Re-run `hermes gateway setup` to mint one."
+            )
+        return headers
+    try:
+        headers.update(
+            signer.headers(token=token, method=method, url_or_path=url_or_path, params=params, json_body=json_body)
+        )
+    except Exception:
+        logger.warning("Could not sign BurnBar gateway request with the PoP key", exc_info=True)
+    return headers
+
+
 def _read_cursor() -> int:
     try:
         data = json.loads(CURSOR_FILE.read_text())
@@ -1071,7 +1522,7 @@ async def _init_attachment(
 
     response = await client.post(
         f"{api_base}/attachments/init",
-        headers=_headers(token),
+        headers=_signed_headers(token, "POST", f"{api_base}/attachments/init", json_body=body),
         json=body,
     )
     response.raise_for_status()
@@ -1117,14 +1568,15 @@ async def _finalize_attachment(
     destination_id: str,
     uploaded_bytes: bytes,
 ) -> None:
+    finalize_body = {
+        "attachmentId": attachment_id,
+        "destinationId": destination_id,
+        "sha256": hashlib.sha256(uploaded_bytes).hexdigest(),
+    }
     response = await client.post(
         f"{api_base}/attachments/finalize",
-        headers=_headers(token),
-        json={
-            "attachmentId": attachment_id,
-            "destinationId": destination_id,
-            "sha256": hashlib.sha256(uploaded_bytes).hexdigest(),
-        },
+        headers=_signed_headers(token, "POST", f"{api_base}/attachments/finalize", json_body=finalize_body),
+        json=finalize_body,
     )
     response.raise_for_status()
 
@@ -1241,7 +1693,7 @@ async def _post_message(
         body["text"] = clipped
     response = await client.post(
         f"{api_base}/messages",
-        headers=_headers(token),
+        headers=_signed_headers(token, "POST", f"{api_base}/messages", json_body=body),
         json=body,
     )
     response.raise_for_status()
@@ -2482,7 +2934,10 @@ class BurnBarAdapter(BasePlatformAdapter):
             return False
         self._client = httpx.AsyncClient(timeout=30)
         try:
-            response = await self._client.get(f"{self._api_base}/destinations", headers=_headers(self._token))
+            response = await self._client.get(
+                f"{self._api_base}/destinations",
+                headers=_signed_headers(self._token, "GET", f"{self._api_base}/destinations"),
+            )
             response.raise_for_status()
             self._absorb_relay_state(response.json() if response.content else {})
         except Exception as exc:
@@ -2529,10 +2984,11 @@ class BurnBarAdapter(BasePlatformAdapter):
         # Resolve any oversight gates the phone has decided since the last poll.
         if self._pending_confirms:
             await self._resolve_pending_confirms()
+        events_params = {"cursor": str(self._cursor), "limit": "50"}
         response = await self._client.get(
             f"{self._api_base}/events",
-            headers=_headers(self._token),
-            params={"cursor": str(self._cursor), "limit": "50"},
+            headers=_signed_headers(self._token, "GET", f"{self._api_base}/events", params=events_params),
+            params=events_params,
         )
         response.raise_for_status()
         payload = response.json()
@@ -2702,7 +3158,7 @@ class BurnBarAdapter(BasePlatformAdapter):
         try:
             response = await self._client.post(
                 f"{self._api_base}/runtime",
-                headers=_headers(self._token),
+                headers=_signed_headers(self._token, "POST", f"{self._api_base}/runtime", json_body=body),
                 json=body,
             )
             response.raise_for_status()
@@ -2722,7 +3178,10 @@ class BurnBarAdapter(BasePlatformAdapter):
             return
         self._oversight_checked_at = now
         try:
-            response = await self._client.get(f"{self._api_base}/state", headers=_headers(self._token))
+            response = await self._client.get(
+                f"{self._api_base}/state",
+                headers=_signed_headers(self._token, "GET", f"{self._api_base}/state"),
+            )
             response.raise_for_status()
             state = response.json()
             self._absorb_relay_state(state)
@@ -2798,7 +3257,9 @@ class BurnBarAdapter(BasePlatformAdapter):
             body["destinationId"] = destination_id
         try:
             response = await self._client.post(
-                f"{self._api_base}/approvals", headers=_headers(self._token), json=body
+                f"{self._api_base}/approvals",
+                headers=_signed_headers(self._token, "POST", f"{self._api_base}/approvals", json_body=body),
+                json=body,
             )
             response.raise_for_status()
             return True
@@ -2816,10 +3277,11 @@ class BurnBarAdapter(BasePlatformAdapter):
             return
         for action_id, ctx in list(self._pending_confirms.items()):
             try:
+                approval_params = {"actionId": action_id}
                 response = await self._client.get(
                     f"{self._api_base}/approvals",
-                    headers=_headers(self._token),
-                    params={"actionId": action_id},
+                    headers=_signed_headers(self._token, "GET", f"{self._api_base}/approvals", params=approval_params),
+                    params=approval_params,
                 )
                 if response.status_code == 404:
                     self._pending_confirms.pop(action_id, None)
@@ -3074,10 +3536,11 @@ class BurnBarAdapter(BasePlatformAdapter):
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=15)
         try:
+            typing_body = {"destinationId": chat_id or self._home_channel, "threadId": (metadata or {}).get("thread_id")}
             await self._client.post(
                 f"{self._api_base}/typing",
-                headers=_headers(self._token),
-                json={"destinationId": chat_id or self._home_channel, "threadId": (metadata or {}).get("thread_id")},
+                headers=_signed_headers(self._token, "POST", f"{self._api_base}/typing", json_body=typing_body),
+                json=typing_body,
             )
         except Exception:
             logger.debug("[%s] BurnBar typing failed", self.name, exc_info=True)
@@ -3236,6 +3699,20 @@ def interactive_setup() -> None:
         "deviceSecretHash": _sha256(device_secret),
         "scopes": ["hermes.gateway.read", "hermes.gateway.write", "hermes.gateway.manage"],
     }
+    # L2/PoP: register this agent's Ed25519 client signing key so every gateway
+    # request is proof-of-possession signed, and declare PoP v2 capability (the
+    # server then refuses v1 downgrades for this client). The server derives the
+    # key id from the public key; only the public key crosses the wire.
+    try:
+        pop_public_key = _ensure_pop_signing_key_for_pairing(persist_env=_relay_key_persister())
+        payload["agentClientSigningPublicKeyBase64"] = pop_public_key
+        payload["popVersion"] = GATEWAY_POP_VERSION
+    except Exception:
+        logger.debug("Could not prepare BurnBar gateway PoP signing key for pairing", exc_info=True)
+        print_warning(
+            "Could not mint the gateway PoP signing key; pairing will proceed but the "
+            "server will refuse unsigned requests from modern clients."
+        )
     if agent_relay_public_key:
         preferred_gateway_relay_version = _preferred_gateway_relay_version()
         payload["agentRelayPublicKey"] = agent_relay_public_key
