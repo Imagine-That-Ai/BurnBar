@@ -1,0 +1,44 @@
+{
+  "aadPrefix" : "OpenBurnBar-MediaFrameAEAD-v1|",
+  "capability" : "media_frame_aead_v1",
+  "cases" : [
+    {
+      "aadHex" : "4f70656e4275726e4261722d4d656469614672616d65414541442d76317c6d656469612e73637265656e2e766964656f7c010000000400000009",
+      "derivedKeyHex" : "77cab13edbf47594f1cd2bc41e56f8ed2353bf5d6e090b29d693d98df5557eac",
+      "envelopeHex" : "4f424d464131018945781d58d37155875fd491c011204de74882503672cebcb8e3675d851f3c920887c7508abba59ae5f24bd5535f7e3da38cb3797a59d07b5646936bc6a3ea02b6e00371683ce827e9e2ceaab049b738ecfa305b872586acc94c33c66501b37e0e5af0b0bbd2c6aa88",
+      "frameIndex" : 9,
+      "gopID" : 4,
+      "kind" : 1,
+      "name" : "screen_video_key_frame",
+      "plaintextHex" : "4f424d46322d656e636f64656420482e323634206b65796672616d65207061796c6f616420e280942066726f7a656e20666f72207468652046372063726f73732d6c616e6775616765204b4154",
+      "plaintextUtf8" : "OBMF2-encoded H.264 keyframe payload — frozen for the F7 cross-language KAT",
+      "saltHex" : "6d6572637572792d6d6972726f722d73657373696f6e2d30303031",
+      "sharedSecretHex" : "0d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6",
+      "streamClass" : "media.screen.video"
+    },
+    {
+      "aadHex" : "4f70656e4275726e4261722d4d656469614672616d65414541442d76317c6d656469612e617564696f2e6f75747c0201020304fffffffe",
+      "derivedKeyHex" : "d3ea91885d8b7d1aef8f08a311559e857943706e517678f8d5f3cc6e868fbeaf",
+      "envelopeHex" : "4f424d46413101b2f3589bd741424fab4b1fc1822bf85685a2426993a9bbd49f4f6a54a9d48affb9f991baaa8f2d601a72c4b49bf422408416942c93b2af2559714e149589f64472ae08c3f1a60af697a84a7a",
+      "frameIndex" : 4294967294,
+      "gopID" : 16909060,
+      "kind" : 2,
+      "name" : "call_audio_u32_endianness_probe",
+      "plaintextHex" : "0104070a0d101316191c1f2225282b2e3134373a3d404346494c4f5255585b5e6164676a6d707376797c7f8285888b8e",
+      "saltHex" : "000102030405060708090a0b0c0d0e0f",
+      "sharedSecretHex" : "05101b26313c47525d68737e89949faab5c0cbd6e1ecf707121d28333e49545f",
+      "streamClass" : "media.audio.out"
+    }
+  ],
+  "envelopeLayout" : "magic OBMFA1(6) || version 0x01(1) || AES-256-GCM combined: nonce(12) || ciphertext || tag(16)",
+  "generator" : {
+    "command" : "BURNBAR_EMIT_AEAD_VECTORS=1 swift test --package-path OpenBurnBarCore --filter MediaFrameAEADVectorTests",
+    "language" : "swift",
+    "note" : "Sealed by the production Swift CryptoKit MediaFrameAEAD. All inputs (shared secret, salt, AAD params, plaintext) are deterministic frozen constants; the AES-GCM nonce inside each envelope was drawn once at emission and is frozen with the fixture. Kotlin opens the identical copy at android/app/src/test/resources/media-aead/MediaFrameAEADVector.json (MediaFrameAeadVectorTest)."
+  },
+  "hkdfInfo" : "OpenBurnBar-MediaFrameAEAD-v1",
+  "magicHex" : "4f424d464131",
+  "primitive" : "MediaFrameAEAD",
+  "schemaVersion" : 1,
+  "version" : 1
+}
