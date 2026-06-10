@@ -538,6 +538,11 @@ final class MercuryRouter: ObservableObject {
                     deviceDisplayName: Host.current().localizedName ?? "My Mac",
                     capabilities: macCapabilities,
                     peerDeviceId: frame.connectionId,
+                    // F7: the Mac previously never advertised streaming
+                    // capabilities back to phones, so phone-side negotiators
+                    // (codec, wire version, frame AEAD) had no Mac snapshot.
+                    // The probe is cached — no per-beat encoder sessions.
+                    streamingCapabilities: Self.cachedLocalStreamingCapabilities.wireValue,
                     remoteUnlockCapabilities: remoteUnlockReadiness.capabilities()
                 )
                 let responseFrame = HermesRealtimeRelayFrame(
@@ -598,13 +603,24 @@ final class MercuryRouter: ObservableObject {
             MercuryPeer.Feature.mirrorHost.rawValue,
             MercuryPeer.Feature.fileSend.rawValue,
             MercuryPeer.Feature.fileReceive.rawValue,
-            MercuryPeer.Feature.callReceive.rawValue
+            MercuryPeer.Feature.callReceive.rawValue,
+            // F7/F10: advertise the app-layer seal capabilities so phones can
+            // negotiate them (both-peers-required gates; plain strings, so
+            // pre-F7 peers simply ignore them).
+            MediaFrameAeadNegotiation.capability,
+            ControlFrameSealNegotiation.capability
         ]
         if remoteUnlockReadiness.capabilities().enabled {
             capabilities.append(MercuryPeer.Feature.remoteUnlockHost.rawValue)
         }
         return capabilities
     }
+
+    /// F7: the Mac's streaming capability snapshot, probed once. The VideoToolbox
+    /// probe creates real encoder sessions, so the heartbeat reply must not
+    /// re-run it per beat.
+    private static let cachedLocalStreamingCapabilities: MercuryStreamingCapabilitySnapshot =
+        MercuryVideoToolboxCapabilityProbe.snapshot(mediaFrameVersions: .v1AndV2)
 
     /// User tapped "Accept" on the incoming-call sheet.
     func acceptMirror(_ request: PendingRequest) async {
@@ -1859,7 +1875,10 @@ final class MercuryRouter: ObservableObject {
             maxViewers: maxViewers,
             controlOwnerViewerId: controlOwnerViewerID,
             remoteUnlockState: state,
-            remoteUnlockCapabilities: capabilities
+            remoteUnlockCapabilities: capabilities,
+            // F7: advertise the Mac's snapshot in the ack itself so the viewer
+            // negotiates codec/wire-version/frame-AEAD without a second probe.
+            streamingCapabilities: Self.cachedLocalStreamingCapabilities.wireValue
         )
         let outbound = HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,
