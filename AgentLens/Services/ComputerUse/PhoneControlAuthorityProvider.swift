@@ -44,6 +44,33 @@ public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthority
         self.allowedPlatforms = allowedPlatforms
     }
 
+    /// F2: `signingKeyKind` selects the custody class. Absent ⇒ legacy
+    /// Ed25519 (32-byte raw). A PRESENT-but-unrecognized kind fails closed —
+    /// never silently downgrade a record that claims a stronger key. SE-P256
+    /// keys must be 65-byte X9.63 (0x04‖X‖Y) — the exact bytes the SE
+    /// peerNodeId derivation and the server's schemaVersion-3 publish path use.
+    static func validatedSigningKeyKind(
+        signingKeyKindRaw: String?,
+        publicKeyRaw raw: Data
+    ) throws -> PhoneControlSigningKeyKind {
+        let keyKind: PhoneControlSigningKeyKind
+        if let kindRaw = signingKeyKindRaw {
+            guard let parsed = PhoneControlSigningKeyKind(rawValue: kindRaw) else {
+                throw PhoneControlAuthorityProviderError.malformed
+            }
+            keyKind = parsed
+        } else {
+            keyKind = .ed25519
+        }
+        switch keyKind {
+        case .ed25519:
+            guard raw.count == 32 else { throw PhoneControlAuthorityProviderError.malformed }
+        case .secureEnclaveP256:
+            guard raw.count == 65 else { throw PhoneControlAuthorityProviderError.malformed }
+        }
+        return keyKind
+    }
+
     public func fetchPublicKey(
         uid: String,
         connectionId: String,
@@ -77,26 +104,7 @@ public final class FirestorePhoneControlAuthorityProvider: PhoneControlAuthority
               let raw = Data(base64Encoded: base64) else {
             throw PhoneControlAuthorityProviderError.malformed
         }
-        // F2: `signingKeyKind` selects the custody class. Absent ⇒ legacy
-        // Ed25519 (32-byte raw). A PRESENT-but-unrecognized kind fails closed —
-        // never silently downgrade a record that claims a stronger key.
-        let keyKind: PhoneControlSigningKeyKind
-        if let kindRaw = data["signingKeyKind"] as? String {
-            guard let parsed = PhoneControlSigningKeyKind(rawValue: kindRaw) else {
-                throw PhoneControlAuthorityProviderError.malformed
-            }
-            keyKind = parsed
-        } else {
-            keyKind = .ed25519
-        }
-        switch keyKind {
-        case .ed25519:
-            guard raw.count == 32 else { throw PhoneControlAuthorityProviderError.malformed }
-        case .secureEnclaveP256:
-            // 65-byte X9.63 (0x04‖X‖Y) — the exact bytes the SE peerNodeId
-            // derivation and the server's schemaVersion-3 publish path use.
-            guard raw.count == 65 else { throw PhoneControlAuthorityProviderError.malformed }
-        }
+        let keyKind = try Self.validatedSigningKeyKind(signingKeyKindRaw: data["signingKeyKind"] as? String, publicKeyRaw: raw)
         guard Date().timeIntervalSince1970 - (Double(publishedAtMillis) / 1000.0) <= maximumAge else {
             throw PhoneControlAuthorityProviderError.expired
         }

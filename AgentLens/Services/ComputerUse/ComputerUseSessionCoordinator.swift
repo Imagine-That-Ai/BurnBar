@@ -1226,26 +1226,26 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     ) async throws -> SymmetricKey {
         let recipientKey = try controlSealRecipientPrivateKeyProvider.map { try $0() }
             ?? HermesRelayKeyStore().privateKey()
+        // The trust resolver only consults uid + sender identity; the
+        // request id/operation exist for the chat lane's AAD and are
+        // irrelevant to pinned-key resolution.
+        let context = HermesRelayAuthenticatedRequestTrustContext(
+            uid: uid,
+            connectionID: connectionId,
+            requestID: "control-seal-\(envelope.senderCounter)",
+            operation: .chatCompletions,
+            sender: HermesRelayAuthenticatedSender(
+                publicKeyBase64: "",
+                deviceID: envelope.senderDeviceId,
+                peerNodeID: envelope.senderPeerNodeId,
+                counter: envelope.senderCounter,
+                keyID: envelope.senderKeyId
+            )
+        )
         let pinnedSenderKey: String
         if let provider = controlSealPinnedSenderKeyProvider {
             pinnedSenderKey = try await provider(uid, connectionId, envelope)
         } else {
-            // The trust resolver only consults uid + sender identity; the
-            // request id/operation exist for the chat lane's AAD and are
-            // irrelevant to pinned-key resolution.
-            let context = HermesRelayAuthenticatedRequestTrustContext(
-                uid: uid,
-                connectionID: connectionId,
-                requestID: "control-seal-\(envelope.senderCounter)",
-                operation: .chatCompletions,
-                sender: HermesRelayAuthenticatedSender(
-                    publicKeyBase64: "",
-                    deviceID: envelope.senderDeviceId,
-                    peerNodeID: envelope.senderPeerNodeId,
-                    counter: envelope.senderCounter,
-                    keyID: envelope.senderKeyId
-                )
-            )
             pinnedSenderKey = try await FirestoreHermesRelaySenderTrustResolver.shared
                 .pinnedRelaySenderPublicKeyBase64(for: context)
         }

@@ -216,6 +216,31 @@ final class AppCommandRouter {
         }
     }
 
+    /// Outcome of the device-owner authentication gate in the link-cli flow.
+    enum LinkCliAuthOutcome {
+        /// `LAContext.canEvaluatePolicy` refused — no Touch ID / login password
+        /// available. Fail closed without attempting the export.
+        case unavailable
+        /// The user failed or cancelled the identity check.
+        case denied
+        /// Device-owner authentication succeeded; the export may proceed.
+        case authenticated
+    }
+
+    // F1 link-cli test seams. Production leaves every seam nil and runs the
+    // shipped modal NSAlert + LAContext + Keychain flow verbatim; tests inject
+    // fakes so the security-gate matrix (signed-out, declined confirmation,
+    // unavailable/denied device-owner auth, export outcomes) is executable
+    // headless in CI. Same pattern as the ComputerUseSessionCoordinator
+    // `controlSeal*Provider` seams.
+    var linkCliUserIDProvider: () -> String? = { AccountManager.shared.userID }
+    var linkCliConfirmationPresenter: (() -> Bool)?
+    var linkCliDeviceOwnerAuthenticator: ((@escaping (LinkCliAuthOutcome) -> Void) -> Void)?
+    var linkCliAlertPresenter: ((NSAlert.Style, String, String) -> Void)?
+    var linkCliVaultKeyLoader: ((String) throws -> Data?)?
+    var linkCliKeychainWriter: ((Data) throws -> Void)?
+    var linkCliLegacyFallbackRemover: (() throws -> Void)?
+
     /// Handles `openburnbar://link-cli`.
     ///
     /// SECURITY (F1): exporting the Cloud Vault key into the external CLI keychain
@@ -228,7 +253,7 @@ final class AppCommandRouter {
     /// human physically authenticating at the Mac.
     @discardableResult
     func handleLinkCli() -> Bool {
-        guard let uid = AccountManager.shared.userID else {
+        guard let uid = linkCliUserIDProvider() else {
             presentLinkCliAlert(
                 style: .warning,
                 title: "Sign In Required",
@@ -239,6 +264,36 @@ final class AppCommandRouter {
             return true
         }
 
+        guard confirmLinkCliIntent() else {
+            return true
+        }
+
+        // Fail-closed device-owner authentication gate before any key read/copy.
+        authenticateLinkCliDeviceOwner { [weak self] outcome in
+            switch outcome {
+            case .unavailable:
+                self?.presentLinkCliAlert(
+                    style: .critical,
+                    title: "Linking Unavailable",
+                    message: "This Mac can't verify your identity (Touch ID or a login password is required). Your vault key was not exported."
+                )
+            case .denied:
+                self?.presentLinkCliAlert(
+                    style: .warning,
+                    title: "Linking Cancelled",
+                    message: "Identity check failed or was cancelled. Your vault key was not exported."
+                )
+            case .authenticated:
+                self?.performLinkCliExport(uid: uid)
+            }
+        }
+        return true
+    }
+
+    private func confirmLinkCliIntent() -> Bool {
+        if let presenter = linkCliConfirmationPresenter {
+            return presenter()
+        }
         let confirm = NSAlert()
         confirm.messageText = "Link this Mac's CLI to your secure vault?"
         confirm.informativeText = """
@@ -251,45 +306,42 @@ final class AppCommandRouter {
         confirm.alertStyle = .warning
         confirm.addButton(withTitle: "Continue")
         confirm.addButton(withTitle: "Cancel")
-        guard confirm.runModal() == .alertFirstButtonReturn else {
-            return true
-        }
+        return confirm.runModal() == .alertFirstButtonReturn
+    }
 
-        // Fail-closed device-owner authentication gate before any key read/copy.
+    /// `completion` is always delivered on the main queue (the seam contract
+    /// mirrors the production `DispatchQueue.main.async` hop after Touch ID).
+    private func authenticateLinkCliDeviceOwner(completion: @escaping (LinkCliAuthOutcome) -> Void) {
+        if let authenticator = linkCliDeviceOwnerAuthenticator {
+            authenticator(completion)
+            return
+        }
         let context = LAContext()
         var policyError: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
-            presentLinkCliAlert(
-                style: .critical,
-                title: "Linking Unavailable",
-                message: "This Mac can't verify your identity (Touch ID or a login password is required). Your vault key was not exported."
-            )
-            return true
+            completion(.unavailable)
+            return
         }
         context.evaluatePolicy(
             .deviceOwnerAuthentication,
             localizedReason: "Authorize copying your Cloud Vault key to the OpenBurnBar CLI."
-        ) { [weak self] success, _ in
+        ) { success, _ in
             DispatchQueue.main.async {
-                guard success else {
-                    self?.presentLinkCliAlert(
-                        style: .warning,
-                        title: "Linking Cancelled",
-                        message: "Identity check failed or was cancelled. Your vault key was not exported."
-                    )
-                    return
-                }
-                self?.performLinkCliExport(uid: uid)
+                completion(success ? .authenticated : .denied)
             }
         }
-        return true
     }
 
     @MainActor
     private func performLinkCliExport(uid: String) {
-        let keyStore = CloudVaultKeyStore(service: "com.openburnbar.cloud-vault")
         do {
-            guard let keyData = try keyStore.loadKey(uid: uid) else {
+            let keyData: Data?
+            if let loader = linkCliVaultKeyLoader {
+                keyData = try loader(uid)
+            } else {
+                keyData = try CloudVaultKeyStore(service: "com.openburnbar.cloud-vault").loadKey(uid: uid)
+            }
+            guard let keyData else {
                 presentLinkCliAlert(
                     style: .warning,
                     title: "No Vault Key Found",
@@ -299,11 +351,19 @@ final class AppCommandRouter {
             }
 
             let base64Key = keyData.base64EncodedString()
-            let keychain = SecurityKeychainStoreBackend()
             if let utf8Data = base64Key.data(using: .utf8) {
-                try keychain.set(utf8Data, service: "com.openburnbar.mcp-remote", account: "vault-key")
+                if let writer = linkCliKeychainWriter {
+                    try writer(utf8Data)
+                } else {
+                    let keychain = SecurityKeychainStoreBackend()
+                    try keychain.set(utf8Data, service: "com.openburnbar.mcp-remote", account: "vault-key")
+                }
             }
-            try removeLegacyMCPVaultKeyFallback()
+            if let remover = linkCliLegacyFallbackRemover {
+                try remover()
+            } else {
+                try removeLegacyMCPVaultKeyFallback()
+            }
 
             presentLinkCliAlert(
                 style: .informational,
@@ -321,6 +381,10 @@ final class AppCommandRouter {
 
     @MainActor
     private func presentLinkCliAlert(style: NSAlert.Style, title: String, message: String) {
+        if let presenter = linkCliAlertPresenter {
+            presenter(style, title, message)
+            return
+        }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
