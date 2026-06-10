@@ -134,6 +134,36 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
 /// types without forcing receivers to learn about cases they don't yet
 /// support. The `kind` discriminator pairs with the outer frame's
 /// `HermesRealtimeRelayFrameType` for explicit dispatch.
+/// F10 — the sealKeyV3-wrapped control-frame-seal session key, carried once on
+/// `control.classify` when both peers advertise `control_seal_v1`. The Mac
+/// opens it with its relay private key + the phone's PINNED relay sender key
+/// (same pinning as the chat lane) and both sides derive the AES-GCM seal key
+/// via `ControlFrameSeal.deriveSessionKey`. Pre-F10 receivers ignore the field.
+public struct HermesRealtimeRelayControlSealKeyEnvelope: Codable, Sendable, Equatable {
+    public var encBase64: String
+    public var wrappedKeyBase64: String
+    public var senderDeviceId: String
+    public var senderKeyId: String
+    public var senderCounter: Int64
+    public var relayKeyVersion: Int
+
+    public init(
+        encBase64: String,
+        wrappedKeyBase64: String,
+        senderDeviceId: String,
+        senderKeyId: String,
+        senderCounter: Int64,
+        relayKeyVersion: Int
+    ) {
+        self.encBase64 = encBase64
+        self.wrappedKeyBase64 = wrappedKeyBase64
+        self.senderDeviceId = senderDeviceId
+        self.senderKeyId = senderKeyId
+        self.senderCounter = senderCounter
+        self.relayKeyVersion = relayKeyVersion
+    }
+}
+
 public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var streamClass: String?
     public var sessionId: String?
@@ -156,6 +186,14 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult?
     public var systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest?
     public var systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus?
+    /// F10 — sealKeyV3-wrapped seal-session key, sent once on `control.classify`.
+    public var controlSealKey: HermesRealtimeRelayControlSealKeyEnvelope?
+    /// F10 — when present, this payload's real content rides inside: a
+    /// `ControlFrameSeal` envelope (OBCFS1) over the JSON of the inner
+    /// `HermesRealtimeRelayControlPayload`, AAD-bound to (peerNodeId,
+    /// frame type). `streamClass` stays visible for routing; everything else
+    /// is confidential. Pre-F10 receivers see an empty payload and ignore it.
+    public var sealedFrameBase64: String?
 
     public init(
         streamClass: String? = nil,
@@ -178,7 +216,9 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope? = nil,
         remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult? = nil,
         systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = nil,
-        systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = nil
+        systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = nil,
+        controlSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = nil,
+        sealedFrameBase64: String? = nil
     ) {
         self.streamClass = streamClass
         self.sessionId = sessionId
@@ -201,6 +241,8 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         self.remoteUnlockResult = remoteUnlockResult
         self.systemPermissionRequest = systemPermissionRequest
         self.systemPermissionStatus = systemPermissionStatus
+        self.controlSealKey = controlSealKey
+        self.sealedFrameBase64 = sealedFrameBase64
     }
 }
 

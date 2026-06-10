@@ -211,6 +211,23 @@ public enum HermesRelayCrypto {
         aad(["chunk", uid, connectionID, requestID, String(sequence), kind])
     }
 
+    /// F10 — AAD for wrapping the control-frame-seal session key the phone
+    /// establishes at `control.classify` (sealKeyV3 to the Mac's pinned relay
+    /// key, sender-authenticated by the phone's relay sender key). Binds owner,
+    /// connection, the controller identity the seal will protect, and the
+    /// sender device/key/counter so a wrap cannot be replayed across links,
+    /// controllers, or onto the chat request path (distinct domain tag).
+    public static func controlSealKeyAAD(
+        uid: String,
+        connectionID: String,
+        peerNodeId: String,
+        senderDeviceID: String,
+        senderKeyID: String,
+        senderCounter: Int64
+    ) -> Data {
+        aad(["controlSealKey", uid, connectionID, peerNodeId, senderDeviceID, senderKeyID, String(senderCounter)])
+    }
+
     // MARK: Hermes Gateway AAD namespacing
     //
     // The hosted chat gateway reuses this exact envelope (`p256-hkdf-sha256-aesgcm`,
