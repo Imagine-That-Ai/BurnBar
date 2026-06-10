@@ -5,10 +5,17 @@
 > DONE (`42e405b1a`), the Kotlin AEAD mirrors + KATs are DONE (`8ca013c21`),
 > and the Mac→phone capability/snapshot advertisement is DONE (`f5b796158`).
 > See the 2026-06-10 matrix in `PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md`.
-> Still open: F7 seal/open call-site wiring + key agreement, F10 session
-> establishment + seal/open wiring (both sides of each are spec'd in §4),
-> Android attestation reader, `third_party/hermes-agent` re-vendor (F5 gate),
-> and physical biometric/SE device validation.
+> **Later on 2026-06-10:** F10 and F7 are ACTIVATED end-to-end on the Swift
+> surfaces too (F10: `b5c78fee4`, `75d221ffa`, `15a51bcec`; F7: `31f50ec75`,
+> `4bce121a8`) — classify-time / mirror-request-time sealKeyV3 establishment
+> over the pinned-sender trust path, iOS sealing, Mac open-or-drop fail-closed,
+> all behind default-off RC gates (`computer_use_control_seal_enabled`,
+> `computer_use_media_frame_aead_enabled`). The F2 server queued-grant lane is
+> keyKind-aware (`23c1424cf`). Still open: Android seal/open wiring for
+> F7/F10 (Kotlin mirrors are shipped + KAT-proven), AgentWatch/remote-unlock
+> sender surfaces for F10, the Android attestation reader,
+> `third_party/hermes-agent` re-vendor (F5 gate), and physical two-device
+> validation.
 
 **Branch:** `security/prelaunch-f2-f7-f10-l2` (5 work commits + this handoff doc on top of `main` @ `8a9f8ac47`)
 **Status doc:** [`PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md`](./PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md) (status matrix near the top)
