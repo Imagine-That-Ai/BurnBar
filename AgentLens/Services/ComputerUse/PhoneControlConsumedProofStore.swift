@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// File-backed record of consumed single-use local-auth proof IDs.
 ///
@@ -9,6 +10,8 @@ import Foundation
 /// the persisted, strictly-monotonic replay counter. Expired entries are pruned on
 /// every load/record so the file stays bounded.
 public final class PhoneControlConsumedProofStore: @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.openburnbar.app", category: "PhoneControlConsumedProofStore")
+
     private struct SnapshotFile: Codable {
         var version: Int
         var proofs: [String: Date] // proofId -> expiresAt
@@ -46,10 +49,10 @@ public final class PhoneControlConsumedProofStore: @unchecked Sendable {
     /// Expired entries are pruned from disk as a side effect.
     public func loadActiveProofIds(now: Date = Date()) -> Set<String> {
         queue.sync {
-            let stored = (try? readUnlocked()) ?? [:]
+            let stored = readUnlockedOrEmpty()
             let active = stored.filter { $0.value > now }
             if active.count != stored.count {
-                try? writeUnlocked(active)
+                writeUnlockedBestEffort(active)
             }
             return Set(active.keys)
         }
@@ -60,10 +63,30 @@ public final class PhoneControlConsumedProofStore: @unchecked Sendable {
     public func record(proofId: String, expiresAt: Date, now: Date = Date()) {
         guard proofId.isEmpty == false else { return }
         queue.sync {
-            var stored = (try? readUnlocked()) ?? [:]
+            var stored = readUnlockedOrEmpty()
             stored = stored.filter { $0.value > now }
             stored[proofId] = expiresAt
-            try? writeUnlocked(stored)
+            writeUnlockedBestEffort(stored)
+        }
+    }
+
+    // Persistence is best-effort by design: a read/write failure degrades to the
+    // in-memory replay set (pre-L9 behavior), never blocks proof validation, but
+    // must be visible in the log rather than silently swallowed.
+    private func readUnlockedOrEmpty() -> [String: Date] {
+        do {
+            return try readUnlocked()
+        } catch {
+            Self.logger.error("Failed to read consumed-proof snapshot: \(error.localizedDescription, privacy: .public)")
+            return [:]
+        }
+    }
+
+    private func writeUnlockedBestEffort(_ proofs: [String: Date]) {
+        do {
+            try writeUnlocked(proofs)
+        } catch {
+            Self.logger.error("Failed to persist consumed-proof snapshot: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -86,7 +109,11 @@ public final class PhoneControlConsumedProofStore: @unchecked Sendable {
         )
         let data = try encoder.encode(snapshot)
         try data.write(to: fileURL, options: [.atomic])
-        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        do {
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        } catch {
+            Self.logger.warning("Could not tighten consumed-proof file permissions: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     public static func defaultFileURL() -> URL {
