@@ -17,7 +17,13 @@ class PhoneControlSender(
     private val uid: String,
     private val connectionId: String,
     private val peerNodeId: String,
-    private val privateKeySeedProvider: () -> ByteArray?,
+    /**
+     * F2 — the key-kind-aware signing identity (StrongBox/TEE P-256 when the
+     * gate is on and the hardware exists, legacy software Ed25519 otherwise).
+     * Mirrors the iOS `PhoneControlSender.signingIdentityProvider`; for
+     * `Ed25519` every emitted byte is identical to the pre-F2 seed provider.
+     */
+    private val signingIdentityProvider: () -> PhoneControlSigningIdentity?,
     private val counterStore: PhoneControlCounterStore,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val frameSink: suspend (HermesRealtimeRelayFrame) -> Unit,
@@ -27,7 +33,7 @@ class PhoneControlSender(
     }
 
     suspend fun send(intent: PhoneControlIntent): PhoneControlAuthorityEnvelope {
-        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val outboundIntent =
             if (intent.clientIntentId.isNullOrBlank()) {
                 intent.copy(clientIntentId = java.util.UUID.randomUUID().toString())
@@ -42,7 +48,7 @@ class PhoneControlSender(
                 peerNodeId = peerNodeId,
                 counter = counter,
                 timestampMillis = timestampMillis,
-                privateKeySeed = privateKeySeed,
+                identity = identity,
             )
         val relayAuthority = authority.toRelayAuthority()
         val frame =
@@ -61,7 +67,7 @@ class PhoneControlSender(
     }
 
     suspend fun send(agentGrant: AgentCapabilityGrantRequest): HermesRealtimeRelayAgentGrantRequest {
-        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val counter = counterStore.nextCounter(peerNodeId)
         val timestampMillis = nowMillis()
         val placeholder =
@@ -79,7 +85,7 @@ class PhoneControlSender(
                 peerNodeId = peerNodeId,
                 counter = counter,
                 timestampMillis = timestampMillis,
-                privateKeySeed = privateKeySeed,
+                identity = identity,
             )
         val signedGrant =
             if (agentGrant.localAuthenticationSatisfied) {
@@ -90,7 +96,7 @@ class PhoneControlSender(
                         signedIntentHash = authority.intentHashBlake3,
                         authenticatedAtMillis = timestampMillis,
                         expiresAtSwiftReferenceSeconds = agentGrant.expiresAtSwiftReferenceSeconds,
-                        privateKeySeed = privateKeySeed,
+                        identity = identity,
                     ),
                 )
             } else {
@@ -113,7 +119,7 @@ class PhoneControlSender(
     }
 
     suspend fun send(clipboardRequest: PhoneControlClipboardRequest): HermesRealtimeRelayClipboardRequest {
-        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val request =
             if (clipboardRequest.clientIntentId.isNullOrBlank()) {
                 clipboardRequest.copy(clientIntentId = java.util.UUID.randomUUID().toString())
@@ -128,7 +134,7 @@ class PhoneControlSender(
                 peerNodeId = peerNodeId,
                 counter = counter,
                 timestampMillis = timestampMillis,
-                privateKeySeed = privateKeySeed,
+                identity = identity,
             )
         val signedWire =
             HermesRealtimeRelayClipboardRequest(
@@ -157,7 +163,7 @@ class PhoneControlSender(
     }
 
     suspend fun send(remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope): HermesRealtimeRelayRemoteUnlockCredentialEnvelope {
-        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val placeholder =
             HermesRealtimeRelayAuthorityEnvelope(
                 peerNodeId = "",
@@ -175,7 +181,7 @@ class PhoneControlSender(
                 peerNodeId = peerNodeId,
                 counter = counter,
                 timestampMillis = timestampMillis,
-                privateKeySeed = privateKeySeed,
+                identity = identity,
             )
         val signedWire = unsignedCredential.copy(authority = authority.toRelayAuthority())
         val frame =
@@ -196,7 +202,7 @@ class PhoneControlSender(
     }
 
     suspend fun send(agentContextTarget: PhoneControlAgentContextTarget): HermesRealtimeRelayAgentContextTarget {
-        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val target =
             if (agentContextTarget.clientIntentId.isNullOrBlank()) {
                 agentContextTarget.copy(clientIntentId = java.util.UUID.randomUUID().toString())
@@ -211,7 +217,7 @@ class PhoneControlSender(
                 peerNodeId = peerNodeId,
                 counter = counter,
                 timestampMillis = timestampMillis,
-                privateKeySeed = privateKeySeed,
+                identity = identity,
             )
         val signedWire =
             HermesRealtimeRelayAgentContextTarget(
@@ -245,7 +251,7 @@ class PhoneControlSender(
     }
 
     suspend fun send(systemPermissionRequest: PhoneControlSystemPermissionRequest): HermesRealtimeRelaySystemPermissionRequest {
-        val privateKeySeed = privateKeySeedProvider() ?: throw SendError.SigningKeyMissing
+        val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val request =
             if (systemPermissionRequest.clientIntentId.isNullOrBlank()) {
                 systemPermissionRequest.copy(clientIntentId = java.util.UUID.randomUUID().toString())
@@ -260,7 +266,7 @@ class PhoneControlSender(
                 peerNodeId = peerNodeId,
                 counter = counter,
                 timestampMillis = timestampMillis,
-                privateKeySeed = privateKeySeed,
+                identity = identity,
             )
         val signedWire =
             HermesRealtimeRelaySystemPermissionRequest(
@@ -296,6 +302,8 @@ class PhoneControlSender(
         timestamp = swiftDateReferenceSeconds,
         intentHashBlake3 = intentHashBlake3,
         signatureEd25519 = signatureEd25519,
+        attestationHashBlake3 = attestationHashBlake3,
+        keyKind = keyKind,
     )
 
     private fun PhoneControlIntent.toRelayIntent(authority: HermesRealtimeRelayAuthorityEnvelope): HermesRealtimeRelayInputIntent =

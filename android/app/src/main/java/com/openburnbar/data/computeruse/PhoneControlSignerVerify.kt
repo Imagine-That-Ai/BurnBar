@@ -74,20 +74,38 @@ object PhoneControlSignerVerify {
         nowMillis: Long,
         freshnessMillis: Long,
         observedHash: String,
-    ): PhoneControlVerifyError? =
-        when {
-            publicKey.size != VAL_32 -> PhoneControlVerifyError.InvalidPublicKey
+    ): PhoneControlVerifyError? {
+        // F2 — an absent keyKind resolves to legacy Ed25519; an unknown wire
+        // value fails closed before any state is consumed.
+        val keyKind =
+            PhoneControlSigningKeyKind.fromWire(authority.keyKind)
+                ?: return PhoneControlVerifyError.InvalidSignature
+        return when {
+            !isValidPublicKeySize(publicKey, keyKind) -> PhoneControlVerifyError.InvalidPublicKey
             kotlin.math.abs(nowMillis - authority.timestampMillis) > freshnessMillis ->
                 PhoneControlVerifyError.StaleTimestamp(kotlin.math.abs(nowMillis - authority.timestampMillis))
             authority.counter <= lastSeenCounter ->
                 PhoneControlVerifyError.CounterReplay(lastSeenCounter, authority.counter)
             observedHash != authority.intentHashBlake3 -> PhoneControlVerifyError.IntentHashMismatch
-            else -> validateAuthoritySignatureOrError(publicKey, authority)
+            else -> validateAuthoritySignatureOrError(publicKey, authority, keyKind)
+        }
+    }
+
+    /**
+     * The published controller key bytes: 32-byte raw for Ed25519, 65-byte
+     * X9.63 (`0x04‖X‖Y`) or compact 64-byte raw (`X‖Y`) for SE-P256 —
+     * mirroring the Swift `PhoneControlVerifyingKey` normalization.
+     */
+    private fun isValidPublicKeySize(publicKey: ByteArray, keyKind: PhoneControlSigningKeyKind): Boolean =
+        when (keyKind) {
+            PhoneControlSigningKeyKind.ED25519 -> publicKey.size == VAL_32
+            PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 -> publicKey.size == VAL_65 || publicKey.size == VAL_64
         }
 
     private fun validateAuthoritySignatureOrError(
         publicKey: ByteArray,
         authority: PhoneControlAuthorityEnvelope,
+        keyKind: PhoneControlSigningKeyKind,
     ): PhoneControlVerifyError? {
         val signature = decodeAuthoritySignature(authority.signatureEd25519) ?: return PhoneControlVerifyError.InvalidSignature
         val payload =
@@ -96,7 +114,7 @@ object PhoneControlSignerVerify {
                 counter = authority.counter,
                 timestampMillis = authority.timestampMillis,
             )
-        return if (verifyAuthoritySignature(publicKey, signature, payload)) {
+        return if (verifyAuthoritySignature(publicKey, signature, payload, keyKind)) {
             null
         } else {
             PhoneControlVerifyError.InvalidSignature
@@ -106,11 +124,26 @@ object PhoneControlSignerVerify {
     private fun decodeAuthoritySignature(encoded: String): ByteArray? =
         runCatching { java.util.Base64.getDecoder().decode(encoded) }.getOrNull()
 
-    private fun verifyAuthoritySignature(publicKey: ByteArray, signature: ByteArray, payload: ByteArray): Boolean =
-        runCatching {
-            com.google.crypto.tink.subtle.Ed25519Verify(publicKey).verify(signature, payload)
-            true
-        }.getOrDefault(false)
+    private fun verifyAuthoritySignature(
+        publicKey: ByteArray,
+        signature: ByteArray,
+        payload: ByteArray,
+        keyKind: PhoneControlSigningKeyKind,
+    ): Boolean = when (keyKind) {
+        PhoneControlSigningKeyKind.ED25519 ->
+            runCatching {
+                com.google.crypto.tink.subtle.Ed25519Verify(publicKey).verify(signature, payload)
+                true
+            }.getOrDefault(false)
+        PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 -> {
+            // F2 — raw `r‖s` 64-byte ECDSA-over-SHA256 (Swift
+            // `ECDSASignature.rawRepresentation`, Node `'ieee-p1363'`).
+            val key = PhoneControlP256.publicKeyFromRepresentation(publicKey)
+            key != null && PhoneControlP256.verifySignature(key, signature, payload)
+        }
+    }
 }
 
 private const val VAL_32 = 32
+private const val VAL_64 = 64
+private const val VAL_65 = 65

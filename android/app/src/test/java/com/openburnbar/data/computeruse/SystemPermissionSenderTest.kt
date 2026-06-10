@@ -20,7 +20,7 @@ class SystemPermissionSenderTest {
                 uid = "uid-1",
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
-                privateKeySeedProvider = { privateSeed },
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
                 counterStore = InMemoryPhoneControlCounterStore(),
                 nowMillis = { 1_700_000_000_123L },
                 frameSink = { frames += it },

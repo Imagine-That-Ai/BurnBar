@@ -2,11 +2,15 @@ package com.openburnbar.data.computeruse
 
 import java.util.Base64
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
+private const val VAL_24 = 24
 private const val VAL_31 = 31
 private const val VAL_32 = 32
+private const val VAL_65 = 65
 
 class PhoneControlAuthorityPublisherTest {
     private val privateSeed = ByteArray(32) { index -> (index + 1).toByte() }
@@ -64,5 +68,63 @@ class PhoneControlAuthorityPublisherTest {
         assertThrows(IllegalArgumentException::class.java) {
             PhoneControlAuthorityDocumentFactory.peerNodeId(ByteArray(VAL_31))
         }
+    }
+
+    @Test
+    fun legacyIdentityDocumentIsByteIdenticalToPublicKeyDocument() {
+        // F2 backward compatibility: with the gate off the identity-based
+        // factory must produce the exact pre-F2 document — same map keys, no
+        // keyKind — so the publish callable payload stays byte-identical.
+        val identity = PhoneControlSigningIdentity.Ed25519(privateSeed)
+        val viaPublicKey =
+            PhoneControlAuthorityDocumentFactory.document(
+                connectionId = "conn-1",
+                deviceId = "android-device-1",
+                publicKey = publicKey,
+                publishedAtMillis = 1_700_000_000_123L,
+            )
+        val viaIdentity =
+            PhoneControlAuthorityDocumentFactory.document(
+                connectionId = "conn-1",
+                deviceId = "android-device-1",
+                identity = identity,
+                publishedAtMillis = 1_700_000_000_123L,
+            )
+
+        assertEquals(viaPublicKey, viaIdentity)
+        assertNull(viaIdentity.keyKind)
+        assertEquals(viaPublicKey.asMap(), viaIdentity.asMap())
+        assertFalse(viaIdentity.asMap().containsKey("keyKind"))
+    }
+
+    @Test
+    fun secureEnclaveDocumentPublishesX963KeyAndSePeerNodeId() {
+        val identity = softwareP256Identity()
+        val doc =
+            PhoneControlAuthorityDocumentFactory.document(
+                connectionId = "conn-1",
+                deviceId = "android-device-1",
+                identity = identity,
+                publishedAtMillis = 1_700_000_000_123L,
+            )
+
+        assertEquals(doc.peerNodeId, doc.id)
+        assertEquals("android-se-", doc.peerNodeId.take("android-se-".length))
+        assertEquals("android-se-".length + VAL_24, doc.peerNodeId.length)
+        assertEquals("se-p256", doc.keyKind)
+        val published = Base64.getDecoder().decode(doc.publicKeyBase64)
+        assertEquals(VAL_65, published.size)
+        assertEquals(0x04.toByte(), published.first())
+        assertEquals("se-p256", doc.asMap()["keyKind"])
+    }
+
+    private fun softwareP256Identity(): PhoneControlSigningIdentity.SecureEnclaveP256 {
+        val generator = java.security.KeyPairGenerator.getInstance("EC")
+        generator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+        val pair = generator.generateKeyPair()
+        return PhoneControlSigningIdentity.SecureEnclaveP256(
+            pair.private,
+            pair.public as java.security.interfaces.ECPublicKey,
+        )
     }
 }

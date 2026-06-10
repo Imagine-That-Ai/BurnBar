@@ -355,8 +355,10 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
                 ?: error("Mercury control stream is not paired.")
 
         val keyStore = PhoneControlSigningKeyStore(applicationContext)
-        val publicKey = keyStore.publicKey()
-        val peerNodeId = keyStore.peerNodeId()
+        // F2: resolve the key-kind-aware identity once so the published
+        // authority key and every signed envelope stay the same key.
+        val identity = keyStore.signingIdentity()
+        val peerNodeId = keyStore.peerNodeId(identity)
         phoneControlSender
             ?.takeIf { phoneControlConnectionID == pair.connectionID }
             ?.let { sender ->
@@ -372,7 +374,7 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
             PhoneControlAuthorityDocumentFactory.document(
                 connectionId = pair.connectionID,
                 deviceId = device.deviceId,
-                publicKey = publicKey,
+                identity = identity,
                 publishedAtMillis = System.currentTimeMillis(),
             )
         PhoneControlAuthorityPublisher().publish(uid = pair.uid, authority = authority)
@@ -382,7 +384,7 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
             uid = pair.uid,
             connectionId = pair.connectionID,
             peerNodeId = peerNodeId,
-            privateKeySeedProvider = { keyStore.privateKeySeed() },
+            signingIdentityProvider = { identity },
             counterStore = counterStore,
             frameSink = { frame -> coordinator.send(frame) },
         ).also {
