@@ -1,5 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import CryptoKit
+import Foundation
 import XCTest
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
@@ -598,7 +599,7 @@ final class PhoneControlReceiverTests: XCTestCase {
     func testAgentContextTargetReceiverIngestion() async throws {
         let privateKey = Curve25519.Signing.PrivateKey()
         let peerNodeId = "android-phone-copilot"
-        let validator = PhoneControlAuthorityValidator()
+        let validator = isolatedPhoneControlAuthorityValidator()
         validator.registerPeer(nodeId: peerNodeId, publicKey: privateKey.publicKey)
 
         let target = HermesRealtimeRelayAgentContextTarget(
@@ -767,7 +768,7 @@ final class PhoneControlReceiverTests: XCTestCase {
         )
         intent.authority = envelope(from: signed)
 
-        let validator = PhoneControlAuthorityValidator()
+        let validator = isolatedPhoneControlAuthorityValidator()
         validator.registerPeer(nodeId: "phone-peer", publicKey: privateKey.publicKey)
         let capture = PhoneControlReceiverCapture()
         let receiver = PhoneControlReceiver(
@@ -821,7 +822,7 @@ final class PhoneControlReceiverTests: XCTestCase {
         )
         intent.authority = envelope(from: signed)
 
-        let validator = PhoneControlAuthorityValidator()
+        let validator = isolatedPhoneControlAuthorityValidator()
         validator.registerPeer(nodeId: "phone-peer", publicKey: privateKey.publicKey)
         let capture = PhoneControlReceiverCapture()
         let receiver = PhoneControlReceiver(
@@ -867,7 +868,7 @@ final class PhoneControlReceiverTests: XCTestCase {
         )
         intent.authority = envelope(from: signed)
 
-        let validator = PhoneControlAuthorityValidator()
+        let validator = isolatedPhoneControlAuthorityValidator()
         validator.registerPeer(nodeId: "phone-peer-type", publicKey: privateKey.publicKey)
         let capture = PhoneControlReceiverCapture()
         let receiver = PhoneControlReceiver(
@@ -916,7 +917,7 @@ final class PhoneControlReceiverTests: XCTestCase {
         )
         intent.authority = envelope(from: signed)
 
-        let validator = PhoneControlAuthorityValidator()
+        let validator = isolatedPhoneControlAuthorityValidator()
         validator.registerPeer(nodeId: "phone-peer-pointer", publicKey: privateKey.publicKey)
         let capture = PhoneControlReceiverCapture()
         let receiver = PhoneControlReceiver(
@@ -967,7 +968,7 @@ final class PhoneControlReceiverTests: XCTestCase {
         )
         intent.authority = envelope(from: signed)
 
-        let validator = PhoneControlAuthorityValidator()
+        let validator = isolatedPhoneControlAuthorityValidator()
         validator.registerPeer(nodeId: "phone-peer-chaos", publicKey: privateKey.publicKey)
         let capture = PhoneControlReceiverCapture()
         let receiver = PhoneControlReceiver(
@@ -1042,7 +1043,7 @@ final class PhoneControlReceiverTests: XCTestCase {
         )
         secondIntent.authority = envelope(from: secondSigned)
 
-        let validator = PhoneControlAuthorityValidator()
+        let validator = isolatedPhoneControlAuthorityValidator()
         validator.registerPeer(nodeId: "phone-peer-idempotent", publicKey: privateKey.publicKey)
         let capture = PhoneControlReceiverCapture()
         let receiver = PhoneControlReceiver(
@@ -1985,6 +1986,18 @@ private func confirmedPhoneValidator(
         uid: uid,
         peerNodeId: peerNodeId
     )
-    return PhoneControlAuthorityValidator(controllerPinStore: pinStore)
+    return isolatedPhoneControlAuthorityValidator(controllerPinStore: pinStore)
+}
+
+private func isolatedPhoneControlAuthorityValidator(
+    controllerPinStore: ControllerKeyPinStore? = ControllerKeyPinStore()
+) -> PhoneControlAuthorityValidator {
+    let storeURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("openburnbar-phone-control-receiver-tests", isDirectory: true)
+        .appendingPathComponent("\(UUID().uuidString)-replay-counters.json")
+    return PhoneControlAuthorityValidator(
+        controllerPinStore: controllerPinStore,
+        replayCounterStore: PhoneControlReplayCounterStore(fileURL: storeURL)
+    )
 }
 #endif
