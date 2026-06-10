@@ -263,7 +263,9 @@ jobs:
   swift-core:
     name: Swift Core
     runs-on: macos-26
-    timeout-minutes: 20
+    # The WS6 safety harness builds Rust FFI deps; on a cold cache + slow
+    # runner the old 20 min budget was hit mid-compile.
+    timeout-minutes: 40
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Check out repository
@@ -305,7 +307,8 @@ jobs:
   app-xctest:
     name: App XCTest
     runs-on: macos-26
-    timeout-minutes: 45
+    # 3000+ tests and growing; 45 min was hit at suite tail on slow runners.
+    timeout-minutes: 75
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     env:
       INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
