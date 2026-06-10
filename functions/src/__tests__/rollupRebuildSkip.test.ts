@@ -61,6 +61,11 @@ class FakeCollectionRef {
     return this;
   }
 
+  // The pending-delta drain pages with limit(); fixtures are tiny.
+  limit() {
+    return this;
+  }
+
   async get() {
     this.fake.collectionGets.push(this.path);
     const docs = this.fake.collections.get(this.path) ?? [];
@@ -137,6 +142,9 @@ const COUNTER_COLLECTIONS = [
   `users/${UID}/usage_counter_days`,
   `users/${UID}/usage_counter_totals`,
   `users/${UID}/usage_counter_keys`,
+  // The pending-delta queue (crosscut-011) is superseded by the raw usage
+  // rescan, so the full rebuild purges it alongside the counters.
+  `users/${UID}/pending_counter_deltas`,
 ];
 const WINDOW_KEYS: WindowKey[] = ["today", "7d", "30d", "90d", "all_time"];
 const T0 = "2026-06-09T00:00:00.000Z";

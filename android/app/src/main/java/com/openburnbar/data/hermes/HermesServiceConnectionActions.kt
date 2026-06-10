@@ -73,6 +73,20 @@ internal class HermesServiceConnectionActions(
         } catch (e: IOException) {
             service.relayCapabilityInternal.value = HermesRelayCapability.UNSUPPORTED
             service.runtimeErrorTextInternal.value = e.message ?: "Could not refresh Hermes relay connections."
+        } catch (e: com.google.firebase.FirebaseException) {
+            // listConnections reads Firestore: rules denials (PERMISSION_DENIED),
+            // App Check rejections, and UNAVAILABLE all surface here. Uncaught
+            // they crash the whole activity from refreshRuntime's
+            // viewModelScope coroutine on Dispatchers.Main — reproduced on
+            // every Agents-tab entry with a fresh account (emulator QA,
+            // 2026-06-10). Degrade to UNSUPPORTED exactly like IOException.
+            service.relayCapabilityInternal.value = HermesRelayCapability.UNSUPPORTED
+            service.runtimeErrorTextInternal.value = e.message ?: "Could not refresh Hermes relay connections."
+        } catch (e: HermesRelayException) {
+            // Thrown by listConnections when Firebase auth races to null
+            // (sign-out mid-refresh) — same degraded state, never a crash.
+            service.relayCapabilityInternal.value = HermesRelayCapability.UNSUPPORTED
+            service.runtimeErrorTextInternal.value = e.message ?: "Could not refresh Hermes relay connections."
         }
     }
 

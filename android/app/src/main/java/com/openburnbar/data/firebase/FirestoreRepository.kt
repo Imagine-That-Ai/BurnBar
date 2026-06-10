@@ -2,6 +2,7 @@ package com.openburnbar.data.firebase
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -29,6 +30,7 @@ import com.openburnbar.data.models.deduplicatedByProviderAccount
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import java.util.Date
+import java.util.concurrent.Executors
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -215,6 +217,21 @@ class FirestoreRepository {
         // End time is the live attribution field: some gateway/session rows
         // keep their start time fixed while token totals continue advancing.
         val vaultKey = usageVaultKey()
+        // Snapshot deliveries land on this dedicated thread instead of the
+        // main looper (Firestore's default), so document decode and the
+        // per-doc AES-GCM sealedProjectName open never run as main-thread
+        // work while an agent streams usage writes. The single thread also
+        // confines all accumulator/cache access — no locking needed.
+        val executor =
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "burnbar-live-usage").apply { isDaemon = true }
+            }
+        // O(changes) per delivery instead of O(window): `documentChanges`
+        // patches the id-keyed accumulator, and unchanged docs skip the
+        // decrypt via the (docId, updatedAt) memo. Matches the iOS
+        // incremental listener design (shared Firestore query shape).
+        val accumulator = LiveUsageAccumulator()
+        val projectNames = SealedProjectNameCache()
         val listener =
             usageCollection
                 .whereGreaterThanOrEqualTo("endTime", Timestamp(Date(startDate)))
@@ -222,16 +239,39 @@ class FirestoreRepository {
                 // Newest-first cap bounds the live snapshot: the rolling ~25h
                 // window is otherwise unbounded, and every Pulse burn window
                 // re-aggregates this list each clock tick. 2000 docs covers a
-                // usage row every ~45s sustained for the whole window.
+                // usage row every ~45s sustained for the whole window. With a
+                // capped listener Firestore also emits REMOVED changes when
+                // rows fall off the limit boundary — handled below.
                 .limit(LIVE_USAGE_DOC_LIMIT)
-                .addSnapshotListener { snapshot, error ->
+                .addSnapshotListener(executor) { snapshot, error ->
                     if (error != null) {
                         close(error)
                         return@addSnapshotListener
                     }
-                    trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage(vaultKey) } ?: emptyList())
+                    if (snapshot == null) return@addSnapshotListener
+                    for (change in snapshot.documentChanges) {
+                        when (change.type) {
+                            DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> {
+                                val usage = change.document.toTokenUsage(vaultKey, projectNames)
+                                if (usage != null) {
+                                    accumulator.upsert(usage)
+                                } else {
+                                    accumulator.remove(change.document.id)
+                                    projectNames.remove(change.document.id)
+                                }
+                            }
+                            DocumentChange.Type.REMOVED -> {
+                                accumulator.remove(change.document.id)
+                                projectNames.remove(change.document.id)
+                            }
+                        }
+                    }
+                    trySend(accumulator.snapshot())
                 }
-        awaitClose { listener.remove() }
+        awaitClose {
+            listener.remove()
+            executor.shutdown()
+        }
     }
 
     // ── Quota Snapshots ──
@@ -398,7 +438,10 @@ private fun DocumentSnapshot.toModelBenchmarkSummary(): InsightDigest.ModelBench
 
 // ── Document parsers ──
 
-private fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null): TokenUsage? {
+private fun DocumentSnapshot.toTokenUsage(
+    vaultKey: ByteArray? = null,
+    projectNameCache: SealedProjectNameCache? = null,
+): TokenUsage? {
     val data = data ?: return null
     val startMillis = FirestoreValueParsers.millis(data["startTime"])
     val endMillis = FirestoreValueParsers.millis(data["endTime"])
@@ -431,13 +474,10 @@ private fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null): TokenUsa
         provenanceMethod = data["provenanceMethod"] as? String,
         userDisplayId = data["user_display_id"] as? String,
         // Sealed-present means decrypt-or-nil; legacy plaintext is used only when
-        // the sealed field is absent.
+        // the sealed field is absent. The live listener passes a per-listener
+        // (docId, updatedAt) memo so unchanged docs skip the AES-GCM open.
         projectName =
-            CloudVaultSealedTextCodec.openOrLegacy(
-                data["sealedProjectName"],
-                vaultKey,
-                FirestoreValueParsers.string(data, "projectName", "project_name"),
-            ),
+            openSealedProjectName(id, data, vaultKey, updatedMillis, projectNameCache),
         timestamp = timestampMillis,
         startTime = startMillis,
         endTime = endMillis,
@@ -445,6 +485,23 @@ private fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null): TokenUsa
         updatedAt = updatedMillis,
         schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: 0,
     )
+}
+
+private fun openSealedProjectName(
+    docId: String,
+    data: Map<String, Any>,
+    vaultKey: ByteArray?,
+    updatedAtMillis: Long,
+    cache: SealedProjectNameCache?,
+): String? {
+    val open = {
+        CloudVaultSealedTextCodec.openOrLegacy(
+            data["sealedProjectName"],
+            vaultKey,
+            FirestoreValueParsers.string(data, "projectName", "project_name"),
+        )
+    }
+    return if (cache != null) cache.openOrCached(docId, updatedAtMillis, open) else open()
 }
 
 private fun DocumentSnapshot.toQuotaSnapshot(): ProviderQuotaSnapshot? {

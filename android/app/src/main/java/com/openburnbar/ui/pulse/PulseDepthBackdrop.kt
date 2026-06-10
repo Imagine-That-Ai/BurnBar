@@ -13,14 +13,27 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.openburnbar.ui.settings.rememberWebsiteBackground
 import com.openburnbar.ui.theme.AuroraColors
+import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 import kotlin.math.PI
 import kotlin.math.sin
+
+private const val DRIFT_CYCLE_MILLIS = 22_000
+
+// The drift amplitudes top out at 28px over a 22s cycle (max velocity
+// ~8px/s), so a 30Hz phase grid moves each halo at most ~0.27px per step —
+// imperceptible, while cutting halo redraws ~75% on 120Hz displays.
+private const val QUANTIZED_PHASE_STEPS = 660 // 22s × 30Hz
 
 /**
  * Secondary aurora layer that sits between the Pulse `AuroraBackdrop` and the
@@ -30,25 +43,55 @@ import kotlin.math.sin
  * Without this layer the Android Pulse page renders as a flat list of pale
  * cards stacked on the same surface. With it, the scroll feels like it sits
  * inside a slowly breathing volume of color.
+ *
+ * The halos were designed for the AURORA backdrop and render only there:
+ * under the custom dark backdrops (token-ember swarm / dot constellation)
+ * the warm glow muddies card contrast over an already-animated near-black
+ * field while costing five full-screen radial-gradient fills per frame, so
+ * this layer skips itself entirely there. `rememberWebsiteBackground()` is
+ * the app-wide gate for "custom dark backdrop active" and already encodes
+ * the Editorial exception (Editorial forces a light paper surface, where the
+ * halos keep rendering exactly as before).
  */
 @Composable
 fun PulseDepthBackdrop(modifier: Modifier = Modifier) {
+    val useWebsiteBackground by rememberWebsiteBackground()
+    if (useWebsiteBackground) return
+
     val isDark = isSystemInDarkTheme()
-    val transition = rememberInfiniteTransition(label = "pulse-depth")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec =
-        infiniteRepeatable(
-            animation = tween(durationMillis = 22_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "phase",
-    )
+    val reduceMotion = LocalAuroraReduceMotion.current
+    val phaseStep: State<Int> =
+        if (reduceMotion) {
+            // Reduce-motion renders one static frame at the rest phase.
+            remember { mutableIntStateOf(0) }
+        } else {
+            val transition = rememberInfiniteTransition(label = "pulse-depth")
+            val phase = transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec =
+                infiniteRepeatable(
+                    animation = tween(durationMillis = DRIFT_CYCLE_MILLIS, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart,
+                ),
+                label = "phase",
+            )
+            // Quantize at the observed-state level: the draw block reads only
+            // this derived Int, so it invalidates at most 30×/s instead of at
+            // display refresh for sub-pixel drift. (Rounding inside the draw
+            // lambda would NOT reduce cadence — the lambda re-executes on
+            // every snapshot write of the raw animated float.)
+            remember { derivedStateOf { (phase.value * QUANTIZED_PHASE_STEPS).toInt() } }
+        }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
+        // Snapshot read inside the draw scope — only this draw block
+        // re-executes when the quantized phase advances, and the five
+        // gradient brushes below are rebuilt only on those 30Hz steps
+        // (or on size change), not per display frame.
+        val phase = phaseStep.value / QUANTIZED_PHASE_STEPS.toFloat()
 
         fun drift(amount: Float, freq: Float): Float {
             val theta = phase * (PI * 2 * freq).toFloat()

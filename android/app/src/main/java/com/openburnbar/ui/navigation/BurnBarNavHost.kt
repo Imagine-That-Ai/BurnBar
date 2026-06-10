@@ -17,6 +17,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -145,10 +146,14 @@ fun BurnBarNavHost(
     val isWideScreen = LocalConfiguration.current.screenWidthDp > 600
 
     val navigateTo: (BurnBarTab) -> Unit = { tab ->
-        navController.navigate(tab.route) {
-            launchSingleTop = true
-            restoreState = true
-        }
+        // Canonical bottom-nav navigation: pop-with-save to the start
+        // destination + restore, so each tab keeps exactly one (state-saved)
+        // back-stack entry and tab returns restore warm ViewModels instead of
+        // reloading. See burnBarTabNavOptions for the full contract.
+        navController.navigate(
+            tab.route,
+            burnBarTabNavOptions(navController.graph.findStartDestination().id),
+        )
     }
 
     Box(modifier = modifier.fillMaxSize().nestedScroll(easterEggController.nestedScrollConnection)) {
