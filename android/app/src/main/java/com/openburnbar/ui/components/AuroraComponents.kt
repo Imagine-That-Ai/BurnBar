@@ -276,6 +276,18 @@ private data class OrbMotion(
     val opacity: Float,
 )
 
+/**
+ * Pure drift interpolation for one aurora orb: phase 0 rests at [offsetA],
+ * phase 1 at [offsetB], linear in between (the website's 18s ease-in-out
+ * drift feeds the eased phase in). Extracted from the placement lambda so the
+ * math is unit-testable without a composition.
+ */
+internal fun auroraOrbDriftOffset(offsetA: Offset, offsetB: Offset, phase: Float): androidx.compose.ui.unit.IntOffset =
+    androidx.compose.ui.unit.IntOffset(
+        (offsetA.x + (offsetB.x - offsetA.x) * phase).toInt(),
+        (offsetA.y + (offsetB.y - offsetA.y) * phase).toInt(),
+    )
+
 @Composable
 private fun Orb(color: Color, baseAlpha: Float, size: androidx.compose.ui.unit.Dp, motion: OrbMotion) {
     val opacity = motion.opacity
@@ -288,11 +300,7 @@ private fun Orb(color: Color, baseAlpha: Float, size: androidx.compose.ui.unit.D
             .offset {
                 // Phase is snapshot-read (and interpolated) inside the placement
                 // lambda so the 18s drift never recomposes the orb.
-                val phase = motion.phase()
-                androidx.compose.ui.unit.IntOffset(
-                    (motion.offsetA.x + (motion.offsetB.x - motion.offsetA.x) * phase).toInt(),
-                    (motion.offsetA.y + (motion.offsetB.y - motion.offsetA.y) * phase).toInt(),
-                )
+                auroraOrbDriftOffset(motion.offsetA, motion.offsetB, motion.phase())
             }
             .background(
                 Brush.radialGradient(

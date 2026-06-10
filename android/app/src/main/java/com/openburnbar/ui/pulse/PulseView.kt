@@ -149,14 +149,22 @@ private data class PulseViewUiState(
     val onTimelineChange: (PulseTimelineScope) -> Unit,
 )
 
+/**
+ * Up to two uppercase initials from the leading word/hyphen segments of a
+ * display name, or null when nothing usable remains (then the avatar renders
+ * the plain bubble). Extracted from [UserAvatarBubble] so the fallback is
+ * unit-testable without a composition.
+ */
+internal fun avatarInitials(displayName: String?): String? =
+    displayName?.split(" ", "-")
+        ?.mapNotNull { it.firstOrNull()?.uppercaseChar() }
+        ?.take(2)
+        ?.joinToString("")
+        ?.takeIf { it.isNotBlank() }
+
 @Composable
 fun UserAvatarBubble(photoUrl: String?, displayName: String?, size: Dp = 36.dp) {
-    val initials =
-        displayName?.split(" ", "-")
-            ?.mapNotNull { it.firstOrNull()?.uppercaseChar() }
-            ?.take(2)
-            ?.joinToString("")
-            ?.takeIf { it.isNotBlank() }
+    val initials = avatarInitials(displayName)
 
     Box(
         contentAlignment = Alignment.Center,
