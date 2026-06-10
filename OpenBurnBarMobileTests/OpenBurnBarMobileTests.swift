@@ -4464,17 +4464,21 @@ final class PhoneControlSigningIdentityStoreTests: XCTestCase {
             service: "ai.openburnbar.tests.phone-control-\(UUID().uuidString)",
             account: "identity-test"
         )
-        let identity = try store.signingIdentity(secureEnclaveEnabled: false)
-        guard case .ed25519 = identity else {
-            return XCTFail("expected legacy ed25519 identity with the gate off")
+        do {
+            let identity = try store.signingIdentity(secureEnclaveEnabled: false)
+            guard case .ed25519 = identity else {
+                return XCTFail("expected legacy ed25519 identity with the gate off")
+            }
+            XCTAssertNil(identity.wireKeyKind)
+            let legacyKey = try store.signingKey()
+            XCTAssertEqual(store.peerNodeId(for: identity), store.peerNodeId(for: legacyKey))
+            XCTAssertTrue(store.peerNodeId(for: identity).hasPrefix("ios-phone-"))
+            // Stable across loads: the same key (and identity) comes back.
+            let reloaded = try store.signingIdentity(secureEnclaveEnabled: false)
+            XCTAssertEqual(reloaded.publicKeyRepresentation, identity.publicKeyRepresentation)
+        } catch PhoneControlSigningKeyStore.KeyStoreError.keychainStatus(let status) where status == errSecMissingEntitlement {
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
         }
-        XCTAssertNil(identity.wireKeyKind)
-        let legacyKey = try store.signingKey()
-        XCTAssertEqual(store.peerNodeId(for: identity), store.peerNodeId(for: legacyKey))
-        XCTAssertTrue(store.peerNodeId(for: identity).hasPrefix("ios-phone-"))
-        // Stable across loads: the same key (and identity) comes back.
-        let reloaded = try store.signingIdentity(secureEnclaveEnabled: false)
-        XCTAssertEqual(reloaded.publicKeyRepresentation, identity.publicKeyRepresentation)
     }
 
     /// With the gate ON but no enclave hardware (simulator), the store must
@@ -4486,9 +4490,13 @@ final class PhoneControlSigningIdentityStoreTests: XCTestCase {
             service: "ai.openburnbar.tests.phone-control-\(UUID().uuidString)",
             account: "identity-fallback-test"
         )
-        let identity = try store.signingIdentity(secureEnclaveEnabled: true)
-        XCTAssertEqual(identity.kind, .ed25519)
-        XCTAssertNil(identity.wireKeyKind)
+        do {
+            let identity = try store.signingIdentity(secureEnclaveEnabled: true)
+            XCTAssertEqual(identity.kind, .ed25519)
+            XCTAssertNil(identity.wireKeyKind)
+        } catch PhoneControlSigningKeyStore.KeyStoreError.keychainStatus(let status) where status == errSecMissingEntitlement {
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
+        }
     }
 }
 

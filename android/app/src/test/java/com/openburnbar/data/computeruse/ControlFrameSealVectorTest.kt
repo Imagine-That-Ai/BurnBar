@@ -220,19 +220,12 @@ class ControlFrameSealVectorTest {
 
     // ---- helpers ----
 
-    private fun sessionKey(vector: JSONObject): ByteArray =
-        ControlFrameSeal.deriveSessionKey(
-            hpkeSessionKey = hexToBytes(vector.getString("hpkeSessionKeyHex")),
-            salt = hexToBytes(vector.getString("saltHex")),
-        )
+    private fun sessionKey(vector: JSONObject): ByteArray = ControlFrameSeal.deriveSessionKey(
+        hpkeSessionKey = hexToBytes(vector.getString("hpkeSessionKeyHex")),
+        salt = hexToBytes(vector.getString("saltHex")),
+    )
 
-    private fun open(
-        vector: JSONObject,
-        envelope: ByteArray,
-        key: ByteArray,
-        peerNodeId: String? = null,
-        frameType: String? = null,
-    ): ByteArray =
+    private fun open(vector: JSONObject, envelope: ByteArray, key: ByteArray, peerNodeId: String? = null, frameType: String? = null): ByteArray =
         ControlFrameSeal.open(
             envelope = envelope,
             key = key,

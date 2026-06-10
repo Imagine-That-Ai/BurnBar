@@ -80,15 +80,19 @@ const CLIENT_ID = "hgw_popv2_client";
 const TOKEN = "obb_hgw_test_token_popv2";
 const TOKEN_HASH = hashHermesGatewayBearerToken(TOKEN);
 const { publicKey: PUB, privateKey: PRIV } = generateKeyPairSync("ed25519");
-const PUB_B64 = Buffer.from(PUB.export({ format: "der", type: "spki" }) as Buffer).subarray(-32).toString("base64");
+const PUB_B64 = Buffer.from(PUB.export({ format: "der", type: "spki" })).subarray(-32).toString("base64");
 const KEY_ID = createHash("sha256").update(PUB_B64).digest("hex").slice(0, 32);
 let nonceCounter = 0;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function stableJSONString(value: unknown): string {
   if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableJSONString).join(",")}]`;
-  if (!value || typeof value !== "object") return "{}";
-  return `{${Object.entries(value as Record<string, unknown>)
+  if (!isRecord(value)) return "{}";
+  return `{${Object.entries(value)
     .filter(([, item]) => item !== undefined)
     .sort(([l], [r]) => l.localeCompare(r))
     .map(([k, item]) => `${JSON.stringify(k)}:${stableJSONString(item)}`)
@@ -219,13 +223,16 @@ async function call(opts: {
   signedQuery?: Record<string, unknown>;
 }): Promise<Captured> {
   const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+  // Single typed seam: the dispatcher takes real express req/res; the fakes
+  // cover exactly the surface it touches.
+  const dispatch: (req: unknown, res: unknown) => Promise<void> = dispatchHermesGatewayRequest as never;
   const { res, captured } = makeRes();
-  await dispatchHermesGatewayRequest(makeReq(opts) as never, res as never);
+  await dispatch(makeReq(opts), res);
   return captured;
 }
 
 function errOf(body: unknown): unknown {
-  return body && typeof body === "object" ? (body as Record<string, unknown>).error : undefined;
+  return isRecord(body) ? body.error : undefined;
 }
 
 describe("L2 — gateway PoP v2 query binding", () => {

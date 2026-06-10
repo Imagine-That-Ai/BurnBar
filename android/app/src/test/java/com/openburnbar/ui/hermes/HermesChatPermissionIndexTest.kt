@@ -11,21 +11,20 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 
 class HermesChatPermissionIndexTest {
-    private fun item(toolCallId: String?, id: String = "item-$toolCallId", threadId: String = "thread-1") =
-        SystemPermissionItem(
-            id = id,
-            threadId = threadId,
-            kind = PhoneControlSystemPermissionKind.CAMERA,
-            bundleId = null,
-            status = SystemPermissionStatus.NEEDS_ACCESS,
-            originatingToolCallId = toolCallId,
-            originatingToolName = null,
-            deepLink = null,
-            instructions = null,
-            failureCategory = null,
-            lastChangedAtMillis = 0L,
-            source = SystemPermissionItem.Source.MAC_STRUCTURED,
-        )
+    private fun item(toolCallId: String?, id: String = "item-$toolCallId", threadId: String = "thread-1") = SystemPermissionItem(
+        id = id,
+        threadId = threadId,
+        kind = PhoneControlSystemPermissionKind.CAMERA,
+        bundleId = null,
+        status = SystemPermissionStatus.NEEDS_ACCESS,
+        originatingToolCallId = toolCallId,
+        originatingToolName = null,
+        deepLink = null,
+        instructions = null,
+        failureCategory = null,
+        lastChangedAtMillis = 0L,
+        source = SystemPermissionItem.Source.MAC_STRUCTURED,
+    )
 
     private fun inbox(vararg items: SystemPermissionItem): Map<String, Map<String, SystemPermissionItem>> =
         items.groupBy { it.threadId }.mapValues { (_, threadItems) ->

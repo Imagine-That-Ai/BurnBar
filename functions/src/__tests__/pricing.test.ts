@@ -50,7 +50,8 @@ function loadMoonshotModels(): CatalogModel[] {
   const catalog = JSON.parse(readFileSync(CATALOG_PATH, "utf8")) as Catalog;
   const moonshot = catalog.providers.find((provider) => provider.id === "moonshot");
   expect(moonshot).toBeDefined();
-  return moonshot!.models;
+  if (!moonshot) throw new Error("moonshot provider missing from the catalog fixture");
+  return moonshot.models;
 }
 
 describe("legacy kimi wire pricing", () => {
@@ -64,8 +65,9 @@ describe("legacy kimi wire pricing", () => {
 
   it("matches the catalog kimi-family rate, with input-rate fallback for cache creation", () => {
     const family = loadMoonshotModels().find((model) => model.id === "kimi-family");
-    expect(family?.pricing).toBeDefined();
-    const pricing = family!.pricing!;
+    const pricing = family?.pricing;
+    expect(pricing).toBeDefined();
+    if (!pricing) throw new Error("kimi-family pricing missing from the catalog fixture");
     expect(LEGACY_KIMI_WIRE_PRICING.inputPerMToken).toBe(pricing.inputPerMToken);
     expect(LEGACY_KIMI_WIRE_PRICING.outputPerMToken).toBe(pricing.outputPerMToken);
     expect(LEGACY_KIMI_WIRE_PRICING.cacheReadPerMToken).toBe(pricing.cacheReadPerMToken);

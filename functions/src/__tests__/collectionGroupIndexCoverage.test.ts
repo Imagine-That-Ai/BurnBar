@@ -12,8 +12,12 @@ function runGuard(): { code: number; stdout: string; stderr: string } {
     const stdout = execFileSync("node", [GUARD], { cwd: REPO_ROOT, encoding: "utf8" });
     return { code: 0, stdout, stderr: "" };
   } catch (err) {
-    const e = err as { status?: number; stdout?: string; stderr?: string };
-    return { code: e.status ?? 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+    const e: Record<string, unknown> = typeof err === "object" && err !== null ? { ...err } : {};
+    return {
+      code: typeof e.status === "number" ? e.status : 1,
+      stdout: typeof e.stdout === "string" ? e.stdout : "",
+      stderr: typeof e.stderr === "string" ? e.stderr : "",
+    };
   }
 }
 

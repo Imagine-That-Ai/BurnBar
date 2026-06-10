@@ -34,7 +34,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
 
   const snapshotFor = (path: string) => {
     const data = store.get(path);
-    return { exists: data !== undefined, get: (f: string) => data?.[f], data: () => data, ref: makeDocRef(path), id: path.split("/").pop()! };
+    return { exists: data !== undefined, get: (f: string) => data?.[f], data: () => data, ref: makeDocRef(path), id: path.split("/").pop() ?? path };
   };
 
   type Filter = { field: string; op: string; value: unknown };
@@ -90,11 +90,11 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
       // for the single-attempt handlers under test.
       const writes: Array<() => void> = [];
       const transaction = {
-        async get(refOrQuery: { path?: string; __isQuery?: boolean } & Record<string, unknown>) {
-          if (refOrQuery.__isQuery) {
-            return (refOrQuery as unknown as { get: () => Promise<unknown> }).get();
+        async get(refOrQuery: { path?: string; __isQuery?: boolean; get?: () => Promise<unknown> }) {
+          if (refOrQuery.__isQuery && refOrQuery.get) {
+            return refOrQuery.get();
           }
-          return snapshotFor((refOrQuery as { path: string }).path);
+          return snapshotFor(refOrQuery.path ?? "");
         },
         getAll(...refs: Array<{ path: string }>) {
           return Promise.resolve(refs.map((ref) => snapshotFor(ref.path)));
@@ -173,7 +173,17 @@ function req(data: Record<string, unknown>) {
     app: { appId: APP_ID },
     data,
     rawRequest: { headers: {} },
-  } as never;
+  };
+}
+
+/**
+ * Single typed seam for driving the real callables through `.run(request)`.
+ * Funnelling every invocation through this helper keeps the unavoidable
+ * mock-request widening to exactly one cast instead of one per call site.
+ */
+function invokeCallable<TRes = unknown>(callable: unknown, data: Record<string, unknown>): Promise<TRes> {
+  const runnable = callable as { run: (request: unknown) => Promise<TRes> };
+  return runnable.run(req(data));
 }
 
 function seedTrustedDeviceAndPairing() {
@@ -200,9 +210,13 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
 
   it("publishes a legacy Ed25519 controller unchanged", async () => {
     const key = ed25519Key();
-    const res = await (publishPhoneControlAuthority as never as { run: (r: never) => Promise<{ ok: boolean; peerNodeId: string }> }).run(
-      req({ deviceId: DEVICE, connectionId: CONN, peerNodeId: key.peerNodeId, publicKeyBase64: key.base64, publishedAtMillis: Date.now() }),
-    );
+    const res = await invokeCallable<{ ok: boolean; peerNodeId: string }>(publishPhoneControlAuthority, {
+      deviceId: DEVICE,
+      connectionId: CONN,
+      peerNodeId: key.peerNodeId,
+      publicKeyBase64: key.base64,
+      publishedAtMillis: Date.now(),
+    });
     expect(res.ok).toBe(true);
     const rec = store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`);
     expect(rec?.signingKeyKind).toBe("ed25519");
@@ -212,9 +226,14 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
 
   it("publishes a Secure-Enclave P-256 controller", async () => {
     const key = seP256Key();
-    const res = await (publishPhoneControlAuthority as never as { run: (r: never) => Promise<{ ok: boolean }> }).run(
-      req({ deviceId: DEVICE, connectionId: CONN, peerNodeId: key.peerNodeId, publicKeyBase64: key.base64, keyKind: "se-p256", publishedAtMillis: Date.now() }),
-    );
+    const res = await invokeCallable<{ ok: boolean }>(publishPhoneControlAuthority, {
+      deviceId: DEVICE,
+      connectionId: CONN,
+      peerNodeId: key.peerNodeId,
+      publicKeyBase64: key.base64,
+      keyKind: "se-p256",
+      publishedAtMillis: Date.now(),
+    });
     expect(res.ok).toBe(true);
     const rec = store.get(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`);
     expect(rec?.signingKeyKind).toBe("se-p256");
@@ -224,44 +243,61 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
   it("rejects a peerNodeId that does not match the published key", async () => {
     const key = seP256Key();
     await expect(
-      (publishPhoneControlAuthority as never as { run: (r: never) => Promise<unknown> }).run(
-        req({ deviceId: DEVICE, connectionId: CONN, peerNodeId: "ios-se-deadbeefdeadbeefdeadbeef", publicKeyBase64: key.base64, keyKind: "se-p256", publishedAtMillis: Date.now() }),
-      ),
+      invokeCallable(publishPhoneControlAuthority, {
+        deviceId: DEVICE,
+        connectionId: CONN,
+        peerNodeId: "ios-se-deadbeefdeadbeefdeadbeef",
+        publicKeyBase64: key.base64,
+        keyKind: "se-p256",
+        publishedAtMillis: Date.now(),
+      }),
     ).rejects.toThrow(/peerNodeId does not match/);
   });
 
   it("rejects an se-p256 publish carrying an Ed25519-length key", async () => {
     const bytes = randomBytes(32);
     await expect(
-      (publishPhoneControlAuthority as never as { run: (r: never) => Promise<unknown> }).run(
-        req({ deviceId: DEVICE, connectionId: CONN, peerNodeId: "ios-se-x", publicKeyBase64: bytes.toString("base64"), keyKind: "se-p256", publishedAtMillis: Date.now() }),
-      ),
+      invokeCallable(publishPhoneControlAuthority, {
+        deviceId: DEVICE,
+        connectionId: CONN,
+        peerNodeId: "ios-se-x",
+        publicKeyBase64: bytes.toString("base64"),
+        keyKind: "se-p256",
+        publishedAtMillis: Date.now(),
+      }),
     ).rejects.toThrow();
   });
 });
 
 describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
+  let publishedPeerNodeId = "";
+
   beforeEach(async () => {
     seedTrustedDeviceAndPairing();
     // Publish a controller + grant authority for the device, then revoke it.
     const key = ed25519Key();
-    await (publishPhoneControlAuthority as never as { run: (r: never) => Promise<unknown> }).run(
-      req({ deviceId: DEVICE, connectionId: CONN, peerNodeId: key.peerNodeId, publicKeyBase64: key.base64, publishedAtMillis: Date.now() }),
-    );
-    await (publishAgentGrantAuthority as never as { run: (r: never) => Promise<unknown> }).run(
-      req({ deviceId: DEVICE, peerNodeId: key.peerNodeId, publicKeyBase64: key.base64 }),
-    );
-    (globalThis as Record<string, unknown>).__f2PeerNodeId = key.peerNodeId;
+    await invokeCallable(publishPhoneControlAuthority, {
+      deviceId: DEVICE,
+      connectionId: CONN,
+      peerNodeId: key.peerNodeId,
+      publicKeyBase64: key.base64,
+      publishedAtMillis: Date.now(),
+    });
+    await invokeCallable(publishAgentGrantAuthority, { deviceId: DEVICE, peerNodeId: key.peerNodeId, publicKeyBase64: key.base64 });
+    publishedPeerNodeId = key.peerNodeId;
   });
 
   it("deletes the controller record, clears the grant authority, and emits a receipt", async () => {
-    const peerNodeId = (globalThis as Record<string, unknown>).__f2PeerNodeId as string;
+    const peerNodeId = publishedPeerNodeId;
     expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${peerNodeId}`)).toBe(true);
     expect(store.has(`users/${UID}/agent_grant_authorities/${DEVICE}`)).toBe(true);
 
-    const res = await (revokeEscrowDeviceTrust as never as {
-      run: (r: never) => Promise<{ ok: boolean; revokedControllerPeerNodeIds: string[]; clearedAgentGrantAuthority: boolean; receiptId: string }>;
-    }).run(req({ deviceId: DEVICE }));
+    const res = await invokeCallable<{
+      ok: boolean;
+      revokedControllerPeerNodeIds: string[];
+      clearedAgentGrantAuthority: boolean;
+      receiptId: string;
+    }>(revokeEscrowDeviceTrust, { deviceId: DEVICE });
 
     expect(res.ok).toBe(true);
     expect(res.revokedControllerPeerNodeIds).toContain(peerNodeId);
@@ -300,8 +336,9 @@ function cocoaNow(): number {
 
 function p256Pair(): { x963: Buffer; privateKey: import("node:crypto").KeyObject; peerNodeId: string } {
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const jwk = publicKey.export({ format: "jwk" }) as { x: string; y: string };
-  const x963 = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x, "base64url"), Buffer.from(jwk.y, "base64url")]);
+  const jwk = publicKey.export({ format: "jwk" });
+  // EC JWKs always carry x/y; the fallbacks only satisfy the optional typing.
+  const x963 = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x ?? "", "base64url"), Buffer.from(jwk.y ?? "", "base64url")]);
   const digest = createHash("sha256").update(x963).digest("hex").slice(0, 24);
   return { x963, privateKey, peerNodeId: `ios-se-${digest}` };
 }
@@ -355,7 +392,7 @@ describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {
       peerNodeId,
       signGrant: (payload) => cryptoSign("sha256", payload, { key: privateKey, dsaEncoding: "ieee-p1363" }),
     });
-    const res = await (queueAgentCapabilityGrantRequest as never as { run: (r: unknown) => Promise<{ ok: boolean }> }).run(req(data));
+    const res = await invokeCallable<{ ok: boolean }>(queueAgentCapabilityGrantRequest, data);
     expect(res.ok).toBe(true);
   });
 
@@ -371,15 +408,13 @@ describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {
       peerNodeId,
       signGrant: (payload) => cryptoSign("sha256", payload, { key: attacker.privateKey, dsaEncoding: "ieee-p1363" }),
     });
-    await expect(
-      (queueAgentCapabilityGrantRequest as never as { run: (r: unknown) => Promise<unknown> }).run(req(data)),
-    ).rejects.toThrow(/signature is invalid/i);
+    await expect(invokeCallable(queueAgentCapabilityGrantRequest, data)).rejects.toThrow(/signature is invalid/i);
   });
 
   it("still accepts a legacy Ed25519 queued grant (no signingKeyKind on the doc)", async () => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-    const jwk = publicKey.export({ format: "jwk" }) as { x: string };
-    const rawPub = Buffer.from(jwk.x, "base64url");
+    const jwk = publicKey.export({ format: "jwk" });
+    const rawPub = Buffer.from(jwk.x ?? "", "base64url");
     const peerNodeId = `ios-phone-${rawPub.subarray(0, 12).toString("hex")}`;
     store.set(`users/${UID}/agent_grant_authorities/${DEVICE}`, {
       peerNodeId,
@@ -389,7 +424,7 @@ describe("F2 queueAgentCapabilityGrantRequest keyKind", () => {
       peerNodeId,
       signGrant: (payload) => cryptoSign(null, payload, privateKey),
     });
-    const res = await (queueAgentCapabilityGrantRequest as never as { run: (r: unknown) => Promise<{ ok: boolean }> }).run(req(data));
+    const res = await invokeCallable<{ ok: boolean }>(queueAgentCapabilityGrantRequest, data);
     expect(res.ok).toBe(true);
   });
 });

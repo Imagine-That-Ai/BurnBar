@@ -228,19 +228,12 @@ class MediaFrameAeadVectorTest {
 
     // ---- helpers ----
 
-    private fun sessionKey(vector: JSONObject): ByteArray =
-        MediaFrameAead.deriveSessionKey(
-            sharedSecret = hexToBytes(vector.getString("sharedSecretHex")),
-            salt = hexToBytes(vector.getString("saltHex")),
-        )
+    private fun sessionKey(vector: JSONObject): ByteArray = MediaFrameAead.deriveSessionKey(
+        sharedSecret = hexToBytes(vector.getString("sharedSecretHex")),
+        salt = hexToBytes(vector.getString("saltHex")),
+    )
 
-    private fun open(
-        vector: JSONObject,
-        envelope: ByteArray,
-        key: ByteArray,
-        streamClass: String? = null,
-        frameIndex: UInt? = null,
-    ): ByteArray =
+    private fun open(vector: JSONObject, envelope: ByteArray, key: ByteArray, streamClass: String? = null, frameIndex: UInt? = null): ByteArray =
         MediaFrameAead.open(
             envelope = envelope,
             key = key,

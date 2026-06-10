@@ -42,13 +42,12 @@ class PhoneControlSigningIdentityTest {
         return PhoneControlSigningIdentity.SecureEnclaveP256(pair.private, pair.public as ECPublicKey)
     }
 
-    private fun tapIntent() =
-        PhoneControlIntent(
-            kind = PhoneControlIntentKind.TAP,
-            normalizedX = 0.25,
-            normalizedY = 0.75,
-            clientIntentId = "intent-1",
-        )
+    private fun tapIntent() = PhoneControlIntent(
+        kind = PhoneControlIntentKind.TAP,
+        normalizedX = 0.25,
+        normalizedY = 0.75,
+        clientIntentId = "intent-1",
+    )
 
     // MARK: - Legacy byte identity
 
