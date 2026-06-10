@@ -41,14 +41,14 @@ internal object MainActivityE2EComputerUseStreamSetup {
     }
 
     suspend fun publishPhoneControlAuthority(activity: MainActivity, uid: String, connectionId: String, keyStore: PhoneControlSigningKeyStore) {
-        val publicKey = keyStore.publicKey()
-        val peerNodeId = keyStore.peerNodeId()
+        val identity = keyStore.signingIdentity()
+        val peerNodeId = keyStore.peerNodeId(identity)
         val deviceId = MainActivityE2EComputerUseLogging.androidDeviceIdForComputerUseProof(activity)
         val authority =
             PhoneControlAuthorityDocumentFactory.document(
                 connectionId = connectionId,
                 deviceId = deviceId,
-                publicKey = publicKey,
+                identity = identity,
                 publishedAtMillis = System.currentTimeMillis(),
             )
         MainActivityE2EComputerUseLogging.computerUseProofLog(
@@ -82,12 +82,13 @@ internal object MainActivityE2EComputerUseStreamSetup {
         stream: IrohRelayStream,
     ): TrackingPhoneControlSender {
         var lastSentFrame: HermesRealtimeRelayFrame? = null
+        val identity = keyStore.signingIdentity()
         val sender =
             PhoneControlSender(
                 uid = uid,
                 connectionId = connectionId,
-                peerNodeId = keyStore.peerNodeId(),
-                privateKeySeedProvider = { keyStore.privateKeySeed() },
+                peerNodeId = keyStore.peerNodeId(identity),
+                signingIdentityProvider = { identity },
                 counterStore = InMemoryPhoneControlCounterStore(),
                 frameSink = { frame ->
                     lastSentFrame = frame

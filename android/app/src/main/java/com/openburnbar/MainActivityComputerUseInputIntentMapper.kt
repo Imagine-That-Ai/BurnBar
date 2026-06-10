@@ -26,6 +26,7 @@ internal object MainActivityComputerUseInputIntentMapper {
             timestamp = authority.swiftDateReferenceSeconds,
             intentHashBlake3 = authority.intentHashBlake3,
             signatureEd25519 = authority.signatureEd25519,
+            keyKind = authority.keyKind,
         ),
     )
 

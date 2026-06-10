@@ -188,13 +188,13 @@ fun InlineAgentMirrorView(
                             val activePair = coordinator.activePair.value
                             if (activePair != null) {
                                 val keyStore = PhoneControlSigningKeyStore(context)
-                                val seed = keyStore.privateKeySeed()
-                                val peerNodeId = keyStore.peerNodeId()
+                                val identity = keyStore.signingIdentity()
+                                val peerNodeId = keyStore.peerNodeId(identity)
                                 phoneControlSender = PhoneControlSender(
                                     uid = activePair.uid,
                                     connectionId = activePair.connectionID,
                                     peerNodeId = peerNodeId,
-                                    privateKeySeedProvider = { seed },
+                                    signingIdentityProvider = { identity },
                                     counterStore = InMemoryPhoneControlCounterStore(),
                                     frameSink = { frame -> coordinator.send(frame) }
                                 )

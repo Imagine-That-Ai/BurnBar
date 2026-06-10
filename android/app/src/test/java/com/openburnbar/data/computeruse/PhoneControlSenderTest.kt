@@ -11,6 +11,7 @@ import kotlin.math.roundToLong
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -36,7 +37,7 @@ class PhoneControlSenderTest {
                 uid = "uid-1",
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
-                privateKeySeedProvider = { privateSeed },
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
                 counterStore = InMemoryPhoneControlCounterStore(),
                 nowMillis = { 1_700_000_000_123L },
                 frameSink = { frames += it },
@@ -95,7 +96,7 @@ class PhoneControlSenderTest {
                 uid = "uid-1",
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
-                privateKeySeedProvider = { privateSeed },
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
                 counterStore = InMemoryPhoneControlCounterStore(),
                 nowMillis = { 1_700_000_000_123L },
                 frameSink = { frames += it },
@@ -135,7 +136,7 @@ class PhoneControlSenderTest {
                 uid = "uid-1",
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
-                privateKeySeedProvider = { privateSeed },
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
                 counterStore = InMemoryPhoneControlCounterStore(),
                 nowMillis = { 1_700_000_000_123L },
                 frameSink = { frames += it },
@@ -163,7 +164,7 @@ class PhoneControlSenderTest {
                 uid = "uid-1",
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
-                privateKeySeedProvider = { privateSeed },
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
                 counterStore = InMemoryPhoneControlCounterStore(mapOf("android-phone-1" to VAL_41_L)),
                 nowMillis = { 1_700_000_000_000L },
                 frameSink = { frames += it },
@@ -186,7 +187,7 @@ class PhoneControlSenderTest {
                 uid = "uid-1",
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
-                privateKeySeedProvider = { privateSeed },
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
                 counterStore = InMemoryPhoneControlCounterStore(),
                 nowMillis = { 1_700_000_000_123L },
                 frameSink = { frames += it },
@@ -246,7 +247,7 @@ class PhoneControlSenderTest {
                 uid = "uid-1",
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
-                privateKeySeedProvider = { privateSeed },
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
                 counterStore = InMemoryPhoneControlCounterStore(),
                 nowMillis = { 1_700_000_000_123L },
                 frameSink = { frames += it },
@@ -296,13 +297,88 @@ class PhoneControlSenderTest {
     }
 
     @Test
+    fun legacySenderEmitsRelayAuthorityWithoutKeyKind() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val sender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                peerNodeId = "android-phone-1",
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
+                counterStore = InMemoryPhoneControlCounterStore(),
+                nowMillis = { 1_700_000_000_123L },
+                frameSink = { frames += it },
+            )
+
+        sender.send(PhoneControlIntent(kind = PhoneControlIntentKind.PANIC))
+
+        val authority = frames.single().control?.inputIntent?.authority
+        assertNotNull(authority)
+        // F2 backward compatibility: the relay envelope gains no new field.
+        assertNull(authority?.keyKind)
+        assertNull(authority?.attestationHashBlake3)
+    }
+
+    @Test
+    fun secureEnclaveSenderEmitsSeP256KeyKindAndVerifies() = runBlocking {
+        val generator = java.security.KeyPairGenerator.getInstance("EC")
+        generator.initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+        val pair = generator.generateKeyPair()
+        val identity =
+            PhoneControlSigningIdentity.SecureEnclaveP256(
+                pair.private,
+                pair.public as java.security.interfaces.ECPublicKey,
+            )
+        val peerNodeId = PhoneControlAuthorityDocumentFactory.peerNodeId(identity)
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val sender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                peerNodeId = peerNodeId,
+                signingIdentityProvider = { identity },
+                counterStore = InMemoryPhoneControlCounterStore(),
+                nowMillis = { 1_700_000_000_123L },
+                frameSink = { frames += it },
+            )
+
+        val authority =
+            sender.send(
+                PhoneControlIntent(
+                    kind = PhoneControlIntentKind.TAP,
+                    normalizedX = 0.25,
+                    normalizedY = 0.75,
+                ),
+            )
+
+        val input = frames.single().control?.inputIntent
+        assertEquals("se-p256", input?.authority?.keyKind)
+        assertEquals("se-p256", authority.keyKind)
+        assertEquals(peerNodeId, input?.authority?.peerNodeId)
+
+        PhoneControlSignerVerify.verify(
+            intent =
+            PhoneControlIntent(
+                kind = PhoneControlIntentKind.TAP,
+                normalizedX = 0.25,
+                normalizedY = 0.75,
+                clientIntentId = input?.clientIntentId,
+            ),
+            authority = authority,
+            publicKey = identity.publicKeyRepresentation,
+            lastSeenCounter = 0,
+            nowMillis = 1_700_000_000_123L,
+        )
+    }
+
+    @Test
     fun sendFailsWhenSigningKeyMissing() {
         val sender =
             PhoneControlSender(
                 uid = "uid-1",
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
-                privateKeySeedProvider = { null },
+                signingIdentityProvider = { null },
                 counterStore = InMemoryPhoneControlCounterStore(),
                 frameSink = {},
             )
