@@ -18,7 +18,9 @@ public struct BurnBarDaemonHeartbeatSnapshot: Codable, Sendable, Equatable {
 }
 
 public enum BurnBarDaemonHeartbeat {
-    public static let defaultInterval: TimeInterval = 5
+    /// Half the stale threshold: a beat can land a full interval late and the
+    /// file age still stays under `defaultStaleThreshold` for readers.
+    public static let defaultInterval: TimeInterval = 10
     public static let defaultStaleThreshold: TimeInterval = 20
 
     public static var defaultFileURL: URL {
@@ -39,6 +41,9 @@ public enum BurnBarDaemonHeartbeat {
     }()
 
     /// Writes a heartbeat snapshot atomically to the configured path.
+    /// `.atomic` already does the temp-file + rename dance internally and
+    /// preserves the existing file's mode on Darwin, so the chmod only runs
+    /// on first create instead of every beat.
     public static func writeSnapshot(
         _ snapshot: BurnBarDaemonHeartbeatSnapshot,
         to fileURL: URL = defaultFileURL,
@@ -47,13 +52,11 @@ public enum BurnBarDaemonHeartbeat {
         let directoryURL = fileURL.deletingLastPathComponent()
         try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         let payload = try encoder.encode(snapshot)
-        let temporaryURL = directoryURL.appendingPathComponent(".heartbeat.\(UUID().uuidString).tmp")
-        try payload.write(to: temporaryURL, options: .atomic)
-        if fileManager.fileExists(atPath: fileURL.path) {
-            try fileManager.removeItem(at: fileURL)
+        let isFirstWrite = !fileManager.fileExists(atPath: fileURL.path)
+        try payload.write(to: fileURL, options: .atomic)
+        if isFirstWrite {
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
         }
-        try fileManager.moveItem(at: temporaryURL, to: fileURL)
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
     public static func readSnapshot(

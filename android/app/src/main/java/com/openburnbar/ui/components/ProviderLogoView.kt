@@ -30,7 +30,8 @@ import com.openburnbar.data.square.AgentIdentity
 // ── Provider / Agent / Model Logos (Android) ──
 //
 // Parity with iOS `ProviderLogoView` / `ProviderAvatar`. 40 logos ported
-// from `Assets.xcassets/*Logo.imageset/*.png` into `res/drawable/*_logo.png`.
+// from `Assets.xcassets/*Logo.imageset/*.png` into `res/drawable-nodpi/`
+// (density-neutral, so BitmapFactory never density-upscales the bitmaps).
 // This file owns the mapping from a domain identifier (an `AgentProvider`
 // enum, an `AssistantRuntimeID`, or a raw model/runtime token) to its
 // drawable resource, and renders the logo at a consistent size + chrome.
@@ -40,32 +41,32 @@ object ProviderLogo {
     @DrawableRes
     fun drawableFor(provider: AgentProvider): Int = when (provider) {
         AgentProvider.FACTORY -> R.drawable.factory_logo
-        AgentProvider.CLAUDE_CODE -> R.drawable.claude_code_logo
-        AgentProvider.COPILOT -> R.drawable.copilot_logo
+        AgentProvider.CLAUDE_CODE -> R.drawable.logo_claude_code
+        AgentProvider.COPILOT -> R.drawable.logo_copilot
         AgentProvider.AIDER -> R.drawable.aider_logo
-        AgentProvider.CURSOR -> R.drawable.cursor_logo
-        AgentProvider.OPEN_AI -> R.drawable.open_ai_logo
-        AgentProvider.DEEP_SEEK -> R.drawable.deep_seek_logo
-        AgentProvider.CODEX -> R.drawable.codex_logo
+        AgentProvider.CURSOR -> R.drawable.logo_cursor
+        AgentProvider.OPEN_AI -> R.drawable.logo_open_ai
+        AgentProvider.DEEP_SEEK -> R.drawable.logo_deep_seek
+        AgentProvider.CODEX -> R.drawable.logo_codex
         AgentProvider.OPENCODE -> R.drawable.open_code_logo
-        AgentProvider.ZAI -> R.drawable.zai_logo
-        AgentProvider.MINIMAX -> R.drawable.mini_max_logo
+        AgentProvider.ZAI -> R.drawable.logo_zai
+        AgentProvider.MINIMAX -> R.drawable.logo_mini_max
         AgentProvider.KIMI -> R.drawable.kimi_logo
-        AgentProvider.CLINE -> R.drawable.cline_logo
+        AgentProvider.CLINE -> R.drawable.logo_cline
         AgentProvider.KILO_CODE -> R.drawable.kilo_code_logo
         AgentProvider.ROO_CODE -> R.drawable.roo_code_logo
-        AgentProvider.FORGE_DEV -> R.drawable.forge_logo
+        AgentProvider.FORGE_DEV -> R.drawable.logo_forge
         AgentProvider.AUGMENT -> R.drawable.augment_logo
-        AgentProvider.HERMES -> R.drawable.hermes_logo
+        AgentProvider.HERMES -> R.drawable.logo_hermes
         AgentProvider.PI_AGENT -> R.drawable.pi_agent_logo
-        AgentProvider.GEMINI_CLI -> R.drawable.gemini_cli_logo
+        AgentProvider.GEMINI_CLI -> R.drawable.logo_gemini_cli
         AgentProvider.GOOSE -> R.drawable.goose_logo
-        AgentProvider.OPEN_CLAW -> R.drawable.open_claw_logo
-        AgentProvider.OLLAMA -> R.drawable.ollama_logo
-        AgentProvider.WINDSURF -> R.drawable.windsurf_logo
-        AgentProvider.WARP -> R.drawable.warp_logo
-        AgentProvider.XAI -> R.drawable.grok_logo
-        AgentProvider.ANTIGRAVITY -> R.drawable.antigravity_logo
+        AgentProvider.OPEN_CLAW -> R.drawable.logo_openclaw
+        AgentProvider.OLLAMA -> R.drawable.logo_ollama
+        AgentProvider.WINDSURF -> R.drawable.logo_windsurf
+        AgentProvider.WARP -> R.drawable.logo_warp
+        AgentProvider.XAI -> R.drawable.logo_grok
+        AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity
         AgentProvider.MIMO -> R.drawable.mimo_logo
     }
 
@@ -74,28 +75,28 @@ object ProviderLogo {
     // / generic glyph.
     @DrawableRes
     fun drawableFor(runtime: AssistantRuntimeID): Int = when (runtime) {
-        AssistantRuntimeID.HERMES -> R.drawable.hermes_logo
+        AssistantRuntimeID.HERMES -> R.drawable.logo_hermes
         AssistantRuntimeID.PI -> R.drawable.pi_runtime_glyph
-        AssistantRuntimeID.CODEX -> R.drawable.codex_logo
-        AssistantRuntimeID.CLAUDE -> R.drawable.claude_code_logo
-        AssistantRuntimeID.OPEN_CLAW -> R.drawable.open_claw_logo
+        AssistantRuntimeID.CODEX -> R.drawable.logo_codex
+        AssistantRuntimeID.CLAUDE -> R.drawable.logo_claude_code
+        AssistantRuntimeID.OPEN_CLAW -> R.drawable.logo_openclaw
         AssistantRuntimeID.DROID -> R.drawable.factory_logo
-        AssistantRuntimeID.FORGE -> R.drawable.forge_logo
-        AssistantRuntimeID.ANTIGRAVITY -> R.drawable.antigravity_logo
-        AssistantRuntimeID.GROK -> R.drawable.grok_logo
-        AssistantRuntimeID.CURSOR_AGENT -> R.drawable.cursor_logo
+        AssistantRuntimeID.FORGE -> R.drawable.logo_forge
+        AssistantRuntimeID.ANTIGRAVITY -> R.drawable.logo_antigravity
+        AssistantRuntimeID.GROK -> R.drawable.logo_grok
+        AssistantRuntimeID.CURSOR_AGENT -> R.drawable.logo_cursor
     }
 
     // / Asset for a `HermesSubProvider`. Maps the sub-providers to their
     // / brand logos.
     @DrawableRes
     fun drawableFor(subProvider: HermesSubProvider): Int = when (subProvider) {
-        HermesSubProvider.CODEX -> R.drawable.codex_logo
-        HermesSubProvider.CLAUDE -> R.drawable.claude_code_logo
-        HermesSubProvider.ZAI -> R.drawable.zai_logo
+        HermesSubProvider.CODEX -> R.drawable.logo_codex
+        HermesSubProvider.CLAUDE -> R.drawable.logo_claude_code
+        HermesSubProvider.ZAI -> R.drawable.logo_zai
         HermesSubProvider.KIMI -> R.drawable.kimi_logo
-        HermesSubProvider.MINIMAX -> R.drawable.mini_max_logo
-        HermesSubProvider.OLLAMA -> R.drawable.ollama_logo
+        HermesSubProvider.MINIMAX -> R.drawable.logo_mini_max
+        HermesSubProvider.OLLAMA -> R.drawable.logo_ollama
     }
 
     // / Map a raw model/runtime token (e.g. "claude-3-5-sonnet", "gpt-4o",
@@ -126,7 +127,7 @@ object ProviderLogo {
     // / Hermes mark.
     @DrawableRes
     fun drawableForAnyIdentifier(identifier: String?): Int {
-        if (identifier.isNullOrBlank()) return R.drawable.hermes_logo
+        if (identifier.isNullOrBlank()) return R.drawable.logo_hermes
         if (identifier.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX)) return R.drawable.paired_mac_logo
 
         val builtInPrefix = "agent://burnbar/"

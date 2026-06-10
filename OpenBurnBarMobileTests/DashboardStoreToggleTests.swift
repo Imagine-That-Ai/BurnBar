@@ -132,3 +132,59 @@ final class DashboardStoreToggleTests: XCTestCase {
         )
     }
 }
+
+/// Regression tests for the dashboard rollup-staleness rule (crosscut-001).
+///
+/// Wall-clock age alone is NOT staleness: an idle user's rollups are
+/// legitimately old, and treating any `computedAt` older than 15 minutes as
+/// stale fired the `rebuildUsageRollups` callable — a full server-side
+/// counter rebuild — on every routine app open. Rollups are stale only when
+/// a raw usage event is NEWER than the newest rollup's `computedAt`.
+final class DashboardStoreStalenessTests: XCTestCase {
+
+    func testOldRollupsWithNoNewerUsageAreFresh() {
+        // Hours past the old 15-minute wall-clock threshold, but the newest
+        // usage event predates the rollup compute — nothing is missing.
+        let computedAt = Date(timeIntervalSinceNow: -4 * 3_600)
+        let rollups = [makeRollup(computedAt: computedAt)]
+        let newestUsage = computedAt.addingTimeInterval(-3_600)
+        XCTAssertFalse(DashboardStore.rollupsAreStale(rollups, newestUsageEndTime: newestUsage))
+    }
+
+    func testRollupsOlderThanNewestUsageAreStale() {
+        let computedAt = Date(timeIntervalSinceNow: -600)
+        let rollups = [makeRollup(computedAt: computedAt)]
+        let newestUsage = computedAt.addingTimeInterval(60)
+        XCTAssertTrue(DashboardStore.rollupsAreStale(rollups, newestUsageEndTime: newestUsage))
+    }
+
+    func testNoUsageMeansFresh() {
+        // nil covers both "user has no usage yet" and "the limit-1 read
+        // failed (offline)" — neither should trigger a server rebuild.
+        let rollups = [makeRollup(computedAt: Date(timeIntervalSinceNow: -86_400))]
+        XCTAssertFalse(DashboardStore.rollupsAreStale(rollups, newestUsageEndTime: nil))
+    }
+
+    func testNewestComputedAtAcrossWindowsWins() {
+        let older = makeRollup(window: .today, computedAt: Date(timeIntervalSinceNow: -3_600))
+        let newer = makeRollup(window: .sevenDays, computedAt: Date(timeIntervalSinceNow: -60))
+        let usageBetween = Date(timeIntervalSinceNow: -1_800)
+        XCTAssertFalse(DashboardStore.rollupsAreStale([older, newer], newestUsageEndTime: usageBetween))
+        XCTAssertTrue(DashboardStore.rollupsAreStale([older], newestUsageEndTime: usageBetween))
+    }
+
+    // MARK: - Fixtures
+
+    private func makeRollup(window: RollupWindowKey = .today, computedAt: Date) -> UsageRollupDoc {
+        UsageRollupDoc(
+            windowKey: window,
+            totals: RollupTotals(requests: 1, tokens: 100, costUsd: 1.0),
+            providerSummaries: [],
+            modelSummaries: [],
+            deviceSummaries: [],
+            dailyPoints: [],
+            computedAt: computedAt,
+            schemaVersion: 3
+        )
+    }
+}

@@ -47,15 +47,15 @@ enum class CliResumeTarget(
     @param:DrawableRes @field:DrawableRes val logoRes: Int,
     val brandColor: Long,
 ) {
-    CLAUDE_CODE("claude_code", "Claude Code", true, R.drawable.claude_code_logo, 0xFFCC785C),
-    CODEX("codex", "Codex", true, R.drawable.codex_logo, 0xFF2563EB),
+    CLAUDE_CODE("claude_code", "Claude Code", true, R.drawable.logo_claude_code, 0xFFCC785C),
+    CODEX("codex", "Codex", true, R.drawable.logo_codex, 0xFF2563EB),
     DROID("droid", "Droid", false, R.drawable.factory_logo, 0xFF8B5CF6),
-    FORGE("forge", "Forge", false, R.drawable.forge_logo, 0xFFF97316),
-    ANTIGRAVITY("antigravity", "Antigravity", false, R.drawable.antigravity_logo, 0xFF6C63FF),
-    GROK("grok", "Grok", false, R.drawable.grok_logo, 0xFF71767B),
-    CURSOR_AGENT("cursor_agent", "Cursor Agent", false, R.drawable.cursor_logo, 0xFF00B8D4),
+    FORGE("forge", "Forge", false, R.drawable.logo_forge, 0xFFF97316),
+    ANTIGRAVITY("antigravity", "Antigravity", false, R.drawable.logo_antigravity, 0xFF6C63FF),
+    GROK("grok", "Grok", false, R.drawable.logo_grok, 0xFF71767B),
+    CURSOR_AGENT("cursor_agent", "Cursor Agent", false, R.drawable.logo_cursor, 0xFF00B8D4),
     OPENCODE("opencode", "OpenCode", false, R.drawable.open_code_logo, 0xFF0EA5E9),
-    GEMINI("gemini", "Gemini CLI", false, R.drawable.gemini_cli_logo, 0xFF4285F4),
+    GEMINI("gemini", "Gemini CLI", false, R.drawable.logo_gemini_cli, 0xFF4285F4),
     ;
 
     val capability: CliResumeCapability

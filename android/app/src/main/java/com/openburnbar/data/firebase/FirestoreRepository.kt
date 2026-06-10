@@ -5,7 +5,6 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
@@ -76,8 +75,6 @@ class FirestoreRepository {
     private val rollupsCollection: CollectionReference
         get() = db.collection("users").document(currentUserId()).collection("usage_rollups")
 
-    private val rollupWindowKeys = firestoreRollupWindowKeys
-
     private val quotaCollection: CollectionReference
         get() = db.collection("users").document(currentUserId()).collection("quota_snapshots")
 
@@ -95,12 +92,10 @@ class FirestoreRepository {
         // Cloud Functions write one document per window key:
         //   users/{uid}/usage_rollups/today, /7d, /30d, /90d, /all_time
         // Each is a full UsageRollupDoc for that window.
-        // Read all 5 and merge the window-value fields into a flat client model.
-        val windowDocs =
-            rollupWindowKeys.associateWith { key ->
-                rollupsCollection.document(key).get().await()
-            }
-        return FirestoreRollupMerger.mergeWindowDocs(windowDocs)
+        // One collection read (instead of five serial per-document reads)
+        // fetches all 5; the merger flattens them into the client model.
+        val snapshot = rollupsCollection.get().await()
+        return FirestoreRollupMerger.mergeCollectionDocs(snapshot.documents)
     }
 
     suspend fun fetchModelBenchmarkSnapshots(limit: Long = 160): List<InsightDigest.ModelBenchmarkSummary> {
@@ -114,35 +109,45 @@ class FirestoreRepository {
     }
 
     fun listenToRollups(): Flow<UsageRollups> = callbackFlow {
-        val listeners = mutableListOf<ListenerRegistration>()
-        val cache = mutableMapOf<String, DocumentSnapshot?>()
-        val lock = Any()
-
-        fun emitMerged() {
-            val merged = FirestoreRollupMerger.mergeWindowDocs(cache)
-            trySend(merged)
-        }
-
-        for (key in rollupWindowKeys) {
-            val listener =
-                rollupsCollection.document(key)
-                    .addSnapshotListener { snapshot, error ->
-                        if (error != null) {
-                            close(error)
-                            return@addSnapshotListener
-                        }
-                        synchronized(lock) {
-                            cache[key] = snapshot
-                        }
-                        emitMerged()
-                    }
-            listeners.add(listener)
-        }
-        awaitClose { listeners.forEach { it.remove() } }
+        // One collection listener replaces five per-document listeners (and
+        // their five partial merge+emit cycles on initial load) — mirrors the
+        // iOS rollup listener.
+        val listener =
+            rollupsCollection.addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(FirestoreRollupMerger.mergeCollectionDocs(snapshot?.documents ?: emptyList()))
+            }
+        awaitClose { listener.remove() }
     }
 
-    suspend fun rebuildUsageRollups() {
-        functions.getHttpsCallable("rebuildUsageRollups").call().await()
+    /**
+     * `force` is the explicit repair path: the server rebuilds the usage
+     * counters from raw history. Routine refreshes omit it and are served
+     * from the incremental counters when those are healthy.
+     */
+    suspend fun rebuildUsageRollups(force: Boolean = false) {
+        functions.getHttpsCallable("rebuildUsageRollups").call(mapOf("force" to force)).await()
+    }
+
+    /**
+     * `endTime` of the newest usage event, or null when the user has no usage
+     * yet. One limit-1 query; backs the dashboard rollup-staleness check
+     * (rollups older than the newest usage event are stale — wall-clock age
+     * alone is not). `endTime` is the same live attribution field the Pulse
+     * queries below order by.
+     */
+    suspend fun fetchNewestUsageEndTime(): Instant? {
+        val snapshot =
+            usageCollection
+                .orderBy("endTime", Query.Direction.DESCENDING)
+                .limit(1)
+                .get()
+                .await()
+        val endTime = snapshot.documents.firstOrNull()?.getTimestamp("endTime") ?: return null
+        return Instant.ofEpochSecond(endTime.seconds, endTime.nanoseconds.toLong())
     }
 
     // ── Usage: users/<uid>/usage (paginated) ──

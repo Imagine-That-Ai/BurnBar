@@ -239,7 +239,9 @@ final class ProviderConnectionStore {
     func rebuildRollups() async {
         error = nil
         do {
-            try await functions.rebuildUsageRollups()
+            // Explicit repair entry point: force the server-side counter
+            // rebuild from raw usage history.
+            try await functions.rebuildUsageRollups(force: true)
         } catch {
             self.error = error.localizedDescription
         }
