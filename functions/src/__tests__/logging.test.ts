@@ -194,7 +194,7 @@ describe("PII scrubbing in structured logging", () => {
   describe("UID key-based truncation", () => {
     it("truncates uid field to first 8 chars and renames to user_id_hash", async () => {
       const { logInfo } = await import("../logging.js");
-      logInfo({ event: "test", uid: "mzO4MRBNjbsePMeFHl2T8hBCsU02" } as Parameters<typeof logInfo>[0]);
+      logInfo({ event: "test", uid: "mzO4MRBNjbsePMeFHl2T8hBCsU02" });
       const payload = captureLog(logSpy);
       expect(payload.user_id_hash).toBe("mzO4MRBN");
       expect(payload.uid).toBeUndefined();
@@ -202,14 +202,14 @@ describe("PII scrubbing in structured logging", () => {
 
     it("truncates userId field to first 8 chars, preserves key name", async () => {
       const { logInfo } = await import("../logging.js");
-      logInfo({ event: "test", userId: "mzO4MRBNjbsePMeFHl2T8hBCsU02" } as Parameters<typeof logInfo>[0]);
+      logInfo({ event: "test", userId: "mzO4MRBNjbsePMeFHl2T8hBCsU02" });
       const payload = captureLog(logSpy);
       expect(payload.userId).toBe("mzO4MRBN");
     });
 
     it("uid shorter than 8 chars passes through truncated safely", async () => {
       const { logInfo } = await import("../logging.js");
-      logInfo({ event: "test", uid: "abc" } as Parameters<typeof logInfo>[0]);
+      logInfo({ event: "test", uid: "abc" });
       const payload = captureLog(logSpy);
       expect(payload.user_id_hash).toBe("abc");
     });
@@ -235,7 +235,7 @@ describe("PII scrubbing in structured logging", () => {
     it("null values pass through unchanged", async () => {
       const { logWarn } = await import("../logging.js");
       logWarn({ event: "test", detail: undefined });
-      const payload = JSON.parse(warnSpy.mock.calls[0][0] as string) as Record<string, unknown>;
+      const payload = parseConsolePayload(warnSpy.mock.calls[0]?.[0]);
       expect(payload.detail).toBeUndefined();
     });
   });
@@ -250,7 +250,7 @@ describe("PII scrubbing in structured logging", () => {
         context: JSON.stringify({ user: "admin@company.com", ip: "1.2.3.4" }),
       });
       const payload = captureLog(logSpy);
-      const ctx = payload.context as string;
+      const ctx = String(payload.context);
       expect(ctx).not.toContain("admin@company.com");
       expect(ctx).not.toContain("1.2.3.4");
     });
@@ -291,7 +291,7 @@ describe("PII scrubbing in structured logging", () => {
     it("logWarn writes to console.warn with severity WARNING", async () => {
       const { logWarn } = await import("../logging.js");
       logWarn({ event: "test_warn" });
-      const payload = JSON.parse(warnSpy.mock.calls[0][0] as string) as Record<string, unknown>;
+      const payload = parseConsolePayload(warnSpy.mock.calls[0]?.[0]);
       expect(payload.severity).toBe("WARNING");
     });
 
@@ -299,8 +299,8 @@ describe("PII scrubbing in structured logging", () => {
       const { logInfo } = await import("../logging.js");
       logInfo({ event: "a" });
       logInfo({ event: "b" });
-      const p1 = JSON.parse(logSpy.mock.calls[0][0] as string) as Record<string, unknown>;
-      const p2 = JSON.parse(logSpy.mock.calls[1][0] as string) as Record<string, unknown>;
+      const p1 = parseConsolePayload(logSpy.mock.calls[0]?.[0]);
+      const p2 = parseConsolePayload(logSpy.mock.calls[1]?.[0]);
       expect(p1.trace_id).toBeTruthy();
       expect(p2.trace_id).toBeTruthy();
       expect(p1.trace_id).not.toBe(p2.trace_id);
@@ -322,7 +322,7 @@ describe("PII scrubbing in structured logging", () => {
       const longString = "a".repeat(2000);
       logInfo({ event: "test", message: longString });
       const payload = captureLog(logSpy);
-      const msg = payload.message as string;
+      const msg = String(payload.message);
       expect(msg.length).toBeLessThan(1100);
       expect(msg).toContain("[truncated]");
     });
@@ -418,7 +418,7 @@ describe("PII scrubbing in structured logging", () => {
       ).rejects.toThrow("handler exploded");
       expect(logSpy).toHaveBeenCalledTimes(1); // start only
       expect(errorSpy).toHaveBeenCalledTimes(1); // error
-      const errLog = JSON.parse(errorSpy.mock.calls[0][0] as string) as Record<string, unknown>;
+      const errLog = parseConsolePayload(errorSpy.mock.calls[0]?.[0]);
       expect(errLog.event).toBe("callable_error");
     });
   });

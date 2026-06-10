@@ -341,7 +341,7 @@ public actor BurnBarDaemonServer {
 
             if let requiredToken = configuration.socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
                 let providedToken = incomingRequest.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                guard providedToken == requiredToken else {
+                guard let providedToken, constantTimeTokensEqual(providedToken, requiredToken) else {
                     BurnBarDaemonMetricsCounters.recordRPCError()
                     logger.warning(
                         "rpc_request_unauthorized",

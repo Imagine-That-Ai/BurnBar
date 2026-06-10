@@ -9,7 +9,7 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { getFirestore } from "firebase-admin/firestore";
 import { applyUsageCounterDelta } from "./rollups.js";
-import { errorMessage, parseRollupJobDoc, parseUsageEventDoc } from "./guards.js";
+import { errorMessage, parseUsageEventDoc } from "./guards.js";
 import { logError } from "./logging.js";
 import { runFirestoreTrigger } from "./scheduledOps.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
@@ -41,13 +41,12 @@ export const onUsageWritten = onDocumentWritten(
       // Mark dirty BEFORE attempting the counter delta so that even if the
       // transaction fails (contention, quota, etc.), the scheduled
       // rebuildRollups worker still picks up this user and recomputes from
-      // whatever counter state exists.
+      // whatever counter state exists. Refresh `dirtiedAt` on EVERY event —
+      // not just the false→true transition — so a rebuild that is already
+      // mid-compute cannot clear the flag over this event: writeUserRollups
+      // only clears `dirty` when `dirtiedAt` is unchanged since compute start.
       const now = new Date().toISOString();
-      const snap = await jobRef.get();
-      const existing = snap.exists ? parseRollupJobDoc(snap.data()) : null;
-      if (!existing?.dirty) {
-        await jobRef.set({ dirty: true, dirtiedAt: now }, { merge: true });
-      }
+      await jobRef.set({ dirty: true, dirtiedAt: now }, { merge: true });
 
       try {
         await applyUsageCounterDelta(db, uid, event.params.usageDoc, before, after);

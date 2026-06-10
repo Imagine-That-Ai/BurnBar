@@ -79,7 +79,7 @@ struct ClaudeCodeOAuthCredentialImporter {
                 from: profileKeychainStore(service),
                 service: service,
                 allowUserInteraction: allowUserInteraction,
-                allowExternalFallback: true,
+                allowExternalFallback: allowUserInteraction,
                 sawMalformedPayload: &sawMalformedPayload
             ) {
                 return credentials

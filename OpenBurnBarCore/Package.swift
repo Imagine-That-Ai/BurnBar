@@ -188,7 +188,10 @@ let package = Package(
         ),
         .testTarget(
             name: "OpenBurnBarMediaTests",
-            dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay"]
+            dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay"],
+            resources: [
+                .process("Fixtures")
+            ]
         ),
         .testTarget(
             name: "OpenBurnBarComputerUseCoreTests",
@@ -196,6 +199,9 @@ let package = Package(
                 "OpenBurnBarComputerUseCore",
                 "OpenBurnBarCore",
                 "OpenBurnBarMedia"
+            ],
+            resources: [
+                .process("Fixtures")
             ]
         ),
         .testTarget(

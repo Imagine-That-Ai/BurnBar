@@ -3,15 +3,32 @@ import { seedAndroidDemoAccount } from "../lib/demoSeed.js";
 
 function createMockDb() {
   const store = new Map();
-  function applySet(path, data) {
-    const existing = store.get(path) ?? {};
-    const next = { ...existing };
-    for (const [key, value] of Object.entries(data)) {
-      if (value && typeof value === "object" && "operand" in value) {
-        next[key] = (typeof next[key] === "number" ? next[key] : 0) + value.operand;
-      } else {
-        next[key] = value;
+  // Mirrors Firestore set() semantics: merge:false replaces the document,
+  // merge:true deep-merges plain maps, and FieldValue.increment sentinels
+  // apply against the existing numeric value (the rollup counters keep a
+  // nested all_time dailyTokens increment map).
+  function mergeFieldValue(existing, value) {
+    if (value && typeof value === "object" && "operand" in value) {
+      return (typeof existing === "number" ? existing : 0) + value.operand;
+    }
+    if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+      const next =
+        existing && typeof existing === "object" && Object.getPrototypeOf(existing) === Object.prototype
+          ? { ...existing }
+          : {};
+      for (const [key, entry] of Object.entries(value)) {
+        next[key] = mergeFieldValue(next[key], entry);
       }
+      return next;
+    }
+    return value;
+  }
+
+  function applySet(path, data, options) {
+    const merge = options?.merge === true;
+    const next = merge ? { ...(store.get(path) ?? {}) } : {};
+    for (const [key, value] of Object.entries(data)) {
+      next[key] = mergeFieldValue(merge ? next[key] : undefined, value);
     }
     store.set(path, next);
   }
@@ -19,27 +36,39 @@ function createMockDb() {
   const db = {
     store,
     collection(path) {
+      const listDocs = () => {
+        const prefix = `${path}/`;
+        const expectedSegments = path.split("/").length + 1;
+        return [...store.entries()]
+          .filter(([key]) => key.startsWith(prefix) && key.split("/").length === expectedSegments)
+          .map(([key, data]) => {
+            const ref = db.doc(key);
+            return {
+              id: key.split("/").at(-1),
+              ref,
+              data: () => data,
+              get: (field) => data[field],
+            };
+          });
+      };
+      // Supports the documentId range filters used by the rollup day fetch.
+      const makeQuery = (clauses) => ({
+        where(_field, op, value) {
+          return makeQuery([...clauses, [op, value]]);
+        },
+        async get() {
+          return {
+            docs: listDocs().filter((doc) =>
+              clauses.every(([op, value]) => (op === ">=" ? doc.id >= value : op === "<=" ? doc.id <= value : false)),
+            ),
+          };
+        },
+      });
       return {
         doc(id) {
           return db.doc(`${path}/${id}`);
         },
-        async get() {
-          const prefix = `${path}/`;
-          const expectedSegments = path.split("/").length + 1;
-          return {
-            docs: [...store.entries()]
-              .filter(([key]) => key.startsWith(prefix) && key.split("/").length === expectedSegments)
-              .map(([key, data]) => {
-                const ref = db.doc(key);
-                return {
-                  id: key.split("/").at(-1),
-                  ref,
-                  data: () => data,
-                  get: (field) => data[field],
-                };
-              }),
-          };
-        },
+        ...makeQuery([]),
       };
     },
     doc(path) {
@@ -60,8 +89,8 @@ function createMockDb() {
     batch() {
       const writes = [];
       return {
-        set(ref, data, _options) {
-          writes.push({ type: "set", path: ref.path, data });
+        set(ref, data, options) {
+          writes.push({ type: "set", path: ref.path, data, options });
         },
         delete(ref) {
           writes.push({ type: "delete", path: ref.path });
@@ -71,11 +100,26 @@ function createMockDb() {
             if (write.type === "delete") {
               store.delete(write.path);
             } else {
-              applySet(write.path, write.data);
+              applySet(write.path, write.data, write.options);
             }
           }
         },
       };
+    },
+    async runTransaction(work) {
+      const transaction = {
+        async get(ref) {
+          const data = store.get(ref.path);
+          return {
+            exists: data != null,
+            data: () => data,
+          };
+        },
+        set(ref, data, options) {
+          applySet(ref.path, data, options);
+        },
+      };
+      return work(transaction);
     },
     async recursiveDelete(ref) {
       for (const key of [...store.keys()]) {

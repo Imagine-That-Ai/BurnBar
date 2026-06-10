@@ -69,6 +69,7 @@ import {
   sanitizedGatewayDisplayName,
   serializeHermesGatewayEvent,
   serializeHermesGatewayTypingDoc,
+  shouldCoalesceHermesGatewayLastSeen,
   tokenPreview,
   type GatewayRelayEnvelopeDoc,
   type GatewayRatchetEnvelopeDoc,
@@ -619,12 +620,83 @@ function gatewayPopSignablePayload(options: {
   );
 }
 
+// L2 — fold the query string into the signed PoP payload (PoP v2).
+//
+// PoP v1 covers tokenHash | METHOD | path | bodyHash | nonce | timestamp, so a
+// GET's query params (e.g. /events?cursor=…&destinationId=…) are not
+// integrity-protected. v2 binds a canonical query string into the signature.
+// The version is negotiated per request via the `x-openburnbar-pop-version`
+// header; the server accepts both v1 and v2 during the transition (a unilateral
+// flip would 401 every paired client), and refuses a v1 downgrade only once a
+// client has registered v2 capability (`popVersion >= 2`).
+
+/// Canonical query string for PoP v2 — decoded params sorted by key then value
+/// and joined `key=value` with `&`. Decoded (not re-encoded) so Node and the
+/// Python client agree byte-for-byte without percent-encoding variance.
+function canonicalGatewayQueryString(req: HttpRequest): string {
+  const pairs: Array<[string, string]> = [];
+  for (const [key, value] of Object.entries(req.query ?? {})) {
+    if (Array.isArray(value)) {
+      for (const item of value) pairs.push([key, String(item)]);
+    } else if (value !== undefined && value !== null) {
+      pairs.push([key, String(value)]);
+    }
+  }
+  pairs.sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) : a[0] < b[0] ? -1 : 1));
+  return pairs.map(([key, value]) => `${key}=${value}`).join("&");
+}
+
+/// The PoP version the client declares it signed with. Absent / "1" ⇒ v1.
+function gatewayPopVersion(req: HttpRequest): 1 | 2 {
+  const raw = gatewayHeader(req, "x-openburnbar-pop-version", "x-obb-pop-version")?.trim();
+  return raw === "2" ? 2 : 1;
+}
+
+/// The persisted PoP capability a client advertises at pairing/registration.
+/// Only 2 ("supports v2") is meaningful; anything else is recorded as 1.
+function parseGatewayPopVersionCapability(raw: unknown): number {
+  const value = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(value) && value >= 2 ? 2 : 1;
+}
+
+function gatewayPopSignablePayloadV2(options: {
+  tokenHash: string;
+  method: string;
+  path: string;
+  query: string;
+  bodyHash: string;
+  nonce: string;
+  timestamp: string;
+}): Buffer {
+  return Buffer.from(
+    [
+      "OpenBurnBar.HermesGatewayPoP.v2",
+      options.tokenHash,
+      options.method.toUpperCase(),
+      options.path,
+      options.query,
+      options.bodyHash,
+      options.nonce,
+      options.timestamp,
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 async function verifyGatewayRequestPoP(
   req: HttpRequest,
   options: { uid: string; clientId: string; client: HermesGatewayClientDoc; tokenHash: string },
 ): Promise<void> {
   if (!options.client.agentClientSigningPublicKeyBase64 || options.client.popRequired !== true) {
     throw httpError(401, "legacy_pop_required");
+  }
+  // L2 — version negotiation. Accept v1 and v2 during the transition, but once a
+  // client has registered v2 capability refuse a v1 downgrade (an attacker could
+  // otherwise strip the query binding by claiming v1).
+  const declaredPopVersion = gatewayPopVersion(req);
+  const clientPopVersion = typeof options.client.popVersion === "number" ? options.client.popVersion : 1;
+  if (clientPopVersion >= 2 && declaredPopVersion < 2) {
+    throw httpError(401, "pop_v2_required");
   }
   const nonce = gatewayHeader(req, "x-openburnbar-pop-nonce", "x-obb-pop-nonce")?.trim() ?? "";
   const timestamp = gatewayHeader(req, "x-openburnbar-pop-timestamp", "x-obb-pop-timestamp")?.trim() ?? "";
@@ -654,14 +726,25 @@ async function verifyGatewayRequestPoP(
     format: "der",
     type: "spki",
   });
-  const payload = gatewayPopSignablePayload({
-    tokenHash: options.tokenHash,
-    method: req.method ?? "GET",
-    path: gatewayPath(req),
-    bodyHash: suppliedBodyHash,
-    nonce,
-    timestamp,
-  });
+  const payload =
+    declaredPopVersion >= 2
+      ? gatewayPopSignablePayloadV2({
+          tokenHash: options.tokenHash,
+          method: req.method ?? "GET",
+          path: gatewayPath(req),
+          query: canonicalGatewayQueryString(req),
+          bodyHash: suppliedBodyHash,
+          nonce,
+          timestamp,
+        })
+      : gatewayPopSignablePayload({
+          tokenHash: options.tokenHash,
+          method: req.method ?? "GET",
+          path: gatewayPath(req),
+          bodyHash: suppliedBodyHash,
+          nonce,
+          timestamp,
+        });
   if (!verifySignature(null, payload, publicKey, signature)) {
     throw httpError(401, "bad_pop_signature");
   }
@@ -726,6 +809,12 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   if (!indexSnap.exists || !index || typeof index.uid !== "string" || typeof index.clientId !== "string") {
     throw httpError(401, "invalid_bearer_token");
   }
+  // The entitlement reads need only the uid, so they overlap the client get and
+  // PoP replay-guard round-trips below instead of serializing after them. The
+  // detached handler keeps a rejection from surfacing as unhandled when one of
+  // the intervening 401 checks throws first; the outcome is awaited further down.
+  const entitlementCheck = assertActiveHermesGatewayEntitlement(index.uid);
+  void entitlementCheck.catch(() => undefined);
   const clientRef = db.doc(`users/${index.uid}/hermes_gateway_clients/${index.clientId}`);
   const clientSnap = await clientRef.get();
   const client = clientSnap.data();
@@ -742,18 +831,29 @@ async function resolveGatewayGrant(req: HttpRequest, scope: HermesGatewayScope):
   if (isHermesGatewayTokenExpired(client.expiresAt)) {
     throw httpError(401, "expired_bearer_token");
   }
-  await verifyGatewayRequestPoP(req, {
-    uid: index.uid,
-    clientId: index.clientId,
-    client,
-    tokenHash,
-  });
+  // allSettled, NOT Promise.all: a PoP failure must always be thrown before an
+  // entitlement failure so a bearer-token holder without the PoP signing key
+  // sees 401 — never a 403 that leaks the account's subscription state.
+  const [popResult, entitlementResult] = await Promise.allSettled([
+    verifyGatewayRequestPoP(req, {
+      uid: index.uid,
+      clientId: index.clientId,
+      client,
+      tokenHash,
+    }),
+    entitlementCheck,
+  ]);
+  if (popResult.status === "rejected") throw popResult.reason;
   if (!hasHermesGatewayScope(client.scopes, scope)) {
     throw httpError(403, "missing_scope", scope);
   }
-  await assertActiveHermesGatewayEntitlement(index.uid);
-  const now = nowISO();
-  await clientRef.set({ lastSeenAt: now, updatedAt: now }, { merge: true });
+  if (entitlementResult.status === "rejected") throw entitlementResult.reason;
+  // Presence bump, coalesced: skip the write while lastSeenAt is fresher than a
+  // third of the presence window — the dominant write on the 1s polling hot path.
+  if (!shouldCoalesceHermesGatewayLastSeen(client.lastSeenAt)) {
+    const now = nowISO();
+    await clientRef.set({ lastSeenAt: now, updatedAt: now }, { merge: true });
+  }
   return { uid: index.uid, client };
 }
 
@@ -784,6 +884,13 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
   }
   const generatedSecret = providedSecretHash ? undefined : generateHermesGatewayDeviceSecret();
   const deviceSecretHash = generatedSecret ? hashHermesGatewayDeviceSecret(generatedSecret) : providedSecretHash;
+  // L4: behind Firebase Hosting -> Cloud Run, req.ip can collapse to a small set
+  // of front-end addresses, making the IP bucket coarse. Add a second rate-limit
+  // dimension keyed on the supplied device-secret hash so a single stuck/abusive
+  // client is throttled independently of how its source IP is observed.
+  if (providedSecretHash) {
+    await checkPublicHttpRateLimit(`devhash:${providedSecretHash}`, "hermes_gateway_device_start");
+  }
   const deviceCode = generateHermesGatewayDeviceCode();
   const userCode = randomHermesGatewayUserCode();
   const now = Timestamp.now();
@@ -831,6 +938,7 @@ async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Promise<v
       agentClientSigningPublicKeyBase64,
       agentClientSigningKeyId,
       popRequired: true,
+      popVersion: parseGatewayPopVersionCapability(body.popVersion),
       agentRelayPublicKey: agentRelay?.publicKey,
       agentRelayKeyVersion: agentRelay?.keyVersion,
       agentRelayEncryption: agentRelay?.encryption,
@@ -1822,6 +1930,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
 	        agentClientSigningPublicKeyBase64,
 	        agentClientSigningKeyId,
 	        popRequired: true,
+        popVersion: parseGatewayPopVersionCapability(session.popVersion),
 	        scopes,
         homeDestinationId,
         expiresAt: tokenExpiresAt,
@@ -2130,6 +2239,10 @@ export const enqueueHermesGatewayEvent = onCall(
       if (!targetClient) {
         throw new HttpsError("invalid-argument", "targetClientId is required for sealed Hermes Gateway events.");
       }
+      // L3: throttle owner-authenticated event dispatch per (uid, clientId). Every
+      // enqueued event/model-switch can wake the paired agent and drive billable
+      // LLM work, so cap the rate even though the surface is uid-scoped.
+      await checkHermesGatewayBearerRateLimit(uid, targetClient.id, "hermes_gateway_event_enqueue");
       const targetIsRelayCapable = targetClient.relayCapable === true;
       // A non-relay-capable (legacy pre-E2E) target is only tolerable while the
       // plaintext grace window is open. New deployments have it closed, so an

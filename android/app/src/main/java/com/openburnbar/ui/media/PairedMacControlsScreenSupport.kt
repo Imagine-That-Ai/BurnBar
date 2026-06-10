@@ -12,6 +12,7 @@ import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
 import com.openburnbar.data.computeruse.PhoneControlSignerSign
+import com.openburnbar.data.computeruse.PhoneControlSigningIdentity
 import com.openburnbar.data.computeruse.PhoneControlSigningKeyStore
 import com.openburnbar.data.computeruse.SharedPreferencesPhoneControlCounterStore
 import com.openburnbar.data.media.MediaControlStreamCoordinator
@@ -412,15 +413,16 @@ internal suspend fun buildRemoteUnlockSession(
         targetCoordinator.activePair.value
             ?: error("Mercury control stream is not paired yet.")
     val keyStore = PhoneControlSigningKeyStore(context.applicationContext)
-    val publicKey = keyStore.publicKey()
-    val privateKeySeed = keyStore.privateKeySeed()
-    val peerNodeId = keyStore.peerNodeId()
+    // F2: resolve the key-kind-aware identity once so the published authority
+    // key and the signed session envelope stay the same key.
+    val identity = keyStore.signingIdentity()
+    val peerNodeId = keyStore.peerNodeId(identity)
     val device = ensureRemoteUnlockTrustedDevice(uid = pair.uid, activity = activity)
     val authority =
         PhoneControlAuthorityDocumentFactory.document(
             connectionId = pair.connectionID,
             deviceId = device.deviceId,
-            publicKey = publicKey,
+            identity = identity,
             publishedAtMillis = System.currentTimeMillis(),
         )
     PhoneControlAuthorityPublisher().publish(uid = pair.uid, authority = authority)
@@ -428,7 +430,7 @@ internal suspend fun buildRemoteUnlockSession(
         context = context,
         requesterDisplayName = requesterDisplayName,
         peerNodeId = peerNodeId,
-        privateKeySeed = privateKeySeed,
+        identity = identity,
     )
 }
 
@@ -436,7 +438,7 @@ private suspend fun signRemoteUnlockSession(
     context: Context,
     requesterDisplayName: String,
     peerNodeId: String,
-    privateKeySeed: ByteArray,
+    identity: PhoneControlSigningIdentity,
 ): HermesRealtimeRelayRemoteUnlockSession {
     val requestedAt = Instant.now()
     val expiresAt = requestedAt.plusSeconds(REMOTE_UNLOCK_SESSION_TTL_SECONDS)
@@ -468,7 +470,7 @@ private suspend fun signRemoteUnlockSession(
             peerNodeId = peerNodeId,
             counter = SharedPreferencesPhoneControlCounterStore(context).nextCounter(peerNodeId),
             timestampMillis = timestampMillis,
-            privateKeySeed = privateKeySeed,
+            identity = identity,
         )
     return unsigned.copy(
         authority =
@@ -478,6 +480,7 @@ private suspend fun signRemoteUnlockSession(
             timestamp = signed.swiftDateReferenceSeconds,
             intentHashBlake3 = signed.intentHashBlake3,
             signatureEd25519 = signed.signatureEd25519,
+            keyKind = signed.keyKind,
         ),
     )
 }

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Kimi Parser
 
@@ -129,7 +130,7 @@ final class KimiParser: LogParser, Sendable {
             }
 
             if let ts = json["created_at"] as? String ?? json["timestamp"] as? String {
-                let date = ISO8601DateFormatter().date(from: ts)
+                let date = ThreadSafeISO8601DateFormatter.parseBasic(ts)
                 if firstTimestamp == nil { firstTimestamp = date }
                 lastTimestamp = date
             }

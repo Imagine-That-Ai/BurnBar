@@ -112,7 +112,7 @@ enum MobileHermesAuthenticatedRelayRequestSealer {
         )
     }
 
-    private static func publishSignalIdentityIfNeeded(
+    static func publishSignalIdentityIfNeeded(
         uid: String,
         deviceID: String,
         identity: OpenBurnBarSignalIdentityKeypair
@@ -126,7 +126,7 @@ enum MobileHermesAuthenticatedRelayRequestSealer {
         )
     }
 
-    private static func nextCounter(connectionID: String, keyID: String) throws -> Int64 {
+    static func nextCounter(connectionID: String, keyID: String) throws -> Int64 {
         let defaults = UserDefaults.standard
         let key = "\(counterDefaultsPrefix).\(connectionID).\(keyID)"
         let current = (defaults.object(forKey: key) as? NSNumber)?.int64Value ?? 0
@@ -138,7 +138,7 @@ enum MobileHermesAuthenticatedRelayRequestSealer {
         return next
     }
 
-    private static func relaySenderKeyID(publicKeyBase64: String) -> String {
+    static func relaySenderKeyID(publicKeyBase64: String) -> String {
         let bytes = Data(base64Encoded: publicKeyBase64) ?? Data(publicKeyBase64.utf8)
         let digest = Data(SHA256.hash(data: bytes))
         let hex = digest.prefix(12).map { String(format: "%02x", $0) }.joined()

@@ -45,6 +45,19 @@ private fun Map<*, *>.toRollupSummary(): RollupSummary = RollupSummary(
 )
 
 internal object FirestoreRollupMerger {
+    /**
+     * Merge a whole usage_rollups collection snapshot (one read/listener
+     * instead of five per-document ones). Drops any document whose ID is not
+     * one of the five window keys so the output is identical to per-key reads
+     * even if a stray doc ever lands in the collection.
+     */
+    fun mergeCollectionDocs(documents: List<DocumentSnapshot>): UsageRollups =
+        mergeWindowDocs(
+            documents
+                .filter { it.id in firestoreRollupWindowKeys }
+                .associateBy { it.id },
+        )
+
     /** Merge per-window UsageRollupDoc documents into the flat client model. */
     fun mergeWindowDocs(docs: Map<String, DocumentSnapshot?>): UsageRollups {
         val allDocs =

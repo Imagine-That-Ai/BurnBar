@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Warp Parser
 
@@ -553,7 +554,7 @@ private struct WarpParseContext {
         for key in keys {
             guard let value = dictionary[key] else { continue }
             if let string = value as? String {
-                if let date = ISO8601DateFormatter().date(from: string) {
+                if let date = ThreadSafeISO8601DateFormatter.parseBasic(string) {
                     return date
                 }
                 if let double = Double(string) {

@@ -37,6 +37,20 @@ public struct BurnBarWidgetSnapshot: Codable, Sendable, Hashable {
         self.lastSync = lastSync
     }
 
+    /// True when every field the widget renders data from matches `other`,
+    /// ignoring `lastSync` (stamped fresh on every write by construction, so
+    /// including it would defeat any unchanged-content comparison).
+    public func hasSameContent(as other: BurnBarWidgetSnapshot) -> Bool {
+        heroTotalCost == other.heroTotalCost
+            && heroTotalTokens == other.heroTotalTokens
+            && heroTotalRequests == other.heroTotalRequests
+            && topProviders == other.topProviders
+            && topProviderTokens == other.topProviderTokens
+            && topModels == other.topModels
+            && dailyPoints == other.dailyPoints
+            && windowKey == other.windowKey
+    }
+
     /// Preview snapshot with realistic placeholder data.
     public static let preview = BurnBarWidgetSnapshot(
         heroTotalCost: 3.42,
@@ -75,6 +89,42 @@ public enum BurnBarWidgetShared {
         }
         let data = try JSONEncoder().encode(snapshot)
         try data.write(to: url, options: .atomic)
+    }
+
+    /// On-disk snapshots older than this are rewritten even when the content
+    /// is unchanged, so the Large/XL widgets' "Updated" footer keeps advancing
+    /// at a coarse cadence between real data changes.
+    public static let snapshotStaleAfter: TimeInterval = 15 * 60
+
+    /// Pure decision for `writeSnapshotIfChanged`: write when there is no
+    /// readable on-disk snapshot, the content changed, or the on-disk copy
+    /// has gone stale relative to the candidate's `lastSync`.
+    public static func shouldWrite(
+        _ snapshot: BurnBarWidgetSnapshot,
+        replacing existing: BurnBarWidgetSnapshot?,
+        staleAfter: TimeInterval = snapshotStaleAfter
+    ) -> Bool {
+        guard let existing, existing.hasSameContent(as: snapshot) else { return true }
+        return snapshot.lastSync.timeIntervalSince(existing.lastSync) >= staleAfter
+    }
+
+    /// Write `snapshot` only when the on-disk copy needs it (see `shouldWrite`).
+    /// Returns whether a write happened, so callers can reload widget
+    /// timelines only for real changes — every Firestore listener tick used
+    /// to rewrite an identical snapshot and burn the WidgetCenter reload
+    /// budget. Comparing against the on-disk snapshot (not a shared in-memory
+    /// hash) keeps concurrent `DashboardStore` instances from ping-ponging
+    /// each other's guards.
+    @discardableResult
+    public static func writeSnapshotIfChanged(
+        _ snapshot: BurnBarWidgetSnapshot,
+        staleAfter: TimeInterval = snapshotStaleAfter
+    ) throws -> Bool {
+        guard shouldWrite(snapshot, replacing: try? readSnapshot(), staleAfter: staleAfter) else {
+            return false
+        }
+        try writeSnapshot(snapshot)
+        return true
     }
 
     /// Read the latest snapshot from the shared App Group container.

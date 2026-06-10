@@ -478,7 +478,7 @@ private extension UsageAggregator {
             let hasBacklog = queueDepth > 0 || report.leasedJobs >= maxJobs
 
             if shouldRefreshProjectionInsights(report: report, hasBacklog: hasBacklog) {
-                _ = WorkflowInsightRollupService(dataStore: dataStore).snapshot(refreshIfStale: true)
+                _ = await WorkflowInsightRollupService(dataStore: dataStore).snapshotAsync(refreshIfStale: true)
                 lastProjectionInsightRefreshAt = Date()
             }
             return hasBacklog

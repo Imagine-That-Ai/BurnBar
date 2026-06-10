@@ -25,7 +25,15 @@ export default defineConfig({
   },
   vite: {
     build: {
-      cssMinify: "lightningcss"
+      cssMinify: "lightningcss",
+      rollupOptions: {
+        // src/scripts/pretextShrinkwrap.ts imports straight from esm.sh. Keep
+        // the URL external so the bundle preserves today's runtime exactly:
+        // the marketing CSP (script-src 'self' + hashes) blocks esm.sh, which
+        // makes that module a deliberate no-op in production. Bundling the
+        // npm package would activate it and visibly re-layout text.
+        external: ["https://esm.sh/@chenglou/pretext"]
+      }
     }
   }
 });

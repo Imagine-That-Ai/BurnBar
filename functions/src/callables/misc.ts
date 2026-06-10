@@ -7,7 +7,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { computeUserRollups, writeUserRollups } from "../rollups.js";
+import { refreshUserRollups } from "../rollups.js";
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "../demoSeed.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -22,7 +22,7 @@ export const rebuildUsageRollups = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 10,
   },
-  wrapCallableHandler("rebuildUsageRollups", async (request: CallableRequest<Record<string, never>>) => {
+  wrapCallableHandler("rebuildUsageRollups", async (request: CallableRequest<{ force?: boolean }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new Error("unauthenticated");
@@ -30,13 +30,17 @@ export const rebuildUsageRollups = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     try {
-      const rollups = await computeUserRollups(db, uid);
-      await writeUserRollups(db, uid, rollups);
+      // `force: true` is the explicit repair path: rebuild the counters from
+      // raw usage history. Routine dashboard refreshes omit it and are served
+      // from the incremental counters whenever those are healthy.
+      const force = request.data?.force === true;
+      const { rollups, rebuiltCounters } = await refreshUserRollups(db, uid, { force });
       logInfo({
         event: "callable_info",
         message: "rebuild_usage_rollups_succeeded",
         user_id_hash: uid.slice(0, 8),
         computed_at: rollups.all_time.computedAt,
+        counters_rebuilt: rebuiltCounters,
       });
       return {
         success: true,

@@ -1,5 +1,6 @@
 import SwiftUI
 import QuickLook
+import ImageIO
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -140,6 +141,14 @@ private struct TransferRow: View {
     let onTap: () -> Void
     let onRemove: () -> Void
 
+    @State private var thumbnail: ThumbnailState = .loading
+
+    private enum ThumbnailState {
+        case loading
+        case loaded(UIImage)
+        case unavailable
+    }
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
@@ -178,12 +187,24 @@ private struct TransferRow: View {
 
                 Spacer(minLength: 8)
 
-                if entry.looksLikeImage, let thumbnail = thumbnailImage() {
-                    Image(uiImage: thumbnail)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 36, height: 36)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                if entry.looksLikeImage {
+                    switch thumbnail {
+                    case .loading:
+                        // Neutral placeholder keeps the row layout stable for
+                        // the frame or two the thumbnail takes to decode off
+                        // the main thread.
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                            .frame(width: 36, height: 36)
+                    case .loaded(let image):
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 36, height: 36)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    case .unavailable:
+                        EmptyView()
+                    }
                 }
             }
             .padding(.vertical, 10)
@@ -194,6 +215,15 @@ private struct TransferRow: View {
             Button(role: .destructive, action: onRemove) {
                 Label("Remove", systemImage: "trash")
             }
+        }
+        .task {
+            guard entry.looksLikeImage else { return }
+            guard let url = entry.localURL,
+                  let image = await MercuryTransferThumbnailCache.shared.thumbnail(for: url) else {
+                thumbnail = .unavailable
+                return
+            }
+            thumbnail = .loaded(image)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(entry.direction.displayName) \(entry.filename), \(formattedSize(entry.sizeBytes)), \(relativeTime(entry.completedAt))")
@@ -209,13 +239,48 @@ private struct TransferRow: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
-    private func thumbnailImage() -> UIImage? {
-        #if canImport(UIKit)
-        guard let url = entry.localURL,
-              FileManager.default.fileExists(atPath: url.path) else { return nil }
-        return UIImage(contentsOfFile: url.path)
-        #else
-        return nil
-        #endif
+}
+
+/// One-time, downscaled thumbnail generation for transfer rows, keyed by
+/// file path + modification time so a re-received file at the same path
+/// regenerates. `CGImageSourceCreateThumbnailAtIndex` decodes at most
+/// `maxPixelSize` pixels per side — never the full bitmap — so a 12 MP
+/// photo costs ~80 KB instead of ~48 MB and never decodes on the main
+/// thread during scroll.
+actor MercuryTransferThumbnailCache {
+    static let shared = MercuryTransferThumbnailCache()
+
+    /// Covers the 36 pt @3x row frame (108 px) with margin for
+    /// `scaledToFill` crops.
+    static let maxPixelSize = 144
+
+    private let cache = NSCache<NSString, UIImage>()
+
+    init(countLimit: Int = 64) {
+        // ≤ ~83 KB per 144 px thumbnail → ≤ ~5 MB resident worst case.
+        cache.countLimit = countLimit
+    }
+
+    func thumbnail(for url: URL) -> UIImage? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let modified = attributes[.modificationDate] as? Date else { return nil }
+        let key = "\(url.path)|\(modified.timeIntervalSinceReferenceDate)" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            // Bakes EXIF rotation into the pixels — `UIImage(contentsOfFile:)`
+            // honored orientation automatically, so dropping this flag would
+            // render rotated photos sideways.
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Self.maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+
+        let image = UIImage(cgImage: cgImage)
+        cache.setObject(image, forKey: key)
+        return image
     }
 }

@@ -168,20 +168,21 @@ final class MobileAgentPermissionGrantController {
     }
 
     private func publishAuthority(sourceDeviceID: String) async throws {
-        let key = try keyStore.signingKey()
-        let peerNodeId = keyStore.peerNodeId(for: key)
+        let identity = try keyStore.signingIdentity()
+        let peerNodeId = keyStore.peerNodeId(for: identity)
         try await ComputerUseSecurityCallableClient.publishAgentGrantAuthority(
             deviceId: sourceDeviceID,
             peerNodeId: peerNodeId,
-            publicKeyBase64: key.privateKey.publicKey.rawRepresentation.base64EncodedString()
+            publicKeyBase64: identity.publicKeyRepresentation.base64EncodedString(),
+            keyKind: identity.kind
         )
     }
 
     private func signedWireRequest(
         for request: AgentCapabilityGrantRequest
     ) throws -> HermesRealtimeRelayAgentGrantRequest {
-        let key = try keyStore.signingKey()
-        let peerNodeId = keyStore.peerNodeId(for: key)
+        let identity = try keyStore.signingIdentity()
+        let peerNodeId = keyStore.peerNodeId(for: identity)
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: "",
             counter: 0,
@@ -194,12 +195,12 @@ final class MobileAgentPermissionGrantController {
         let timestamp = Date()
         let signed: ComputerUsePhoneControlSigner.SignedAuthority
         do {
-            signed = try signer.sign(
-                request: unsignedWire,
+            signed = try signer.signAuthority(
+                intentHashHex: signer.canonicalAgentGrantRequestHashHex(request: unsignedWire),
                 peerNodeId: peerNodeId,
                 counter: counter,
                 timestamp: timestamp,
-                privateKey: key.privateKey
+                key: identity
             )
         } catch {
             throw GrantError.signingFailed(error.localizedDescription)
@@ -211,7 +212,7 @@ final class MobileAgentPermissionGrantController {
                 signedIntentHash: signed.intentHashHex,
                 authenticatedAt: signed.timestamp,
                 expiresAt: request.expiresAt,
-                privateKey: key.privateKey
+                key: identity
             )
         }
         return signedRequest.wire(authority: HermesRealtimeRelayAuthorityEnvelope(
@@ -219,7 +220,8 @@ final class MobileAgentPermissionGrantController {
             counter: signed.counter,
             timestamp: signed.timestamp,
             intentHashBlake3: signed.intentHashHex,
-            signatureEd25519: signed.signatureBase64
+            signatureEd25519: signed.signatureBase64,
+            keyKind: identity.wireKeyKind
         ))
     }
 

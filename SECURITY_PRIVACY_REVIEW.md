@@ -52,9 +52,10 @@ OpenBurnBar is an unsandboxed macOS utility that parses local AI agent logs, agg
 - **Empty string handling:** Setting a secret to empty string deletes it from Keychain. **Correct.**
 
 ### Database Encryption Key
-- **Storage:** `DatabaseEncryptionService.getOrCreateKey()` stores the SQLCipher key in Keychain with `kSecAttrAccessibleAfterFirstUnlock` (weaker than `WhenUnlockedThisDeviceOnly`, but necessary for background/daemon access).
-- **Recovery file:** If the Keychain entry is lost, the key is recovered from `~/Library/Application Support/OpenBurnBar/.encryption-key-recovery` with `0o600` permissions and a SHA-256 integrity check.
-- **Risk:** The recovery file negates much of the Keychain's security benefit. Any process with user-level filesystem access can read the recovery file and decrypt the database. **This is a material weakness.** Recommendation: remove the recovery file and require the user to re-create the database if the Keychain is lost, or protect the recovery file with a user-supplied password.
+- **Storage:** `DatabaseEncryptionService.getOrCreateKey()` stores the SQLCipher key in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (device-local, non-exportable, never synced).
+- **Recovery file:** There is **no** automatic plaintext recovery file. The deprecated `~/Library/Application Support/OpenBurnBar/.encryption-key-recovery` path was removed; losing the Keychain entry means the encrypted database is unrecoverable unless the user previously exported an explicit passphrase-protected bundle.
+- **Recovery bundle (opt-in):** `DatabaseEncryptionService.exportRecoveryBundle(password:)` derives a wrapping key with **PBKDF2-HMAC-SHA256 (100k iterations, random 16-byte salt)** and seals the key with AES-GCM; `importRecoveryBundle(data:password:)` restores it. No key material sits in plaintext on disk.
+- **Status:** Verified in code (`AgentLens/Services/DataStore/DatabaseEncryptionService.swift`). The earlier `kSecAttrAccessibleAfterFirstUnlock` + plaintext recovery-file design described in prior drafts no longer exists; this section was corrected to match the shipping implementation.
 
 ### Hardcoded Secrets Audit
 - **Result:** No hardcoded API keys, passwords, or credentials were found in Swift source, plist, or JSON files.

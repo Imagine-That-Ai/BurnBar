@@ -431,6 +431,20 @@ enum SettingsManifest {
             ],
             logoProviders: [.claudeCode, .openAI, .hermes]
         ),
+        SettingsItem(
+            id: "agents.quotaDisplay",
+            tab: .agents,
+            pageRoute: .agentsAdvanced,
+            anchorID: SettingsAnchor.agentsQuotaDisplay,
+            title: "Quota Popover",
+            subtitle: "Choose which provider quotas appear in the menu-bar drop-down",
+            keywords: [
+                "agent", "agents", "quota", "quotas", "popover", "drop down", "dropdown",
+                "menu bar", "menubar", "visible", "hide", "show", "provider", "providers",
+                "codex", "claude", "opencode", "factory", "cursor", "grok"
+            ],
+            logoProviders: [.codex, .claudeCode, .openCode, .factory]
+        ),
 
         // MARK: Alerts
 
@@ -728,6 +742,7 @@ enum SettingsManifest {
         SettingsAnchor.agentsRuntimes,
         SettingsAnchor.agentsModels,
         SettingsAnchor.agentsAdvanced,
+        SettingsAnchor.agentsQuotaDisplay,
         SettingsAnchor.alertsDailySpend,
         SettingsAnchor.alertsDigest,
         SettingsAnchor.notificationsLocal,

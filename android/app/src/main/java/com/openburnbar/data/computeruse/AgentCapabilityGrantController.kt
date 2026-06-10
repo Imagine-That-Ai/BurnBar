@@ -142,8 +142,10 @@ class AgentCapabilityGrantController(
             BurnBarApplication.mediaControlCoordinator
                 ?: throw GrantError.NoPairedMac
         val pair = coordinator.activePair.value ?: throw GrantError.NoPairedMac
-        val publicKey = keyStore.publicKey()
-        val peerNodeId = keyStore.peerNodeId()
+        // F2: resolve the signing identity once so the published authority key
+        // and every envelope this sender signs stay the same key.
+        val identity = keyStore.signingIdentity()
+        val peerNodeId = keyStore.peerNodeId(identity)
 
         phoneControlSender
             ?.takeIf { phoneControlConnectionID == pair.connectionID }
@@ -156,7 +158,7 @@ class AgentCapabilityGrantController(
             PhoneControlAuthorityDocumentFactory.document(
                 connectionId = pair.connectionID,
                 deviceId = sourceDeviceId,
-                publicKey = publicKey,
+                identity = identity,
                 publishedAtMillis = System.currentTimeMillis(),
             )
         val publisher = PhoneControlAuthorityPublisher(firestore)
@@ -168,7 +170,7 @@ class AgentCapabilityGrantController(
             uid = pair.uid,
             connectionId = pair.connectionID,
             peerNodeId = peerNodeId,
-            privateKeySeedProvider = { keyStore.privateKeySeed() },
+            signingIdentityProvider = { identity },
             counterStore = counterStore,
             frameSink = { frame -> coordinator.send(frame) },
         ).also {
@@ -197,12 +199,15 @@ class AgentCapabilityGrantController(
     }
 
     private suspend fun queue(uid: String, request: AgentCapabilityGrantRequest) {
-        val signedWire = signedWireRequest(request)
+        // F2: one identity resolution covers the published authority key and
+        // the queued request's signature.
+        val identity = keyStore.signingIdentity()
+        val signedWire = signedWireRequest(request, identity)
         val authority =
             PhoneControlAuthorityDocumentFactory.document(
                 connectionId = phoneControlConnectionID ?: "agent-grant-queued",
                 deviceId = request.sourceDeviceId,
-                publicKey = keyStore.publicKey(),
+                identity = identity,
                 publishedAtMillis = System.currentTimeMillis(),
             )
         PhoneControlAuthorityPublisher(firestore)
@@ -210,8 +215,11 @@ class AgentCapabilityGrantController(
         ComputerUseSecurityCallableClient().queueAgentCapabilityGrantRequest(wireRequestMap(signedWire))
     }
 
-    private fun signedWireRequest(request: AgentCapabilityGrantRequest): com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest {
-        val peerNodeId = keyStore.peerNodeId()
+    private fun signedWireRequest(
+        request: AgentCapabilityGrantRequest,
+        identity: PhoneControlSigningIdentity,
+    ): com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest {
+        val peerNodeId = keyStore.peerNodeId(identity)
         val placeholder =
             HermesRealtimeRelayAuthorityEnvelope(
                 peerNodeId = "",
@@ -228,7 +236,7 @@ class AgentCapabilityGrantController(
                 peerNodeId = peerNodeId,
                 counter = counterStore.nextCounter(peerNodeId),
                 timestampMillis = timestampMillis,
-                privateKeySeed = keyStore.privateKeySeed(),
+                identity = identity,
             )
         val signedRequest =
             if (request.localAuthenticationSatisfied) {
@@ -239,7 +247,7 @@ class AgentCapabilityGrantController(
                         signedIntentHash = authority.intentHashBlake3,
                         authenticatedAtMillis = timestampMillis,
                         expiresAtSwiftReferenceSeconds = request.expiresAtSwiftReferenceSeconds,
-                        privateKeySeed = keyStore.privateKeySeed(),
+                        identity = identity,
                     ),
                 )
             } else {
@@ -252,6 +260,7 @@ class AgentCapabilityGrantController(
                 timestamp = authority.swiftDateReferenceSeconds,
                 intentHashBlake3 = authority.intentHashBlake3,
                 signatureEd25519 = authority.signatureEd25519,
+                keyKind = authority.keyKind,
             ),
         )
     }
@@ -285,13 +294,15 @@ class AgentCapabilityGrantController(
         }
         put(
             "authority",
-            mapOf(
-                "peerNodeId" to wire.authority.peerNodeId,
-                "counter" to wire.authority.counter,
-                "timestamp" to wire.authority.timestamp,
-                "intentHashBlake3" to wire.authority.intentHashBlake3,
-                "signatureEd25519" to wire.authority.signatureEd25519,
-            ),
+            buildMap {
+                put("peerNodeId", wire.authority.peerNodeId)
+                put("counter", wire.authority.counter)
+                put("timestamp", wire.authority.timestamp)
+                put("intentHashBlake3", wire.authority.intentHashBlake3)
+                put("signatureEd25519", wire.authority.signatureEd25519)
+                // F2: omitted for legacy Ed25519 — pre-F2 payloads stay byte-identical.
+                wire.authority.keyKind?.let { put("keyKind", it) }
+            },
         )
     }
 

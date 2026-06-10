@@ -121,6 +121,21 @@ data class PhoneControlAuthorityEnvelope(
     val timestampMillis: Long,
     val intentHashBlake3: String,
     val signatureEd25519: String,
+    /**
+     * WS2 — optional App Attest / Play Integrity attestation digest. Nullable
+     * and dropped from the wire when absent, mirroring the iroh-relay
+     * `HermesRealtimeRelayAuthorityEnvelope` and the Swift model. The
+     * canonical intent hash never covers the authority envelope, so legacy
+     * envelopes stay byte-identical.
+     */
+    val attestationHashBlake3: String? = null,
+    /**
+     * F2 — signing key custody class (`PhoneControlSigningKeyKind` wire
+     * value). Absent ⇒ `ed25519` (legacy software key); `"se-p256"` ⇒ a
+     * non-exportable StrongBox/TEE P-256 key whose `signatureEd25519` field
+     * carries a raw `r‖s` ECDSA signature.
+     */
+    val keyKind: String? = null,
 ) {
     val swiftDateReferenceSeconds: Double
         get() = timestampMillis.toDouble() / 1000.0 - SWIFT_REFERENCE_TO_UNIX_SECONDS

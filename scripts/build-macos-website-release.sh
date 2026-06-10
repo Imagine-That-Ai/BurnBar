@@ -10,6 +10,7 @@ project="${OPENBURNBAR_PROJECT:-OpenBurnBar.xcodeproj}"
 destination="${OPENBURNBAR_DESTINATION:-platform=macOS,arch=arm64}"
 team_id="${OPENBURNBAR_APPLE_TEAM_ID:-4Y367DF25B}"
 entitlements="AgentLens/Resources/OpenBurnBarRelease.entitlements"
+privileged_input_entitlements="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
 
 read_project_version() {
   python3 - <<'PY'
@@ -48,6 +49,10 @@ source_archive_path="$release_dir/$source_archive_name"
 
 if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing release entitlements at $entitlements" >&2
+  exit 1
+fi
+if [[ ! -f "$privileged_input_entitlements" ]]; then
+  echo "ERROR: Missing privileged input entitlements at $privileged_input_entitlements" >&2
   exit 1
 fi
 
@@ -124,15 +129,34 @@ sign_one() {
   codesign --force --timestamp --options runtime --sign "$identity" "$path"
 }
 
+sign_one_with_entitlements() {
+  local path="$1"
+  local entitlements_path="$2"
+  local options="${3:-runtime}"
+  [[ -e "$path" ]] || return 0
+  codesign --force --timestamp --options "$options" \
+    --entitlements "$entitlements_path" \
+    --sign "$identity" \
+    "$path"
+}
+
 if [[ -d "$frameworks_dir" ]]; then
   while IFS= read -r -d '' item; do
     sign_one "$item"
-  done < <(find "$frameworks_dir" -mindepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" \) -print0 | sort -z)
+  done < <(
+    find "$frameworks_dir" -mindepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" \) -print0 \
+      | python3 -c 'import sys; paths=[p for p in sys.stdin.buffer.read().split(b"\0") if p]; paths.sort(key=lambda p: (p.count(b"/"), len(p)), reverse=True); sys.stdout.buffer.write(b"\0".join(paths) + (b"\0" if paths else b""))'
+  )
 fi
 sign_one "$helpers_dir/libOpenBurnBarCore.dylib"
 sign_one "$helpers_dir/OpenBurnBarDaemon"
+sign_one "$helpers_dir/OpenBurnBarVirtualHIDBridge"
+sign_one_with_entitlements \
+  "$helpers_dir/OpenBurnBarPrivilegedInputExecution" \
+  "$privileged_input_entitlements" \
+  "runtime,library"
 
-codesign --force --timestamp --deep --options runtime \
+codesign --force --timestamp --options runtime \
   --entitlements "$entitlements" \
   --sign "$identity" \
   "$app_path"

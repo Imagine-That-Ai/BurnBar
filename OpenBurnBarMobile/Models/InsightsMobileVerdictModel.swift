@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import OpenBurnBarCore
+import WidgetKit
 
 /// Owns the verdict pipeline state on the mobile (iOS/iPad) Insights tab.
 ///
@@ -152,7 +153,18 @@ final class InsightsMobileVerdictModel {
             isStale: isStale,
             lastSync: Date()
         )
-        try? InsightWidgetShared.writeVerdictSnapshot(snapshot)
+        do {
+            // Reload the Insight Today timeline only after a real content
+            // change lands on disk — otherwise the widget waits for its
+            // 15-minute polling fallback to pick up a fresh verdict.
+            if try InsightWidgetShared.writeVerdictSnapshotIfChanged(snapshot) {
+                WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.insightstoday")
+            }
+        } catch {
+            // Silently fail — widget shows its last snapshot (or placeholder)
+            // until the next successful write. Do NOT surface widget I/O
+            // errors on the Insights tab.
+        }
     }
 
     nonisolated private static func dateInterval(for window: VerdictWindow) -> DateInterval {

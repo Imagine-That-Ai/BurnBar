@@ -1,11 +1,14 @@
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 import OpenBurnBarCore
 
 // MARK: - Source Filter
 
-private enum SessionLogSourceFilter: String, CaseIterable, Identifiable {
+// The filter/group enums and `SessionLogGroup` are internal (not private) so
+// `SessionLogGroupsCacheTests` can drive the pure compute functions below.
+enum SessionLogSourceFilter: String, CaseIterable, Identifiable {
     case all      = "All"
     case provider = "Provider"
     case assistant = "Assistant"
@@ -14,7 +17,7 @@ private enum SessionLogSourceFilter: String, CaseIterable, Identifiable {
 
 // MARK: - Group Mode
 
-private enum SessionLogGroupMode: String, CaseIterable, Identifiable {
+enum SessionLogGroupMode: String, CaseIterable, Identifiable {
     case time = "Time"
     case provider = "Provider"
     case project = "Project"
@@ -30,7 +33,7 @@ private enum SessionLogGroupMode: String, CaseIterable, Identifiable {
 
 // MARK: - Data Source
 
-private enum SessionLogDataSource: String, CaseIterable, Identifiable {
+enum SessionLogDataSource: String, CaseIterable, Identifiable {
     case local  = "Local"
     case cloud  = "Cloud"
     case iCloud = "iCloud"
@@ -46,7 +49,7 @@ private enum SessionLogDataSource: String, CaseIterable, Identifiable {
 
 // MARK: - Session Log Group
 
-private struct SessionLogGroup: Identifiable {
+struct SessionLogGroup: Identifiable {
     let id: String
     let title: String
     let systemImage: String
@@ -92,6 +95,14 @@ struct SessionLogsView: View {
     @State private var selectedDetailLog: ConversationRecord?
     @State private var resumeRequest: SessionResumeRequest?
     @State private var isExporting = false
+    /// Explicit ticker bumped once per `allLogs` assignment (in `loadLogs`).
+    /// `allLogs.count` is not enough — a reload can replace the contents with
+    /// the same number of records.
+    @State private var allLogsVersion = 0
+    /// Bumped by `NSCalendarDayChanged` so the memoized time buckets
+    /// re-derive at midnight (or timezone change) without other input changes.
+    @State private var dayChangeTick = 0
+    @State private var logGroupsCache = LogGroupsCache()
 
     private let defaultDisplayLimit = 15
     private var hasMultipleDevices: Bool { knownDevices.count > 1 }
@@ -99,7 +110,95 @@ struct SessionLogsView: View {
 
     // MARK: - Filtering
 
-    private var sourceFilteredLogs: [ConversationRecord] {
+    /// Cache key for the memoized filter → group pipeline. `localDeviceId`
+    /// covers the `knownDevices` dependency of device filtering; `dayStamp`
+    /// re-derives the Today/Yesterday/This Week buckets after midnight or a
+    /// timezone change, matching the old recompute-on-every-body-eval
+    /// behaviour.
+    private struct LogGroupsCacheKey: Equatable {
+        let allLogsVersion: Int
+        let searchText: String
+        let sourceFilter: SessionLogSourceFilter
+        let deviceFilter: String?
+        let localDeviceId: String?
+        let groupMode: SessionLogGroupMode
+        let dataSource: SessionLogDataSource
+        let retrievalMatchedIDs: [String]
+        let dayStamp: Date
+        let dayChangeTick: Int
+    }
+
+    /// Reference-typed store so the memo can refresh mid-body without
+    /// re-entering SwiftUI's state graph.
+    private final class LogGroupsCache {
+        var key: LogGroupsCacheKey?
+        var filteredLogs: [ConversationRecord] = []
+        var groups: [SessionLogGroup] = []
+    }
+
+    // Memoized filter + group pipeline. Pre-cache these were chained computed
+    // properties re-evaluated on every read: a single body evaluation reads
+    // `filteredLogs` ~6 times and `logGroups` twice, so each keystroke or
+    // selection change cost 8+ full filter/group/sort passes over the loaded
+    // records. The key is checked on read (rather than rebuilt via
+    // `.onChange` — see docs/architecture/macos-performance.md §2) because
+    // `handleSourceFilterChange`/`loadLogs` read the groups synchronously
+    // right after mutating their inputs.
+    private var filteredLogs: [ConversationRecord] {
+        rebuildLogGroupsIfNeeded()
+        return logGroupsCache.filteredLogs
+    }
+
+    private var logGroups: [SessionLogGroup] {
+        rebuildLogGroupsIfNeeded()
+        return logGroupsCache.groups
+    }
+
+    private var logGroupsCacheKey: LogGroupsCacheKey {
+        LogGroupsCacheKey(
+            allLogsVersion: allLogsVersion,
+            searchText: searchText,
+            sourceFilter: sourceFilter,
+            deviceFilter: deviceFilter,
+            localDeviceId: knownDevices.first(where: { $0.isLocal })?.deviceId,
+            groupMode: groupMode,
+            dataSource: dataSource,
+            retrievalMatchedIDs: retrievalMatchedIDs,
+            dayStamp: Calendar.current.startOfDay(for: Date()),
+            dayChangeTick: dayChangeTick
+        )
+    }
+
+    private func rebuildLogGroupsIfNeeded() {
+        let key = logGroupsCacheKey
+        guard key != logGroupsCache.key else { return }
+        let filtered = Self.computeFilteredLogs(
+            allLogs: allLogs,
+            sourceFilter: key.sourceFilter,
+            deviceFilter: key.deviceFilter,
+            localDeviceId: key.localDeviceId,
+            searchText: key.searchText,
+            dataSource: key.dataSource,
+            retrievalMatchedIDs: key.retrievalMatchedIDs
+        )
+        logGroupsCache.filteredLogs = filtered
+        logGroupsCache.groups = Self.computeLogGroups(from: filtered, groupMode: key.groupMode)
+        logGroupsCache.key = key
+    }
+
+    /// Pure, deterministic filter pass. `internal` (with the enums above) so
+    /// `AgentLensTests/Active/SessionLogGroupsCacheTests.swift` can pin the
+    /// matrix down without a SwiftUI host — mirrors
+    /// `ProjectsView.computeMergedProjects`.
+    static func computeFilteredLogs(
+        allLogs: [ConversationRecord],
+        sourceFilter: SessionLogSourceFilter,
+        deviceFilter: String?,
+        localDeviceId: String?,
+        searchText: String,
+        dataSource: SessionLogDataSource,
+        retrievalMatchedIDs: [String]
+    ) -> [ConversationRecord] {
         var result: [ConversationRecord]
         switch sourceFilter {
         case .all:
@@ -112,14 +211,10 @@ struct SessionLogsView: View {
         if let deviceFilter {
             result = result.filter { record in
                 if record.isRemote { return record.sourceDeviceId == deviceFilter }
-                return knownDevices.first(where: { $0.isLocal })?.deviceId == deviceFilter
+                return localDeviceId == deviceFilter
             }
         }
-        return result
-    }
 
-    private var filteredLogs: [ConversationRecord] {
-        let result = sourceFilteredLogs
         let trimmedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return result }
 
@@ -150,18 +245,22 @@ struct SessionLogsView: View {
 
     // MARK: - Grouping
 
-    private var logGroups: [SessionLogGroup] {
-        let logs = filteredLogs
+    /// Pure, deterministic grouping pass — see `computeFilteredLogs`.
+    /// `now` is injectable so the time buckets are unit-testable.
+    static func computeLogGroups(
+        from logs: [ConversationRecord],
+        groupMode: SessionLogGroupMode,
+        now: Date = Date()
+    ) -> [SessionLogGroup] {
         switch groupMode {
-        case .time: return timeGroups(from: logs)
+        case .time: return timeGroups(from: logs, now: now)
         case .provider: return providerGroups(from: logs)
         case .project: return projectGroups(from: logs)
         }
     }
 
-    private func timeGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
+    private static func timeGroups(from logs: [ConversationRecord], now: Date) -> [SessionLogGroup] {
         let calendar = Calendar.current
-        let now = Date()
         let startOfToday = calendar.startOfDay(for: now)
         let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
         let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
@@ -201,7 +300,7 @@ struct SessionLogsView: View {
         }
     }
 
-    private func providerGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
+    private static func providerGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
         Dictionary(grouping: logs) { $0.provider }
             .map { provider, logs in
                 SessionLogGroup(
@@ -216,7 +315,7 @@ struct SessionLogsView: View {
             .sorted { $0.logs.count > $1.logs.count }
     }
 
-    private func projectGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
+    private static func projectGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
         Dictionary(grouping: logs) { $0.projectName }
             .map { project, logs in
                 SessionLogGroup(
@@ -247,6 +346,13 @@ struct SessionLogsView: View {
             .onChange(of: accountManager.isSignedIn) { _, _ in refreshRetrievalHealth() }
             .onChange(of: selectedId) { _, newId in handleSelectedIdChange(newId) }
             .onChange(of: jumpTarget?.id) { _, _ in applyJumpTargetIfNeeded(jumpTarget) }
+            .onReceive(
+                NotificationCenter.default
+                    .publisher(for: .NSCalendarDayChanged)
+                    .receive(on: RunLoop.main)
+            ) { _ in
+                dayChangeTick &+= 1
+            }
             .sheet(item: $resumeRequest) { request in
                 ResumeConversationSheet(
                     record: request.record,
@@ -1050,7 +1156,7 @@ struct SessionLogsView: View {
 
     // MARK: - Data Loading
 
-    private func substringFilteredLogs(from logs: [ConversationRecord], query: String) -> [ConversationRecord] {
+    private static func substringFilteredLogs(from logs: [ConversationRecord], query: String) -> [ConversationRecord] {
         let q = query.lowercased()
         return logs.filter {
             $0.inferredTaskTitle.lowercased().contains(q)
@@ -1236,6 +1342,10 @@ struct SessionLogsView: View {
             dataSourceError = error.localizedDescription
             allLogs = []
         }
+        // Every loadLogs path assigns `allLogs` exactly once, so one bump per
+        // call keeps the group-cache key honest even when a reload returns
+        // the same number of records.
+        allLogsVersion &+= 1
 
         await runLocalRetrievalSearchIfNeeded()
         reconcileSelectionWithFilteredLogs()

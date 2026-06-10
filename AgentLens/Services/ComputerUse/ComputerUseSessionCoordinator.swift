@@ -121,6 +121,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     private var phoneValidator = PhoneControlAuthorityValidator()
     private var phoneReceiver: PhoneControlReceiver?
+    /// F10 — per-connection control-seal sessions established at classify time
+    /// (controller peerNodeId + derived AES-GCM key). Cleared with the session.
+    private var controlSealSessions: [String: (peerNodeId: String, key: SymmetricKey)] = [:]
+    /// F10 test seams — production resolves the Mac relay private key from the
+    /// keychain-backed store and the pinned sender key from the same Firestore
+    /// trust resolver the chat opener uses.
+    var controlSealRecipientPrivateKeyProvider: (@Sendable () throws -> HermesRelayPrivateKey)?
+    var controlSealPinnedSenderKeyProvider: (@Sendable (_ uid: String, _ connectionId: String, _ envelope: HermesRealtimeRelayControlSealKeyEnvelope) async throws -> String)?
     var phoneControlAuthorizedPeerNodeProvider: (@MainActor @Sendable () -> String?)?
     var phoneControlKeyboardTargetWindowProvider: (@MainActor @Sendable () -> CGWindowID?)?
     var phoneControlKeyboardTargetFocuser: (@MainActor @Sendable (CGWindowID) throws -> Void)?
@@ -278,17 +286,22 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
 
     @discardableResult
     public func registerPhonePeer(nodeId: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
+        registerPhonePeer(nodeId: nodeId, verifyingKey: .ed25519(publicKey))
+    }
+
+    @discardableResult
+    public func registerPhonePeer(nodeId: String, verifyingKey: PhoneControlVerifyingKey) -> Bool {
         // F1: scope the controller-key pin to this account so the Mac refuses a
         // relay/Firestore-swapped signing key for an already-paired controller.
-        phoneValidator.registerPeer(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId)
+        phoneValidator.registerPeer(nodeId: nodeId, verifyingKey: verifyingKey, uid: configuration.userId)
     }
 
     private func registerPhonePeerForControlClassify(
         nodeId: String,
-        publicKey: Curve25519.Signing.PublicKey,
+        publicKey: PhoneControlVerifyingKey,
         connectionID: String
     ) async -> (admitted: Bool, denialDetail: String?) {
-        switch phoneValidator.registerPeerDetailed(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId) {
+        switch phoneValidator.registerPeerDetailed(nodeId: nodeId, verifyingKey: publicKey, uid: configuration.userId) {
         case .admitted:
             return (true, nil)
         case .pendingConfirmation(let safetyCode):
@@ -306,11 +319,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 actionSummary: "Approve phone controller \(nodeId)"
             )
             guard approval.decision == .approve,
-                  phoneValidator.confirmPeerPin(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId)
+                  phoneValidator.confirmPeerPin(nodeId: nodeId, verifyingKey: publicKey, uid: configuration.userId)
             else {
                 return (false, "controller_confirmation_rejected")
             }
-            switch phoneValidator.registerPeerDetailed(nodeId: nodeId, publicKey: publicKey, uid: configuration.userId) {
+            switch phoneValidator.registerPeerDetailed(nodeId: nodeId, verifyingKey: publicKey, uid: configuration.userId) {
             case .admitted:
                 return (true, nil)
             case .pendingConfirmation:
@@ -514,6 +527,12 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         cancelPendingApprovals(decision: .reject, note: "session ended")
         finalizeAuditSignedHeadIfPossible()
         activeSessionId = nil
+        // F2: controller authority is per-session — drop every admitted peer so
+        // the next session must re-establish it via a fresh controlClassify
+        // registration (pins, revocations, and replay counters persist).
+        phoneValidator.deregisterAllPeers()
+        // F10: seal sessions are per-classify; force re-establishment.
+        controlSealSessions.removeAll()
         phoneReceiver = nil
         systemPermissionReceiver = nil
         SystemPermissionMonitor.shared.detach()
@@ -551,6 +570,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             finalizeAuditSignedHeadIfPossible()
         }
         activeSessionId = nil
+        phoneValidator.deregisterAllPeers()
+        controlSealSessions.removeAll()
         phoneReceiver = nil
         systemPermissionReceiver = nil
         SystemPermissionMonitor.shared.detach()
@@ -1110,14 +1131,143 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         return token
     }
 
+    /// F10 — control-seal interception, the single chokepoint every control
+    /// frame passes before dispatch:
+    ///  1. `control.classify` carrying a `controlSealKey` envelope establishes
+    ///     the per-connection session (sealKeyV3 open under the Mac relay key,
+    ///     sender authenticated against the SAME pinned relay-sender-key source
+    ///     the chat opener uses). Establishment failure refuses the classify.
+    ///  2. Any frame carrying `sealedFrameBase64` is opened (AAD: controller
+    ///     peerNodeId + frame type) and the inner payload substituted. A sealed
+    ///     frame with no session, or one that fails to open, is dropped with a
+    ///     `controlDenied` — never dispatched (fail closed).
+    /// Legacy unsealed frames pass through untouched.
+    private func unsealedControlFrame(_ frame: HermesRealtimeRelayFrame) async -> HermesRealtimeRelayFrame? {
+        if frame.type == .controlClassify,
+           let envelope = frame.control?.controlSealKey {
+            guard let peerNodeId = frame.control?.authorityPeerNodeId else {
+                emitControlSealDenied(detail: "control_seal_missing_peer", frame: frame)
+                return nil
+            }
+            do {
+                let key = try await establishControlSealSession(
+                    envelope: envelope,
+                    uid: frame.uid,
+                    connectionId: frame.connectionId,
+                    peerNodeId: peerNodeId
+                )
+                controlSealSessions[frame.connectionId] = (peerNodeId, key)
+                recordE2EProofEvent([
+                    "event": "mac_control_seal_established",
+                    "peerNodeId": peerNodeId,
+                    "connectionId": frame.connectionId
+                ])
+            } catch {
+                recordE2EProofEvent([
+                    "event": "mac_control_seal_establish_failed",
+                    "peerNodeId": peerNodeId,
+                    "connectionId": frame.connectionId,
+                    "error": error.localizedDescription
+                ])
+                emitControlSealDenied(detail: "control_seal_establish_failed", frame: frame)
+                return nil
+            }
+        }
+        guard let control = frame.control, control.sealedFrameBase64 != nil else {
+            return frame
+        }
+        guard let session = controlSealSessions[frame.connectionId] else {
+            emitControlSealDenied(detail: "control_seal_no_session", frame: frame)
+            return nil
+        }
+        do {
+            let inner = try ControlFrameSealSession.openPayload(
+                control,
+                key: session.key,
+                peerNodeId: session.peerNodeId,
+                frameType: frame.type.rawValue
+            )
+            return HermesRealtimeRelayFrame(
+                type: frame.type,
+                uid: frame.uid,
+                connectionId: frame.connectionId,
+                requestId: frame.requestId,
+                payload: frame.payload,
+                media: frame.media,
+                control: inner
+            )
+        } catch {
+            recordE2EProofEvent([
+                "event": "mac_control_seal_open_failed",
+                "connectionId": frame.connectionId,
+                "frameType": frame.type.rawValue
+            ])
+            emitControlSealDenied(detail: "control_seal_open_failed", frame: frame)
+            return nil
+        }
+    }
+
+    private func emitControlSealDenied(detail: String, frame: HermesRealtimeRelayFrame) {
+        emitControlFrame(
+            type: .controlDenied,
+            payload: HermesRealtimeRelayControlPayload(
+                streamClass: frame.control?.streamClass ?? "control.input",
+                sessionId: activeSessionId?.rawValue,
+                denied: HermesRealtimeRelayControlDenied(reason: .signatureFailure, detail: detail)
+            )
+        )
+    }
+
+    private func establishControlSealSession(
+        envelope: HermesRealtimeRelayControlSealKeyEnvelope,
+        uid: String,
+        connectionId: String,
+        peerNodeId: String
+    ) async throws -> SymmetricKey {
+        let recipientKey = try controlSealRecipientPrivateKeyProvider.map { try $0() }
+            ?? HermesRelayKeyStore().privateKey()
+        // The trust resolver only consults uid + sender identity; the
+        // request id/operation exist for the chat lane's AAD and are
+        // irrelevant to pinned-key resolution.
+        let context = HermesRelayAuthenticatedRequestTrustContext(
+            uid: uid,
+            connectionID: connectionId,
+            requestID: "control-seal-\(envelope.senderCounter)",
+            operation: .chatCompletions,
+            sender: HermesRelayAuthenticatedSender(
+                publicKeyBase64: "",
+                deviceID: envelope.senderDeviceId,
+                peerNodeID: envelope.senderPeerNodeId,
+                counter: envelope.senderCounter,
+                keyID: envelope.senderKeyId
+            )
+        )
+        let pinnedSenderKey: String
+        if let provider = controlSealPinnedSenderKeyProvider {
+            pinnedSenderKey = try await provider(uid, connectionId, envelope)
+        } else {
+            pinnedSenderKey = try await FirestoreHermesRelaySenderTrustResolver.shared
+                .pinnedRelaySenderPublicKeyBase64(for: context)
+        }
+        return try ControlFrameSealSession.open(
+            envelope: envelope,
+            uid: uid,
+            connectionID: connectionId,
+            peerNodeId: peerNodeId,
+            recipientPrivateKey: recipientKey,
+            pinnedSenderPublicKeyBase64: pinnedSenderKey
+        )
+    }
+
     private func handleControlFrame(
-        _ frame: HermesRealtimeRelayFrame,
+        _ rawFrame: HermesRealtimeRelayFrame,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         latestReplySender = replySender
-        latestControlUID = frame.uid
-        latestControlConnectionID = frame.connectionId
-        Self.debugTrace("computer_use_control_frame_received type=\(frame.type.rawValue) requestID=\(frame.requestId ?? "") connectionID=\(frame.connectionId)")
+        latestControlUID = rawFrame.uid
+        latestControlConnectionID = rawFrame.connectionId
+        Self.debugTrace("computer_use_control_frame_received type=\(rawFrame.type.rawValue) requestID=\(rawFrame.requestId ?? "") connectionID=\(rawFrame.connectionId)")
+        guard let frame = await unsealedControlFrame(rawFrame) else { return }
         switch frame.type {
         case .controlClassify:
             guard let peerNodeId = frame.control?.authorityPeerNodeId else { return }
@@ -1424,7 +1574,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                         connectionId: frame.connectionId,
                         peerNodeId: credentialPeerNodeId
                     )
-                    registerPhonePeer(nodeId: credentialPeerNodeId, publicKey: publicKey)
+                    registerPhonePeer(nodeId: credentialPeerNodeId, verifyingKey: publicKey)
                     recordE2EProofEvent([
                         "event": "remote_unlock_peer_registered",
                         "peerNodeId": credentialPeerNodeId,

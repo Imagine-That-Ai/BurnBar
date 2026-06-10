@@ -82,21 +82,22 @@ function buildConfig(): EnvConfig {
     );
   }
 
+  // L1: default the high-risk single-use nonce replay defense ON in production
+  // (fail-closed), matching App Check's posture above. It can still be explicitly
+  // turned OFF via env/config for a controlled staged ramp, but the secure default
+  // no longer leaves replay defense disabled just because the flag was unset.
+  // Emulator/dev/test projects default OFF so local flows without nonce minting
+  // keep working.
   const requireHighRiskNonce = toBool(
     process.env.REQUIRE_HIGH_RISK_NONCE ?? configString(openburnbar, "require_high_risk_nonce"),
-    false,
+    looksProd,
   );
-  // M2: surface a fail-open replay posture in production. Unlike App Check
-  // (hard fail-closed above), the high-risk single-use nonce defaults OFF and
-  // legacy clients may still omit it during staged rollout, so a hard throw
-  // could break a live ramp. The sharpest path (bootstrap self-approval) already
-  // HARD-requires a consumed nonce regardless of this flag; this warning surfaces
-  // the residual global replay-defense gap so ops flips the flag on once every
-  // client sends nonces.
+  // If an operator EXPLICITLY disables the nonce defense in production, surface it
+  // loudly — this is now an opt-out of a secure default, not the default itself.
   if (looksProd && enforceAppCheck && !requireHighRiskNonce) {
     console.warn(
-      `[security] High-risk single-use nonce replay defense is DISABLED for production project "${projectId}". ` +
-        "Set REQUIRE_HIGH_RISK_NONCE=true (or openburnbar.require_high_risk_nonce=true) once all clients send nonces.",
+      `[security] High-risk single-use nonce replay defense has been EXPLICITLY DISABLED for production project "${projectId}". ` +
+        "This opts out of the secure default. Re-enable by unsetting REQUIRE_HIGH_RISK_NONCE / openburnbar.require_high_risk_nonce.",
     );
   }
 

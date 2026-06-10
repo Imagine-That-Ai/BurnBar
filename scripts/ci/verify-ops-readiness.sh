@@ -12,6 +12,15 @@ bash scripts/ci/verify-resilience-wiring.sh
 echo "==> verify-agpl-compliance"
 bash scripts/ci/verify-agpl-compliance.sh
 
+# F5: the on-host Hermes agent runtime ships as bytecode; this gate proves it
+# corresponds to the reviewed source AND that the C-4 command-guard hardening is
+# present (manifest.pendingHardening.blocking == false). Pre-beta ops-readiness
+# MUST NOT pass while the agent can't be trusted to refuse destructive/exfil
+# commands. Requires a hermes-agent checkout (HERMES_AGENT_SRC, default
+# ~/.hermes/hermes-agent); the verify script fails closed if it is missing.
+echo "==> verify-vendored-agent-source (agent runtime provenance + command-guard gate)"
+bash scripts/ci/verify-vendored-agent-source.sh
+
 echo "==> ops alert policy manifest"
 node --check functions/scripts/ops-alert-policy-definitions.mjs
 node --check functions/scripts/apply-ops-alert-policies.mjs

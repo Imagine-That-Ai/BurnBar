@@ -74,6 +74,24 @@ export default [
       ]
     }
   },
+  {
+    // Relocations of the formerly-inline BaseLayout background scripts
+    // (externalized so they ship as hashed immutable /_assets modules instead
+    // of re-downloading with every no-store HTML page). They stay loose JS
+    // under @ts-nocheck because semantic edits risk pixel parity with
+    // production; allow that marker until a typed rewrite lands. Deliberate
+    // deviations from the inline originals (lazy logo loads, idle-theme loop
+    // parking, rAF-coalesced rect reads) are recorded in each file's header.
+    files: [
+      "src/scripts/emberSwarm.ts",
+      "src/scripts/dotConstellation.ts",
+      "src/scripts/easterEggFx.ts",
+      "src/scripts/pretextShrinkwrap.ts"
+    ],
+    rules: {
+      "@typescript-eslint/ban-ts-comment": "off"
+    }
+  },
   // Must be last: turns off all ESLint rules that conflict with Prettier formatting
   prettier
 ];

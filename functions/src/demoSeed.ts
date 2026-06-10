@@ -1,5 +1,5 @@
 import type { Firestore } from "firebase-admin/firestore";
-import { computeUserRollups, writeUserRollups } from "./rollups.js";
+import { computeUserRollups, readRollupJobDirtiedAt, writeUserRollups } from "./rollups.js";
 import type {
   ProviderAccountDoc,
   ProviderAccountStorageScope,
@@ -418,8 +418,9 @@ export async function seedAndroidDemoAccount(
   }
   await batch.commit();
 
+  const observedDirtiedAt = await readRollupJobDirtiedAt(db, uid);
   const rollups = await computeUserRollups(db, uid);
-  await writeUserRollups(db, uid, rollups);
+  await writeUserRollups(db, uid, rollups, observedDirtiedAt);
 
   return {
     success: true,

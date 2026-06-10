@@ -14,7 +14,9 @@
  */
 
 import { randomBytes, createCipheriv, createDecipheriv } from "crypto";
-import { google } from "googleapis";
+// Type-only: googleapis costs ~500ms at require time, so the value import is
+// deferred to first use inside the client getters (see lazyGoogleapis.test.ts).
+import type { google } from "googleapis";
 import { getConfig } from "./config.js";
 import { errorCode, isRecord, stringField } from "./guards.js";
 
@@ -32,6 +34,7 @@ let authClient: Awaited<ReturnType<typeof google.auth.getClient>> | undefined;
 
 async function getAuthClient() {
   if (!authClient) {
+    const { google } = await import("googleapis");
     authClient = await google.auth.getClient({
       scopes: ["https://www.googleapis.com/auth/cloudkms", "https://www.googleapis.com/auth/cloud-platform"],
     });
@@ -41,6 +44,7 @@ async function getAuthClient() {
 
 async function getKms() {
   if (!kmsClient) {
+    const { google } = await import("googleapis");
     kmsClient = google.cloudkms({ version: "v1", auth: await getAuthClient() });
   }
   return kmsClient;
@@ -48,6 +52,7 @@ async function getKms() {
 
 async function getSecretManager() {
   if (!smClient) {
+    const { google } = await import("googleapis");
     smClient = google.secretmanager({ version: "v1", auth: await getAuthClient() });
   }
   return smClient;

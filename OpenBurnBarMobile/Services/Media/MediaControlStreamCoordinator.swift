@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 #if canImport(UIKit)
 import UIKit
@@ -29,6 +30,14 @@ import OSLog
 /// piggyback inside `HermesIrohRelayTransport`.
 @MainActor
 final class MediaControlStreamCoordinator: ObservableObject {
+    /// F7/F10 — capability strings from the most recent Mac presence-heartbeat
+    /// reply on this control stream (empty until the first reply).
+    private(set) var latestMacPresenceCapabilities: [String] = []
+    /// F7 — the negotiated media-frame-AEAD session key for the active mirror,
+    /// set by the mirror requester after establishment. Sealed frames that
+    /// arrive without (or fail under) this key are DROPPED, never decoded.
+    var mediaFrameSealKey: SymmetricKey?
+
     private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "Mercury")
     private static func debugTrace(_ message: String) {
         #if DEBUG
@@ -530,11 +539,29 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     guard frame.media?.streamClass == MediaStreamClass.screenVideo.rawValue,
                           let encoded = frame.media?.encodedFrameBase64,
                           let chunkData = Data(base64Encoded: encoded),
-                          let data = frameChunkAssembler.accept(
+                          var data = frameChunkAssembler.accept(
                             chunk: frame.media?.frameChunk,
                             bytes: chunkData
                           ) else {
                         continue
+                    }
+                    // F7: a sealed (OBMFA1) frame must open under the
+                    // negotiated session key with the cleartext position
+                    // rebuilt into the AAD — fail closed on any mismatch.
+                    if MediaFrameAEAD.isSealedEnvelope(data) {
+                        guard let sealKey = mediaFrameSealKey,
+                              let position = frame.media?.sealedFramePosition,
+                              let opened = try? MediaFrameAEAD().open(
+                                envelope: data,
+                                key: sealKey,
+                                streamClass: MediaStreamClass.screenVideo.rawValue,
+                                kind: position.kind,
+                                gopID: position.gopId,
+                                frameIndex: position.frameIndex
+                              ) else {
+                            continue
+                        }
+                        data = opened
                     }
                     do {
                         if MediaFrameV2Codec.isEncodedEnvelope(data),
@@ -556,9 +583,15 @@ final class MediaControlStreamCoordinator: ObservableObject {
                         lastRoundTripMillis = max(0, Int(Date().timeIntervalSince(pendingHeartbeatSentAt) * 1_000))
                         self.pendingHeartbeatSentAt = nil
                     }
-                    if let heartbeat = frame.media?.presence,
-                       let handler = presenceHeartbeatHandler {
-                        await handler(heartbeat)
+                    if let heartbeat = frame.media?.presence {
+                        // F7/F10: the Mac's heartbeat reply advertises its
+                        // capability strings (media_frame_aead_v1 /
+                        // control_seal_v1); control-setup call sites read
+                        // them to negotiate the app-layer seals.
+                        latestMacPresenceCapabilities = heartbeat.capabilities
+                        if let handler = presenceHeartbeatHandler {
+                            await handler(heartbeat)
+                        }
                     }
                     continue
                 case .controlDenied:

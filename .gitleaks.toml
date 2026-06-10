@@ -45,6 +45,21 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Deterministic media-frame/control-frame AEAD KAT keys used only in checked-in cross-language test fixtures"
+regexTarget = "match"
+regexes = [
+  '''derivedKeyHex"\s*:\s*"[A-Fa-f0-9]{64}"''',
+  '''sharedSecretHex"\s*:\s*"[A-Fa-f0-9]{64}"''',
+  '''hpkeSessionKeyHex"\s*:\s*"[A-Fa-f0-9]{64}"''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarMediaTests/Fixtures/MediaFrameAEADVector\.json''',
+  '''android/app/src/test/resources/media-aead/MediaFrameAEADVector\.json''',
+  '''OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/Fixtures/ControlFrameSealVector\.json''',
+  '''android/app/src/test/resources/control-seal/ControlFrameSealVector\.json''',
+]
+
+[[allowlists]]
 description = "Deterministic Hermes ratchet golden-vector state outputs used only in Swift crypto tests"
 regexTarget = "match"
 regexes = [

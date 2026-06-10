@@ -19,7 +19,6 @@ struct QuotaRingsConstellation: View {
     let items: [Item]
     let onSelect: (Item) -> Void
 
-    @Environment(\.motionStore) private var motion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {

@@ -15,6 +15,7 @@ struct QuotaPopoverBar: View {
     @Bindable var settingsManager: SettingsManager
     let dataStore: DataStore
     var autoRefreshOnAppear = true
+    var onCustomizeQuotas: () -> Void = {}
     @State private var expandedProvider: AgentProvider?
     @State private var isWorking = false
     // Local state for inline setup fields
@@ -28,6 +29,8 @@ struct QuotaPopoverBar: View {
     @State private var localMimoRegion: ProviderEndpointRegion = .sgp
     @State private var localMimoTier: MimoTokenPlanTier = .standard
     @State private var localMimoBillingCycle: MimoTokenPlanBillingCycle = .monthly
+    @State private var customizeHover = false
+    @State private var customizePressed = false
 
     private let maximumCollapsedProviderRows = 4
 
@@ -47,11 +50,89 @@ struct QuotaPopoverBar: View {
         expandedProvider == nil ? 146 : 220
     }
 
+    private func hiddenProviderSummaryText(selectionHidden: Int, collapseHidden: Int) -> String {
+        switch (selectionHidden, collapseHidden) {
+        case (let selection, let collapse) where selection > 0 && collapse > 0:
+            return "\(selection) hidden in Settings · \(collapse) more available"
+        case (let selection, _) where selection > 0:
+            return "\(selection) hidden in Settings"
+        case (_, let collapse) where collapse > 0:
+            return "\(collapse) more available"
+        default:
+            return ""
+        }
+    }
+
+    @ViewBuilder
+    private func emptyStateView(hasAvailableProviders: Bool, onCustomize: @escaping () -> Void) -> some View {
+        if hasAvailableProviders {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                ZStack {
+                    Circle()
+                        .fill(DesignSystem.Colors.amber.opacity(0.12))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.amber)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("All providers hidden")
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text("Tap to choose which quotas to show")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onCustomize)
+            .accessibilityLabel("All providers hidden. Tap to customize.")
+        } else {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                ZStack {
+                    Circle()
+                        .fill(DesignSystem.Colors.textMuted.opacity(0.12))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "bolt.horizontal")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No connected providers")
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text("Connect a provider account to see quota")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .accessibilityLabel("No connected quota providers")
+        }
+    }
+
     var body: some View {
         let connectedProviderIDs = connectedQuotaProviderIDs
-        let providers = quotaService.visiblePopoverProviders(dataStore: dataStore)
+        let availableProviders = quotaService.visiblePopoverProviders(dataStore: dataStore)
+        let selectedProviders = settingsManager.quotas.visibleProviders
+        let providers = availableProviders.filter { selectedProviders.contains($0) }
         let displayedProviders = visibleRows(from: providers)
-        let hiddenProviderCount = max(0, providers.count - displayedProviders.count)
+        let hiddenBySelectionCount = max(0, availableProviders.count - providers.count)
+        let hiddenByCollapseCount = max(0, providers.count - displayedProviders.count)
+        let hiddenProviderCount = hiddenBySelectionCount + hiddenByCollapseCount
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             // Header
@@ -67,6 +148,32 @@ struct QuotaPopoverBar: View {
                     ProgressView()
                         .controlSize(.mini)
                 }
+
+                Button(action: onCustomizeQuotas) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(customizePressed ? DesignSystem.Colors.amber.opacity(0.85) : DesignSystem.Colors.amber)
+                        .frame(width: 22, height: 22)
+                        .background(
+                            Circle()
+                                .fill(DesignSystem.Colors.amber.opacity(customizePressed ? 0.22 : customizeHover ? 0.18 : 0.10))
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(DesignSystem.Colors.amber.opacity(customizePressed ? 0.55 : customizeHover ? 0.45 : 0.30), lineWidth: 0.8)
+                        )
+                        .scaleEffect(customizePressed ? 0.92 : 1.0)
+                        .animation(DesignSystem.Animation.snappy, value: customizePressed)
+                }
+                .buttonStyle(.plain)
+                .onHover { customizeHover = $0 }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in customizePressed = true }
+                        .onEnded { _ in customizePressed = false }
+                )
+                .accessibilityLabel("Customize quota popover")
+                .popoverTooltip("Choose which quotas appear in the menu bar popover")
 
                 Button {
                     Task { await quotaService.refreshAll(dataStore: dataStore) }
@@ -84,12 +191,10 @@ struct QuotaPopoverBar: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: DesignSystem.Spacing.xs) {
                     if providers.isEmpty {
-                        Text("No connected quota providers")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, DesignSystem.Spacing.md)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
+                        emptyStateView(
+                            hasAvailableProviders: !availableProviders.isEmpty,
+                            onCustomize: onCustomizeQuotas
+                        )
                     } else {
                         ForEach(displayedProviders, id: \.self) { provider in
                             quotaProviderRow(
@@ -107,7 +212,7 @@ struct QuotaPopoverBar: View {
                 HStack(spacing: DesignSystem.Spacing.xs) {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 10, weight: .semibold))
-                    Text("+\(hiddenProviderCount) more in Settings")
+                    Text(hiddenProviderSummaryText(selectionHidden: hiddenBySelectionCount, collapseHidden: hiddenByCollapseCount))
                         .font(DesignSystem.Typography.tiny)
                         .fontWeight(.medium)
                 }

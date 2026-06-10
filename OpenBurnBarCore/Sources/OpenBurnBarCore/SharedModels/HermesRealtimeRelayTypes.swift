@@ -134,6 +134,43 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
 /// types without forcing receivers to learn about cases they don't yet
 /// support. The `kind` discriminator pairs with the outer frame's
 /// `HermesRealtimeRelayFrameType` for explicit dispatch.
+/// F10 — the sealKeyV3-wrapped control-frame-seal session key, carried once on
+/// `control.classify` when both peers advertise `control_seal_v1`. The Mac
+/// opens it with its relay private key + the phone's PINNED relay sender key
+/// (same pinning as the chat lane) and both sides derive the AES-GCM seal key
+/// via `ControlFrameSeal.deriveSessionKey`. Pre-F10 receivers ignore the field.
+public struct HermesRealtimeRelayControlSealKeyEnvelope: Codable, Sendable, Equatable {
+    public var encBase64: String
+    public var wrappedKeyBase64: String
+    public var senderDeviceId: String
+    /// The peerNodeId the phone PUBLISHED in `relay_sender_keys/{deviceId}` —
+    /// the Mac's trust resolver matches it during pinned-key lookup. This is
+    /// the relay sender identity, NOT the phone-control controller peerNodeId
+    /// (which is bound separately into the wrap AAD).
+    public var senderPeerNodeId: String
+    public var senderKeyId: String
+    public var senderCounter: Int64
+    public var relayKeyVersion: Int
+
+    public init(
+        encBase64: String,
+        wrappedKeyBase64: String,
+        senderDeviceId: String,
+        senderPeerNodeId: String,
+        senderKeyId: String,
+        senderCounter: Int64,
+        relayKeyVersion: Int
+    ) {
+        self.encBase64 = encBase64
+        self.wrappedKeyBase64 = wrappedKeyBase64
+        self.senderDeviceId = senderDeviceId
+        self.senderPeerNodeId = senderPeerNodeId
+        self.senderKeyId = senderKeyId
+        self.senderCounter = senderCounter
+        self.relayKeyVersion = relayKeyVersion
+    }
+}
+
 public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var streamClass: String?
     public var sessionId: String?
@@ -156,6 +193,14 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult?
     public var systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest?
     public var systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus?
+    /// F10 — sealKeyV3-wrapped seal-session key, sent once on `control.classify`.
+    public var controlSealKey: HermesRealtimeRelayControlSealKeyEnvelope?
+    /// F10 — when present, this payload's real content rides inside: a
+    /// `ControlFrameSeal` envelope (OBCFS1) over the JSON of the inner
+    /// `HermesRealtimeRelayControlPayload`, AAD-bound to (peerNodeId,
+    /// frame type). `streamClass` stays visible for routing; everything else
+    /// is confidential. Pre-F10 receivers see an empty payload and ignore it.
+    public var sealedFrameBase64: String?
 
     public init(
         streamClass: String? = nil,
@@ -178,7 +223,9 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope? = nil,
         remoteUnlockResult: HermesRealtimeRelayRemoteUnlockResult? = nil,
         systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = nil,
-        systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = nil
+        systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = nil,
+        controlSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = nil,
+        sealedFrameBase64: String? = nil
     ) {
         self.streamClass = streamClass
         self.sessionId = sessionId
@@ -201,6 +248,8 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         self.remoteUnlockResult = remoteUnlockResult
         self.systemPermissionRequest = systemPermissionRequest
         self.systemPermissionStatus = systemPermissionStatus
+        self.controlSealKey = controlSealKey
+        self.sealedFrameBase64 = sealedFrameBase64
     }
 }
 
@@ -304,6 +353,24 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
     }
 }
 
+/// Which signing-key custody class produced an authority envelope's signature
+/// (F2 hardware-bind). `ed25519` (or an absent `keyKind` on the wire, for
+/// backward compatibility with pre-F2 controllers) is the legacy software
+/// CryptoKit Curve25519 key. `secureEnclaveP256` is a non-exportable NIST
+/// P-256 key held in the iOS Secure Enclave / Android StrongBox Keystore; its
+/// `signatureEd25519` field carries a raw (r‖s) 64-byte ECDSA-over-SHA256
+/// signature instead of an Ed25519 signature. The field name is historical —
+/// it is the signature carrier regardless of algorithm, mirroring the
+/// `intentHashBlake3`/`attestationHashBlake3` naming.
+public enum PhoneControlSigningKeyKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case ed25519
+    case secureEnclaveP256 = "se-p256"
+
+    /// The value to assume when an envelope omits `keyKind` entirely — every
+    /// controller paired before F2 signs with the software Ed25519 key.
+    public static let legacyDefault: PhoneControlSigningKeyKind = .ed25519
+}
+
 public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable {
     public var peerNodeId: String
     public var counter: UInt64
@@ -312,6 +379,16 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
     public var signatureEd25519: String
     /// Optional App Attest / Play Integrity digest bound into capability-token minting (WS2).
     public var attestationHashBlake3: String?
+    /// F2: which key-custody class signed this envelope. Absent ⇒ `.ed25519`
+    /// (legacy software key). Present `se-p256` ⇒ the signature is a raw
+    /// P-256 ECDSA signature from a Secure Enclave / StrongBox key.
+    public var keyKind: PhoneControlSigningKeyKind?
+
+    /// The effective signing key kind, resolving an absent wire field to the
+    /// legacy Ed25519 default so receivers can branch on a non-optional value.
+    public var resolvedKeyKind: PhoneControlSigningKeyKind {
+        keyKind ?? .legacyDefault
+    }
 
     public init(
         peerNodeId: String,
@@ -319,7 +396,8 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
         timestamp: Date,
         intentHashBlake3: String,
         signatureEd25519: String,
-        attestationHashBlake3: String? = nil
+        attestationHashBlake3: String? = nil,
+        keyKind: PhoneControlSigningKeyKind? = nil
     ) {
         self.peerNodeId = peerNodeId
         self.counter = counter
@@ -327,6 +405,7 @@ public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable
         self.intentHashBlake3 = intentHashBlake3
         self.signatureEd25519 = signatureEd25519
         self.attestationHashBlake3 = attestationHashBlake3
+        self.keyKind = keyKind
     }
 }
 
@@ -1571,6 +1650,11 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     /// Optional Mac focus-follow context. Additive only: old peers ignore it,
     /// and media frames remain routable solely by `streamClass`.
     public var focusContext: HermesRealtimeRelayFocusContext?
+    /// F7 — present when `encodedFrameBase64` carries a MediaFrameAEAD-sealed
+    /// (OBMFA1) envelope instead of a plaintext encoded frame. The position
+    /// fields ride in clear so the receiver can rebuild the AAD; any tamper
+    /// fails the GCM tag, so their integrity is enforced by the seal itself.
+    public var sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition?
 
     public init(
         streamClass: String? = nil,
@@ -1587,7 +1671,8 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         longTermReferenceAck: HermesRealtimeRelayLongTermReferenceAck? = nil,
         encodedFrameBase64: String? = nil,
         frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil,
-        focusContext: HermesRealtimeRelayFocusContext? = nil
+        focusContext: HermesRealtimeRelayFocusContext? = nil,
+        sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
     ) {
         self.streamClass = streamClass
         self.attachment = attachment
@@ -1604,6 +1689,23 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
         self.encodedFrameBase64 = encodedFrameBase64
         self.frameChunk = frameChunk
         self.focusContext = focusContext
+        self.sealedFramePosition = sealedFramePosition
+    }
+}
+
+/// F7 — the cleartext AAD components of a sealed media frame (the frame's
+/// position in its stream). Authenticated by the seal's GCM tag — a receiver
+/// rebuilds the AAD from these and `streamClass`, and any mismatch refuses
+/// the frame.
+public struct HermesRealtimeRelaySealedMediaFramePosition: Codable, Sendable, Equatable {
+    public var kind: UInt8
+    public var gopId: UInt32
+    public var frameIndex: UInt32
+
+    public init(kind: UInt8, gopId: UInt32, frameIndex: UInt32) {
+        self.kind = kind
+        self.gopId = gopId
+        self.frameIndex = frameIndex
     }
 }
 
@@ -1743,6 +1845,11 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
     /// Terminal and pins the mirror to that single window. Older peers omit
     /// this field and keep the existing full-display mirror behavior.
     public var agentTerminal: HermesRealtimeRelayAgentTerminalRequest?
+    /// F7 — sealKeyV3-wrapped media-frame-AEAD session key, present when the
+    /// requester wants per-frame sealing and both peers advertise
+    /// `media_frame_aead_v1`. Pre-F7 Macs ignore it (frames stay plaintext at
+    /// the app layer over the iroh transport seal).
+    public var mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope?
 
     public init(
         requestId: String,
@@ -1755,7 +1862,8 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         viewerDeviceId: String? = nil,
         controlAuthorityPeerNodeId: String? = nil,
         remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = nil,
-        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = nil
+        agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = nil,
+        mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = nil
     ) {
         self.requestId = requestId
         self.requestedAt = requestedAt
@@ -1768,6 +1876,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         self.controlAuthorityPeerNodeId = controlAuthorityPeerNodeId
         self.remoteUnlockSession = remoteUnlockSession
         self.agentTerminal = agentTerminal
+        self.mediaSealKey = mediaSealKey
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1782,6 +1891,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         case controlAuthorityPeerNodeId
         case remoteUnlockSession
         case agentTerminal
+        case mediaSealKey
     }
 
     public init(from decoder: Decoder) throws {
@@ -1806,6 +1916,10 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
             HermesRealtimeRelayAgentTerminalRequest.self,
             forKey: .agentTerminal
         )
+        self.mediaSealKey = try container.decodeIfPresent(
+            HermesRealtimeRelayControlSealKeyEnvelope.self,
+            forKey: .mediaSealKey
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1821,6 +1935,7 @@ public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
         try container.encodeIfPresent(controlAuthorityPeerNodeId, forKey: .controlAuthorityPeerNodeId)
         try container.encodeIfPresent(remoteUnlockSession, forKey: .remoteUnlockSession)
         try container.encodeIfPresent(agentTerminal, forKey: .agentTerminal)
+        try container.encodeIfPresent(mediaSealKey, forKey: .mediaSealKey)
     }
 }
 
@@ -1868,6 +1983,10 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
     public var controlOwnerViewerId: String?
     public var remoteUnlockState: HermesRealtimeRelayRemoteUnlockState?
     public var remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities?
+    /// F7: the host's streaming capability snapshot (codecs, wire versions,
+    /// frame-AEAD support) so the viewer can negotiate without an extra round
+    /// trip. Optional — pre-F7 hosts omit it and pre-F7 viewers ignore it.
+    public var streamingCapabilities: HermesRealtimeRelayStreamingCapabilities?
 
     public init(
         requestId: String,
@@ -1883,7 +2002,8 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         maxViewers: Int? = nil,
         controlOwnerViewerId: String? = nil,
         remoteUnlockState: HermesRealtimeRelayRemoteUnlockState? = nil,
-        remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil
+        remoteUnlockCapabilities: HermesRealtimeRelayRemoteUnlockCapabilities? = nil,
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities? = nil
     ) {
         self.requestId = requestId
         self.decision = decision
@@ -1899,6 +2019,7 @@ public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
         self.controlOwnerViewerId = controlOwnerViewerId
         self.remoteUnlockState = remoteUnlockState
         self.remoteUnlockCapabilities = remoteUnlockCapabilities
+        self.streamingCapabilities = streamingCapabilities
     }
 }
 

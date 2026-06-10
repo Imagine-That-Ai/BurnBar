@@ -127,13 +127,13 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                 let stream = try await dialer(uid, connectionID, relayPublicKey)
                 computerUseE2EProofLog("dial_opened connection=\(connectionID)")
                 self.stream = stream
-                let signingKey = try signingKeyStore.signingKey()
-                let phonePeerNodeId = signingKeyStore.peerNodeId(for: signingKey)
+                let signingIdentity = try signingKeyStore.signingIdentity()
+                let phonePeerNodeId = signingKeyStore.peerNodeId(for: signingIdentity)
                 let sender = PhoneControlSender(
                     peerNodeId: phonePeerNodeId,
                     uid: uid,
                     connectionId: connectionID,
-                    signingKeyProvider: { signingKey },
+                    signingIdentityProvider: { signingIdentity },
                     frameSink: makeFrameSink()
                 )
                 self.phoneControlSender = sender
@@ -142,7 +142,8 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                     connectionId: connectionID,
                     deviceId: deviceId,
                     peerNodeId: phonePeerNodeId,
-                    publicKey: signingKey.privateKey.publicKey
+                    publicKeyRepresentation: signingIdentity.publicKeyRepresentation,
+                    keyKind: signingIdentity.kind
                 )
                 computerUseE2EProofLog("authority_published peer=\(phonePeerNodeId)")
                 let receiver = AgentWatchReceiver(
