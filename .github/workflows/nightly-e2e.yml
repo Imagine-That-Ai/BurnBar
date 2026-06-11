@@ -68,6 +68,15 @@ jobs:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: bash ./scripts/ci/inject-firebase-config-android.sh
 
+      - name: Note Android instrumented smokes status
+        if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED != 'true'
+        # The gating repo variable has never existed, so these steps skipped
+        # silently on every run — dead code that read as coverage (diligence
+        # 2026-06-10/11). Loud-but-not-red until the emulator lane is
+        # validated on macOS runners: set the ANDROID_E2E_ENABLED repo
+        # variable to 'true' to arm it deliberately.
+        run: echo "::warning title=Android E2E disabled::Android instrumented smokes are OFF (ANDROID_E2E_ENABLED repo variable unset). They have never run in CI."
+
       - name: Android instrumented smoke (optional)
         if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED == 'true'
         run: ./scripts/e2e/android-iroh-chat.sh
