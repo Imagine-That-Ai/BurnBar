@@ -1442,8 +1442,9 @@ export async function writeUserRollups(
   // refreshes `dirtiedAt` (see onUsageWritten), so a mismatch means an event
   // landed mid-compute and the rollups just written may not include it: leave
   // the job dirty so the next worker pass recomputes instead of silently
-  // dropping the event. Error/breaker state is cleared on any successful
-  // compute; mid-compute trigger deltas remain in the queue for the next drain.
+  // dropping the event. Error/breaker state is cleared only when this same
+  // dirty epoch was covered; a newer dirty epoch may have recorded its own
+  // failure and must survive so the next worker pass takes the repair path.
   const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
   await db.runTransaction(async (transaction) => {
     const snap = await transaction.get(jobRef);
@@ -1458,7 +1459,7 @@ export async function writeUserRollups(
     if (job?.dirtiedAt === observedDirtiedAt) {
       transaction.set(jobRef, { dirty: false, ...successPatch }, { merge: true });
     } else {
-      transaction.set(jobRef, successPatch, { merge: true });
+      transaction.set(jobRef, { lastComputedAt }, { merge: true });
     }
   });
 }
