@@ -11,11 +11,17 @@
 > over the pinned-sender trust path, iOS sealing, Mac open-or-drop fail-closed,
 > all behind default-off RC gates (`computer_use_control_seal_enabled`,
 > `computer_use_media_frame_aead_enabled`). The F2 server queued-grant lane is
-> keyKind-aware (`23c1424cf`). Still open: Android seal/open wiring for
-> F7/F10 (Kotlin mirrors are shipped + KAT-proven), AgentWatch/remote-unlock
-> sender surfaces for F10, the Android attestation reader,
-> `third_party/hermes-agent` re-vendor (F5 gate), and physical two-device
-> validation.
+> keyKind-aware (`23c1424cf`). **Final pass:** Android F7/F10 wiring +
+> a WORKING Android attestation reader landed (Kotlin session ports +
+> establishers + sealed-open in the live read loop; digest on every
+> Android controller envelope); iOS AgentWatch + remote-unlock senders
+> seal via a per-connection session registry; the hermes-agent provenance
+> pin is bumped to `005cf0d86` (PoP signer in the audited source) with
+> `blocking: true` retained. EVERYTHING in this handoff is now implemented
+> except: physical two-device validation with the RC flags ramped, the C-4
+> command-guard merge (the F5 gate's own driver, tracked on the fork's
+> `security/agent-sandbox-hardening`), and the optional full-key
+> `peerNodeId` migration.
 
 **Branch:** `security/prelaunch-f2-f7-f10-l2` (5 work commits + this handoff doc on top of `main` @ `8a9f8ac47`)
 **Status doc:** [`PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md`](./PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md) (status matrix near the top)
