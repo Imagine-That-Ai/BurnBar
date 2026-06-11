@@ -56,4 +56,43 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             return XCTFail("Expected disallowed type")
         }
     }
+
+    func test_credentialTypeRequiresCredentialCapabilityToken() throws {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let nonceStore = InMemoryCapabilityTokenNonceStore()
+        let leafVerifier = CapabilityTokenLeafVerifier(nonceStore: nonceStore) {
+            CapabilityTokenIssuerTrust(publicKey: privateKey.publicKey, keyId: "test")
+        }
+        let token = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "type_credential"
+        )
+
+        let ok = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: token)
+        if case .failure = VirtualHIDBridgeCapabilityGate.validateCredentialType(ok, verifier: leafVerifier) {
+            XCTFail("Expected credential token success")
+        }
+
+        let missingToken = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: nil)
+        guard case .failure(.capabilityTokenMissing) = VirtualHIDBridgeCapabilityGate.validateCredentialType(
+            missingToken,
+            verifier: leafVerifier
+        ) else {
+            return XCTFail("Expected missing credential token")
+        }
+
+        let clickToken = try issuer.mintRemoteUnlockToken(
+            privateKey: privateKey,
+            scopeHash: "scope",
+            actionKind: "click"
+        )
+        let wrongAction = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: clickToken)
+        guard case .failure(.capabilityTokenActionNotAllowed) = VirtualHIDBridgeCapabilityGate.validateCredentialType(
+            wrongAction,
+            verifier: leafVerifier
+        ) else {
+            return XCTFail("Expected click token to be rejected for credential typing")
+        }
+    }
 }

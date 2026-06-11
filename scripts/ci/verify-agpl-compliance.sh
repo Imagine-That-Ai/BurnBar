@@ -124,6 +124,7 @@ bash -n scripts/ci/verify-libsignal-pin.sh
 bash -n scripts/ci/verify-libsignal-runtime-readiness.sh
 bash -n scripts/build-macos-website-release.sh
 bash -n scripts/upload-macos-downloads-r2.sh
+node --check scripts/generate-macos-appcast.mjs
 python3 -m py_compile scripts/generate-sbom.py scripts/supply-chain/generate-vex.py
 
 bash scripts/ci/verify-libsignal-pin.sh

@@ -58,6 +58,23 @@ runs:
       shell: bash
       run: npm --prefix functions test
 
+    - name: Install protobuf for libsignal Swift FFI
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v protoc >/dev/null 2>&1; then
+          if command -v brew >/dev/null 2>&1; then
+            brew install protobuf
+          elif command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            echo "protoc is required for libsignal Swift FFI tests, and no supported package manager was found." >&2
+            exit 1
+          fi
+        fi
+        protoc --version
+
     - name: Run OpenBurnBar Swift tests
       shell: bash
       run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh

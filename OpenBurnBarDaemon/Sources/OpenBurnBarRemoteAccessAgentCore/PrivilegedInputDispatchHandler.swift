@@ -33,6 +33,7 @@ public final class PrivilegedInputDispatchHandler: @unchecked Sendable {
             return PrivilegedInputDispatchResponse(ok: true)
         case "typeCredential":
             let password = try validatedPassword(envelope.request.password)
+            try validateCredentialType(capabilityToken: envelope.capabilityToken)
             try keyboard.typeCredential(password)
             return PrivilegedInputDispatchResponse(ok: true)
         case "input":
@@ -71,6 +72,25 @@ public final class PrivilegedInputDispatchHandler: @unchecked Sendable {
                     operation: request.operation,
                     detail: reason.rawValue,
                     inputKind: request.kind
+                )
+            )
+            throw VirtualHIDKeyboardEngine.EngineError.inputPolicyRejected
+        }
+    }
+
+    private func validateCredentialType(capabilityToken: CapabilityToken?) throws {
+        let gateRequest = VirtualHIDBridgeCapabilityGate.CredentialRequest(capabilityToken: capabilityToken)
+        switch VirtualHIDBridgeCapabilityGate.validateCredentialType(gateRequest, verifier: capabilityVerifier) {
+        case .success:
+            return
+        case .failure(let reason):
+            PrivilegedSocketAudit.record(
+                PrivilegedSocketAuditRecord(
+                    event: .bridgeInputRejected,
+                    socket: auditSocketLabel,
+                    operation: "typeCredential",
+                    detail: reason.rawValue,
+                    inputKind: "typeCredential"
                 )
             )
             throw VirtualHIDKeyboardEngine.EngineError.inputPolicyRejected

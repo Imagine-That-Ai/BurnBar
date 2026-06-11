@@ -23,7 +23,7 @@ Path C (Mac System CU) requires the macOS Accessibility permission, which Apple 
 - Notarized via `xcrun notarytool submit --keychain-profile DirectDownloadNotary --wait <pkg>`.
 - Stapled with `xcrun stapler staple <pkg>`.
 - Verified locally with `spctl --assess --type install <pkg>` before release.
-- Pushed to `https://burnbar.ai/download/openburnbar-direct-<version>.dmg` (Firebase Hosting).
+- Pushed to the public macOS download host (`SITE.macDownloadBaseUrl`), with the canonical signed update feed published as the GitHub Release latest asset unless `OPENBURNBAR_MAC_UPDATE_BASE_URL` intentionally overrides it.
 - The user-facing "Get Direct Download" CTA appears only on machines that have entitled `hosted_computer_use_sync.system` for ≥ 1 hour — preventing casual install.
 
 ## Hardened Runtime entitlements
@@ -49,4 +49,4 @@ Stored at `https://burnbar.ai/internal/asc/computer-use-walkthrough-<version>.mp
 ## Update cadence
 
 - MAS build updates require App Store re-submission for new tool kinds or new entitlement.
-- Direct-download build can ship faster (Sparkle update flow). Both builds always share a version number.
+- Direct-download build can ship faster through the signed `appcast.xml` plus `latest-macos.json` feed. The app ignores unsigned update metadata. Both builds always share a version number.

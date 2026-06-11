@@ -53,6 +53,8 @@ class FakeCollectionRef {
   constructor(
     private readonly fake: FakeFirestore,
     readonly path: string,
+    private readonly limitCount?: number,
+    private readonly startAfterId?: string,
   ) {}
 
   // documentId range filters are irrelevant to the fixtures; the production
@@ -61,14 +63,25 @@ class FakeCollectionRef {
     return this;
   }
 
-  // The pending-delta drain pages with limit(); fixtures are tiny.
-  limit() {
+  orderBy() {
     return this;
+  }
+
+  // The pending-delta drain pages with limit(); fixtures are tiny.
+  limit(count: number) {
+    return new FakeCollectionRef(this.fake, this.path, count, this.startAfterId);
+  }
+
+  startAfter(doc: { id: string }) {
+    return new FakeCollectionRef(this.fake, this.path, this.limitCount, doc.id);
   }
 
   async get() {
     this.fake.collectionGets.push(this.path);
-    const docs = this.fake.collections.get(this.path) ?? [];
+    const allDocs = [...(this.fake.collections.get(this.path) ?? [])].sort((a, b) => a.id.localeCompare(b.id));
+    const docs = allDocs
+      .filter((entry) => !this.startAfterId || entry.id > this.startAfterId)
+      .slice(0, this.limitCount ?? allDocs.length);
     return {
       empty: docs.length === 0,
       docs: docs.map((entry) => ({ id: entry.id, data: () => ({ ...entry.data }) })),

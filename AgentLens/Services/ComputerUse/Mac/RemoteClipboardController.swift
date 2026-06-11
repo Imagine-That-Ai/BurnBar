@@ -1,5 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import AppKit
+import CryptoKit
 import Darwin
 import Foundation
 import OSLog
@@ -648,7 +649,10 @@ final class RemoteUnlockCredentialController {
                         "remote_unlock_virtual_hid_input_start requestID=\(credential.requestId, privacy: .public)"
                     )
                     Self.debugTrace("remote_unlock_virtual_hid_input_start requestID=\(credential.requestId)")
-                    try await RemoteUnlockVirtualHIDClient().typeCredential(password)
+                    try await RemoteUnlockVirtualHIDClient(
+                        sessionId: credential.sessionId,
+                        peerNodeId: credential.authority.peerNodeId
+                    ).typeCredential(password)
                 } else {
                     Self.log.info(
                         "remote_unlock_diagnostic_ard_start requestID=\(credential.requestId, privacy: .public) backend=\(backend.rawValue, privacy: .public)"
@@ -864,14 +868,37 @@ private struct RemoteAccessAgentClient: Sendable {
 }
 
 private struct RemoteUnlockVirtualHIDClient: Sendable {
-    private static let socketPath = RemoteUnlockSetupProbe.virtualHIDBridgeSocketPath
+    var sessionId: String
+    var peerNodeId: String
 
     func typeCredential(_ password: String) async throws {
         do {
-            try await RemoteAccessAgentClient(socketPath: Self.socketPath).typeCredential(password)
-        } catch let error as RemoteAccessAgentClientError {
+            let token = try await mintCredentialToken()
+            let request = PrivilegedInputDispatchRequest(operation: "typeCredential", password: password)
+            let envelope = PrivilegedInputDispatchEnvelope(request: request, capabilityToken: token)
+            let response = try PrivilegedInputXPCClient().perform(envelope)
+            guard response.ok else {
+                throw RemoteUnlockVirtualHIDClientError.rejected(response.error ?? "privileged_input_rejected")
+            }
+        } catch let error as PrivilegedInputXPCClient.ClientError {
             throw RemoteUnlockVirtualHIDClientError(error)
         }
+    }
+
+    @MainActor
+    private func mintCredentialToken() throws -> CapabilityToken {
+        let scopeHash = SHA256.hash(data: Data("remote_unlock:\(sessionId)".utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        guard let token = try RemoteUnlockCapabilityTokenBroker.shared.mintInputToken(
+            actionKind: "type_credential",
+            scopeHash: scopeHash,
+            sessionId: sessionId,
+            peerNodeId: peerNodeId
+        ) else {
+            throw RemoteUnlockVirtualHIDClientError.rejected("capability_token_missing")
+        }
+        return token
     }
 }
 
@@ -895,6 +922,19 @@ private enum RemoteUnlockVirtualHIDClientError: Error {
         case .readFailed: self = .readFailed
         case .responseTooLarge: self = .responseTooLarge
         case .socketPathTooLong: self = .socketPathTooLong
+        }
+    }
+
+    init(_ error: PrivilegedInputXPCClient.ClientError) {
+        switch error {
+        case .connectionUnavailable, .remoteProxyUnavailable:
+            self = .unavailable
+        case .timedOut:
+            self = .timedOut
+        case .invalidResponse:
+            self = .readFailed
+        case .rejected(let detail):
+            self = .rejected(detail)
         }
     }
 }

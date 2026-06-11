@@ -11,7 +11,7 @@
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
@@ -49,7 +49,12 @@ export const rebuildRollups = onSchedule(
   async (_event) =>
     runScheduledJob("rebuildRollups", async () => {
       const db = getFirestore();
-      const { rollupBatchSize } = getConfig();
+      const {
+        rollupBatchSize,
+        rollupRepairPageSize,
+        rollupMaxConsecutiveFullRebuildFailures,
+        rollupFullRebuildCircuitBreakerMinutes,
+      } = getConfig();
 
       const snapshot = await scheduledFirestore("rollup_jobs.dirty", () =>
         db.collectionGroup("rollup_jobs").where("dirty", "==", true).limit(rollupBatchSize).get(),
@@ -76,12 +81,23 @@ export const rebuildRollups = onSchedule(
           const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
           const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
           const needsFullRebuild = job?.lastErrorCode != null;
+          const circuitOpenUntilMillis = job?.fullRebuildCircuitOpenUntil
+            ? Date.parse(job.fullRebuildCircuitOpenUntil)
+            : 0;
+          if (needsFullRebuild && Number.isFinite(circuitOpenUntilMillis) && circuitOpenUntilMillis > Date.now()) {
+            logError({
+              event: "rollup.full_rebuild_circuit_open",
+              uid,
+              error: `full rebuild paused until ${job?.fullRebuildCircuitOpenUntil}`,
+            });
+            continue;
+          }
 
           let rollups;
           if (needsFullRebuild) {
             // computeUserRollups purges the pending-delta queue as part of
             // the raw-usage counter rebuild.
-            rollups = await computeUserRollups(db, uid);
+            rollups = await computeUserRollups(db, uid, { repairPageSize: rollupRepairPageSize });
           } else {
             // Fold queued trigger deltas into the counters, then project.
             // A drain failure lands in the catch below, which records
@@ -95,7 +111,25 @@ export const rebuildRollups = onSchedule(
         } catch (err) {
           logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
           const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
-          await jobRef.set({ lastErrorCode: errorMessage(err) }, { merge: true });
+          const jobSnap = await jobRef.get();
+          const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
+          const wasFullRebuildFailure = job?.lastErrorCode != null;
+          const consecutiveFullRebuildFailures = wasFullRebuildFailure
+            ? (job?.consecutiveFullRebuildFailures ?? 0) + 1
+            : FieldValue.delete();
+          const breakerShouldOpen =
+            typeof consecutiveFullRebuildFailures === "number" &&
+            consecutiveFullRebuildFailures >= rollupMaxConsecutiveFullRebuildFailures;
+          await jobRef.set(
+            {
+              lastErrorCode: errorMessage(err),
+              consecutiveFullRebuildFailures,
+              fullRebuildCircuitOpenUntil: breakerShouldOpen
+                ? new Date(Date.now() + rollupFullRebuildCircuitBreakerMinutes * 60 * 1000).toISOString()
+                : FieldValue.delete(),
+            },
+            { merge: true },
+          );
         }
       }
     }),

@@ -1000,8 +1000,12 @@ function windowDays(key: WindowKey, now: Date): string[] | undefined {
   return days;
 }
 
-export async function computeUserRollups(db: Firestore, uid: string): Promise<Record<WindowKey, UsageRollupDoc>> {
-  await rebuildUserRollupCounters(db, uid);
+export async function computeUserRollups(
+  db: Firestore,
+  uid: string,
+  options: { repairPageSize?: number } = {},
+): Promise<Record<WindowKey, UsageRollupDoc>> {
+  await rebuildUserRollupCounters(db, uid, { pageSize: options.repairPageSize });
   return computeUserRollupsFromCounters(db, uid);
 }
 
@@ -1265,7 +1269,17 @@ export async function computeUserRollupsFromCounters(
   return requireWindowRollups(results);
 }
 
-export async function rebuildUserRollupCounters(db: Firestore, uid: string): Promise<void> {
+export type RebuildUserRollupCountersResult = {
+  usageDocsScanned: number;
+  pages: number;
+  winnersWritten: number;
+};
+
+export async function rebuildUserRollupCounters(
+  db: Firestore,
+  uid: string,
+  options: { pageSize?: number } = {},
+): Promise<RebuildUserRollupCountersResult> {
   // The pending-delta queue is purged BEFORE the raw usage scan: everything
   // enqueued so far is superseded by the scan itself, while deltas enqueued
   // mid-scan survive the purge and replay idempotently on the next drain.
@@ -1276,18 +1290,33 @@ export async function rebuildUserRollupCounters(db: Firestore, uid: string): Pro
     db.recursiveDelete(db.collection(`users/${uid}/pending_counter_deltas`)),
   ]);
 
-  const usageRef = db.collection(`users/${uid}/usage`);
-  const snapshot = await usageRef.get();
   const candidatesByLogicalKey = new Map<string, Record<string, UsageCounterCandidate>>();
+  const usageRef = db.collection(`users/${uid}/usage`);
+  const pageSize = Math.max(1, Math.floor(options.pageSize ?? Number(process.env.ROLLUP_REPAIR_PAGE_SIZE ?? 500)));
+  let usageDocsScanned = 0;
+  let pages = 0;
+  let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | undefined;
 
-  for (const doc of snapshot.docs) {
-    const event = parseUsageEventDoc(doc.data());
-    if (!event) continue;
-    const contribution = usageContribution(event, stableCounterKey(doc.id));
-    if (!contribution) continue;
-    const candidates = candidatesByLogicalKey.get(contribution.logicalKey) ?? {};
-    candidates[contribution.candidateKey] = contribution;
-    candidatesByLogicalKey.set(contribution.logicalKey, candidates);
+  for (;;) {
+    let query: FirebaseFirestore.Query = usageRef.orderBy(FieldPath.documentId()).limit(pageSize);
+    if (lastDoc) query = query.startAfter(lastDoc);
+    const snapshot = await query.get();
+    if (snapshot.empty) break;
+    pages += 1;
+
+    for (const doc of snapshot.docs) {
+      usageDocsScanned += 1;
+      const event = parseUsageEventDoc(doc.data());
+      if (!event) continue;
+      const contribution = usageContribution(event, stableCounterKey(doc.id));
+      if (!contribution) continue;
+      const candidates = candidatesByLogicalKey.get(contribution.logicalKey) ?? {};
+      candidates[contribution.candidateKey] = contribution;
+      candidatesByLogicalKey.set(contribution.logicalKey, candidates);
+    }
+
+    lastDoc = snapshot.docs.at(-1);
+    if (snapshot.docs.length < pageSize || !lastDoc) break;
   }
 
   const winners = [...candidatesByLogicalKey.entries()]
@@ -1327,6 +1356,12 @@ export async function rebuildUserRollupCounters(db: Firestore, uid: string): Pro
     }
     await batch.commit();
   }
+
+  return {
+    usageDocsScanned,
+    pages,
+    winnersWritten: winners.length,
+  };
 }
 
 /**
@@ -1407,17 +1442,23 @@ export async function writeUserRollups(
   // refreshes `dirtiedAt` (see onUsageWritten), so a mismatch means an event
   // landed mid-compute and the rollups just written may not include it: leave
   // the job dirty so the next worker pass recomputes instead of silently
-  // dropping the event. A mid-compute `lastErrorCode` is likewise preserved
-  // so that pass falls back to a full counter rebuild.
+  // dropping the event. Error/breaker state is cleared on any successful
+  // compute; mid-compute trigger deltas remain in the queue for the next drain.
   const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
   await db.runTransaction(async (transaction) => {
     const snap = await transaction.get(jobRef);
     const job = snap.exists ? parseRollupJobDoc(snap.data()) : undefined;
     const lastComputedAt = new Date().toISOString();
+    const successPatch = {
+      lastComputedAt,
+      lastErrorCode: FieldValue.delete(),
+      consecutiveFullRebuildFailures: FieldValue.delete(),
+      fullRebuildCircuitOpenUntil: FieldValue.delete(),
+    };
     if (job?.dirtiedAt === observedDirtiedAt) {
-      transaction.set(jobRef, { dirty: false, lastComputedAt, lastErrorCode: FieldValue.delete() }, { merge: true });
+      transaction.set(jobRef, { dirty: false, ...successPatch }, { merge: true });
     } else {
-      transaction.set(jobRef, { lastComputedAt }, { merge: true });
+      transaction.set(jobRef, successPatch, { merge: true });
     }
   });
 }
