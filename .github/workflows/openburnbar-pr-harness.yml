@@ -686,8 +686,27 @@ jobs:
           # Keep this immutable: the gate runs with repo credentials in scope.
           # To bump, update third_party/hermes-agent/manifest.json first, run
           # scripts/ci/verify-vendored-agent-source.sh, then copy pinnedCommit here.
-          ref: 005cf0d86b9f3347660933478f11512fe45a856a
+          # The provenance step below FAILS if this ref and the manifest drift,
+          # so the gate always executes the exact commit the manifest attests
+          # (diligence 2026-06-11 LB-4: attestation and gate had split across
+          # two different commits).
+          ref: bdb830070927cbb20763819f91ee930548f7da92
           path: .ci/hermes-agent
+
+      - name: Verify vendored agent provenance (C-5, on PRs)
+        env:
+          HERMES_AGENT_SRC: ${{ github.workspace }}/.ci/hermes-agent
+        run: |
+          set -euo pipefail
+          manifest_pin="$(python3 -c 'import json;print(json.load(open("third_party/hermes-agent/manifest.json"))["pinnedCommit"])')"
+          checkout_head="$(git -C .ci/hermes-agent rev-parse HEAD)"
+          if [[ "$manifest_pin" != "$checkout_head" ]]; then
+            echo "ERROR: harness checkout ($checkout_head) != manifest pinnedCommit ($manifest_pin)." >&2
+            echo "The E2EE proof would run against a commit the provenance manifest does not attest." >&2
+            echo "Update the checkout ref above and the manifest together." >&2
+            exit 1
+          fi
+          bash scripts/ci/verify-vendored-agent-source.sh
 
       - name: Install Functions dependencies
         run: npm ci --prefix functions
