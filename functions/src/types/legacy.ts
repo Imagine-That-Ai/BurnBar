@@ -1388,6 +1388,17 @@ export interface RollupJobDoc {
 
   /** ISO 8601 time until which the full rebuild repair path is paused. */
   fullRebuildCircuitOpenUntil?: string;
+
+  /**
+   * ISO 8601 start time of a full rebuild attempt, written transactionally
+   * BEFORE the destructive work begins and cleared on the success/failure
+   * paths. A leftover stale marker means the attempt was killed (timeout/OOM)
+   * and counts as a consecutive failure on the next pass.
+   */
+  fullRebuildAttemptInFlightAt?: string;
+
+  /** ISO 8601 time of the last client `force` full rebuild (cooldown anchor). */
+  lastForceRebuildAt?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1580,6 +1591,12 @@ export interface EnvConfig {
 
   /** Minutes to pause a user's full-rebuild repair after the breaker opens (default 60). */
   rollupFullRebuildCircuitBreakerMinutes: number;
+
+  /** Minimum minutes between client `force` full rebuilds per user (default 10). */
+  rollupForceRebuildMinIntervalMinutes: number;
+
+  /** Max pending-delta queue pages drained per invocation (default 20 = 2,000 docs). */
+  rollupPendingDeltaDrainMaxPages: number;
 
   /** Max batch size for scheduled quota refresh (default 20). */
   quotaRefreshBatchSize: number;
