@@ -57,7 +57,7 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@a511b5a7f286f9b1edc5e21fb27b9bbc2e8e880f # v2
+        uses: google-github-actions/setup-gcloud@cb1e50a9932213ecece00a606661ae9ca44f3397 # v2.2.0 (the old pin was an unresolvable SHA — the job died at runner setup on every run)
 
       - name: Activate ops plane (optional)
         if: github.event_name == 'workflow_dispatch' && inputs.apply == true
