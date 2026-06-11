@@ -53,6 +53,7 @@ enum BurnBarDaemonSocketRPCCoverage {
 
     static let missionControl: Set<BurnBarRPCMethod> = [
         .controllerSummary,
+        .controllerRuntimeSnapshot,
         .controllerProjectsList,
         .controllerProjectGet,
         .controllerProjectUpsert,

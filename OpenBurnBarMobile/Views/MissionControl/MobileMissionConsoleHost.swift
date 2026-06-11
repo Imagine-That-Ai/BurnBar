@@ -32,11 +32,19 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     private var observedMissions: [String: CLIAgentMissionSnapshot] = [:]
     private var observedOrder: [String] = []   // most-recent first
     private var dismissedTerminalIDs: Set<String> = []
-    private let hermesService = HermesService()
+    private let hermesService: HermesService
     private let projectsStore = ProjectsStore()
 
-    init(firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }) {
+    init(
+        firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() },
+        // Shared runtime catalog: the host's `refreshRuntime` then
+        // coalesces with every other surface instead of fanning out its
+        // own 6-op refresh per host instance (RootTabView, the CLI agent
+        // conversation list, and the mission sheet each own a host).
+        hermesService: HermesService = HermesService(runtimeStore: .shared)
+    ) {
         self.firestoreProvider = firestoreProvider
+        self.hermesService = hermesService
         seedRuntimes()
     }
 

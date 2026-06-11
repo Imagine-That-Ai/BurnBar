@@ -251,7 +251,7 @@ struct AccountSettingsView: View {
                 do {
                     try await action()
                 } catch {
-                    authError = error.localizedDescription
+                    authError = AccountManager.userFacingAuthErrorMessage(error)
                 }
                 activeAuthProvider = nil
             }

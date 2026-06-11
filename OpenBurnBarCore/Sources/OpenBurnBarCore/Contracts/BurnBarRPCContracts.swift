@@ -40,6 +40,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case computerUsePanicHalt = "daemon.computer_use.panic_halt"
     case computerUseAuditExport = "daemon.computer_use.audit_export"
     case controllerSummary = "daemon.controller.summary"
+    /// Aggregated controller runtime (summary + questions + followups +
+    /// missions + notification health + simulator runs) in one round trip.
+    /// Newer than the per-list RPCs: clients must fall back to those when
+    /// an older daemon rejects this method.
+    case controllerRuntimeSnapshot = "daemon.controller.runtime_snapshot"
     case controllerProjectsList = "daemon.controller.project.list"
     case controllerProjectGet = "daemon.controller.project.get"
     case controllerProjectUpsert = "daemon.controller.project.upsert"

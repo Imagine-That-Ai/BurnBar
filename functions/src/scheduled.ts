@@ -15,8 +15,14 @@ import { getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firesto
 import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
-import { computeUserRollups, computeUserRollupsFromCounters, writeUserRollups } from "./rollups.js";
+import {
+  computeUserRollups,
+  computeUserRollupsFromCounters,
+  drainPendingCounterDeltas,
+  writeUserRollups,
+} from "./rollups.js";
 import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "./quota.js";
+import { runQuotaRefreshSweep } from "./quotaRefreshSweep.js";
 import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
 import { buildAndPersistRouterRundown } from "./routerRundown.js";
 import { anchorAuditHeads } from "./callables/auditLog.js";
@@ -71,9 +77,18 @@ export const rebuildRollups = onSchedule(
           const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
           const needsFullRebuild = job?.lastErrorCode != null;
 
-          const rollups = needsFullRebuild
-            ? await computeUserRollups(db, uid)
-            : await computeUserRollupsFromCounters(db, uid);
+          let rollups;
+          if (needsFullRebuild) {
+            // computeUserRollups purges the pending-delta queue as part of
+            // the raw-usage counter rebuild.
+            rollups = await computeUserRollups(db, uid);
+          } else {
+            // Fold queued trigger deltas into the counters, then project.
+            // A drain failure lands in the catch below, which records
+            // `lastErrorCode` and routes the next pass to the full rebuild.
+            await drainPendingCounterDeltas(db, uid);
+            rollups = await computeUserRollupsFromCounters(db, uid);
+          }
           // `dirtiedAt` observed before compute: events that land mid-compute
           // refresh it, which keeps the job dirty for the next pass.
           await writeUserRollups(db, uid, rollups, job?.dirtiedAt);
@@ -93,127 +108,93 @@ export const rebuildRollups = onSchedule(
  * refreshes each cloud-refreshable account in a bounded batch, and updates
  * account/quota metadata. Legacy provider_connections remain as a fallback
  * for older installs that have not produced account docs yet.
+ *
+ * Selection, budget accounting, the bounded-concurrency refresh pool, and
+ * the one-time `lastRefreshAt` backfill live in `runQuotaRefreshSweep`
+ * (quotaRefreshSweep.ts) — see that module for why missing-field legacy docs
+ * can never be served by a `lastRefreshAt` filter or orderBy and must be
+ * stamped explicit null instead.
  */
 export const refreshAllProviderQuotas = onSchedule(
   {
     schedule: "every 15 minutes",
     region: FUNCTIONS_REGION,
     secrets: HOSTED_RUNNER_SECRETS,
+    // Each refresh is an outbound provider HTTP call (1-3 s). The pool runs
+    // them 5-wide, so a default batch of 20 finishes in ~4-12 s; 120 s gives
+    // slow providers and retries headroom the old 60 s default lacked.
+    timeoutSeconds: 120,
   },
   async (_event) =>
     runScheduledJob("refreshAllProviderQuotas", async () => {
       const db = getFirestore();
       const { quotaRefreshBatchSize } = getConfig();
 
-      const refreshableStatuses = ["connected", "stale", "error"] as const;
-      const refreshedLegacyKeys = new Set<string>();
-      const refreshedAccountRefs = new Set<string>();
+      await runQuotaRefreshSweep<QueryDocumentSnapshot>(db, {
+        batchSize: quotaRefreshBatchSize,
 
-      async function refreshAccountDoc(doc: QueryDocumentSnapshot): Promise<void> {
-        // Path: users/{uid}/provider_accounts/{accountID}
-        const parts = doc.ref.path.split("/");
-        const uid = parts[1];
-        const accountID = parts[3];
-        const data = doc.data();
-        refreshedAccountRefs.add(doc.ref.path);
-        refreshedLegacyKeys.add(`${uid}/${data.providerID}`);
+        refreshAccountDoc: async (doc) => {
+          // Path: users/{uid}/provider_accounts/{accountID}
+          const parts = doc.ref.path.split("/");
+          const uid = parts[1];
+          const accountID = parts[3];
 
-        try {
-          await refreshUserProviderAccountQuota(db, uid, accountID);
-        } catch (err) {
-          logError({
-            event: "quota.refresh_account_failed",
-            uid,
-            account_id: accountID,
-            error: errorMessage(err),
-          });
-          // Update account doc with error state but do NOT disconnect
-          // automatically — transient failures should not punish the user.
-          await doc.ref.update({
-            lastErrorCode: errorMessage(err),
-            lastRefreshAt: new Date().toISOString(),
-          });
-        }
-      }
-
-      for (const status of refreshableStatuses) {
-        if (refreshedAccountRefs.size >= quotaRefreshBatchSize) {
-          break;
-        }
-        const accountSnapshot = await db
-          .collectionGroup("provider_accounts")
-          .where("status", "==", status)
-          .where("storageScope", "in", ["cloud_refreshable", "server_private"])
-          .orderBy("lastRefreshAt", "asc")
-          .limit(quotaRefreshBatchSize - refreshedAccountRefs.size)
-          .get();
-
-        for (const doc of accountSnapshot.docs) {
-          await refreshAccountDoc(doc);
-        }
-      }
-
-      const missingRefreshAtRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
-      if (missingRefreshAtRemaining > 0) {
-        for (const status of refreshableStatuses) {
-          if (refreshedAccountRefs.size >= quotaRefreshBatchSize) {
-            break;
+          try {
+            await refreshUserProviderAccountQuota(db, uid, accountID);
+          } catch (err) {
+            logError({
+              event: "quota.refresh_account_failed",
+              uid,
+              account_id: accountID,
+              error: errorMessage(err),
+            });
+            // Update account doc with error state but do NOT disconnect
+            // automatically — transient failures should not punish the user.
+            await doc.ref.update({
+              lastErrorCode: errorMessage(err),
+              lastRefreshAt: new Date().toISOString(),
+            });
           }
-          const missingRefreshAtSnapshot = await db
-            .collectionGroup("provider_accounts")
-            .where("status", "==", status)
-            .where("storageScope", "in", ["cloud_refreshable", "server_private"])
-            .limit(quotaRefreshBatchSize - refreshedAccountRefs.size)
-            .get();
+        },
 
-          for (const doc of missingRefreshAtSnapshot.docs) {
-            if (refreshedAccountRefs.has(doc.ref.path) || doc.get("lastRefreshAt") != null) {
-              continue;
-            }
-            await refreshAccountDoc(doc);
+        legacyKeyForAccountDoc: (doc) => {
+          const parts = doc.ref.path.split("/");
+          const uid = parts[1];
+          return `${uid}/${doc.data().providerID}`;
+        },
+
+        refreshLegacyConnectionDoc: async (doc) => {
+          // Path: users/{uid}/provider_connections/{provider}
+          const parts = doc.ref.path.split("/");
+          const uid = parts[1];
+          const provider = parseProvider(parts[3]);
+          if (!provider) {
+            return;
           }
-        }
-      }
 
-      const legacyRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
-      if (legacyRemaining === 0) {
-        return;
-      }
+          try {
+            await refreshUserProviderQuota(db, uid, provider);
+          } catch (err) {
+            logError({
+              event: "quota.refresh_legacy_failed",
+              uid,
+              provider,
+              error: errorMessage(err),
+            });
+            await doc.ref.update({
+              lastErrorCode: errorMessage(err),
+              lastRefreshAt: new Date().toISOString(),
+            });
+          }
+        },
 
-      const connSnapshot = await db
-        .collectionGroup("provider_connections")
-        .where("status", "==", "connected")
-        .orderBy("lastRefreshAt", "asc")
-        .limit(legacyRemaining)
-        .get();
-
-      for (const doc of connSnapshot.docs) {
-        // Path: users/{uid}/provider_connections/{provider}
-        const parts = doc.ref.path.split("/");
-        const uid = parts[1];
-        const provider = parseProvider(parts[3]);
-        if (!provider) {
-          continue;
-        }
-        if (refreshedLegacyKeys.has(`${uid}/${provider}`)) {
-          continue;
-        }
-
-        try {
-          await refreshUserProviderQuota(db, uid, provider);
-        } catch (err) {
-          logError({
-            event: "quota.refresh_legacy_failed",
-            uid,
-            provider,
-            error: errorMessage(err),
-          });
-          await doc.ref.update({
-            lastErrorCode: errorMessage(err),
-            lastRefreshAt: new Date().toISOString(),
-          });
-        }
-      }
+        legacyKeyForConnectionDoc: (doc) => {
+          const parts = doc.ref.path.split("/");
+          const uid = parts[1];
+          const provider = parseProvider(parts[3]);
+          return provider ? `${uid}/${provider}` : undefined;
+        },
+      });
     }),
 );
 

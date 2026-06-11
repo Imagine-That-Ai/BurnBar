@@ -99,8 +99,12 @@ struct SettingsHubView: View {
             ProviderConnectionsView(showsDoneButton: false)
         case .hermes:
             SettingsDeepLinkScrollContainer(route: .hermes) { _ in
+                // `.shared` rather than an inline `HermesService()`: this
+                // builder re-runs on body re-evaluation, and settings only
+                // needs the shared runtime catalog, not its own
+                // conversation state.
                 HermesSettingsView(
-                    service: HermesService(),
+                    service: HermesService.shared,
                     authStore: authStore
                 )
             }

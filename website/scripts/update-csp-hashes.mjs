@@ -29,6 +29,26 @@ function sortedSources(values) {
   return [...values].sort((a, b) => a.localeCompare(b));
 }
 
+// Fail-closed (perf round 2, website-013): hashing an inline script that
+// imports cross-origin code would produce a CSP that allows the script to
+// START but blocks its import at runtime — the exact silent-failure mode that
+// killed the esm.sh pretext module in production while every QA pass on
+// dev/preview rendered it. Refuse to generate such a CSP. From-aware so
+// named-binding static imports (`import { x } from "https://…"`) are caught.
+const CROSS_ORIGIN_IMPORT = /\b(?:import|from)\s*\(?\s*["'`](?:https?:)?\/\/(?!burnbar\.ai)/;
+
+// CSP `script-src` only governs EXECUTABLE script elements. Data blocks —
+// `type="application/ld+json"` structured data, plain JSON payloads — are
+// inert per the HTML spec: browsers never run them and CSP never consults
+// their hashes. Hashing them anyway coupled the committed CSP to volatile
+// content: the daily router-rundown JSON-LD embeds research data that
+// `npm run build` refreshes via run-research when API keys + compiled
+// functions are present (local), while CI builds from the committed
+// snapshot — so csp:check diverged across environments. Skip them; every
+// executable script (no type, module, importmap, speculationrules, …)
+// stays gated.
+const INERT_DATA_BLOCK_TYPE = /\btype\s*=\s*["']?(?:application\/(?:ld\+)?json|text\/plain)\b/i;
+
 function inlineHashesFromDist() {
   assert.ok(statSync(DIST).isDirectory(), `${relative(REPO_ROOT, DIST)} must exist; run npm --prefix website run build:offline first`);
   const scriptHashes = new Set();
@@ -37,8 +57,15 @@ function inlineHashesFromDist() {
 
   for (const file of walk(DIST).filter((candidate) => candidate.endsWith(".html"))) {
     const body = readFileSync(file, "utf8");
-    for (const match of body.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)) {
-      scriptHashes.add(sha256Source(match[1]));
+    for (const match of body.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi)) {
+      if (INERT_DATA_BLOCK_TYPE.test(match[1])) continue;
+      assert.ok(
+        !CROSS_ORIGIN_IMPORT.test(match[2]),
+        `${relative(REPO_ROOT, file)}: inline script imports cross-origin code (${
+          match[2].match(CROSS_ORIGIN_IMPORT)?.[0]
+        }…) — the generated CSP (script-src 'self' + hashes) would block that import at runtime; bundle the dependency instead of hashing a script this CSP will break`,
+      );
+      scriptHashes.add(sha256Source(match[2]));
     }
     for (const match of body.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
       styleElementHashes.add(sha256Source(match[1]));

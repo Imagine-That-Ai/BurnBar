@@ -1243,4 +1243,101 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
             XCTFail("Expected BurnBarDAGError, got \(error)")
         }
     }
+
+    // MARK: - Aggregated controller runtime snapshot (perf round 2, macos-007)
+
+    private func makeRuntimeSnapshotPayload(now: Date) -> BurnBarControllerRuntimeSnapshotPayload {
+        BurnBarControllerRuntimeSnapshotPayload(
+            summary: BurnBarControllerSummary(
+                updatedAt: now,
+                counts: BurnBarControllerCounts(
+                    projectCount: 1,
+                    pendingQuestionCount: 1,
+                    openFollowupCount: 1,
+                    activeMissionCount: 0,
+                    staleProjectCount: 0
+                ),
+                freshness: .fresh
+            ),
+            questions: [
+                BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-1"),
+                    projectSlug: "openburnbar",
+                    title: "Approve?",
+                    prompt: "Approve the run?",
+                    status: .pending,
+                    priority: .high,
+                    askedAt: now
+                )
+            ],
+            followups: [
+                BurnBarFollowupSnapshot(
+                    id: BurnBarFollowupID(rawValue: "followup-1"),
+                    projectSlug: "openburnbar",
+                    title: "Follow up",
+                    summary: "Check the rollout",
+                    status: .open,
+                    kind: .controllerNudge,
+                    createdAt: now
+                )
+            ],
+            missions: [],
+            notificationHealth: BurnBarNotificationHealthSnapshot(
+                checkedAt: now,
+                channels: []
+            ),
+            simulatorRuns: []
+        )
+    }
+
+    func testControllerRuntimeSnapshotResponse_roundTripsAllSections() throws {
+        let now = Date(timeIntervalSince1970: 1_710_000_500)
+        let response = BurnBarControllerRuntimeSnapshotResponse(
+            snapshot: makeRuntimeSnapshotPayload(now: now)
+        )
+
+        let data = try JSONEncoder().encode(response)
+        let decoded = try JSONDecoder().decode(BurnBarControllerRuntimeSnapshotResponse.self, from: data)
+
+        XCTAssertEqual(decoded.snapshot, response.snapshot)
+        XCTAssertEqual(decoded.snapshot.questions.first?.id.rawValue, "question-1")
+        XCTAssertEqual(decoded.snapshot.followups.first?.id.rawValue, "followup-1")
+    }
+
+    func testMutationResponses_embedAndTolerateMissingRuntimeSnapshot() throws {
+        let now = Date(timeIntervalSince1970: 1_710_000_600)
+        let payload = makeRuntimeSnapshotPayload(now: now)
+        let question = payload.questions[0]
+        let followup = payload.followups[0]
+
+        // New daemon -> embedded snapshot survives the round trip.
+        let answered = BurnBarQuestionAnswerResponse(question: question, runtimeSnapshot: payload)
+        let answeredDecoded = try JSONDecoder().decode(
+            BurnBarQuestionAnswerResponse.self,
+            from: JSONEncoder().encode(answered)
+        )
+        XCTAssertEqual(answeredDecoded.runtimeSnapshot, payload)
+
+        let mutated = BurnBarFollowupMutationResponse(followup: followup, runtimeSnapshot: payload)
+        let mutatedDecoded = try JSONDecoder().decode(
+            BurnBarFollowupMutationResponse.self,
+            from: JSONEncoder().encode(mutated)
+        )
+        XCTAssertEqual(mutatedDecoded.runtimeSnapshot, payload)
+
+        // Old daemon -> field absent on the wire (nil optionals are not
+        // encoded), and decoding must tolerate it: the client falls back to
+        // its follow-up snapshot RPCs.
+        let legacyAnswer = try JSONEncoder().encode(BurnBarQuestionAnswerResponse(question: question))
+        XCTAssertFalse(String(decoding: legacyAnswer, as: UTF8.self).contains("runtimeSnapshot"))
+        let legacyDecoded = try JSONDecoder().decode(BurnBarQuestionAnswerResponse.self, from: legacyAnswer)
+        XCTAssertNil(legacyDecoded.runtimeSnapshot)
+
+        let legacyFollowup = try JSONEncoder().encode(BurnBarFollowupMutationResponse(followup: followup))
+        let legacyFollowupDecoded = try JSONDecoder().decode(
+            BurnBarFollowupMutationResponse.self,
+            from: legacyFollowup
+        )
+        XCTAssertNil(legacyFollowupDecoded.runtimeSnapshot)
+    }
 }

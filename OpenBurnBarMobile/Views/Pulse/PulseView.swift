@@ -8,17 +8,21 @@ import OpenBurnBarCore
 // shared `PulseRouter`.
 
 struct PulseView: View {
-    @State private var dashboard = DashboardStore()
-    @State private var quotaStore = QuotaStore()
-    @State private var sessionsStore = ActivityStore()
-    @State private var hermesService = HermesService()
+    let router: PulseRouter
+    // Stores are owned by the tab root (`RootTabView`/`RootNavigationView`)
+    // and injected so they survive tab swaps: this view remounts on every
+    // tab return (the root's `contentForSelection` is a switch), and
+    // per-view `@State` stores used to re-run the full ~10-round-trip load
+    // each time. See `initialLoad()` for the warm-return fast path.
+    let dashboard: DashboardStore
+    let quotaStore: QuotaStore
+    let sessionsStore: ActivityStore
+    let hermesService: HermesService
     @State private var displayMode: UsageDisplayMode = .currency
     @State private var timelineScope: PulseTimelineScope = .day
     @State private var liveUsageStart = PulseWindowMetricBuilder.liveQueryStart()
     @State private var showCloudStore = false
     @AppStorage("cloudBannerDismissed") private var cloudBannerDismissed = false
-
-    let router: PulseRouter
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
@@ -213,15 +217,30 @@ struct PulseView: View {
     // MARK: - Loading
 
     private func initialLoad() async {
-        async let d: Void = dashboard.load()
-        async let q: Void = quotaStore.load()
-        async let s: Void = sessionsStore.loadInitial()
-        async let live: Void = sessionsStore.loadLiveUsage(since: liveUsageStart)
+        // The injected stores survive tab swaps, but this view's @State
+        // selection chips reset to their defaults on every remount — re-sync
+        // the store before painting so a warm return shows the window the
+        // chips claim (cache-only when warm; on a cold mount both sides
+        // already hold the defaults, so this is a no-op).
+        if dashboard.selectedWindow != timelineScope.rollupKey {
+            dashboard.setWindow(timelineScope.rollupKey)
+        }
+        if dashboard.displayMode != displayMode {
+            dashboard.setDisplayMode(displayMode)
+        }
+        // Warm stores skip their refetch inside `loadIfNeeded`/`refresh
+        // IfStale` and only restart the listeners `onDisappear` tore down,
+        // so a tab return costs zero network round-trips.
+        async let d: Void = dashboard.loadIfNeeded()
+        async let q: Void = quotaStore.loadIfNeeded()
+        async let s: Void = sessionsStore.loadInitialIfNeeded()
+        async let live: Void = sessionsStore.loadLiveUsageIfNeeded(since: liveUsageStart)
         // Full runtime refresh so the saved Remote Relay / LAN connection is
         // attached before the user opens Chart Studio. `checkReachability`
         // alone leaves `selectedConnection == .localDefault`, which is fatal
-        // on iPhone (no `localhost:8642` Hermes process).
-        async let h: Void = hermesService.refreshRuntime()
+        // on iPhone (no `localhost:8642` Hermes process). The catalog is
+        // shared + coalesced across surfaces and skipped while fresh.
+        async let h: Void = hermesService.refreshRuntimeIfStale()
         _ = await (d, q, s, live, h)
         quotaStore.startListening()
         sessionsStore.startLiveUsageListening(since: liveUsageStart)

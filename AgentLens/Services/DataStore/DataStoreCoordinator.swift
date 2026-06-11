@@ -45,18 +45,25 @@ final class DataStoreCoordinator {
     private(set) var usages: [TokenUsage] = []
     private(set) var isLoading = false
     private(set) var lastRefresh: Date?
-    /// Monotonically increasing counter bumped once per mutating write to
-    /// `usages`. Views that derive aggregations from the usage array should
-    /// `.onChange(of: dataStore.usagesVersion)` instead of observing the
-    /// `[TokenUsage]` array directly — observing the array re-evaluates the
-    /// view body whenever any element comparison wiggles, while observing the
-    /// `Int` re-evaluates exactly once per refresh. Wraparound is intentional
-    /// (`&+= 1`); SwiftUI only cares about inequality between successive
-    /// values.
+    /// Monotonically increasing counter bumped once per CONTENT-CHANGING
+    /// write to `usages`. Views that derive aggregations from the usage
+    /// array should `.onChange(of: dataStore.usagesVersion)` instead of
+    /// observing the `[TokenUsage]` array directly — observing the array
+    /// re-evaluates the view body whenever any element comparison wiggles,
+    /// while observing the `Int` re-evaluates exactly once per refresh.
+    /// Wraparound is intentional (`&+= 1`); SwiftUI only cares about
+    /// inequality between successive values.
     ///
-    /// See `docs/architecture/macos-performance.md` for the migration guide.
+    /// A replacement whose rows are byte-identical to the applied set skips
+    /// the bump entirely (no sort, no aggregate rebuild) until the next
+    /// time-window boundary — see `UsageReplaceGate` and
+    /// `docs/architecture/macos-performance.md` §2/§14.
     private(set) var usagesVersion: Int = 0
     private var refreshGeneration = 0
+    private var lastAppliedFingerprint: UsageContentFingerprint?
+    private var nextWindowBoundary: Date = .distantPast
+    /// Injectable clock so boundary-crossing behavior is unit-testable.
+    @ObservationIgnored var nowProvider: () -> Date = Date.init
 
     // MARK: - Forwarding Computed Properties (deprecated — use usageViewModel)
 
@@ -316,19 +323,42 @@ final class DataStoreCoordinator {
     // MARK: - Cache Refresh
 
     func replaceUsages(_ newUsages: [TokenUsage]) {
+        guard applyGateAdmits(newUsages) else { return }
         let sortedUsages = newUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
         usageViewModel.replaceUsages(sortedUsages)
-        lastRefresh = Date()
+        lastRefresh = nowProvider()
         usagesVersion &+= 1
     }
 
     func replaceUsageSnapshot(_ snapshot: DashboardUsageSnapshot) {
+        guard applyGateAdmits(snapshot.loadedUsages) else { return }
         let sortedUsages = snapshot.loadedUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
         usageViewModel.replaceUsageSnapshot(snapshot)
-        lastRefresh = Date()
+        lastRefresh = nowProvider()
         usagesVersion &+= 1
+    }
+
+    /// No-change short-circuit shared by BOTH replace paths (the periodic
+    /// cadence tick lands in `replaceUsages` via the billing reconcile's
+    /// `fetchAllUsage`, while init/deleteAll land in
+    /// `replaceUsageSnapshot`). A content-identical replacement before the
+    /// next time-window boundary only refreshes `lastRefresh`; everything
+    /// downstream (sorts, aggregate caches, `usagesVersion` consumers) is
+    /// mathematically unchanged, so pixels cannot differ. Crossing a
+    /// boundary (midnight / rolling-window decay) forces the apply because
+    /// the bump is load-bearing for "Today" resets and 7d/30d decay.
+    private func applyGateAdmits(_ rows: [TokenUsage]) -> Bool {
+        let now = nowProvider()
+        let fingerprint = UsageContentFingerprint(rows: rows)
+        if fingerprint == lastAppliedFingerprint, now < nextWindowBoundary {
+            lastRefresh = now
+            return false
+        }
+        lastAppliedFingerprint = fingerprint
+        nextWindowBoundary = UsageReplaceGate.nextWindowBoundary(rows: rows, after: now)
+        return true
     }
 
     func refresh() async {

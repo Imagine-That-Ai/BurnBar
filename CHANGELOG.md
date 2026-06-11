@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance — deferred round-2 fixes (2026-06-10)
+
+The eight findings deferred from the 2026-06-09 sweep (Apple platforms), each with regression tests:
+
+- **iOS tab-return reload (P0)** — Pulse/Burn data stores (`DashboardStore`/`QuotaStore`/`ActivityStore` and the Pulse quick-ask `HermesService`) are hoisted to the tab roots (`RootTabView`/`RootNavigationView`, precedent: the Insights hoist) and injected; the remounted views' `loadIfNeeded` warm path only restarts the listeners `onDisappear` tore down, so a return to Pulse costs zero network round-trips instead of ~10+ (including duplicate `rebuildUsageRollups` callables from per-instance cooldowns).
+- **iOS Hermes runtime split** — the shared runtime catalog (connections, reachability, models, session/profile/job lists, persisted connection+model selection) moved into one `HermesRuntimeStore` injected from the root, while every surface keeps its own conversation state (Pulse quick-ask and the Hermes tab no longer risk transcript collisions, and `selectedConnection` can no longer diverge between surfaces); `refreshRuntime`'s in-flight coalescing is now global, collapsing the duplicate 6-op launch/foreground refreshes, with a `refreshRuntimeIfStale` warm path for remounts. The dead preview-only `ChatView` was deleted and the Settings hub stopped re-creating a `HermesService` per body evaluation.
+- **iOS live-usage listener** — `listenToUsageSince` is incremental (Android-parity design): `documentChanges` patch a docID-keyed accumulator on a serial decode queue (off the main actor), sealed project-name AEAD opens are memoized by `(docID, updatedAt)`, and both live queries carry a defensive newest-first `limit(2000)`.
+- **iOS Pulse hero glow** — the hero's three stacked soft-glow passes collapsed to one: the provider halo and depth glow are pre-shaped gradients (no full-card blurs), and the burn-velocity pill breathes via an opacity-animated pre-blurred halo instead of re-rendering its shadow every frame.
+- **iOS Insights session trace (Mac parity)** — `InsightsMobileVerdictModel.buildTraceFor` is implemented (was an empty stub), so upgraded verdicts on iPhone/iPad now carry the session-trace strip the shared `VerdictHeroView` already renders; `SmartHubStore`'s contradictory listener-cleanup comments were corrected.
+- **macOS popover prewarm** — the menu-bar popover content is rebuilt off the click path (on runtime-context readiness and after every close) instead of synchronously inside the click handler on every open; the deliberate fresh-state-on-show behaviour is preserved. See `docs/architecture/macos-performance.md` §15.
+- **macOS↔daemon RPC plane** — socket reads use 64 KB buffers (was 1 KB — ~64× fewer read syscalls on large responses); a new aggregated `daemon.controller.runtime_snapshot` RPC replaces the six sequential per-list RPCs on every popover open/periodic tick, and controller mutations embed the refreshed snapshot (7 connections → 1 per action), with full version-skew fallback to the legacy path against older daemons. See §16.
+- **macOS no-change refresh ticks** — content-identical periodic usage replacements short-circuit (no double sort, no aggregate-cache rebuild, no `usagesVersion` bump) until the next time-window boundary (midnight / rolling 7d-30d row exits), which preserves the load-bearing "Today" reset and window decay; the always-bump contract test was deliberately inverted. See §14.
+
 ### Performance — invisible-wins sweep (2026-06-09)
 
 A cross-surface performance/quality pass (website, Android, iOS/iPadOS, macOS, daemon, Cloud Functions) under a strict pixel/behaviour-parity contract — every fix shipped with regression tests and passed its surface's full validation gate.

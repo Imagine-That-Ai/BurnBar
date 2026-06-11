@@ -11,6 +11,21 @@ enum OpenBurnBarDaemonSocketClient {
     // `daemonSocketAuthTokenLock`; the raw storage is never accessed directly.
     nonisolated(unsafe) private static var cachedDaemonSocketAuthToken: String?
 
+    private static let aggregatedSnapshotSupportLock = NSLock()
+    // AUDIT(nonisolated): all reads/writes go through
+    // `aggregatedSnapshotSupportLock`. Process-lifetime memo: once an older
+    // daemon rejects `daemon.controller.runtime_snapshot`, refreshes stop
+    // paying a failed probe and go straight to the legacy six-RPC path.
+    nonisolated(unsafe) private static var aggregatedSnapshotUnsupported = false
+
+    static var isAggregatedSnapshotMarkedUnsupported: Bool {
+        aggregatedSnapshotSupportLock.withLock { aggregatedSnapshotUnsupported }
+    }
+
+    static func markAggregatedSnapshotUnsupported(_ unsupported: Bool) {
+        aggregatedSnapshotSupportLock.withLock { aggregatedSnapshotUnsupported = unsupported }
+    }
+
     static func cacheDaemonSocketAuthToken(_ token: String?) {
         let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
         daemonSocketAuthTokenLock.withLock {
@@ -495,6 +510,32 @@ enum OpenBurnBarDaemonSocketClient {
     }
 
     static func controllerRuntimeSnapshot(at socketURL: URL) throws -> OpenBurnBarControllerRuntimeSnapshot {
+        // Preferred path: ONE aggregated RPC instead of six sequential
+        // socket round trips (docs/architecture/macos-performance.md §16).
+        // The daemon is a separate long-running process that may be older
+        // than this app, so a failure falls back to the legacy per-list
+        // path — and a successful fallback memoizes the downgrade for the
+        // process lifetime.
+        if !isAggregatedSnapshotMarkedUnsupported {
+            do {
+                let response = try requestResult(
+                    BurnBarRPCRequestEnvelopeWithParams(
+                        method: .controllerRuntimeSnapshot,
+                        params: BurnBarControllerRuntimeSnapshotRequest()
+                    ),
+                    socketURL: socketURL
+                ) as BurnBarControllerRuntimeSnapshotResponse
+                return makeControllerRuntimeSnapshot(payload: response.snapshot)
+            } catch {
+                let legacy = try legacyControllerRuntimeSnapshot(at: socketURL)
+                markAggregatedSnapshotUnsupported(true)
+                return legacy
+            }
+        }
+        return try legacyControllerRuntimeSnapshot(at: socketURL)
+    }
+
+    private static func legacyControllerRuntimeSnapshot(at socketURL: URL) throws -> OpenBurnBarControllerRuntimeSnapshot {
         let summary = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .controllerSummary,
@@ -554,7 +595,7 @@ enum OpenBurnBarDaemonSocketClient {
         selectedOptionID: String? = nil,
         at socketURL: URL
     ) throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        let _: BurnBarQuestionAnswerResponse = try requestResult(
+        let response: BurnBarQuestionAnswerResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .questionAnswer,
                 params: BurnBarQuestionAnswerRequest(
@@ -566,6 +607,21 @@ enum OpenBurnBarDaemonSocketClient {
             ),
             socketURL: socketURL
         )
+        // Newer daemons embed the post-mutation runtime; older ones don't —
+        // fall back to the follow-up snapshot call.
+        if let payload = response.runtimeSnapshot {
+            return makeControllerRuntimeSnapshot(payload: payload)
+        }
+        return try controllerRuntimeSnapshot(at: socketURL)
+    }
+
+    private static func runtimeSnapshot(
+        from response: BurnBarFollowupMutationResponse,
+        at socketURL: URL
+    ) throws -> OpenBurnBarControllerRuntimeSnapshot? {
+        if let payload = response.runtimeSnapshot {
+            return makeControllerRuntimeSnapshot(payload: payload)
+        }
         return try controllerRuntimeSnapshot(at: socketURL)
     }
 
@@ -573,7 +629,7 @@ enum OpenBurnBarDaemonSocketClient {
         followupID: String,
         at socketURL: URL
     ) throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        let _: BurnBarFollowupMutationResponse = try requestResult(
+        let response: BurnBarFollowupMutationResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .followupDone,
                 params: BurnBarFollowupDoneRequest(
@@ -583,7 +639,7 @@ enum OpenBurnBarDaemonSocketClient {
             ),
             socketURL: socketURL
         )
-        return try controllerRuntimeSnapshot(at: socketURL)
+        return try runtimeSnapshot(from: response, at: socketURL)
     }
 
     static func snoozeControllerFollowup(
@@ -591,7 +647,7 @@ enum OpenBurnBarDaemonSocketClient {
         until: Date,
         at socketURL: URL
     ) throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        let _: BurnBarFollowupMutationResponse = try requestResult(
+        let response: BurnBarFollowupMutationResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .followupSnooze,
                 params: BurnBarFollowupSnoozeRequest(
@@ -602,7 +658,7 @@ enum OpenBurnBarDaemonSocketClient {
             ),
             socketURL: socketURL
         )
-        return try controllerRuntimeSnapshot(at: socketURL)
+        return try runtimeSnapshot(from: response, at: socketURL)
     }
 
     static func scheduleControllerFollowupCalendar(
@@ -616,7 +672,7 @@ enum OpenBurnBarDaemonSocketClient {
             ? title!
             : "OpenBurnBar followup"
         let end = start.addingTimeInterval(Double(max(durationMinutes, 15)) * 60)
-        let _: BurnBarFollowupMutationResponse = try requestResult(
+        let response: BurnBarFollowupMutationResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .followupCalendar,
                 params: BurnBarFollowupCalendarRequest(
@@ -634,7 +690,7 @@ enum OpenBurnBarDaemonSocketClient {
             ),
             socketURL: socketURL
         )
-        return try controllerRuntimeSnapshot(at: socketURL)
+        return try runtimeSnapshot(from: response, at: socketURL)
     }
 
     private static func send<Response: Codable & Sendable>(
@@ -674,6 +730,19 @@ enum OpenBurnBarDaemonSocketClient {
             throw OpenBurnBarDaemonManagerError.emptyResponse
         }
         return result
+    }
+
+    static func makeControllerRuntimeSnapshot(
+        payload: BurnBarControllerRuntimeSnapshotPayload
+    ) -> OpenBurnBarControllerRuntimeSnapshot {
+        makeControllerRuntimeSnapshot(
+            summary: payload.summary,
+            questions: payload.questions,
+            followups: payload.followups,
+            missions: payload.missions,
+            notificationHealth: payload.notificationHealth,
+            simulatorRuns: payload.simulatorRuns
+        )
     }
 
     static func makeControllerRuntimeSnapshot(
@@ -1152,7 +1221,11 @@ enum OpenBurnBarDaemonSocketClient {
         }
 
         var response = Data()
-        var buffer = [UInt8](repeating: 0, count: 1024)
+        response.reserveCapacity(65_536)
+        // 64KB chunks: large responses (controller snapshots, mission
+        // lists) used to cost one read() syscall per KB
+        // (docs/architecture/macos-performance.md §16).
+        var buffer = [UInt8](repeating: 0, count: 65_536)
         while true {
             let bytesRead = read(fileDescriptor, &buffer, buffer.count)
             if bytesRead == 0 {

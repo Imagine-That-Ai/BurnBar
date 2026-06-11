@@ -1814,6 +1814,23 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(AccountManager.isFirebaseAuthKeychainErrorForTesting(error))
     }
 
+    func test_userFacingAuthErrorMessage_sanitizesFirebaseKeychainFailure() {
+        let error = NSError(
+            domain: "FIRAuthErrorDomain",
+            code: 17995,
+            userInfo: [
+                NSLocalizedDescriptionKey: """
+                An error occurred when accessing the keychain. The NSLocalizedFailureReasonErrorKey field in the NSError.userInfo dictionary will contain more information about the error encountered
+                """
+            ]
+        )
+
+        XCTAssertEqual(
+            AccountManager.userFacingAuthErrorMessageForTesting(error),
+            "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If this is a local debug build, run it with Keychain Sharing enabled."
+        )
+    }
+
     func test_isFirebaseAuthKeychainError_ignoresNonKeychainFailure() {
         let error = NSError(
             domain: "FIRAuthErrorDomain",
@@ -1839,6 +1856,20 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertEqual(query[kSecAttrAccount as String] as? String, "firebase_auth_firebase_user")
         XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
         XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, true)
+    }
+
+    func test_firebaseAuthDefaultAccessGrouplessStoredUserDeleteQuery_targetsFirebaseDataProtectionKeychainRow() {
+        let query = AccountManager.firebaseAuthDefaultAccessGrouplessStoredUserDeleteQueryForTesting(
+            service: "test-api-key",
+            synchronizable: false
+        )
+
+        XCTAssertEqual(query[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertNil(query[kSecAttrAccessGroup as String])
+        XCTAssertEqual(query[kSecAttrService as String] as? String, "test-api-key")
+        XCTAssertEqual(query[kSecAttrAccount as String] as? String, "firebase_auth_firebase_user")
+        XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
+        XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, false)
     }
 
     func test_firebaseAuthDefaultStoredUserDeleteQuery_targetsCurrentFirebaseSwiftRow() {
@@ -1892,5 +1923,117 @@ final class AccountManagerTests: XCTestCase {
         let resolvedWindow = AccountManager.googleAuthPresentationWindowForTesting(from: window)
 
         XCTAssertTrue(resolvedWindow === window)
+    }
+
+    // MARK: - Shared auth keychain-recovery wrapper
+
+    /// Keychain-state recovery is only attempted when the bundle carries
+    /// Firebase identifiers (`GoogleService-Info.plist`): present in CI via
+    /// the injected config and in local dev builds; absent in bare checkouts.
+    /// Expectations branch on this so the contract stays pinned in both
+    /// environments.
+    private var firebaseKeychainRecoveryAvailable: Bool {
+        Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil
+    }
+
+    private func makeFirebaseKeychainError() -> NSError {
+        NSError(
+            domain: "FIRAuthErrorDomain",
+            code: 17995,
+            userInfo: [
+                NSLocalizedDescriptionKey: "An error occurred when accessing the keychain."
+            ]
+        )
+    }
+
+    func test_performFirebaseAuthOperationWithKeychainRecovery_passesThroughSuccess() async throws {
+        let manager = AccountManager()
+        var attempts = 0
+
+        try await manager.performFirebaseAuthOperationWithKeychainRecoveryForTesting(label: "Test Success") {
+            attempts += 1
+        }
+
+        XCTAssertEqual(attempts, 1, "A successful operation must run exactly once — no recovery probing")
+    }
+
+    func test_performFirebaseAuthOperationWithKeychainRecovery_rethrowsNonKeychainFailure() async {
+        let manager = AccountManager()
+        let failure = NSError(domain: "FIRAuthErrorDomain", code: 17009, userInfo: [
+            NSLocalizedDescriptionKey: "The password is invalid."
+        ])
+        var attempts = 0
+
+        do {
+            try await manager.performFirebaseAuthOperationWithKeychainRecoveryForTesting(label: "Test Rethrow") {
+                attempts += 1
+                throw failure
+            }
+            XCTFail("A non-keychain failure must surface to the caller")
+        } catch {
+            XCTAssertEqual((error as NSError).code, 17009)
+        }
+        XCTAssertEqual(attempts, 1, "Keychain recovery must never retry a non-keychain failure")
+    }
+
+    func test_performFirebaseAuthOperationWithKeychainRecovery_keychainFailure_retriesOnceAfterStateClear() async {
+        let manager = AccountManager()
+        let failure = makeFirebaseKeychainError()
+        var attempts = 0
+
+        do {
+            try await manager.performFirebaseAuthOperationWithKeychainRecoveryForTesting(label: "Test Retry") {
+                attempts += 1
+                throw failure
+            }
+            XCTFail("A keychain failure that persists through recovery must surface")
+        } catch {
+            XCTAssertEqual((error as NSError).code, 17995)
+        }
+
+        if firebaseKeychainRecoveryAvailable {
+            XCTAssertEqual(attempts, 2, "Recovery must clear keychain state and retry exactly once")
+        } else {
+            XCTAssertEqual(attempts, 1, "Without Firebase identifiers there is no state to clear — fail fast")
+        }
+    }
+
+    func test_performFirebaseAuthOperationWithKeychainRecovery_keychainFailure_recoversWhenRetrySucceeds() async {
+        let manager = AccountManager()
+        let failure = makeFirebaseKeychainError()
+        var attempts = 0
+
+        do {
+            try await manager.performFirebaseAuthOperationWithKeychainRecoveryForTesting(label: "Test Recover") {
+                attempts += 1
+                if attempts == 1 {
+                    throw failure
+                }
+            }
+            XCTAssertTrue(
+                firebaseKeychainRecoveryAvailable,
+                "Recovery can only succeed when Firebase identifiers exist to clear state for"
+            )
+            XCTAssertEqual(attempts, 2)
+        } catch {
+            XCTAssertFalse(
+                firebaseKeychainRecoveryAvailable,
+                "With Firebase identifiers available the cleared-state retry must have succeeded"
+            )
+            XCTAssertEqual(attempts, 1)
+        }
+    }
+
+    func test_userFacingAuthErrorMessage_passesThroughNonKeychainFailure() {
+        let error = NSError(
+            domain: "FIRAuthErrorDomain",
+            code: 17009,
+            userInfo: [NSLocalizedDescriptionKey: "The password is invalid."]
+        )
+
+        XCTAssertEqual(
+            AccountManager.userFacingAuthErrorMessageForTesting(error),
+            "The password is invalid."
+        )
     }
 }
