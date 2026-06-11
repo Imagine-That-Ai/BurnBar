@@ -179,6 +179,14 @@ COVERAGE_ALLOWLIST = {
         "the generator output is enforced by packages/data-domains/"
         "registry.test.mjs. Never compiled into a coverage-bearing target."
     ),
+    "AgentLens/Services/DirectDownloadUpdateService.swift": (
+        "UI/IO orchestration of the update flow: NSAlert prompts, URLSession "
+        "download, NSWorkspace open, 24h timers — none of which can execute "
+        "under headless XCTest. ALL decision logic is split into line-gated "
+        "companions: DirectDownloadReleaseMetadata.swift, "
+        "DirectDownloadArtifactVerifier.swift (sha256+Ed25519 verification), "
+        "DirectDownloadUpdatePromptPolicy.swift — 32 behavioral tests."
+    ),
     "OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/VirtualHIDKeyboardEngine.swift": (
         "Virtual HID device creation requires the com.apple.developer.hid."
         "virtual.device entitlement, which `swift test` processes cannot "
