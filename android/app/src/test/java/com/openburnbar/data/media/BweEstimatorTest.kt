@@ -7,8 +7,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
-private const val VAL_500000 = 500_000
-
 class BweEstimatorTest {
     @Test
     fun starts_at_highest_step() {
@@ -74,9 +72,9 @@ class BweEstimatorTest {
 
     @Test
     fun single_step_table_clamps_safely() {
-        val bwe = BweEstimator(steps = listOf(VAL_500000))
+        val bwe = BweEstimator(steps = listOf(500_000))
         bwe.apply(BweEstimator.Sample(roundTripMillis = 30, packetLossRate = 0.10, observedBitsPerSecond = 0))
         // With only one step, down + up should both clamp to that step.
-        assertEquals(VAL_500000, bwe.currentBitsPerSecond)
+        assertEquals(500_000, bwe.currentBitsPerSecond)
     }
 }

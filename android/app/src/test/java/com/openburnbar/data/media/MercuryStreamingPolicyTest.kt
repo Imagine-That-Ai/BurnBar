@@ -10,9 +10,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private const val VAL_1236 = 1_236
-private const val VAL_3 = 3
-
 class MercuryStreamingPolicyTest {
     @Test
     fun codec_router_prefers_hevc_in_production_and_records_stats() {
@@ -45,7 +42,7 @@ class MercuryStreamingPolicyTest {
         assertEquals(MercuryVideoCodec.HEVC, route.codec)
         assertEquals(MercuryMediaFrameWireVersion.V2, route.wireVersion)
         assertEquals(MercuryVideoCodec.HEVC, route.stats.codec)
-        assertEquals(VAL_1236, route.datagramPayloadBudgetBytes)
+        assertEquals(1_236, route.datagramPayloadBudgetBytes)
     }
 
     @Test
@@ -108,7 +105,7 @@ class MercuryStreamingPolicyTest {
                 minimumPromotionSamples = 3,
             )
 
-        repeat(VAL_3) { index ->
+        repeat(3) { index ->
             shadow.observe(
                 MercuryBweShadowSample(
                     timestampMillis = index.toULong(),

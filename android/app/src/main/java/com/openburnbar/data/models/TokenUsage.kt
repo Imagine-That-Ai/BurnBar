@@ -9,7 +9,7 @@ private const val PERCENT_SCALE = 1_000_000_000
 private const val PERCENT_SCALE_2 = 1_000_000_000.0
 private const val PERCENT_SCALE_3 = 1_000_000
 private const val PERCENT_SCALE_4 = 1_000_000.0
-private const val VAL_12 = 12
+private const val QUOTA_SNAPSHOT_STALENESS_HOURS = 12
 
 /**
  * Mirrors the Firestore `UsageEventDoc` from Cloud Functions types.ts.
@@ -681,7 +681,7 @@ fun ProviderQuotaSnapshot.isStale(now: java.time.Instant = java.time.Instant.now
         return true
     }
     val age = java.time.Duration.between(fetched, now)
-    val stale = age > java.time.Duration.ofHours(VAL_12.toLong())
+    val stale = age > java.time.Duration.ofHours(QUOTA_SNAPSHOT_STALENESS_HOURS.toLong())
     if (stale) {
         android.util.Log.d(
             "QuotaStale",

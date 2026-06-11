@@ -7,10 +7,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private const val VAL_10_0 = 10.0
-private const val VAL_15 = 15
-private const val VAL_300 = 300
-
 class MercuryStreamingStatsTest {
     @Test
     fun rtc_stats_snapshot_carries_benchmark_fields() {
@@ -52,7 +48,7 @@ class MercuryStreamingStatsTest {
 
     @Test
     fun default_impairment_matrix_matches_launch_gate_shape() {
-        assertEquals(VAL_15, MercuryImpairmentScenario.DEFAULT_MATRIX.size)
-        assertTrue(MercuryImpairmentScenario.DEFAULT_MATRIX.contains(MercuryImpairmentScenario(VAL_10_0, VAL_300)))
+        assertEquals(15, MercuryImpairmentScenario.DEFAULT_MATRIX.size)
+        assertTrue(MercuryImpairmentScenario.DEFAULT_MATRIX.contains(MercuryImpairmentScenario(10.0, 300)))
     }
 }

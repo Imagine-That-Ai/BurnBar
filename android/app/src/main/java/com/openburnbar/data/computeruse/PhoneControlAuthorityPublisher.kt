@@ -44,11 +44,11 @@ data class PhoneControlAuthorityDoc(
 }
 
 object PhoneControlAuthorityDocumentFactory {
-    private const val VAL_24 = 24
-    private const val VAL_32 = 32
+    private const val PEER_NODE_ID_HASH_PREFIX_LENGTH = 24
+    private const val ED25519_PUBLIC_KEY_BYTES = 32
     fun peerNodeId(publicKey: ByteArray): String {
-        require(publicKey.size == VAL_32) { "Ed25519 public key must be 32 bytes" }
-        return "android-phone-${sha256Hex(publicKey).take(VAL_24)}"
+        require(publicKey.size == ED25519_PUBLIC_KEY_BYTES) { "Ed25519 public key must be 32 bytes" }
+        return "android-phone-${sha256Hex(publicKey).take(PEER_NODE_ID_HASH_PREFIX_LENGTH)}"
     }
 
     /**
@@ -62,7 +62,7 @@ object PhoneControlAuthorityDocumentFactory {
     fun peerNodeId(identity: PhoneControlSigningIdentity): String = when (identity.kind) {
         PhoneControlSigningKeyKind.ED25519 -> peerNodeId(identity.publicKeyRepresentation)
         PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 ->
-            "android-se-${sha256Hex(identity.publicKeyRepresentation).take(VAL_24)}"
+            "android-se-${sha256Hex(identity.publicKeyRepresentation).take(PEER_NODE_ID_HASH_PREFIX_LENGTH)}"
     }
 
     fun document(connectionId: String, deviceId: String, publicKey: ByteArray, publishedAtMillis: Long): PhoneControlAuthorityDoc {
@@ -183,14 +183,14 @@ class PhoneControlSigningKeyStore(context: Context) {
                     init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
                 }
             val plain = cipher.doFinal(wrapped)
-            plain.takeIf { it.size == VAL_32 }
+            plain.takeIf { it.size == ED25519_SEED_BYTES }
         } catch (_: Throwable) {
             null
         }
     }
 
     private fun saveToStore(seed: ByteArray) {
-        require(seed.size == VAL_32) { "Ed25519 private key seed must be 32 bytes" }
+        require(seed.size == ED25519_SEED_BYTES) { "Ed25519 private key seed must be 32 bytes" }
         val key = wrappingKey()
         val cipher =
             Cipher.getInstance(AES_GCM_TRANSFORM).apply {
@@ -221,7 +221,7 @@ class PhoneControlSigningKeyStore(context: Context) {
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(VAL_256)
+                .setKeySize(AES_KEY_BITS)
                 .build()
         generator.init(spec)
         return generator.generateKey()
@@ -230,8 +230,8 @@ class PhoneControlSigningKeyStore(context: Context) {
     private fun keystore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
     companion object {
-        private const val VAL_32 = 32
-        private const val VAL_256 = 256
+        private const val ED25519_SEED_BYTES = 32
+        private const val AES_KEY_BITS = 256
         private const val PREFS_NAME = "computer_use_phone_control_keys"
         private const val KEY_WRAPPED_SEED = "wrapped_ed25519_seed_v1"
         private const val KEY_WRAP_IV = "wrap_iv_v1"

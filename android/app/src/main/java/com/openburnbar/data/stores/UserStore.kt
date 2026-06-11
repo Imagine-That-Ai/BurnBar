@@ -28,7 +28,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-private const val VAL_12501 = 12501
+// GoogleSignInStatusCodes.SIGN_IN_CANCELLED — the user dismissed the picker, so it is not surfaced as an error.
+private const val GOOGLE_SIGN_IN_CANCELLED_STATUS_CODE = 12501
 
 data class AppUser(
     val uid: String = "",
@@ -179,7 +180,7 @@ class UserStore : ViewModel() {
                 val cred = GoogleAuthProvider.getCredential(account.idToken, null)
                 auth.signInWithCredential(cred).await()
             } catch (e: ApiException) {
-                if (e.statusCode != VAL_12501) {
+                if (e.statusCode != GOOGLE_SIGN_IN_CANCELLED_STATUS_CODE) {
                     val msg =
                         "Google sign-in failed (status ${e.statusCode}). " +
                             "If this is a release build, register the upload key SHA-1 in Firebase Console."

@@ -23,8 +23,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-private const val VAL_15 = 15
-private const val VAL_60 = 60
+private const val AUTO_REFRESH_PERIOD_MINUTES = 15
+private const val SECONDS_PER_MINUTE = 60
 
 class QuotaStore(
     application: Application,
@@ -122,7 +122,7 @@ class QuotaStore(
         automaticRefreshJob =
             viewModelScope.launch {
                 while (true) {
-                    delay(VAL_15 * VAL_60 * 1000L)
+                    delay(AUTO_REFRESH_PERIOD_MINUTES * SECONDS_PER_MINUTE * 1000L)
                     refreshStaleCloudQuotaIfPossible(maxRefreshes = 10)
                 }
             }

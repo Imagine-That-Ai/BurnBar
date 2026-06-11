@@ -1,9 +1,10 @@
 package com.openburnbar.data.media
 
-private const val VAL_3 = 3
-private const val VAL_4 = 4
-private const val VAL_5 = 5
-private const val VAL_8 = 8
+// Master-plan rollout phases gating each stream class (see class KDoc).
+private const val SCREEN_SHARE_PHASE = 3
+private const val AUDIO_CALL_PHASE = 4
+private const val VIDEO_CALL_PHASE = 5
+private const val COMPUTER_USE_PHASE = 8
 
 /**
  * 1:1 Kotlin port of `MediaStreamClass` (Swift
@@ -30,10 +31,10 @@ value class MediaStreamClass(val raw: String) {
 
     fun isAvailable(asOfPhase: Int): Boolean = when (raw) {
         BLOB_ADVERTISE.raw, BLOB_FETCH.raw, BLOB.raw -> asOfPhase >= 1
-        SCREEN_VIDEO.raw, CONTROL.raw, CLASSIFY.raw -> asOfPhase >= VAL_3
-        AUDIO_OUT.raw, AUDIO_IN.raw -> asOfPhase >= VAL_4
-        VIDEO_OUT.raw, VIDEO_IN.raw -> asOfPhase >= VAL_5
-        CONTROL_SURFACE_FRAME.raw, CONTROL_ACTION_LOG.raw, CONTROL_INPUT.raw, CONTROL_APPROVAL.raw -> asOfPhase >= VAL_8
+        SCREEN_VIDEO.raw, CONTROL.raw, CLASSIFY.raw -> asOfPhase >= SCREEN_SHARE_PHASE
+        AUDIO_OUT.raw, AUDIO_IN.raw -> asOfPhase >= AUDIO_CALL_PHASE
+        VIDEO_OUT.raw, VIDEO_IN.raw -> asOfPhase >= VIDEO_CALL_PHASE
+        CONTROL_SURFACE_FRAME.raw, CONTROL_ACTION_LOG.raw, CONTROL_INPUT.raw, CONTROL_APPROVAL.raw -> asOfPhase >= COMPUTER_USE_PHASE
         else -> false
     }
 
