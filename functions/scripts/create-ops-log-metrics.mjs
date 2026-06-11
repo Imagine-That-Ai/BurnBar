@@ -38,6 +38,11 @@ const METRICS = [
     description: "Rollup full-rebuild failures (in-process or stale attempt marker)",
     filter: 'jsonPayload.event="rollup.rebuild_failed"',
   },
+  {
+    name: "openburnbar_rollup_delta_drain_capped",
+    description: "Pending-delta drains stopped by the per-invocation page cap (queue backlog)",
+    filter: 'jsonPayload.event="rollup.delta_drain_capped"',
+  },
 ];
 
 function listMetrics() {

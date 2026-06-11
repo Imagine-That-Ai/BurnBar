@@ -92,6 +92,38 @@ export const OPS_SLO_ALERT_POLICIES = [
     ],
   },
   {
+    displayName: "OpenBurnBar Rollup delta drain capped",
+    documentation: {
+      content:
+        "Pending-counter-delta drains keep hitting the per-invocation page cap (jsonPayload.event=rollup.delta_drain_capped). An occasional cap is benign backpressure — the job stays dirty and the next 5-minute tick resumes the queue — but SUSTAINED capping means a user's queue grows faster than the drain and their dashboard counters fall progressively behind. Runbook: find the uid in the rollup.delta_drain_capped logs, check pending_counter_deltas volume for that user, and consider raising ROLLUP_PENDING_DELTA_DRAIN_MAX_PAGES or forcing a full rebuild (which purges the queue).",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: ["logging.googleapis.com/user/openburnbar_rollup_delta_drain_capped"],
+    conditions: [
+      {
+        // The drain runs on the 5-minute worker cadence; six consecutive
+        // capped ticks (30 min) means the queue is not catching up.
+        displayName: "Delta drain capped for 30 min",
+        conditionThreshold: {
+          filter:
+            'resource.type="cloud_function" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_delta_drain_capped"',
+          aggregations: [
+            {
+              alignmentPeriod: "300s",
+              perSeriesAligner: "ALIGN_SUM",
+              crossSeriesReducer: "REDUCE_SUM",
+            },
+          ],
+          comparison: "COMPARISON_GT",
+          thresholdValue: 0,
+          duration: "1800s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
+  {
     displayName: "OpenBurnBar Circuit breaker open",
     documentation: {
       content:
