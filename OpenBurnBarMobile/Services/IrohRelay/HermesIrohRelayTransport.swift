@@ -167,6 +167,15 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// coordinator alive for the rest of the app's lifetime.
     private var mediaControlReceiver: iOSFileTransferService?
     private var mediaControlCoordinators: [String: MediaControlStreamCoordinator] = [:]
+
+    /// F7/F10 — the Mac capability strings most recently advertised on the
+    /// media-control stream for `connectionID` (empty until a heartbeat reply
+    /// has arrived). Lets surfaces with their own control streams (agent
+    /// watch) negotiate the app-layer seals from the warm media stream's view
+    /// of the same Mac.
+    func latestMacPresenceCapabilities(connectionID: String) -> [String] {
+        mediaControlCoordinators[connectionID]?.latestMacPresenceCapabilities ?? []
+    }
     private var lastMediaControlConnectionID: String?
     /// Outstanding bootstrap promise so concurrent callers reuse the same
     /// `transport.start()` invocation rather than racing to spin up two
