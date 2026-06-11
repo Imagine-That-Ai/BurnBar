@@ -179,6 +179,16 @@ COVERAGE_ALLOWLIST = {
         "the generator output is enforced by packages/data-domains/"
         "registry.test.mjs. Never compiled into a coverage-bearing target."
     ),
+    "AgentLens/Services/ComputerUse/Mac/RemoteUnlockVirtualHIDBridgeInstaller.swift": (
+        "Privileged install orchestration: osascript admin prompts, launchctl "
+        "bootstrap/bootout, root-owned filesystem moves — unexecutable under "
+        "headless XCTest by construction. Its decision logic IS line-gated: "
+        "LaunchAgent plist shape (RemoteUnlockExecutionLaunchAgentTests) and "
+        "the socket-directory trust layout "
+        "(PrivilegedInputExecutionSocketServerTests). End-to-end install is "
+        "exercised by the signed-build setup flow and the nightly "
+        "privileged-socket red-team gate."
+    ),
     "AgentLens/Services/DirectDownloadUpdateService.swift": (
         "UI/IO orchestration of the update flow: NSAlert prompts, URLSession "
         "download, NSWorkspace open, 24h timers — none of which can execute "

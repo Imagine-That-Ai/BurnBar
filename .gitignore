@@ -200,3 +200,6 @@ verify-ops-plane-summary.json
 apple-login.png
 pensieve-route-snapshot.md
 fix_silently.py
+
+# vitest/c8 output — never a source artifact
+functions/coverage/
