@@ -219,7 +219,13 @@ jobs:
           # the old '|| true' + warning masked a task-not-found failure on
           # every run this lane ever had. projectHealth is the real per-module
           # task; verified green locally on plugin 2.19.0.
-          ./gradlew :app:projectHealth --no-daemon 2>&1 | tee ../android-dep-health.txt || true
+          # Single-JVM compile: the multi-variant analysis otherwise spawns a
+          # 3g Kotlin daemon per variant alongside Gradle's 4g and OOMs even
+          # 16GB runners. In-process strategy shares one 6g heap.
+          ./gradlew :app:projectHealth --no-daemon --max-workers=2 \
+            -Dorg.gradle.jvmargs=-Xmx6g \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            2>&1 | tee ../android-dep-health.txt || true
           if grep -qE "^BUILD FAILED" ../android-dep-health.txt; then
             echo "::error::Android dependency-analysis buildHealth FAILED. Review android-dep-health artifact."
             exit 1
