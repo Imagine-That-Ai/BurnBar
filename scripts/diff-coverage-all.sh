@@ -47,8 +47,18 @@ fi
 
 if [[ -n "$kotlin_changed" ]]; then
     echo "--- Kotlin (Android) ---"
-    if ! "$repo_root/scripts/diff-coverage-android.sh" "$base_ref"; then
-        failed=1
+    jacoco_xml="$repo_root/android/app/build/reports/jacoco/testDebugUnitTest/jacocoTestReport.xml"
+    if [[ -f "$jacoco_xml" ]]; then
+        if ! "$repo_root/scripts/diff-coverage-android.sh" "$base_ref"; then
+            failed=1
+        fi
+    else
+        # Lane partition (CG-1): a lane that cannot see is not allowed to
+        # judge. The Android harness job runs the unit tests, generates the
+        # JaCoCo report, and gates Kotlin diffs with real line evidence; this
+        # aggregate (App XCTest) has no Android build and would only have
+        # test-file PRESENCE — which is never evidence.
+        echo "::notice::Kotlin diff present but no JaCoCo report in this lane — gated by the Android job with real line evidence."
     fi
 else
     echo "--- Kotlin: no changes, skipped ---"

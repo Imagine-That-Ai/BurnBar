@@ -193,6 +193,13 @@ jobs:
       - name: Run Android unit tests
         run: ./scripts/test-openburnbar-android.sh
 
+      - name: Android diff coverage (JaCoCo line evidence)
+        run: |
+          set -euo pipefail
+          (cd android && ./gradlew :app:jacocoTestReport --no-daemon)
+          git fetch origin main --depth=1 2>/dev/null || true
+          ./scripts/diff-coverage-android.sh origin/main
+
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
