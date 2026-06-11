@@ -37,6 +37,13 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          # The release preflight's provenance gate requires corresponding-source
+          # files inside Vendor/libsignal (a submodule). Without this, every tag
+          # deploy fails on "Vendor/libsignal/LICENSE missing" — the wedge that
+          # blocked v1.0.2 (diligence 2026-06-11 NB-2). release.yml inits the
+          # same submodule at its own build step; this keeps the two lanes
+          # consistent.
+          submodules: true
 
       - name: Resolve release tag
         id: tag
