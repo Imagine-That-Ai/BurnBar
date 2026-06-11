@@ -9,26 +9,31 @@ enum MobileComputerUseRemoteConfig {
         return remoteConfig.configValue(forKey: PhoneControlAttestationPolicy.remoteConfigKey).boolValue
     }
 
-    /// F2: whether this device should mint a biometry-gated Secure-Enclave
-    /// phone-control signing key (default-off ramp; see
-    /// `PhoneControlSecureEnclaveKeyPolicy`).
-    static func phoneControlSecureEnclaveKeyEnabled() -> Bool {
-        let remoteConfig = RemoteConfig.remoteConfig()
-        return remoteConfig.configValue(forKey: PhoneControlSecureEnclaveKeyPolicy.remoteConfigKey).boolValue
+    /// Default-ON protection flags (pre-launch posture: the strong protocol is
+    /// the launch protocol). `.static` means no remote value AND no in-app
+    /// default registered yet ⇒ ON; a fetched remote value — the operator's
+    /// kill switch — always wins, in either direction.
+    private static func protectionFlag(forKey key: String) -> Bool {
+        let value = RemoteConfig.remoteConfig().configValue(forKey: key)
+        return value.source == .static ? true : value.boolValue
     }
 
-    /// F10: whether this phone establishes + seals the control lane
-    /// (default-off ramp; both peers must also advertise `control_seal_v1`).
+    /// F2: whether this device should mint a biometry-gated Secure-Enclave
+    /// phone-control signing key (default ON; Remote Config is the kill switch).
+    static func phoneControlSecureEnclaveKeyEnabled() -> Bool {
+        protectionFlag(forKey: PhoneControlSecureEnclaveKeyPolicy.remoteConfigKey)
+    }
+
+    /// F10: whether this phone establishes + seals the control lane (default
+    /// ON; both peers must also advertise `control_seal_v1`).
     static func controlSealEnabled() -> Bool {
-        let remoteConfig = RemoteConfig.remoteConfig()
-        return remoteConfig.configValue(forKey: ControlFrameSealNegotiation.remoteConfigKey).boolValue
+        protectionFlag(forKey: ControlFrameSealNegotiation.remoteConfigKey)
     }
 
     /// F7: whether this phone wraps a media-frame-AEAD key into its mirror
-    /// requests (default-off ramp; both peers must also advertise
+    /// requests (default ON; both peers must also advertise
     /// `media_frame_aead_v1`).
     static func mediaFrameAeadEnabled() -> Bool {
-        let remoteConfig = RemoteConfig.remoteConfig()
-        return remoteConfig.configValue(forKey: MediaFrameAeadNegotiation.remoteConfigKey).boolValue
+        protectionFlag(forKey: MediaFrameAeadNegotiation.remoteConfigKey)
     }
 }
