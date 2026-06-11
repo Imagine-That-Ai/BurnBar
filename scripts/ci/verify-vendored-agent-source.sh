@@ -47,7 +47,7 @@ fi
 IFS=',' read -r -a subtrees <<< "$subtrees_csv"
 actual_hash="$(
   git -C "$src" ls-tree -r "$pinned_commit" --name-only -- "${subtrees[@]}" \
-    | grep '\.py$' | sort \
+    | grep '\.py$' | LC_ALL=C sort \
     | while read -r f; do
         printf '%s ' "$f"
         git -C "$src" cat-file blob "${pinned_commit}:${f}" | shasum -a 256 | cut -d' ' -f1
@@ -108,7 +108,7 @@ fi
 working_tree_hash="$(
   cd "$src" && \
   git ls-files --cached --others --exclude-standard -- "${subtrees[@]}" \
-    | grep '\.py$' | sort \
+    | grep '\.py$' | LC_ALL=C sort \
     | while read -r f; do
         [[ -f "$f" ]] || continue
         printf '%s ' "$f"
