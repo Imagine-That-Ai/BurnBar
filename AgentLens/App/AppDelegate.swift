@@ -17,8 +17,12 @@ import OpenBurnBarCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
-    private var popover: NSPopover?
-    private var popoverPrewarmer: PopoverContentPrewarmer?
+    // Internal read access (`private(set)`) is the unit-test seam for the
+    // popover prewarm wiring — the menu-bar status item never exists in the
+    // XCTest host, so tests drive `installPopoverPrewarming()` /
+    // `primePopoverContent()` directly and inspect the result here.
+    private(set) var popover: NSPopover?
+    private(set) var popoverPrewarmer: PopoverContentPrewarmer?
     private var statusItemLocalMouseMonitor: Any?
     private var statusItemGlobalMouseMonitor: Any?
     private var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
@@ -253,7 +257,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = host
     }
 
-    private func installPopoverPrewarming() {
+    // Internal (not private) so the popover prewarm wiring is unit-testable;
+    // production callers are unchanged (applicationDidFinishLaunching and the
+    // prewarmer's prime closure).
+    func installPopoverPrewarming() {
         let prewarmer = PopoverContentPrewarmer(
             isPopoverShown: { [weak self] in self?.popover?.isShown ?? false },
             prime: { [weak self] in self?.primePopoverContent() }
@@ -275,7 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// fresh-state-on-show behavior from fd19d53ac and guarantees a factory
     /// reinstall (e.g. EmptyView fallback → real runtime content) never
     /// freezes stale content into the popover.
-    private func primePopoverContent() {
+    func primePopoverContent() {
         guard AppCommandRouter.shared.makeMenuBarPopoverContent != nil else { return }
         let popover = ensurePopover()
         installPopoverContent(into: popover)
