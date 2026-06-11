@@ -4,15 +4,16 @@
   "forkRepository": "https://github.com/NousResearch/hermes-agent",
   "forkBranch": "ajnunezg/burnbar-gateway-e2ee",
   "license": "MIT (Nous/Hermes upstream); see LICENSES/Nous-hermes-agent-MIT.txt",
-  "pinnedCommit": "005cf0d86b9f3347660933478f11512fe45a856a",
+  "pinnedCommit": "bdb830070927cbb20763819f91ee930548f7da92",
   "vendoredSubtrees": ["gateway", "plugins", "tools", "hermes_cli", "tui_gateway", "agent"],
-  "vendoredSourceTreeSha256": "1233b043665a48f8023ff5e171b165648febaad02cf1a3dbe7fd64e170ed3ffb",
+  "vendoredSourceTreeSha256": "201605eb3dece1dc5917191bd0c63e9ebde6c964d15756d7cd38d82b3749e3e7",
   "vendoredSourceFileCount": 524,
   "hashDefinition": "sha256 over the sorted list of 'path sha256(blob)\\n' lines for every *.py file under vendoredSubtrees at pinnedCommit (see scripts/ci/verify-vendored-agent-source.sh).",
   "pendingHardening": {
-    "blocking": true,
-    "reason": "Security remediation C-4 (agent command-guard hardening: secret-read/exfil gating, fail-closed tirith, smart-mode escalation) lands on branch security/agent-sandbox-hardening and is NOT in pinnedCommit 005cf0d86 (which adds the L2 gateway PoP v2 signer on top of cde04bb9a). Before beta, merge C-4 into ajnunezg/burnbar-gateway-e2ee, re-vendor, and update pinnedCommit + vendoredSourceTreeSha256 here.",
-    "trackingBranch": "security/agent-sandbox-hardening"
+    "blocking": false,
+    "reason": "CLEARED 2026-06-10. Security remediation C-4 (agent command-guard hardening: secret-read/exfil gating, fail-closed tirith, smart-mode escalation, opt-in subprocess-env hardening M-7) is now MERGED into the pinned commit bdb830070 (C-4 commit 35bbc2c61 cherry-picked onto the L2 PoP signer 005cf0d86; no file overlap). Verified: the C-4 guard suite tests/tools/test_secret_exfil_guard.py passes 40/40 (secret-read/exfil flagged, benign commands not flagged, tirith fail-closed default asserted, secret categories never smart-approvable, env-secret heuristic); the C-4-touched modules (tools/approval.py, tools/tirith_security.py, tools/environments/local.py) import clean. tirith now fails CLOSED by default (was fail-open).",
+    "trackingBranch": "security/agent-sandbox-hardening",
+    "remainingOperational": "The pinned commit bdb830070 is a LOCAL cherry-pick on the fork checkout; push the fork branch ajnunezg/burnbar-gateway-e2ee to origin so CI fetching the pin succeeds (verify-vendored-agent-source.sh resolves the commit from the checkout, which is sufficient for a local/dev build but the protected-branch CI needs the commit on origin)."
   },
   "auditNote": "The shipping product currently vendors this runtime as .pyc with the .py source gitignored, so the AGPL corresponding-source archive (scripts/create-corresponding-source.sh) does NOT contain it. C-5 closes that by pinning the exact source commit + hash here and verifying it in CI (verify-vendored-agent-source.sh). For full reproducibility, the corresponding-source archive should also bundle the pinned source tree."
 }
