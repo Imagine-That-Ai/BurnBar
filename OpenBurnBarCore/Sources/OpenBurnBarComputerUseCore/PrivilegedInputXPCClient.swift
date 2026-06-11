@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 
 /// XPC client for the privileged input-execution Mach service (preferred over legacy Unix socket).
 public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
@@ -9,7 +10,14 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
         case invalidResponse
         case timedOut
         case rejected(String)
+        /// The process listening at the socket path failed server authentication
+        /// (wrong UID or code signature). Terminal by design: a trust failure on
+        /// the socket lane means something is impersonating the helper, so we
+        /// surface it loudly instead of silently downgrading to another lane.
+        case serverUntrusted(String)
     }
+
+    private static let log = Logger(subsystem: "com.openburnbar.computeruse", category: "privileged-input")
 
     private let machServiceName: String
     private let requestTimeout: DispatchTimeInterval
@@ -39,8 +47,16 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
                 return try socketClient.perform(envelope)
             } catch ClientError.rejected(let detail) {
                 throw ClientError.rejected(detail)
+            } catch ClientError.serverUntrusted(let detail) {
+                Self.log.error("privileged-input socket server failed trust validation: \(detail, privacy: .public)")
+                throw ClientError.serverUntrusted(detail)
             } catch {
-                // Fall through to the legacy launchd Mach service when the user-session socket is absent.
+                // The user-session helper socket being absent is expected on
+                // legacy installs; anything else is a transport fault worth a
+                // diagnostic trail before we try the launchd Mach lane.
+                Self.log.notice(
+                    "privileged-input socket lane unavailable, falling back to Mach service: \(String(describing: error), privacy: .public)"
+                )
             }
         }
 
@@ -169,16 +185,31 @@ public final class PrivilegedInputXPCClient: NSObject, @unchecked Sendable {
 }
 
 public final class PrivilegedInputSocketClient: @unchecked Sendable {
+    public typealias ServerCodeSignatureValidator = @Sendable (audit_token_t) throws -> Void
+
     private let socketPath: String
     private let requestTimeoutSeconds: Int
+    private let expectedServerUID: uid_t
+    private let serverCodeSignatureValidator: ServerCodeSignatureValidator
     private let maximumResponseBytes = 16 * 1024
 
+    /// - Parameters:
+    ///   - expectedServerUID: UID the listening helper must run as. The app
+    ///     talks to its own user's helper (`getuid()`); the root bridge passes
+    ///     the console user's UID when forwarding.
+    ///   - serverCodeSignatureValidator: injectable for tests; defaults to the
+    ///     first-party designated-requirement check.
     public init(
         socketPath: String = PrivilegedInputXPCConstants.userSessionSocketPath(),
-        requestTimeoutSeconds: Int = 4
+        requestTimeoutSeconds: Int = 4,
+        expectedServerUID: uid_t = getuid(),
+        serverCodeSignatureValidator: ServerCodeSignatureValidator? = nil
     ) {
         self.socketPath = socketPath
         self.requestTimeoutSeconds = max(1, requestTimeoutSeconds)
+        self.expectedServerUID = expectedServerUID
+        self.serverCodeSignatureValidator = serverCodeSignatureValidator
+            ?? PrivilegedInputSocketClient.defaultServerCodeSignatureValidator
     }
 
     public func perform(_ envelope: PrivilegedInputDispatchEnvelope) throws -> PrivilegedInputDispatchResponse {
@@ -208,6 +239,19 @@ public final class PrivilegedInputSocketClient: @unchecked Sendable {
         }
         guard connected == 0 else { throw PrivilegedInputXPCClient.ClientError.connectionUnavailable }
 
+        // Authenticate the server BEFORE writing anything: the envelope can
+        // carry the macOS login password (`typeCredential`), and a connect(2)
+        // by itself proves only that *something* is listening at the path.
+        do {
+            try OpenBurnBarPrivilegedTrust.validateServerPeer(
+                socketFD: fd,
+                expectedUID: expectedServerUID,
+                codeSignatureValidator: serverCodeSignatureValidator
+            )
+        } catch {
+            throw PrivilegedInputXPCClient.ClientError.serverUntrusted(String(describing: error))
+        }
+
         var requestData = try JSONEncoder().encode(envelope)
         requestData.append(0x0A)
         try write(requestData, to: fd)
@@ -220,6 +264,14 @@ public final class PrivilegedInputSocketClient: @unchecked Sendable {
             throw PrivilegedInputXPCClient.ClientError.rejected(response.error ?? "privileged_input_rejected")
         }
         return response
+    }
+
+    private static let defaultServerCodeSignatureValidator: ServerCodeSignatureValidator = { token in
+#if os(macOS)
+        try OpenBurnBarPrivilegedTrust.validateCodeSignature(ofAuditToken: token)
+#else
+        throw PrivilegedSocketTrustError.codeSignatureInvalid(status: -1)
+#endif
     }
 
     private func configureSocket(_ fd: Int32) {

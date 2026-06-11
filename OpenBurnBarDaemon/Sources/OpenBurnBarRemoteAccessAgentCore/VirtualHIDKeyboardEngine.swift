@@ -302,22 +302,30 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
         private let pointingDevice: HIDVirtualDevice?
 
         init?(keyboardDescriptor: Data, pointingDescriptor: Data) {
-            guard let keyboardDevice = HIDVirtualDevice(
-                properties: HIDVirtualDevice.Properties(
-                    descriptor: keyboardDescriptor,
-                    vendorID: 1
-                )
+            // Prefer a fully self-identifying virtual device (product /
+            // manufacturer / serial) so the injected hardware is honest in
+            // system diagnostics and EDR review. Some macOS 26 builds reject
+            // HIDVirtualDevice creation with extended identity properties, so
+            // fall back to the minimal descriptor rather than losing the
+            // feature — the fallback is logged for diagnostics.
+            guard let keyboardDevice = Self.makeDevice(
+                descriptor: keyboardDescriptor,
+                productID: 0x1001,
+                product: "OpenBurnBar Remote Unlock Keyboard",
+                serial: "openburnbar-remote-unlock-keyboard"
             ) else {
                 VirtualHIDKeyboardEngine.diagnosticLog("CoreHID keyboard HIDVirtualDevice creation returned nil")
                 return nil
             }
-            let pointingDevice = HIDVirtualDevice(
-                properties: HIDVirtualDevice.Properties(
-                    descriptor: pointingDescriptor,
-                    vendorID: 1
-                )
+            let pointingDevice = Self.makeDevice(
+                descriptor: pointingDescriptor,
+                productID: 0x1002,
+                product: "OpenBurnBar Remote Unlock Mouse",
+                serial: "openburnbar-remote-unlock-mouse"
             )
             if pointingDevice == nil {
+                // Keyboard-only degradation is deliberate: unlock needs the
+                // keyboard; pointer input is best-effort on this backend.
                 VirtualHIDKeyboardEngine.diagnosticLog("CoreHID pointing HIDVirtualDevice creation returned nil; pointer input disabled")
             }
 
@@ -329,6 +337,34 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
                     await pointingDevice.activate(delegate: self)
                 }
             }
+        }
+
+        private static func makeDevice(
+            descriptor: Data,
+            productID: UInt32,
+            product: String,
+            serial: String
+        ) -> HIDVirtualDevice? {
+            let identified = HIDVirtualDevice.Properties(
+                descriptor: descriptor,
+                vendorID: 0x0bba,
+                productID: productID,
+                transport: .virtual,
+                product: product,
+                manufacturer: "OpenBurnBar",
+                versionNumber: 1,
+                serialNumber: serial,
+                uniqueID: serial
+            )
+            if let device = HIDVirtualDevice(properties: identified) {
+                return device
+            }
+            VirtualHIDKeyboardEngine.diagnosticLog(
+                "CoreHID HIDVirtualDevice rejected identified properties for \(serial); retrying minimal"
+            )
+            return HIDVirtualDevice(
+                properties: HIDVirtualDevice.Properties(descriptor: descriptor, vendorID: 1)
+            )
         }
 
         func postKeyboardReport(_ bytes: [UInt8]) throws {
