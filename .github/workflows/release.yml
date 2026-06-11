@@ -577,9 +577,11 @@ jobs:
             --latest-name "$(basename "$LATEST_PATH")" \
             --ed-signature "$SPARKLE_ED_SIGNATURE"
 
-          echo "appcast_path=$APPCAST_PATH" >> "$GITHUB_OUTPUT"
-          echo "latest_path=$LATEST_PATH" >> "$GITHUB_OUTPUT"
-          echo "update_base_url=$BASE_URL" >> "$GITHUB_OUTPUT"
+          {
+            echo "appcast_path=$APPCAST_PATH"
+            echo "latest_path=$LATEST_PATH"
+            echo "update_base_url=$BASE_URL"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Compute artifact checksums
         id: checksums
