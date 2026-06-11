@@ -87,6 +87,17 @@ if [[ "${OPENBURNBAR_SKIP_XCODE_BUILD:-0}" != "1" ]]; then
 fi
 mkdir -p "$release_dir"
 
+privileged_input_profile_plist="$release_dir/privileged-input-profile.plist"
+privileged_input_signing_entitlements="$release_dir/privileged-input-entitlements.plist"
+security cms -D -i "$privileged_input_profile" > "$privileged_input_profile_plist"
+/usr/libexec/PlistBuddy -x -c "Print :Entitlements" \
+  "$privileged_input_profile_plist" > "$privileged_input_signing_entitlements"
+if ! /usr/libexec/PlistBuddy -c "Print :com.apple.developer.hid.virtual.device" \
+  "$privileged_input_signing_entitlements" 2>/dev/null | grep -q "true"; then
+  echo "ERROR: Privileged input profile is missing com.apple.developer.hid.virtual.device." >&2
+  exit 1
+fi
+
 swift build --package-path OpenBurnBarDaemon -c release
 
 set -o pipefail
@@ -225,7 +236,7 @@ wrap_privileged_input_execution_helper() {
 </plist>
 PLIST
   codesign --force --timestamp --options runtime,library \
-    --entitlements "$privileged_input_entitlements" \
+    --entitlements "$privileged_input_signing_entitlements" \
     --sign "$identity" \
     "$helper_app"
   codesign --verify --deep --strict --verbose=2 "$helper_app"
@@ -245,7 +256,7 @@ sign_one "$helpers_dir/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.dae
 sign_one "$helpers_dir/OpenBurnBarVirtualHIDBridge" "runtime,library" "com.openburnbar.virtual-hid-bridge"
 sign_one_with_entitlements \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution" \
-  "$privileged_input_entitlements" \
+  "$privileged_input_signing_entitlements" \
   "runtime,library" \
   "com.openburnbar.privileged-input-execution"
 wrap_privileged_input_execution_helper \

@@ -98,7 +98,7 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         launchctl kickstart -k system/\(launchDaemonLabel)
         """
         try runAdministratorScript(adminScript)
-        try installExecutionLaunchAgent(
+        try startExecutionUserHelper(
             executablePath: privilegedExecutionSource.installedExecutablePath,
             fileManager: fileManager
         )
@@ -169,58 +169,59 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
-    nonisolated private static func installExecutionLaunchAgent(
+    nonisolated private static func startExecutionUserHelper(
         executablePath: String,
         fileManager: FileManager
     ) throws {
-        let launchAgentsDirectory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
         let logsDirectory = URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent("Library/Logs/OpenBurnBar", isDirectory: true)
-        try fileManager.createDirectory(at: launchAgentsDirectory, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
 
         let plistURL = URL(fileURLWithPath: executionLaunchAgentPlistPath)
-        try executionLaunchAgentPlistData(executablePath: executablePath).write(to: plistURL, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: plistURL.path)
-
         let domain = "gui/\(getuid())"
         _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", "\(domain)/\(executionLaunchLabel)"])
         _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", domain, plistURL.path])
+        try? fileManager.removeItem(at: plistURL)
 
-        let bootstrap = runProcess(executablePath: "/bin/launchctl", arguments: ["bootstrap", domain, plistURL.path])
-        guard bootstrap.status == 0 else {
-            throw InstallerError.administratorScriptFailed(bootstrap.combinedOutput)
-        }
-
-        let enable = runProcess(executablePath: "/bin/launchctl", arguments: ["enable", "\(domain)/\(executionLaunchLabel)"])
-        guard enable.status == 0 else {
-            throw InstallerError.administratorScriptFailed(enable.combinedOutput)
-        }
-
-        let kickstart = runProcess(executablePath: "/bin/launchctl", arguments: ["kickstart", "-k", "\(domain)/\(executionLaunchLabel)"])
-        guard kickstart.status == 0 else {
-            throw InstallerError.administratorScriptFailed(kickstart.combinedOutput)
-        }
+        _ = runProcess(executablePath: "/usr/bin/pkill", arguments: ["-f", executablePath])
+        try launchDetachedExecutionHelper(
+            executablePath: executablePath,
+            stdoutPath: logsDirectory
+                .appendingPathComponent("openburnbar-privileged-input-execution.log", isDirectory: false)
+                .path,
+            stderrPath: logsDirectory
+                .appendingPathComponent("openburnbar-privileged-input-execution.err.log", isDirectory: false)
+                .path
+        )
     }
 
-    nonisolated private static func executionLaunchAgentPlistData(executablePath: String) throws -> Data {
-        let logDirectory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Logs/OpenBurnBar", isDirectory: true)
-            .path
-        let plist: [String: Any] = [
-            "Label": executionLaunchLabel,
-            "MachServices": [
-                RemoteUnlockSetupProbe.privilegedInputExecutionMachService: true
-            ],
-            "ProgramArguments": [executablePath],
-            "RunAtLoad": true,
-            "KeepAlive": true,
-            "StandardOutPath": "\(logDirectory)/openburnbar-privileged-input-execution.log",
-            "StandardErrorPath": "\(logDirectory)/openburnbar-privileged-input-execution.err.log",
-            "ProcessType": "Interactive"
-        ]
-        return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+    nonisolated private static func launchDetachedExecutionHelper(
+        executablePath: String,
+        stdoutPath: String,
+        stderrPath: String
+    ) throws {
+        let fileManager = FileManager.default
+        if !fileManager.fileExists(atPath: stdoutPath) {
+            fileManager.createFile(atPath: stdoutPath, contents: nil)
+        }
+        if !fileManager.fileExists(atPath: stderrPath) {
+            fileManager.createFile(atPath: stderrPath, contents: nil)
+        }
+
+        let stdout = try FileHandle(forWritingTo: URL(fileURLWithPath: stdoutPath))
+        let stderr = try FileHandle(forWritingTo: URL(fileURLWithPath: stderrPath))
+        defer {
+            try? stdout.close()
+            try? stderr.close()
+        }
+        try stdout.seekToEnd()
+        try stderr.seekToEnd()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.standardOutput = stdout
+        process.standardError = stderr
+        try process.run()
     }
 
     nonisolated private static func bridgeLaunchDaemonPlistData() throws -> Data {
