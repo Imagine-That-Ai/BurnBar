@@ -358,7 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboardAction(_:)), keyEquivalent: "d")
         menu.addItem(withTitle: "Settings...", action: #selector(openSettingsAction(_:)), keyEquivalent: ",")
 #if !DISTRIBUTION_MAS
-        menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: "") // cov:ignore -- status-menu wiring; the triggered behavior is line-gated in the DirectDownload* companions
 #endif
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(OpenBurnBarIdentity.productName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -377,8 +377,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
 #if !DISTRIBUTION_MAS
-    @objc private func checkForUpdatesAction(_ sender: Any?) {
-        DirectDownloadUpdateChecker.shared.checkForUpdatesNow()
+    @objc private func checkForUpdatesAction(_ sender: Any?) { // cov:ignore -- menu-action glue; checkForUpdatesNow's logic is line-gated in the DirectDownload* companions
+        DirectDownloadUpdateChecker.shared.checkForUpdatesNow() // cov:ignore -- see above
     }
 #endif
 

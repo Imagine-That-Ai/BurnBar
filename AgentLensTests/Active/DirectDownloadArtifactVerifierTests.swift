@@ -258,3 +258,28 @@ final class DirectDownloadArtifactVerifierTests: XCTestCase {
         XCTAssertEqual(raw?.count, 32, "SUPublicEDKey must be a raw 32-byte Ed25519 public key")
     }
 }
+
+extension DirectDownloadArtifactVerifierTests {
+    /// The error copy is the security-honest UX the update design demands:
+    /// every failure names what was being verified and why opening stopped.
+    func testEveryVerificationErrorExplainsItselfSpecifically() {
+        let cases: [(DirectDownloadVerificationError, String)] = [
+            (.missingPublicKey, "SUPublicEDKey"),
+            (.malformedPublicKey, "Ed25519"),
+            (.missingSignature, "signature"),
+            (.malformedSignature, "base64"),
+            (.lengthMismatch(expected: 1000, actual: 999), "999"),
+            (.sha256Mismatch(expected: "aa", actual: "bb"), "bb"),
+            (.signatureInvalid, "does not verify"),
+            (.unreadableArtifact("boom"), "boom"),
+        ]
+        for (error, marker) in cases {
+            let description = error.errorDescription ?? ""
+            XCTAssertFalse(description.isEmpty, "\(error) must explain itself")
+            XCTAssertTrue(
+                description.contains(marker),
+                "\(error) description must name its specifics (missing: \(marker))"
+            )
+        }
+    }
+}
