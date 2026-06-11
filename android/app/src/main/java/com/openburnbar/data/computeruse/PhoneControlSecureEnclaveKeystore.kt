@@ -84,13 +84,19 @@ internal object PhoneControlSecureEnclaveKeystore {
      * existing alias.
      */
     fun mintIdentity(): PhoneControlSigningIdentity.SecureEnclaveP256? = runCatching {
+        // F2 SECURITY INVARIANT: an `se-p256` signature is treated by the Mac
+        // as a *biometric* step-up proof, so it must be biometric-only.
+        // `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` — the API
+        // that excludes device-credential (PIN/pattern) unlock — only exists on
+        // API 30+ (R). On 26–29, `setUserAuthenticationRequired(true)` would
+        // also accept a PIN, letting a non-biometric signature satisfy a
+        // sensitive-action step-up. So below R we refuse to mint (and refuse to
+        // load any pre-existing alias): the caller falls back to the legacy
+        // Ed25519 identity, which forces the explicit single-use local-auth
+        // proof for sensitive actions. This keeps the invariant globally true.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@runCatching null
         if (hasKey()) return@runCatching loadIdentity()
-        val keyPair =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                generatePreferringStrongBox()
-            } else {
-                generate(strongBoxBacked = false)
-            }
+        val keyPair = generatePreferringStrongBox()
         val publicKey = keyPair.public as? ECPublicKey ?: return@runCatching null
         PhoneControlSigningIdentity.SecureEnclaveP256(keyPair.private, publicKey)
     }.getOrNull()

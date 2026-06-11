@@ -753,7 +753,18 @@ public final class PhoneControlSigningKeyStore: @unchecked Sendable {
             ))
         }
         if secureEnclaveEnabled, SecureEnclave.isAvailable {
-            return .secureEnclaveP256(try mintSecureEnclaveKey(authenticationContext: authenticationContext))
+            // Mint can fail on a device with no enrolled biometric (a
+            // `.biometryCurrentSet` key cannot be created), among other
+            // reasons. Fall back to the legacy Ed25519 key rather than
+            // throwing: throwing here would brick remote control on every
+            // passcode-only iOS device once the flag is on. The security
+            // invariant is preserved — a legacy key forces the explicit
+            // single-use local-auth proof for sensitive actions, so it is
+            // never silently weaker. Mirrors Android `mintIdentity()`'s
+            // `getOrNull()` fallback.
+            if let secureEnclaveKey = try? mintSecureEnclaveKey(authenticationContext: authenticationContext) {
+                return .secureEnclaveP256(secureEnclaveKey)
+            }
         }
         return .ed25519(try signingKey().privateKey)
     }
