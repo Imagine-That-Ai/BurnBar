@@ -1,0 +1,263 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>CognitiveComplexMethod:BurnViewSections.kt$@Composable fun QuotaArcDial( outer: QuotaBucket?, inner: QuotaBucket?, provider: AgentProvider, modifier: Modifier = Modifier, diameter: Dp = 138.dp )</ID>
+    <ID>CognitiveComplexMethod:BurnViewSections.kt$@Composable fun QuotaFilterRail( viewMode: BurnViewStyle, onViewModeChange: (BurnViewStyle) -&gt; Unit, sort: QuotaSortMode, onSortChange: (QuotaSortMode) -&gt; Unit, showInactive: Boolean, onShowInactiveChange: (Boolean) -&gt; Unit, isRefreshing: Boolean, onRefreshAll: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>CognitiveComplexMethod:BurnViewSections.kt$@Composable fun SubscriptionCard( snapshot: ProviderQuotaSnapshot, accounts: List&lt;ProviderAccount&gt;, signedInEmail: String?, onRefresh: () -&gt; Unit, onTogglePin: (Boolean) -&gt; Unit, isPinned: Boolean, onOpenDetail: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>CognitiveComplexMethod:BurnViewSections.kt$@Composable fun SubscriptionConstellationHero( snapshots: List&lt;ProviderQuotaSnapshot&gt;, selectedProvider: AgentProvider?, onOrbTap: (AgentProvider) -&gt; Unit, onClearSelection: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>CognitiveComplexMethod:BurnViewSections.kt$@Composable internal fun BurnViewContent( quotaStore: QuotaStore, demoDataStore: DemoDataStore, dashboardStore: DashboardStore, activityStore: ActivityStore, )</ID>
+    <ID>CognitiveComplexMethod:InlineAgentMirrorView.kt$@Composable fun InlineAgentMirrorView( runtime: String = "hermes", modifier: Modifier = Modifier, )</ID>
+    <ID>ComplexCondition:HermesOpenAICompatibleStreamParser.kt$HermesOpenAICompatibleStreamParser$promptTokens == null &amp;&amp; outputTokens == null &amp;&amp; totalTokens == null &amp;&amp; generationDuration == null &amp;&amp; totalDuration == null</ID>
+    <ID>ComplexCondition:TokenUsage.kt$lowercased.contains("mcp") || lowercased.contains("tool") || lowercased.contains("time_limit") || lowercased.contains("time limit")</ID>
+    <ID>CyclomaticComplexMethod:BurnViewSections.kt$@Composable fun QuotaArcDial( outer: QuotaBucket?, inner: QuotaBucket?, provider: AgentProvider, modifier: Modifier = Modifier, diameter: Dp = 138.dp )</ID>
+    <ID>CyclomaticComplexMethod:BurnViewSections.kt$@Composable fun SubscriptionCard( snapshot: ProviderQuotaSnapshot, accounts: List&lt;ProviderAccount&gt;, signedInEmail: String?, onRefresh: () -&gt; Unit, onTogglePin: (Boolean) -&gt; Unit, isPinned: Boolean, onOpenDetail: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>CyclomaticComplexMethod:BurnViewSections.kt$@Composable fun SubscriptionConstellationHero( snapshots: List&lt;ProviderQuotaSnapshot&gt;, selectedProvider: AgentProvider?, onOrbTap: (AgentProvider) -&gt; Unit, onClearSelection: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>CyclomaticComplexMethod:BurnViewSections.kt$@Composable internal fun BurnViewContent( quotaStore: QuotaStore, demoDataStore: DemoDataStore, dashboardStore: DashboardStore, activityStore: ActivityStore, )</ID>
+    <ID>CyclomaticComplexMethod:BurnViewSections.kt$fun sortQuotaSnapshots( snapshots: List&lt;ProviderQuotaSnapshot&gt;, mode: QuotaSortMode, accounts: List&lt;ProviderAccount&gt;, rollups: UsageRollups?, pinnedKeys: Set&lt;String&gt; = emptySet() ): List&lt;ProviderQuotaSnapshot&gt;</ID>
+    <ID>CyclomaticComplexMethod:CLIAgentMissionDispatcher.kt$private fun DocumentSnapshot.toMissionSnapshot( fallbackID: String, eventOverride: List&lt;CLIAgentMissionEvent&gt;? = null, vaultKey: ByteArray? = null, uid: String? = null, signalIdentity: AndroidSignalIdentityKeypair? = null, ): CLIAgentMissionSnapshot?</ID>
+    <ID>CyclomaticComplexMethod:CloudVaultCrypto.kt$CloudVaultCrypto$fun signalEnvelopeFromMap(raw: Map&lt;*, *&gt;?): CloudVaultSignalEnvelope?</ID>
+    <ID>CyclomaticComplexMethod:CloudVaultRotationRewrapWorker.kt$CloudVaultRotationRewrapWorker$private suspend fun rewrapSessionLogStorage( uid: String, deviceId: String, jobId: String, oldKey: ByteArray, newKey: ByteArray, newVaultKeyID: String, vaultGeneration: Int, ): CloudVaultRotationRewrapProgress</ID>
+    <ID>CyclomaticComplexMethod:HermesOpenAICompatibleStreamParser.kt$HermesOpenAICompatibleStreamParser$private fun tokenUsageStats(usage: JSONObject): RelayUsageStats?</ID>
+    <ID>CyclomaticComplexMethod:InlineAgentMirrorView.kt$@Composable fun InlineAgentMirrorView( runtime: String = "hermes", modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:CredentialTransferStoreSecurityTest.kt$CredentialTransferStoreSecurityTest$@Test fun testCodeLength_isTwelveCharacters()</ID>
+    <ID>FunctionNaming:CredentialTransferStoreSecurityTest.kt$CredentialTransferStoreSecurityTest$@Test fun testEncryptDecryptRoundTrip_emptyPayload()</ID>
+    <ID>FunctionNaming:CredentialTransferStoreSecurityTest.kt$CredentialTransferStoreSecurityTest$@Test fun testEncryptDecryptRoundTrip_largePayload()</ID>
+    <ID>FunctionNaming:CredentialTransferStoreSecurityTest.kt$CredentialTransferStoreSecurityTest$@Test fun testEncryptDecryptRoundTrip_unicodePayload()</ID>
+    <ID>FunctionNaming:CredentialTransferStoreSecurityTest.kt$CredentialTransferStoreSecurityTest$@Test fun testSecureRandomUsed_codesVaryAcrossCalls()</ID>
+    <ID>FunctionNaming:DevicesStoreTest.kt$DevicesStoreTest$@Test fun `currentAndroidDeviceID accepts missing context`()</ID>
+    <ID>FunctionNaming:DevicesStoreTest.kt$DevicesStoreTest$@Test fun `currentAndroidDeviceID fails closed instead of crashing`()</ID>
+    <ID>FunctionNaming:DevicesStoreTest.kt$DevicesStoreTest$@Test fun `currentAndroidDeviceID reads from supplied application context`()</ID>
+    <ID>FunctionNaming:HermesOpenAICompatibleStreamParserTest.kt$HermesOpenAICompatibleStreamParserTest$@Test fun done_payload_flushes_pending_tool_calls_when_provider_omits_finish_reason()</ID>
+    <ID>FunctionNaming:HermesOpenAICompatibleStreamParserTest.kt$HermesOpenAICompatibleStreamParserTest$@Test fun parser_emits_reasoning_refusal_and_ollama_usage()</ID>
+    <ID>FunctionNaming:HermesOpenAICompatibleStreamParserTest.kt$HermesOpenAICompatibleStreamParserTest$@Test fun parser_emits_tool_call_chunks_and_finished_event()</ID>
+    <ID>FunctionNaming:HermesOpenAICompatibleStreamParserTest.kt$HermesOpenAICompatibleStreamParserTest$@Test fun sse_reader_preserves_done_payload_for_parser_flush()</ID>
+    <ID>FunctionNaming:HermesOpenAICompatibleStreamParserTest.kt$HermesOpenAICompatibleStreamParserTest$@Test fun text_chunk_flushes_pending_tool_calls_before_visible_content()</ID>
+    <ID>FunctionParameterNaming:WidgetComponents.kt$_prompt: String?</ID>
+    <ID>InstanceOfCheckForException:HermesServiceRuntimeSupport.kt$HermesServiceRuntimeSupport$e is CancellationException</ID>
+    <ID>LongMethod:AgentBrandZoneScreenSections.kt$@Composable internal fun AgentBrandZoneOverlays( context: AgentBrandZoneOverlayContext, overlayState: AgentBrandZoneOverlayState, overlayCallbacks: AgentBrandZoneOverlayCallbacks, )</ID>
+    <ID>LongMethod:AndroidCloudVaultTrustedDeviceChainVerifier.kt$AndroidCloudVaultTrustedDeviceChainVerifier$private suspend fun verifiedTrustedDevice( uid: String, firestore: FirebaseFirestore, deviceId: String, localIdentity: AndroidSignalIdentityKeypair, visited: Set&lt;String&gt;, ): AndroidCloudVaultVerifiedTrustedDevice</ID>
+    <ID>LongMethod:AndroidSignalSessionOverIrohTest.kt$AndroidSignalSessionOverIrohTest$@Test fun loopbackSignalSessionRoundTrip()</ID>
+    <ID>LongMethod:AuroraNavigationTraySections.kt$@Composable internal fun AuroraTabItem( destination: AuroraNavDestination, isSelected: Boolean, userDisplayName: String?, userPhotoUrl: String?, cloudIndicator: CloudIndicator = CloudIndicator.None, modifier: Modifier = Modifier, onSelected: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BurnBarNavHostSections.kt$@Composable internal fun BurnBarNavigationRail(currentTab: BurnBarTab, onSelect: (BurnBarTab) -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun MetricRow( glyph: String, label: String, bucket: QuotaBucket?, fallback: String, provider: AgentProvider )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun ProviderFocusBanner( provider: AgentProvider, accountCount: Int, totalProviderCount: Int, onClearSelection: () -&gt; Unit )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun QuotaArcDial( outer: QuotaBucket?, inner: QuotaBucket?, provider: AgentProvider, modifier: Modifier = Modifier, diameter: Dp = 138.dp )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun QuotaFilterRail( viewMode: BurnViewStyle, onViewModeChange: (BurnViewStyle) -&gt; Unit, sort: QuotaSortMode, onSortChange: (QuotaSortMode) -&gt; Unit, showInactive: Boolean, onShowInactiveChange: (Boolean) -&gt; Unit, isRefreshing: Boolean, onRefreshAll: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun QuotaResetAtlas( snapshots: List&lt;ProviderQuotaSnapshot&gt;, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun SubscriptionCard( snapshot: ProviderQuotaSnapshot, accounts: List&lt;ProviderAccount&gt;, signedInEmail: String?, onRefresh: () -&gt; Unit, onTogglePin: (Boolean) -&gt; Unit, isPinned: Boolean, onOpenDetail: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun SubscriptionConstellationHero( snapshots: List&lt;ProviderQuotaSnapshot&gt;, selectedProvider: AgentProvider?, onOrbTap: (AgentProvider) -&gt; Unit, onClearSelection: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun SubscriptionListRow( snapshot: ProviderQuotaSnapshot, accounts: List&lt;ProviderAccount&gt;, onRefresh: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun SubscriptionOrb( provider: AgentProvider, snapshot: ProviderQuotaSnapshot, isSelected: Boolean, isDimmed: Boolean, onTap: () -&gt; Unit )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable fun WindowBar( bucket: QuotaBucket, label: String, icon: String, provider: AgentProvider, trackBgColor: Color )</ID>
+    <ID>LongMethod:BurnViewSections.kt$@Composable internal fun BurnViewContent( quotaStore: QuotaStore, demoDataStore: DemoDataStore, dashboardStore: DashboardStore, activityStore: ActivityStore, )</ID>
+    <ID>LongMethod:BurnViewSections.kt$fun sortQuotaSnapshots( snapshots: List&lt;ProviderQuotaSnapshot&gt;, mode: QuotaSortMode, accounts: List&lt;ProviderAccount&gt;, rollups: UsageRollups?, pinnedKeys: Set&lt;String&gt; = emptySet() ): List&lt;ProviderQuotaSnapshot&gt;</ID>
+    <ID>LongMethod:CLIAgentMissionDispatcher.kt$CLIAgentMissionDispatcher$suspend fun dispatchFanOut( title: String, prompt: String, missionKind: String, runtimeTokens: List&lt;String&gt;, targetProject: String? = null, depth: String = "standard", approvalMode: String = "existing_policy", commandsAllowed: Boolean = false, fileEditsAllowed: Boolean = false, parallelismLimit: Int? = null, mergeStrategy: String = "pick_one", requestedModelIDsByRuntime: Map&lt;String, String&gt; = emptyMap(), sourceSkillID: String? = null, sourceSurface: String? = null, deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY, parentHermesThreadID: String? = null, ): FanOutDispatchResult</ID>
+    <ID>LongMethod:CloudVaultCryptoTest.kt$CloudVaultCryptoTest$@Test fun rewrapCloudVaultDocumentResealsTopLevelEnvelopesWithPathBoundAad()</ID>
+    <ID>LongMethod:CloudVaultRotationRewrapWorker.kt$CloudVaultRotationRewrapWorker$private suspend fun rewrapSessionLogStorage( uid: String, deviceId: String, jobId: String, oldKey: ByteArray, newKey: ByteArray, newVaultKeyID: String, vaultGeneration: Int, ): CloudVaultRotationRewrapProgress</ID>
+    <ID>LongMethod:CloudVaultRotationRewrapWorker.kt$CloudVaultRotationRewrapWorker$suspend fun runDocumentRewrap( uid: String, deviceId: String, jobId: String, oldKey: ByteArray, newKey: ByteArray, newVaultKeyID: String = CloudVaultCrypto.vaultKeyID(newKey), vaultGeneration: Int, ): CloudVaultRotationRewrapProgress</ID>
+    <ID>LongMethod:ControlCenterScreen.kt$@Composable private fun ControlCenterInventoryList( snapshot: ControlCenterSnapshot, isLoading: Boolean, error: String?, store: ControlCenterStore, selectedDomainId: String?, onSelectDomain: (String?) -&gt; Unit, onManagePlan: () -&gt; Unit, onUnlock: (com.openburnbar.ui.pro.GatedFeature) -&gt; Unit, )</ID>
+    <ID>LongMethod:ControlCenterScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun ControlCenterScreen( modifier: Modifier = Modifier, store: ControlCenterStore = viewModel(), onBack: () -&gt; Unit = {}, onManagePlan: () -&gt; Unit = {}, onDomainDeepLink: (DataDomain, String) -&gt; Unit = { _, _ -&gt; }, priceForTier: (com.openburnbar.ui.pro.CloudTier) -&gt; String? = { null }, )</ID>
+    <ID>LongMethod:ConversationCockpitQueryRunner.kt$ConversationCockpitQueryRunner$private fun decodeRow(store: ConversationCockpitStore, row: ConversationFacetRow): CockpitConversationRow</ID>
+    <ID>LongMethod:HermesOpenAICompatibleStreamParser.kt$HermesOpenAICompatibleStreamParser$private fun tokenUsageStats(usage: JSONObject): RelayUsageStats?</ID>
+    <ID>LongMethod:HermesRelayClient.kt$HermesRelayClient$private suspend fun sendEnvelope(request: RelayEnvelopeRequest): RelayRequestHandle</ID>
+    <ID>LongMethod:HermesServiceMessageActions.kt$HermesServiceMessageActions$private fun applyStreamEvent( event: HermesStreamEvent, assistantID: String, modelName: String, accumulated: String, toolUseIterations: Int, ): Pair&lt;String, Int&gt;</ID>
+    <ID>LongMethod:HermesViewBubbleSections.kt$@Composable private fun ChatBubbleAgentSurface( message: HermesMessage, isUser: Boolean, permissionState: ChatBubblePermissionState, )</ID>
+    <ID>LongMethod:HostedQuotaSubscriptionStore.kt$HostedQuotaSubscriptionStore$private suspend fun handlePurchases(purchases: List&lt;Purchase&gt;)</ID>
+    <ID>LongMethod:HostedQuotaSubscriptionStoreTest.kt$HostedQuotaSubscriptionStoreTest$@Test fun `restorePurchases verifies Cloud Pro when stale Cloud purchase is also returned`()</ID>
+    <ID>LongMethod:InlineAgentMirrorView.kt$@Composable fun InlineAgentMirrorView( runtime: String = "hermes", modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:LoginScreenSections.kt$@Composable internal fun EmberLogo(modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:LoginScreenSections.kt$@Composable internal fun LoginScreenRoot( userStore: UserStore, isSigningIn: Boolean, authError: AuthError?, onDismissError: () -&gt; Unit, )</ID>
+    <ID>LongMethod:PulseDepthBackdrop.kt$@Composable fun PulseDepthBackdrop(modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:StreamsViewSections.kt$@Composable fun UsageCard(usage: TokenUsage, onAskHermes: (String) -&gt; Unit)</ID>
+    <ID>LongMethod:StreamsViewSections.kt$@Composable internal fun StreamsSearchField(searchQuery: String, onSearchChange: (String) -&gt; Unit)</ID>
+    <ID>LongMethod:StreamsViewSections.kt$@Composable internal fun StreamsSegmentTabs(selectedSegment: StreamsSegment, onSelectSegment: (StreamsSegment) -&gt; Unit)</ID>
+    <ID>LongParameterList:AndroidCloudVaultSignalPayloads.kt$AndroidCloudVaultSignalPayloads$( domainID: String, uid: String, collection: String, docId: String, field: String = "signalEnvelope", plaintext: ByteArray, localIdentity: AndroidSignalIdentityKeypair, otherRecipients: List&lt;CloudVaultSignalRecipient&gt;, )</ID>
+    <ID>LongParameterList:BurnViewSections.kt$( snapshot: ProviderQuotaSnapshot, accounts: List&lt;ProviderAccount&gt;, signedInEmail: String?, onRefresh: () -&gt; Unit, onTogglePin: (Boolean) -&gt; Unit, isPinned: Boolean, onOpenDetail: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongParameterList:BurnViewSections.kt$( viewMode: BurnViewStyle, onViewModeChange: (BurnViewStyle) -&gt; Unit, sort: QuotaSortMode, onSortChange: (QuotaSortMode) -&gt; Unit, showInactive: Boolean, onShowInactiveChange: (Boolean) -&gt; Unit, isRefreshing: Boolean, onRefreshAll: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongParameterList:CloudVaultRotationRewrapWorker.kt$CloudVaultRotationRewrapWorker$( uid: String, collectionID: String, jobId: String, oldKey: ByteArray, newKey: ByteArray, newVaultKeyID: String, vaultGeneration: Int, )</ID>
+    <ID>LongParameterList:CloudVaultRotationRewrapWorker.kt$CloudVaultRotationRewrapWorker$( uid: String, deviceId: String, jobId: String, oldKey: ByteArray, newKey: ByteArray, newVaultKeyID: String, vaultGeneration: Int, )</ID>
+    <ID>LongParameterList:ComputerUseSecurityCallableClient.kt$ComputerUseSecurityCallableClient$( deviceId: String, peerNodeId: String, keyId: String, publicKeyBase64: String, relayKeyVersion: Int, publishedAtMillis: Long, signalIdentityKeyId: String, signalIdentityKeyVersion: Int, signalIdentityPublicKeyFingerprint: String, )</ID>
+    <ID>LongParameterList:ControlCenterScreen.kt$( snapshot: ControlCenterSnapshot, isLoading: Boolean, error: String?, store: ControlCenterStore, selectedDomainId: String?, onSelectDomain: (String?) -&gt; Unit, onManagePlan: () -&gt; Unit, onDomainAction: (DataDomain, String) -&gt; Unit, onUnlock: (com.openburnbar.ui.pro.GatedFeature) -&gt; Unit, )</ID>
+    <ID>LongParameterList:ControlCenterScreen.kt$( snapshot: ControlCenterSnapshot, isLoading: Boolean, error: String?, store: ControlCenterStore, selectedDomainId: String?, onSelectDomain: (String?) -&gt; Unit, onManagePlan: () -&gt; Unit, onUnlock: (com.openburnbar.ui.pro.GatedFeature) -&gt; Unit, )</ID>
+    <ID>LongParameterList:DomainDetailPane.kt$( domain: DataDomain, locked: Boolean, isDeleting: Boolean, isExporting: Boolean, onExport: () -&gt; Unit, onDelete: () -&gt; Unit, onAction: (String) -&gt; Unit, )</ID>
+    <ID>LongParameterList:HermesRelayCrypto.kt$HermesRelayCrypto$( uid: String, connectionId: String, requestId: String, operation: String, senderDeviceId: String, senderPeerNodeId: String, senderCounter: Long, keyId: String, )</ID>
+    <ID>LoopWithTooManyJumpStatements:CloudVaultRotationRewrapWorker.kt$CloudVaultRotationRewrapWorker$for</ID>
+    <ID>LoopWithTooManyJumpStatements:HermesOpenAICompatibleStreamParser.kt$HermesOpenAICompatibleStreamParser$for</ID>
+    <ID>LoopWithTooManyJumpStatements:PiServiceChatStreamSupport.kt$PiServiceChatStreamSupport$while</ID>
+    <ID>MagicNumber:AgentSubscriptionTopicStore.kt$AgentSubscriptionTopicStore.Companion$32</ID>
+    <ID>MagicNumber:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$0xff</ID>
+    <ID>MagicNumber:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$0xffff_ffffL</ID>
+    <ID>MagicNumber:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$16</ID>
+    <ID>MagicNumber:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$24</ID>
+    <ID>MagicNumber:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$3</ID>
+    <ID>MagicNumber:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$8</ID>
+    <ID>MagicNumber:CloudVaultCrypto.kt$AndroidCloudVaultKeyAccess$32</ID>
+    <ID>MagicNumber:CloudVaultCrypto.kt$CloudVaultAADContext$0x20</ID>
+    <ID>MagicNumber:CloudVaultCrypto.kt$CloudVaultAADContext$0x7f</ID>
+    <ID>MagicNumber:CloudVaultCrypto.kt$CloudVaultCrypto$32</ID>
+    <ID>MagicNumber:CloudVaultRotationRewrapWorker.kt$CloudVaultRotationRewrapWorker$500</ID>
+    <ID>MagicNumber:CredentialTransferStore.kt$CredentialTransferCrypto$3</ID>
+    <ID>MagicNumber:CredentialTransferStore.kt$CredentialTransferCrypto$4</ID>
+    <ID>MagicNumber:HermesOpenAICompatibleStreamParser.kt$HermesOpenAICompatibleStreamParser$10_000</ID>
+    <ID>MagicNumber:HermesOpenAICompatibleStreamParser.kt$HermesOpenAICompatibleStreamParser$1_000_000_000</ID>
+    <ID>MagicNumber:HermesOpenAICompatibleStreamParser.kt$HermesOpenAICompatibleStreamParser$1_000_000_000.0</ID>
+    <ID>MagicNumber:HermesRelayCrypto.kt$HermesRelayCrypto$0xFF</ID>
+    <ID>MagicNumber:HermesRelayCrypto.kt$HermesRelayCrypto$16</ID>
+    <ID>MagicNumber:HostedQuotaSubscriptionStore.kt$HostedQuotaSubscriptionStore$3</ID>
+    <ID>MagicNumber:InlineAgentMirrorView.kt$0xFF1E1E1E</ID>
+    <ID>MagicNumber:InlineAgentMirrorView.kt$0xFF4CAF50</ID>
+    <ID>MagicNumber:InlineAgentMirrorView.kt$16f</ID>
+    <ID>MagicNumber:InlineAgentMirrorView.kt$9f</ID>
+    <ID>MagicNumber:PhoneControlP256.kt$PhoneControlP256$0xFF</ID>
+    <ID>MagicNumber:ProviderQuotaPacing.kt$PacingMath$30</ID>
+    <ID>MagicNumber:ProviderQuotaPacing.kt$PacingMath$5</ID>
+    <ID>MagicNumber:ProviderQuotaPacing.kt$PacingMath$7</ID>
+    <ID>MatchingDeclarationName:BurnViewSections.kt$QuotaSortMode</ID>
+    <ID>MatchingDeclarationName:DeviceLinkModels.kt$FirestoreProviderAccountDeviceLinkDoc</ID>
+    <ID>MatchingDeclarationName:EntitlementModels.kt$FirestoreEscrowDeviceDoc</ID>
+    <ID>MatchingDeclarationName:HostedQuotaModels.kt$FirestoreEntitlementBindingDoc</ID>
+    <ID>MatchingDeclarationName:InsightModels.kt$FirestoreInsightCanvasDoc</ID>
+    <ID>MatchingDeclarationName:IrohPairingModels.kt$FirestoreIrohPairingDoc</ID>
+    <ID>MatchingDeclarationName:MediaAnalyticsModels.kt$FirestoreMediaQuotaUsageDoc</ID>
+    <ID>MatchingDeclarationName:MissionModels.kt$FirestoreMissionDispatchDoc</ID>
+    <ID>MatchingDeclarationName:PiAgentRelayModels.kt$FirestorePiAgentConnectionDoc</ID>
+    <ID>MatchingDeclarationName:TierHolo.kt$TierHoloPalette</ID>
+    <ID>MaxLineLength:CloudVaultCrypto.kt$AndroidCloudVaultKeyAccess$keyForReading(uid = uid, firestore = firestore) ?: error("Cloud vault key is not active on this Android device yet. Approve this device from a Mac or iPhone before writing cloud chat content.")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$encryptionTier = EncryptionTier.END_TO_END</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$encryptionTier = EncryptionTier.SERVER_READABLE</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$encryptionTier = EncryptionTier.ZERO_ACCESS</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$firestorePaths = listOf("cloud_vault_state", "cloud_vault_key_wrappers", "cloud_vault_rotation_jobs", "escrow_devices", "escrow_public_keys", "signal_identity_public_keys", "escrow_grants", "escrow_envelopes", "escrow_audit_events", "account_recovery_methods")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$firestorePaths = listOf("conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions", "cli_agent_mission_requests", "text_snippets", "rollback_requests", "approval_policies", "agent_identities", "subscription_topics")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$firestorePaths = listOf("devices", "hermes_connections", "hermes_pairings", "hermes_relay_requests", "hermes_session_cache", "hermes_gateway_clients", "hermes_gateway_destinations", "hermes_gateway_events", "hermes_gateway_messages", "hermes_gateway_typing", "hermes_gateway_state", "hermes_gateway_attachments", "hermes_gateway_approvals", "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests", "iroh_pairing", "iroh_pairing_keys", "relay_sender_keys", "runtime_connection_preferences")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$firestorePaths = listOf("remote_mcp_audit_events", "hermes_audit_events", "pi_agent_audit_events", "iroh_audit_events", "escrow_audit_events", "entitlement_events", "budgetEvents", "agent_notification_events", "agent_notification_replies", "unified_audit_log", "audit_meta")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$firestorePaths = listOf("session_logs", "cloud_search_documents", "cloud_search_chunks", "cloud_search_postings", "cloud_search_index_state", "cloud_search_index_manifest", "project_memory_snapshots")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$serverSees = listOf("client id", "display name", "granted scopes", "grant mode", "access timestamps")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$serverSees = listOf("cloaked 384-dim vectors", "sourceKind", "opaque keyed slug/dedup hashes", "opaque repo match token", "chunk/byte counts", "timestamps")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$serverSees = listOf("device ids", "pairing metadata", "last seen", "relay routing", "opaque relay key material (public keys)")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$serverSees = listOf("provider", "model", "cost", "token counts", "timing", "integrity hashes", "deterministic keyed search digests")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$serverSees = listOf("provider/runtime identifiers", "message counts", "status/routing metadata", "timestamps", "device ids")</ID>
+    <ID>MaxLineLength:DataDomains.kt$DataDomains$serverSees = listOf("session events", "quota usage", "attachment blob hash", "mime type", "byte size", "opaque peer device-id hash", "direction", "timestamps")</ID>
+    <ID>MaxLineLength:SettingsRootScreenThemeSections.kt$Text(text = appearance.description, fontSize = 11.sp, lineHeight = 13.sp, color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>NestedBlockDepth:HostedQuotaSubscriptionStore.kt$HostedQuotaSubscriptionStore$private suspend fun handlePurchases(purchases: List&lt;Purchase&gt;)</ID>
+    <ID>NewLineAtEndOfFile:ComputerUseModels.kt$com.openburnbar.data.models.generated.ComputerUseModels.kt</ID>
+    <ID>NewLineAtEndOfFile:DeviceLinkModels.kt$com.openburnbar.data.models.generated.DeviceLinkModels.kt</ID>
+    <ID>NewLineAtEndOfFile:EntitlementModels.kt$com.openburnbar.data.models.generated.EntitlementModels.kt</ID>
+    <ID>NewLineAtEndOfFile:HermesGatewayModels.kt$com.openburnbar.data.models.generated.HermesGatewayModels.kt</ID>
+    <ID>NewLineAtEndOfFile:HermesRelayModels.kt$com.openburnbar.data.models.generated.HermesRelayModels.kt</ID>
+    <ID>NewLineAtEndOfFile:HostedQuotaModels.kt$com.openburnbar.data.models.generated.HostedQuotaModels.kt</ID>
+    <ID>NewLineAtEndOfFile:InsightModels.kt$com.openburnbar.data.models.generated.InsightModels.kt</ID>
+    <ID>NewLineAtEndOfFile:IrohPairingModels.kt$com.openburnbar.data.models.generated.IrohPairingModels.kt</ID>
+    <ID>NewLineAtEndOfFile:MediaAnalyticsModels.kt$com.openburnbar.data.models.generated.MediaAnalyticsModels.kt</ID>
+    <ID>NewLineAtEndOfFile:MissionModels.kt$com.openburnbar.data.models.generated.MissionModels.kt</ID>
+    <ID>NewLineAtEndOfFile:ModelBenchmarkModels.kt$com.openburnbar.data.models.generated.ModelBenchmarkModels.kt</ID>
+    <ID>NewLineAtEndOfFile:PiAgentRelayModels.kt$com.openburnbar.data.models.generated.PiAgentRelayModels.kt</ID>
+    <ID>NewLineAtEndOfFile:ProviderAccountModels.kt$com.openburnbar.data.models.generated.ProviderAccountModels.kt</ID>
+    <ID>NewLineAtEndOfFile:UsageQuotaModels.kt$com.openburnbar.data.models.generated.UsageQuotaModels.kt</ID>
+    <ID>ReturnCount:AndroidEscrowDeviceRegistry.kt$AndroidEscrowDeviceRegistry.Companion$internal fun publicKeyDocumentMatches( data: Map&lt;String, Any?&gt;, deviceId: String, publicKeyDataBase64: String, publicKeyFingerprint: String, keyVersion: Int, ): Boolean</ID>
+    <ID>ReturnCount:AssistantChatHistoryStore.kt$AssistantChatFirestoreMirror$internal fun decodeThread( documentID: String, data: Map&lt;String, Any?&gt;, vaultKey: ByteArray? = null, uid: String? = null, signalIdentity: AndroidSignalIdentityKeypair? = null, ): AssistantChatThread?</ID>
+    <ID>ReturnCount:CloudVaultCrypto.kt$CloudVaultCrypto$fun sealedTextFromMap(raw: Map&lt;*, *&gt;?): CloudVaultSealedText?</ID>
+    <ID>ReturnCount:CloudVaultCrypto.kt$CloudVaultCrypto$fun signalEnvelopeFromMap(raw: Map&lt;*, *&gt;?): CloudVaultSignalEnvelope?</ID>
+    <ID>ReturnCount:FirestoreRepository.kt$CloudVaultSealedTextCodec$fun fromMap(raw: Map&lt;*, *&gt;?): CloudVaultSealedText?</ID>
+    <ID>ReturnCount:HostedQuotaSubscriptionStore.kt$HostedQuotaSubscriptionStore.Companion$internal fun tierForActiveProduct(active: Boolean, productID: String?): CloudTier</ID>
+    <ID>ReturnCount:PensieveControlTokens.kt$PensieveControlTokens$private fun rgba(value: String): Color</ID>
+    <ID>ReturnCount:ThreadInboxStore.kt$ThreadInboxStore$private fun parseSealedCLISession( data: Map&lt;String, Any&gt;, documentID: String, vaultKey: ByteArray?, ): CLIAgentSessionRecord?</ID>
+    <ID>ReturnCount:ThreadInboxStore.kt$ThreadInboxStore$private suspend fun resealSessionWithCustomTitle( uid: String, docRef: com.google.firebase.firestore.DocumentReference, customTitle: String, ): Boolean</ID>
+    <ID>ReturnCount:TokenUsage.kt$fun QuotaBucket.displayRemainingFractionAsOf(now: java.time.Instant): Double?</ID>
+    <ID>ReturnCount:TokenUsage.kt$fun QuotaBucket.progressFractionAsOf(now: java.time.Instant): Double</ID>
+    <ID>ReturnCount:TokenUsage.kt$private fun ProviderQuotaSnapshot.primaryBucketPriority(bucket: QuotaBucket): Int</ID>
+    <ID>SpacingBetweenPackageAndImports:ComputerUseModels.kt$ </ID>
+    <ID>SpreadOperator:HermesChatPermissionIndexTest.kt$HermesChatPermissionIndexTest$(*items.toTypedArray())</ID>
+    <ID>SwallowedException:BurnViewSections.kt$e: Exception</ID>
+    <ID>SwallowedException:CredentialTransferStoreSecurityTest.kt$CredentialTransferStoreSecurityTest$e: AEADBadTagException</ID>
+    <ID>SwallowedException:ProviderQuotaPacing.kt$PacingMath$e: Exception</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:DashboardStoreTest.kt$DashboardStoreTest$IllegalStateException()</ID>
+    <ID>TooGenericExceptionCaught:AssistantChatHistoryStore.kt$AssistantChatHistoryStore$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:BurnViewSections.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:CloudVaultRotationRewrapWorker.kt$CloudVaultRotationRewrapWorker$error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:HermesServiceRuntimeSupport.kt$HermesServiceRuntimeSupport$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:InlineAgentMirrorView.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ProviderQuotaPacing.kt$PacingMath$e: Exception</ID>
+    <ID>TooManyFunctions:CloudStoreViewPlanSections.kt$com.openburnbar.ui.store.CloudStoreViewPlanSections.kt</ID>
+    <ID>TooManyFunctions:CloudVaultCrypto.kt$CloudVaultCrypto</ID>
+    <ID>TooManyFunctions:CloudVaultCryptoSupport.kt$CloudVaultCryptoSupport</ID>
+    <ID>TooManyFunctions:HermesRelayCrypto.kt$HermesRelayCrypto</ID>
+    <ID>TooManyFunctions:HermesRelayCryptoHpkeV3.kt$HermesRelayCryptoHpkeV3</ID>
+    <ID>TooManyFunctions:HermesRelayCryptoHpkeV3Test.kt$HermesRelayCryptoHpkeV3Test</ID>
+    <ID>TooManyFunctions:HermesServiceMessageActions.kt$HermesServiceMessageActions</ID>
+    <ID>TooManyFunctions:HostedQuotaSubscriptionStore.kt$HostedQuotaSubscriptionStore : ViewModelPurchasesUpdatedListener</ID>
+    <ID>TooManyFunctions:LoginScreenSections.kt$LoginAdaptiveTokens</ID>
+    <ID>TooManyFunctions:PhoneControlP256.kt$PhoneControlP256</ID>
+    <ID>TooManyFunctions:PhoneControlSignerSign.kt$PhoneControlSignerSign</ID>
+    <ID>UnnecessaryParentheses:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$((digest[0].toInt() and 0xff) shl 24)</ID>
+    <ID>UnnecessaryParentheses:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$(digest[0].toInt() and 0xff)</ID>
+    <ID>UnnecessaryParentheses:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$(digest[1].toInt() and 0xff)</ID>
+    <ID>UnnecessaryParentheses:AndroidSignalRemoteBundleDecoder.kt$AndroidSignalSessionPeer.Companion$(digest[2].toInt() and 0xff)</ID>
+    <ID>UnnecessaryParentheses:BurnBarWallpaperServiceTest.kt$BurnBarWallpaperServiceTest$(127 shl 24)</ID>
+    <ID>UnnecessaryParentheses:BurnBarWallpaperServiceTest.kt$BurnBarWallpaperServiceTest$(63 shl 24)</ID>
+    <ID>UnnecessaryParentheses:BurnViewSections.kt$(if (activeCount == 1) "" else "S")</ID>
+    <ID>UnnecessaryParentheses:BurnViewSections.kt$(seconds % 3600)</ID>
+    <ID>UnnecessaryParentheses:CloudVaultCrypto.kt$CloudVaultCrypto$(envelope.schemaVersion ?: 1)</ID>
+    <ID>UnnecessaryParentheses:ControlCenterStore.kt$ControlCenterStore$(data["limits"].asStringAnyMap()?.get("pensieve"))</ID>
+    <ID>UnnecessaryParentheses:ControlCenterStore.kt$ControlCenterStore$(data["valid"] as? Boolean)</ID>
+    <ID>UnnecessaryParentheses:ControlCenterStore.kt$ControlCenterStore$(map["confirmed"] as? Boolean)</ID>
+    <ID>UnnecessaryParentheses:ControlFrameSealVectorTest.kt$ControlFrameSealVectorTest$(haystack.size - needle.size)</ID>
+    <ID>UnnecessaryParentheses:HermesAttachmentThumbnailSampleSizeTest.kt$HermesAttachmentThumbnailSampleSizeTest$(sampleSize - 1)</ID>
+    <ID>UnnecessaryParentheses:HermesRelayCryptoHpkeV3.kt$HermesRelayCryptoHpkeV3$(value ushr BYTE_BITS)</ID>
+    <ID>UnnecessaryParentheses:MediaFrameAeadVectorTest.kt$MediaFrameAeadVectorTest$(haystack.size - needle.size)</ID>
+    <ID>UnnecessaryParentheses:PensieveControlTokens.kt$PensieveControlTokens$("FF$raw")</ID>
+    <ID>UnnecessaryParentheses:ThreadInboxStore.kt$ThreadInboxStore$(data["isPinned"] as? Boolean)</ID>
+    <ID>UnnecessaryParentheses:TokenUsage.kt$(QuotaWindowKind.infer(it) == QuotaWindowKind.SEVEN_DAY)</ID>
+    <ID>UnusedImports:AgentCapabilityGrantController.kt$import kotlinx.coroutines.tasks.await</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import androidx.compose.animation.core.animateFloatAsState</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import androidx.compose.animation.core.tween</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import androidx.compose.material3.LinearProgressIndicator</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import androidx.compose.runtime.collectAsState</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import androidx.compose.ui.draw.rotate</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import com.openburnbar.data.derived.TrendDataDigest</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import com.openburnbar.data.models.displayRemainingPercent</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import com.openburnbar.data.models.effectiveResetsAt</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import com.openburnbar.data.models.effectiveWindowLabel</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import com.openburnbar.data.models.isCreditBalance</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import com.openburnbar.data.stores.QuotaPreferences</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import com.openburnbar.util.Formatting</ID>
+    <ID>UnusedImports:BurnViewSections.kt$import com.openburnbar.util.QuotaResetFormatter</ID>
+    <ID>UnusedImports:CloudStoreViewMcpSections.kt$import androidx.compose.material.icons.filled.Backup</ID>
+    <ID>UnusedImports:CloudStoreViewPlanSections.kt$import androidx.compose.material.icons.filled.AutoAwesome</ID>
+    <ID>UnusedImports:CloudStoreViewPlanSections.kt$import androidx.compose.material.icons.filled.Bolt</ID>
+    <ID>UnusedImports:CloudStoreViewPlanSections.kt$import androidx.compose.material.icons.filled.Cloud</ID>
+    <ID>UnusedImports:CloudStoreViewPlanSections.kt$import androidx.compose.material.icons.filled.Description</ID>
+    <ID>UnusedImports:CloudStoreViewPlanSections.kt$import androidx.compose.material.icons.filled.Sync</ID>
+    <ID>UnusedImports:CloudStoreViewPlanSections.kt$import androidx.compose.material.icons.filled.Wifi</ID>
+    <ID>UnusedImports:ComputerUseModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:ControlSealSessionEstablisher.kt$import com.google.firebase.remoteconfig.FirebaseRemoteConfig</ID>
+    <ID>UnusedImports:DevicesStore.kt$import com.openburnbar.BurnBarApplication</ID>
+    <ID>UnusedImports:EntitlementModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:GlobalVisualSettings.kt$import com.openburnbar.BurnBarApplication</ID>
+    <ID>UnusedImports:HermesRelayModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:HostedQuotaModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:InsightModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:IrohPairingModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:LockedFeatureVeil.kt$import androidx.compose.foundation.layout.fillMaxWidth</ID>
+    <ID>UnusedImports:LoginScreenSections.kt$import androidx.compose.ui.draw.drawWithContent</ID>
+    <ID>UnusedImports:LoginScreenSections.kt$import androidx.compose.ui.draw.rotate</ID>
+    <ID>UnusedImports:LoginScreenSections.kt$import androidx.compose.ui.graphics.BlendMode</ID>
+    <ID>UnusedImports:MediaAnalyticsModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:MediaSealSessionEstablisher.kt$import com.google.firebase.remoteconfig.FirebaseRemoteConfig</ID>
+    <ID>UnusedImports:MissionModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:PiAgentRelayModels.kt$import com.google.firebase.firestore.PropertyName</ID>
+    <ID>UnusedImports:ProviderQuotaPacing.kt$import java.time.ZonedDateTime</ID>
+    <ID>UnusedParameter:BurnViewSections.kt$accounts: List&lt;ProviderAccount&gt;</ID>
+    <ID>UnusedParameter:BurnViewSections.kt$onRefresh: () -&gt; Unit</ID>
+    <ID>UnusedParameter:ControlCenterScreen.kt$isLoading: Boolean</ID>
+    <ID>UnusedParameter:PhoneControlAuthorityPublisher.kt$PhoneControlAuthorityPublisher$uid: String</ID>
+    <ID>UnusedPrivateClass:BurnViewSections.kt$DayBucket</ID>
+    <ID>UnusedPrivateMember:AssistantChatHistoryStore.kt$AssistantChatFirestoreMirror$private fun encodeMessage(message: AssistantChatMessage): Map&lt;String, Any?&gt;</ID>
+    <ID>UnusedPrivateMember:TextExpansionSyncManager.kt$TextExpansionSyncManager$private suspend fun unlockVaultKey(uid: String, keypair: AndroidCloudVaultDeviceKeypair): ByteArray?</ID>
+    <ID>UseCheckOrError:AndroidCloudVaultSignalPayloads.kt$AndroidCloudVaultSignalPayloads$throw IllegalStateException("Signal envelope is invalid.")</ID>
+    <ID>UseCheckOrError:AndroidCloudVaultSignalPayloads.kt$AndroidCloudVaultSignalPayloads$throw IllegalStateException("Signal identity is unavailable.")</ID>
+    <ID>WildcardImport:InlineAgentMirrorView.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:InlineAgentMirrorView.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:InlineAgentMirrorView.kt$import androidx.compose.runtime.*</ID>
+  </CurrentIssues>
+</SmellBaseline>
