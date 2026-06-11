@@ -44,10 +44,10 @@ object ControlSealSessionEstablisher {
 
     internal fun clearForTests() = sessionsByConnection.clear()
 
-    /** Default-off RC ramp, same key the iOS client reads. Fails closed. */
+    /** Default-ON protection flag, same key the iOS client reads; a fetched
+     * Remote Config value is the kill switch and always wins. */
     fun remoteConfigEnabled(): Boolean =
-        runCatching { FirebaseRemoteConfig.getInstance().getBoolean(ControlFrameSealNegotiation.REMOTE_CONFIG_KEY) }
-            .getOrDefault(false)
+        remoteConfigProtectionFlag(ControlFrameSealNegotiation.REMOTE_CONFIG_KEY)
 
     /**
      * Establish when (and only when) the default-off RC flag is on AND the
