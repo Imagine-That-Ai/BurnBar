@@ -400,7 +400,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$GITHUB_WORKSPACE/openburnbar-coverage.json"
-          ./scripts/diff-coverage-all.sh origin/main
+          ./scripts/diff-coverage.sh origin/main "$GITHUB_WORKSPACE/openburnbar-coverage.json"
 
       - name: Post coverage summary
         if: always()
