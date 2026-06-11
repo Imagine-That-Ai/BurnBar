@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@astrojs/check": "^0.9.9",
-    "@astrojs/mdx": "^5.0.5",
+    "@astrojs/mdx": "^6.0.3",
     "@chenglou/pretext": "0.0.7",
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/geist": "^5.2.8",
