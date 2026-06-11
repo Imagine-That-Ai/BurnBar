@@ -105,6 +105,11 @@ jobs:
 
       - name: Post-deploy hosting smoke
         if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          # The signed macOS update feed is produced by release.yml after
+          # runtime/legal release gates pass. Hosting deploys should verify
+          # the live Firebase sites, not require a release asset to exist.
+          OPENBURNBAR_SKIP_DOWNLOAD_FEED_SMOKE: "1"
         run: bash scripts/ci/hosting-smoke.sh
 
       - name: Dry-run skip deploy
