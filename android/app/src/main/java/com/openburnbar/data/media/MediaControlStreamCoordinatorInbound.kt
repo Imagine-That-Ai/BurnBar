@@ -149,8 +149,21 @@ private suspend fun MediaControlStreamCoordinator.mercuryStreamFrameDelivery(
         return null
     }
     media.focusContext?.let { focus -> focusContextHandler?.invoke(focus) }
-    val chunkBytes = runCatching { Base64.getDecoder().decode(encoded) }.getOrNull() ?: return null
-    val data = inboundFrameChunkAssembler.accept(media.frameChunk, chunkBytes) ?: return null
+    // F7: a sealed (OBMFA1) frame must open under the negotiated session key
+    // with the cleartext position rebuilt into the AAD — fail closed (DROP)
+    // on a missing key/position or any tag mismatch. Plaintext legacy frames
+    // flow unchanged. Mirrors the iOS coordinator read loop.
+    val data =
+        runCatching { Base64.getDecoder().decode(encoded) }.getOrNull()
+            ?.let { chunkBytes -> inboundFrameChunkAssembler.accept(media.frameChunk, chunkBytes) }
+            ?.let { assembled ->
+                if (MediaFrameAead.isSealedEnvelope(assembled)) {
+                    openSealedMercuryMediaFrame(assembled, media)
+                } else {
+                    assembled
+                }
+            }
+            ?: return null
     return if (MediaFrameV2Codec.isEncodedEnvelope(data)) {
         mirrorFrameV2Handler?.let { handler ->
             { handler(inboundMediaFrameV2Codec.decode(data).frame) }
@@ -160,4 +173,27 @@ private suspend fun MediaControlStreamCoordinator.mercuryStreamFrameDelivery(
             { handler(inboundMediaPacketCodec.decode(data).frame) }
         }
     }
+}
+
+/**
+ * F7 — open a sealed media frame under the per-mirror session key, binding
+ * the frame's cleartext stream position into the AAD. Any failure returns
+ * null and the caller MUST drop the frame (never decode sealed bytes).
+ */
+internal fun MediaControlStreamCoordinator.openSealedMercuryMediaFrame(
+    envelope: ByteArray,
+    media: HermesRealtimeRelayMediaPayload,
+): ByteArray? {
+    val key = mediaFrameSealKey ?: return null
+    val position = media.sealedFramePosition ?: return null
+    return runCatching {
+        MediaFrameAead.open(
+            envelope = envelope,
+            key = key,
+            streamClass = MediaStreamClass.SCREEN_VIDEO.raw,
+            kind = position.kind.toUByte(),
+            gopID = position.gopId.toUInt(),
+            frameIndex = position.frameIndex.toUInt(),
+        )
+    }.getOrNull()
 }

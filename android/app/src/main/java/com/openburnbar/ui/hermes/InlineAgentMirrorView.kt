@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.firebase.auth.FirebaseAuth
 import com.openburnbar.BurnBarApplication
+import com.openburnbar.data.computeruse.AndroidAppCheckAttestationReader
+import com.openburnbar.data.computeruse.ControlSealSessionEstablisher
 import com.openburnbar.data.computeruse.InMemoryPhoneControlCounterStore
 import com.openburnbar.data.computeruse.PhoneControlIntent
 import com.openburnbar.data.computeruse.PhoneControlIntentKind
@@ -190,13 +192,27 @@ fun InlineAgentMirrorView(
                             val keyStore = PhoneControlSigningKeyStore(context)
                             val identity = keyStore.signingIdentity()
                             val peerNodeId = keyStore.peerNodeId(identity)
+                            // F10: reuse the seal session a screen-share
+                            // classify established on this connection (the Mac
+                            // keys its open side by connection id) so inline
+                            // keystrokes ride sealed too. No session — flags
+                            // off or no prior classify — stays on the legacy
+                            // lane the Mac still accepts, byte-identical.
+                            val baseSink: suspend (com.openburnbar.irohrelay.HermesRealtimeRelayFrame) -> Unit =
+                                { frame -> coordinator.send(frame) }
+                            val sealSession = ControlSealSessionEstablisher.activeSession(activePair.connectionID)
                             phoneControlSender = PhoneControlSender(
                                 uid = activePair.uid,
                                 connectionId = activePair.connectionID,
                                 peerNodeId = peerNodeId,
                                 signingIdentityProvider = { identity },
                                 counterStore = InMemoryPhoneControlCounterStore(),
-                                frameSink = { frame -> coordinator.send(frame) }
+                                attestationDigestProvider = {
+                                    AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope()
+                                },
+                                frameSink = sealSession
+                                    ?.let { ControlSealSessionEstablisher.sealingFrameSink(baseSink, it) }
+                                    ?: baseSink
                             )
                         }
                     } catch (e: Exception) {

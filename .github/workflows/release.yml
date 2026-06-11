@@ -115,6 +115,7 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
+          OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
         run: |
@@ -126,6 +127,7 @@ jobs:
             APPLE_CERTIFICATE_PASSWORD \
             APPLE_NOTARY_KEY_ID \
             APPLE_NOTARY_API_KEY_P8 \
+            OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 \
             FIREBASE_PLIST_BASE64 \
             FIREBASE_APP_CHECK_DEBUG_TOKEN; do
             if [[ -z "${!var}" ]]; then
@@ -144,6 +146,20 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Install Sparkle signing tools
+        run: |
+          brew install --cask sparkle
+          SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
+          xattr -dr com.apple.quarantine "$SPARKLE_CASKROOM" 2>/dev/null || true
+          SPARKLE_SIGN_UPDATE="$(
+            find "$SPARKLE_CASKROOM" /Applications -path '*Sparkle*' -name sign_update -type f -perm -111 -print -quit 2>/dev/null || true
+          )"
+          if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle sign_update tool was not found after cask install."
+            exit 1
+          fi
+          echo "SPARKLE_SIGN_UPDATE=$SPARKLE_SIGN_UPDATE" >> "$GITHUB_ENV"
 
       - name: Inject Firebase config
         env:
@@ -511,12 +527,70 @@ jobs:
           echo "source_path=$SOURCE_ARCHIVE" >> "$GITHUB_OUTPUT"
           echo "source_sha256_path=${SOURCE_ARCHIVE}.sha256" >> "$GITHUB_OUTPUT"
 
+      - name: Generate direct-download update feeds
+        id: update-feeds
+        env:
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+          SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
+          VERSION: ${{ steps.version.outputs.version }}
+          OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
+          OPENBURNBAR_MAC_UPDATE_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Contents/Info.plist")"
+          BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PATH/Contents/Info.plist")"
+          DMG_NAME="$(basename "$DMG_PATH")"
+          ZIP_NAME="$(basename "$ZIP_PATH")"
+          SOURCE_NAME="$(basename "$SOURCE_PATH")"
+          BASE_URL="${OPENBURNBAR_MAC_UPDATE_BASE_URL:-https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download}"
+          APPCAST_PATH="$RUNNER_TEMP/appcast.xml"
+          LATEST_PATH="$RUNNER_TEMP/latest-macos.json"
+
+          SPARKLE_PRIVATE_KEY="$(
+            python3 - <<'PY'
+          import base64
+          import os
+
+          print(base64.b64decode(os.environ["OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64"]).decode(), end="")
+          PY
+          )"
+          SIGN_UPDATE_OUTPUT="$(printf "%s\n" "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_SIGN_UPDATE" --ed-key-file - "$DMG_PATH")"
+          SPARKLE_ED_SIGNATURE="$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' <<<"$SIGN_UPDATE_OUTPUT" | head -n 1)"
+          if [[ -z "$SPARKLE_ED_SIGNATURE" ]]; then
+            echo "::error::Sparkle sign_update did not emit sparkle:edSignature."
+            exit 1
+          fi
+
+          node scripts/generate-macos-appcast.mjs \
+            --version "$VERSION" \
+            --build "$BUILD" \
+            --bundle-id "$BUNDLE_ID" \
+            --release-dir "$RUNNER_TEMP" \
+            --dmg-name "$DMG_NAME" \
+            --zip-name "$ZIP_NAME" \
+            --source-archive-name "$SOURCE_NAME" \
+            --base-url "$BASE_URL" \
+            --commit "$(git rev-parse HEAD)" \
+            --minimum-system-version "14.0" \
+            --appcast-name "$(basename "$APPCAST_PATH")" \
+            --latest-name "$(basename "$LATEST_PATH")" \
+            --ed-signature "$SPARKLE_ED_SIGNATURE"
+
+          {
+            echo "appcast_path=$APPCAST_PATH"
+            echo "latest_path=$LATEST_PATH"
+            echo "update_base_url=$BASE_URL"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Compute artifact checksums
         id: checksums
         env:
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
+          APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
+          LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
@@ -533,6 +607,10 @@ jobs:
             sha512sum "$ZIP_PATH"
             sha256sum "$SOURCE_PATH"
             sha512sum "$SOURCE_PATH"
+            sha256sum "$APPCAST_PATH"
+            sha512sum "$APPCAST_PATH"
+            sha256sum "$LATEST_PATH"
+            sha512sum "$LATEST_PATH"
           } > "$CHECKSUMS_FILE"
 
           cat "$CHECKSUMS_FILE"
@@ -596,6 +674,8 @@ jobs:
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
+          APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
+          LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
         run: |
           cosign attest --yes "$SBOM_PATH"
           cosign attest --yes "$VEX_PATH"
@@ -610,6 +690,12 @@ jobs:
           fi
           if [[ -f "$SOURCE_PATH" ]]; then
             cosign attest --yes "$SOURCE_PATH"
+          fi
+          if [[ -f "$APPCAST_PATH" ]]; then
+            cosign attest --yes "$APPCAST_PATH"
+          fi
+          if [[ -f "$LATEST_PATH" ]]; then
+            cosign attest --yes "$LATEST_PATH"
           fi
 
       - name: Verify Apple privacy manifests in release bundles
@@ -672,6 +758,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           TAG_NAME: ${{ steps.version.outputs.tag_name }}
           SOURCE_ARCHIVE: OpenBurnBar-${{ steps.version.outputs.version }}-corresponding-source.tar.gz
+          UPDATE_BASE_URL: ${{ steps.update-feeds.outputs.update_base_url }}
+          APPCAST_FILE: appcast.xml
+          LATEST_FILE: latest-macos.json
         run: |
           METADATA_FILE="$RUNNER_TEMP/release-metadata.json"
 
@@ -685,6 +774,11 @@ jobs:
               "version": os.environ["VERSION"],
               "tag": os.environ["TAG_NAME"],
               "correspondingSource": os.environ["SOURCE_ARCHIVE"],
+              "channel": "direct-download",
+              "updateBaseUrl": os.environ["UPDATE_BASE_URL"],
+              "appcast": os.environ["APPCAST_FILE"],
+              "latestMetadata": os.environ["LATEST_FILE"],
+              "sparkleEdSignaturePresent": True,
               "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "build_timestamp": datetime.datetime.now(datetime.timezone.utc)
                   .replace(microsecond=0)
@@ -712,6 +806,20 @@ jobs:
         with:
           name: ${{ steps.zip.outputs.zip_name }}
           path: ${{ steps.zip.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Upload appcast artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appcast-v${{ steps.version.outputs.version }}
+          path: ${{ steps.update-feeds.outputs.appcast_path }}
+          if-no-files-found: error
+
+      - name: Upload latest macOS metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-macos-v${{ steps.version.outputs.version }}
+          path: ${{ steps.update-feeds.outputs.latest_path }}
           if-no-files-found: error
 
       - name: Upload checksums artifact
@@ -893,7 +1001,7 @@ jobs:
           path: ${{ runner.temp }}
           merge-multiple: true
 
-      - name: Publish prerelease assets
+      - name: Publish release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.build-and-release.outputs.version }}
@@ -904,6 +1012,8 @@ jobs:
           # Checksums, SBOM, and metadata are also downloaded via merge-multiple.
           # `find -print -quit` is shellcheck-clean (SC2012) and quoted to handle spaces (SC2086).
           CHECKSUMS_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "checksums-v${VERSION}*.txt" -print -quit 2>/dev/null)
+          APPCAST_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "appcast.xml" -print -quit 2>/dev/null)
+          LATEST_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "latest-macos.json" -print -quit 2>/dev/null)
           SBOM_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.spdx.json" -print -quit 2>/dev/null)
           VEX_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.vex.json" -print -quit 2>/dev/null)
           NOTICES_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "NOTICES-v${VERSION}*.txt" -print -quit 2>/dev/null)
@@ -934,6 +1044,8 @@ jobs:
             fi
           done
           [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
+          [[ -n "$APPCAST_PATH" && -f "$APPCAST_PATH" ]] && ASSETS+=("$APPCAST_PATH")
+          [[ -n "$LATEST_PATH" && -f "$LATEST_PATH" ]] && ASSETS+=("$LATEST_PATH")
           [[ -n "$SBOM_PATH" && -f "$SBOM_PATH" ]] && ASSETS+=("$SBOM_PATH")
           [[ -n "$VEX_PATH" && -f "$VEX_PATH" ]] && ASSETS+=("$VEX_PATH")
           [[ -n "$NOTICES_PATH" && -f "$NOTICES_PATH" ]] && ASSETS+=("$NOTICES_PATH")
@@ -944,12 +1056,13 @@ jobs:
 
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
-            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" --prerelease --latest=false
+            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" --prerelease=false --latest
           else
             gh release create "v${VERSION}" \
               "${ASSETS[@]}" \
               --title "OpenBurnBar $VERSION" \
-              --prerelease \
+              --verify-tag \
+              --latest \
               --notes-file "$NOTES_FILE"
           fi
 

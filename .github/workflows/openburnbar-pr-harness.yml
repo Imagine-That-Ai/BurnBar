@@ -400,7 +400,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$GITHUB_WORKSPACE/openburnbar-coverage.json"
-          ./scripts/diff-coverage-all.sh origin/main
+          ./scripts/diff-coverage.sh origin/main "$GITHUB_WORKSPACE/openburnbar-coverage.json"
 
       - name: Post coverage summary
         if: always()
@@ -683,7 +683,10 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: Ajnunezg/hermes-agent
-          ref: ajnunezg/burnbar-gateway-e2ee
+          # Keep this immutable: the gate runs with repo credentials in scope.
+          # To bump, update third_party/hermes-agent/manifest.json first, run
+          # scripts/ci/verify-vendored-agent-source.sh, then copy pinnedCommit here.
+          ref: 005cf0d86b9f3347660933478f11512fe45a856a
           path: .ci/hermes-agent
 
       - name: Install Functions dependencies

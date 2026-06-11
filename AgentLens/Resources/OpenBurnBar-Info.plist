@@ -41,6 +41,12 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>OpenBurnBarDirectUpdateFeedURL</key>
+	<string>https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>OpenBurnBar may send Apple Events to apps you approve--such as Cursor, Safari, Google Chrome, and Finder--during Computer Use runs so agents can verify Automation permission and operate only the apps you authorize. Every action is recorded in a tamper-evident audit log.</string>
 	<key>NSBonjourServices</key>

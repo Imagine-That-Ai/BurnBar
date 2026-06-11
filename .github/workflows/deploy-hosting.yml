@@ -11,6 +11,7 @@ name: Deploy Production (Hosting)
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 on:
   push:
@@ -102,6 +103,10 @@ jobs:
           fi
           npx firebase-tools "${firebase_args[@]}"
 
+      - name: Post-deploy hosting smoke
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: bash scripts/ci/hosting-smoke.sh
+
       - name: Dry-run skip deploy
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
@@ -122,3 +127,35 @@ jobs:
             echo "- Firebase Console → Hosting → select the site → Release history → Rollback, or:"
             echo "  \`firebase hosting:rollback --project burnbar\` (per site)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open hosting deploy failure issue
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const title = `Hosting deploy smoke failed (${context.runId})`;
+            const body = [
+              'The Firebase Hosting deploy or post-deploy smoke failed.',
+              '',
+              `Workflow: ${context.workflow}`,
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `Ref: ${context.ref}`,
+              '',
+              'This blocks launch posture until burnbar.ai and app.burnbar.ai return HTTP 200 with expected content and CSP headers.'
+            ].join('\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'P0 - Critical,area: infra',
+              per_page: 20,
+            });
+            if (!existing.data.some((issue) => issue.title.startsWith('Hosting deploy smoke failed'))) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['P0 - Critical', 'area: infra'],
+              });
+            }

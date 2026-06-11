@@ -900,6 +900,8 @@ export async function writeBurnBarProEntitlement(args: {
   rawStatus?: string;
   environment?: string;
   activeOverride?: boolean;
+  sourceEventID?: string;
+  sourceEventCreatedMillis?: number;
 }): Promise<Record<string, unknown>> {
   const now = nowISO();
   const active = args.activeOverride ?? (Number.isFinite(args.expiresAtMillis) && args.expiresAtMillis > Date.now());
@@ -920,36 +922,52 @@ export async function writeBurnBarProEntitlement(args: {
     purchaseTokenHash: args.purchaseTokenHash,
     rawStatus: args.rawStatus,
     environment: args.environment,
+    sourceEventID: args.sourceEventID,
+    sourceEventCreatedMillis: args.sourceEventCreatedMillis,
     verificationVersion: 1,
     schemaVersion: 1,
     lastVerifiedAt: now,
     updatedAt: now,
   });
   const ref = db.doc(`users/${args.uid}/entitlements/${entitlementID}`);
-  const existing = await ref.get();
-  if (
-    paidEntitlementWriteWouldDowngrade(existing.data(), {
-      source: args.source,
-      expiresAtMillis: args.expiresAtMillis,
-      active,
-      externalSubscriptionID: args.externalSubscriptionID,
-      purchaseTokenHash: args.purchaseTokenHash,
-    })
-  ) {
-    return existing.data() || doc;
-  }
 
   const writeDoc = {
     ...doc,
     externalSubscriptionID: args.externalSubscriptionID ?? FieldValue.delete(),
     externalCustomerID: args.externalCustomerID ?? FieldValue.delete(),
     purchaseTokenHash: args.purchaseTokenHash ?? FieldValue.delete(),
+    sourceEventID: args.sourceEventID ?? FieldValue.delete(),
+    sourceEventCreatedMillis: args.sourceEventCreatedMillis ?? FieldValue.delete(),
   };
-  await ref.set(writeDoc, { merge: true });
+
+  const written = await db.runTransaction(async (transaction) => {
+    const existing = await transaction.get(ref);
+    const existingData = existing.data();
+    if (
+      paidEntitlementWriteWouldDowngrade(existingData, {
+        source: args.source,
+        expiresAtMillis: args.expiresAtMillis,
+        active,
+        externalSubscriptionID: args.externalSubscriptionID,
+        purchaseTokenHash: args.purchaseTokenHash,
+      }) ||
+      paidEntitlementWriteWouldRewindSourceEvent(existingData, {
+        source: args.source,
+        externalSubscriptionID: args.externalSubscriptionID,
+        purchaseTokenHash: args.purchaseTokenHash,
+        sourceEventCreatedMillis: args.sourceEventCreatedMillis,
+      })
+    ) {
+      return existingData || doc;
+    }
+
+    transaction.set(ref, writeDoc, { merge: true });
+    return doc;
+  });
   if (entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID && active) {
     await ensureCloudProAllowanceLedger(args.uid);
   }
-  return doc;
+  return written;
 }
 
 export function paidEntitlementWriteWouldDowngrade(
@@ -1006,6 +1024,22 @@ function sameEntitlementWriteSource(
     return true;
   }
   return !incoming.externalSubscriptionID && !incoming.purchaseTokenHash;
+}
+
+export function paidEntitlementWriteWouldRewindSourceEvent(
+  existing: Record<string, unknown> | undefined,
+  incoming: {
+    source: string;
+    externalSubscriptionID?: string;
+    purchaseTokenHash?: string;
+    sourceEventCreatedMillis?: number;
+  },
+): boolean {
+  if (!existing || typeof incoming.sourceEventCreatedMillis !== "number") return false;
+  const existingEventCreatedMillis = existing.sourceEventCreatedMillis;
+  if (typeof existingEventCreatedMillis !== "number") return false;
+  if (!sameEntitlementWriteSource(existing, incoming)) return false;
+  return existingEventCreatedMillis > incoming.sourceEventCreatedMillis;
 }
 
 async function ensureCloudProAllowanceLedger(uid: string): Promise<void> {
@@ -1200,6 +1234,7 @@ export async function applyStripeSubscription(
   stripe: Stripe,
   subscription: Stripe.Subscription,
   uidOverride?: string,
+  eventContext: { eventID?: string; eventCreatedMillis?: number } = {},
 ): Promise<void> {
   const uid = uidOverride ?? (await uidForStripeSubscription(subscription));
   if (!uid) return;
@@ -1226,6 +1261,8 @@ export async function applyStripeSubscription(
     rawStatus: status,
     environment: "Production",
     activeOverride: active,
+    sourceEventID: eventContext.eventID,
+    sourceEventCreatedMillis: eventContext.eventCreatedMillis,
   });
 
   if (customerID) {

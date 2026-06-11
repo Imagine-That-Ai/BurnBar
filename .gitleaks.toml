@@ -216,6 +216,19 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Sparkle EdDSA public update key is bundle metadata, not signing secret material"
+regexTarget = "match"
+regexes = [
+  '''SUPublicEDKey:\s*613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=''',
+  '''<key>SUPublicEDKey</key>''',
+  '''<string>613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=</string>''',
+]
+paths = [
+  '''project\.yml''',
+  '''AgentLens/Resources/OpenBurnBar-Info\.plist''',
+]
+
+[[allowlists]]
 description = "Signal prekey directory tests and denylist literals intentionally name forbidden secret fields"
 regexTarget = "match"
 regexes = [

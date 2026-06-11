@@ -1,0 +1,138 @@
+name: Deploy Firestore Rules and Indexes
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "storage.rules"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/deploy-firestore.yml"
+      - "functions/scripts/test-firestore-rules.mjs"
+  schedule:
+    - cron: "15 11 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run tests and drift checks without deploying"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-firestore-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  firestore-rules-and-indexes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    env:
+      FIREBASE_PROJECT: burnbar
+      HAS_GCP_SA_KEY: ${{ secrets.GCP_SA_KEY != '' }}
+      HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      SHOULD_DEPLOY: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true') }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Install Functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Run Firestore rules emulator tests
+        run: npm --prefix functions run test:firestore-rules
+
+      - name: Authenticate to Google Cloud (service account)
+        if: ${{ env.HAS_GCP_SA_KEY == 'true' }}
+        uses: google-github-actions/auth@v2 # v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Authenticate to Google Cloud (legacy Play service account)
+        if: ${{ env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true' }}
+        uses: google-github-actions/auth@v2 # v2
+        with:
+          credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+
+      - name: Set up gcloud
+        if: ${{ env.HAS_GCP_SA_KEY == 'true' || env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true' }}
+        uses: google-github-actions/setup-gcloud@v2 # v2
+
+      - name: Require deploy credentials
+        if: ${{ env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != 'true' }}
+        run: |
+          echo "::error::No Firebase deploy auth configured. Set GCP_SA_KEY (preferred) or GOOGLE_PLAY_SERVICE_ACCOUNT_JSON."
+          exit 1
+
+      - name: Deploy Firestore rules, indexes, and Storage rules
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: |
+          set -euo pipefail
+          npx firebase-tools deploy \
+            --only firestore:rules,firestore:indexes,storage \
+            --project "$FIREBASE_PROJECT" \
+            --non-interactive
+
+      - name: Drift check deployed Firestore rules and indexes
+        run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
+
+      - name: Firestore deploy summary
+        if: always()
+        run: |
+          {
+            echo "## Firestore deploy gate"
+            echo "- Project: $FIREBASE_PROJECT"
+            echo "- Trigger: ${{ github.event_name }}"
+            echo "- Deploy attempted: $SHOULD_DEPLOY"
+            echo "- Scope: firestore.rules, firestore.indexes.json, storage.rules"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open drift/deploy failure issue
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'push')
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const title = `Firestore deploy gate failed (${context.runId})`;
+            const body = [
+              'The Firestore deploy/drift gate failed.',
+              '',
+              `Workflow: ${context.workflow}`,
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `Ref: ${context.ref}`,
+              '',
+              'This blocks launch posture until firestore.rules, firestore.indexes.json, and storage.rules are tested, deployed, and drift-clean.'
+            ].join('\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'P0 - Critical,area: infra',
+              per_page: 20,
+            });
+            if (!existing.data.some((issue) => issue.title.startsWith('Firestore deploy gate failed'))) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['P0 - Critical', 'area: infra'],
+              });
+            }

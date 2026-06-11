@@ -1050,6 +1050,11 @@
       ]
     },
     {
+      "collectionGroup": "knowledge_repos",
+      "fieldPath": "repoFullName",
+      "indexes": []
+    },
+    {
       "collectionGroup": "passkey_credentials",
       "fieldPath": "credentialId",
       "indexes": [

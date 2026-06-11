@@ -4498,6 +4498,32 @@ final class PhoneControlSigningIdentityStoreTests: XCTestCase {
             throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
         }
     }
+
+    /// Regression: with the flag ON, `signingIdentity` must NEVER throw on a
+    /// device where Secure-Enclave mint cannot complete (no enrolled biometric,
+    /// simulator, etc.) — it must fall back to a usable legacy identity rather
+    /// than bricking remote control. Holds whether or not the host reports a
+    /// Secure Enclave: an unmintable biometric key falls back the same way.
+    func testGateOnAlwaysReturnsUsableIdentityNeverThrowsOnMintFailure() throws {
+        let store = PhoneControlSigningKeyStore(
+            service: "ai.openburnbar.tests.phone-control-\(UUID().uuidString)",
+            account: "identity-never-throw-test"
+        )
+        do {
+            let identity = try store.signingIdentity(secureEnclaveEnabled: true)
+            // A usable identity of either custody class — never a throw.
+            XCTAssertFalse(identity.publicKeyRepresentation.isEmpty)
+            // If it fell back, it must be legacy with no wire keyKind; if it
+            // genuinely minted SE, it must be se-p256. Both are valid; what is
+            // NOT valid is throwing.
+            switch identity.kind {
+            case .ed25519: XCTAssertNil(identity.wireKeyKind)
+            case .secureEnclaveP256: XCTAssertEqual(identity.wireKeyKind, .secureEnclaveP256)
+            }
+        } catch PhoneControlSigningKeyStore.KeyStoreError.keychainStatus(let status) where status == errSecMissingEntitlement {
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
+        }
+    }
 }
 
 // MARK: - F10 control-seal sealing sink

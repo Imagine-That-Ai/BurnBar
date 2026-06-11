@@ -200,7 +200,7 @@ private final class VirtualHIDBridgeSocketAdapter {
         }
         if let clientError = error as? PrivilegedInputXPCClient.ClientError {
             switch clientError {
-            case .connectionUnavailable, .remoteProxyUnavailable:
+            case .connectionUnavailable, .remoteProxyUnavailable, .timedOut:
                 return BridgeError.inputExecutionUnavailable.rawValue
             case .invalidResponse:
                 return BridgeError.requestFailed.rawValue

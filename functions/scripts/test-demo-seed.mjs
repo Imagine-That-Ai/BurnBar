@@ -51,16 +51,32 @@ function createMockDb() {
             };
           });
       };
-      // Supports the documentId range filters used by the rollup day fetch.
-      const makeQuery = (clauses) => ({
+      // Supports the documentId range filters and document-id paging used by
+      // the rollup day fetch and raw-usage repair scan.
+      const makeQuery = (clauses, limitCount = undefined, startAfterId = undefined) => ({
         where(_field, op, value) {
-          return makeQuery([...clauses, [op, value]]);
+          return makeQuery([...clauses, [op, value]], limitCount, startAfterId);
+        },
+        orderBy() {
+          return makeQuery(clauses, limitCount, startAfterId);
+        },
+        limit(count) {
+          return makeQuery(clauses, count, startAfterId);
+        },
+        startAfter(doc) {
+          return makeQuery(clauses, limitCount, doc.id);
         },
         async get() {
-          return {
-            docs: listDocs().filter((doc) =>
+          const docs = listDocs()
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .filter((doc) => !startAfterId || doc.id > startAfterId)
+            .filter((doc) =>
               clauses.every(([op, value]) => (op === ">=" ? doc.id >= value : op === "<=" ? doc.id <= value : false)),
-            ),
+            )
+            .slice(0, limitCount ?? listDocs().length);
+          return {
+            empty: docs.length === 0,
+            docs,
           };
         },
       });

@@ -282,6 +282,12 @@ export function parseRollupJobDoc(raw: unknown): RollupJobDoc | undefined {
     dirtiedAt: typeof raw.dirtiedAt === "string" ? raw.dirtiedAt : undefined,
     lastComputedAt: typeof raw.lastComputedAt === "string" ? raw.lastComputedAt : undefined,
     lastErrorCode: typeof raw.lastErrorCode === "string" ? raw.lastErrorCode : undefined,
+    consecutiveFullRebuildFailures:
+      typeof raw.consecutiveFullRebuildFailures === "number" && Number.isFinite(raw.consecutiveFullRebuildFailures)
+        ? raw.consecutiveFullRebuildFailures
+        : undefined,
+    fullRebuildCircuitOpenUntil:
+      typeof raw.fullRebuildCircuitOpenUntil === "string" ? raw.fullRebuildCircuitOpenUntil : undefined,
   };
 }
 
