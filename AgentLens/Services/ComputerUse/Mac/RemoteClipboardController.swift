@@ -935,6 +935,10 @@ private enum RemoteUnlockVirtualHIDClientError: Error {
             self = .readFailed
         case .rejected(let detail):
             self = .rejected(detail)
+        case .serverUntrusted(let detail):
+            // Peer code-signature trust validation failed — surface it as a
+            // rejection so the trust failure reaches diagnostics verbatim.
+            self = .rejected("privileged_input_server_untrusted: \(detail)")
         }
     }
 }
