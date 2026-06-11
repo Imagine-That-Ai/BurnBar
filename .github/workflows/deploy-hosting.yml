@@ -106,10 +106,14 @@ jobs:
       - name: Post-deploy hosting smoke
         if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
-          # The signed macOS update feed is produced by release.yml after
-          # runtime/legal release gates pass. Hosting deploys should verify
-          # the live Firebase sites, not require a release asset to exist.
-          OPENBURNBAR_SKIP_DOWNLOAD_FEED_SMOKE: "1"
+          # The signed macOS update feed is produced by release.yml, which
+          # fail-closes on its own freshly published feed (verify-live-update-feed
+          # job). Hosting deploys still monitor the live feed continuously:
+          # until the first release publishes the assets, a 404 is annotated as
+          # a warning instead of failing this deploy. Set the repo variable
+          # OPENBURNBAR_REQUIRE_DOWNLOAD_FEED=1 once the first release exists
+          # to enforce fail-closed here too.
+          OPENBURNBAR_REQUIRE_DOWNLOAD_FEED: ${{ vars.OPENBURNBAR_REQUIRE_DOWNLOAD_FEED || 'warn' }}
         run: bash scripts/ci/hosting-smoke.sh
 
       - name: Dry-run skip deploy
