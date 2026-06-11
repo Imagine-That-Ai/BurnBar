@@ -24,7 +24,8 @@ class HermesRelayException(message: String, cause: Throwable? = null) : RuntimeE
  * `OpenBurnBarCore/SharedModels/HermesConnectionTypes.swift`).
  */
 object HermesRelayOperationName {
-    internal const val VAL_65 = 65
+    /** X9.63 uncompressed P-256 public key length: 0x04 prefix + 32-byte X + 32-byte Y. */
+    internal const val P256_X963_PUBLIC_KEY_BYTES = 65
     const val CHAT_COMPLETIONS = "chatCompletions"
     const val CLI_AGENT_CHAT = "cliAgentChat"
     const val CLI_AGENT_MODEL_CATALOG = "cliAgentModelCatalog"
@@ -127,7 +128,7 @@ class HermesRelayClient(
     fun isUsable(): Boolean {
         val uid = auth.currentUser?.uid ?: return false
         if (uid.isBlank()) return false
-        return runCatching { keyStore.clientPublicKeyX963().size == HermesRelayOperationName.VAL_65 }.getOrDefault(false)
+        return runCatching { keyStore.clientPublicKeyX963().size == HermesRelayOperationName.P256_X963_PUBLIC_KEY_BYTES }.getOrDefault(false)
     }
 
     suspend fun listConnections(): List<HermesRelayConnectionDescriptor> {

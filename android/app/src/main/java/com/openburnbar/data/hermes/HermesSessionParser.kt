@@ -12,9 +12,6 @@ private const val TIMESTAMP_RAW_SECONDS_THRESHOLD_D = 10_000_000_000.0
  * fallback keys that match the iOS implementation byte-for-byte.
  */
 object HermesSessionParser {
-    private const val VAL_10000000000_0 = 10_000_000_000.0
-    private const val VAL_10000000000_L = 10_000_000_000L
-
     /** One message persisted on a Hermes session detail document. */
     data class StoredMessage(
         val id: String?,

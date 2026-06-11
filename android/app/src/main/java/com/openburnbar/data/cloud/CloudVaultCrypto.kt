@@ -810,7 +810,7 @@ data class AndroidCloudVaultResolvedKey(
 
 object AndroidCloudVaultKeyAccess {
     private const val PREFS = "openburnbar_cloud_vault_keys"
-    private const val VAL_5 = 5
+    private const val VAULT_KEY_WRAPPER_QUERY_LIMIT = 5
 
     suspend fun keyForWriting(uid: String, firestore: FirebaseFirestore = FirebaseFirestore.getInstance()): AndroidCloudVaultResolvedKey =
         keyForReading(uid = uid, firestore = firestore) ?: error("Cloud vault key is not active on this Android device yet. Approve this device from a Mac or iPhone before writing cloud chat content.")
@@ -844,7 +844,7 @@ object AndroidCloudVaultKeyAccess {
             userRef.collection("cloud_vault_key_wrappers")
                 .whereEqualTo("targetDeviceId", keypair.deviceId)
                 .whereEqualTo("status", "active")
-                .limit(VAL_5.toLong())
+                .limit(VAULT_KEY_WRAPPER_QUERY_LIMIT.toLong())
                 .get()
                 .await()
 

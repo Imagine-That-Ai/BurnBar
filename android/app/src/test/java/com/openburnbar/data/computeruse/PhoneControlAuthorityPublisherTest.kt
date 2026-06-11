@@ -7,11 +7,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-private const val VAL_24 = 24
-private const val VAL_31 = 31
-private const val VAL_32 = 32
-private const val VAL_65 = 65
-
 class PhoneControlAuthorityPublisherTest {
     private val privateSeed = ByteArray(32) { index -> (index + 1).toByte() }
     private val publicKey = PhoneControlSigner.publicKey(privateSeed)
@@ -31,7 +26,7 @@ class PhoneControlAuthorityPublisherTest {
         assertEquals("android-device-1", doc.deviceId)
         assertEquals(1, doc.protocolVersion)
         assertEquals(1, doc.schemaVersion)
-        assertEquals(VAL_32, Base64.getDecoder().decode(doc.publicKeyBase64).size)
+        assertEquals(32, Base64.getDecoder().decode(doc.publicKeyBase64).size)
 
         val map = doc.asMap()
         assertEquals(
@@ -66,7 +61,7 @@ class PhoneControlAuthorityPublisherTest {
     @Test
     fun peerNodeIdRejectsWrongSizedKeys() {
         assertThrows(IllegalArgumentException::class.java) {
-            PhoneControlAuthorityDocumentFactory.peerNodeId(ByteArray(VAL_31))
+            PhoneControlAuthorityDocumentFactory.peerNodeId(ByteArray(31))
         }
     }
 
@@ -110,10 +105,10 @@ class PhoneControlAuthorityPublisherTest {
 
         assertEquals(doc.peerNodeId, doc.id)
         assertEquals("android-se-", doc.peerNodeId.take("android-se-".length))
-        assertEquals("android-se-".length + VAL_24, doc.peerNodeId.length)
+        assertEquals("android-se-".length + 24, doc.peerNodeId.length)
         assertEquals("se-p256", doc.keyKind)
         val published = Base64.getDecoder().decode(doc.publicKeyBase64)
-        assertEquals(VAL_65, published.size)
+        assertEquals(65, published.size)
         assertEquals(0x04.toByte(), published.first())
         assertEquals("se-p256", doc.asMap()["keyKind"])
     }

@@ -36,7 +36,7 @@ internal fun ruleBasedModelBenchmarkAdvice(
     val findings = buildRuleBasedDesignFinding(topModel, candidates.bestDesign)
     val recommendations = buildRuleBasedBenchmarkRecommendations(topModel, candidates, benchmarks)
     val widgets = buildRuleBasedBenchmarkWidget(benchmarks, digest, selectedModel, window)
-    return RuleBasedBenchmarkAdvice(findings.take(2), recommendations.take(INSIGHT_VAL_3), widgets.take(2))
+    return RuleBasedBenchmarkAdvice(findings.take(2), recommendations.take(INSIGHT_MAX_BENCHMARK_RECOMMENDATIONS), widgets.take(2))
 }
 
 private data class RuleBasedBenchmarkCandidates(
@@ -63,13 +63,13 @@ private fun resolveRuleBasedBenchmarkCandidates(
                 .maxByOrNull { it.score ?: -1.0 }
     val cheapestSimilar =
         topModel?.let { current ->
-            val baselineCost = (topBenchmark?.costSignal ?: 0.0) + INSIGHT_VAL_0_12
+            val baselineCost = (topBenchmark?.costSignal ?: 0.0) + INSIGHT_BENCHMARK_COST_MARGIN
             val baselineScore = topBenchmark?.score ?: 0.0
             benchmarks
                 .filter { ruleBasedNormalizedModelID(it.modelID) != ruleBasedNormalizedModelID(current.id) }
                 .filter { it.costSignal != null && it.costSignal > baselineCost }
                 .filter { topBenchmark?.score == null || it.score == null || it.score >= baselineScore -
-                    INSIGHT_VAL_0_08 }
+                    INSIGHT_BENCHMARK_SCORE_TOLERANCE }
                 .maxWithOrNull(compareBy<InsightDigest.ModelBenchmarkSummary> { it.costSignal ?: 0.0 }.thenBy {
                     it.score ?: 0.0 })
         }
@@ -166,7 +166,7 @@ private fun buildRuleBasedBenchmarkWidget(
                     .thenByDescending { it.score ?: -1.0 }
                     .thenBy { it.rank ?: Int.MAX_VALUE },
             )
-            .take(INSIGHT_VAL_6)
+            .take(INSIGHT_BENCHMARK_RANKING_ROW_LIMIT)
             .map {
                 InsightWidgetData.Ranking.Row(
                     id = it.id,
@@ -181,7 +181,7 @@ private fun buildRuleBasedBenchmarkWidget(
             kind = InsightWidgetKind.BAR_RANKING,
             title = "Benchmark-aware model board",
             spec = InsightWidgetSpec.Ranking(InsightWidgetSpec.RankingSpec()),
-            dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.MODEL, INSIGHT_VAL_6, window),
+            dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.MODEL, INSIGHT_BENCHMARK_RANKING_ROW_LIMIT, window),
             data = InsightWidgetData.Ranking(rows, ValueFormat.PERCENT, "Benchmark"),
             freshness = com.openburnbar.data.insights.InsightFreshness.FRESH,
             modelTag = selectedModel,
@@ -191,7 +191,7 @@ private fun buildRuleBasedBenchmarkWidget(
         InsightGeneratedWidget(
             widget = widget,
             reason = "Shows used models against public benchmark evidence.",
-            citations = benchmarks.take(INSIGHT_VAL_6).map { ruleBasedBenchmarkCitation(it) },
+            citations = benchmarks.take(INSIGHT_BENCHMARK_RANKING_ROW_LIMIT).map { ruleBasedBenchmarkCitation(it) },
         ),
     )
 }
@@ -204,10 +204,10 @@ internal fun ruleBasedBenchmarkCitation(benchmark: InsightDigest.ModelBenchmarkS
 )
 
 internal fun ruleBasedBenchmarkConfidence(benchmark: InsightDigest.ModelBenchmarkSummary): InsightConfidence {
-    val conf = benchmark.confidence ?: INSIGHT_VAL_0_6
+    val conf = benchmark.confidence ?: INSIGHT_DEFAULT_BENCHMARK_CONFIDENCE
     return when {
-        conf >= INSIGHT_VAL_0_75 -> InsightConfidence.HIGH
-        conf <= INSIGHT_VAL_0_45 -> InsightConfidence.LOW
+        conf >= INSIGHT_HIGH_CONFIDENCE_FLOOR -> InsightConfidence.HIGH
+        conf <= INSIGHT_LOW_CONFIDENCE_CEILING -> InsightConfidence.LOW
         else -> InsightConfidence.MEDIUM
     }
 }

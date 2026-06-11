@@ -12,8 +12,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private const val VAL_3 = 3
-
 /**
  * Parity fixtures for `HermesAtomParser`. Each input string mirrors a
  * fixture the iOS suite (`HermesAtomParserTests.swift`) exercises so a
@@ -40,7 +38,7 @@ class HermesAtomParserTest {
     @Test
     fun mixed_atom_and_text_segments() {
         val runs = HermesAtomParser.parse("Open [your session](burnbar://session?id=zzz) now.")
-        assertEquals(VAL_3, runs.size)
+        assertEquals(3, runs.size)
         assertTrue(runs[0] is HermesAtomRun.Text)
         assertTrue(runs[1] is HermesAtomRun.Atom)
         assertTrue(runs[2] is HermesAtomRun.Text)

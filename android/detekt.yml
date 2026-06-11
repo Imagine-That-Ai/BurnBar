@@ -474,6 +474,18 @@ style:
     maxJumpCount: 1
   MagicNumber:
     active: true
+    # Mirrors detekt's default-config scope for this rule: test sources assert
+    # against literal wire-format/fixture values by design. Production sources
+    # stay fully enforced.
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+      - '**/commonTest/**'
+      - '**/jvmTest/**'
+      - '**/androidUnitTest/**'
+      - '**/androidInstrumentedTest/**'
+      - '**/jsTest/**'
+      - '**/iosTest/**'
     ignoreNumbers:
       - '-1'
       - '0'

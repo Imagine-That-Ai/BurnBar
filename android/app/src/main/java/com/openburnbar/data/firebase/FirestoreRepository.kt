@@ -38,7 +38,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
 private const val NANOS_PER_MILLIS = 1_000_000
-private const val VAL_20 = 20
+private const val TOP_PROJECTS_BY_COST_LIMIT = 20
 private const val LIVE_USAGE_DOC_LIMIT = 2_000L
 
 data class QuotaSnapshotUpdate(
@@ -359,7 +359,7 @@ class FirestoreRepository {
         val snapshot =
             projectsCollection
                 .orderBy("total_cost", Query.Direction.DESCENDING)
-                .limit(VAL_20.toLong())
+                .limit(TOP_PROJECTS_BY_COST_LIMIT.toLong())
                 .get().await()
         return snapshot.documents.mapNotNull { it.toProjectSummary() }
     }

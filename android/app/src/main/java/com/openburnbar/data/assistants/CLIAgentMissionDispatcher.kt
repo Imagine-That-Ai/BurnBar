@@ -25,7 +25,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private const val VAL_3 = 3
+private const val MISSION_REQUEST_SCHEMA_VERSION = 3
 
 /** Data-domain id whose sealingScheme gates at-rest Signal sealing for CLI missions. */
 private const val SIGNAL_CLI_DOMAIN = "conversations_chat"
@@ -701,7 +701,7 @@ object CLIAgentMissionRequestPayloadFactory {
             )
             put("createdAt", now.toString())
             put("updatedAt", FieldValue.serverTimestamp())
-            put("schemaVersion", VAL_3)
+            put("schemaVersion", MISSION_REQUEST_SCHEMA_VERSION)
             sourceSkillID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("sourceSkillID", it) }
             clientThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("clientThreadID", it) }
             parentHermesThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentHermesThreadID", it) }

@@ -11,7 +11,7 @@ import java.util.Calendar
 import java.util.Date
 import kotlin.math.max
 
-private const val VAL_3 = 3
+private const val BLOCK_DECISION_PRIORITY = 3
 
 class BudgetGate(
     private val dao: BudgetDatabaseAccess,
@@ -187,7 +187,7 @@ class BudgetGate(
             BudgetGateDecision.Kind.ALLOW -> 0
             BudgetGateDecision.Kind.PAUSED -> 1
             BudgetGateDecision.Kind.WARN -> 2
-            BudgetGateDecision.Kind.BLOCK -> VAL_3
+            BudgetGateDecision.Kind.BLOCK -> BLOCK_DECISION_PRIORITY
         }
     }
 }

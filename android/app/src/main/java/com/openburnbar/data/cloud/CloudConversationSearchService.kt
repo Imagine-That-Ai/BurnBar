@@ -11,7 +11,7 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-private const val VAL_5 = 5
+private const val VAULT_KEY_WRAPPER_QUERY_LIMIT = 5
 
 data class CloudConversationSearchRow(
     val id: String,
@@ -214,7 +214,7 @@ class CloudConversationSearchService(
                 .collection("cloud_vault_key_wrappers")
                 .whereEqualTo("targetDeviceId", keypair.deviceId)
                 .whereEqualTo("status", "active")
-                .limit(VAL_5.toLong())
+                .limit(VAULT_KEY_WRAPPER_QUERY_LIMIT.toLong())
                 .get()
                 .await()
 

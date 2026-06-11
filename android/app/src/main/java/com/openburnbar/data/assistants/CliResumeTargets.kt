@@ -3,8 +3,8 @@ package com.openburnbar.data.assistants
 import androidx.annotation.DrawableRes
 import com.openburnbar.R
 
-private const val VAL_47 = 47
-private const val VAL_48 = 48
+private const val ARGV_PREVIEW_TRUNCATED_CHARS = 47
+private const val ARGV_PREVIEW_MAX_CHARS = 48
 
 // Kotlin mirror of OpenBurnBarCore's CLIAgentResumePresentation. Keeps the
 // resume-target catalog, the native-resume capability table, the status copy,
@@ -146,7 +146,7 @@ data class CliResumeOutcome(
             if (pkg != null) {
                 parts.add(pkg)
             } else if (r.pid == null && r.argv.isNotEmpty()) {
-                parts.add(r.argv.joinToString(" ").let { if (it.length <= VAL_48) it else it.take(VAL_47) + "…" })
+                parts.add(r.argv.joinToString(" ").let { if (it.length <= ARGV_PREVIEW_MAX_CHARS) it else it.take(ARGV_PREVIEW_TRUNCATED_CHARS) + "…" })
             }
             r.workingDirectory?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
             if (parts.isEmpty()) {
