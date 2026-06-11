@@ -40,15 +40,10 @@ async function firebaseRulesGet(path, token) {
   return response.json();
 }
 
-async function deployedFirestoreRules(token) {
-  const release = await firebaseRulesGet(
-    `projects/${project}/releases/cloud.firestore`,
-    token,
-  );
+async function deployedRulesForRelease(releasePath, fileName, token) {
+  const release = await firebaseRulesGet(releasePath, token);
   if (typeof release.rulesetName !== "string") {
-    throw new Error(
-      `cloud.firestore release for ${project} did not include rulesetName`,
-    );
+    throw new Error(`${releasePath} did not include rulesetName`);
   }
   const ruleset = await firebaseRulesGet(release.rulesetName, token);
   const files = Array.isArray(ruleset.source?.files)
@@ -56,15 +51,25 @@ async function deployedFirestoreRules(token) {
     : [];
   const rulesFile = files.find(
     (file) =>
-      file?.name === "firestore.rules" ||
-      file?.name?.endsWith("/firestore.rules"),
+      file?.name === fileName || file?.name?.endsWith(`/${fileName}`),
   );
   if (typeof rulesFile?.content !== "string") {
     throw new Error(
-      `ruleset ${release.rulesetName} did not include firestore.rules content`,
+      `ruleset ${release.rulesetName} did not include ${fileName} content`,
     );
   }
   return rulesFile.content;
+}
+
+async function storageReleasePaths(token) {
+  const listing = await firebaseRulesGet(`projects/${project}/releases`, token);
+  const releases = Array.isArray(listing.releases) ? listing.releases : [];
+  return releases
+    .map((release) => release?.name)
+    .filter(
+      (name) =>
+        typeof name === "string" && name.includes("/releases/firebase.storage/"),
+    );
 }
 
 function normalizedIndexSpec(raw) {
@@ -142,7 +147,11 @@ function deployedFirestoreIndexes() {
 
 const token = accessToken();
 const localRules = readFileSync(resolve(repoRoot, "firestore.rules"), "utf8");
-const remoteRules = await deployedFirestoreRules(token);
+const remoteRules = await deployedRulesForRelease(
+  `projects/${project}/releases/cloud.firestore`,
+  "firestore.rules",
+  token,
+);
 const localRulesHash = sha256(localRules.trimEnd());
 const remoteRulesHash = sha256(remoteRules.trimEnd());
 if (localRulesHash !== remoteRulesHash) {
@@ -163,6 +172,32 @@ if (localIndexesHash !== remoteIndexesHash) {
   );
 }
 
+// Storage rules drift: the deploy workflow ships storage.rules, so the gate
+// must watch it too (diligence 2026-06-11 LB-3 residual: the step summary
+// claimed storage in scope while only firestore was hash-checked). One local
+// file governs every bucket release.
+const localStorageRules = readFileSync(resolve(repoRoot, "storage.rules"), "utf8");
+const localStorageHash = sha256(localStorageRules.trimEnd());
+const storageReleases = await storageReleasePaths(token);
+if (storageReleases.length === 0) {
+  throw new Error(
+    `no firebase.storage releases found for ${project}; expected at least the default bucket`,
+  );
+}
+for (const releasePath of storageReleases) {
+  const remoteStorageRules = await deployedRulesForRelease(
+    releasePath,
+    "storage.rules",
+    token,
+  );
+  const remoteStorageHash = sha256(remoteStorageRules.trimEnd());
+  if (localStorageHash !== remoteStorageHash) {
+    throw new Error(
+      `Storage rules drift (${releasePath}): repo=${localStorageHash} deployed=${remoteStorageHash}. Deploy storage.rules to ${project}.`,
+    );
+  }
+}
+
 console.log(
-  `firestore deploy drift ok project=${project} rules=${localRulesHash} indexes=${localIndexesHash}`,
+  `firestore deploy drift ok project=${project} rules=${localRulesHash} indexes=${localIndexesHash} storage=${localStorageHash} storageReleases=${storageReleases.length}`,
 );
