@@ -176,3 +176,75 @@ final class ImpostorSocketServer: @unchecked Sendable {
         _ = finished.wait(timeout: .now() + 3)
     }
 }
+
+/// Wrapper-level (PrivilegedInputXPCClient) behavior: socket lane first with
+/// REAL server validation, terminal trust failures, logged Mach fallback.
+final class PrivilegedInputXPCClientWrapperTests: XCTestCase {
+    private var temporaryDirectories: [String] = []
+
+    override func tearDown() {
+        for directory in temporaryDirectories {
+            try? FileManager.default.removeItem(atPath: directory)
+        }
+        temporaryDirectories = []
+        super.tearDown()
+    }
+
+    private func makeSocketPath() throws -> String {
+        let directory = NSTemporaryDirectory() + "obb-wrap-" + String(UUID().uuidString.prefix(8))
+        try FileManager.default.createDirectory(
+            atPath: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        temporaryDirectories.append(directory)
+        return directory + "/input.sock"
+    }
+
+    func test_perform_treatsRealServerValidationFailureAsTerminal() throws {
+        // The wrapper's socket client uses the PRODUCTION validator. The test
+        // process listening at the path is not first-party signed, so trust
+        // must fail BEFORE the envelope is written, and the wrapper must NOT
+        // silently downgrade to the Mach lane.
+        let socketPath = try makeSocketPath()
+        let impostor = try ImpostorSocketServer(socketPath: socketPath)
+        defer { impostor.shutdown() }
+
+        let client = PrivilegedInputXPCClient(
+            machServiceName: "com.openburnbar.test.nonexistent-service",
+            userSessionSocketPath: socketPath,
+            requestTimeout: .milliseconds(500)
+        )
+        let envelope = PrivilegedInputDispatchEnvelope(
+            request: PrivilegedInputDispatchRequest(operation: "typeCredential", password: "secret")
+        )
+        XCTAssertThrowsError(try client.perform(envelope)) { error in
+            guard case PrivilegedInputXPCClient.ClientError.serverUntrusted = error else {
+                return XCTFail("expected serverUntrusted, got \(error)")
+            }
+        }
+        XCTAssertEqual(impostor.receivedByteCount(), 0, "no bytes may reach an untrusted listener")
+    }
+
+    func test_perform_fallsBackToMachWhenSocketAbsent_andFailsClosed() {
+        // No listener at the socket path → expected-absence fallback to the
+        // launchd Mach lane, which also doesn't exist here → the wrapper must
+        // surface a transport error, never a silent success.
+        let client = PrivilegedInputXPCClient(
+            machServiceName: "com.openburnbar.test.nonexistent-service",
+            userSessionSocketPath: NSTemporaryDirectory() + "obb-absent-" + String(UUID().uuidString.prefix(8)) + ".sock",
+            requestTimeout: .milliseconds(500)
+        )
+        let envelope = PrivilegedInputDispatchEnvelope(
+            request: PrivilegedInputDispatchRequest(operation: "health")
+        )
+        XCTAssertThrowsError(try client.perform(envelope)) { error in
+            if case PrivilegedInputXPCClient.ClientError.serverUntrusted = error {
+                XCTFail("absent socket is expected absence, not a trust failure")
+            }
+            if case PrivilegedInputXPCClient.ClientError.rejected = error {
+                XCTFail("nothing was listening; rejection is impossible")
+            }
+        }
+    }
+}

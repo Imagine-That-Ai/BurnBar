@@ -122,10 +122,17 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         try validateCodeSignature(code)
     }
 
-    static func validateCodeSignature(_ code: SecCode) throws {
+    /// `requirementString` is injectable for tests only (the default is the
+    /// production designated requirement): unit tests cannot mint a process
+    /// signed with the first-party identity, so they exercise the
+    /// static-code/flag plumbing against the Apple-signed test host instead.
+    static func validateCodeSignature(
+        _ code: SecCode,
+        requirementString: String = privilegedPeerDesignatedRequirement
+    ) throws {
         var requirement: SecRequirement?
         let requirementStatus = SecRequirementCreateWithString(
-            privilegedPeerDesignatedRequirement as CFString,
+            requirementString as CFString,
             [],
             &requirement
         )
@@ -153,6 +160,13 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
               let flags = info[kSecCodeInfoFlags as String] as? UInt32 else {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: infoStatus)
         }
+        try validateCodeDirectoryFlags(flags)
+    }
+
+    /// M-9 policy core, separated from the SecCode plumbing so the bit logic
+    /// is directly unit-testable: both hardened runtime and library
+    /// validation must be set on the peer's CodeDirectory.
+    static func validateCodeDirectoryFlags(_ flags: UInt32) throws {
         let hasHardenedRuntime = (flags & hardenedRuntimeFlag) != 0
         let hasLibraryValidation = (flags & libraryValidationFlag) != 0
         guard hasHardenedRuntime, hasLibraryValidation else {
