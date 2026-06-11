@@ -214,7 +214,12 @@ jobs:
         run: |
           set -euo pipefail
           cd android
-          ./gradlew :app:buildHealth --no-daemon 2>&1 | tee ../android-dep-health.txt || true
+          # :app:buildHealth never existed (buildHealth is a root-project task
+          # in dependency-analysis v2, and the plugin is applied per-project) —
+          # the old '|| true' + warning masked a task-not-found failure on
+          # every run this lane ever had. projectHealth is the real per-module
+          # task; verified green locally on plugin 2.19.0.
+          ./gradlew :app:projectHealth --no-daemon 2>&1 | tee ../android-dep-health.txt || true
           if grep -qE "^BUILD FAILED" ../android-dep-health.txt; then
             echo "::error::Android dependency-analysis buildHealth FAILED. Review android-dep-health artifact."
             exit 1
