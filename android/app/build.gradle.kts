@@ -382,6 +382,11 @@ dependencies {
 
 detekt {
     config.setFrom(files("$projectDir/../detekt.yml"))
+    // Pre-existing violations (structural smells like LongMethod/ReturnCount that
+    // predate the lint hardening) are tracked here so `detekt` fails only on NEW
+    // violations. Regenerate deliberately with :app:detektBaseline after fixing
+    // tracked debt — never to absorb fresh findings.
+    baseline = file("$projectDir/detekt-baseline.xml")
 }
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
@@ -400,6 +405,18 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
         exclude("**/AuroraNavGlyphs.kt")
         exclude("**/renderers/**")
     }
+}
+
+// Keep baseline generation scoped to exactly what the detekt task scans, so the
+// baseline never tracks files the analysis task excludes.
+tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach {
+    exclude("**/SwarmTextCoordinates.kt")
+    exclude("**/SwarmBackground.kt")
+    exclude("**/DotConstellationBackground.kt")
+    exclude("**/EasterEggOverlay.kt")
+    exclude("**/AuroraTheme.kt")
+    exclude("**/AuroraNavGlyphs.kt")
+    exclude("**/renderers/**")
 }
 
 // Pull the latest committed generated sources from the monorepo's codegen
