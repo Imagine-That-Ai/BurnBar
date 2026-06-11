@@ -334,6 +334,29 @@ data class HermesRealtimeRelayMediaPayload(
     val encodedFrameBase64: String? = null,
     val frameChunk: HermesRealtimeRelayMediaFrameChunk? = null,
     val focusContext: HermesRealtimeRelayFocusContext? = null,
+    /**
+     * F7 — present when [encodedFrameBase64] carries a MediaFrameAEAD-sealed
+     * (OBMFA1) envelope instead of a plaintext encoded frame. The position
+     * fields ride in clear so the receiver can rebuild the AAD; any tamper
+     * fails the GCM tag, so their integrity is enforced by the seal itself.
+     * Mirrors the Swift `HermesRealtimeRelayMediaPayload.sealedFramePosition`.
+     */
+    val sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition? = null,
+)
+
+/**
+ * F7 — the cleartext AAD components of a sealed media frame (the frame's
+ * position in its stream). Authenticated by the seal's GCM tag — a receiver
+ * rebuilds the AAD from these and `streamClass`, and any mismatch refuses
+ * the frame. Mirrors the Swift `HermesRealtimeRelaySealedMediaFramePosition`
+ * (`kind: UInt8`, `gopId/frameIndex: UInt32` — carried as wider Kotlin types,
+ * converted at the AEAD boundary).
+ */
+@Serializable
+data class HermesRealtimeRelaySealedMediaFramePosition(
+    val kind: Int,
+    val gopId: Long,
+    val frameIndex: Long,
 )
 
 @Serializable
@@ -446,6 +469,13 @@ data class HermesRealtimeRelayMirrorRequest(
     val controlAuthorityPeerNodeId: String? = null,
     val remoteUnlockSession: HermesRealtimeRelayRemoteUnlockSession? = null,
     val agentTerminal: HermesRealtimeRelayAgentTerminalRequest? = null,
+    /**
+     * F7 — the sealKeyV3-wrapped per-mirror media-frame-AEAD session key,
+     * attached when the default-off RC flag is on AND the Mac advertised
+     * `media_frame_aead_v1`. Pre-F7 receivers ignore the field; absent ⇒ the
+     * legacy plaintext-at-app-layer media lane.
+     */
+    val mediaSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = null,
 )
 
 @Serializable
@@ -854,7 +884,79 @@ data class HermesRealtimeRelayControlPayload(
     val systemPermissionRequest: HermesRealtimeRelaySystemPermissionRequest? = null,
     val systemPermissionStatus: HermesRealtimeRelaySystemPermissionStatus? = null,
     val denied: HermesRealtimeRelayControlDenied? = null,
+    /**
+     * F10 — sealKeyV3-wrapped control-frame-seal session key, sent once on
+     * `control.classify` when both peers advertise `control_seal_v1`. Pre-F10
+     * receivers ignore the field. Mirrors the Swift control payload.
+     */
+    val controlSealKey: HermesRealtimeRelayControlSealKeyEnvelope? = null,
+    /**
+     * F10 — when present, this payload's real content rides inside: a
+     * `ControlFrameSeal` envelope (OBCFS1) over the JSON of the inner
+     * `HermesRealtimeRelayControlPayload`, AAD-bound to (controller
+     * peerNodeId, frame type). `streamClass` stays visible for routing;
+     * everything else is confidential. Pre-F10 receivers see an empty payload
+     * and ignore it. Mirrors the Swift control payload.
+     */
+    val sealedFrameBase64: String? = null,
 )
+
+/**
+ * F10/F7 — the sealKeyV3 (RFC 9180 HPKE Auth-mode P-256) wrap of a seal-session
+ * key, carried on `control.classify` (`controlSealKey`) and on the mirror
+ * request (`mediaSealKey`). The Mac opens it with its relay private key plus
+ * the phone's PINNED relay sender key (the same pinning the chat lane uses) and
+ * both sides derive the AES-256-GCM seal key. Mirrors the Swift
+ * `HermesRealtimeRelayControlSealKeyEnvelope`.
+ */
+@Serializable
+data class HermesRealtimeRelayControlSealKeyEnvelope(
+    val encBase64: String,
+    val wrappedKeyBase64: String,
+    val senderDeviceId: String,
+    /**
+     * The peerNodeId the phone PUBLISHED in `relay_sender_keys/{deviceId}` —
+     * the Mac's trust resolver matches it during pinned-key lookup. This is
+     * the relay sender identity, NOT the phone-control controller peerNodeId
+     * (which is bound separately into the wrap AAD).
+     */
+    val senderPeerNodeId: String,
+    val senderKeyId: String,
+    val senderCounter: Long,
+    val relayKeyVersion: Int,
+)
+
+/**
+ * The dotted Swift raw value of a frame type (`"control.input.intent"`, ...),
+ * exactly as it appears in the `type` field on the wire. The F10 control seal
+ * binds this string into its AAD, so it MUST match `frame.type.rawValue` on
+ * the Swift opener byte-for-byte — sourced from the `@SerialName` the codec
+ * itself emits so the two can never drift.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+val HermesRealtimeRelayFrameType.wireValue: String
+    get() = HermesRealtimeRelayFrameType.serializer().descriptor.getElementName(ordinal)
+
+/**
+ * F10 — JSON codec for the INNER control payload that rides inside a
+ * `ControlFrameSeal` envelope. Uses the exact relay wire `Json` configuration
+ * (`HermesRealtimeRelayJson`) so inner payloads keep the same field/date wire
+ * shapes as unsealed frames — the Kotlin twin of the Swift
+ * `ControlFrameSealSession` canonical encoder/decoder (ISO8601-fractional
+ * dates are already plain `String`/`Double` fields on the Kotlin models).
+ */
+object HermesRealtimeRelayControlPayloadCodec {
+    fun encodeToBytes(payload: HermesRealtimeRelayControlPayload): ByteArray =
+        HermesRealtimeRelayJson
+            .encodeToString(HermesRealtimeRelayControlPayload.serializer(), payload)
+            .toByteArray(Charsets.UTF_8)
+
+    fun decodeFromBytes(bytes: ByteArray): HermesRealtimeRelayControlPayload =
+        HermesRealtimeRelayJson.decodeFromString(
+            HermesRealtimeRelayControlPayload.serializer(),
+            bytes.toString(Charsets.UTF_8),
+        )
+}
 
 @Serializable
 enum class HermesRealtimeRelaySystemPermissionKind {

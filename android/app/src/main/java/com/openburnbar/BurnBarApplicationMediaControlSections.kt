@@ -71,6 +71,17 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
                     .peerNodeId()
             }.getOrNull()
         },
+        // F7: every mirror request negotiates the per-frame media seal —
+        // default-off behind computer_use_media_frame_aead_enabled AND the
+        // Mac advertising media_frame_aead_v1 in its heartbeat reply.
+        mediaSealSessionFactory = { sealUid, sealConnectionID, viewerId, macCapabilities ->
+            com.openburnbar.data.media.MediaSealSessionEstablisher.establishIfNegotiated(
+                uid = sealUid,
+                connectionId = sealConnectionID,
+                viewerId = viewerId,
+                macCapabilities = macCapabilities,
+            )
+        },
     )
     BurnBarApplication.mediaControlCoordinator = coordinator
     activeCoordinatorConnection = connectionId

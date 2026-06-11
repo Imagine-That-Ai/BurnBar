@@ -83,6 +83,44 @@ object HermesRelayCrypto {
     fun chunkAAD(uid: String, connectionId: String, requestId: String, sequence: Int, kind: String): ByteArray =
         HermesRelayCryptoSupport.aad(listOf("chunk", uid, connectionId, requestId, sequence.toString(), kind))
 
+    /**
+     * F7 — AAD for wrapping the media-frame-AEAD session key the phone
+     * establishes with its mirror request (sealKeyV3 to the Mac's pinned relay
+     * key), bound to the mirror `viewerId`. Byte-identical to the Swift
+     * `HermesRelayCrypto.mediaSealKeyAAD` parts order.
+     */
+    @Suppress("LongParameterList")
+    fun mediaSealKeyAAD(
+        uid: String,
+        connectionId: String,
+        viewerId: String,
+        senderDeviceId: String,
+        senderKeyId: String,
+        senderCounter: Long,
+    ): ByteArray =
+        HermesRelayCryptoSupport.aad(
+            listOf("mediaSealKey", uid, connectionId, viewerId, senderDeviceId, senderKeyId, senderCounter.toString()),
+        )
+
+    /**
+     * F10 — AAD for wrapping the control-frame-seal session key the phone
+     * establishes at `control.classify` (sealKeyV3 to the Mac's pinned relay
+     * key), bound to the controller peerNodeId. Byte-identical to the Swift
+     * `HermesRelayCrypto.controlSealKeyAAD` parts order.
+     */
+    @Suppress("LongParameterList")
+    fun controlSealKeyAAD(
+        uid: String,
+        connectionId: String,
+        peerNodeId: String,
+        senderDeviceId: String,
+        senderKeyId: String,
+        senderCounter: Long,
+    ): ByteArray =
+        HermesRelayCryptoSupport.aad(
+            listOf("controlSealKey", uid, connectionId, peerNodeId, senderDeviceId, senderKeyId, senderCounter.toString()),
+        )
+
     fun gatewayEventAAD(uid: String, clientId: String, eventId: String): ByteArray =
         HermesRelayCryptoSupport.aad(listOf("gatewayEvent", uid, clientId, eventId))
 
