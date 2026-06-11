@@ -36,6 +36,18 @@ final class DaemonSocketClientBufferTests: XCTestCase {
         )
     }
 
+    private func makeFollowup(id: String, status: BurnBarFollowupStatus, now: Date) -> BurnBarFollowupSnapshot {
+        BurnBarFollowupSnapshot(
+            id: BurnBarFollowupID(rawValue: id),
+            projectSlug: "apollo",
+            title: "Follow up \(id)",
+            summary: "Check on \(id).",
+            status: status,
+            kind: .controllerNudge,
+            createdAt: now
+        )
+    }
+
     private func makePayload(questionCount: Int, now: Date) -> BurnBarControllerRuntimeSnapshotPayload {
         BurnBarControllerRuntimeSnapshotPayload(
             summary: BurnBarControllerSummary(
@@ -172,6 +184,229 @@ final class DaemonSocketClientBufferTests: XCTestCase {
         let second = try OpenBurnBarDaemonSocketClient.controllerRuntimeSnapshot(at: server.socketURL)
         XCTAssertEqual(second.questions.count, 2)
         XCTAssertEqual(server.requestedMethods.count, 13, "six legacy RPCs, no second probe")
+    }
+
+    // MARK: - Mutation responses embedding the runtime snapshot
+
+    func testAnswerControllerQuestion_usesEmbeddedRuntimeSnapshot() throws {
+        let now = Date(timeIntervalSince1970: 1_710_003_200)
+        let payload = makePayload(questionCount: 3, now: now)
+
+        let server = try FakeDaemonSocketServer { method, requestID in
+            switch method {
+            case BurnBarRPCMethod.questionAnswer.rawValue:
+                return try JSONEncoder().encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: requestID,
+                        result: BurnBarQuestionAnswerResponse(
+                            question: self.makeQuestion(index: 0, now: now),
+                            runtimeSnapshot: payload
+                        )
+                    )
+                )
+            default:
+                return try JSONEncoder().encode(
+                    BurnBarRPCResponseEnvelope<BurnBarControllerSummaryResponse>(
+                        id: requestID,
+                        error: BurnBarRPCError(code: -32_601, message: "unexpected method \(method)")
+                    )
+                )
+            }
+        }
+        defer { server.stop() }
+
+        let snapshot = try OpenBurnBarDaemonSocketClient.answerControllerQuestion(
+            questionID: "question-0",
+            answer: "Proceed.",
+            at: server.socketURL
+        )
+
+        XCTAssertEqual(snapshot?.questions.count, 3)
+        XCTAssertEqual(
+            server.requestedMethods,
+            [BurnBarRPCMethod.questionAnswer.rawValue],
+            "An embedded snapshot must skip the follow-up snapshot RPCs entirely"
+        )
+    }
+
+    func testAnswerControllerQuestion_fallsBackToSnapshotRPC_whenEmbedAbsent() throws {
+        let now = Date(timeIntervalSince1970: 1_710_003_300)
+        let payload = makePayload(questionCount: 1, now: now)
+
+        let server = try FakeDaemonSocketServer { method, requestID in
+            let encoder = JSONEncoder()
+            switch method {
+            case BurnBarRPCMethod.questionAnswer.rawValue:
+                // Older daemon: mutation commits but embeds no runtime.
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: requestID,
+                        result: BurnBarQuestionAnswerResponse(
+                            question: self.makeQuestion(index: 0, now: now)
+                        )
+                    )
+                )
+            case BurnBarRPCMethod.controllerRuntimeSnapshot.rawValue:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: requestID,
+                        result: BurnBarControllerRuntimeSnapshotResponse(snapshot: payload)
+                    )
+                )
+            default:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope<BurnBarControllerSummaryResponse>(
+                        id: requestID,
+                        error: BurnBarRPCError(code: -32_601, message: "unexpected method \(method)")
+                    )
+                )
+            }
+        }
+        defer { server.stop() }
+
+        let snapshot = try OpenBurnBarDaemonSocketClient.answerControllerQuestion(
+            questionID: "question-0",
+            answer: "Proceed.",
+            at: server.socketURL
+        )
+
+        XCTAssertEqual(snapshot?.questions.count, 1)
+        XCTAssertEqual(
+            server.requestedMethods,
+            [
+                BurnBarRPCMethod.questionAnswer.rawValue,
+                BurnBarRPCMethod.controllerRuntimeSnapshot.rawValue
+            ],
+            "Without an embedded snapshot the client must fetch one explicitly"
+        )
+    }
+
+    /// One fake server serving every followup mutation with an embedded
+    /// runtime snapshot, so completed/snoozed/calendared followups all skip
+    /// the follow-up snapshot RPCs.
+    private func makeFollowupMutationServer(
+        payload: BurnBarControllerRuntimeSnapshotPayload,
+        followup: BurnBarFollowupSnapshot,
+        embedSnapshot: Bool
+    ) throws -> FakeDaemonSocketServer {
+        try FakeDaemonSocketServer { method, requestID in
+            let encoder = JSONEncoder()
+            switch method {
+            case BurnBarRPCMethod.followupDone.rawValue,
+                 BurnBarRPCMethod.followupSnooze.rawValue,
+                 BurnBarRPCMethod.followupCalendar.rawValue:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: requestID,
+                        result: BurnBarFollowupMutationResponse(
+                            followup: followup,
+                            runtimeSnapshot: embedSnapshot ? payload : nil
+                        )
+                    )
+                )
+            case BurnBarRPCMethod.controllerRuntimeSnapshot.rawValue:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: requestID,
+                        result: BurnBarControllerRuntimeSnapshotResponse(snapshot: payload)
+                    )
+                )
+            default:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope<BurnBarControllerSummaryResponse>(
+                        id: requestID,
+                        error: BurnBarRPCError(code: -32_601, message: "unexpected method \(method)")
+                    )
+                )
+            }
+        }
+    }
+
+    func testCompleteControllerFollowup_usesEmbeddedRuntimeSnapshot() throws {
+        let now = Date(timeIntervalSince1970: 1_710_003_400)
+        let payload = makePayload(questionCount: 2, now: now)
+        let server = try makeFollowupMutationServer(
+            payload: payload,
+            followup: makeFollowup(id: "followup-done-1", status: .done, now: now),
+            embedSnapshot: true
+        )
+        defer { server.stop() }
+
+        let snapshot = try OpenBurnBarDaemonSocketClient.completeControllerFollowup(
+            followupID: "followup-done-1",
+            at: server.socketURL
+        )
+
+        XCTAssertEqual(snapshot?.questions.count, 2)
+        XCTAssertEqual(server.requestedMethods, [BurnBarRPCMethod.followupDone.rawValue])
+    }
+
+    func testSnoozeControllerFollowup_usesEmbeddedRuntimeSnapshot() throws {
+        let now = Date(timeIntervalSince1970: 1_710_003_500)
+        let payload = makePayload(questionCount: 1, now: now)
+        let server = try makeFollowupMutationServer(
+            payload: payload,
+            followup: makeFollowup(id: "followup-snooze-1", status: .snoozed, now: now),
+            embedSnapshot: true
+        )
+        defer { server.stop() }
+
+        let snapshot = try OpenBurnBarDaemonSocketClient.snoozeControllerFollowup(
+            followupID: "followup-snooze-1",
+            until: now.addingTimeInterval(3_600),
+            at: server.socketURL
+        )
+
+        XCTAssertEqual(snapshot?.questions.count, 1)
+        XCTAssertEqual(server.requestedMethods, [BurnBarRPCMethod.followupSnooze.rawValue])
+    }
+
+    func testScheduleControllerFollowupCalendar_usesEmbeddedRuntimeSnapshot() throws {
+        let now = Date(timeIntervalSince1970: 1_710_003_600)
+        let payload = makePayload(questionCount: 4, now: now)
+        let server = try makeFollowupMutationServer(
+            payload: payload,
+            followup: makeFollowup(id: "followup-cal-1", status: .open, now: now),
+            embedSnapshot: true
+        )
+        defer { server.stop() }
+
+        let snapshot = try OpenBurnBarDaemonSocketClient.scheduleControllerFollowupCalendar(
+            followupID: "followup-cal-1",
+            title: "Check rollout",
+            start: now.addingTimeInterval(7_200),
+            durationMinutes: 30,
+            at: server.socketURL
+        )
+
+        XCTAssertEqual(snapshot?.questions.count, 4)
+        XCTAssertEqual(server.requestedMethods, [BurnBarRPCMethod.followupCalendar.rawValue])
+    }
+
+    func testCompleteControllerFollowup_fallsBackToSnapshotRPC_whenEmbedAbsent() throws {
+        let now = Date(timeIntervalSince1970: 1_710_003_700)
+        let payload = makePayload(questionCount: 5, now: now)
+        let server = try makeFollowupMutationServer(
+            payload: payload,
+            followup: makeFollowup(id: "followup-done-2", status: .done, now: now),
+            embedSnapshot: false
+        )
+        defer { server.stop() }
+
+        let snapshot = try OpenBurnBarDaemonSocketClient.completeControllerFollowup(
+            followupID: "followup-done-2",
+            at: server.socketURL
+        )
+
+        XCTAssertEqual(snapshot?.questions.count, 5)
+        XCTAssertEqual(
+            server.requestedMethods,
+            [
+                BurnBarRPCMethod.followupDone.rawValue,
+                BurnBarRPCMethod.controllerRuntimeSnapshot.rawValue
+            ],
+            "Without an embedded snapshot the client must fetch one explicitly"
+        )
     }
 }
 

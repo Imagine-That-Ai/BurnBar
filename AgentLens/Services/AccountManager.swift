@@ -973,6 +973,18 @@ final class AccountManager {
         isRecoverableDefaultFirebaseAuthKeychainDeleteStatus(status)
     }
 
+    /// Drives the shared auth keychain-recovery wrapper with an injected
+    /// operation. The real keychain clear runs — that IS the behavior under
+    /// test; with no Google sign-in access group it only touches the app's
+    /// default groupless Firebase rows, the same strays production clears
+    /// on any keychain failure.
+    func performFirebaseAuthOperationWithKeychainRecoveryForTesting(
+        label: String,
+        operation: () async throws -> Void
+    ) async throws {
+        try await performFirebaseAuthOperationWithKeychainRecovery(label: label, operation: operation)
+    }
+
     static func userFacingAuthErrorMessageForTesting(_ error: Error) -> String {
         userFacingAuthErrorMessage(error)
     }

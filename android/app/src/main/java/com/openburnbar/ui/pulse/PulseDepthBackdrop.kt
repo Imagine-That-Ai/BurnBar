@@ -28,12 +28,34 @@ import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 import kotlin.math.PI
 import kotlin.math.sin
 
-private const val DRIFT_CYCLE_MILLIS = 22_000
+internal const val DRIFT_CYCLE_MILLIS = 22_000
 
 // The drift amplitudes top out at 28px over a 22s cycle (max velocity
 // ~8px/s), so a 30Hz phase grid moves each halo at most ~0.27px per step —
 // imperceptible, while cutting halo redraws ~75% on 120Hz displays.
-private const val QUANTIZED_PHASE_STEPS = 660 // 22s × 30Hz
+internal const val QUANTIZED_PHASE_STEPS = 660 // 22s × 30Hz
+
+/** Reduce Motion renders one static frame at this rest step (the cycle-start phase). */
+internal const val PULSE_DEPTH_REST_STEP = 0
+
+/**
+ * Render gate: the depth halos draw only on the AURORA backdrop. Under the
+ * custom dark backdrops (`rememberWebsiteBackground()` true) the layer skips
+ * itself entirely — see the [PulseDepthBackdrop] doc for the visual rationale.
+ */
+internal fun pulseDepthRendersHalos(useWebsiteBackground: Boolean): Boolean = !useWebsiteBackground
+
+/** The 30Hz grid cell for a raw animated phase in `[0, 1]` (Float.toInt truncation). */
+internal fun pulseDepthQuantizedStep(phase: Float): Int = (phase * QUANTIZED_PHASE_STEPS).toInt()
+
+/** The drift phase the draw block reconstructs from a quantized step. */
+internal fun pulseDepthPhaseForStep(step: Int): Float = step / QUANTIZED_PHASE_STEPS.toFloat()
+
+/** Sinusoidal drift offset for one halo axis: `sin(phase · 2π · freq) · amount`. */
+internal fun pulseDepthDrift(phase: Float, amount: Float, freq: Float): Float {
+    val theta = phase * (PI * 2 * freq).toFloat()
+    return sin(theta) * amount
+}
 
 /**
  * Secondary aurora layer that sits between the Pulse `AuroraBackdrop` and the
@@ -56,14 +78,14 @@ private const val QUANTIZED_PHASE_STEPS = 660 // 22s × 30Hz
 @Composable
 fun PulseDepthBackdrop(modifier: Modifier = Modifier) {
     val useWebsiteBackground by rememberWebsiteBackground()
-    if (useWebsiteBackground) return
+    if (!pulseDepthRendersHalos(useWebsiteBackground)) return
 
     val isDark = isSystemInDarkTheme()
     val reduceMotion = LocalAuroraReduceMotion.current
     val phaseStep: State<Int> =
         if (reduceMotion) {
             // Reduce-motion renders one static frame at the rest phase.
-            remember { mutableIntStateOf(0) }
+            remember { mutableIntStateOf(PULSE_DEPTH_REST_STEP) }
         } else {
             val transition = rememberInfiniteTransition(label = "pulse-depth")
             val phase = transition.animateFloat(
@@ -81,7 +103,7 @@ fun PulseDepthBackdrop(modifier: Modifier = Modifier) {
             // display refresh for sub-pixel drift. (Rounding inside the draw
             // lambda would NOT reduce cadence — the lambda re-executes on
             // every snapshot write of the raw animated float.)
-            remember { derivedStateOf { (phase.value * QUANTIZED_PHASE_STEPS).toInt() } }
+            remember { derivedStateOf { pulseDepthQuantizedStep(phase.value) } }
         }
 
     Canvas(modifier = modifier.fillMaxSize()) {
@@ -91,12 +113,9 @@ fun PulseDepthBackdrop(modifier: Modifier = Modifier) {
         // re-executes when the quantized phase advances, and the five
         // gradient brushes below are rebuilt only on those 30Hz steps
         // (or on size change), not per display frame.
-        val phase = phaseStep.value / QUANTIZED_PHASE_STEPS.toFloat()
+        val phase = pulseDepthPhaseForStep(phaseStep.value)
 
-        fun drift(amount: Float, freq: Float): Float {
-            val theta = phase * (PI * 2 * freq).toFloat()
-            return sin(theta) * amount
-        }
+        fun drift(amount: Float, freq: Float): Float = pulseDepthDrift(phase, amount, freq)
 
         fun halo(color: Color, centerX: Float, centerY: Float, radius: Float, intensity: Float) {
             drawCircle(
