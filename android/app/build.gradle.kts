@@ -474,13 +474,16 @@ tasks.named("preBuild") {
 }
 
 // syncGeneratedSources writes two files inside src/main/java, which the
-// ktlint/detekt source scans also read. Without an explicit ordering, Gradle
-// 8 fails the build with an implicit-dependency validation error whenever
-// scheduling happens to start a scan before the sync in the same invocation
-// (surfaced when :macrobenchmark joined the task graph).
+// ktlint/detekt source scans and the dependency-analysis plugin's source
+// exploders also read. Without an explicit ordering, Gradle 8 fails the
+// build with an implicit-dependency validation error whenever scheduling
+// happens to start a scan before the sync in the same invocation (surfaced
+// when :macrobenchmark joined the task graph; again via
+// :app:explodeCodeSourceBenchmarkRelease when projectHealth first ran).
 tasks.matching {
     it.name.startsWith("runKtlintCheckOver") ||
         it.name.startsWith("runKtlintFormatOver") ||
+        it.name.startsWith("explode") ||
         it is io.gitlab.arturbosch.detekt.Detekt
 }.configureEach {
     mustRunAfter("syncGeneratedSources")
