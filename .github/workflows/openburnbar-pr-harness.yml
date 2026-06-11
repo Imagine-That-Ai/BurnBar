@@ -301,6 +301,39 @@ jobs:
           XCODEBUILD_TEST_ITERATIONS: "3"
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
+      # Package coverage steps run directly after the coverage-enabled test
+      # run and before the WS6 re-run, which rebuilds without instrumentation
+      # and would orphan the profdata from its binaries.
+      - name: Extract package coverage lines
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          ./scripts/extract-package-coverage-lines.sh > "$GITHUB_WORKSPACE/openburnbar-package-coverage-lines.json"
+
+      - name: Compute package diff coverage
+        if: github.event_name == 'pull_request'
+        # Gates OpenBurnBarCore/OpenBurnBarDaemon package sources with the
+        # per-line coverage this lane's own `swift test --enable-code-coverage`
+        # run measured. App-target sources are gated by the App XCTest lane
+        # (scope=app); see scripts/diff-coverage.sh for the partition rules.
+        env:
+          DIFF_COVERAGE_SCOPE: packages
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-package-diff-coverage.json
+        run: |
+          set -euo pipefail
+          ./scripts/diff-coverage-self-test.sh
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          ./scripts/diff-coverage.sh origin/main '' '' "$GITHUB_WORKSPACE/openburnbar-package-coverage-lines.json"
+
+      - name: Upload package coverage artifacts
+        if: always() && github.event_name == 'pull_request' && !env.ACT
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-coverage-data
+          path: |
+            openburnbar-package-coverage-lines.json
+            openburnbar-package-diff-coverage.json
+
       - name: Computer Use safety invariant harness (WS6 gate)
         run: OPENBURNBAR_CORE_SWIFT_FILTER='ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests' OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
 
@@ -397,10 +430,20 @@ jobs:
 
       - name: Compute diff coverage
         if: github.event_name == 'pull_request' && env.INTERNAL_RUN == 'true'
+        # All-surface gate (Swift app scope + Kotlin + TypeScript). Surfaces
+        # with no changed files are skipped inside diff-coverage-all.sh, so
+        # Swift-only PRs pay no Android/TS cost. Swift package sources
+        # (OpenBurnBarCore/OpenBurnBarDaemon) are gated with real package
+        # coverage by the Swift Core job's "Compute package diff coverage"
+        # step — this lane judges only what its xcresult actually measured.
+        env:
+          DIFF_COVERAGE_SCOPE: app
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-diff-coverage.json
         run: |
           set -euo pipefail
+          ./scripts/diff-coverage-self-test.sh
           test -f "$GITHUB_WORKSPACE/openburnbar-coverage.json"
-          ./scripts/diff-coverage.sh origin/main "$GITHUB_WORKSPACE/openburnbar-coverage.json"
+          ./scripts/diff-coverage-all.sh origin/main
 
       - name: Post coverage summary
         if: always()
