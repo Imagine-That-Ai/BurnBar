@@ -20,10 +20,9 @@ class AppCheckAttestationBindingTest {
     private val appId = "1:246956661961:android:abc123"
     private val boundAtMillis = 1_765_000_000_000L
 
-    private fun expectedDigest(): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest("openburnbar.appcheck.v1|$appId|$boundAtMillis".toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+    private fun expectedDigest(): String = MessageDigest.getInstance("SHA-256")
+        .digest("openburnbar.appcheck.v1|$appId|$boundAtMillis".toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
 
     @Test
     fun `digest is the canonical sha256 hex over the swift payload shape`() {

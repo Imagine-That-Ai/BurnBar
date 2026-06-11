@@ -39,8 +39,7 @@ import org.junit.Test
  * tamper, forged sender).
  */
 class ControlFrameSealSessionTest {
-    private fun x963(keyPair: KeyPair): ByteArray =
-        HermesRelayCryptoEc.encodeUncompressedPublicKey(keyPair.public as ECPublicKey)
+    private fun x963(keyPair: KeyPair): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(keyPair.public as ECPublicKey)
 
     private fun base64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
 
@@ -67,40 +66,38 @@ class ControlFrameSealSessionTest {
         sender: KeyPair,
         peerNodeId: String = "android-phone-controller",
         connectionId: String = "conn-1",
-    ): ControlFrameSealSession.Established =
-        ControlFrameSealSession.establish(
-            uid = "uid-1",
-            connectionId = connectionId,
-            peerNodeId = peerNodeId,
-            senderDeviceId = "android-device-1",
-            senderPeerNodeId = "android-device-1",
-            senderKeyId = "relay-v3-abcdef0123456789abcdef01",
-            senderCounter = 7L,
-            recipientPublicKeyBase64 = base64(x963(recipient)),
-            senderPrivateKey = sender.private,
-        )
+    ): ControlFrameSealSession.Established = ControlFrameSealSession.establish(
+        uid = "uid-1",
+        connectionId = connectionId,
+        peerNodeId = peerNodeId,
+        senderDeviceId = "android-device-1",
+        senderPeerNodeId = "android-device-1",
+        senderKeyId = "relay-v3-abcdef0123456789abcdef01",
+        senderCounter = 7L,
+        recipientPublicKeyBase64 = base64(x963(recipient)),
+        senderPrivateKey = sender.private,
+    )
 
-    private fun innerPayload() =
-        HermesRealtimeRelayControlPayload(
-            streamClass = MediaStreamClass.CONTROL_INPUT.raw,
-            sessionId = "session-1",
-            inputIntent =
-                HermesRealtimeRelayInputIntent(
-                    kind = HermesRealtimeRelayInputIntentKind.TAP,
-                    displayId = "display-1",
-                    normalizedX = 0.25,
-                    normalizedY = 0.75,
-                    clientIntentId = "intent-1",
-                    authority =
-                        HermesRealtimeRelayAuthorityEnvelope(
-                            peerNodeId = "android-phone-controller",
-                            counter = 42,
-                            timestamp = 721_692_800.123,
-                            intentHashBlake3 = "f".repeat(64),
-                            signatureEd25519 = "signature",
-                        ),
-                ),
-        )
+    private fun innerPayload() = HermesRealtimeRelayControlPayload(
+        streamClass = MediaStreamClass.CONTROL_INPUT.raw,
+        sessionId = "session-1",
+        inputIntent =
+        HermesRealtimeRelayInputIntent(
+            kind = HermesRealtimeRelayInputIntentKind.TAP,
+            displayId = "display-1",
+            normalizedX = 0.25,
+            normalizedY = 0.75,
+            clientIntentId = "intent-1",
+            authority =
+            HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId = "android-phone-controller",
+                counter = 42,
+                timestamp = 721_692_800.123,
+                intentHashBlake3 = "f".repeat(64),
+                signatureEd25519 = "signature",
+            ),
+        ),
+    )
 
     @Test
     fun `establish and open derive the same seal key on both sides`() {
