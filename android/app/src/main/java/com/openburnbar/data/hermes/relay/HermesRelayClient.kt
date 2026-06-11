@@ -346,7 +346,7 @@ class HermesRelayClient(
     }
 
     private fun relaySenderKeyId(publicKeyX963: ByteArray): String =
-        "relay-v3-" + CloudVaultCrypto.sha256Hex(publicKeyX963).take(24)
+        RelaySealSenderIdentity.relaySenderKeyId(publicKeyX963)
 
     private data class DecryptedChunk(val kind: String, val sequence: Int, val text: String)
 

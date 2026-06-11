@@ -163,6 +163,9 @@ object MediaFrameAead {
 object MediaFrameAeadNegotiation {
     const val CAPABILITY = "media_frame_aead_v1"
 
+    /** Same default-off ramp key the iOS client reads (`MediaFrameAeadNegotiation.remoteConfigKey`). */
+    const val REMOTE_CONFIG_KEY = "computer_use_media_frame_aead_enabled"
+
     /** Seal only when BOTH peers support it. */
     fun resolveSealingEnabled(localSupports: Boolean, remoteSupports: Boolean): Boolean =
         localSupports && remoteSupports

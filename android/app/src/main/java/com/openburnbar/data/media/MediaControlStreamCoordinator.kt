@@ -73,6 +73,19 @@ class MediaControlStreamCoordinator(
     private val displayNameProvider: () -> String = { android.os.Build.MODEL.orEmpty().ifBlank { "Android" } },
     private val controlAuthorityPeerNodeIdProvider: () -> String? = { null },
     private val presenceHeartbeatIntervalMillis: Long = 60_000L,
+    /**
+     * F7 — per-mirror media-seal establishment hook, invoked by
+     * [requestMirror] with the freshly minted viewer id and the Mac's latest
+     * heartbeat capabilities. `null` (the default, and the unit-test
+     * configuration) keeps the legacy plaintext-at-app-layer lane:
+     * requests stay byte-identical and no seal key is installed. Production
+     * wires `MediaSealSessionEstablisher.establishIfNegotiated`, which is
+     * default-off behind `computer_use_media_frame_aead_enabled` AND the Mac
+     * advertising `media_frame_aead_v1`.
+     */
+    private val mediaSealSessionFactory: (
+        suspend (uid: String, connectionID: String, viewerId: String, macCapabilities: Set<String>) -> MediaSealSessionEstablisher.Session?
+    )? = null,
 ) {
     fun interface StreamDialer {
         suspend fun dial(uid: String, connectionID: String): IrohRelayStream
@@ -102,6 +115,15 @@ class MediaControlStreamCoordinator(
     private val mediaFrameV2Codec = MediaFrameV2Codec()
     private val frameChunkAssembler = MediaFrameChunkAssembler()
     private var pendingHeartbeatSentAtMillis: Long? = null
+
+    /**
+     * F7 — the negotiated per-mirror MediaFrameAead session key (the iOS
+     * coordinator's `mediaFrameSealKey` twin). Set by [requestMirror] from
+     * the seal establishment result (null when not negotiated). The inbound
+     * read loop drops any sealed (OBMFA1) frame that fails to open under it.
+     */
+    @Volatile
+    var mediaFrameSealKey: ByteArray? = null
 
     @Volatile
     var mirrorFrameHandler: (suspend (MediaFrame) -> Unit)? = null
@@ -269,6 +291,13 @@ class MediaControlStreamCoordinator(
         val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
         val requestID = UUID.randomUUID().toString()
         val viewerID = UUID.randomUUID().toString()
+        // F7: wrap a per-mirror frame key when the default-off RC flag is on
+        // and the Mac advertised media_frame_aead_v1; the read loop drops
+        // sealed frames that fail to open under this key. Mirrors the iOS
+        // MercuryLiveSheet / InlineAgentMirrorController mirror-request sites.
+        val mediaSealSession =
+            mediaSealSessionFactory?.invoke(uid, connectionID, viewerID, _lastPeerCapabilities.value)
+        mediaFrameSealKey = mediaSealSession?.key
         val request = HermesRealtimeRelayMirrorRequest(
             requestId = requestID,
             requestedAt = Instant.now().toString(),
@@ -282,6 +311,7 @@ class MediaControlStreamCoordinator(
             controlAuthorityPeerNodeId = controlAuthorityPeerNodeIdProvider(),
             remoteUnlockSession = remoteUnlockSession,
             agentTerminal = agentTerminal,
+            mediaSealKey = mediaSealSession?.envelope,
         )
         send(
             HermesRealtimeRelayFrame(
