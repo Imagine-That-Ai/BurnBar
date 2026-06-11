@@ -2,6 +2,7 @@ name: OpenBurnBar Nightly E2E
 
 permissions:
   contents: read
+  issues: write
 
 on:
   schedule:
@@ -138,3 +139,42 @@ jobs:
         run: |
           echo "::notice::Skipping commercial launch gate because APP_STORE_ASC_* secrets are not configured in GitHub Actions."
           echo "Commercial launch readiness must be proven from an operator environment with App Store Connect credentials."
+
+  open-failure-issue:
+    runs-on: ubuntu-latest
+    needs: [prod-health-synthetic, nightly-tests, dast-website, dast-functions, commercial-launch-gate]
+    if: always() && contains(needs.*.result, 'failure')
+    steps:
+      - name: Open nightly failure issue
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const title = `Nightly E2E launch gate failed (${context.runId})`;
+            const results = ${{ toJSON(needs) }};
+            const body = [
+              'The scheduled OpenBurnBar E2E/DAST/health launch gate failed.',
+              '',
+              `Workflow: ${context.workflow}`,
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Job results:',
+              '```json',
+              JSON.stringify(results, null, 2),
+              '```'
+            ].join('\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'P0 - Critical,area: infra',
+              per_page: 20,
+            });
+            if (!existing.data.some((issue) => issue.title.startsWith('Nightly E2E launch gate failed'))) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['P0 - Critical', 'area: infra'],
+              });
+            }

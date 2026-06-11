@@ -47,6 +47,14 @@ public enum VirtualHIDBridgeCapabilityGate {
         }
     }
 
+    public struct CredentialRequest: Sendable, Equatable {
+        public var capabilityToken: CapabilityToken?
+
+        public init(capabilityToken: CapabilityToken? = nil) {
+            self.capabilityToken = capabilityToken
+        }
+    }
+
     public static func validate(
         _ request: Request,
         verifier: CapabilityTokenLeafVerifier,
@@ -70,6 +78,24 @@ public enum VirtualHIDBridgeCapabilityGate {
             token: request.capabilityToken,
             expectedDomain: .remoteUnlock,
             actionKind: actionKind
+        )
+        switch verifier.verify(request: tokenRequest, now: now) {
+        case .success:
+            return .success(())
+        case .failure(let failure):
+            return .failure(mapTokenFailure(failure))
+        }
+    }
+
+    public static func validateCredentialType(
+        _ request: CredentialRequest,
+        verifier: CapabilityTokenLeafVerifier,
+        now: Date = Date()
+    ) -> Result<Void, RejectionReason> {
+        let tokenRequest = CapabilityTokenLeafVerifier.Request(
+            token: request.capabilityToken,
+            expectedDomain: .remoteUnlock,
+            actionKind: "type_credential"
         )
         switch verifier.verify(request: tokenRequest, now: now) {
         case .success:

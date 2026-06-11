@@ -115,6 +115,20 @@ function buildConfig(): EnvConfig {
       60,
     ),
     rollupBatchSize: toNum(process.env.ROLLUP_BATCH_SIZE ?? configString(openburnbar, "rollup_batch_size"), 50),
+    rollupRepairPageSize: toNum(
+      process.env.ROLLUP_REPAIR_PAGE_SIZE ?? configString(openburnbar, "rollup_repair_page_size"),
+      500,
+    ),
+    rollupMaxConsecutiveFullRebuildFailures: toNum(
+      process.env.ROLLUP_MAX_CONSECUTIVE_FULL_REBUILD_FAILURES ??
+        configString(openburnbar, "rollup_max_consecutive_full_rebuild_failures"),
+      3,
+    ),
+    rollupFullRebuildCircuitBreakerMinutes: toNum(
+      process.env.ROLLUP_FULL_REBUILD_CIRCUIT_BREAKER_MINUTES ??
+        configString(openburnbar, "rollup_full_rebuild_circuit_breaker_minutes"),
+      60,
+    ),
     quotaRefreshBatchSize: toNum(
       process.env.QUOTA_REFRESH_BATCH_SIZE ?? configString(openburnbar, "quota_refresh_batch_size"),
       20,

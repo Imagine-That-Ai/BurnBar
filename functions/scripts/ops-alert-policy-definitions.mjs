@@ -126,6 +126,125 @@ export const OPS_SLO_ALERT_POLICIES = [
       },
     ],
   },
+  {
+    displayName: "OpenBurnBar uptime burnbar.ai",
+    documentation: {
+      content:
+        "Public marketing site uptime check failed. Smoke https://burnbar.ai/ and inspect Firebase Hosting release history.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: ["monitoring.googleapis.com/uptime_check/check_passed"],
+    conditions: [
+      {
+        displayName: "burnbar.ai uptime check failed",
+        conditionThreshold: {
+          filter:
+            'resource.type="uptime_url" AND resource.labels.host="burnbar.ai" AND metric.type="monitoring.googleapis.com/uptime_check/check_passed"',
+          aggregations: [
+            {
+              alignmentPeriod: "60s",
+              perSeriesAligner: "ALIGN_FRACTION_TRUE",
+              crossSeriesReducer: "REDUCE_MEAN",
+            },
+          ],
+          comparison: "COMPARISON_LT",
+          thresholdValue: 1,
+          duration: "300s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
+  {
+    displayName: "OpenBurnBar uptime app.burnbar.ai",
+    documentation: {
+      content:
+        "Web console uptime check failed. Smoke https://app.burnbar.ai/ and inspect Firebase Hosting console target.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: ["monitoring.googleapis.com/uptime_check/check_passed"],
+    conditions: [
+      {
+        displayName: "app.burnbar.ai uptime check failed",
+        conditionThreshold: {
+          filter:
+            'resource.type="uptime_url" AND resource.labels.host="app.burnbar.ai" AND metric.type="monitoring.googleapis.com/uptime_check/check_passed"',
+          aggregations: [
+            {
+              alignmentPeriod: "60s",
+              perSeriesAligner: "ALIGN_FRACTION_TRUE",
+              crossSeriesReducer: "REDUCE_MEAN",
+            },
+          ],
+          comparison: "COMPARISON_LT",
+          thresholdValue: 1,
+          duration: "300s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
+  {
+    displayName: "OpenBurnBar uptime hosted MCP",
+    documentation: {
+      content:
+        "Hosted MCP branded domain uptime check failed. Smoke https://mcp.burnbar.ai/readyz and see docs/REMOTE_MCP_RUNBOOK.md.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: ["monitoring.googleapis.com/uptime_check/check_passed"],
+    conditions: [
+      {
+        displayName: "mcp.burnbar.ai uptime check failed",
+        conditionThreshold: {
+          filter:
+            'resource.type="uptime_url" AND resource.labels.host="mcp.burnbar.ai" AND metric.type="monitoring.googleapis.com/uptime_check/check_passed"',
+          aggregations: [
+            {
+              alignmentPeriod: "60s",
+              perSeriesAligner: "ALIGN_FRACTION_TRUE",
+              crossSeriesReducer: "REDUCE_MEAN",
+            },
+          ],
+          comparison: "COMPARISON_LT",
+          thresholdValue: 1,
+          duration: "300s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
+  {
+    displayName: "OpenBurnBar uptime iroh hosted relay",
+    documentation: {
+      content: "Iroh hosted relay TCP uptime check failed. Verify the Iroh Services relay and Remote Config URL.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: ["monitoring.googleapis.com/uptime_check/check_passed"],
+    conditions: [
+      {
+        displayName: "iroh hosted relay TCP check failed",
+        conditionThreshold: {
+          filter:
+            'resource.type="uptime_url" AND resource.labels.host="use1-1.relay.alberto8793.burnbar.iroh.link" AND metric.type="monitoring.googleapis.com/uptime_check/check_passed"',
+          aggregations: [
+            {
+              alignmentPeriod: "60s",
+              perSeriesAligner: "ALIGN_FRACTION_TRUE",
+              crossSeriesReducer: "REDUCE_MEAN",
+            },
+          ],
+          comparison: "COMPARISON_LT",
+          thresholdValue: 1,
+          duration: "300s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
 ];
 
 /** All policies verified by commercial-launch-gate checkOpsAlerts. */

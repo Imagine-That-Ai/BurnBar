@@ -1,5 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import AppKit
+import Darwin
 import Foundation
 import OSLog
 import OpenBurnBarComputerUseCore
@@ -49,44 +50,40 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
 
     nonisolated private static func installOrRepairSynchronously(fileManager: FileManager) throws {
         let bridgeSource = try resolveHelperBinary(named: "OpenBurnBarVirtualHIDBridge", fileManager: fileManager)
-        let executionSource = try resolveHelperBinary(
-            named: "OpenBurnBarPrivilegedInputExecution",
-            fileManager: fileManager
-        )
+        let privilegedExecutionSource = try resolvePrivilegedInputExecutionSource(fileManager: fileManager)
         let stagingDirectory = URL(fileURLWithPath: "/tmp/openburnbar-virtual-hid-bridge-install-\(UUID().uuidString)", isDirectory: true)
         defer { try? fileManager.removeItem(at: stagingDirectory) }
 
         try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
         let stagingBridge = stagingDirectory.appendingPathComponent("openburnbar-virtual-hid-bridge", isDirectory: false)
         let stagingExecution = stagingDirectory.appendingPathComponent(
-            "openburnbar-privileged-input-execution",
-            isDirectory: false
+            privilegedExecutionSource.stagingName,
+            isDirectory: privilegedExecutionSource.isDirectory
         )
         let stagingBridgePlist = stagingDirectory.appendingPathComponent("\(Self.launchDaemonLabel).plist", isDirectory: false)
-        let stagingExecutionPlist = stagingDirectory.appendingPathComponent("\(executionLaunchDaemonLabel).plist", isDirectory: false)
 
         try fileManager.copyItem(at: bridgeSource, to: stagingBridge)
-        try fileManager.copyItem(at: executionSource, to: stagingExecution)
+        try fileManager.copyItem(at: privilegedExecutionSource.source, to: stagingExecution)
         try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stagingBridge.path)
-        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stagingExecution.path)
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: privilegedExecutionSource.executableURL(in: stagingExecution).path
+        )
         try bridgeLaunchDaemonPlistData().write(to: stagingBridgePlist, options: .atomic)
-        try executionLaunchDaemonPlistData().write(to: stagingExecutionPlist, options: .atomic)
         try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: stagingBridgePlist.path)
-        try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: stagingExecutionPlist.path)
 
         let adminScript = """
         set -e
         mkdir -p '\(installDirectory)'
-        cp '\(stagingExecution.path)' '\(installedExecutionPath)'
-        chown root:wheel '\(installedExecutionPath)'
-        chmod 755 '\(installedExecutionPath)'
-        cp '\(stagingExecutionPlist.path)' '\(executionLaunchDaemonPlistPath)'
-        chown root:wheel '\(executionLaunchDaemonPlistPath)'
-        chmod 644 '\(executionLaunchDaemonPlistPath)'
+        launchctl bootout system/\(executionLaunchLabel) >/dev/null 2>&1 || true
         launchctl bootout system '\(executionLaunchDaemonPlistPath)' >/dev/null 2>&1 || true
-        launchctl bootstrap system '\(executionLaunchDaemonPlistPath)'
-        launchctl enable system/\(executionLaunchDaemonLabel)
-        launchctl kickstart -k system/\(executionLaunchDaemonLabel)
+        rm -f '\(executionLaunchDaemonPlistPath)'
+        rm -rf '\(RemoteUnlockSetupProbe.legacyPrivilegedInputExecutionInstallPath)'
+        rm -rf '\(RemoteUnlockSetupProbe.privilegedInputExecutionBundleInstallPath)'
+        cp -R '\(stagingExecution.path)' '\(privilegedExecutionSource.installedContainerPath)'
+        chown -R root:wheel '\(privilegedExecutionSource.installedContainerPath)'
+        chmod -R go-w '\(privilegedExecutionSource.installedContainerPath)'
+        chmod 755 '\(privilegedExecutionSource.installedExecutablePath)'
 
         cp '\(stagingBridge.path)' '\(installedBinaryPath)'
         chown root:wheel '\(installedBinaryPath)'
@@ -101,6 +98,10 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         launchctl kickstart -k system/\(launchDaemonLabel)
         """
         try runAdministratorScript(adminScript)
+        try installExecutionLaunchAgent(
+            executablePath: privilegedExecutionSource.installedExecutablePath,
+            fileManager: fileManager
+        )
         try awaitHealthy()
     }
 
@@ -119,17 +120,104 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         throw InstallerError.bridgeBinaryMissing(candidates.map(\.path))
     }
 
-    nonisolated private static func executionLaunchDaemonPlistData() throws -> Data {
+    nonisolated private static func resolvePrivilegedInputExecutionSource(
+        fileManager: FileManager
+    ) throws -> PrivilegedInputExecutionSource {
+        let appBundleURL = Bundle.main.bundleURL
+        let executableRelativePath = "Contents/MacOS/OpenBurnBarPrivilegedInputExecution"
+        let appCandidates = [
+            appBundleURL.appendingPathComponent(
+                "Contents/Helpers/OpenBurnBarPrivilegedInputExecution.app",
+                isDirectory: true
+            ),
+            appBundleURL.appendingPathComponent(
+                "Contents/MacOS/OpenBurnBarPrivilegedInputExecution.app",
+                isDirectory: true
+            ),
+            appBundleURL.deletingLastPathComponent().appendingPathComponent(
+                "OpenBurnBarPrivilegedInputExecution.app",
+                isDirectory: true
+            )
+        ]
+        if let app = appCandidates.first(where: {
+            isDirectory($0, fileManager: fileManager)
+                && fileManager.isExecutableFile(atPath: $0.appendingPathComponent(executableRelativePath).path)
+        }) {
+            return PrivilegedInputExecutionSource(
+                source: app,
+                stagingName: "OpenBurnBarPrivilegedInputExecution.app",
+                installedContainerPath: RemoteUnlockSetupProbe.privilegedInputExecutionBundleInstallPath,
+                installedExecutablePath: RemoteUnlockSetupProbe.privilegedInputExecutionInstallPath,
+                executableRelativePath: executableRelativePath,
+                isDirectory: true
+            )
+        }
+
+        let binary = try resolveHelperBinary(named: "OpenBurnBarPrivilegedInputExecution", fileManager: fileManager)
+        return PrivilegedInputExecutionSource(
+            source: binary,
+            stagingName: "openburnbar-privileged-input-execution",
+            installedContainerPath: RemoteUnlockSetupProbe.legacyPrivilegedInputExecutionInstallPath,
+            installedExecutablePath: RemoteUnlockSetupProbe.legacyPrivilegedInputExecutionInstallPath,
+            executableRelativePath: nil,
+            isDirectory: false
+        )
+    }
+
+    nonisolated private static func isDirectory(_ url: URL, fileManager: FileManager) -> Bool {
+        var isDirectory = ObjCBool(false)
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    nonisolated private static func installExecutionLaunchAgent(
+        executablePath: String,
+        fileManager: FileManager
+    ) throws {
+        let launchAgentsDirectory = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+        let logsDirectory = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Logs/OpenBurnBar", isDirectory: true)
+        try fileManager.createDirectory(at: launchAgentsDirectory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+
+        let plistURL = URL(fileURLWithPath: executionLaunchAgentPlistPath)
+        try executionLaunchAgentPlistData(executablePath: executablePath).write(to: plistURL, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: plistURL.path)
+
+        let domain = "gui/\(getuid())"
+        _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", "\(domain)/\(executionLaunchLabel)"])
+        _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", domain, plistURL.path])
+
+        let bootstrap = runProcess(executablePath: "/bin/launchctl", arguments: ["bootstrap", domain, plistURL.path])
+        guard bootstrap.status == 0 else {
+            throw InstallerError.administratorScriptFailed(bootstrap.combinedOutput)
+        }
+
+        let enable = runProcess(executablePath: "/bin/launchctl", arguments: ["enable", "\(domain)/\(executionLaunchLabel)"])
+        guard enable.status == 0 else {
+            throw InstallerError.administratorScriptFailed(enable.combinedOutput)
+        }
+
+        let kickstart = runProcess(executablePath: "/bin/launchctl", arguments: ["kickstart", "-k", "\(domain)/\(executionLaunchLabel)"])
+        guard kickstart.status == 0 else {
+            throw InstallerError.administratorScriptFailed(kickstart.combinedOutput)
+        }
+    }
+
+    nonisolated private static func executionLaunchAgentPlistData(executablePath: String) throws -> Data {
+        let logDirectory = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Logs/OpenBurnBar", isDirectory: true)
+            .path
         let plist: [String: Any] = [
-            "Label": executionLaunchDaemonLabel,
+            "Label": executionLaunchLabel,
             "MachServices": [
                 RemoteUnlockSetupProbe.privilegedInputExecutionMachService: true
             ],
-            "ProgramArguments": [installedExecutionPath],
+            "ProgramArguments": [executablePath],
             "RunAtLoad": true,
             "KeepAlive": true,
-            "StandardOutPath": "/var/log/openburnbar-privileged-input-execution.log",
-            "StandardErrorPath": "/var/log/openburnbar-privileged-input-execution.err.log",
+            "StandardOutPath": "\(logDirectory)/openburnbar-privileged-input-execution.log",
+            "StandardErrorPath": "\(logDirectory)/openburnbar-privileged-input-execution.err.log",
             "ProcessType": "Interactive"
         ]
         return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
@@ -210,6 +298,23 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
             launchctl.combinedOutput.localizedCaseInsensitiveContains("exec") {
             throw InstallerError.bridgeRejectedByPolicy(launchctl.combinedOutput)
         }
+
+        if FileManager.default.fileExists(atPath: RemoteUnlockSetupProbe.privilegedInputExecutionBundleInstallPath) {
+            let executionSpctl = runProcess(
+                executablePath: "/usr/sbin/spctl",
+                arguments: [
+                    "-a",
+                    "-vvv",
+                    "-t",
+                    "execute",
+                    RemoteUnlockSetupProbe.privilegedInputExecutionBundleInstallPath
+                ]
+            )
+            if executionSpctl.status != 0,
+               executionSpctl.combinedOutput.localizedCaseInsensitiveContains("rejected") {
+                throw InstallerError.bridgeRejectedByPolicy(executionSpctl.combinedOutput)
+            }
+        }
     }
 
     nonisolated private static func runProcess(
@@ -283,14 +388,33 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
     }
 
     nonisolated private static let launchDaemonLabel = "com.openburnbar.virtual-hid-bridge"
-    nonisolated private static let executionLaunchDaemonLabel =
+    nonisolated private static let executionLaunchLabel =
         RemoteUnlockSetupProbe.privilegedInputExecutionMachService
     nonisolated private static let installDirectory = "/Library/Application Support/OpenBurnBar/RemoteUnlock"
     nonisolated private static let installedBinaryPath = RemoteUnlockSetupProbe.virtualHIDBridgeInstallPath
     nonisolated private static let installedExecutionPath = RemoteUnlockSetupProbe.privilegedInputExecutionInstallPath
     nonisolated private static let launchDaemonPlistPath = "/Library/LaunchDaemons/\(launchDaemonLabel).plist"
     nonisolated private static let executionLaunchDaemonPlistPath =
-        "/Library/LaunchDaemons/\(executionLaunchDaemonLabel).plist"
+        "/Library/LaunchDaemons/\(executionLaunchLabel).plist"
+    nonisolated private static var executionLaunchAgentPlistPath: String {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/LaunchAgents/\(executionLaunchLabel).plist")
+            .path
+    }
+}
+
+private struct PrivilegedInputExecutionSource {
+    var source: URL
+    var stagingName: String
+    var installedContainerPath: String
+    var installedExecutablePath: String
+    var executableRelativePath: String?
+    var isDirectory: Bool
+
+    func executableURL(in container: URL) -> URL {
+        guard let executableRelativePath else { return container }
+        return container.appendingPathComponent(executableRelativePath, isDirectory: false)
+    }
 }
 
 private enum InstallerError: Error, Equatable {
@@ -302,7 +426,12 @@ private enum InstallerError: Error, Equatable {
 
 private enum RemoteUnlockVirtualHIDInputHealthProbe {
     static func health() throws -> Bool {
-        try RemoteUnlockVirtualHIDInputRawClient.send(operation: "health")
+        let request = PrivilegedInputDispatchRequest(operation: "health")
+        let envelope = PrivilegedInputDispatchEnvelope(request: request)
+        if (try? PrivilegedInputXPCClient(requestTimeout: .seconds(1)).perform(envelope).ok) == true {
+            return true
+        }
+        return try RemoteUnlockVirtualHIDInputRawClient.send(operation: "health")
     }
 }
 

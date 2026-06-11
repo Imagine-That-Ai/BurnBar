@@ -1382,6 +1382,12 @@ export interface RollupJobDoc {
 
   /** Error code from the most recent failed rollup run. */
   lastErrorCode?: string;
+
+  /** Consecutive failures on the raw-usage full rebuild repair path. */
+  consecutiveFullRebuildFailures?: number;
+
+  /** ISO 8601 time until which the full rebuild repair path is paused. */
+  fullRebuildCircuitOpenUntil?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1565,6 +1571,15 @@ export interface EnvConfig {
 
   /** Max batch size for scheduled rollup rebuilds (default 50). */
   rollupBatchSize: number;
+
+  /** Page size for raw-usage counter repair rebuilds (default 500). */
+  rollupRepairPageSize: number;
+
+  /** Consecutive full-rebuild failures before pausing repair attempts (default 3). */
+  rollupMaxConsecutiveFullRebuildFailures: number;
+
+  /** Minutes to pause a user's full-rebuild repair after the breaker opens (default 60). */
+  rollupFullRebuildCircuitBreakerMinutes: number;
 
   /** Max batch size for scheduled quota refresh (default 20). */
   quotaRefreshBatchSize: number;
