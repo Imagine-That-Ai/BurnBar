@@ -22,10 +22,7 @@ class PhoneControlSenderAttestationTest {
     private val privateSeed = ByteArray(32) { index -> (index + 1).toByte() }
     private val digest = "ab".repeat(32)
 
-    private fun sender(
-        frames: MutableList<HermesRealtimeRelayFrame>,
-        attestationDigestProvider: suspend () -> String?,
-    ) = PhoneControlSender(
+    private fun sender(frames: MutableList<HermesRealtimeRelayFrame>, attestationDigestProvider: suspend () -> String?) = PhoneControlSender(
         uid = "uid-1",
         connectionId = "conn-1",
         peerNodeId = "android-phone-1",

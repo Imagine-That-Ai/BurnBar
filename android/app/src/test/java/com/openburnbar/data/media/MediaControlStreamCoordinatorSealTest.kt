@@ -37,25 +37,23 @@ private const val SEAL_FRAME_INDEX = 3
 class MediaControlStreamCoordinatorSealTest {
     private val sessionKey = ByteArray(32) { index -> (index + 11).toByte() }
 
-    private fun sourceFrame() =
-        MediaFrame(
-            kind = MediaFrame.Kind.VIDEO_NAL,
-            flags = MediaFrame.Flags.KEYFRAME,
-            gopID = SEAL_GOP.toUInt(),
-            frameIndex = SEAL_FRAME_INDEX.toUInt(),
-            presentationTimestampMillis = 123uL,
-            payload = byteArrayOf(0x01, 0x02, 0x03),
-        )
+    private fun sourceFrame() = MediaFrame(
+        kind = MediaFrame.Kind.VIDEO_NAL,
+        flags = MediaFrame.Flags.KEYFRAME,
+        gopID = SEAL_GOP.toUInt(),
+        frameIndex = SEAL_FRAME_INDEX.toUInt(),
+        presentationTimestampMillis = 123uL,
+        payload = byteArrayOf(0x01, 0x02, 0x03),
+    )
 
-    private fun sealedEncodedFrame(): ByteArray =
-        MediaFrameAead.seal(
-            plaintext = MediaPacketCodec().encode(sourceFrame()),
-            key = sessionKey,
-            streamClass = MediaStreamClass.SCREEN_VIDEO.raw,
-            kind = MediaFrame.Kind.VIDEO_NAL.rawValue.toUByte(),
-            gopID = SEAL_GOP.toUInt(),
-            frameIndex = SEAL_FRAME_INDEX.toUInt(),
-        )
+    private fun sealedEncodedFrame(): ByteArray = MediaFrameAead.seal(
+        plaintext = MediaPacketCodec().encode(sourceFrame()),
+        key = sessionKey,
+        streamClass = MediaStreamClass.SCREEN_VIDEO.raw,
+        kind = MediaFrame.Kind.VIDEO_NAL.rawValue.toUByte(),
+        gopID = SEAL_GOP.toUInt(),
+        frameIndex = SEAL_FRAME_INDEX.toUInt(),
+    )
 
     private fun position(
         kind: Int = MediaFrame.Kind.VIDEO_NAL.rawValue.toInt(),
@@ -63,19 +61,16 @@ class MediaControlStreamCoordinatorSealTest {
         frameIndex: Long = SEAL_FRAME_INDEX.toLong(),
     ) = HermesRealtimeRelaySealedMediaFramePosition(kind = kind, gopId = gopId, frameIndex = frameIndex)
 
-    private fun streamFrame(
-        encoded: ByteArray,
-        position: HermesRealtimeRelaySealedMediaFramePosition?,
-    ) = HermesRealtimeRelayFrame(
+    private fun streamFrame(encoded: ByteArray, position: HermesRealtimeRelaySealedMediaFramePosition?) = HermesRealtimeRelayFrame(
         type = HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME,
         uid = "uid-1",
         connectionId = "conn-1",
         media =
-            HermesRealtimeRelayMediaPayload(
-                streamClass = MediaStreamClass.SCREEN_VIDEO.raw,
-                encodedFrameBase64 = Base64.getEncoder().encodeToString(encoded),
-                sealedFramePosition = position,
-            ),
+        HermesRealtimeRelayMediaPayload(
+            streamClass = MediaStreamClass.SCREEN_VIDEO.raw,
+            encodedFrameBase64 = Base64.getEncoder().encodeToString(encoded),
+            sealedFramePosition = position,
+        ),
     )
 
     // MARK: live coordinator read loop
@@ -220,32 +215,29 @@ class MediaControlStreamCoordinatorSealTest {
 
     // MARK: parallel dispatcher
 
-    private fun dispatcher(
-        sealKey: ByteArray?,
-        onFrame: (MediaFrame) -> Unit,
-    ) = MediaControlFrameDispatcher(
+    private fun dispatcher(sealKey: ByteArray?, onFrame: (MediaFrame) -> Unit) = MediaControlFrameDispatcher(
         handlers =
-            MediaControlFrameDispatcherHandlers(
-                receiverProvider = { null },
-                mirrorFrameHandler = { { frame -> onFrame(frame) } },
-                mirrorFrameV2Handler = { null },
-                focusContextHandler = { null },
-                mediaFrameSealKeyProvider = { sealKey },
-            ),
+        MediaControlFrameDispatcherHandlers(
+            receiverProvider = { null },
+            mirrorFrameHandler = { { frame -> onFrame(frame) } },
+            mirrorFrameV2Handler = { null },
+            focusContextHandler = { null },
+            mediaFrameSealKeyProvider = { sealKey },
+        ),
         callbacks =
-            MediaControlFrameDispatcherCallbacks(
-                onMirrorAck = {},
-                onCallAck = {},
-                onAgentGrantReceipt = {},
-                onControlDenied = {},
-                onClipboardResponse = {},
-                onRemoteUnlockState = {},
-                onRemoteUnlockResult = {},
-                onPeerHeartbeat = { _, _ -> },
-                onRoundTripMillis = {},
-                pendingHeartbeatSentAtMillis = { null },
-                clearPendingHeartbeat = {},
-            ),
+        MediaControlFrameDispatcherCallbacks(
+            onMirrorAck = {},
+            onCallAck = {},
+            onAgentGrantReceipt = {},
+            onControlDenied = {},
+            onClipboardResponse = {},
+            onRemoteUnlockState = {},
+            onRemoteUnlockResult = {},
+            onPeerHeartbeat = { _, _ -> },
+            onRoundTripMillis = {},
+            pendingHeartbeatSentAtMillis = { null },
+            clearPendingHeartbeat = {},
+        ),
     )
 
     private val noopAckSender = AndroidFileTransferService.AdvertiseSender { }
@@ -287,26 +279,26 @@ class MediaControlStreamCoordinatorSealTest {
         val dispatcher =
             MediaControlFrameDispatcher(
                 handlers =
-                    MediaControlFrameDispatcherHandlers(
-                        receiverProvider = { null },
-                        mirrorFrameHandler = { { frame -> delivered += frame } },
-                        mirrorFrameV2Handler = { null },
-                        focusContextHandler = { null },
-                    ),
+                MediaControlFrameDispatcherHandlers(
+                    receiverProvider = { null },
+                    mirrorFrameHandler = { { frame -> delivered += frame } },
+                    mirrorFrameV2Handler = { null },
+                    focusContextHandler = { null },
+                ),
                 callbacks =
-                    MediaControlFrameDispatcherCallbacks(
-                        onMirrorAck = {},
-                        onCallAck = {},
-                        onAgentGrantReceipt = {},
-                        onControlDenied = {},
-                        onClipboardResponse = {},
-                        onRemoteUnlockState = {},
-                        onRemoteUnlockResult = {},
-                        onPeerHeartbeat = { _, _ -> },
-                        onRoundTripMillis = {},
-                        pendingHeartbeatSentAtMillis = { null },
-                        clearPendingHeartbeat = {},
-                    ),
+                MediaControlFrameDispatcherCallbacks(
+                    onMirrorAck = {},
+                    onCallAck = {},
+                    onAgentGrantReceipt = {},
+                    onControlDenied = {},
+                    onClipboardResponse = {},
+                    onRemoteUnlockState = {},
+                    onRemoteUnlockResult = {},
+                    onPeerHeartbeat = { _, _ -> },
+                    onRoundTripMillis = {},
+                    pendingHeartbeatSentAtMillis = { null },
+                    clearPendingHeartbeat = {},
+                ),
             )
         dispatcher.dispatch(
             streamFrame(MediaPacketCodec().encode(sourceFrame()), position = null),

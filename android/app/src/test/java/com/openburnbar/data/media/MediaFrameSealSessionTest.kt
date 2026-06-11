@@ -26,8 +26,7 @@ import org.junit.Test
  * negatives (forged sender, viewer swap).
  */
 class MediaFrameSealSessionTest {
-    private fun x963(keyPair: KeyPair): ByteArray =
-        HermesRelayCryptoEc.encodeUncompressedPublicKey(keyPair.public as ECPublicKey)
+    private fun x963(keyPair: KeyPair): ByteArray = HermesRelayCryptoEc.encodeUncompressedPublicKey(keyPair.public as ECPublicKey)
 
     private fun base64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
 
@@ -47,11 +46,7 @@ class MediaFrameSealSessionTest {
         unmockkStatic(android.util.Base64::class)
     }
 
-    private fun establish(
-        recipient: KeyPair,
-        sender: KeyPair,
-        viewerId: String = "viewer-1",
-    ): MediaFrameSealSession.Established =
+    private fun establish(recipient: KeyPair, sender: KeyPair, viewerId: String = "viewer-1"): MediaFrameSealSession.Established =
         MediaFrameSealSession.establish(
             uid = "uid-1",
             connectionId = "conn-1",
