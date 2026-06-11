@@ -42,6 +42,35 @@ Verified surfaces: **OpenBurnBarCore `swift test` (1437 pass / 3 skip)** and
 | F10 | control-frame seal + capability gate (6 core tests); Kotlin mirror + frozen KATs; Mac advertises `control_seal_v1`; **ACTIVATED Swift end-to-end 2026-06-10 (`b5c78fee4`/`75d221ffa`/`15a51bcec`):** classify-time sealKeyV3 establishment (pinned-sender trust path), iOS seals every control payload into a streamClass-only shell at MercuryLiveSheet + InlineAgentMirror, Mac opens-or-drops fail-closed before dispatch — all behind default-off `computer_use_control_seal_enabled`; **iOS AgentWatch + remote-unlock senders sealed via a per-connection session registry; Android sender activated 2026-06-10** (Kotlin `ControlFrameSealSession` + establisher at the screen-share classify; inline mirror reuses the registry session) | live two-device validation with the RC flags ramped |
 | L2 | gateway PoP v2 query binding, accept-both transition, per-client downgrade protection (5 vitest); **2026-06-10:** adapter PoP v2 signer on all 10 call sites + pairing key registration (13 unittest); fork commit `005cf0d86` + provenance pin bumped (hash verified) | **L2 COMPLETE.** The F5 gate still fails closed on the unrelated C-4 hardening (by design) |
 
+### Adversarial self-review pass — 2026-06-10 (commit `1ac0693ec`)
+
+A principal-reviewer pass over the default-ON flip (`02c12cb85`) found and fixed
+three issues; all verified.
+
+- **[security] Android API 26–29 could emit a non-biometric `se-p256` key.**
+  `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` (the API that
+  excludes device-credential/PIN unlock) is API-30+ only; below it,
+  `setUserAuthenticationRequired(true)` accepts a PIN. Since `minSdk = 26` and
+  the Mac skips the explicit local-auth proof for `se-p256` (treating the
+  signature as biometric step-up evidence), a PIN-gated key on API 26–29 would
+  have satisfied a sensitive-action step-up without a biometric.
+  `PhoneControlSecureEnclaveKeystore.mintIdentity` now refuses below API 30
+  (and refuses to load any pre-existing alias), so those devices use the legacy
+  Ed25519 key — which *forces* the explicit proof. The invariant
+  "`se-p256` ⇒ biometric-strong-gated signature" is now globally true on both
+  platforms (iOS uses `.biometryCurrentSet`, which already excludes passcode).
+- **[availability] iOS `signingIdentity` threw on Secure-Enclave mint failure.**
+  A `.biometryCurrentSet` key cannot be created on a passcode-only device with
+  no enrolled biometric, so once the flag defaults ON, remote control would
+  brick there. It now falls back to the legacy key (mirroring Android's
+  `getOrNull()`); the security invariant holds because the legacy lane forces
+  the explicit proof. Regression test asserts `signingIdentity` never throws.
+- **[kill switch] the Android kill switch was inert.** Android never called
+  `RemoteConfig.fetchAndActivate()`, so `getValue().source` stayed permanently
+  `STATIC` and an operator-set `false` could never reach the device — the
+  default-ON flags were un-disable-able remotely. `RemoteConfigBootstrap` now
+  runs a one-time fetch (hourly minimum interval) at `Application.onCreate`.
+
 ### Progress — 2026-06-10 (wiring pass: F2 all-platform activation, L2 adapter)
 
 Nine commits (`bd8be99cb..23c1424cf`). All default-off / both-peers-gated; legacy
