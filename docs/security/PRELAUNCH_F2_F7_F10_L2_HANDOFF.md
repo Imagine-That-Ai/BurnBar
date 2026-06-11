@@ -17,9 +17,14 @@
 > Android controller envelope); iOS AgentWatch + remote-unlock senders
 > seal via a per-connection session registry; the hermes-agent provenance
 > pin is bumped to `005cf0d86` (PoP signer in the audited source) with
-> `blocking: true` retained. EVERYTHING in this handoff is now implemented
-> except: physical two-device validation with the RC flags ramped, the C-4
-> command-guard merge (the F5 gate's own driver, tracked on the fork's
+> `blocking: true` retained. EVERYTHING in this handoff is now implemented.
+> **Posture change (`02c12cb85`):** the three protection flags default ON on
+> both platforms — pre-launch there is no legacy fleet, so the strong
+> protocol IS the launch protocol; a fetched Remote Config value is the
+> operator kill switch and always wins. `attestation_required` stays OFF
+> (rejection rule; flip after launch telemetry). Still open: physical
+> two-device validation (now of the DEFAULT path), the C-4 command-guard
+> merge (the F5 gate's own driver, tracked on the fork's
 > `security/agent-sandbox-hardening`), and the optional full-key
 > `peerNodeId` migration.
 
