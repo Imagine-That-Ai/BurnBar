@@ -75,6 +75,10 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         let adminScript = """
         set -e
         mkdir -p '\(installDirectory)'
+        mkdir -p '\(PrivilegedInputXPCConstants.userSessionSocketDirectoryParent)'
+        chown root:wheel '\(PrivilegedInputXPCConstants.userSessionSocketDirectoryParent)'
+        chmod 755 '\(PrivilegedInputXPCConstants.userSessionSocketDirectoryParent)'
+        install -d -o \(getuid()) -m 0700 '\(PrivilegedInputXPCConstants.userSessionSocketDirectory())'
         launchctl bootout system/\(executionLaunchLabel) >/dev/null 2>&1 || true
         launchctl bootout system '\(executionLaunchDaemonPlistPath)' >/dev/null 2>&1 || true
         rm -f '\(executionLaunchDaemonPlistPath)'
@@ -98,7 +102,7 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         launchctl kickstart -k system/\(launchDaemonLabel)
         """
         try runAdministratorScript(adminScript)
-        try startExecutionUserHelper(
+        try installExecutionLaunchAgent(
             executablePath: privilegedExecutionSource.installedExecutablePath,
             fileManager: fileManager
         )
@@ -169,23 +173,27 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
-    nonisolated private static func startExecutionUserHelper(
+    /// Install the execution helper as a gui-domain LaunchAgent so launchd owns
+    /// its lifecycle: starts at login (`RunAtLoad`), restarts after a crash
+    /// (`KeepAlive`), and single-instances by label. A detached `Process` here
+    /// would silently die on logout/crash and never come back — fatal for a
+    /// feature whose whole purpose is recovering a Mac while its operator is
+    /// away from it.
+    nonisolated private static func installExecutionLaunchAgent(
         executablePath: String,
         fileManager: FileManager
     ) throws {
         let logsDirectory = URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent("Library/Logs/OpenBurnBar", isDirectory: true)
         try fileManager.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        let launchAgentsDirectory = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+        try fileManager.createDirectory(at: launchAgentsDirectory, withIntermediateDirectories: true)
 
         let plistURL = URL(fileURLWithPath: executionLaunchAgentPlistPath)
-        let domain = "gui/\(getuid())"
-        _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", "\(domain)/\(executionLaunchLabel)"])
-        _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", domain, plistURL.path])
-        try? fileManager.removeItem(at: plistURL)
-
-        _ = runProcess(executablePath: "/usr/bin/pkill", arguments: ["-f", executablePath])
-        try launchDetachedExecutionHelper(
+        let plistData = try executionLaunchAgentPlistData(
             executablePath: executablePath,
+            socketPath: PrivilegedInputXPCConstants.userSessionSocketPath(),
             stdoutPath: logsDirectory
                 .appendingPathComponent("openburnbar-privileged-input-execution.log", isDirectory: false)
                 .path,
@@ -193,35 +201,49 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
                 .appendingPathComponent("openburnbar-privileged-input-execution.err.log", isDirectory: false)
                 .path
         )
+
+        let domain = "gui/\(getuid())"
+        _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", "\(domain)/\(executionLaunchLabel)"])
+        _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", domain, plistURL.path])
+
+        try plistData.write(to: plistURL, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: plistURL.path)
+
+        let bootstrap = runProcess(
+            executablePath: "/bin/launchctl",
+            arguments: ["bootstrap", domain, plistURL.path]
+        )
+        guard bootstrap.status == 0 else {
+            throw InstallerError.administratorScriptFailed(bootstrap.combinedOutput)
+        }
+        _ = runProcess(executablePath: "/bin/launchctl", arguments: ["enable", "\(domain)/\(executionLaunchLabel)"])
+        _ = runProcess(
+            executablePath: "/bin/launchctl",
+            arguments: ["kickstart", "-k", "\(domain)/\(executionLaunchLabel)"]
+        )
     }
 
-    nonisolated private static func launchDetachedExecutionHelper(
+    nonisolated static func executionLaunchAgentPlistData(
         executablePath: String,
+        socketPath: String,
         stdoutPath: String,
         stderrPath: String
-    ) throws {
-        let fileManager = FileManager.default
-        if !fileManager.fileExists(atPath: stdoutPath) {
-            fileManager.createFile(atPath: stdoutPath, contents: nil)
-        }
-        if !fileManager.fileExists(atPath: stderrPath) {
-            fileManager.createFile(atPath: stderrPath, contents: nil)
-        }
-
-        let stdout = try FileHandle(forWritingTo: URL(fileURLWithPath: stdoutPath))
-        let stderr = try FileHandle(forWritingTo: URL(fileURLWithPath: stderrPath))
-        defer {
-            try? stdout.close()
-            try? stderr.close()
-        }
-        try stdout.seekToEnd()
-        try stderr.seekToEnd()
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.standardOutput = stdout
-        process.standardError = stderr
-        try process.run()
+    ) throws -> Data {
+        let plist: [String: Any] = [
+            "Label": executionLaunchLabel,
+            "ProgramArguments": [
+                executablePath,
+                "--socket",
+                socketPath
+            ],
+            "RunAtLoad": true,
+            "KeepAlive": true,
+            "LimitLoadToSessionType": "Aqua",
+            "ProcessType": "Interactive",
+            "StandardOutPath": stdoutPath,
+            "StandardErrorPath": stderrPath
+        ]
+        return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
     }
 
     nonisolated private static func bridgeLaunchDaemonPlistData() throws -> Data {

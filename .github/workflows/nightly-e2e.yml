@@ -71,6 +71,23 @@ jobs:
         if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED == 'true'
         run: ./scripts/e2e/android-mercury-call.sh
 
+  # ── Privileged-socket red-team gate (P0-6) ──────────────────────────────
+  # Boots the real virtual-HID bridge as root on a live socket and proves an
+  # unsigned probe is rejected by peer authentication. CI binaries are ad-hoc
+  # signed, so the probe models the attacker; acceptance = refusal. Guards
+  # against the class of regression where socket peer auth ships broken
+  # because nothing ever exercised a live socket.
+  privileged-socket-redteam:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: true
+
+      - name: Run privileged-socket red-team gate
+        run: bash ./scripts/ci/privileged-socket-redteam-ci.sh
+
   # ── DAST: OWASP ZAP scan against website + functions staging ────────────
   dast-website:
     name: DAST — Website (OWASP ZAP baseline)
@@ -142,7 +159,7 @@ jobs:
 
   open-failure-issue:
     runs-on: ubuntu-latest
-    needs: [prod-health-synthetic, nightly-tests, dast-website, dast-functions, commercial-launch-gate]
+    needs: [prod-health-synthetic, nightly-tests, privileged-socket-redteam, dast-website, dast-functions, commercial-launch-gate]
     if: always() && contains(needs.*.result, 'failure')
     steps:
       - name: Open nightly failure issue
