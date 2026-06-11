@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import { HermesRealtimeRelaySession, type RelaySocket } from "./relay.js";
-import { PROTOCOL_VERSION, serializeFrame, type HermesRelayRuntime } from "./protocol.js";
+import { PROTOCOL_VERSION, reqChannel, serializeFrame, type HermesRelayRuntime } from "./protocol.js";
 import type { RelayQuotaStore } from "./quota.js";
 import type { RelayMessageBus } from "./redisHub.js";
 
@@ -443,4 +443,93 @@ test("does not bind runtime from a ping before the first routed frame", async ()
 
   host.close();
   client.close();
+});
+
+test("disconnects a slow consumer past the outbound buffered-bytes watermark", async () => {
+  const bus = new FakeBus();
+  const quota = new FakeQuota();
+
+  class SlowSocket extends FakeSocket {
+    bufferedAmount = 0;
+  }
+  const host = new SlowSocket();
+  const session = new HermesRealtimeRelaySession(host, {
+    uid: "user-1",
+    role: "host",
+    sessionID: "host-session",
+    bus,
+    quota,
+    maxFrameBytes: 512 * 1024,
+    maxOutboundBufferedBytes: 1024,
+  });
+  session.start();
+
+  host.emit("message", Buffer.from(serializeFrame({
+    type: "host.register",
+    uid: "user-1",
+    connectionId: "relay-mac",
+    protocolVersion: PROTOCOL_VERSION,
+    payload: { capabilities: ["chat_completions", "realtime_relay"] },
+  })));
+  await flushRelay();
+  const sentBeforeBackpressure = host.sent.length;
+
+  // Under the watermark: relayed frames still flow.
+  await bus.publish(reqChannel("user-1", "relay-mac"), serializeFrame({
+    type: "request.start",
+    uid: "user-1",
+    connectionId: "relay-mac",
+    requestId: "req-flow",
+    protocolVersion: PROTOCOL_VERSION,
+    payload: { operation: "models", method: "GET" },
+  }));
+  await flushRelay();
+  assert.equal(host.sent.length, sentBeforeBackpressure + 1);
+
+  // Past the watermark: the consumer is disconnected with 1013 and no
+  // further frames are forwarded into an unbounded transport buffer.
+  host.bufferedAmount = 4096;
+  await bus.publish(reqChannel("user-1", "relay-mac"), serializeFrame({
+    type: "request.start",
+    uid: "user-1",
+    connectionId: "relay-mac",
+    requestId: "req-drop",
+    protocolVersion: PROTOCOL_VERSION,
+    payload: { operation: "models", method: "GET" },
+  }));
+  await flushRelay();
+
+  assert.equal(host.sent.length, sentBeforeBackpressure + 1, "no frame forwarded past watermark");
+  assert.equal(host.closes.length, 1);
+  assert.equal(host.closes[0]?.code, 1013);
+  assert.ok(quota.releasedSockets.includes("host:host-session"), "cleanup released the socket lease");
+});
+
+test("sockets without bufferedAmount keep legacy forwarding behavior", async () => {
+  const bus = new FakeBus();
+  const quota = new FakeQuota();
+  const host = new FakeSocket();
+  makeSession(host, bus, quota, "host", "host-session").start();
+
+  host.emit("message", Buffer.from(serializeFrame({
+    type: "host.register",
+    uid: "user-1",
+    connectionId: "relay-mac",
+    protocolVersion: PROTOCOL_VERSION,
+    payload: { capabilities: ["chat_completions", "realtime_relay"] },
+  })));
+  await flushRelay();
+  const sentBefore = host.sent.length;
+
+  await bus.publish(reqChannel("user-1", "relay-mac"), serializeFrame({
+    type: "request.start",
+    uid: "user-1",
+    connectionId: "relay-mac",
+    requestId: "req-legacy",
+    protocolVersion: PROTOCOL_VERSION,
+    payload: { operation: "models", method: "GET" },
+  }));
+  await flushRelay();
+  assert.equal(host.sent.length, sentBefore + 1);
+  assert.equal(host.closes.length, 0);
 });

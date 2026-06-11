@@ -86,7 +86,11 @@ jobs:
         if: ${{ env.SHOULD_DEPLOY == 'true' }}
         run: |
           set -euo pipefail
-          npx firebase-tools deploy \
+          # Pinned via functions/package.json devDependencies — a floating npx
+          # install would pull whatever the registry serves into a production
+          # deploy step (diligence 2026-06-11 LB-3 residual).
+          npm ci --prefix functions
+          npx --prefix functions firebase-tools deploy \
             --only firestore:rules,firestore:indexes,storage \
             --project "$FIREBASE_PROJECT" \
             --non-interactive

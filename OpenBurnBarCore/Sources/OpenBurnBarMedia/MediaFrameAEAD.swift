@@ -75,9 +75,11 @@ public struct MediaFrameAEAD: Sendable {
     }
 
     public static func isSealedEnvelope(_ envelope: Data) -> Bool {
+        // No defensive copy: at 30-60fps with multi-hundred-KB keyframes a
+        // full-envelope copy per frame is pure waste. All indexing below is
+        // startIndex-relative, so Data slices are handled correctly as-is.
         guard envelope.count >= magic.count else { return false }
-        let normalized: Data = envelope.withUnsafeBytes { Data($0) }
-        return normalized.prefix(magic.count) == magic
+        return envelope.prefix(magic.count).elementsEqual(magic)
     }
 
     /// Seal an encoded media frame payload. Returns
@@ -111,14 +113,15 @@ public struct MediaFrameAEAD: Sendable {
         gopID: UInt32,
         frameIndex: UInt32
     ) throws -> Data {
-        let normalized: Data = envelope.withUnsafeBytes { Data($0) }
-        guard normalized.count > Self.headerByteCount + Self.nonceByteCount + Self.tagByteCount else {
+        // No defensive copy (see isSealedEnvelope) — indexing is
+        // startIndex-relative throughout, so slices open correctly.
+        guard envelope.count > Self.headerByteCount + Self.nonceByteCount + Self.tagByteCount else {
             throw SealError.envelopeTooShort
         }
-        guard normalized.prefix(Self.magic.count) == Self.magic else { throw SealError.invalidMagic }
-        let version = normalized[normalized.startIndex + Self.magic.count]
+        guard envelope.prefix(Self.magic.count).elementsEqual(Self.magic) else { throw SealError.invalidMagic }
+        let version = envelope[envelope.startIndex + Self.magic.count]
         guard version == Self.version else { throw SealError.unsupportedVersion(version) }
-        let combined = normalized.suffix(from: normalized.startIndex + Self.headerByteCount)
+        let combined = envelope.suffix(from: envelope.startIndex + Self.headerByteCount)
         let authenticatedData = Self.aad(streamClass: streamClass, kind: kind, gopID: gopID, frameIndex: frameIndex)
         do {
             let box = try AES.GCM.SealedBox(combined: combined)
