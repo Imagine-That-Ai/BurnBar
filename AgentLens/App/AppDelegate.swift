@@ -357,6 +357,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboardAction(_:)), keyEquivalent: "d")
         menu.addItem(withTitle: "Settings...", action: #selector(openSettingsAction(_:)), keyEquivalent: ",")
+#if !DISTRIBUTION_MAS
+        menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: "")
+#endif
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(OpenBurnBarIdentity.productName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
@@ -372,6 +375,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func openSettingsAction(_ sender: Any?) {
         AppCommandRouter.shared.openSettings?()
     }
+
+#if !DISTRIBUTION_MAS
+    @objc private func checkForUpdatesAction(_ sender: Any?) {
+        DirectDownloadUpdateChecker.shared.checkForUpdatesNow()
+    }
+#endif
 
     // MARK: - Live Wallpaper Orchestration
 
@@ -1555,124 +1564,6 @@ public class BurnBarWallpaperPanel: NSPanel {
     }
 }
 
-#if !DISTRIBUTION_MAS
-@MainActor
-private final class DirectDownloadUpdateChecker {
-    static let shared = DirectDownloadUpdateChecker()
-
-    private let feedURLKey = "OpenBurnBarDirectUpdateFeedURL"
-    private let promptedBuildKey = "OpenBurnBarLastPromptedDirectUpdateBuild"
-    private let defaultFeedURL = URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json")!
-    private var checkTask: Task<Void, Never>?
-
-    private init() {}
-
-    func startAutomaticChecks() {
-        guard checkTask == nil,
-              !OpenBurnBarRuntime.isRunningTests,
-              ProcessInfo.processInfo.environment["OPENBURNBAR_DISABLE_UPDATE_CHECK"] != "1" else {
-            return
-        }
-
-        let isInstalledApp = Bundle.main.bundleURL.standardizedFileURL.path == "/Applications/OpenBurnBar.app"
-        let isExplicitlyEnabled = ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_UPDATE_CHECK"] == "1"
-        guard isInstalledApp || isExplicitlyEnabled else { return }
-
-        let feedURL = configuredFeedURL()
-        checkTask = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: 12_000_000_000)
-                guard let self else { return }
-                let release = try await self.fetchLatestRelease(from: feedURL)
-                self.presentUpdateIfNeeded(release, feedURL: feedURL)
-            } catch {
-                NSLog("OpenBurnBar direct update check failed: %@", String(describing: error))
-            }
-        }
-    }
-
-    private func configuredFeedURL() -> URL {
-        if let value = Bundle.main.object(forInfoDictionaryKey: feedURLKey) as? String,
-           let url = URL(string: value) {
-            return url
-        }
-        return defaultFeedURL
-    }
-
-    private func fetchLatestRelease(from url: URL) async throws -> DirectDownloadRelease {
-        guard url.scheme == "https" else {
-            throw URLError(.appTransportSecurityRequiresSecureConnection)
-        }
-
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-        return try JSONDecoder().decode(DirectDownloadRelease.self, from: data)
-    }
-
-    private func presentUpdateIfNeeded(_ release: DirectDownloadRelease, feedURL: URL) {
-        guard release.isNewerThanCurrentBundle else { return }
-        guard release.isTrustedDirectDownloadMetadata(from: feedURL) else {
-            NSLog("OpenBurnBar direct update check ignored unsigned or invalid release metadata for build %@", release.build)
-            return
-        }
-
-        let defaults = UserDefaults.standard
-        guard defaults.string(forKey: promptedBuildKey) != release.build else { return }
-        defaults.set(release.build, forKey: promptedBuildKey)
-
-        let alert = NSAlert()
-        alert.messageText = "OpenBurnBar \(release.version) is available"
-        alert.informativeText = "A newer notarized direct-download build is ready. Download the DMG and replace the app in /Applications."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Download Update")
-        alert.addButton(withTitle: "Later")
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(release.downloadUrl)
-        }
-    }
-}
-
-private struct DirectDownloadRelease: Decodable {
-    let version: String
-    let build: String
-    let downloadUrl: URL
-    let appcastUrl: URL?
-    let length: Int
-    let sha256: String
-    let sparkleEdSignature: String?
-
-    var isNewerThanCurrentBundle: Bool {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let currentBuild = info["CFBundleVersion"] as? String ?? "0"
-        if let remote = Int(build), let local = Int(currentBuild), remote != local {
-            return remote > local
-        }
-
-        let currentVersion = info["CFBundleShortVersionString"] as? String ?? "0"
-        return version.compare(currentVersion, options: .numeric) == .orderedDescending
-    }
-
-    func isTrustedDirectDownloadMetadata(from feedURL: URL) -> Bool {
-        guard downloadUrl.scheme == "https" else { return false }
-        guard appcastUrl?.scheme != "http" else { return false }
-        guard length > 0 else { return false }
-        guard sha256.range(of: "^[A-Fa-f0-9]{64}$", options: .regularExpression) != nil else {
-            return false
-        }
-        guard let sparkleEdSignature,
-              !sparkleEdSignature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return false
-        }
-
-        guard let feedHost = feedURL.host?.lowercased(),
-              let downloadHost = downloadUrl.host?.lowercased() else {
-            return false
-        }
-        return feedHost == downloadHost
-    }
-}
-#endif
+// The direct-download update checker (verified download + Ed25519 signature
+// check against SUPublicEDKey) lives in
+// AgentLens/Services/DirectDownloadUpdateService.swift.
