@@ -15,8 +15,8 @@ import OpenBurnBarCore
 // bubble whose dimensions move smoothly, instead of the whole tree
 // reflowing on every chunk.
 //
-// The `content` is parameterized so the same wrapper works for both the
-// HermesTabView bubble and the ChatView bubble.
+// The `content` is parameterized so the same wrapper works for any chat
+// bubble surface (HermesTabView today).
 
 struct StreamingBubble<Content: View>: View {
     /// Source text — used as the measurement input. The wrapped `content`

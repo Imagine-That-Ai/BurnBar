@@ -29,6 +29,9 @@ final class InsightsMobileVerdictModel {
     private let deviceID: String
     private let cache: VerdictCache
     private let composer: VerdictComposer
+    /// Retained beyond the digest producer closure so `buildTraceFor` can
+    /// re-snapshot the verdict window for the session-trace strip.
+    private let dataSource: InsightDataSource
     private var refreshTask: Task<Void, Never>?
 
     /// Builds the model around the InsightsStore's shared data source +
@@ -45,6 +48,7 @@ final class InsightsMobileVerdictModel {
         self.deviceID = deviceID
         self.window = window
         self.cache = cache
+        self.dataSource = dataSource
 
         let producer: VerdictComposer.DigestProducer = { window in
             let interval = Self.dateInterval(for: window)
@@ -132,9 +136,29 @@ final class InsightsMobileVerdictModel {
         }
     }
 
+    /// Builds the per-session trace strip for an upgraded verdict and
+    /// attaches it in place (Mac parity — mirrors
+    /// `InsightsMacVerdictModel.buildTraceFor`). The trace is optional
+    /// chrome: failures are swallowed and the verdict renders without the
+    /// strip, exactly like a window with no sessions.
     private func buildTraceFor(verdict: InsightVerdict) {
-        // Mobile trace building requires access to the data source;
-        // implement when the mobile data source exposes snapshots.
+        Task { [dataSource] in
+            do {
+                let interval = Self.dateInterval(for: verdict.window)
+                let snapshot = try await dataSource.snapshot(window: interval)
+                let builder = InsightSessionTraceBuilder()
+                guard let trace = builder.build(from: snapshot) else { return }
+                var updated = verdict
+                updated.sessionTrace = trace
+                await MainActor.run {
+                    if self.verdict?.id == verdict.id {
+                        self.verdict = updated
+                    }
+                }
+            } catch {
+                // Trace is optional — swallow errors.
+            }
+        }
     }
 
     private func writeWidgetSnapshot(_ verdict: InsightVerdict, isStale: Bool) {

@@ -6,7 +6,7 @@
  * counter documents; raw usage scans are reserved for explicit repair/backfill.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { FieldPath, FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type {
   UsageEventDoc,
@@ -45,7 +45,7 @@ type RollupEvent = {
   model?: string;
 };
 
-type UsageCounterContribution = {
+export type UsageCounterContribution = {
   logicalKey: string;
   day: string;
   provider: string;
@@ -61,7 +61,7 @@ type UsageCounterContribution = {
   costUsd: number;
 };
 
-type UsageCounterCandidate = UsageCounterContribution & {
+export type UsageCounterCandidate = UsageCounterContribution & {
   candidateKey: string;
   provenanceRank: number;
   updatedMillis: number;
@@ -661,6 +661,320 @@ export async function applyUsageCounterDelta(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Pending-delta queue (crosscut-011)
+//
+// `onUsageWritten` used to apply counter deltas synchronously: every usage
+// event ran a transaction of up to 11-21 sets that write-locked the SAME
+// day/all_time bucket docs (and their provider/account/model/device subdocs)
+// for the user. Session-end sync bursts land up to 400 events near-
+// simultaneously, so those transactions serialized on ~10 shared docs,
+// exhausted admin-SDK retries, recorded `lastErrorCode`, and forced the next
+// scheduled pass into a destructive full rebuild.
+//
+// The queue model makes the trigger contention-free: each event appends ONE
+// immutable `users/{uid}/pending_counter_deltas/{id}` doc (its own doc — no
+// shared locks) carrying full winner-resolution candidate data for the
+// before/after states. The 5-minute worker (and the refresh callable) drains
+// the queue in pages: one transaction per page replays the transitions
+// against the `usage_counter_keys` winner state and applies COALESCED bucket
+// increments — one set per bucket doc per page instead of per event. Client-
+// visible freshness is unchanged (clients read `usage_rollups`, written on
+// the same 5-minute cadence), and exactly-once accounting is preserved by
+// the same candidates/winner state machine: replaying an already-applied
+// transition leaves the winner unchanged and emits zero increments.
+//
+// `applyUsageCounterDelta` above remains the single-event reference
+// implementation of the transition semantics (and the repair-path building
+// block); the planner below MUST stay behaviorally equivalent to running it
+// once per delta in enqueue order.
+// ---------------------------------------------------------------------------
+
+/** Queue doc payload. `before`/`after` carry full winner-resolution data. */
+export type PendingCounterDelta = {
+  usageDoc: string;
+  candidateKey: string;
+  before?: UsageCounterCandidate;
+  after?: UsageCounterCandidate;
+  enqueuedAt: string;
+  schemaVersion: number;
+};
+
+export function isPendingCounterDelta(value: unknown): value is PendingCounterDelta {
+  if (!isRecord(value)) return false;
+  if (typeof value.usageDoc !== "string" || typeof value.candidateKey !== "string") return false;
+  if (typeof value.enqueuedAt !== "string") return false;
+  if (value.before !== undefined && !isUsageCounterCandidate(value.before)) return false;
+  if (value.after !== undefined && !isUsageCounterCandidate(value.after)) return false;
+  return value.before !== undefined || value.after !== undefined;
+}
+
+/**
+ * Builds the queue payload for one usage-doc write, or undefined when neither
+ * side contributes (mirrors `applyUsageCounterDelta`'s early return).
+ */
+export function buildPendingCounterDelta(
+  usageDoc: string,
+  before: UsageEventDoc | undefined,
+  after: UsageEventDoc | undefined,
+  enqueuedAt: string,
+): PendingCounterDelta | undefined {
+  const candidateKey = stableCounterKey(usageDoc);
+  const beforeContribution = usageContribution(before, candidateKey);
+  const afterContribution = usageContribution(after, candidateKey);
+  if (!beforeContribution && !afterContribution) return undefined;
+  return {
+    usageDoc,
+    candidateKey,
+    before: beforeContribution,
+    after: afterContribution,
+    enqueuedAt,
+    schemaVersion: COUNTER_SCHEMA_VERSION,
+  };
+}
+
+/**
+ * Time-prefixed doc ID: the queue is drained in implicit `__name__` order, so
+ * a fixed-width ISO-8601 prefix makes lexicographic order chronological and
+ * the random suffix keeps IDs collision-free. (Monotonic-ID hotspotting only
+ * matters at sustained >500 writes/s — far above session-end burst rates.
+ * Same-millisecond transitions of one usage doc can interleave, the same
+ * exposure the trigger-time model had to out-of-order delivery; the full
+ * rebuild path self-heals both.)
+ */
+export function pendingCounterDeltaDocID(enqueuedAt: string): string {
+  return `${enqueuedAt}_${randomUUID()}`;
+}
+
+/**
+ * Trigger-side enqueue: exactly one set on a per-event doc, zero shared
+ * locks. Returns false when the write carried nothing countable.
+ */
+export async function enqueueUsageCounterDelta(
+  db: Firestore,
+  uid: string,
+  usageDoc: string,
+  before: UsageEventDoc | undefined,
+  after: UsageEventDoc | undefined,
+): Promise<boolean> {
+  const enqueuedAt = new Date().toISOString();
+  const delta = buildPendingCounterDelta(usageDoc, before, after, enqueuedAt);
+  if (!delta) return false;
+  const ref = db.collection(`users/${uid}/pending_counter_deltas`).doc(pendingCounterDeltaDocID(enqueuedAt));
+  await ref.set(stripUndefinedDocument(delta), { merge: false });
+  return true;
+}
+
+export type PendingDeltaKeyWrite = {
+  logicalKey: string;
+  candidates: Record<string, UsageCounterCandidate>;
+  winner?: UsageCounterCandidate;
+};
+
+export type PendingDeltaDrainPlan = {
+  /** Final candidates/winner state per touched logical key. */
+  keyWrites: PendingDeltaKeyWrite[];
+  /** Merged signed increments: apply each once with direction +1. */
+  bucketContributions: UsageCounterContribution[];
+};
+
+/** Identity tuple addContribution routes/labels bucket docs by. */
+function bucketIdentityKey(contribution: UsageCounterContribution): string {
+  return JSON.stringify([
+    contribution.day,
+    contribution.provider,
+    contribution.providerID,
+    contribution.accountKey,
+    contribution.accountID ?? "",
+    contribution.accountLabel,
+    contribution.storageScope ?? "",
+    contribution.model ?? "",
+    contribution.deviceId ?? "",
+  ]);
+}
+
+function mergeSignedContributions(
+  entries: ReadonlyArray<{ contribution: UsageCounterContribution; direction: 1 | -1 }>,
+): UsageCounterContribution[] {
+  const merged = new Map<string, UsageCounterContribution>();
+  for (const { contribution, direction } of entries) {
+    const key = bucketIdentityKey(contribution);
+    const existing = merged.get(key);
+    if (existing) {
+      existing.requests += direction * contribution.requests;
+      existing.tokens += direction * contribution.tokens;
+      existing.costUsd += direction * contribution.costUsd;
+    } else {
+      merged.set(key, {
+        logicalKey: contribution.logicalKey,
+        day: contribution.day,
+        provider: contribution.provider,
+        providerID: contribution.providerID,
+        accountKey: contribution.accountKey,
+        accountID: contribution.accountID,
+        accountLabel: contribution.accountLabel,
+        storageScope: contribution.storageScope,
+        model: contribution.model,
+        deviceId: contribution.deviceId,
+        requests: direction * contribution.requests,
+        tokens: direction * contribution.tokens,
+        costUsd: direction * contribution.costUsd,
+      });
+    }
+  }
+  // Net-zero groups (e.g. a winner flip between identical bucket tuples) are
+  // pure no-ops — skip the writes entirely.
+  return [...merged.values()].filter(
+    (contribution) => contribution.requests !== 0 || contribution.tokens !== 0 || contribution.costUsd !== 0,
+  );
+}
+
+/**
+ * Pure drain planner. Replays `deltas` IN ORDER against the supplied
+ * `usage_counter_keys` candidate state, exactly like sequential
+ * `applyUsageCounterDelta` transactions would (remove the before-candidate
+ * from its logical key, install the after-candidate in its logical key), then
+ * emits ONE winner flip per logical key — initial winner vs final winner —
+ * with all increments coalesced per bucket identity. Intermediate winner
+ * states never produce writes, which is what collapses a 400-event burst into
+ * a handful of bucket sets.
+ */
+export function planPendingDeltaDrain(
+  deltas: readonly PendingCounterDelta[],
+  existingKeyStates: ReadonlyMap<string, Record<string, UsageCounterCandidate>>,
+): PendingDeltaDrainPlan {
+  const states = new Map<string, Record<string, UsageCounterCandidate>>();
+  const initialWinners = new Map<string, UsageCounterCandidate | undefined>();
+  const touchedKeys: string[] = [];
+
+  const stateFor = (logicalKey: string): Record<string, UsageCounterCandidate> => {
+    const existing = states.get(logicalKey);
+    if (existing) return existing;
+    const seeded = { ...(existingKeyStates.get(logicalKey) ?? {}) };
+    states.set(logicalKey, seeded);
+    initialWinners.set(logicalKey, selectCounterWinner(seeded));
+    touchedKeys.push(logicalKey);
+    return seeded;
+  };
+
+  for (const delta of deltas) {
+    if (delta.before) {
+      delete stateFor(delta.before.logicalKey)[delta.candidateKey];
+    }
+    if (delta.after) {
+      stateFor(delta.after.logicalKey)[delta.candidateKey] = delta.after;
+    }
+  }
+
+  const signed: Array<{ contribution: UsageCounterContribution; direction: 1 | -1 }> = [];
+  const keyWrites: PendingDeltaKeyWrite[] = [];
+  for (const logicalKey of touchedKeys) {
+    const candidates = states.get(logicalKey) ?? {};
+    const previousWinner = initialWinners.get(logicalKey);
+    const nextWinner = selectCounterWinner(candidates);
+    if (!sameCounterCandidate(previousWinner, nextWinner)) {
+      if (previousWinner) signed.push({ contribution: previousWinner, direction: -1 });
+      if (nextWinner) signed.push({ contribution: nextWinner, direction: 1 });
+    }
+    keyWrites.push({ logicalKey, candidates, winner: nextWinner });
+  }
+
+  return { keyWrites, bucketContributions: mergeSignedContributions(signed) };
+}
+
+/** Writes per page stay safely under the 500-op transaction ceiling:
+ * <= 100 queue deletes + <= 200 key sets + the coalesced bucket sets. */
+const PENDING_DELTA_DRAIN_PAGE_SIZE = 100;
+
+export type DrainPendingCounterDeltasResult = {
+  drainedDocs: number;
+  pages: number;
+};
+
+/**
+ * Drains the user's pending-delta queue into the counter docs. Each page runs
+ * in one transaction: key states are read transactionally, so a concurrent
+ * drain (overlapping worker runs, or worker + callable) retries and replays
+ * idempotently — already-applied transitions leave winners unchanged and emit
+ * no increments. Unparseable queue docs are deleted with their page so they
+ * cannot wedge the queue.
+ */
+export async function drainPendingCounterDeltas(db: Firestore, uid: string): Promise<DrainPendingCounterDeltasResult> {
+  const queuePath = `users/${uid}/pending_counter_deltas`;
+  let drainedDocs = 0;
+  let pages = 0;
+
+  for (;;) {
+    // No orderBy: implicit __name__ ordering plus time-prefixed doc IDs (see
+    // pendingCounterDeltaDocID) yields oldest-first with no index needs.
+    const page = await db.collection(queuePath).limit(PENDING_DELTA_DRAIN_PAGE_SIZE).get();
+    if (page.docs.length === 0) break;
+    pages += 1;
+
+    const deltas: PendingCounterDelta[] = [];
+    for (const doc of page.docs) {
+      const data = doc.data();
+      if (isPendingCounterDelta(data)) deltas.push(data);
+    }
+
+    const logicalKeys: string[] = [];
+    const seenKeys = new Set<string>();
+    for (const delta of deltas) {
+      for (const logicalKey of [delta.before?.logicalKey, delta.after?.logicalKey]) {
+        if (logicalKey !== undefined && !seenKeys.has(logicalKey)) {
+          seenKeys.add(logicalKey);
+          logicalKeys.push(logicalKey);
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+    await db.runTransaction(async (transaction) => {
+      const keyRefs = logicalKeys.map((logicalKey) =>
+        db.doc(`users/${uid}/usage_counter_keys/${stableCounterKey(logicalKey)}`),
+      );
+      const keySnaps = keyRefs.length > 0 ? await transaction.getAll(...keyRefs) : [];
+      const states = new Map<string, Record<string, UsageCounterCandidate>>();
+      keySnaps.forEach((snap, index) => {
+        const existing = snap.exists ? (snap.data() ?? {}) : {};
+        const candidates = Object.fromEntries(
+          Object.entries(recordOrUndefined(existing.candidates) ?? {}).filter(
+            (entry): entry is [string, UsageCounterCandidate] => isUsageCounterCandidate(entry[1]),
+          ),
+        );
+        states.set(logicalKeys[index], candidates);
+      });
+
+      const plan = planPendingDeltaDrain(deltas, states);
+      for (const contribution of plan.bucketContributions) {
+        addContribution(transaction, db, uid, contribution, 1, now);
+      }
+      for (const write of plan.keyWrites) {
+        const keyRef = db.doc(`users/${uid}/usage_counter_keys/${stableCounterKey(write.logicalKey)}`);
+        transaction.set(
+          keyRef,
+          stripUndefinedDocument({
+            logicalKey: write.logicalKey,
+            candidates: write.candidates,
+            winner: write.winner,
+            updatedAt: now,
+            schemaVersion: COUNTER_SCHEMA_VERSION,
+          }),
+          { merge: false },
+        );
+      }
+      for (const doc of page.docs) {
+        transaction.delete(doc.ref);
+      }
+    });
+
+    drainedDocs += page.docs.length;
+    if (page.docs.length < PENDING_DELTA_DRAIN_PAGE_SIZE) break;
+  }
+
+  return { drainedDocs, pages };
+}
+
 async function queryCounterDocs(
   db: Firestore,
   collection: string,
@@ -952,10 +1266,14 @@ export async function computeUserRollupsFromCounters(
 }
 
 export async function rebuildUserRollupCounters(db: Firestore, uid: string): Promise<void> {
+  // The pending-delta queue is purged BEFORE the raw usage scan: everything
+  // enqueued so far is superseded by the scan itself, while deltas enqueued
+  // mid-scan survive the purge and replay idempotently on the next drain.
   await Promise.all([
     db.recursiveDelete(db.collection(`users/${uid}/usage_counter_days`)),
     db.recursiveDelete(db.collection(`users/${uid}/usage_counter_totals`)),
     db.recursiveDelete(db.collection(`users/${uid}/usage_counter_keys`)),
+    db.recursiveDelete(db.collection(`users/${uid}/pending_counter_deltas`)),
   ]);
 
   const usageRef = db.collection(`users/${uid}/usage`);
@@ -1054,7 +1372,17 @@ export async function refreshUserRollups(
   const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
   const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : undefined;
   const rebuiltCounters = options.force === true || job == null || job.lastErrorCode != null;
-  const rollups = rebuiltCounters ? await computeUserRollups(db, uid) : await computeUserRollupsFromCounters(db, uid);
+  let rollups: Record<WindowKey, UsageRollupDoc>;
+  if (rebuiltCounters) {
+    rollups = await computeUserRollups(db, uid);
+  } else {
+    // Fold queued trigger deltas into the counters first so the served
+    // rollups include every event enqueued up to this point. A drain failure
+    // propagates: the dirty flag survives and the scheduled worker (whose
+    // catch records `lastErrorCode`) repairs via the full-rebuild path.
+    await drainPendingCounterDeltas(db, uid);
+    rollups = await computeUserRollupsFromCounters(db, uid);
+  }
   await writeUserRollups(db, uid, rollups, job?.dirtiedAt);
   return { rollups, rebuiltCounters };
 }

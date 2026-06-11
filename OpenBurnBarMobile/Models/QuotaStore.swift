@@ -21,6 +21,8 @@ final class QuotaStore {
     private(set) var snapshotsByProvider: [String: [ProviderQuotaSnapshot]] = [:]
     private(set) var urgentProviders: [String] = []
     private(set) var healthyProviders: [String] = []
+    /// True once a load completed without error — see `loadIfNeeded`.
+    private(set) var hasLoadedOnce = false
     private var listener: ListenerRegistration?
     private var lastAccountRefreshAt: Date?
     private var staleRefreshInFlight: Set<String> = []
@@ -65,6 +67,7 @@ final class QuotaStore {
     func load() async {
         if AppStoreScreenshotMode.isEnabled {
             applyScreenshotData()
+            hasLoadedOnce = true
             return
         }
         isLoading = true
@@ -82,8 +85,21 @@ final class QuotaStore {
                 applyAccounts(docs)
             }
             await refreshStaleCloudQuotaIfPossible()
+            hasLoadedOnce = true
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Idempotent variant of `load()` for stores hoisted above the owning
+    /// view: a warm store (successful prior load) skips the refetch — the
+    /// caller's unconditional `startListening()` (which the snapshot
+    /// listener keeps fresh) covers a tab return. A store whose last load
+    /// failed retries the full load.
+    func loadIfNeeded() async {
+        guard hasLoadedOnce else {
+            await load()
+            return
         }
     }
 

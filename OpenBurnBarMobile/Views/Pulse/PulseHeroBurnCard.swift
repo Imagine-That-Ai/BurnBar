@@ -241,21 +241,27 @@ private struct PulseHeroBurnCardContent: View {
     private var providerHalo: some View {
         if let topProvider {
             ZStack {
+                // Pre-shaped glow: the gradient's smooth falloff replaces
+                // the old `.blur(18)` pass (the halo was already a
+                // RadialGradient — the blur was redundant smoothing that
+                // cost a full offscreen render per frame). The 186pt circle
+                // covers the blur's former bleed while the inner 150pt
+                // frame keeps the layout footprint — and the avatar's
+                // position — unchanged.
                 Circle()
                     .fill(
                         RadialGradient(
-                            colors: [
-                                MobileTheme.Colors.primary(for: topProvider).opacity(0.55),
-                                MobileTheme.Colors.accent(for: topProvider).opacity(0.18),
-                                Color.clear
-                            ],
+                            gradient: Gradient(stops: PulseHeroGlow.providerHaloStops(
+                                primary: MobileTheme.Colors.primary(for: topProvider),
+                                accent: MobileTheme.Colors.accent(for: topProvider)
+                            )),
                             center: .center,
                             startRadius: 0,
-                            endRadius: 80
+                            endRadius: 93
                         )
                     )
+                    .frame(width: 186, height: 186)
                     .frame(width: 150, height: 150)
-                    .blur(radius: 18)
                     .blendMode(.plusLighter)
                     .allowsHitTesting(false)
 
@@ -269,21 +275,28 @@ private struct PulseHeroBurnCardContent: View {
 
     // MARK: - Hero Depth Glow
 
+    /// Pre-shaped depth glow: a top-biased elliptical gradient replaces the
+    /// old LinearGradient + `.blur(26)` full-card pass while keeping the
+    /// glow's top-down directional character. The negative padding covers
+    /// the blur's former ~26pt edge bleed (plus the old -14pt inset) and
+    /// the gradient fades to clear before its own edges, so there are no
+    /// hard lines — only the slight edge-crisping the hierarchy pass
+    /// intends.
     private var heroDepthGlow: some View {
         RoundedRectangle(cornerRadius: AuroraDesign.Shape.heroCorner + 8, style: .continuous)
             .fill(
-                LinearGradient(
-                    colors: [
-                        accentColor.opacity(colorScheme == .dark ? 0.18 : 0.10),
-                        MobileTheme.amber.opacity(colorScheme == .dark ? 0.10 : 0.06),
-                        Color.clear
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
+                EllipticalGradient(
+                    gradient: Gradient(stops: PulseHeroGlow.depthGlowStops(
+                        accent: accentColor,
+                        amber: MobileTheme.amber,
+                        darkMode: colorScheme == .dark
+                    )),
+                    center: UnitPoint(x: 0.5, y: 0.15),
+                    startRadiusFraction: 0,
+                    endRadiusFraction: 1.0
                 )
             )
-            .blur(radius: 26)
-            .padding(-14)
+            .padding(-40)
     }
 
     // MARK: - Derived
@@ -352,6 +365,35 @@ private struct LiveDot: View {
     }
 }
 
+// MARK: - Hero Glow Stops
+
+/// Gradient stop tables for the hero's pre-shaped glows. The smooth
+/// multi-stop falloffs approximate the Gaussian tails of the `.blur(18)` /
+/// `.blur(26)` passes they replaced (perf finding ios-013) — keep the
+/// locations strictly increasing and the terminal stop fully clear, or
+/// hard edges reappear. Static + pure so the no-blur contract is
+/// unit-testable.
+enum PulseHeroGlow {
+    static func providerHaloStops(primary: Color, accent: Color) -> [Gradient.Stop] {
+        [
+            .init(color: primary.opacity(0.50), location: 0.0),
+            .init(color: primary.opacity(0.34), location: 0.30),
+            .init(color: accent.opacity(0.16), location: 0.58),
+            .init(color: accent.opacity(0.05), location: 0.82),
+            .init(color: .clear, location: 1.0)
+        ]
+    }
+
+    static func depthGlowStops(accent: Color, amber: Color, darkMode: Bool) -> [Gradient.Stop] {
+        [
+            .init(color: accent.opacity(darkMode ? 0.18 : 0.10), location: 0.0),
+            .init(color: amber.opacity(darkMode ? 0.10 : 0.06), location: 0.45),
+            .init(color: amber.opacity(darkMode ? 0.04 : 0.02), location: 0.75),
+            .init(color: .clear, location: 0.97)
+        ]
+    }
+}
+
 // MARK: - Burn Velocity Pill
 
 private struct BurnVelocityPill: View {
@@ -375,11 +417,21 @@ private struct BurnVelocityPill: View {
             Capsule()
                 .fill(accent.opacity(breathing ? 0.22 : 0.14))
         )
+        .background(
+            // Breathing halo: a constant-radius pre-blurred capsule whose
+            // OPACITY animates (free on the render server, raster cached)
+            // replaces the old animated shadow radius (4⇄8), which forced a
+            // shadow re-blur every frame for the card's lifetime.
+            Capsule()
+                .fill(accent.opacity(0.3))
+                .blur(radius: 7)
+                .opacity(breathing ? 1.0 : 0.0)
+        )
         .overlay(
             Capsule()
                 .stroke(accent.opacity(0.4), lineWidth: 0.6)
         )
-        .shadow(color: accent.opacity(0.3), radius: breathing ? 8 : 4)
+        .shadow(color: accent.opacity(0.3), radius: 4)
         .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: breathing)
         .onAppear { breathing = true }
         .accessibilityLabel("Live burn rate: \(text)")

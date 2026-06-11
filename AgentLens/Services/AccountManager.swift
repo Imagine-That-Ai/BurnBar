@@ -511,27 +511,29 @@ final class AccountManager {
             throw AccountError.firebaseNotConfigured
         }
         let credential = EmailAuthProvider.credential(withEmail: email, password: password)
-        if let user = currentUser, user.isAnonymous {
-            try await user.link(with: credential)
-            refreshAuthStateSnapshot()
+        if currentUser?.isAnonymous == true {
+            try await authenticate(with: credential)
             return
         }
-        try await Auth.auth().signIn(withEmail: email, password: password)
-        refreshAuthStateSnapshot()
+        try await performFirebaseAuthOperationWithKeychainRecovery(label: "Firebase Email Sign-In") {
+            try await Auth.auth().signIn(withEmail: email, password: password)
+            refreshAuthStateSnapshot()
+        }
     }
 
     func signUpWithEmail(email: String, password: String) async throws {
         guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp else {
             throw AccountError.firebaseNotConfigured
         }
-        if let user = currentUser, user.isAnonymous {
+        if currentUser?.isAnonymous == true {
             let credential = EmailAuthProvider.credential(withEmail: email, password: password)
-            try await user.link(with: credential)
-            refreshAuthStateSnapshot()
+            try await authenticate(with: credential)
             return
         }
-        try await Auth.auth().createUser(withEmail: email, password: password)
-        refreshAuthStateSnapshot()
+        try await performFirebaseAuthOperationWithKeychainRecovery(label: "Firebase Email Sign-Up") {
+            try await Auth.auth().createUser(withEmail: email, password: password)
+            refreshAuthStateSnapshot()
+        }
     }
 
     func deleteCurrentUser() async throws {
@@ -605,18 +607,28 @@ final class AccountManager {
     }
 
     private func authenticate(with credential: AuthCredential) async throws {
-        do {
+        try await performFirebaseAuthOperationWithKeychainRecovery(label: "Firebase Auth") {
             try await authenticateWithoutKeychainRecovery(with: credential)
+        }
+    }
+
+    private func performFirebaseAuthOperationWithKeychainRecovery(
+        label: String,
+        operation: () async throws -> Void
+    ) async throws {
+        do {
+            try await operation()
         } catch {
-            Self.logAuthFailure("Firebase Auth", error)
+            Self.logAuthFailure(label, error)
             guard Self.isFirebaseAuthKeychainError(error),
-                  let group = firebaseAuthAccessGroup,
-                  Self.clearFirebaseAuthKeychainState(accessGroup: group) else {
+                  Self.clearFirebaseAuthKeychainState(accessGroup: firebaseAuthAccessGroup) else {
                 throw error
             }
             do {
-                try Auth.auth().useUserAccessGroup(group)
-                try await authenticateWithoutKeychainRecovery(with: credential)
+                if let group = firebaseAuthAccessGroup {
+                    try Auth.auth().useUserAccessGroup(group)
+                }
+                try await operation()
             } catch {
                 Self.logAuthKeychainFailure(error)
                 throw error
@@ -754,13 +766,17 @@ final class AccountManager {
         return fields.contains { $0.localizedCaseInsensitiveContains("keychain") }
     }
 
-    private static func clearFirebaseAuthKeychainState(accessGroup: String) -> Bool {
+    private static func clearFirebaseAuthKeychainState(accessGroup: String?) -> Bool {
         guard let firebase = firebaseAuthKeychainIdentifiers() else { return false }
-        let accessGroupStatuses = [
-            deleteAuthStoredUser(accessGroup: accessGroup, service: firebase.apiKey, synchronizable: false),
-            deleteAuthStoredUser(accessGroup: accessGroup, service: firebase.apiKey, synchronizable: true)
-        ]
+        let accessGroupStatuses = accessGroup.map {
+            [
+                deleteAuthStoredUser(accessGroup: $0, service: firebase.apiKey, synchronizable: false),
+                deleteAuthStoredUser(accessGroup: $0, service: firebase.apiKey, synchronizable: true)
+            ]
+        } ?? []
         let defaultStatuses = [
+            deleteDefaultAccessGrouplessAuthStoredUser(service: firebase.apiKey, synchronizable: false),
+            deleteDefaultAccessGrouplessAuthStoredUser(service: firebase.apiKey, synchronizable: true),
             deleteDefaultAuthUser(service: firebase.serviceName, appName: firebase.appName),
             deleteLegacyDefaultAuthUser(appName: firebase.appName),
             deleteServiceScopedLegacyAuthUser(service: firebase.serviceName, appName: firebase.appName)
@@ -782,6 +798,13 @@ final class AccountManager {
         ) as CFDictionary)
     }
 
+    private static func deleteDefaultAccessGrouplessAuthStoredUser(service: String, synchronizable: Bool) -> OSStatus {
+        SecItemDelete(firebaseAuthDefaultAccessGrouplessStoredUserDeleteQuery(
+            service: service,
+            synchronizable: synchronizable
+        ) as CFDictionary)
+    }
+
     private static func firebaseAuthStoredUserDeleteQuery(
         accessGroup: String,
         service: String,
@@ -798,6 +821,19 @@ final class AccountManager {
             query[kSecAttrSynchronizable as String] = true
         }
         return query
+    }
+
+    private static func firebaseAuthDefaultAccessGrouplessStoredUserDeleteQuery(
+        service: String,
+        synchronizable: Bool
+    ) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: "firebase_auth_firebase_user",
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrSynchronizable as String: synchronizable
+        ]
     }
 
     private static func deleteDefaultAuthUser(service: String, appName: String) -> OSStatus {
@@ -894,6 +930,13 @@ final class AccountManager {
         )
     }
 
+    static func userFacingAuthErrorMessage(_ error: Error) -> String {
+        if isFirebaseAuthKeychainError(error) || isGoogleSignInKeychainError(error) {
+            return "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If this is a local debug build, run it with Keychain Sharing enabled."
+        }
+        return error.localizedDescription
+    }
+
     private static func errorSearchFields(_ nsError: NSError) -> [String] {
         var fields = [
             nsError.domain,
@@ -930,6 +973,22 @@ final class AccountManager {
         isRecoverableDefaultFirebaseAuthKeychainDeleteStatus(status)
     }
 
+    /// Drives the shared auth keychain-recovery wrapper with an injected
+    /// operation. The real keychain clear runs — that IS the behavior under
+    /// test; with no Google sign-in access group it only touches the app's
+    /// default groupless Firebase rows, the same strays production clears
+    /// on any keychain failure.
+    func performFirebaseAuthOperationWithKeychainRecoveryForTesting(
+        label: String,
+        operation: () async throws -> Void
+    ) async throws {
+        try await performFirebaseAuthOperationWithKeychainRecovery(label: label, operation: operation)
+    }
+
+    static func userFacingAuthErrorMessageForTesting(_ error: Error) -> String {
+        userFacingAuthErrorMessage(error)
+    }
+
     static func firebaseAuthStoredUserDeleteQueryForTesting(
         accessGroup: String,
         service: String,
@@ -937,6 +996,16 @@ final class AccountManager {
     ) -> [String: Any] {
         firebaseAuthStoredUserDeleteQuery(
             accessGroup: accessGroup,
+            service: service,
+            synchronizable: synchronizable
+        )
+    }
+
+    static func firebaseAuthDefaultAccessGrouplessStoredUserDeleteQueryForTesting(
+        service: String,
+        synchronizable: Bool
+    ) -> [String: Any] {
+        firebaseAuthDefaultAccessGrouplessStoredUserDeleteQuery(
             service: service,
             synchronizable: synchronizable
         )

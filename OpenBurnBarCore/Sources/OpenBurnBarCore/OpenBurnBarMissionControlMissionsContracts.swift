@@ -632,6 +632,50 @@ public struct BurnBarControllerSummaryResponse: Codable, Hashable, Sendable {
     }
 }
 
+public struct BurnBarControllerRuntimeSnapshotRequest: Codable, Hashable, Sendable {
+    public init() {}
+}
+
+/// Everything the app's controller runtime needs in ONE daemon round trip.
+/// Replaces the legacy six sequential RPCs (summary, questions, followups,
+/// missions, notification health, simulator runs) that each paid a full
+/// connect/close cycle on every popover open and periodic tick. The same
+/// payload rides along in controller-mutation responses so a mutation
+/// costs one connection instead of seven. Clients MUST tolerate its
+/// absence (older daemons) and fall back to the per-list RPCs.
+public struct BurnBarControllerRuntimeSnapshotPayload: Codable, Hashable, Sendable {
+    public let summary: BurnBarControllerSummary
+    public let questions: [BurnBarPendingQuestionSnapshot]
+    public let followups: [BurnBarFollowupSnapshot]
+    public let missions: [BurnBarMissionSnapshot]
+    public let notificationHealth: BurnBarNotificationHealthSnapshot
+    public let simulatorRuns: [BurnBarSimulatorRunSnapshot]
+
+    public init(
+        summary: BurnBarControllerSummary,
+        questions: [BurnBarPendingQuestionSnapshot],
+        followups: [BurnBarFollowupSnapshot],
+        missions: [BurnBarMissionSnapshot],
+        notificationHealth: BurnBarNotificationHealthSnapshot,
+        simulatorRuns: [BurnBarSimulatorRunSnapshot]
+    ) {
+        self.summary = summary
+        self.questions = questions
+        self.followups = followups
+        self.missions = missions
+        self.notificationHealth = notificationHealth
+        self.simulatorRuns = simulatorRuns
+    }
+}
+
+public struct BurnBarControllerRuntimeSnapshotResponse: Codable, Hashable, Sendable {
+    public let snapshot: BurnBarControllerRuntimeSnapshotPayload
+
+    public init(snapshot: BurnBarControllerRuntimeSnapshotPayload) {
+        self.snapshot = snapshot
+    }
+}
+
 public struct BurnBarControllerProjectsListRequest: Codable, Hashable, Sendable {
     public let includePaused: Bool
     public let limit: Int
@@ -769,15 +813,22 @@ public struct BurnBarQuestionAnswerResponse: Codable, Hashable, Sendable {
     public let question: BurnBarPendingQuestionSnapshot
     public let followup: BurnBarFollowupSnapshot?
     public let emittedEvent: BurnBarControllerEvent?
+    /// Post-mutation controller runtime, embedded so the client skips its
+    /// follow-up snapshot RPCs. Optional across the daemon version-skew
+    /// boundary: absent from older daemons (client falls back to the
+    /// legacy follow-up calls); ignored by older clients.
+    public let runtimeSnapshot: BurnBarControllerRuntimeSnapshotPayload?
 
     public init(
         question: BurnBarPendingQuestionSnapshot,
         followup: BurnBarFollowupSnapshot? = nil,
-        emittedEvent: BurnBarControllerEvent? = nil
+        emittedEvent: BurnBarControllerEvent? = nil,
+        runtimeSnapshot: BurnBarControllerRuntimeSnapshotPayload? = nil
     ) {
         self.question = question
         self.followup = followup
         self.emittedEvent = emittedEvent
+        self.runtimeSnapshot = runtimeSnapshot
     }
 }
 
@@ -866,10 +917,18 @@ public struct BurnBarFollowupCalendarRequest: Codable, Hashable, Sendable {
 public struct BurnBarFollowupMutationResponse: Codable, Hashable, Sendable {
     public let followup: BurnBarFollowupSnapshot
     public let emittedEvent: BurnBarControllerEvent?
+    /// Post-mutation controller runtime — same version-skew contract as
+    /// `BurnBarQuestionAnswerResponse.runtimeSnapshot`.
+    public let runtimeSnapshot: BurnBarControllerRuntimeSnapshotPayload?
 
-    public init(followup: BurnBarFollowupSnapshot, emittedEvent: BurnBarControllerEvent? = nil) {
+    public init(
+        followup: BurnBarFollowupSnapshot,
+        emittedEvent: BurnBarControllerEvent? = nil,
+        runtimeSnapshot: BurnBarControllerRuntimeSnapshotPayload? = nil
+    ) {
         self.followup = followup
         self.emittedEvent = emittedEvent
+        self.runtimeSnapshot = runtimeSnapshot
     }
 }
 

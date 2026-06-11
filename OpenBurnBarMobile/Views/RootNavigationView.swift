@@ -31,9 +31,20 @@ struct RootNavigationView: View {
     #endif
     @State private var router = PulseRouter()
     @State private var settingsRouter = SettingsRouter()
-    @State private var hermesService = HermesService()
+    @State private var hermesService = HermesService(runtimeStore: .shared)
     @State private var motionStore = MotionStore()
     @State private var insightsDashboardStore = DashboardStore()
+    // Pulse/Burn data stores hoisted to the split-view root (same fix as
+    // `RootTabView`): the detail switch destroys the selected branch's view
+    // tree on every sidebar change, and per-view stores used to re-run the
+    // full network load each time.
+    @State private var pulseDashboardStore = DashboardStore()
+    @State private var pulseQuotaStore = QuotaStore()
+    @State private var pulseSessionsStore = ActivityStore()
+    @State private var pulseHermesService = HermesService(runtimeStore: .shared)
+    @State private var burnQuotaStore = QuotaStore()
+    @State private var burnDashboardStore = DashboardStore()
+    @State private var burnActivityStore = ActivityStore()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var showHermesSheet = false
@@ -331,8 +342,18 @@ struct RootNavigationView: View {
             NavigationStack(path: $detailPath) {
                 Group {
                     switch selection {
-                    case .pulse:    PulseView(router: router)
-                    case .burn:     BurnView()
+                    case .pulse:    PulseView(
+                        router: router,
+                        dashboard: pulseDashboardStore,
+                        quotaStore: pulseQuotaStore,
+                        sessionsStore: pulseSessionsStore,
+                        hermesService: pulseHermesService
+                    )
+                    case .burn:     BurnView(
+                        quotaStore: burnQuotaStore,
+                        dashboard: burnDashboardStore,
+                        activityStore: burnActivityStore
+                    )
                     case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
                     case .streams:  StreamsView()
                     case .agents:   EmptyView()

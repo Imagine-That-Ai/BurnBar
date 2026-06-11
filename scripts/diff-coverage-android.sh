@@ -38,6 +38,8 @@ changed = subprocess.check_output(
     text=True,
 ).splitlines()
 prod = [p for p in changed if "/src/main/" in p and not p.endswith("BuildConfig.kt")]
+# android/macrobenchmark is on-device benchmark tooling (instrumented-only module, no JVM unit-test source set).
+prod = [p for p in prod if not p.startswith("android/macrobenchmark/")]
 if not prod:
     print('{"diffCoverage":{"percent":100.0,"passed":true,"surface":"android","method":"test_only_changes"}}')
     sys.exit(0)
@@ -103,6 +105,8 @@ changed = subprocess.check_output(
     text=True,
 ).splitlines()
 changed = [c.strip() for c in changed if c.strip() and "/src/main/" in c]
+# android/macrobenchmark is on-device benchmark tooling (instrumented-only module, no JVM unit-test source set).
+changed = [c for c in changed if not c.startswith("android/macrobenchmark/")]
 if not changed:
     print(json.dumps({"diffCoverage": {"percent": 100.0, "passed": True, "surface": "android", "method": "no_production_kotlin"}}))
     raise SystemExit(0)

@@ -25,15 +25,13 @@ export default defineConfig({
   },
   vite: {
     build: {
-      cssMinify: "lightningcss",
-      rollupOptions: {
-        // src/scripts/pretextShrinkwrap.ts imports straight from esm.sh. Keep
-        // the URL external so the bundle preserves today's runtime exactly:
-        // the marketing CSP (script-src 'self' + hashes) blocks esm.sh, which
-        // makes that module a deliberate no-op in production. Bundling the
-        // npm package would activate it and visibly re-layout text.
-        external: ["https://esm.sh/@chenglou/pretext"]
-      }
+      cssMinify: "lightningcss"
+      // No rollup externals: src/scripts/pretextShrinkwrap.ts used to import
+      // from esm.sh (kept external, dead under the marketing CSP). As of perf
+      // round 2 (website-012) it imports the @chenglou/pretext npm package so
+      // Vite bundles it into the hashed /_assets module — served from 'self',
+      // the shrinkwrap actually runs in production. test-trust-copy.mjs fails
+      // the build if any cross-origin import ever ships again (website-013).
     }
   }
 });

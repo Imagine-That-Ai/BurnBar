@@ -19,6 +19,19 @@ extension BurnBarDaemonServer {
                 result: try await missionControlService.controllerSummary(typedRequest.params)
             )
             return encode(response)
+        case .controllerRuntimeSnapshot:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarControllerRuntimeSnapshotRequest>.self,
+                from: requestData
+            )
+            let response = BurnBarRPCResponseEnvelope<BurnBarControllerRuntimeSnapshotResponse>(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: BurnBarControllerRuntimeSnapshotResponse(
+                    snapshot: try await makeControllerRuntimeSnapshotPayload()
+                )
+            )
+            return encode(response)
         case .controllerProjectsList:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarControllerProjectsListRequest>.self,
@@ -101,10 +114,19 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarQuestionAnswerRequest>.self,
                 from: requestData
             )
+            let mutation = try await missionControlService.questionAnswer(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope<BurnBarQuestionAnswerResponse>(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
-                result: try await missionControlService.questionAnswer(typedRequest.params)
+                result: BurnBarQuestionAnswerResponse(
+                    question: mutation.question,
+                    followup: mutation.followup,
+                    emittedEvent: mutation.emittedEvent,
+                    // Embedded so the client skips its 6-RPC follow-up
+                    // snapshot (best-effort: a snapshot failure must not
+                    // fail the mutation that already committed).
+                    runtimeSnapshot: try? await makeControllerRuntimeSnapshotPayload()
+                )
             )
             return encode(response)
         case .followupCreate:
@@ -137,7 +159,9 @@ extension BurnBarDaemonServer {
             let response = BurnBarRPCResponseEnvelope<BurnBarFollowupMutationResponse>(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
-                result: try await missionControlService.followupDone(typedRequest.params)
+                result: await embeddingRuntimeSnapshot(
+                    in: try await missionControlService.followupDone(typedRequest.params)
+                )
             )
             return encode(response)
         case .followupSnooze:
@@ -148,7 +172,9 @@ extension BurnBarDaemonServer {
             let response = BurnBarRPCResponseEnvelope<BurnBarFollowupMutationResponse>(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
-                result: try await missionControlService.followupSnooze(typedRequest.params)
+                result: await embeddingRuntimeSnapshot(
+                    in: try await missionControlService.followupSnooze(typedRequest.params)
+                )
             )
             return encode(response)
         case .followupCalendar:
@@ -159,7 +185,9 @@ extension BurnBarDaemonServer {
             let response = BurnBarRPCResponseEnvelope<BurnBarFollowupMutationResponse>(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
-                result: try await missionControlService.followupCalendar(typedRequest.params)
+                result: await embeddingRuntimeSnapshot(
+                    in: try await missionControlService.followupCalendar(typedRequest.params)
+                )
             )
             return encode(response)
         case .missionCreate:
@@ -330,5 +358,46 @@ extension BurnBarDaemonServer {
         default:
             preconditionFailure("Unhandled mission control RPC method: \(method.rawValue)")
         }
+    }
+
+    /// One aggregated controller-runtime payload — the daemon-side half of
+    /// `daemon.controller.runtime_snapshot`. Mirrors exactly the request
+    /// shapes the app's legacy six-RPC path used, so the aggregated and
+    /// per-list answers stay byte-equivalent.
+    func makeControllerRuntimeSnapshotPayload() async throws -> BurnBarControllerRuntimeSnapshotPayload {
+        let summary = try await missionControlService.controllerSummary(BurnBarControllerSummaryRequest())
+        let questions = try await missionControlService.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: nil, statuses: BurnBarPendingQuestionStatus.allCases)
+        )
+        let followups = try await missionControlService.followupsList(
+            BurnBarFollowupsListRequest(projectSlug: nil, statuses: BurnBarFollowupStatus.allCases)
+        )
+        let missions = try await missionControlService.missionsList(BurnBarMissionListRequest())
+        let notificationHealth = try await missionControlService.notificationHealth(
+            BurnBarNotificationHealthRequest()
+        )
+        let simulatorRuns = try await missionControlService.simulatorList(BurnBarSimulatorListRequest())
+        return BurnBarControllerRuntimeSnapshotPayload(
+            summary: summary.summary,
+            questions: questions.questions,
+            followups: followups.followups,
+            missions: missions.missions,
+            notificationHealth: notificationHealth.health,
+            simulatorRuns: simulatorRuns.runs
+        )
+    }
+
+    /// Attaches the post-mutation runtime snapshot to a followup mutation
+    /// response. Best-effort: a snapshot failure must not fail a mutation
+    /// that already committed — the client then falls back to its legacy
+    /// follow-up snapshot RPCs.
+    private func embeddingRuntimeSnapshot(
+        in mutation: BurnBarFollowupMutationResponse
+    ) async -> BurnBarFollowupMutationResponse {
+        BurnBarFollowupMutationResponse(
+            followup: mutation.followup,
+            emittedEvent: mutation.emittedEvent,
+            runtimeSnapshot: try? await makeControllerRuntimeSnapshotPayload()
+        )
     }
 }

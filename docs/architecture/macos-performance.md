@@ -1,8 +1,9 @@
 # macOS performance — frame budget, dashboard caching, version tickers
 
 This document is the source of truth for the May 2026 macOS performance
-sweep (sections 1–6) and the June 2026 invisible-wins sweep (sections
-7–13, applied 2026-06-09). Every optimization here was applied without
+sweep (sections 1–6), the June 2026 invisible-wins sweep (sections
+7–13, applied 2026-06-09), and the deferred round-2 fixes (sections
+14–16, applied 2026-06-10). Every optimization here was applied without
 altering visual behaviour. If you're touching one of these surfaces,
 please read the relevant section first so the work doesn't regress.
 
@@ -61,10 +62,13 @@ time and idles between switches.
 ## 2. Dashboard caching — `usagesVersion`
 
 `DataStoreCoordinator` exposes a monotonically increasing
-`usagesVersion: Int` that is bumped on every mutation of `usages`
-(currently `replaceUsages` and `replaceUsageSnapshot`). Every dashboard
-view that previously observed `dataStore.lastRefresh` (a `Date`) has been
-migrated to observe `dataStore.usagesVersion`.
+`usagesVersion: Int` that is bumped on every CONTENT-CHANGING mutation of
+`usages` (`replaceUsages` and `replaceUsageSnapshot`). Since June 2026 a
+replacement whose rows are byte-identical to the applied set skips the
+bump (and the sorts and aggregate rebuild) until the next time-window
+boundary — see §14. Every dashboard view that previously observed
+`dataStore.lastRefresh` (a `Date`) has been migrated to observe
+`dataStore.usagesVersion`.
 
 Why this matters: SwiftUI evaluates a body diff on every published
 mutation of an `@Observable`. When views observed `usages` directly,
@@ -373,3 +377,91 @@ xcodebuild -project OpenBurnBar.xcodeproj \
 (cd OpenBurnBarDaemon && swift test \
   --filter BurnBarDaemonHeartbeatTests)
 ```
+
+## 14. No-change replace short-circuit — `UsageReplaceGate`
+
+The periodic refresh pipeline reloads the full usage table every cadence
+tick (60 s minimum while active; `BillingRefreshCoordinator.reconcile`
+always runs `deleteAndReload` + `fetchAllUsage`, so `UsageAggregator.
+refreshAll` lands in `dataStore.replaceUsages` on every successful tick).
+Before this gate, every tick — even with zero new usage — re-sorted the
+full table twice (`DataStoreCoordinator` + `DashboardUsageViewModel`),
+rebuilt the entire aggregate cache on the main actor, and bumped
+`usagesVersion`, invalidating every cached dashboard/popover compute.
+
+`DataStoreCoordinator.applyGateAdmits` (backed by
+`AgentLens/Services/DataStore/UsageReplaceGate.swift`) short-circuits BOTH
+replace paths when:
+
+1. the order-insensitive `UsageContentFingerprint` (row count + combined
+   per-row hash) matches the previously applied set, **and**
+2. the clock has not crossed `UsageReplaceGate.nextWindowBoundary` — the
+   next local midnight, or the first moment an in-window row exits the
+   rolling 7d/30d windows (minus a one-hour DST safety margin).
+
+The boundary clause is **load-bearing**: the old every-tick bump was what
+reset "Today" at midnight and decayed the rolling-window totals on an
+idle dashboard. A skipped tick still updates `lastRefresh`.
+
+The original always-bump contract test
+(`testUsagesVersion_bumpsOnEachReplaceUsagesCall_evenWithIdenticalData`)
+was deliberately inverted to
+`testUsagesVersion_skipsBumpOnContentIdenticalReplaceUsages`.
+
+Validation: `DataStoreUsagesVersionTests` (skip/bump/boundary matrix,
+injectable `nowProvider`) and `UsageReplaceGateTests` (fingerprint
+order-insensitivity, boundary math, exit-margin fail-closed).
+
+## 15. Menu-bar popover prewarm — `PopoverContentPrewarmer`
+
+`popoverDidClose` nils the popover's `contentViewController` on every
+close (deliberate fresh-state fix, fd19d53ac), which used to mean EVERY
+click rebuilt the 1,392-line `MenuBarPopoverView` hierarchy +
+`NSHostingController` and forced a synchronous `fittingSize` layout
+inside the click handler.
+
+`AppDelegate` now re-primes the content controller **off the click
+path**: once when `AppCommandRouter.makeMenuBarPopoverContent` is
+(re)installed — i.e. exactly when `startupState.runtimeContext` becomes
+ready, never on a fixed timer — and again on the next main-queue turn
+after each close. Re-priming builds a brand-new view from the current
+factory, preserving the fresh-state-per-show semantics, and primes
+`fittingSize` so `showPopover` reduces to a size assignment + `show()`.
+A factory reinstall invalidates any prewarmed content (otherwise the
+startup-recovery `EmptyView` fallback could freeze into the popover);
+priming is skipped while the popover is shown (the close re-prime picks
+up the latest factory). The synchronous build inside `showPopover`
+remains as the fallback when a click outruns the prewarm.
+
+Validation: `PopoverContentPrewarmerTests` (coalescing, skip-while-shown,
+rebuild-on-reinstall, fallback ordering).
+
+## 16. Daemon RPC plane — 64 KB reads + aggregated controller snapshot
+
+`OpenBurnBarDaemonSocketClient.sendEncoded` read responses through a
+1,024-byte buffer (one `read()` syscall per KB of response). The buffer
+is now 64 KB with preallocated response capacity; the daemon's own
+request reader got the same bump.
+
+`controllerRuntimeSnapshot` was never one RPC — it was SIX sequential
+RPCs (summary, questions, followups, missions, notification health,
+simulator list), each paying the full socket/setsockopt×3/connect/close
+cycle, on every popover open, periodic tick, and startup recovery; the
+four controller mutations each issued the same six as a follow-up (7
+connections per action). The daemon now serves an aggregated
+`daemon.controller.runtime_snapshot` RPC (6→1) and embeds the refreshed
+snapshot payload in the four mutation responses (7→1).
+
+**Version-skew tolerance:** the app may talk to an older running daemon.
+The client probes the aggregated RPC once, falls back to the legacy
+six-RPC path on failure, and remembers the downgrade for the process
+lifetime; mutation responses treat the embedded snapshot as optional and
+fall back to a follow-up snapshot call when absent. Old apps decoding new
+daemon responses simply ignore the extra field.
+
+Validation: `BurnBarMissionControlContractsTests` (core round-trip +
+absent-field tolerance), `BurnBarDaemonControllerRuntimeSnapshotTests`
+(daemon end-to-end: aggregated == per-list, mutations embed the
+snapshot), `BurnBarDaemonSocketRPCCoverageTests` (handler registration),
+and `DaemonSocketClientBufferTests` (client: >64 KB response reads over a
+local socket, legacy fallback + downgrade memo).

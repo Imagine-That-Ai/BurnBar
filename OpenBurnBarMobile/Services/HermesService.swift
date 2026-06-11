@@ -556,30 +556,86 @@ final class HermesService {
     /// Shared instance for views that need to read Hermes state but don't
     /// own the lifecycle (notably the Pi conversation list brand header
     /// which needs an `AssistantModelLens` but isn't otherwise wired to
-    /// Hermes). Long-running views still inject their own instance.
-    static let shared = HermesService()
+    /// Hermes). Long-running views still inject their own instance for
+    /// per-surface CONVERSATION state — but all production instances share
+    /// the `HermesRuntimeStore.shared` catalog, so connections, models,
+    /// and the persisted selection stay consistent across surfaces and the
+    /// 6-op runtime refresh is coalesced globally.
+    static let shared = HermesService(runtimeStore: .shared)
 
+    // ── Per-surface conversation state (deliberately NOT shared; see doc) ──
     var messages: [HermesChatMessage] = []
-    var connections: [HermesConnectionRecord] = [HermesConnectionRecord.localDefault]
-    var selectedConnection: HermesConnectionRecord = .localDefault
-    var sessions: [HermesSessionSummary] = []
-    var profiles: [HermesRuntimeProfile] = []
-    var modelOptions: [HermesRuntimeModelOption] = []
-    var jobs: [HermesRuntimeJob] = []
     var selectedSessionID: String?
-    var selectedModelID: String?
-    var favoriteModelIDs: [String] = []
     var currentConversationTokenBurn = 0
     var isStreaming = false
     var lastError: String?
     var visibleCLIStatusText: String?
     var visibleCLIErrorText: String?
-    var isReachable = false
-    var isLoadingRuntime = false
-    var runtimeErrorText: String?
+
+    /// Shared runtime catalog (connections / reachability / models /
+    /// session-profile-job lists + persisted selection). Production
+    /// surfaces inject `HermesRuntimeStore.shared`; tests and previews get
+    /// an isolated store, preserving the historical per-instance behavior.
+    let runtime: HermesRuntimeStore
+
+    // ── Catalog proxies into the shared runtime store ──
+    // Computed (not stored) so @Observable tracking flows through to the
+    // store's stored properties: every surface invalidates on a catalog
+    // change regardless of which `HermesService` instance wrote it.
+    var connections: [HermesConnectionRecord] {
+        get { runtime.connections }
+        set { runtime.connections = newValue }
+    }
+    var selectedConnection: HermesConnectionRecord {
+        get { runtime.selectedConnection }
+        set { runtime.selectedConnection = newValue }
+    }
+    var sessions: [HermesSessionSummary] {
+        get { runtime.sessions }
+        set { runtime.sessions = newValue }
+    }
+    var profiles: [HermesRuntimeProfile] {
+        get { runtime.profiles }
+        set { runtime.profiles = newValue }
+    }
+    var modelOptions: [HermesRuntimeModelOption] {
+        get { runtime.modelOptions }
+        set { runtime.modelOptions = newValue }
+    }
+    var jobs: [HermesRuntimeJob] {
+        get { runtime.jobs }
+        set { runtime.jobs = newValue }
+    }
+    var selectedModelID: String? {
+        get { runtime.selectedModelID }
+        set { runtime.selectedModelID = newValue }
+    }
+    var favoriteModelIDs: [String] {
+        get { runtime.favoriteModelIDs }
+        set { runtime.favoriteModelIDs = newValue }
+    }
+    var isReachable: Bool {
+        get { runtime.isReachable }
+        set { runtime.isReachable = newValue }
+    }
+    var isLoadingRuntime: Bool {
+        get { runtime.isLoadingRuntime }
+        set { runtime.isLoadingRuntime = newValue }
+    }
+    var runtimeErrorText: String? {
+        get { runtime.runtimeErrorText }
+        set { runtime.runtimeErrorText = newValue }
+    }
 
     private var currentTask: Task<Void, Never>?
-    private var baseURL: URL
+    private var baseURL: URL {
+        get { runtime.baseURL }
+        set { runtime.baseURL = newValue }
+    }
+    private var selectedModelWasExplicit: Bool {
+        get { runtime.selectedModelWasExplicit }
+        set { runtime.selectedModelWasExplicit = newValue }
+    }
     private let urlSession: URLSession
     private let functionsRepository: FunctionsRepository
     private let connectionRepository: HermesConnectionListing
@@ -587,15 +643,25 @@ final class HermesService {
     private let relayTransport: HermesRelayTransporting
     private let defaults: UserDefaults
     private let history: MobileChatHistoryStore
-    private var runtimeGeneration = 0
-    private var runtimeRefreshTask: Task<Void, Never>?
-    private var runtimeRefreshGeneration: Int?
+    // Refresh coalescing lives on the shared runtime store so concurrent
+    // refreshes from ANY surface collapse to one 6-op fan-out.
+    private var runtimeGeneration: Int {
+        get { runtime.runtimeGeneration }
+        set { runtime.runtimeGeneration = newValue }
+    }
+    private var runtimeRefreshTask: Task<Void, Never>? {
+        get { runtime.runtimeRefreshTask }
+        set { runtime.runtimeRefreshTask = newValue }
+    }
+    private var runtimeRefreshGeneration: Int? {
+        get { runtime.runtimeRefreshGeneration }
+        set { runtime.runtimeRefreshGeneration = newValue }
+    }
     private var visibleCLIObservation: CLIAgentMissionObservation?
     private var streamEventParser = HermesOpenAICompatibleStreamParser()
-    private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
-    private let selectedModelDefaultsKey = "hermes.selectedModelID"
-    private let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
-    private var selectedModelWasExplicit = false
+    private let selectedConnectionDefaultsKey = HermesRuntimeStore.selectedConnectionDefaultsKey
+    private let selectedModelDefaultsKey = HermesRuntimeStore.selectedModelDefaultsKey
+    private let favoriteModelsDefaultsKey = HermesRuntimeStore.favoriteModelsDefaultsKey
     private let remoteRelayChatCompletionTimeout: TimeInterval = 360
     private let remoteRelayControlPlaneTimeout: TimeInterval = 90
     private static let localHermesSelectedMessage =
@@ -679,9 +745,9 @@ final class HermesService {
         relayTransport: HermesRelayTransporting = HermesCompositeRelayTransport.shared,
         defaults: UserDefaults = .standard,
         history: MobileChatHistoryStore = .shared,
-        toolCatalog: MobileToolCatalog = .default
+        toolCatalog: MobileToolCatalog = .default,
+        runtimeStore: HermesRuntimeStore? = nil
     ) {
-        self.baseURL = baseURL
         self.urlSession = urlSession
         self.functionsRepository = functionsRepository
         self.connectionRepository = connectionRepository
@@ -690,13 +756,11 @@ final class HermesService {
         self.defaults = defaults
         self.history = history
         self.toolCatalog = toolCatalog
-        self.selectedModelID = Self.restoredModelID(
-            defaults.string(forKey: selectedModelDefaultsKey),
-            defaults: defaults,
-            key: selectedModelDefaultsKey
-        )
-        self.selectedModelWasExplicit = self.selectedModelID?.nilIfBlank != nil
-        self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
+        // Without an injected store each service gets an isolated catalog
+        // (test/preview isolation + historical behavior); production
+        // surfaces pass `.shared`. The store restores the persisted
+        // model selection and favorites from `defaults` itself.
+        self.runtime = runtimeStore ?? HermesRuntimeStore(defaults: defaults, baseURL: baseURL)
         history.loadFromDiskIfNeeded()
         SystemPermissionInboxStore.shared.retryHandler = { [weak self] item in
             self?.retryAfterSystemPermissionGrant(item: item)
@@ -733,6 +797,19 @@ final class HermesService {
         }
     }
 
+    /// Skips the 6-op runtime fan-out while the shared catalog is fresh for
+    /// the current connection generation — the warm path for tab returns
+    /// and remounted surfaces. Anything that needs guaranteed-fresh data
+    /// (pull-to-refresh, foreground transitions) calls `refreshRuntime()`.
+    func refreshRuntimeIfStale(maxAge: TimeInterval = 120) async {
+        if let completedAt = runtime.lastRefreshCompletedAt,
+           runtime.lastRefreshCompletedGeneration == runtimeGeneration,
+           Date().timeIntervalSince(completedAt) < maxAge {
+            return
+        }
+        await refreshRuntime()
+    }
+
     private func performRuntimeRefresh() async {
         let generation = runtimeGeneration
         isLoadingRuntime = true
@@ -740,6 +817,8 @@ final class HermesService {
         defer {
             if generation == runtimeGeneration {
                 isLoadingRuntime = false
+                runtime.lastRefreshCompletedAt = Date()
+                runtime.lastRefreshCompletedGeneration = generation
             }
         }
 
@@ -1275,7 +1354,7 @@ final class HermesService {
         lastError = nil
     }
 
-    private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
+    static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
         guard let stored = stored?.nilIfBlank else { return nil }
         let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(stored)
         if canonical != stored {
@@ -3692,7 +3771,7 @@ final class HermesService {
         return text
     }
 
-    private static func decodeStringArray(_ text: String?) -> [String] {
+    static func decodeStringArray(_ text: String?) -> [String] {
         guard let text,
               let data = text.data(using: .utf8),
               let values = try? JSONDecoder().decode([String].self, from: data) else {
