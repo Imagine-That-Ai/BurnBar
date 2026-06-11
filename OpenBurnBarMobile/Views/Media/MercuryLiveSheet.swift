@@ -1602,14 +1602,23 @@ struct MercuryLiveSheet: View {
             signingIdentity: signingIdentity,
             trustGateway: trustGateway
         )
+        // F10: reuse the seal session the phone-control classify established
+        // on this connection (the Mac keys its open side by connection id) so
+        // remote-unlock credential frames ride sealed too. No session — e.g. a
+        // cold unlock at loginwindow before any classify — stays on the
+        // legacy lane the Mac still accepts.
+        let credentialBaseSink: PhoneControlSender.FrameSink = { frame in
+            try await controlStreamCoordinator.send(frame: frame, timeout: 6)
+        }
+        let credentialSink = ControlSealSessionEstablisher.activeSession(connectionID: connectionID)
+            .map { ControlSealSessionEstablisher.sealingFrameSink(credentialBaseSink, session: $0) }
+            ?? credentialBaseSink
         return PhoneControlSender(
             peerNodeId: peerNodeId,
             uid: uid,
             connectionId: connectionID,
             signingIdentityProvider: { signingIdentity },
-            frameSink: { frame in
-                try await controlStreamCoordinator.send(frame: frame, timeout: 6)
-            }
+            frameSink: credentialSink
         )
     }
 
