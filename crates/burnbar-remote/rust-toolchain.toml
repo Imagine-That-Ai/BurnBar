@@ -1,0 +1,6 @@
+# Pin the toolchain so CI, contributors, and the eventual cutover build the
+# gen-2 remote engine identically (diligence P2-8: Swift/Node lanes were
+# pinned, Rust floated).
+[toolchain]
+channel = "1.94.0"
+components = ["clippy", "rustfmt"]

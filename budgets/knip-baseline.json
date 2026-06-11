@@ -1,0 +1,5 @@
+{
+  "_comment": "Ratchet baselines for scripts/ci/knip-ratchet.sh — total knip finding counts per package. May only decrease; new findings fail CI. Measured 2026-06-11.",
+  "functions": 119,
+  "extension": 29
+}
