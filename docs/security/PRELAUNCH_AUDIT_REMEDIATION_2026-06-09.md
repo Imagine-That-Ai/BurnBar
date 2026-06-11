@@ -24,7 +24,7 @@ before beta.
 | L8a | Kill-switch (`PrivilegedInputKillSwitch.assertNotActive()`) re-checked at the `MacActionDispatcher.dispatch` input-synthesis chokepoint, closing the panic race. | `…/MacActionDispatcher.swift` |
 | L8b | Audit-chain verifier gains a strict `requireExpectedHead` mode (`validateRequiringSignedHead`) that fails closed when the signed terminal head is absent. | `…/ComputerUseAuditChain.swift` |
 | L9 | Consumed single-use local-auth proof IDs persist with TTL so "single-use" survives restarts. | `…/PhoneControlConsumedProofStore.swift`, `…/PhoneControlAuthorityValidator.swift` |
-| Docs | Corrected stale SQLCipher recovery-file claims, the gateway-destinations writability claim, disclosed the post-revocation non-E2E token-TTL window, and added a precise media confidentiality model. | `SECURITY_PRIVACY_REVIEW.md`, `RELIABILITY_OPS_REVIEW.md`, `docs/HERMES_GATEWAY_PLATFORM.md`, `docs/PRIVACY.md`, `docs/HERMES_MEDIA_TRANSPORT.md` |
+| Docs | Corrected stale SQLCipher recovery-file claims, the gateway-destinations writability claim, disclosed the post-revocation non-E2E token-TTL window, and added a precise media confidentiality model. | `docs/reviews/SECURITY_PRIVACY_REVIEW.md`, `docs/reviews/RELIABILITY_OPS_REVIEW.md`, `docs/HERMES_GATEWAY_PLATFORM.md`, `docs/PRIVACY.md`, `docs/HERMES_MEDIA_TRANSPORT.md` |
 | L7 | Already mitigated (backend hosts hard-deny cleartext; app-layer `validatedBaseURL` scopes HTTP to localhost/RFC1918). Flipping base-config to deny would regress the LAN-direct feature; tracked below. | `android/.../network_security_config.xml` |
 
 ## Progress — 2026-06-09 (F2 / F7 / F10 / L2 cores + server landed, tested)
