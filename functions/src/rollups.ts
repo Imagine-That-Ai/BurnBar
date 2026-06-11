@@ -735,15 +735,26 @@ export function buildPendingCounterDelta(
 
 /**
  * Time-prefixed doc ID: the queue is drained in implicit `__name__` order, so
- * a fixed-width ISO-8601 prefix makes lexicographic order chronological and
- * the random suffix keeps IDs collision-free. (Monotonic-ID hotspotting only
- * matters at sustained >500 writes/s — far above session-end burst rates.
- * Same-millisecond transitions of one usage doc can interleave, the same
- * exposure the trigger-time model had to out-of-order delivery; the full
- * rebuild path self-heals both.)
+ * a fixed-width ISO-8601 prefix makes lexicographic order chronological. A
+ * per-instance sequence keeps same-millisecond sequential enqueues ordered
+ * before the random suffix makes IDs collision-free. (Monotonic-ID hotspotting
+ * only matters at sustained >500 writes/s — far above session-end burst rates.
+ * Cross-instance trigger delivery can still be out-of-order; the dirty/full
+ * rebuild path self-heals that rarer case.)
  */
+let lastPendingCounterDeltaEnqueuedAt = "";
+let lastPendingCounterDeltaSequence = 0;
+
 export function pendingCounterDeltaDocID(enqueuedAt: string): string {
-  return `${enqueuedAt}_${randomUUID()}`;
+  if (enqueuedAt === lastPendingCounterDeltaEnqueuedAt) {
+    lastPendingCounterDeltaSequence += 1;
+  } else {
+    lastPendingCounterDeltaEnqueuedAt = enqueuedAt;
+    lastPendingCounterDeltaSequence = 0;
+  }
+
+  const sequence = lastPendingCounterDeltaSequence.toString(36).padStart(8, "0");
+  return `${enqueuedAt}_${sequence}_${randomUUID()}`;
 }
 
 /**
