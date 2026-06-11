@@ -271,7 +271,7 @@ extension DirectDownloadArtifactVerifierTests {
             (.lengthMismatch(expected: 1000, actual: 999), "999"),
             (.sha256Mismatch(expected: "aa", actual: "bb"), "bb"),
             (.signatureInvalid, "does not verify"),
-            (.unreadableArtifact("boom"), "boom"),
+            (.unreadableArtifact("boom"), "boom")
         ]
         for (error, marker) in cases {
             let description = error.errorDescription ?? ""

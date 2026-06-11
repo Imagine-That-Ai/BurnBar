@@ -358,7 +358,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboardAction(_:)), keyEquivalent: "d")
         menu.addItem(withTitle: "Settings...", action: #selector(openSettingsAction(_:)), keyEquivalent: ",")
 #if !DISTRIBUTION_MAS
-        menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: "") // cov:ignore -- status-menu wiring; the triggered behavior is line-gated in the DirectDownload* companions
+        // cov:ignore on the next line -- status-menu wiring; behavior is
+        // line-gated in the DirectDownload* companion tests.
+        // swiftlint:disable:next line_length
+        menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: "") // cov:ignore -- menu glue
 #endif
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(OpenBurnBarIdentity.productName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
