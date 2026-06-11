@@ -8,4 +8,4 @@ import OpenBurnBarComputerUseCore
 /// the same server-authentication checks the daemons run on accepted peers —
 /// both halves of every privileged connection now share one trust source.
 /// This alias keeps the daemon-side name stable for existing call sites.
-public typealias OpenBurnBarSigningIdentity = OpenBurnBarPrivilegedTrust
+public typealias OpenBurnBarSigningIdentity = OpenBurnBarPrivilegedTrust // cov:ignore -- pure typealias; coverage formats emit no records for declarations

@@ -219,3 +219,51 @@ struct TestUnixSocketConnection {
         unlink(socketPath)
     }
 }
+
+/// Real-validation and error-mapping paths with no injected judgments.
+extension PrivilegedPeerAuthenticatorTests {
+    func test_mapsSharedTrustErrorToAuthenticatorFailure() throws {
+        let pair = try TestUnixSocketConnection.establish()
+        defer { pair.closeAll() }
+
+        let authenticator = PrivilegedPeerAuthenticator(socketLabel: "test.sock") { _ in
+            throw PrivilegedSocketTrustError.codeSignatureInvalid(status: -67050)
+        }
+        XCTAssertThrowsError(
+            try authenticator.validateUnixSocketPeer(
+                socketFD: pair.acceptedFD,
+                consoleUser: RemoteAccessConsoleUser(uid: getuid(), gid: getgid())
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? PrivilegedPeerAuthenticationFailure,
+                .codeSignatureInvalid(status: -67050)
+            )
+        }
+    }
+
+    func test_defaultCodeSignatureValidation_rejectsUnsignedTestProcess() throws {
+        let pair = try TestUnixSocketConnection.establish()
+        defer { pair.closeAll() }
+        let ownToken = try OpenBurnBarPrivilegedTrust.peerAuditToken(socketFD: pair.clientFD)
+
+        XCTAssertThrowsError(
+            try PrivilegedPeerAuthenticator.defaultCodeSignatureValidation(auditToken: ownToken)
+        ) { error in
+            guard case PrivilegedPeerAuthenticationFailure.codeSignatureInvalid = error else {
+                return XCTFail("expected codeSignatureInvalid, got \(error)")
+            }
+        }
+    }
+}
+
+/// Virtual HID device creation needs the com.apple.developer.hid.virtual.device
+/// entitlement; an unentitled process (this test) must fail CLOSED, exercising
+/// the backend-selection and identified-properties fallback paths on the way.
+final class VirtualHIDKeyboardEngineCreationTests: XCTestCase {
+    func test_engineCreation_failsClosedWithoutHIDEntitlement() {
+        XCTAssertThrowsError(try VirtualHIDKeyboardEngine()) { error in
+            XCTAssertTrue(error is VirtualHIDKeyboardEngine.EngineError, "got \(error)")
+        }
+    }
+}

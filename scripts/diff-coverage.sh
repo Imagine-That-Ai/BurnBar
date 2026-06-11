@@ -179,6 +179,15 @@ COVERAGE_ALLOWLIST = {
         "the generator output is enforced by packages/data-domains/"
         "registry.test.mjs. Never compiled into a coverage-bearing target."
     ),
+    "OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/VirtualHIDKeyboardEngine.swift": (
+        "Virtual HID device creation requires the com.apple.developer.hid."
+        "virtual.device entitlement, which `swift test` processes cannot "
+        "hold, so the IOKit/CoreHID backend bodies cannot execute under unit "
+        "tests. The unentitled fail-closed path IS gated "
+        "(VirtualHIDKeyboardEngineCreationTests); the entitled paths are "
+        "exercised on signed builds by the remote-unlock setup flow and the "
+        "nightly privileged-socket red-team gate."
+    ),
     "OpenBurnBarDaemon/Sources/OpenBurnBarPrivilegedInputExecution/OpenBurnBarPrivilegedInputExecutionMain.swift": (
         "@main entry point of the privileged-input launchd executable: "
         "process bootstrap (launchd socket activation, signal handlers, "
