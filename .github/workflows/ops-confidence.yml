@@ -22,7 +22,22 @@ jobs:
           FUNCTIONS_REGION: us-central1
         run: bash scripts/ci/post-deploy-health-gate.sh
 
+      - name: Check out pinned hermes-agent for provenance verification
+        # verify-ops-readiness.sh runs verify-vendored-agent-source.sh, which
+        # needs a hermes-agent checkout containing the manifest's pinnedCommit.
+        # Without this clone the weekly gate failed at "not a checkout" on
+        # every run it ever had (diligence 2026-06-11 LB-4). The clone is
+        # manifest-driven so a pin bump never desynchronizes this workflow.
+        run: |
+          set -euo pipefail
+          pin="$(python3 -c 'import json;print(json.load(open("third_party/hermes-agent/manifest.json"))["pinnedCommit"])')"
+          git clone --filter=blob:none https://github.com/Ajnunezg/hermes-agent .ci/hermes-agent
+          git -C .ci/hermes-agent fetch origin "$pin"
+          git -C .ci/hermes-agent checkout --detach "$pin"
+
       - name: Ops readiness verifiers (offline)
+        env:
+          HERMES_AGENT_SRC: ${{ github.workspace }}/.ci/hermes-agent
         run: bash scripts/ci/verify-ops-readiness.sh
 
   website-zap-baseline:

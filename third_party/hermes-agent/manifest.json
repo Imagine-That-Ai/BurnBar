@@ -4,14 +4,21 @@
   "forkRepository": "https://github.com/NousResearch/hermes-agent",
   "forkBranch": "ajnunezg/burnbar-gateway-e2ee",
   "license": "MIT (Nous/Hermes upstream); see LICENSES/Nous-hermes-agent-MIT.txt",
-  "pinnedCommit": "cde04bb9a8f9f8f79508f9a6eb96bf71b4e115f2",
-  "vendoredSubtrees": ["gateway", "plugins", "tools", "hermes_cli", "tui_gateway", "agent"],
-  "vendoredSourceTreeSha256": "10297a9dee346046aa4733a2c5d23321fd508bd6e3f9c9fdcd6fd88af1f6eeed",
+  "pinnedCommit": "bdb830070927cbb20763819f91ee930548f7da92",
+  "vendoredSubtrees": [
+    "gateway",
+    "plugins",
+    "tools",
+    "hermes_cli",
+    "tui_gateway",
+    "agent"
+  ],
+  "vendoredSourceTreeSha256": "e7b738b719f6085dd4a97aaedf4435bf132255eac71a50b76afbb4ba986cab02",
   "vendoredSourceFileCount": 524,
   "hashDefinition": "sha256 over the sorted list of 'path sha256(blob)\\n' lines for every *.py file under vendoredSubtrees at pinnedCommit (see scripts/ci/verify-vendored-agent-source.sh).",
   "pendingHardening": {
-    "blocking": true,
-    "reason": "Security remediation C-4 (agent command-guard hardening: secret-read/exfil gating, fail-closed tirith, smart-mode escalation) lands on branch security/agent-sandbox-hardening and is NOT in pinnedCommit cde04bb9a. Before beta, merge C-4 into ajnunezg/burnbar-gateway-e2ee, re-vendor, and update pinnedCommit + vendoredSourceTreeSha256 here.",
+    "blocking": false,
+    "reason": "CLEARED 2026-06-11: C-4 (agent command-guard hardening: secret-read/exfil gating, fail-closed tirith, smart-mode escalation) is commit bdb830070, pushed to the public fork branch ajnunezg/burnbar-gateway-e2ee and now the pinnedCommit above. The 2026-06-11 diligence review found the previous clearance (e0ba632f5) pinned a commit that existed on no remote; this clearance is verifiable: gh api repos/Ajnunezg/hermes-agent/commits/bdb830070 resolves, and the PR harness cross-checks its checkout ref against this manifest so the gate always executes the commit the manifest attests.",
     "trackingBranch": "security/agent-sandbox-hardening"
   },
   "auditNote": "The shipping product currently vendors this runtime as .pyc with the .py source gitignored, so the AGPL corresponding-source archive (scripts/create-corresponding-source.sh) does NOT contain it. C-5 closes that by pinning the exact source commit + hash here and verifying it in CI (verify-vendored-agent-source.sh). For full reproducibility, the corresponding-source archive should also bundle the pinned source tree."
