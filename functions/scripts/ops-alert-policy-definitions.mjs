@@ -38,6 +38,60 @@ export const OPS_SLO_ALERT_POLICIES = [
     ],
   },
   {
+    displayName: "OpenBurnBar Rollup rebuild breaker open",
+    documentation: {
+      content:
+        "A user's rollup full-rebuild circuit breaker opened, or rebuilds keep failing (jsonPayload.event=rollup.full_rebuild_circuit_open / rollup.rebuild_failed). That user's dashboard counters are stale and the rebuild loop is being held back by the breaker. Runbook: inspect rollup.rebuild_failed logs for the uid, check usage-history size vs rebuildRollups timeout, consider a manual paged rebuild. Distinct from the cockatiel resilience breakers covered by 'Circuit breaker open'.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: [
+      "logging.googleapis.com/user/openburnbar_rollup_breaker_open",
+      "logging.googleapis.com/user/openburnbar_rollup_rebuild_failed",
+    ],
+    conditions: [
+      {
+        // Per-user events on a 5-minute worker cadence: even one user stuck
+        // for ~15 minutes matters, so alert on sustained presence rather than
+        // a per-minute rate that per-user cadence can never reach.
+        displayName: "Rollup breaker-open events present for 15 min",
+        conditionThreshold: {
+          filter:
+            'resource.type="cloud_function" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_breaker_open"',
+          aggregations: [
+            {
+              alignmentPeriod: "300s",
+              perSeriesAligner: "ALIGN_SUM",
+              crossSeriesReducer: "REDUCE_SUM",
+            },
+          ],
+          comparison: "COMPARISON_GT",
+          thresholdValue: 0,
+          duration: "900s",
+          trigger: { count: 1 },
+        },
+      },
+      {
+        displayName: "Rollup rebuild failures present for 15 min",
+        conditionThreshold: {
+          filter:
+            'resource.type="cloud_function" AND metric.type="logging.googleapis.com/user/openburnbar_rollup_rebuild_failed"',
+          aggregations: [
+            {
+              alignmentPeriod: "300s",
+              perSeriesAligner: "ALIGN_SUM",
+              crossSeriesReducer: "REDUCE_SUM",
+            },
+          ],
+          comparison: "COMPARISON_GT",
+          thresholdValue: 0,
+          duration: "900s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
+  {
     displayName: "OpenBurnBar Circuit breaker open",
     documentation: {
       content:

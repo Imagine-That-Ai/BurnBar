@@ -19,6 +19,11 @@ jobs:
         env:
           FIREBASE_PROJECT: burnbar
           FUNCTIONS_REGION: us-central1
+          # Availability is fatal; missing AGPL sourceMetadata is a loud
+          # warning until the metadata-serving functions deploy reaches prod
+          # (blocked on counsel review). Flip to 1 right after that deploy —
+          # tracked in docs/runbooks/functions-break-glass.md.
+          HEALTH_GATE_REQUIRE_SOURCE_METADATA: "0"
         run: bash scripts/ci/post-deploy-health-gate.sh
 
   nightly-tests:
@@ -193,5 +198,42 @@ jobs:
                 title,
                 body,
                 labels: ['P0 - Critical', 'area: infra'],
+              });
+            }
+
+  close-resolved-issue:
+    runs-on: ubuntu-latest
+    needs: [prod-health-synthetic, nightly-tests, privileged-socket-redteam, dast-website, dast-functions, commercial-launch-gate]
+    # Close-on-green: the failure-issue job dedupes on an open issue with the
+    # same title prefix, so a STALE open issue would silently suppress alerts
+    # for future, distinct failures (diligence 2026-06-11). A fully green run
+    # closes the standing issue and re-arms the alarm.
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    steps:
+      - name: Close resolved failure issues
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const prefix = 'Nightly E2E launch gate failed';
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'P0 - Critical,area: infra',
+              per_page: 50,
+            });
+            for (const issue of open.data) {
+              if (!issue.title.startsWith(prefix)) continue;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Resolved by green run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
               });
             }

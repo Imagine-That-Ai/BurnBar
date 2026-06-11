@@ -24,6 +24,20 @@ const METRICS = [
     filter:
       'resource.type="cloud_run_revision" AND resource.labels.service_name="openburnbar-hosted-mcp" AND httpRequest.status>=500',
   },
+  // Rollup full-rebuild health (P0-7). The pre-existing "Circuit breaker open"
+  // policy watches the cockatiel resilience breakers (circuit_breaker_tripped),
+  // a DIFFERENT family — the 2026-06-11 review found rollup breaker events had
+  // no metric and no alert. Event keys must match functions/src exactly.
+  {
+    name: "openburnbar_rollup_breaker_open",
+    description: "Per-user rollup full-rebuild circuit breaker opened/skipped",
+    filter: 'jsonPayload.event="rollup.full_rebuild_circuit_open"',
+  },
+  {
+    name: "openburnbar_rollup_rebuild_failed",
+    description: "Rollup full-rebuild failures (in-process or stale attempt marker)",
+    filter: 'jsonPayload.event="rollup.rebuild_failed"',
+  },
 ];
 
 function listMetrics() {
