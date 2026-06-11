@@ -1,5 +1,5 @@
 {
-  "_comment": "Ratchet baselines for scripts/ci/knip-ratchet.sh \u2014 total knip finding counts per package. May only decrease; new findings fail CI. Measured 2026-06-11.",
-  "functions": 119,
+  "_comment": "Ratchet baselines for scripts/ci/knip-ratchet.sh \u2014 total knip finding counts per package. May only decrease; new findings fail CI. CI-measured 2026-06-11 (CI checkouts are canonical: local gitignored files alter knip entry resolution).",
+  "functions": 129,
   "extension": 28
 }

@@ -13,9 +13,9 @@
     "tui_gateway",
     "agent"
   ],
-  "vendoredSourceTreeSha256": "e7b738b719f6085dd4a97aaedf4435bf132255eac71a50b76afbb4ba986cab02",
+  "vendoredSourceTreeSha256": "201605eb3dece1dc5917191bd0c63e9ebde6c964d15756d7cd38d82b3749e3e7",
   "vendoredSourceFileCount": 524,
-  "hashDefinition": "sha256 over the sorted list of 'path sha256(blob)\\n' lines for every *.py file under vendoredSubtrees at pinnedCommit (see scripts/ci/verify-vendored-agent-source.sh).",
+  "hashDefinition": "sha256 over the LC_ALL=C-sorted list of 'path sha256(blob)\\n' lines for every *.py file under vendoredSubtrees at pinnedCommit (see scripts/ci/verify-vendored-agent-source.sh; locale pinned 2026-06-11 after macOS/CI sort divergence).",
   "pendingHardening": {
     "blocking": false,
     "reason": "CLEARED 2026-06-11: C-4 (agent command-guard hardening: secret-read/exfil gating, fail-closed tirith, smart-mode escalation) is commit bdb830070, pushed to the public fork branch ajnunezg/burnbar-gateway-e2ee and now the pinnedCommit above. The 2026-06-11 diligence review found the previous clearance (e0ba632f5) pinned a commit that existed on no remote; this clearance is verifiable: gh api repos/Ajnunezg/hermes-agent/commits/bdb830070 resolves, and the PR harness cross-checks its checkout ref against this manifest so the gate always executes the commit the manifest attests.",
