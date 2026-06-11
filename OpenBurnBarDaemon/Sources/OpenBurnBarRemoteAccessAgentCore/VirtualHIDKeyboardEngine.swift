@@ -206,7 +206,7 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
 
     private final class IOKitVirtualHIDBackend: VirtualHIDBackend {
         private let keyboardDevice: IOHIDUserDevice
-        private let pointingDevice: IOHIDUserDevice
+        private let pointingDevice: IOHIDUserDevice?
 
         init(
             keyboardDescriptor: Data,
@@ -246,21 +246,23 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
                 kIOHIDPrimaryUsageKey: 0x02,
                 kIOHIDReportDescriptorKey: pointingDescriptor
             ]
-            guard let pointingDevice = IOHIDUserDeviceCreateWithProperties(
+            let pointingDevice = IOHIDUserDeviceCreateWithProperties(
                 kCFAllocatorDefault,
                 pointingProperties as CFDictionary,
                 0
-            ) else {
-                VirtualHIDKeyboardEngine.diagnosticLog("IOHIDUserDevice pointing creation failed")
-                throw EngineError.virtualHIDDeviceUnavailable
+            )
+            if pointingDevice == nil {
+                VirtualHIDKeyboardEngine.diagnosticLog("IOHIDUserDevice pointing creation failed; pointer input disabled")
             }
 
             self.keyboardDevice = keyboardDevice
             self.pointingDevice = pointingDevice
             IOHIDUserDeviceSetDispatchQueue(keyboardDevice, queue)
-            IOHIDUserDeviceSetDispatchQueue(pointingDevice, queue)
             IOHIDUserDeviceActivate(keyboardDevice)
-            IOHIDUserDeviceActivate(pointingDevice)
+            if let pointingDevice {
+                IOHIDUserDeviceSetDispatchQueue(pointingDevice, queue)
+                IOHIDUserDeviceActivate(pointingDevice)
+            }
         }
 
         func postKeyboardReport(_ bytes: [UInt8]) throws {
@@ -268,12 +270,15 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
         }
 
         func postPointingReport(_ bytes: [UInt8]) throws {
+            guard let pointingDevice else { throw EngineError.virtualHIDDeviceUnavailable }
             try post(bytes, to: pointingDevice)
         }
 
         func cancel() {
             IOHIDUserDeviceCancel(keyboardDevice)
-            IOHIDUserDeviceCancel(pointingDevice)
+            if let pointingDevice {
+                IOHIDUserDeviceCancel(pointingDevice)
+            }
         }
 
         private func post(_ bytes: [UInt8], to device: IOHIDUserDevice) throws {
@@ -294,56 +299,35 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
     @available(macOS 15, *)
     private final class CoreHIDVirtualDeviceBackend: VirtualHIDBackend, HIDVirtualDeviceDelegate {
         private let keyboardDevice: HIDVirtualDevice
-        private let pointingDevice: HIDVirtualDevice
+        private let pointingDevice: HIDVirtualDevice?
 
         init?(keyboardDescriptor: Data, pointingDescriptor: Data) {
-            let baseExtraProperties: [String: AnyObject] = [
-                kIOHIDTransportKey as String: "Virtual" as NSString
-            ]
-            var keyboardExtraProperties = baseExtraProperties
-            keyboardExtraProperties[kIOHIDPrimaryUsagePageKey as String] = NSNumber(value: 0x01)
-            keyboardExtraProperties[kIOHIDPrimaryUsageKey as String] = NSNumber(value: 0x06)
-
-            var pointingExtraProperties = baseExtraProperties
-            pointingExtraProperties[kIOHIDPrimaryUsagePageKey as String] = NSNumber(value: 0x01)
-            pointingExtraProperties[kIOHIDPrimaryUsageKey as String] = NSNumber(value: 0x02)
-
             guard let keyboardDevice = HIDVirtualDevice(
                 properties: HIDVirtualDevice.Properties(
                     descriptor: keyboardDescriptor,
-                    vendorID: 0x0bba,
-                    productID: 0x1001,
-                    transport: .virtual,
-                    product: "OpenBurnBar Remote Unlock Keyboard",
-                    manufacturer: "OpenBurnBar",
-                    versionNumber: 1,
-                    serialNumber: "openburnbar-remote-unlock-keyboard",
-                    uniqueID: "openburnbar-remote-unlock-keyboard",
-                    extraProperties: keyboardExtraProperties
+                    vendorID: 1
                 )
-            ),
-                  let pointingDevice = HIDVirtualDevice(
-                    properties: HIDVirtualDevice.Properties(
-                        descriptor: pointingDescriptor,
-                        vendorID: 0x0bba,
-                        productID: 0x1002,
-                        transport: .virtual,
-                        product: "OpenBurnBar Remote Unlock Mouse",
-                        manufacturer: "OpenBurnBar",
-                        versionNumber: 1,
-                        serialNumber: "openburnbar-remote-unlock-mouse",
-                        uniqueID: "openburnbar-remote-unlock-mouse",
-                        extraProperties: pointingExtraProperties
-                    )
-                  ) else {
-                VirtualHIDKeyboardEngine.diagnosticLog("CoreHID HIDVirtualDevice creation returned nil")
+            ) else {
+                VirtualHIDKeyboardEngine.diagnosticLog("CoreHID keyboard HIDVirtualDevice creation returned nil")
                 return nil
             }
+            let pointingDevice = HIDVirtualDevice(
+                properties: HIDVirtualDevice.Properties(
+                    descriptor: pointingDescriptor,
+                    vendorID: 1
+                )
+            )
+            if pointingDevice == nil {
+                VirtualHIDKeyboardEngine.diagnosticLog("CoreHID pointing HIDVirtualDevice creation returned nil; pointer input disabled")
+            }
+
             self.keyboardDevice = keyboardDevice
             self.pointingDevice = pointingDevice
             waitForTask {
                 await keyboardDevice.activate(delegate: self)
-                await pointingDevice.activate(delegate: self)
+                if let pointingDevice {
+                    await pointingDevice.activate(delegate: self)
+                }
             }
         }
 
@@ -352,6 +336,7 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
         }
 
         func postPointingReport(_ bytes: [UInt8]) throws {
+            guard let pointingDevice else { throw EngineError.virtualHIDDeviceUnavailable }
             try dispatch(bytes, to: pointingDevice)
         }
 
@@ -419,7 +404,9 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
     private static let keyboardReportDescriptor: [UInt8] = [
         0x05, 0x01, 0x09, 0x06, 0xa1, 0x01, 0x05, 0x07, 0x19, 0xe0, 0x29, 0xe7,
         0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x08, 0x81, 0x02, 0x95, 0x01,
-        0x75, 0x08, 0x81, 0x01, 0x95, 0x06, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65,
+        0x75, 0x08, 0x81, 0x01, 0x95, 0x05, 0x75, 0x01, 0x05, 0x08, 0x19, 0x01,
+        0x29, 0x05, 0x91, 0x02, 0x95, 0x01, 0x75, 0x03, 0x91, 0x01, 0x95, 0x06,
+        0x75, 0x08, 0x15, 0x00, 0x25, 0x65,
         0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x81, 0x00, 0xc0
     ]
 
