@@ -45,10 +45,18 @@ release_file="$(
 release_version="$(
   node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const match=source.match(/macReleaseLatest:\s*"([^"]+)"/); if(!match) process.exit(1); console.log(match[1]);'
 )"
+appcast_file="$(
+  node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const match=source.match(/macAppcastFile:\s*"([^"]+)"/); console.log(match?.[1] ?? "appcast.xml");'
+)"
+latest_file="$(
+  node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const match=source.match(/macUpdateFeedFile:\s*"([^"]+)"/); console.log(match?.[1] ?? "latest-macos.json");'
+)"
 
 files=(
   "$release_file"
   "${release_file%.dmg}.zip"
+  "$appcast_file"
+  "$latest_file"
   "checksums-v${release_version}.txt"
   "release-metadata.json"
   "sbom-v${release_version}.spdx.json"
@@ -61,6 +69,7 @@ content_type_for() {
     *.dmg) echo "application/x-apple-diskimage" ;;
     *.tar.gz) echo "application/gzip" ;;
     *.zip) echo "application/zip" ;;
+    *.xml) echo "application/xml; charset=utf-8" ;;
     *.txt) echo "text/plain; charset=utf-8" ;;
     *.sha256) echo "text/plain; charset=utf-8" ;;
     *.json) echo "application/json; charset=utf-8" ;;
@@ -70,7 +79,7 @@ content_type_for() {
 
 cache_control_for() {
   case "$1" in
-    release-metadata.json) echo "public, max-age=300" ;;
+    "$appcast_file" | "$latest_file" | release-metadata.json) echo "public, max-age=300" ;;
     *) echo "public, max-age=31536000, immutable" ;;
   esac
 }
@@ -94,6 +103,10 @@ if [[ -n "$public_base_url" ]]; then
   public_base_url="${public_base_url%/}"
   echo "Verifying public download URL: $public_base_url/$release_file"
   curl -fsSI "$public_base_url/$release_file" >/dev/null
+  echo "Verifying public appcast URL: $public_base_url/$appcast_file"
+  curl -fsSL "$public_base_url/$appcast_file" | grep -q "sparkle:version"
+  echo "Verifying public latest metadata URL: $public_base_url/$latest_file"
+  curl -fsSL "$public_base_url/$latest_file" | grep -q "\"downloadUrl\""
 fi
 
 echo "Uploaded OpenBurnBar macOS release artifacts to $bucket."

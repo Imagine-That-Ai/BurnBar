@@ -16,6 +16,22 @@ enum ControlSealSessionEstablisher {
         let controllerPeerNodeId: String
     }
 
+    /// F10 — sessions by connection id. The Mac keys its open-side session the
+    /// same way, so any sender on the same connection (remote-unlock
+    /// credentials, agent-watch approvals) can reuse the session the
+    /// classify-time establishment created instead of sealing under a key the
+    /// Mac never saw.
+    private static var sessionsByConnection: [String: Session] = [:]
+
+    static func activeSession(connectionID: String) -> Session? {
+        sessionsByConnection[connectionID]
+    }
+
+    /// Exposed for the establishment path + tests.
+    static func register(_ session: Session, connectionID: String) {
+        sessionsByConnection[connectionID] = session
+    }
+
     /// Establish when (and only when) the default-off RC flag is on AND the
     /// Mac advertised `control_seal_v1` in its heartbeat reply. Returns nil —
     /// the legacy plaintext-at-app-layer lane — otherwise, or when wrap
@@ -82,7 +98,9 @@ enum ControlSealSessionEstablisher {
                 recipientPublicKeyBase64: recipientKey,
                 senderPrivateKey: senderKeypair.privateKey
             )
-            return Session(envelope: envelope, key: key, controllerPeerNodeId: controllerPeerNodeId)
+            let session = Session(envelope: envelope, key: key, controllerPeerNodeId: controllerPeerNodeId)
+            register(session, connectionID: connectionID)
+            return session
         } catch {
             return nil
         }

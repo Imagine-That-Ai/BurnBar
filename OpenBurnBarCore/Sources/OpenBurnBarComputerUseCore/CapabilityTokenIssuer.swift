@@ -10,7 +10,8 @@ public struct CapabilityTokenIssuer: Sendable {
         "click",
         "pointer_move",
         "key",
-        "shortcut"
+        "shortcut",
+        "type_credential"
     ]
 
     private let signer = CapabilityTokenSigner()
@@ -30,7 +31,7 @@ public struct CapabilityTokenIssuer: Sendable {
         let allowed = Self.remoteUnlockAllowedActionKinds.contains(actionKind)
             ? [actionKind]
             : Self.remoteUnlockAllowedActionKinds
-        var token = CapabilityToken(
+        let token = CapabilityToken(
             domain: .remoteUnlock,
             nonce: nonce,
             issuedAt: now,
@@ -55,7 +56,7 @@ public struct CapabilityTokenIssuer: Sendable {
         now: Date = Date(),
         nonce: String = UUID().uuidString.lowercased()
     ) throws -> CapabilityToken {
-        var token = CapabilityToken(
+        let token = CapabilityToken(
             domain: .computerUse,
             nonce: nonce,
             issuedAt: now,

@@ -6,6 +6,7 @@ package com.openburnbar.data.computeruse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -29,10 +30,12 @@ class PhoneControlSecureEnclaveKeystoreTest {
     }
 
     @Test
-    fun `gate fails closed when firebase is unavailable`() {
-        // No FirebaseApp is initialized in unit tests, so getInstance() throws
-        // inside the policy — the gate must swallow that and stay OFF.
-        assertFalse(PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled())
+    fun `gate defaults ON when firebase is unavailable`() {
+        // Default-ON posture: with no FirebaseApp (so no fetched remote value
+        // — the operator kill switch — can exist) the protection flag resolves
+        // ON. Safety holds because the keystore mint itself falls back to the
+        // legacy software key on any hardware/keystore failure.
+        assertTrue(PhoneControlSecureEnclaveKeyPolicy.secureEnclaveKeyEnabled())
     }
 
     @Test

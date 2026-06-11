@@ -52,6 +52,7 @@
     "profile": "node --cpu-prof --cpu-prof-name=functions-profile.cpuprofile scripts/profile-functions.mjs",
     "profile:heap": "PROFILE_HEAP=true node scripts/profile-functions.mjs",
     "alerts:billing": "node scripts/create-billing-alert-policies.mjs",
+    "alerts:ops": "node scripts/apply-ops-uptime-checks.mjs && node scripts/apply-ops-alert-policies.mjs",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "deploy": "firebase deploy --only functions",

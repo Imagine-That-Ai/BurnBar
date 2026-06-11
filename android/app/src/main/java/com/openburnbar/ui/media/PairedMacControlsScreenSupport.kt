@@ -480,6 +480,12 @@ private suspend fun signRemoteUnlockSession(
             timestamp = signed.swiftDateReferenceSeconds,
             intentHashBlake3 = signed.intentHashBlake3,
             signatureEd25519 = signed.signatureEd25519,
+            // F2 extra credit: best-effort App Check attestation digest —
+            // nullable and dropped from the wire when absent, mirroring the
+            // iOS sign(remoteUnlockSession:) attachment. Never enforced.
+            attestationHashBlake3 =
+            com.openburnbar.data.computeruse.AndroidAppCheckAttestationReader
+                .currentAttestationDigestForEnvelope(),
             keyKind = signed.keyKind,
         ),
     )

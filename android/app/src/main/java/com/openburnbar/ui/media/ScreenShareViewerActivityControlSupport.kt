@@ -8,6 +8,8 @@ import android.util.Log
 import android.util.Rational
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
+import com.openburnbar.data.computeruse.AndroidAppCheckAttestationReader
+import com.openburnbar.data.computeruse.ControlSealSessionEstablisher
 import com.openburnbar.data.computeruse.PhoneControlAgentContextTarget
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
@@ -362,7 +364,15 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
         phoneControlSender
             ?.takeIf { phoneControlConnectionID == pair.connectionID }
             ?.let { sender ->
-                sendPhoneControlClassify(coordinator, pair, peerNodeId)
+                // F10: a reused sender keeps sealing under its established
+                // session; re-attach the same wrap so a Mac that re-keys its
+                // open side by connection id re-establishes from the classify.
+                sendPhoneControlClassify(
+                    coordinator,
+                    pair,
+                    peerNodeId,
+                    ControlSealSessionEstablisher.activeSession(pair.connectionID)?.envelope,
+                )
                 return@withLock sender
             }
         var device = AndroidEscrowDeviceRegistry().registerSelf(uid = pair.uid)
@@ -378,15 +388,18 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
                 publishedAtMillis = System.currentTimeMillis(),
             )
         PhoneControlAuthorityPublisher().publish(uid = pair.uid, authority = authority)
-        sendPhoneControlClassify(coordinator, pair, peerNodeId)
-
+        val sealSession = establishControlSealAndClassify(coordinator, pair, peerNodeId)
+        val baseSink: suspend (HermesRealtimeRelayFrame) -> Unit = { frame -> coordinator.send(frame) }
         PhoneControlSender(
             uid = pair.uid,
             connectionId = pair.connectionID,
             peerNodeId = peerNodeId,
             signingIdentityProvider = { identity },
             counterStore = counterStore,
-            frameSink = { frame -> coordinator.send(frame) },
+            attestationDigestProvider = { AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope() },
+            frameSink = sealSession
+                ?.let { ControlSealSessionEstablisher.sealingFrameSink(baseSink, it) }
+                ?: baseSink,
         ).also {
             phoneControlSender = it
             phoneControlConnectionID = pair.connectionID
@@ -394,10 +407,37 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
     }
 }
 
+/**
+ * F2 extra credit + F10: opportunistically bind the Play Integrity App Check
+ * attestation when the (default-off) requirement ramp is on (never throws —
+ * Android attaches the digest best-effort only), then establish the
+ * control-frame seal when the default-off RC flag is on AND the Mac's
+ * presence heartbeat advertised `control_seal_v1`, and send the classify
+ * frame carrying the wrapped seal key. null keeps the legacy plaintext
+ * lane — never lose remote control.
+ */
+private suspend fun ScreenShareViewerActivity.establishControlSealAndClassify(
+    coordinator: com.openburnbar.data.media.MediaControlStreamCoordinator,
+    pair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair,
+    peerNodeId: String,
+): ControlSealSessionEstablisher.Session? {
+    AndroidAppCheckAttestationReader.ensureAttestationBoundIfRequired()
+    val sealSession =
+        ControlSealSessionEstablisher.establishIfNegotiated(
+            uid = pair.uid,
+            connectionId = pair.connectionID,
+            controllerPeerNodeId = peerNodeId,
+            macCapabilities = coordinator.lastPeerCapabilities.value,
+        )
+    sendPhoneControlClassify(coordinator, pair, peerNodeId, sealSession?.envelope)
+    return sealSession
+}
+
 private suspend fun ScreenShareViewerActivity.sendPhoneControlClassify(
     coordinator: com.openburnbar.data.media.MediaControlStreamCoordinator,
     pair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair,
     peerNodeId: String,
+    controlSealKey: com.openburnbar.irohrelay.HermesRealtimeRelayControlSealKeyEnvelope? = null,
 ) {
     coordinator.send(
         HermesRealtimeRelayFrame(
@@ -408,10 +448,14 @@ private suspend fun ScreenShareViewerActivity.sendPhoneControlClassify(
             HermesRealtimeRelayControlPayload(
                 streamClass = MediaStreamClass.CONTROL_INPUT.raw,
                 authorityPeerNodeId = peerNodeId,
+                // F10: the sealKeyV3-wrapped seal-session key rides the
+                // classify frame (plaintext shell — the Mac needs it to
+                // establish its open side). Absent on the legacy lane.
+                controlSealKey = controlSealKey,
             ),
         ),
     )
-    Log.i(ScreenShareViewerActivity.TAG, "Android phone-control classified connectionID=${pair.connectionID} peer=$peerNodeId")
+    Log.i(ScreenShareViewerActivity.TAG, "Android phone-control classified connectionID=${pair.connectionID} peer=$peerNodeId sealed=${controlSealKey != null}")
 }
 
 internal fun ScreenShareViewerActivity.reconnectMirror() {

@@ -17,22 +17,32 @@ import java.security.spec.ECGenParameterSpec
  * phone-control signing keys. Android mirror of the Swift
  * `PhoneControlSecureEnclaveKeyPolicy` + `MobileComputerUseRemoteConfig`.
  *
- * Default-off: no Android client mints a hardware key (and therefore no
- * client emits `keyKind: "se-p256"`) until the flag is ramped, so pre-F2
- * pairings keep working unchanged. This is the first Remote Config read in
- * the Android app — `getBoolean` resolves to the static default (`false`)
- * until a fetch-and-activate ramp lands, and any Firebase initialization
- * failure (e.g. unit tests) also resolves to `false`, so the gate fails
- * closed in every environment.
+ * Default-ON (pre-launch posture: the strong protocol is the launch
+ * protocol) — a device with hardware key support mints `keyKind: "se-p256"`
+ * from first run. A fetched Remote Config value is the operator's kill
+ * switch and always wins in either direction; devices without usable
+ * keystore hardware fall back to the legacy software key on their own.
  */
 object PhoneControlSecureEnclaveKeyPolicy {
     /** Same key the iOS client reads (`PhoneControlSecureEnclaveKeyPolicy.remoteConfigKey`). */
     const val REMOTE_CONFIG_KEY = "computer_use_phone_control_secure_enclave_key"
 
-    fun secureEnclaveKeyEnabled(): Boolean =
-        runCatching { FirebaseRemoteConfig.getInstance().getBoolean(REMOTE_CONFIG_KEY) }
-            .getOrDefault(false)
+    fun secureEnclaveKeyEnabled(): Boolean = remoteConfigProtectionFlag(REMOTE_CONFIG_KEY)
 }
+
+/**
+ * Default-ON protection-flag read shared by the F2/F7/F10 gates:
+ * `VALUE_SOURCE_STATIC` means no remote value has ever been fetched and no
+ * in-app default is registered ⇒ ON; a fetched remote value — the operator's
+ * kill switch — always wins; a Firebase initialization failure also resolves
+ * ON (each caller already falls back to the legacy lane on any establishment
+ * or keystore failure, so this never breaks functionality).
+ */
+internal fun remoteConfigProtectionFlag(key: String): Boolean =
+    runCatching {
+        val value = FirebaseRemoteConfig.getInstance().getValue(key)
+        if (value.source == FirebaseRemoteConfig.VALUE_SOURCE_STATIC) true else value.asBoolean()
+    }.getOrDefault(true)
 
 /**
  * F2 — AndroidKeyStore custody for the non-exportable P-256 phone-control
@@ -74,13 +84,19 @@ internal object PhoneControlSecureEnclaveKeystore {
      * existing alias.
      */
     fun mintIdentity(): PhoneControlSigningIdentity.SecureEnclaveP256? = runCatching {
+        // F2 SECURITY INVARIANT: an `se-p256` signature is treated by the Mac
+        // as a *biometric* step-up proof, so it must be biometric-only.
+        // `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` — the API
+        // that excludes device-credential (PIN/pattern) unlock — only exists on
+        // API 30+ (R). On 26–29, `setUserAuthenticationRequired(true)` would
+        // also accept a PIN, letting a non-biometric signature satisfy a
+        // sensitive-action step-up. So below R we refuse to mint (and refuse to
+        // load any pre-existing alias): the caller falls back to the legacy
+        // Ed25519 identity, which forces the explicit single-use local-auth
+        // proof for sensitive actions. This keeps the invariant globally true.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@runCatching null
         if (hasKey()) return@runCatching loadIdentity()
-        val keyPair =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                generatePreferringStrongBox()
-            } else {
-                generate(strongBoxBacked = false)
-            }
+        val keyPair = generatePreferringStrongBox()
         val publicKey = keyPair.public as? ECPublicKey ?: return@runCatching null
         PhoneControlSigningIdentity.SecureEnclaveP256(keyPair.private, publicKey)
     }.getOrNull()

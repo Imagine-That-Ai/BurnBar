@@ -26,10 +26,26 @@ class PhoneControlSender(
     private val signingIdentityProvider: () -> PhoneControlSigningIdentity?,
     private val counterStore: PhoneControlCounterStore,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
+    /**
+     * F2 extra credit — optional App Check attestation digest attached to
+     * every signed authority envelope as the nullable wire field
+     * `attestationHashBlake3` (mirrors the iOS
+     * `MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope()`
+     * call in `PhoneControlSender.swift`). The default `null` keeps every
+     * emitted byte identical to the pre-F2 always-absent behavior; the digest
+     * is never enforced client-side. The canonical intent hash never covers
+     * the authority envelope, so attaching post-sign is signature-safe.
+     */
+    private val attestationDigestProvider: suspend () -> String? = { null },
     private val frameSink: suspend (HermesRealtimeRelayFrame) -> Unit,
 ) {
     sealed class SendError(message: String) : RuntimeException(message) {
         object SigningKeyMissing : SendError("phone-control signing key missing")
+    }
+
+    private suspend fun PhoneControlAuthorityEnvelope.withAttestationDigest(): PhoneControlAuthorityEnvelope {
+        val digest = attestationDigestProvider()?.takeIf { it.isNotBlank() } ?: return this
+        return copy(attestationHashBlake3 = digest)
     }
 
     suspend fun send(intent: PhoneControlIntent): PhoneControlAuthorityEnvelope {
@@ -49,7 +65,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            )
+            ).withAttestationDigest()
         val relayAuthority = authority.toRelayAuthority()
         val frame =
             HermesRealtimeRelayFrame(
@@ -86,7 +102,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            )
+            ).withAttestationDigest()
         val signedGrant =
             if (agentGrant.localAuthenticationSatisfied) {
                 agentGrant.copy(
@@ -135,7 +151,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            )
+            ).withAttestationDigest()
         val signedWire =
             HermesRealtimeRelayClipboardRequest(
                 requestId = request.requestId,
@@ -182,7 +198,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            )
+            ).withAttestationDigest()
         val signedWire = unsignedCredential.copy(authority = authority.toRelayAuthority())
         val frame =
             HermesRealtimeRelayFrame(
@@ -218,7 +234,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            )
+            ).withAttestationDigest()
         val signedWire =
             HermesRealtimeRelayAgentContextTarget(
                 requestId = target.requestId,
@@ -267,7 +283,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            )
+            ).withAttestationDigest()
         val signedWire =
             HermesRealtimeRelaySystemPermissionRequest(
                 requestId = request.requestId,

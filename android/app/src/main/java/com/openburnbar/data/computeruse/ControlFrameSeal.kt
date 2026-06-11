@@ -143,6 +143,9 @@ object ControlFrameSeal {
 object ControlFrameSealNegotiation {
     const val CAPABILITY = "control_seal_v1"
 
+    /** Same default-off ramp key the iOS client reads (`ControlFrameSealNegotiation.remoteConfigKey`). */
+    const val REMOTE_CONFIG_KEY = "computer_use_control_seal_enabled"
+
     fun resolveSealingEnabled(localSupports: Boolean, remoteSupports: Boolean): Boolean =
         localSupports && remoteSupports
 }

@@ -129,12 +129,30 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                 self.stream = stream
                 let signingIdentity = try signingKeyStore.signingIdentity()
                 let phonePeerNodeId = signingKeyStore.peerNodeId(for: signingIdentity)
+                // F10: establish the control-frame seal for this watch stream
+                // when the flag is on and the Mac advertised control_seal_v1
+                // (capabilities come from the warm media-control stream's view
+                // of the same Mac). Both the input sender and the approval
+                // sink seal under the same session; failure falls back to the
+                // legacy plaintext lane.
+                let sealSession = await ControlSealSessionEstablisher.establishIfNegotiated(
+                    uid: uid,
+                    connectionID: connectionID,
+                    controllerPeerNodeId: phonePeerNodeId,
+                    macCapabilities: HermesIrohRelayTransport.shared.latestMacPresenceCapabilities(connectionID: connectionID),
+                    macRelayPublicKeyBase64: HermesService.shared.selectedConnection.relayPublicKey
+                )
+                let makeSealedSink: () -> PhoneControlSender.FrameSink = {
+                    let base = self.makeFrameSink()
+                    guard let sealSession else { return base }
+                    return ControlSealSessionEstablisher.sealingFrameSink(base, session: sealSession)
+                }
                 let sender = PhoneControlSender(
                     peerNodeId: phonePeerNodeId,
                     uid: uid,
                     connectionId: connectionID,
                     signingIdentityProvider: { signingIdentity },
-                    frameSink: makeFrameSink()
+                    frameSink: makeSealedSink()
                 )
                 self.phoneControlSender = sender
                 try await authorityPublisher.publish(
@@ -150,7 +168,7 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                     state: state,
                     uid: uid,
                     connectionId: connectionID,
-                    approvalFrameSink: makeFrameSink(),
+                    approvalFrameSink: makeSealedSink(),
                     phoneControlSender: sender
                 )
                 self.receiver = receiver
@@ -160,7 +178,8 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                     connectionId: connectionID,
                     control: HermesRealtimeRelayControlPayload(
                         streamClass: MediaStreamClass.controlInput.rawValue,
-                        authorityPeerNodeId: phonePeerNodeId
+                        authorityPeerNodeId: phonePeerNodeId,
+                        controlSealKey: sealSession?.envelope
                     )
                 ))
                 phase = .live

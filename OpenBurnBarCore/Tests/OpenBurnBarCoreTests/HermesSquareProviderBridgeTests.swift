@@ -16,7 +16,9 @@ final class HermesSquareProviderBridgeTests: XCTestCase {
             (.codex,    .codex),
             (.openClaw, .openClaw),
             (.droid,    .factory),
-            (.forge,    .forgeDev)
+            (.forge,    .forgeDev),
+            (.grok,     .xAI),
+            (.cursorAgent, .cursorAgent),
         ]
         for (runtime, expectedProvider) in cases {
             let identity = AgentIdentity.builtIn(runtime)

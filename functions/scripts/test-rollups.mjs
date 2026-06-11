@@ -5,6 +5,7 @@ import {
   computeUserRollupsFromCounters,
   drainPendingCounterDeltas,
   enqueueUsageCounterDelta,
+  rebuildUserRollupCounters,
   writeUserRollups,
 } from "../lib/rollups.js";
 
@@ -94,16 +95,31 @@ function listCollectionDocs(fakeDb, path) {
 }
 
 // Supports the documentId range filters used by the rollup day-window fetch.
-function makeQuery(listDocs, clauses = []) {
+function makeQuery(listDocs, clauses = [], limitCount = undefined, startAfterId = undefined) {
   return {
     where(_field, op, value) {
-      return makeQuery(listDocs, [...clauses, [op, value]]);
+      return makeQuery(listDocs, [...clauses, [op, value]], limitCount, startAfterId);
+    },
+    orderBy() {
+      return makeQuery(listDocs, clauses, limitCount, startAfterId);
+    },
+    limit(count) {
+      return makeQuery(listDocs, clauses, count, startAfterId);
+    },
+    startAfter(doc) {
+      return makeQuery(listDocs, clauses, limitCount, doc.id);
     },
     async get() {
-      return {
-        docs: listDocs().filter((doc) =>
+      const docs = listDocs()
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .filter((doc) => !startAfterId || doc.id > startAfterId)
+        .filter((doc) =>
           clauses.every(([op, value]) => (op === ">=" ? doc.id >= value : op === "<=" ? doc.id <= value : false)),
-        ),
+        )
+        .slice(0, limitCount ?? listDocs().length);
+      return {
+        empty: docs.length === 0,
+        docs,
       };
     },
   };
@@ -113,16 +129,12 @@ const db = {
   store: new Map(),
   collection(path) {
     if (path === "users/test-uid/usage") {
-      return {
-        async get() {
-          return {
-            docs: usageDocs.map((data, index) => ({
-              id: `usage-${index}`,
-              data: () => data,
-            })),
-          };
-        },
-      };
+      return makeQuery(() =>
+        usageDocs.map((data, index) => ({
+          id: `usage-${index}`,
+          data: () => data,
+        })),
+      );
     }
     return {
       doc(id) {
@@ -203,10 +215,12 @@ await applyUsageCounterDelta(db, "test-uid", "usage-1", usageDocs[1], undefined)
 const repairedThenUpdated = await computeUserRollupsFromCounters(db, "test-uid");
 assert.equal(repairedThenUpdated.today.totals.requests, 2);
 assert.equal(repairedThenUpdated.today.totals.tokens, 1_875);
-assert.equal(
-  repairedThenUpdated.today.modelSummaries.find((m) => m.provider === "codex")?.model,
-  "unknown"
-);
+assert.equal(repairedThenUpdated.today.modelSummaries.find((m) => m.provider === "codex")?.model, "unknown");
+
+const pagedRepair = await rebuildUserRollupCounters(db, "test-uid", { pageSize: 1 });
+assert.equal(pagedRepair.usageDocsScanned, 3);
+assert.equal(pagedRepair.pages, 3);
+assert.equal(pagedRepair.winnersWritten, 2);
 
 function containsUndefined(value) {
   if (Array.isArray(value)) return value.some(containsUndefined);
@@ -249,7 +263,10 @@ await writeUserRollups(writeDb, "test-uid", rollups, undefined);
 
 assert.equal(writes.length, 6);
 assert.equal(writes.find((write) => write.path.endsWith("/rollup_jobs/current"))?.data.dirty, false);
-assert.equal(writes.some((write) => containsUndefined(write.data)), false);
+assert.equal(
+  writes.some((write) => containsUndefined(write.data)),
+  false,
+);
 
 // Dirty-clear race guard: a usage event landing mid-compute refreshes
 // `dirtiedAt`, so the clear must be skipped and the job stays dirty for the
@@ -662,12 +679,7 @@ assert.equal(listQueueDocs(rebuildDb).length, 1);
 const originalRebuildCollection = rebuildDb.collection;
 rebuildDb.collection = function collection(path) {
   if (path === "users/test-uid/usage") {
-    return {
-      path,
-      async get() {
-        return { docs: [] };
-      },
-    };
+    return makeQuery(() => []);
   }
   return originalRebuildCollection(path);
 };

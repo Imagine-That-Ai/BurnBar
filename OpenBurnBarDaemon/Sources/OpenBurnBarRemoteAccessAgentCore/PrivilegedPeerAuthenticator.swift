@@ -109,7 +109,10 @@ public struct PrivilegedPeerAuthenticator: Sendable {
         guard status == errSecSuccess, let code else {
             throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: status)
         }
+        try validateCodeSignature(code)
+    }
 
+    private static func validateCodeSignature(_ code: SecCode) throws {
         var requirement: SecRequirement?
         let requirementString = OpenBurnBarSigningIdentity.privilegedPeerDesignatedRequirement
         let requirementStatus = SecRequirementCreateWithString(

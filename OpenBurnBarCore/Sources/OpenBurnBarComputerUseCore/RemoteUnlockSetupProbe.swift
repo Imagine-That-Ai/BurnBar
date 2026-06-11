@@ -14,8 +14,12 @@ public struct RemoteUnlockSetupProbe {
     public static let virtualHIDPolicyRejectedKey = "remote_unlock.virtual_hid_driver_policy_rejected"
     public static let virtualHIDPolicyRejectionReasonKey = "remote_unlock.virtual_hid_driver_policy_rejection_reason"
     public static let virtualHIDBridgeInstallPath = "/Library/Application Support/OpenBurnBar/RemoteUnlock/openburnbar-virtual-hid-bridge"
-    public static let privilegedInputExecutionInstallPath =
+    public static let legacyPrivilegedInputExecutionInstallPath =
         "/Library/Application Support/OpenBurnBar/RemoteUnlock/openburnbar-privileged-input-execution"
+    public static let privilegedInputExecutionBundleInstallPath =
+        "/Library/Application Support/OpenBurnBar/RemoteUnlock/OpenBurnBarPrivilegedInputExecution.app"
+    public static let privilegedInputExecutionInstallPath =
+        privilegedInputExecutionBundleInstallPath + "/Contents/MacOS/OpenBurnBarPrivilegedInputExecution"
     public static let virtualHIDBridgeSocketPath = "/var/run/openburnbar-virtual-hid.sock"
     public static let privilegedInputExecutionMachService = PrivilegedInputXPCConstants.machServiceName
     /// Offline issuer trust material for the Virtual HID bridge leaf verifier (written at certification).

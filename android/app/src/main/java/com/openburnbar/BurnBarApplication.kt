@@ -141,6 +141,11 @@ class BurnBarApplication : Application() {
         OpenBurnBarIrohNativeContext.install(applicationContext)
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
+        // F2/F7/F10: land remote kill-switch values so the default-ON
+        // protection flags can be remotely disabled (the flags default ON via
+        // the source-aware reader; this makes the override reachable). iOS
+        // does this in MobileMediaBudgetStatusStore.
+        com.openburnbar.data.computeruse.RemoteConfigBootstrap.activate()
         val crashlyticsEnabled = getSharedPreferences("burnbar.diagnostics", MODE_PRIVATE)
             .getBoolean("crashlytics_enabled", false)
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(crashlyticsEnabled)

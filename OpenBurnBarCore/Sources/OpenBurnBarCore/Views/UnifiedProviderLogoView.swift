@@ -47,25 +47,7 @@ public struct UnifiedProviderLogoView: View {
     /// confirmed monochrome-dark in our asset catalog.
     private var needsBackdropTreatment: Bool {
         guard bundledImage != nil else { return false }
-        if colorScheme == .dark {
-            switch provider {
-            case .openAI, .codex, .cursor, .forgeDev, .claudeCode,
-                 .factory, .windsurf, .copilot, .aider, .ollama,
-                 .openClaw, .geminiCLI, .antigravity, .goose, .augment, .cline,
-                 .kiloCode, .rooCode, .hermes:
-                return true
-            default:
-                return false
-            }
-        } else {
-            // Light mode: Kimi, Goose, and Augment have white/light silhouettes and need a backdrop
-            switch provider {
-            case .kimi, .goose, .augment:
-                return true
-            default:
-                return false
-            }
-        }
+        return provider.needsMonochromeLogoBackdrop(colorScheme: colorScheme)
     }
 
     @ViewBuilder

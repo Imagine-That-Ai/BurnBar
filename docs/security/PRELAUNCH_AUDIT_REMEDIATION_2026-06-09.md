@@ -38,9 +38,38 @@ Verified surfaces: **OpenBurnBarCore `swift test` (1437 pass / 3 skip)** and
 | Finding | Shipped + tested this pass | Remaining (gated) |
 |---|---|---|
 | F2 | keyKind negotiation, Secure-Enclave P-256 verify/sign path, shared peerNodeId derivations, per-action step-up policy (18 core tests); server SE-P256 publish + atomic revoke + revocation receipt (5 vitest) | ~~Mac validator accept-both verify; iOS Secure Enclave + Android StrongBox keygen + biometric; Kotlin signer P-256 mirror; shorten TTL + per-session rebind~~ **all landed 2026-06-10 (below)**. **Physical biometric/SE device validation remains.** |
-| F7 | per-frame media AEAD + capability gate (8 core tests); Kotlin mirror + frozen KATs; Mac→phone advertisement; **ACTIVATED Swift end-to-end 2026-06-10 (`4bce121a8`):** phone wraps a per-mirror key into the mirror request (sealKeyV3, viewerId-bound AAD), Mac opens via the pinned-sender trust path and seals every frame before chunking (cleartext `sealedFramePosition` rebuilds the AAD), phone opens after reassembly fail-closed — all behind default-off `computer_use_media_frame_aead_enabled` | Android dispatcher open wiring; live two-device validation |
-| F10 | control-frame seal + capability gate (6 core tests); Kotlin mirror + frozen KATs; Mac advertises `control_seal_v1`; **ACTIVATED Swift end-to-end 2026-06-10 (`b5c78fee4`/`75d221ffa`/`15a51bcec`):** classify-time sealKeyV3 establishment (pinned-sender trust path), iOS seals every control payload into a streamClass-only shell at MercuryLiveSheet + InlineAgentMirror, Mac opens-or-drops fail-closed before dispatch — all behind default-off `computer_use_control_seal_enabled` | Android `PhoneControlSender` seal; AgentWatch + remote-unlock sender surfaces; live two-device validation |
-| L2 | gateway PoP v2 query binding, accept-both transition, per-client downgrade protection (5 vitest); **2026-06-10:** adapter PoP v2 signer on all 10 call sites + pairing key registration (13 unittest) | re-vendor `third_party/hermes-agent` (F5 gate) |
+| F7 | per-frame media AEAD + capability gate (8 core tests); Kotlin mirror + frozen KATs; Mac→phone advertisement; **ACTIVATED Swift end-to-end 2026-06-10 (`4bce121a8`):** phone wraps a per-mirror key into the mirror request (sealKeyV3, viewerId-bound AAD), Mac opens via the pinned-sender trust path and seals every frame before chunking (cleartext `sealedFramePosition` rebuilds the AAD), phone opens after reassembly fail-closed — all behind default-off `computer_use_media_frame_aead_enabled`; **Android viewer activated 2026-06-10** (establish in `requestMirror` — the single funnel for all 4 mirror surfaces — + sealed-open in the live read loop, fail closed) | live two-device validation with the RC flags ramped |
+| F10 | control-frame seal + capability gate (6 core tests); Kotlin mirror + frozen KATs; Mac advertises `control_seal_v1`; **ACTIVATED Swift end-to-end 2026-06-10 (`b5c78fee4`/`75d221ffa`/`15a51bcec`):** classify-time sealKeyV3 establishment (pinned-sender trust path), iOS seals every control payload into a streamClass-only shell at MercuryLiveSheet + InlineAgentMirror, Mac opens-or-drops fail-closed before dispatch — all behind default-off `computer_use_control_seal_enabled`; **iOS AgentWatch + remote-unlock senders sealed via a per-connection session registry; Android sender activated 2026-06-10** (Kotlin `ControlFrameSealSession` + establisher at the screen-share classify; inline mirror reuses the registry session) | live two-device validation with the RC flags ramped |
+| L2 | gateway PoP v2 query binding, accept-both transition, per-client downgrade protection (5 vitest); **2026-06-10:** adapter PoP v2 signer on all 10 call sites + pairing key registration (13 unittest); fork commit `005cf0d86` + provenance pin bumped (hash verified) | **L2 COMPLETE.** The F5 gate still fails closed on the unrelated C-4 hardening (by design) |
+
+### Adversarial self-review pass — 2026-06-10 (commit `1ac0693ec`)
+
+A principal-reviewer pass over the default-ON flip (`02c12cb85`) found and fixed
+three issues; all verified.
+
+- **[security] Android API 26–29 could emit a non-biometric `se-p256` key.**
+  `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` (the API that
+  excludes device-credential/PIN unlock) is API-30+ only; below it,
+  `setUserAuthenticationRequired(true)` accepts a PIN. Since `minSdk = 26` and
+  the Mac skips the explicit local-auth proof for `se-p256` (treating the
+  signature as biometric step-up evidence), a PIN-gated key on API 26–29 would
+  have satisfied a sensitive-action step-up without a biometric.
+  `PhoneControlSecureEnclaveKeystore.mintIdentity` now refuses below API 30
+  (and refuses to load any pre-existing alias), so those devices use the legacy
+  Ed25519 key — which *forces* the explicit proof. The invariant
+  "`se-p256` ⇒ biometric-strong-gated signature" is now globally true on both
+  platforms (iOS uses `.biometryCurrentSet`, which already excludes passcode).
+- **[availability] iOS `signingIdentity` threw on Secure-Enclave mint failure.**
+  A `.biometryCurrentSet` key cannot be created on a passcode-only device with
+  no enrolled biometric, so once the flag defaults ON, remote control would
+  brick there. It now falls back to the legacy key (mirroring Android's
+  `getOrNull()`); the security invariant holds because the legacy lane forces
+  the explicit proof. Regression test asserts `signingIdentity` never throws.
+- **[kill switch] the Android kill switch was inert.** Android never called
+  `RemoteConfig.fetchAndActivate()`, so `getValue().source` stayed permanently
+  `STATIC` and an operator-set `false` could never reach the device — the
+  default-ON flags were un-disable-able remotely. `RemoteConfigBootstrap` now
+  runs a one-time fetch (hourly minimum interval) at `Application.onCreate`.
 
 ### Progress — 2026-06-10 (wiring pass: F2 all-platform activation, L2 adapter)
 
@@ -172,10 +201,12 @@ xcodebuild; iOS `OpenBurnBarMobileUnitTests` 969+ cases green; Android
   13 unittest cases in `tools/hermes-platform-burnbar/test_adapter_pop.py`
   (run with `PYTHONPATH=~/.hermes/hermes-agent`), incl. the
   lowercase-before-uppercase ICU vector and a tampered-query negative.
-- **Remaining (out of this repo):** re-vendor the runtime: hermes-agent fork
-  commit → bump `third_party/hermes-agent/manifest.json` `pinnedCommit` +
-  `vendoredSourceTreeSha256` → `scripts/ci/verify-vendored-agent-source.sh`
-  green. Tracked alongside the F5 vendored-runtime gate below.
+- **Re-vendored (2026-06-10):** the signer is committed on the fork's pinned
+  branch as `005cf0d86` and `third_party/hermes-agent/manifest.json` is bumped
+  to it (`vendoredSourceTreeSha256` recomputed; `verify-vendored-agent-source.sh`
+  hash-verifies at the new pin). `pendingHardening.blocking` stays true — the
+  F5 gate keeps failing closed until the C-4 command-guard merges. **L2 is
+  complete**; nothing L2-specific remains.
 
 ### Attestation default-on (remote-control F6) & full-key `peerNodeId` (remote-control F7)
 - Flipping `computer_use_phone_control_attestation_required` to default-true requires
@@ -193,12 +224,17 @@ xcodebuild; iOS `OpenBurnBarMobileUnitTests` 969+ cases green; Android
   fields). The SE `peerNodeId` derivations are also already defined and tested in
   `PhoneControlPeerNodeIdDerivation` + the server (above), giving the full-key
   identity change a versioned home.
-- **Remaining (gated):** an Android attestation **reader** (no equivalent of the
-  iOS `MobileAppCheckAttestationReader` exists) + an Android Remote Config read
-  (Android reads no RC today) before the attestation ramp can include Android;
-  iOS `sign(remoteUnlockSession:)` still omits the attestation field; the
-  full-key `peerNodeId` migration + Mac re-pair UX. None are launch-blocking
-  while the RC flag stays default-off.
+- **Landed 2026-06-10:** the Android attestation reader exists and produces a
+  REAL digest (the server's `obb_app_check` claim is platform-agnostic and
+  Android already binds Play-Integrity App Check): parses the ID-token claim,
+  checks 30-day freshness, derives the identical
+  `SHA-256("openburnbar.appcheck.v1|appId|boundAtMillis")`, and attaches it on
+  every Android controller envelope (never enforcing — null on any failure,
+  pre-F2 wire byte-identical). Android reads Remote Config since the F2 lane.
+  iOS remote-unlock envelopes attach the cached digest. The attestation ramp
+  can now include BOTH platforms.
+- **Remaining (gated):** the full-key `peerNodeId` migration + Mac re-pair UX.
+  Not launch-blocking while the RC flag stays default-off.
 
 ### F5 follow-through (out of this repo)
 The C-4 agent command-guard and the server-side Telegram chat-ID allowlist live in

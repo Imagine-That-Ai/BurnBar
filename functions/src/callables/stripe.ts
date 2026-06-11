@@ -3,6 +3,7 @@
  */
 
 import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
+import { Timestamp } from "firebase-admin/firestore";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -45,6 +46,9 @@ import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 type StripeCheckoutTier = "cloud" | "cloud_pro";
 type StripeCheckoutCadence = "monthly" | "annual";
 type StripeTopUpKind = "agent_control_actions_100" | "floo_relay_50gb";
+type StripeWebhookReservation = "reserved" | "processed" | "processing";
+
+const STRIPE_WEBHOOK_EVENT_LEASE_MS = 10 * 60 * 1000;
 
 function optionalChoice<T extends string>(raw: unknown, allowed: readonly T[], fieldName: string): T | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
@@ -137,6 +141,74 @@ function googlePlaySubscriptionEntitlement(productID: string): { entitlementID: 
     return { entitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID, canonicalProductID: productID };
   }
   throw new HttpsError("invalid-argument", "Unsupported Google Play subscription product.");
+}
+
+function stripeWebhookEventRef(eventID: string) {
+  return db.doc(`stripe_webhook_events/${eventID.replaceAll("/", "_")}`);
+}
+
+async function reserveStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebhookReservation> {
+  const ref = stripeWebhookEventRef(event.id);
+  const nowMillis = Date.now();
+  return db.runTransaction(async (transaction) => {
+    const existing = await transaction.get(ref);
+    if (existing.exists) {
+      const status = existing.get("status");
+      if (status === "processed") return "processed";
+      const leaseExpiresAt = existing.get("leaseExpiresAt");
+      const leaseExpiresAtMillis =
+        leaseExpiresAt instanceof Timestamp
+          ? leaseExpiresAt.toMillis()
+          : typeof leaseExpiresAt?.toMillis === "function"
+            ? leaseExpiresAt.toMillis()
+            : 0;
+      if (status === "processing" && leaseExpiresAtMillis > nowMillis) return "processing";
+    }
+
+    transaction.set(
+      ref,
+      {
+        eventID: event.id,
+        type: event.type,
+        stripeCreatedAt: new Date(event.created * 1000).toISOString(),
+        stripeCreatedMillis: event.created * 1000,
+        status: "processing",
+        processingStartedAt: Timestamp.fromMillis(nowMillis),
+        leaseExpiresAt: Timestamp.fromMillis(nowMillis + STRIPE_WEBHOOK_EVENT_LEASE_MS),
+        updatedAt: Timestamp.fromMillis(nowMillis),
+        schemaVersion: 1,
+      },
+      { merge: true },
+    );
+    return "reserved";
+  });
+}
+
+async function markStripeWebhookEventProcessed(event: Stripe.Event): Promise<void> {
+  await stripeWebhookEventRef(event.id).set(
+    {
+      status: "processed",
+      processedAt: Timestamp.now(),
+      leaseExpiresAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      schemaVersion: 1,
+    },
+    { merge: true },
+  );
+}
+
+async function markStripeWebhookEventFailed(event: Stripe.Event, error: unknown): Promise<void> {
+  await stripeWebhookEventRef(event.id).set(
+    stripUndefinedObject({
+      status: "failed",
+      failedAt: Timestamp.now(),
+      leaseExpiresAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      error: error instanceof Error ? error.message : String(error),
+      schemaVersion: 1,
+    }),
+    { merge: true },
+  );
 }
 
 function googlePlayTopUpKind(productID: string): CloudProTopUpKind {
@@ -491,6 +563,16 @@ export const stripeBurnBarProWebhook = onRequest(
       return;
     }
 
+    const reservation = await reserveStripeWebhookEvent(event);
+    if (reservation === "processed") {
+      res.json({ received: true, duplicate: true });
+      return;
+    }
+    if (reservation === "processing") {
+      res.status(409).send("Stripe webhook event is already processing; retry later.");
+      return;
+    }
+
     try {
       switch (event.type) {
         case "checkout.session.completed":
@@ -503,14 +585,19 @@ export const stripeBurnBarProWebhook = onRequest(
         case "customer.subscription.updated":
         case "customer.subscription.deleted":
           if (isStripeSubscription(event.data.object)) {
-            await applyStripeSubscription(stripe, event.data.object);
+            await applyStripeSubscription(stripe, event.data.object, undefined, {
+              eventID: event.id,
+              eventCreatedMillis: event.created * 1000,
+            });
           }
           break;
         default:
           break;
       }
+      await markStripeWebhookEventProcessed(event);
       res.json({ received: true });
     } catch (err) {
+      await markStripeWebhookEventFailed(event, err);
       logError({ event: "callable_error", message: "Stripe webhook handling failed", detail: String(err) });
       res.status(500).send("Stripe webhook handling failed.");
     }

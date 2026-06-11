@@ -94,9 +94,10 @@ describe("pendingCounterDeltaDocID", () => {
     expect(earlier < later).toBe(true);
   });
 
-  it("is collision-free for identical timestamps", () => {
+  it("is ordered and collision-free for identical timestamps", () => {
     const a = pendingCounterDeltaDocID(T0);
     const b = pendingCounterDeltaDocID(T0);
+    expect(a < b).toBe(true);
     expect(a).not.toBe(b);
   });
 });
