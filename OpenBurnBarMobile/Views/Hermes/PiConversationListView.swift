@@ -366,6 +366,7 @@ struct PiChatThreadView: View {
         }
         .sheet(isPresented: $showThinkingStylePicker) {
             HermesThinkingStylePickerSheet(
+                provider: .piAgent,
                 modelName: service.messages.last(where: { $0.role == .assistant })?.modelName
             )
         }
@@ -506,7 +507,7 @@ struct PiChatThreadView: View {
                         if msg.text.isEmpty, msg.isStreaming {
                             // The shared thinking spinner (user-chosen style/
                             // color/size) replaces the bare "…" placeholder.
-                            HermesThinkingSpinner(modelName: msg.modelName)
+                            HermesThinkingSpinner(provider: .piAgent, modelName: msg.modelName)
                         } else {
                             Text(msg.text)
                                 .font(MobileTheme.Typography.body)

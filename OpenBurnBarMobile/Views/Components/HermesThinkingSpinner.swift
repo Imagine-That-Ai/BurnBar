@@ -487,7 +487,7 @@ private struct SwarmDotsThinkingIndicator: View {
     private static let dotsHoldEnd: Double = 3.8
 
     private var stageSize: CGSize {
-        CGSize(width: 76 * scale, height: 34 * scale)
+        CGSize(width: 92 * scale, height: 40 * scale)
     }
 
     var body: some View {
@@ -498,10 +498,10 @@ private struct SwarmDotsThinkingIndicator: View {
         }
         .frame(width: stageSize.width, height: stageSize.height)
         .onAppear {
-            glyphClouds = glyphProviders.map { SwarmGlyphSampler.glyphPoints(for: $0, maxPoints: 84) }
+            glyphClouds = glyphProviders.map { SwarmGlyphSampler.glyphPoints(for: $0, maxPoints: 120) }
         }
         .onChange(of: glyphProviders) { _, newProviders in
-            glyphClouds = newProviders.map { SwarmGlyphSampler.glyphPoints(for: $0, maxPoints: 84) }
+            glyphClouds = newProviders.map { SwarmGlyphSampler.glyphPoints(for: $0, maxPoints: 120) }
         }
     }
 
@@ -569,7 +569,7 @@ private struct SwarmDotsThinkingIndicator: View {
             )
 
             // Wobble is gentle while held in formation and chaotic mid-flight.
-            let chaos = reduceMotion ? 0 : (0.5 + 9.0 * m * (1 - m)) * scale
+            let chaos = reduceMotion ? 0 : (0.22 + 9.0 * m * (1 - m)) * scale
             let wobbleX = sin(t * (1.3 + hashA * 1.4) + hashB * .pi * 2) * chaos
             let wobbleY = cos(t * (1.1 + hashB * 1.6) + hashA * .pi * 2) * chaos
 
@@ -579,7 +579,7 @@ private struct SwarmDotsThinkingIndicator: View {
             )
 
             // Particles read denser in the glyph, plumper as pooled dots.
-            let radius = (0.9 + 0.5 * hashB + 0.9 * m) * scale
+            let radius = (0.74 + 0.32 * hashB + 1.05 * m) * scale
             let rect = CGRect(
                 x: position.x - radius,
                 y: position.y - radius,
@@ -587,7 +587,7 @@ private struct SwarmDotsThinkingIndicator: View {
                 height: radius * 2
             )
             let path = Path(ellipseIn: rect)
-            let baseOpacity = 0.62 + 0.38 * hashA
+            let baseOpacity = 0.78 + 0.22 * hashA
 
             // Brand-true glyph: logo colors while formed, crossfading to the
             // user's shading as particles pool into dots. Two weighted fills
@@ -624,8 +624,8 @@ private struct SwarmDotsThinkingIndicator: View {
 
     /// Last-resort formation while glyph sampling warms (or has no logo):
     /// a clean ring, so the indicator never renders as scattered noise.
-    private static let fallbackRing: [SwarmGlyphPoint] = (0..<84).map { index in
-        let angle = Double(index) / 84.0 * .pi * 2
+    private static let fallbackRing: [SwarmGlyphPoint] = (0..<120).map { index in
+        let angle = Double(index) / 120.0 * .pi * 2
         return SwarmGlyphPoint(
             position: CGPoint(x: cos(angle), y: sin(angle)),
             brandColor: nil
