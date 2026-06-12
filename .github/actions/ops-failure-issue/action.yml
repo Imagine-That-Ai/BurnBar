@@ -1,0 +1,185 @@
+name: Ops failure issue (per-lane, comment + auto-close)
+description: >-
+  Shared standing-failure issue manager for the scheduled/deploy alerting lanes.
+  Replaces the copy-pasted title-prefix dedupe that masked outages (tech-debt
+  2026-06-11 H16/finding-144). On failure it CREATES a per-lane issue or, when
+  one is already open, COMMENTS on it with the new run link and bumps a counter
+  label instead of silently skipping. On a green run it COMMENTS and CLOSES the
+  same lane's open issue, re-arming the alarm. Per-lane dedupe keys (a
+  `lane:<name>` label) guarantee a standing red in one lane can never suppress a
+  new red in a different lane.
+
+inputs:
+  mode:
+    description: "open (record a failure) | close (resolve on green)"
+    required: true
+  lane:
+    description: >-
+      Stable dedupe key for this alerting lane (e.g. nightly-e2e,
+      ops-confidence, deploy-firestore, deploy-hosting). Becomes the
+      `lane:<value>` label so lanes never cross-suppress each other.
+    required: true
+  title-prefix:
+    description: >-
+      Human-readable issue title prefix for this lane. The run id is appended on
+      creation; matching uses the `lane:<lane>` label, not the title, so the
+      prefix is cosmetic and safe to change.
+    required: true
+  summary:
+    description: One-line description of what failed (used in the issue body).
+    required: false
+    default: "A scheduled launch/ops gate failed."
+  details:
+    description: >-
+      Optional extra markdown appended to the issue body (e.g. a fenced JSON
+      block of `needs` results). Pass via toJSON()-rendered text.
+    required: false
+    default: ""
+  labels:
+    description: >-
+      Comma-separated severity/area labels applied IN ADDITION to the per-lane
+      label. The per-lane `lane:<lane>` label is always added automatically.
+    required: false
+    default: "P0 - Critical,area: infra"
+  github-token:
+    description: Token with issues:write.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Manage per-lane ops failure issue
+      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+      env:
+        OPS_MODE: ${{ inputs.mode }}
+        OPS_LANE: ${{ inputs.lane }}
+        OPS_TITLE_PREFIX: ${{ inputs.title-prefix }}
+        OPS_SUMMARY: ${{ inputs.summary }}
+        OPS_DETAILS: ${{ inputs.details }}
+        OPS_LABELS: ${{ inputs.labels }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const mode = process.env.OPS_MODE;
+          const lane = process.env.OPS_LANE;
+          if (!lane) {
+            core.setFailed('ops-failure-issue: `lane` input is required.');
+            return;
+          }
+          if (mode !== 'open' && mode !== 'close') {
+            core.setFailed(`ops-failure-issue: \`mode\` must be open|close, got '${mode}'.`);
+            return;
+          }
+
+          const laneLabel = `lane:${lane}`;
+          const extraLabels = (process.env.OPS_LABELS || '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          // The lane label is the dedupe key — always present. Severity/area
+          // labels are additive context, never the matcher.
+          const allLabels = Array.from(new Set([laneLabel, ...extraLabels]));
+
+          const runUrl =
+            `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+            `/actions/runs/${context.runId}`;
+
+          // Find this lane's open issue by the per-lane label ONLY, paginating
+          // fully so a backlog of other-lane issues can never hide it.
+          const matches = await github.paginate(github.rest.issues.listForRepo, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: laneLabel,
+            per_page: 100,
+          });
+
+          const COUNT_PREFIX = 'failures:';
+          const bumpCountLabel = (issue) => {
+            const current = (issue.labels || [])
+              .map((l) => (typeof l === 'string' ? l : l.name))
+              .find((n) => n && n.startsWith(COUNT_PREFIX));
+            const n = current ? parseInt(current.slice(COUNT_PREFIX.length), 10) || 1 : 1;
+            return { previous: current, next: `${COUNT_PREFIX}${n + 1}` };
+          };
+
+          if (mode === 'open') {
+            if (matches.length > 0) {
+              // Standing red: COMMENT + bump the counter label. Never silently
+              // skip — a new occurrence must always leave a trace.
+              const issue = matches[0];
+              const { previous, next } = bumpCountLabel(issue);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: [
+                  `Recurred — ${process.env.OPS_SUMMARY}`,
+                  '',
+                  `Run: ${runUrl}`,
+                  `Ref: ${context.ref}`,
+                  process.env.OPS_DETAILS ? '' : null,
+                  process.env.OPS_DETAILS || null,
+                ].filter((l) => l !== null).join('\n'),
+              });
+              if (previous) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name: previous,
+                }).catch(() => {});
+              }
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: [next],
+              });
+              core.notice(`Lane '${lane}': commented on standing issue #${issue.number} (${next}).`);
+              return;
+            }
+            const title = `${process.env.OPS_TITLE_PREFIX} (${context.runId})`;
+            const body = [
+              process.env.OPS_SUMMARY,
+              '',
+              `Lane: \`${lane}\``,
+              `Workflow: ${context.workflow}`,
+              `Run: ${runUrl}`,
+              `Ref: ${context.ref}`,
+              process.env.OPS_DETAILS ? '' : null,
+              process.env.OPS_DETAILS || null,
+            ].filter((l) => l !== null).join('\n');
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: [...allLabels, `${COUNT_PREFIX}1`],
+            });
+            core.notice(`Lane '${lane}': opened issue #${created.data.number}.`);
+            return;
+          }
+
+          // mode === 'close': resolve this lane's open issue(s) on a green run.
+          if (matches.length === 0) {
+            core.info(`Lane '${lane}': no open failure issue to close.`);
+            return;
+          }
+          for (const issue of matches) {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `Resolved by green run: ${runUrl}`,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              state: 'closed',
+              state_reason: 'completed',
+            });
+            core.notice(`Lane '${lane}': closed resolved issue #${issue.number}.`);
+          }
