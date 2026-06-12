@@ -425,6 +425,71 @@ jobs:
       - name: Verify iroh remoteNodeId in UniFFI bindings
         run: bash scripts/ci/verify-iroh-remote-node-id-binding.sh
 
+  # ── Signal honesty-copy gate (tech-debt audit H7) ─────────────────────────
+  # Default-deny over-claim phrase scan ("zero-knowledge", "Signal-quality
+  # privacy", etc.) across product/copy surfaces. The script was authored but
+  # wired into ZERO workflows while rule0's comments claimed it was enforced —
+  # an FTC-grade exposure class. node + checkout only; no install needed.
+  signal-honesty-copy:
+    name: Signal honesty copy
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Verify no un-reviewed over-claim copy
+        run: bash scripts/ci/verify-signal-honesty-copy.sh
+
+  # ── Services: E2EE relay + paid hosted-MCP (tech-debt audit H4) ────────────
+  # The hermes-realtime-relay and hosted-mcp packages (22 test files) ran in
+  # zero CI lanes — a regression in the paid CLI's hosted-MCP path or the E2EE
+  # relay shipped green. Mirrors the console job: npm ci + tsc + npm test for
+  # both packages, plus the shared Signal envelope contract build their
+  # prebuild step depends on.
+  services-fast:
+    name: "Services (relay + hosted-MCP: types + tests)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            services/hermes-realtime-relay/package-lock.json
+            services/hosted-mcp/package-lock.json
+            packages/signal-envelope-contracts/package-lock.json
+
+      # Shared dependency: both services' prebuild compiles these contracts.
+      - name: Build Signal envelope contracts
+        run: bash scripts/build-signal-envelope-contracts.sh
+
+      # ── hermes-realtime-relay ──
+      - name: Install relay dependencies
+        run: npm ci --prefix services/hermes-realtime-relay
+
+      - name: TypeScript type check (relay)
+        run: cd services/hermes-realtime-relay && npx tsc --noEmit
+
+      - name: Unit tests (relay)
+        run: npm test --prefix services/hermes-realtime-relay
+
+      # ── hosted-mcp ──
+      - name: Install hosted-MCP dependencies
+        run: npm ci --prefix services/hosted-mcp
+
+      - name: TypeScript type check (hosted-MCP)
+        run: cd services/hosted-mcp && npx tsc --noEmit
+
+      - name: Unit tests (hosted-MCP)
+        run: npm test --prefix services/hosted-mcp
+
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
     name: Fast Feedback Gate
@@ -443,6 +508,8 @@ jobs:
       - agents-md-fast
       - rust-deny-fast
       - functions-security-fast
+      - signal-honesty-copy
+      - services-fast
     runs-on: ubuntu-latest
     if: always()
     steps:
