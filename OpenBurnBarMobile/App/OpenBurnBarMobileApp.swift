@@ -69,6 +69,12 @@ struct OpenBurnBarMobileApp: App {
     @StateObject private var customization = AppCustomization.shared
     @StateObject private var agentNotifications = AgentReplyNotificationService.shared
 
+    /// Composition root (see `AppServices`). Built once here and exposed to
+    /// the whole view tree via `\.appServices`. The value is an empty struct
+    /// whose accessors resolve the existing long-lived singletons lazily, so
+    /// creating it has no side effects and changes no launch ordering.
+    private let appServices = AppServices()
+
     // Bound to ThemeSettingsView's "Appearance Mode" picker. Values match
     // the picker tags: "system" (no override), "light", "dark".
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
@@ -95,6 +101,7 @@ struct OpenBurnBarMobileApp: App {
     var body: some Scene {
         WindowGroup {
             AuthGateView()
+                .environment(\.appServices, appServices)
                 .tint(resolvedTint)
                 .preferredColorScheme(appearanceOverride)
                 .overlay(alignment: .top) {
