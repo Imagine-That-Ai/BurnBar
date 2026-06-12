@@ -8,11 +8,14 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayPayload
 import com.openburnbar.irohrelay.HermesRelayChunkKind
 import com.openburnbar.irohrelay.InMemoryIrohPairingDirectory
+import com.openburnbar.irohrelay.IrohPairingError
+import com.openburnbar.irohrelay.IrohPairingFreshness
 import com.openburnbar.irohrelay.IrohPairingRecord
 import com.openburnbar.irohrelay.IrohPairingSignature
 import com.openburnbar.irohrelay.IrohRelayProtocol
 import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.IrohRelayTransport
+import com.openburnbar.irohrelay.IrohRelayTransportError
 import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
 import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
 import com.openburnbar.test.ecPublicKey
@@ -263,6 +266,54 @@ class HermesIrohRelayTransportTest {
     }
 
     @Test
+    fun expired_pairing_record_surfaces_transport_error_for_fallback() = runTest {
+        val uid = "uid-expired"
+        val connectionId = "conn-expired"
+        val directory = InMemoryIrohPairingDirectory()
+        val publishedAtMillis = 1_000L
+        directory.publish(
+            makePairingRecord(
+                uid = uid,
+                connectionId = connectionId,
+                nodeId = "host-$connectionId",
+                publishedAtMillis = publishedAtMillis,
+            ),
+            uid,
+        )
+        val publicKeyProvider =
+            object : IrohPairingPublicKeyProviding {
+                override suspend fun fetchPublicKey(uid: String): ByteArray = pairingPublicKeyRaw
+            }
+        val transport =
+            HermesIrohRelayTransport(
+                context = mockk(relaxed = true),
+                keyStore = mockk(relaxed = true),
+                pairingDirectory = directory,
+                pairingPublicKeyProvider = publicKeyProvider,
+                transportFactory = { error("expired pairing must fail before iroh dial") },
+                auth = fakeAuth(uid),
+                nowMillis = { publishedAtMillis + IrohPairingFreshness.MAXIMUM_AGE_MILLIS + 1L },
+            )
+
+        val payload =
+            HermesRelayPayload(
+                operation = "chatCompletions",
+                method = "POST",
+                path = "/v1/chat/completions",
+                connectionID = connectionId,
+                relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
+            )
+
+        val thrown = runCatching { transport.sendUnary(payload, 100) }.exceptionOrNull()
+        assertTrue(
+            "expected PairingRejected transport error, got $thrown",
+            thrown is IrohRelayTransportError.PairingRejected &&
+                thrown.message == "Iroh pairing rejected: pairing record expired" &&
+                thrown.cause is IrohPairingError.Expired,
+        )
+    }
+
+    @Test
     fun timeout_cascades_when_host_never_replies() = runTest {
         val uid = "uid-timeout"
         val connectionId = "conn-timeout"
@@ -414,8 +465,13 @@ class HermesIrohRelayTransportTest {
         return Base64.getEncoder().encodeToString(engine.sign())
     }
 
-    private fun makePairingRecord(uid: String, connectionId: String, nodeId: String, relayURL: String? = null): IrohPairingRecord {
-        val now = System.currentTimeMillis()
+    private fun makePairingRecord(
+        uid: String,
+        connectionId: String,
+        nodeId: String,
+        relayURL: String? = null,
+        publishedAtMillis: Long = System.currentTimeMillis(),
+    ): IrohPairingRecord {
         val payload =
             IrohPairingSignature.canonicalPayload(
                 uid = uid,
@@ -423,7 +479,7 @@ class HermesIrohRelayTransportTest {
                 nodeId = nodeId,
                 relayURL = relayURL,
                 directAddresses = emptyList(),
-                publishedAtMillis = now,
+                publishedAtMillis = publishedAtMillis,
                 protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
             )
         return IrohPairingRecord(
@@ -431,7 +487,7 @@ class HermesIrohRelayTransportTest {
             connectionId = connectionId,
             nodeId = nodeId,
             relayURL = relayURL,
-            publishedAtMillis = now,
+            publishedAtMillis = publishedAtMillis,
             signature = signPairing(payload),
         )
     }

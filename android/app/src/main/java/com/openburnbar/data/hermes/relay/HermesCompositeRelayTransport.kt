@@ -17,9 +17,11 @@ private const val AUDIT_FALLBACK_REASON_MAX_CHARS = 256
  *      remote-config flag returns false), skip iroh entirely.
  *   2. Otherwise attempt iroh. Unary control-plane calls fall back to
  *      Firestore. Streaming `/v1/chat/completions` surfaces direct iroh
- *      failures instead of silently rerouting the selected model through a
- *      different relay path. Streaming `/v1/cli-agent/chat` falls back to
- *      Firestore because it still targets the same selected Mac executor.
+ *      stream failures instead of silently rerouting the selected model
+ *      through a different relay path, but stale/invalid iroh pairing
+ *      metadata falls back to the same selected Mac's Firestore relay.
+ *      Streaming `/v1/cli-agent/chat` also falls back to Firestore because
+ *      it still targets the same selected Mac executor.
  */
 class HermesCompositeRelayTransport(
     private val iroh: HermesRelayTransporting,
@@ -47,7 +49,7 @@ class HermesCompositeRelayTransport(
             iroh.sendStreaming(payload, timeoutMillis, onSseEvent)
         } catch (err: IrohRelayTransportError) {
             auditFallback(payload, err)
-            if (payload.operation == HermesRelayOperationName.CLI_AGENT_CHAT) {
+            if (shouldFallbackStreaming(payload, err)) {
                 return firestoreFallback.sendStreaming(payload, timeoutMillis, onSseEvent)
             }
             throw HermesRelayException(
@@ -58,6 +60,10 @@ class HermesCompositeRelayTransport(
             )
         }
     }
+
+    private fun shouldFallbackStreaming(payload: HermesRelayPayload, err: IrohRelayTransportError): Boolean =
+        payload.operation == HermesRelayOperationName.CLI_AGENT_CHAT ||
+            err is IrohRelayTransportError.PairingRejected
 
     private suspend fun auditFallback(payload: HermesRelayPayload, err: IrohRelayTransportError) {
         auditLogger.record(
