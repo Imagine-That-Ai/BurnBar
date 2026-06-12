@@ -13,6 +13,15 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
     id("dev.detekt")
     id("com.autonomousapps.dependency-analysis")
+    // Sentry Android Gradle plugin: uploads R8/ProGuard mapping files for the
+    // minified release variant so the crash stacks Sentry receives (via the
+    // io.sentry:sentry-android runtime SDK) are deobfuscated and readable.
+    // Without this, every release crash report is an unreadable obfuscated
+    // trace. 5.x pairs with the sentry-android 8.x SDK. Declared with an inline
+    // version (not in the root plugins block) so the mapping-upload + native
+    // gradle config stays scoped to :app. Upload is auth-token gated below so
+    // local/offline builds without Sentry credentials still succeed.
+    id("io.sentry.android.gradle") version "5.9.0"
     // Baseline-profile consumer: wires the :macrobenchmark producer so
     // `./gradlew :app:generateBaselineProfile` captures an app-specific
     // profile (library profiles for Compose/activity already ship via the
@@ -163,6 +172,23 @@ android {
         }
         unitTests.isIncludeAndroidResources = true
     }
+}
+
+// Sentry mapping upload: only enabled when CI provides SENTRY_AUTH_TOKEN, so
+// local/offline release builds (and OSS contributors without Sentry org access)
+// still assemble. When the token is present, the plugin auto-uploads the R8
+// mapping file for the minified release variant, making release crash stacks
+// readable in Sentry. Telemetry (org/build-time pings) is disabled.
+val sentryUploadEnabled =
+    providers.environmentVariable("SENTRY_AUTH_TOKEN").map { it.isNotBlank() }.orElse(false)
+sentry {
+    autoUploadProguardMapping.set(sentryUploadEnabled)
+    includeProguardMapping.set(sentryUploadEnabled)
+    // Don't auto-instrument or inject the native SDK from Gradle; the runtime
+    // SDK is wired manifest-side (sentryDsn placeholder) and started by the OS.
+    autoInstallation.enabled.set(false)
+    tracingInstrumentation.enabled.set(false)
+    telemetry.set(false)
 }
 
 tasks.register("verifyReleaseFirebaseConfig") {
