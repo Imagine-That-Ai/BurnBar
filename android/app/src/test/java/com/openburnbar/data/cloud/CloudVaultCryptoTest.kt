@@ -16,7 +16,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private const val SHA256_DIGEST_BYTES = 32
-private const val VAL_24 = 24
 private const val SIGNAL_KAT_PRIVATE_KEY_B64 = "yGZ5zfds7ljkjsopcLya1ayDbjV+TCL6/b4BQBpqfV0="
 private const val SIGNAL_KAT_PUBLIC_KEY_B64_CANONICAL = "BVw7AC8duGgSdz/wLmMLMe+ymSUCcMkOcoJ+E6Eb+RhO"
 private const val SIGNAL_KAT_CIPHERTEXT_B64 =
@@ -299,7 +298,7 @@ class CloudVaultCryptoTest {
 
         assertEquals(first, second)
         assertNotEquals(first, other)
-        assertTrue(first.size <= VAL_24)
+        assertTrue(first.size <= 24)
         assertEquals(first.size, first.toSet().size)
         assertTrue(first.all { Regex("^[a-f0-9]{32}$").matches(it) })
         assertFalse(first.contains("encrypted"))

@@ -22,7 +22,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-private const val VAL_12 = 12
+private const val MISSION_LIST_LIMIT = 12
+private const val MAX_RECENT_PROJECTS = 12
 
 // MARK: - Mobile Mission Console Host (Android parity)
 //
@@ -162,7 +163,7 @@ class MobileMissionConsoleHost private constructor(
                 firestore.collection("users").document(uid)
                     .collection("cli_agent_mission_requests")
                     .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .limit(VAL_12.toLong())
+                    .limit(MISSION_LIST_LIMIT.toLong())
                     .addSnapshotListener { snap, error ->
                         if (error != null) {
                             _inlineError.value = error.localizedMessage
@@ -224,7 +225,7 @@ class MobileMissionConsoleHost private constructor(
                 groups = emptyList(),
                 recentTicker = parts.ticker,
                 knownProjects = parts.knownProjects,
-                recentProjects = parts.knownProjects.take(VAL_12),
+                recentProjects = parts.knownProjects.take(MAX_RECENT_PROJECTS),
                 openMissions = parts.activeTiles.count { it.phase.isLive },
                 queuedMissions = parts.activeTiles.count { it.phase == ActiveMission.Phase.QUEUED },
                 blockedMissions = parts.activeTiles.count { it.phase == ActiveMission.Phase.FAILED || it.phase == ActiveMission.Phase.BLOCKED },

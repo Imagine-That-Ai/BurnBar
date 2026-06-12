@@ -931,13 +931,17 @@ export async function writeBurnBarProEntitlement(args: {
   });
   const ref = db.doc(`users/${args.uid}/entitlements/${entitlementID}`);
 
+  // The source-event ordering watermark (sourceEventID/sourceEventCreatedMillis)
+  // is PRESERVED — not deleted — when a caller writes without one (LB-5): the
+  // checkout.session path used to erase it here, after which any buffered
+  // stale subscription event sailed past paidEntitlementWriteWouldRewindSourceEvent
+  // and could resurrect a cancelled entitlement. Watermarked callers overwrite
+  // it via `doc`; the merge write leaves it untouched for everyone else.
   const writeDoc = {
     ...doc,
     externalSubscriptionID: args.externalSubscriptionID ?? FieldValue.delete(),
     externalCustomerID: args.externalCustomerID ?? FieldValue.delete(),
     purchaseTokenHash: args.purchaseTokenHash ?? FieldValue.delete(),
-    sourceEventID: args.sourceEventID ?? FieldValue.delete(),
-    sourceEventCreatedMillis: args.sourceEventCreatedMillis ?? FieldValue.delete(),
   };
 
   const written = await db.runTransaction(async (transaction) => {
@@ -955,6 +959,7 @@ export async function writeBurnBarProEntitlement(args: {
         source: args.source,
         externalSubscriptionID: args.externalSubscriptionID,
         purchaseTokenHash: args.purchaseTokenHash,
+        sourceEventID: args.sourceEventID,
         sourceEventCreatedMillis: args.sourceEventCreatedMillis,
       })
     ) {
@@ -1032,6 +1037,7 @@ export function paidEntitlementWriteWouldRewindSourceEvent(
     source: string;
     externalSubscriptionID?: string;
     purchaseTokenHash?: string;
+    sourceEventID?: string;
     sourceEventCreatedMillis?: number;
   },
 ): boolean {
@@ -1039,7 +1045,24 @@ export function paidEntitlementWriteWouldRewindSourceEvent(
   const existingEventCreatedMillis = existing.sourceEventCreatedMillis;
   if (typeof existingEventCreatedMillis !== "number") return false;
   if (!sameEntitlementWriteSource(existing, incoming)) return false;
-  return existingEventCreatedMillis > incoming.sourceEventCreatedMillis;
+  if (existingEventCreatedMillis > incoming.sourceEventCreatedMillis) return true;
+  // Same-second tie-break: Stripe's event.created has second granularity, so
+  // two DIFFERENT events in the same second cannot be ordered by timestamp —
+  // a stale subscription.updated delivered in the .deleted's second used to
+  // slip past the strict > check above. Equal-timestamp writes from a
+  // different event are rejected. This is safe because the webhook writes
+  // Stripe's CURRENT subscription state, not the event's snapshot: the
+  // checkout and subscription.created/updated paths re-fetch the
+  // subscription before writing, and subscription.deleted's snapshot is the
+  // terminal state — so whichever tied event applied first already carried
+  // the authoritative state and the rejected write adds nothing. Identical
+  // event ids (redeliveries) stay idempotent and re-apply.
+  return (
+    existingEventCreatedMillis === incoming.sourceEventCreatedMillis &&
+    typeof existing.sourceEventID === "string" &&
+    typeof incoming.sourceEventID === "string" &&
+    existing.sourceEventID !== incoming.sourceEventID
+  );
 }
 
 async function ensureCloudProAllowanceLedger(uid: string): Promise<void> {
@@ -1146,7 +1169,11 @@ export function googlePlayExpiryMillis(lineItem: Record<string, unknown> | undef
   throw new HttpsError("failed-precondition", "Google Play did not return an expiry for this subscription.");
 }
 
-export async function applyStripeCheckoutSession(stripe: Stripe, session: Stripe.Checkout.Session): Promise<void> {
+export async function applyStripeCheckoutSession(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session,
+  eventContext: { eventID?: string; eventCreatedMillis?: number } = {},
+): Promise<void> {
   const uid = session.metadata?.firebaseUID ?? session.client_reference_id ?? undefined;
   if (!uid) return;
   if (session.metadata?.topUpKind) {
@@ -1168,7 +1195,13 @@ export async function applyStripeCheckoutSession(stripe: Stripe, session: Stripe
     subscription = session.subscription;
   }
   if (subscription) {
-    await applyStripeSubscription(stripe, subscription, uid);
+    // Forward the checkout event's watermark (LB-5): the subscription state
+    // written here was re-fetched fresh from Stripe (or embedded in the
+    // checkout event itself), so it is at least as new as event.created —
+    // stamping that watermark is safe and keeps later stale subscription
+    // events rejectable. This path used to omit the context, which erased
+    // the watermark on every checkout.
+    await applyStripeSubscription(stripe, subscription, uid, eventContext);
   }
 }
 

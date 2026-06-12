@@ -129,6 +129,16 @@ function buildConfig(): EnvConfig {
         configString(openburnbar, "rollup_full_rebuild_circuit_breaker_minutes"),
       60,
     ),
+    rollupForceRebuildMinIntervalMinutes: toNum(
+      process.env.ROLLUP_FORCE_REBUILD_MIN_INTERVAL_MINUTES ??
+        configString(openburnbar, "rollup_force_rebuild_min_interval_minutes"),
+      10,
+    ),
+    rollupPendingDeltaDrainMaxPages: toNum(
+      process.env.ROLLUP_PENDING_DELTA_DRAIN_MAX_PAGES ??
+        configString(openburnbar, "rollup_pending_delta_drain_max_pages"),
+      20,
+    ),
     quotaRefreshBatchSize: toNum(
       process.env.QUOTA_REFRESH_BATCH_SIZE ?? configString(openburnbar, "quota_refresh_batch_size"),
       20,

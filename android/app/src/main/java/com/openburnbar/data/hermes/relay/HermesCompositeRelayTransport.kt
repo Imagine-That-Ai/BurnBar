@@ -6,7 +6,8 @@ import com.openburnbar.irohrelay.IrohTransportAuditLogging
 import com.openburnbar.irohrelay.IrohTransportSelection
 import com.openburnbar.irohrelay.NoopIrohTransportAuditLogging
 
-private const val VAL_256 = 256
+/** Cap on the error-reason text recorded in the fallback audit detail. */
+private const val AUDIT_FALLBACK_REASON_MAX_CHARS = 256
 
 /**
  * Cascading relay that prefers iroh and can fall back to Firestore on
@@ -67,7 +68,7 @@ class HermesCompositeRelayTransport(
             rttMillis = null,
             detail =
             mapOf(
-                "reason" to (err.message ?: err.javaClass.simpleName).take(VAL_256),
+                "reason" to (err.message ?: err.javaClass.simpleName).take(AUDIT_FALLBACK_REASON_MAX_CHARS),
                 "target" to "firestore",
             ),
         )

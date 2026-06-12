@@ -15,6 +15,11 @@ on:
         description: "Existing v* tag to release (for manual reruns)"
         required: true
         type: string
+      critical:
+        description: "Mark as a security-critical update (the in-app updater re-prompts even after Later)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -49,7 +54,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -141,7 +146,7 @@ jobs:
           fi
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -540,6 +545,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
           OPENBURNBAR_MAC_UPDATE_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
+          # Tag pushes are never critical by default; manual reruns can flag a
+          # security release so the in-app updater re-prompts past "Later".
+          OPENBURNBAR_RELEASE_CRITICAL: ${{ (github.event_name == 'workflow_dispatch' && inputs.critical) && '1' || '0' }}
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Contents/Info.plist")"
@@ -579,7 +587,8 @@ jobs:
             --minimum-system-version "14.0" \
             --appcast-name "$(basename "$APPCAST_PATH")" \
             --latest-name "$(basename "$LATEST_PATH")" \
-            --ed-signature "$SPARKLE_ED_SIGNATURE"
+            --ed-signature "$SPARKLE_ED_SIGNATURE" \
+            --critical "${OPENBURNBAR_RELEASE_CRITICAL:-0}"
 
           {
             echo "appcast_path=$APPCAST_PATH"
@@ -997,7 +1006,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -1100,3 +1109,109 @@ jobs:
       - name: Clean up Firebase config
         if: always()
         run: bash ./scripts/ci/cleanup-firebase-config.sh
+
+  # Fail-closed feed verification: after the release is published and marked
+  # latest, fetch the LIVE feed exactly the way the in-app updater does and
+  # prove it end-to-end — 200s, version matches the tag, appcast agrees, and
+  # the published DMG's Ed25519 signature verifies against the SUPublicEDKey
+  # pinned in Info.plist. A release whose own update feed is broken fails here.
+  verify-live-update-feed:
+    name: Verify live update feed
+    needs: [build-and-release, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Fetch and verify published feed, appcast, and DMG signature
+        env:
+          VERSION: ${{ needs.build-and-release.outputs.version }}
+          OPENBURNBAR_MAC_UPDATE_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
+        run: |
+          set -euo pipefail
+          BASE_URL="${OPENBURNBAR_MAC_UPDATE_BASE_URL:-https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download}"
+          BASE_URL="${BASE_URL%/}"
+          WORKDIR="$(mktemp -d)"
+          export WORKDIR
+
+          fetch_with_retry() {
+            local url="$1" out="$2" attempt=1 code=000
+            while [[ "$attempt" -le 10 ]]; do
+              code="$(curl -L -sS -o "$out" -w "%{http_code}" "$url" 2>/dev/null || echo "000")"
+              if [[ "$code" == "200" ]]; then
+                return 0
+              fi
+              echo "waiting for $url (HTTP $code, attempt $attempt/10)..." >&2
+              sleep 30
+              attempt=$((attempt + 1))
+            done
+            echo "::error::Published update feed asset is not reachable: $url (last HTTP $code)"
+            return 1
+          }
+
+          fetch_with_retry "$BASE_URL/latest-macos.json" "$WORKDIR/latest-macos.json"
+          fetch_with_retry "$BASE_URL/appcast.xml" "$WORKDIR/appcast.xml"
+
+          DMG_NAME="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.WORKDIR + "/latest-macos.json", "utf8")).dmg')"
+          DMG_NAME_ENCODED="$(node -p 'encodeURIComponent(JSON.parse(require("node:fs").readFileSync(process.env.WORKDIR + "/latest-macos.json", "utf8")).dmg)')"
+          fetch_with_retry "$BASE_URL/$DMG_NAME_ENCODED" "$WORKDIR/$DMG_NAME"
+
+          node - <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const workdir = process.env.WORKDIR;
+          const expectedVersion = process.env.VERSION;
+          const fail = (message) => {
+            console.error(`::error::${message}`);
+            process.exit(1);
+          };
+
+          const latest = JSON.parse(fs.readFileSync(path.join(workdir, "latest-macos.json"), "utf8"));
+          if (latest.version !== expectedVersion) {
+            fail(`latest-macos.json advertises version ${latest.version}, but this release published ${expectedVersion}`);
+          }
+          if (!/^[0-9a-f]{64}$/i.test(latest.sha256 ?? "")) {
+            fail("latest-macos.json sha256 is missing or malformed");
+          }
+          if (!latest.sparkleEdSignature) {
+            fail("latest-macos.json sparkleEdSignature is missing — the feed is unsigned");
+          }
+
+          const appcast = fs.readFileSync(path.join(workdir, "appcast.xml"), "utf8");
+          if (!appcast.includes(`<sparkle:shortVersionString>${expectedVersion}</sparkle:shortVersionString>`)) {
+            fail(`appcast.xml does not advertise version ${expectedVersion}`);
+          }
+          if (!appcast.includes(`sparkle:edSignature="${latest.sparkleEdSignature}"`)) {
+            fail("appcast.xml edSignature does not match latest-macos.json");
+          }
+
+          const dmg = fs.readFileSync(path.join(workdir, latest.dmg));
+          if (dmg.length !== latest.length) {
+            fail(`published DMG is ${dmg.length} bytes but the feed advertises ${latest.length}`);
+          }
+          const digest = crypto.createHash("sha256").update(dmg).digest("hex");
+          if (digest !== latest.sha256.toLowerCase()) {
+            fail(`published DMG sha256 ${digest} does not match feed sha256 ${latest.sha256}`);
+          }
+
+          const plist = fs.readFileSync("AgentLens/Resources/OpenBurnBar-Info.plist", "utf8");
+          const keyMatch = plist.match(/<key>SUPublicEDKey<\/key>\s*<string>([^<]+)<\/string>/);
+          if (!keyMatch) {
+            fail("SUPublicEDKey not found in AgentLens/Resources/OpenBurnBar-Info.plist");
+          }
+          const rawKey = Buffer.from(keyMatch[1].trim(), "base64");
+          if (rawKey.length !== 32) {
+            fail("SUPublicEDKey is not a raw 32-byte Ed25519 public key");
+          }
+          // Wrap the raw Ed25519 key in a SPKI DER header so node can load it.
+          const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), rawKey]);
+          const publicKey = crypto.createPublicKey({ key: spki, format: "der", type: "spki" });
+          const signature = Buffer.from(latest.sparkleEdSignature, "base64");
+          if (!crypto.verify(null, dmg, publicKey, signature)) {
+            fail("Ed25519 signature verification FAILED: the published DMG does not verify against SUPublicEDKey");
+          }
+          console.log(`PASS: live update feed verified — version ${latest.version}, sha256 + Ed25519 signature valid for ${latest.dmg}`);
+          NODE

@@ -11,10 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-private const val VAL_16 = 16
-private const val VAL_1778983899164_L = 1778983899164L
-private const val VAL_32 = 32
-
 class HermesRelayDiscoverySchemaTest {
     @Before
     fun stubAndroidBase64() {
@@ -70,7 +66,7 @@ class HermesRelayDiscoverySchemaTest {
                     "relay_key_version" to 1,
                     "relay_encryption" to HermesRelayCrypto.ALGORITHM,
                     "advertised_model" to "deepseek-v4-flash",
-                    "updated_at" to VAL_1778983899164_L,
+                    "updated_at" to 1778983899164L,
                 ),
             )
 
@@ -79,7 +75,7 @@ class HermesRelayDiscoverySchemaTest {
         assertEquals("Legacy relay", resolved.displayName)
         assertEquals("legacy-public-key", resolved.relayPublicKey)
         assertEquals("deepseek-v4-flash", resolved.advertisedModel)
-        assertEquals(VAL_1778983899164_L, resolved.updatedAt)
+        assertEquals(1778983899164L, resolved.updatedAt)
     }
 
     @Test
@@ -100,7 +96,7 @@ class HermesRelayDiscoverySchemaTest {
 
     @Test
     fun decodesCanonicalIrohPairingPublicKey() {
-        val raw = ByteArray(VAL_32) { it.toByte() }
+        val raw = ByteArray(32) { it.toByte() }
         val decoded =
             decodeIrohPairingPublicKey(
                 mapOf("publicKeyBase64" to JavaBase64.getEncoder().encodeToString(raw)),
@@ -122,7 +118,7 @@ class HermesRelayDiscoverySchemaTest {
                     "nodeId" to "host-node",
                     "relayURL" to "https://relay.example.test/",
                     "directAddresses" to listOf("addr-b", "addr-a"),
-                    "publishedAtMillis" to VAL_1778983899164_L,
+                    "publishedAtMillis" to 1778983899164L,
                     "protocolVersion" to 1L,
                     "signature" to "signature-base64",
                 ),
@@ -134,7 +130,7 @@ class HermesRelayDiscoverySchemaTest {
         assertEquals("host-node", resolved.nodeId)
         assertEquals("https://relay.example.test/", resolved.relayURL)
         assertEquals(listOf("addr-b", "addr-a"), resolved.directAddresses)
-        assertEquals(VAL_1778983899164_L, resolved.publishedAtMillis)
+        assertEquals(1778983899164L, resolved.publishedAtMillis)
         assertEquals(1, resolved.protocolVersion)
         assertEquals("signature-base64", resolved.signature)
     }
@@ -144,7 +140,7 @@ class HermesRelayDiscoverySchemaTest {
         val thrown =
             runCatching {
                 decodeIrohPairingPublicKey(
-                    mapOf("publicKeyBase64" to JavaBase64.getEncoder().encodeToString(ByteArray(VAL_16))),
+                    mapOf("publicKeyBase64" to JavaBase64.getEncoder().encodeToString(ByteArray(16))),
                 )
             }.exceptionOrNull()
 

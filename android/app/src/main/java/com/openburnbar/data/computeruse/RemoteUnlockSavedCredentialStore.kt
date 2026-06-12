@@ -11,7 +11,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-private const val VAL_256 = 256
+private const val AES_KEY_BITS = 256
 
 /**
  * Android-local Remote Unlock credential persistence. The Mac never receives
@@ -86,7 +86,7 @@ class RemoteUnlockSavedCredentialStore(context: Context) {
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(VAL_256)
+                .setKeySize(AES_KEY_BITS)
                 .build()
         generator.init(spec)
         return generator.generateKey()

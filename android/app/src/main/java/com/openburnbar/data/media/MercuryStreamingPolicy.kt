@@ -4,22 +4,26 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-private const val VAL_0_04 = 0.04
-private const val VAL_0_1 = 0.1
-private const val VAL_0_2 = 0.2
-private const val VAL_0_3 = 0.3
-private const val VAL_0_30 = 0.30
-private const val VAL_0_4 = 0.4
-private const val VAL_0_45 = 0.45
-private const val VAL_0_5 = 0.5
-private const val VAL_20_0 = 20.0
-private const val VAL_300_0 = 300.0
-private const val VAL_4_0 = 4.0
-private const val VAL_50 = 50
-private const val VAL_500_0 = 500.0
-private const val VAL_600_0 = 600.0
-private const val VAL_8 = 8
-private const val VAL_80 = 80
+// Shadow BWE tuning (MercuryShadowBweController). Loss/delay terms shape the shadow
+// bitrate target; RISKY_* thresholds and *_RISK_CAP ceilings feed freezeRiskScore
+// (contributions summed, clamped to 1.0). A *_FULL_SCALE_MILLIS divisor is the
+// millisecond magnitude at which the uncapped penalty/risk term would reach 1.0.
+private const val PACKET_LOSS_PENALTY_GAIN = 4.0
+private const val MAX_LOSS_CUT_FRACTION = 0.5
+private const val LOSS_RESPONSE_FLOOR = 0.45
+private const val DELAY_PENALTY_CAP = 0.30
+private const val DELAY_PENALTY_FULL_SCALE_MILLIS = 600.0
+private const val RISKY_LOSS_RATE = 0.04
+private const val LOSS_RISK_CAP = 0.4
+private const val RISKY_DELAY_TREND_MILLIS = 50
+private const val DELAY_RISK_CAP = 0.3
+private const val DELAY_RISK_FULL_SCALE_MILLIS = 300.0
+private const val RISKY_PRESENT_ERROR_MILLIS = 80
+private const val PRESENT_ERROR_RISK_CAP = 0.2
+private const val PRESENT_ERROR_RISK_FULL_SCALE_MILLIS = 500.0
+private const val RISKY_PACER_QUEUE_DEPTH = 8
+private const val PACER_QUEUE_RISK_CAP = 0.1
+private const val PROMOTION_MAX_AVG_PRESENT_ERROR_MILLIS = 20.0
 
 data class MercuryCodecRoutingDecision(
     val status: Status,
@@ -152,16 +156,18 @@ class MercuryShadowBweController(
             presentTimeErrorSamples += 1
         }
 
-        val lossResponse = max(VAL_0_45, 1.0 - min(VAL_0_5, sample.packetLossRate * VAL_4_0))
-        val delayPenalty = if (delayTrend > 0) min(VAL_0_30, delayTrend / VAL_600_0) else 0.0
+        val lossResponse = max(LOSS_RESPONSE_FLOOR, 1.0 - min(MAX_LOSS_CUT_FRACTION, sample.packetLossRate * PACKET_LOSS_PENALTY_GAIN))
+        val delayPenalty = if (delayTrend > 0) min(DELAY_PENALTY_CAP, delayTrend / DELAY_PENALTY_FULL_SCALE_MILLIS) else 0.0
         val rawTarget = (sample.observedBitsPerSecond * lossResponse * (1.0 - delayPenalty)).toInt()
         val quantizedTarget = quantize(rawTarget)
 
         var risk = 0.0
-        if (sample.packetLossRate >= VAL_0_04) risk += min(VAL_0_4, sample.packetLossRate * VAL_4_0)
-        if (delayTrend >= VAL_50) risk += min(VAL_0_3, delayTrend / VAL_300_0)
-        if (presentError != null && abs(presentError) >= VAL_80) risk += min(VAL_0_2, abs(presentError) / VAL_500_0)
-        if (sample.pacerQueueDepth >= VAL_8) risk += min(VAL_0_1, sample.pacerQueueDepth / 100.0)
+        if (sample.packetLossRate >= RISKY_LOSS_RATE) risk += min(LOSS_RISK_CAP, sample.packetLossRate * PACKET_LOSS_PENALTY_GAIN)
+        if (delayTrend >= RISKY_DELAY_TREND_MILLIS) risk += min(DELAY_RISK_CAP, delayTrend / DELAY_RISK_FULL_SCALE_MILLIS)
+        if (presentError != null && abs(presentError) >= RISKY_PRESENT_ERROR_MILLIS) {
+            risk += min(PRESENT_ERROR_RISK_CAP, abs(presentError) / PRESENT_ERROR_RISK_FULL_SCALE_MILLIS)
+        }
+        if (sample.pacerQueueDepth >= RISKY_PACER_QUEUE_DEPTH) risk += min(PACER_QUEUE_RISK_CAP, sample.pacerQueueDepth / 100.0)
         risk = min(1.0, risk)
         if (risk > 0.0) riskySamples += 1
 
@@ -174,7 +180,7 @@ class MercuryShadowBweController(
         val promotionReady =
             sampleCount >= minimumPromotionSamples &&
                 riskySamples == 0 &&
-                averagePresentError <= VAL_20_0 &&
+                averagePresentError <= PROMOTION_MAX_AVG_PRESENT_ERROR_MILLIS &&
                 probeSamples > 0
 
         currentDecision =

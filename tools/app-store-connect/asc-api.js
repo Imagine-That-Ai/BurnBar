@@ -85,7 +85,7 @@ const APP_REVIEW = {
   email:
     process.env.OPENBURNBAR_REVIEW_EMAIL ||
     process.env.APP_STORE_REVIEW_USERNAME ||
-    "app-review@openburnbar.app",
+    "app-review@burnbar.ai",
   password:
     process.env.OPENBURNBAR_REVIEW_PASSWORD ||
     process.env.APP_STORE_REVIEW_PASSWORD ||
@@ -93,7 +93,9 @@ const APP_REVIEW = {
   contactFirstName: process.env.APP_STORE_REVIEW_CONTACT_FIRST_NAME || "Alberto",
   contactLastName: process.env.APP_STORE_REVIEW_CONTACT_LAST_NAME || "Nunez",
   contactEmail:
-    process.env.APP_STORE_REVIEW_CONTACT_EMAIL || "support@openburnbar.app",
+    // Must be deliverable: App Review escalations go here. burnbar.ai has
+    // live MX; openburnbar.app was never registered (NXDOMAIN).
+    process.env.APP_STORE_REVIEW_CONTACT_EMAIL || "support@burnbar.ai",
   contactPhone: process.env.APP_STORE_REVIEW_CONTACT_PHONE || "+13125550100",
   notes:
     process.env.APP_STORE_REVIEW_NOTES ||

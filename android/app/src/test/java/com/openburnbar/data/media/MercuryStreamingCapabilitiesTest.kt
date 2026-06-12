@@ -9,8 +9,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private const val VAL_1176 = 1176
-
 class MercuryStreamingCapabilitiesTest {
     @Test
     fun production_policy_does_not_select_av1_before_experiment_flag() {
@@ -105,7 +103,7 @@ class MercuryStreamingCapabilitiesTest {
         assertFalse(MercuryDatagramCapability(maxPayloadBytes = null).isSupported)
         assertNull(MercuryDatagramCapability(maxPayloadBytes = null).payloadBudget(reservingOverheadBytes = 24))
         assertNull(MercuryDatagramCapability(maxPayloadBytes = 16).payloadBudget(reservingOverheadBytes = 24))
-        assertEquals(VAL_1176, MercuryDatagramCapability(maxPayloadBytes = 1200).payloadBudget(reservingOverheadBytes = 24))
+        assertEquals(1176, MercuryDatagramCapability(maxPayloadBytes = 1200).payloadBudget(reservingOverheadBytes = 24))
     }
 
     @Test

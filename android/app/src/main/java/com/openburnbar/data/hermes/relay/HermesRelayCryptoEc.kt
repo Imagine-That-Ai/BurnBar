@@ -7,26 +7,24 @@ import java.security.spec.X509EncodedKeySpec
 import javax.crypto.KeyAgreement
 
 internal object HermesRelayCryptoEc {
-    private const val BITS_PER_BYTE = 0x08
     private const val UNCOMPRESSED_POINT_PREFIX = 0x04
-    private const val VAL_0X03 = 0x03
-    private const val VAL_0X06 = 0x06
-    private const val VAL_0X07 = 0x07
-    private const val VAL_0X13 = 0x13
-    private const val VAL_0X30 = 0x30
-    private const val VAL_0X42 = 0x42
-    private const val VAL_0X48 = 0x48
-    private const val VAL_0X59 = 0x59
-    private const val VAL_0X2A = 0x2a
-    private const val VAL_0X3D = 0x3d
-    private const val VAL_0X86 = 0x86
-    private const val VAL_0X02 = 0x02
-    private const val VAL_0X01 = 0x01
-    private const val VAL_0X00 = 0x00
-    private const val VAL_0XCE = 0xce
     private const val P256_COORDINATE_BYTES = 32
     private const val P256_Y_COORDINATE_OFFSET = 33
     const val UNCOMPRESSED_POINT_LEN = 65
+
+    /**
+     * DER prefix of an X.509 SubjectPublicKeyInfo for a P-256 public key
+     * (RFC 5480); the 65-byte X9.63 uncompressed point is appended directly
+     * after it before handing the result to `KeyFactory`.
+     */
+    private val P256_SPKI_PREFIX: ByteArray =
+        byteArrayOf(
+            0x30, 0x59, // SEQUENCE, 89 bytes: SubjectPublicKeyInfo
+            0x30, 0x13, // SEQUENCE, 19 bytes: AlgorithmIdentifier
+            0x06, 0x07, 0x2a, 0x86.toByte(), 0x48, 0xce.toByte(), 0x3d, 0x02, 0x01, // OID 1.2.840.10045.2.1 (id-ecPublicKey)
+            0x06, 0x08, 0x2a, 0x86.toByte(), 0x48, 0xce.toByte(), 0x3d, 0x03, 0x01, 0x07, // OID 1.2.840.10045.3.1.7 (prime256v1)
+            0x03, 0x42, 0x00, // BIT STRING, 66 bytes; leading 0x00 = no unused bits
+        )
 
     private val secureRandom = SecureRandom()
 
@@ -37,36 +35,7 @@ internal object HermesRelayCryptoEc {
         require(uncompressed.size == UNCOMPRESSED_POINT_LEN && uncompressed[0] == 0x04.toByte()) {
             "Expected 65-byte uncompressed P-256 point"
         }
-        val spkiPrefix =
-            byteArrayOf(
-                VAL_0X30.toByte(),
-                VAL_0X59.toByte(),
-                VAL_0X30.toByte(),
-                VAL_0X13.toByte(),
-                VAL_0X06.toByte(),
-                VAL_0X07.toByte(),
-                VAL_0X2A.toByte(),
-                VAL_0X86.toByte(),
-                VAL_0X48.toByte(),
-                VAL_0XCE.toByte(),
-                VAL_0X3D.toByte(),
-                VAL_0X02.toByte(),
-                VAL_0X01.toByte(),
-                VAL_0X06.toByte(),
-                BITS_PER_BYTE.toByte(),
-                VAL_0X2A.toByte(),
-                VAL_0X86.toByte(),
-                VAL_0X48.toByte(),
-                VAL_0XCE.toByte(),
-                VAL_0X3D.toByte(),
-                VAL_0X03.toByte(),
-                VAL_0X01.toByte(),
-                VAL_0X07.toByte(),
-                VAL_0X03.toByte(),
-                VAL_0X42.toByte(),
-                VAL_0X00.toByte(),
-            )
-        val encoded = spkiPrefix + uncompressed
+        val encoded = P256_SPKI_PREFIX + uncompressed
         return KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(encoded))
     }
 

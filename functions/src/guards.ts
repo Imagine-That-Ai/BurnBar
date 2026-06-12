@@ -288,6 +288,9 @@ export function parseRollupJobDoc(raw: unknown): RollupJobDoc | undefined {
         : undefined,
     fullRebuildCircuitOpenUntil:
       typeof raw.fullRebuildCircuitOpenUntil === "string" ? raw.fullRebuildCircuitOpenUntil : undefined,
+    fullRebuildAttemptInFlightAt:
+      typeof raw.fullRebuildAttemptInFlightAt === "string" ? raw.fullRebuildAttemptInFlightAt : undefined,
+    lastForceRebuildAt: typeof raw.lastForceRebuildAt === "string" ? raw.lastForceRebuildAt : undefined,
   };
 }
 

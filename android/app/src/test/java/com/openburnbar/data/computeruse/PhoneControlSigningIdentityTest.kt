@@ -17,9 +17,9 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private const val VAL_32 = 32
-private const val VAL_64 = 64
-private const val VAL_65 = 65
+private const val ED25519_SEED_BYTES = 32
+private const val RAW_SIGNATURE_BYTES = 64
+private const val X963_PUBLIC_KEY_BYTES = 65
 private const val X963_PREFIX = 0x04.toByte()
 private const val NOW_MILLIS = 1_700_000_000_123L
 
@@ -33,7 +33,7 @@ private const val NOW_MILLIS = 1_700_000_000_123L
  * signature, never asserts signature byte equality.
  */
 class PhoneControlSigningIdentityTest {
-    private val privateSeed = ByteArray(VAL_32) { index -> (index + 1).toByte() }
+    private val privateSeed = ByteArray(ED25519_SEED_BYTES) { index -> (index + 1).toByte() }
 
     private fun softwareP256Identity(): PhoneControlSigningIdentity.SecureEnclaveP256 {
         val generator = KeyPairGenerator.getInstance("EC")
@@ -113,7 +113,7 @@ class PhoneControlSigningIdentityTest {
 
         assertEquals(PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256.wireValue, authority.keyKind)
         // The wire signature is the fixed-size raw r‖s form.
-        assertEquals(VAL_64, Base64.getDecoder().decode(authority.signatureEd25519).size)
+        assertEquals(RAW_SIGNATURE_BYTES, Base64.getDecoder().decode(authority.signatureEd25519).size)
 
         PhoneControlSignerVerify.verify(
             intent = tapIntent(),
@@ -223,12 +223,12 @@ class PhoneControlSigningIdentityTest {
         val ed = PhoneControlSigningIdentity.Ed25519(privateSeed)
         assertEquals(PhoneControlSigningKeyKind.ED25519, ed.kind)
         assertNull(ed.wireKeyKind)
-        assertEquals(VAL_32, ed.publicKeyRepresentation.size)
+        assertEquals(ED25519_SEED_BYTES, ed.publicKeyRepresentation.size)
 
         val se = softwareP256Identity()
         assertEquals(PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256, se.kind)
         assertEquals(PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256.wireValue, se.wireKeyKind)
-        assertEquals(VAL_65, se.publicKeyRepresentation.size)
+        assertEquals(X963_PUBLIC_KEY_BYTES, se.publicKeyRepresentation.size)
         assertEquals(X963_PREFIX, se.publicKeyRepresentation.first())
     }
 
@@ -273,7 +273,7 @@ class PhoneControlSigningIdentityTest {
     @Test
     fun derToRawConversionRoundTripsJcaSignatures() {
         val identity = softwareP256Identity()
-        val payload = PhoneControlSignerPayload.signablePayload("ab".repeat(VAL_32), 9, NOW_MILLIS)
+        val payload = PhoneControlSignerPayload.signablePayload("ab".repeat(ED25519_SEED_BYTES), 9, NOW_MILLIS)
         val der =
             Signature.getInstance("SHA256withECDSA").run {
                 initSign(identity.privateKey)
@@ -282,7 +282,7 @@ class PhoneControlSigningIdentityTest {
             }
 
         val raw = PhoneControlP256.derToRawSignature(der)
-        assertEquals(VAL_64, raw.size)
+        assertEquals(RAW_SIGNATURE_BYTES, raw.size)
         // raw → DER → JCA verifies, and the dual-acceptance helper takes both forms.
         assertTrue(PhoneControlP256.verifySignature(identity.publicKey, raw, payload))
         assertTrue(PhoneControlP256.verifySignature(identity.publicKey, PhoneControlP256.rawToDerSignature(raw), payload))
@@ -293,8 +293,8 @@ class PhoneControlSigningIdentityTest {
     fun derToRawHandlesHighBitAndLeadingZeroComponents() {
         // r = 0x80 needs a 0x00 sign pad in DER; s = 0x01 strips 31 raw
         // leading-zero bytes down to a 1-byte DER integer.
-        val rawR = ByteArray(VAL_32).also { it[VAL_32 - 1] = 0x80.toByte() }
-        val rawS = ByteArray(VAL_32).also { it[VAL_32 - 1] = 0x01 }
+        val rawR = ByteArray(ED25519_SEED_BYTES).also { it[ED25519_SEED_BYTES - 1] = 0x80.toByte() }
+        val rawS = ByteArray(ED25519_SEED_BYTES).also { it[ED25519_SEED_BYTES - 1] = 0x01 }
         val raw = rawR + rawS
 
         val der = PhoneControlP256.rawToDerSignature(raw)
@@ -313,7 +313,7 @@ class PhoneControlSigningIdentityTest {
     fun derToRawHandlesMaximalComponents() {
         // Both components with every bit set: DER needs the 0x00 sign pad on
         // each component, producing two 33-byte integers.
-        val raw = ByteArray(VAL_64) { 0xFF.toByte() }
+        val raw = ByteArray(RAW_SIGNATURE_BYTES) { 0xFF.toByte() }
         val der = PhoneControlP256.rawToDerSignature(raw)
         assertEquals(0x30.toByte(), der[0])
         assertArrayEquals(raw, PhoneControlP256.derToRawSignature(der))
@@ -322,7 +322,7 @@ class PhoneControlSigningIdentityTest {
     @Test
     fun rawToDerRejectsWrongSizedSignatures() {
         assertThrows(IllegalArgumentException::class.java) {
-            PhoneControlP256.rawToDerSignature(ByteArray(VAL_32))
+            PhoneControlP256.rawToDerSignature(ByteArray(ED25519_SEED_BYTES))
         }
         assertThrows(IllegalArgumentException::class.java) {
             PhoneControlP256.derToRawSignature(byteArrayOf(0x02, 0x01, 0x01))
@@ -397,7 +397,7 @@ class PhoneControlSigningIdentityTest {
                 peerNodeId = "android-phone-1",
                 counter = 1,
                 timestamp = 721_692_800.123,
-                intentHashBlake3 = "ab".repeat(VAL_32),
+                intentHashBlake3 = "ab".repeat(ED25519_SEED_BYTES),
                 signatureEd25519 = "c2ln",
             )
         val legacyJson = json.encodeToString(HermesRealtimeRelayAuthorityEnvelope.serializer(), legacy)
@@ -424,7 +424,7 @@ class PhoneControlSigningIdentityTest {
         assertArrayEquals(x963, PhoneControlP256.x963Representation(decoded))
         assertEquals(BigInteger(1, x963.copyOfRange(1, 33)), decoded.w.affineX)
         // Compact 64-byte (X‖Y) form also normalizes, mirroring Swift.
-        val compact = x963.copyOfRange(1, VAL_65)
+        val compact = x963.copyOfRange(1, X963_PUBLIC_KEY_BYTES)
         val fromCompact = PhoneControlP256.publicKeyFromRepresentation(compact)
         checkNotNull(fromCompact)
         assertArrayEquals(x963, PhoneControlP256.x963Representation(fromCompact))

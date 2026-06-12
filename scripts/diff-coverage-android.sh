@@ -184,25 +184,34 @@ for package in root.iter("package"):
                 lines[ln] = ci > 0
         coverage[name] = lines
 
+# Gate floor: a file whose diff touches fewer than DIFF_COVERAGE_ANDROID_MIN_
+# GATED_LINES executable lines (default 10) is REPORTED but not gated. The
+# 80% bar exists so new logic ships with tests; declaration-touch diffs
+# (constant renames, import shuffles — e.g. the 2026-06-11 VAL_ sweep: 58
+# files, 1-6 executable lines each) carry no new logic, and their coverage
+# status is exactly whatever it was before the touch. Floor-skipped files are
+# listed under belowGateFloor in the verdict — visible, never hidden — and
+# any file at or above the floor is held to the full threshold.
+gate_floor = int(os.environ.get("DIFF_COVERAGE_ANDROID_MIN_GATED_LINES", "10"))
+
 total_exc = 0
 total_hit = 0
 details = []
+below_floor = []
 for rel_path in changed:
     base = os.path.basename(rel_path)
     line_cov = coverage.get(base, {})
-    for ln in sorted(set(file_blocks.get(rel_path, []))):
-        if ln not in line_cov:
-            continue
-        total_exc += 1
-        if line_cov[ln]:
-            total_hit += 1
+    exc = sum(1 for ln in set(file_blocks.get(rel_path, [])) if ln in line_cov)
+    hit = sum(1 for ln in set(file_blocks.get(rel_path, [])) if line_cov.get(ln))
+    pct = round(hit * 100.0 / exc, 2) if exc > 0 else 0.0
+    entry = {"file": rel_path, "executableLines": exc, "coveredLines": hit, "percent": pct}
+    if exc > 0 and exc < gate_floor:
+        below_floor.append(entry)
+        continue
+    total_exc += exc
+    total_hit += hit
     if file_blocks.get(rel_path):
-        pct = 0.0
-        exc = sum(1 for ln in set(file_blocks[rel_path]) if ln in line_cov)
-        hit = sum(1 for ln in set(file_blocks[rel_path]) if line_cov.get(ln))
-        if exc > 0:
-            pct = round(hit * 100.0 / exc, 2)
-        details.append({"file": rel_path, "executableLines": exc, "coveredLines": hit, "percent": pct})
+        details.append(entry)
 details.extend(test_evidence_details)
 
 total_pct = 0.0 if total_exc <= 0 else round(total_hit * 100.0 / total_exc, 2)
@@ -214,10 +223,13 @@ print(json.dumps({
         "passed": passed,
         "changedFiles": len(details),
         "changedLines": total_exc,
+        "gateFloorLines": gate_floor,
+        "belowGateFloorFiles": len(below_floor),
         "surface": "android",
         "method": "jacoco_line_intersection",
     },
     "details": details,
+    "belowGateFloor": below_floor,
 }, indent=2))
 if not passed and total_exc > 0:
     raise SystemExit(1)

@@ -10,8 +10,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
 
-private const val VAL_32 = 32
-
 class RetainedIrohControlTransportPoolTest {
     @Test
     fun reusesTransportForSameRelayAcrossDials() = runTest {
@@ -73,7 +71,7 @@ class RetainedIrohControlTransportPoolTest {
             startCalls += 1
             return IrohEndpointIdentity(
                 nodeId = "node-1",
-                rawPublicKey = ByteArray(VAL_32),
+                rawPublicKey = ByteArray(32),
                 relayURL = relayURL,
             )
         }

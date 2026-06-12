@@ -9,7 +9,7 @@ import java.security.GeneralSecurityException
 import java.util.Base64
 
 object RemoteUnlockCredentialEnvelopeCrypto {
-    private const val VAL_32 = 32
+    private const val X25519_PUBLIC_KEY_BYTES = 32
     const val ALGORITHM = "HPKE-X25519-SHA256-CHACHAPOLY"
 
     data class SealedCredential(
@@ -45,7 +45,7 @@ object RemoteUnlockCredentialEnvelopeCrypto {
             } catch (error: IllegalArgumentException) {
                 throw GeneralSecurityException("invalid Remote Unlock recipient key", error)
             }
-        require(publicKeyBytes.size == VAL_32) { "Remote Unlock recipient key must be 32 bytes" }
+        require(publicKeyBytes.size == X25519_PUBLIC_KEY_BYTES) { "Remote Unlock recipient key must be 32 bytes" }
 
         val parameters =
             HpkeParameters.builder()

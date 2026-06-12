@@ -32,7 +32,13 @@ const { refreshUserRollupsMock, seedDemoMock, enforceMock, logInfoMock, logError
 vi.mock("../adminRuntime.js", () => ({ db: dbStub }));
 vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: enforceMock }));
 vi.mock("../config.js", () => ({ getConfig: () => ({ enforceAppCheck: false }) }));
-vi.mock("../rollups.js", () => ({ refreshUserRollups: refreshUserRollupsMock }));
+// Keep the REAL RollupRebuildUnavailableError class: the callable's catch
+// discriminates gate refusals with `instanceof`, so replacing the whole
+// module would crash the error path with "instanceof undefined".
+vi.mock("../rollups.js", async () => {
+  const actual = await vi.importActual<typeof import("../rollups.js")>("../rollups.js");
+  return { ...actual, refreshUserRollups: refreshUserRollupsMock };
+});
 vi.mock("../demoSeed.js", () => ({ seedAndroidDemoAccount: seedDemoMock }));
 vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
 vi.mock("../logging.js", async () => {
@@ -40,7 +46,10 @@ vi.mock("../logging.js", async () => {
   return { ...actual, logInfo: logInfoMock, logError: logErrorMock };
 });
 
+import { HttpsError } from "firebase-functions/v2/https";
+
 import { rebuildUsageRollups, seedAndroidDemoAccount } from "../callables/misc.js";
+import { RollupRebuildUnavailableError } from "../rollups.js";
 
 const UID = "user-rollups-1";
 const COMPUTED_AT = "2026-06-10T12:00:00.000Z";
@@ -147,6 +156,56 @@ describe("rebuildUsageRollups force gating", () => {
     expect(logErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({ message: "rebuild_usage_rollups_failed", detail: expect.stringContaining("exploded") }),
     );
+  });
+});
+
+describe("rebuildUsageRollups gate-refusal mapping (P0-7)", () => {
+  // The rebuild engine refuses full rebuilds while the circuit breaker is
+  // open, while another rebuild is in flight, or inside the per-user force
+  // cooldown. The callable must surface each refusal as a TYPED HttpsError
+  // (clients back off on the code + retryAt detail instead of retry-looping)
+  // and must NOT report it as a generic callable failure.
+  async function expectHttpsError(promise: Promise<unknown>): Promise<HttpsError> {
+    try {
+      await promise;
+    } catch (err) {
+      expect(err).toBeInstanceOf(HttpsError);
+      return err as HttpsError;
+    }
+    throw new Error("expected the callable to reject");
+  }
+
+  it("maps an open circuit breaker to `unavailable` and emits the alertable log event", async () => {
+    const retryAt = "2026-06-11T13:00:00.000Z";
+    refreshUserRollupsMock.mockRejectedValue(new RollupRebuildUnavailableError("circuit_open", retryAt));
+
+    const err = await expectHttpsError(invokeCallable(rebuildUsageRollups, { force: true }));
+
+    expect(err.code).toBe("unavailable");
+    expect(err.details).toEqual({ reason: "circuit_open", retryAt });
+    // Alert policies key on exactly this jsonPayload.event string.
+    expect(logErrorMock).toHaveBeenCalledWith(expect.objectContaining({ event: "rollup.full_rebuild_circuit_open" }));
+    expect(logErrorMock).not.toHaveBeenCalledWith(expect.objectContaining({ message: "rebuild_usage_rollups_failed" }));
+  });
+
+  it("maps an in-flight rebuild to `aborted`", async () => {
+    refreshUserRollupsMock.mockRejectedValue(new RollupRebuildUnavailableError("in_flight"));
+
+    const err = await expectHttpsError(invokeCallable(rebuildUsageRollups, { force: true }));
+
+    expect(err.code).toBe("aborted");
+    expect(err.details).toEqual({ reason: "in_flight", retryAt: undefined });
+    expect(logErrorMock).not.toHaveBeenCalledWith(expect.objectContaining({ message: "rebuild_usage_rollups_failed" }));
+  });
+
+  it("maps the force cooldown to `resource-exhausted` with the retry time", async () => {
+    const retryAt = "2026-06-11T12:10:00.000Z";
+    refreshUserRollupsMock.mockRejectedValue(new RollupRebuildUnavailableError("force_cooldown", retryAt));
+
+    const err = await expectHttpsError(invokeCallable(rebuildUsageRollups, { force: true }));
+
+    expect(err.code).toBe("resource-exhausted");
+    expect(err.details).toEqual({ reason: "force_cooldown", retryAt });
   });
 });
 

@@ -140,9 +140,8 @@ struct HermesGatewayLockChip: View {
             }
             .foregroundStyle(state.tint)
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.vertical, 5)
             .background(Capsule().fill(state.tint.opacity(0.12)))
-            .overlay(Capsule().stroke(state.tint.opacity(0.3), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(state.accessibilityLabel)

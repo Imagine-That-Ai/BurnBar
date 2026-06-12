@@ -22,7 +22,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-private const val VAL_4 = 4
+// AudioRecord capture buffer holds this many frameDurationMs PCM frames.
+private const val CAPTURE_BUFFER_FRAME_CAPACITY = 4
 
 /**
  * Android-side mic capture for Phase 5 (1:1 audio call). 1:1 port of
@@ -83,7 +84,7 @@ class MicrophoneCaptureService(
         val frameSamples = sampleRateHz * frameDurationMs / 1000
         val frameBytes = frameSamples * 2 // 16-bit mono
         val minBuffer = AudioRecord.getMinBufferSize(sampleRateHz, channelConfig, encoding)
-        val bufferSize = maxOf(minBuffer, frameBytes * VAL_4)
+        val bufferSize = maxOf(minBuffer, frameBytes * CAPTURE_BUFFER_FRAME_CAPACITY)
 
         val newRecord = createInitializedRecord(channelConfig, encoding, bufferSize)
         bindAudioEffects(newRecord)

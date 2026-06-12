@@ -9,9 +9,9 @@ import com.openburnbar.data.hermes.relay.HermesRelayCrypto
 import com.openburnbar.data.models.DeviceLinkCapability
 import kotlinx.coroutines.tasks.await
 
-private const val VAL_10 = 10
-private const val VAL_12 = 12
-private const val VAL_50 = 50
+private const val MAX_SEARCH_TOKEN_HASHES = 10
+private const val MAX_SEARCH_SEMANTIC_HASHES = 12
+private const val MAX_SEARCH_RESULT_LIMIT = 50
 
 data class CloudConversationSearchHit(
     val id: String,
@@ -115,9 +115,9 @@ class FunctionsRepository {
             callMap(
                 "searchEncryptedConversationIndex",
                 mapOf(
-                    "tokenHashes" to tokenHashes.take(VAL_10),
-                    "semanticHashes" to semanticHashes.take(VAL_12),
-                    "limit" to limit.coerceIn(1, VAL_50),
+                    "tokenHashes" to tokenHashes.take(MAX_SEARCH_TOKEN_HASHES),
+                    "semanticHashes" to semanticHashes.take(MAX_SEARCH_SEMANTIC_HASHES),
+                    "limit" to limit.coerceIn(1, MAX_SEARCH_RESULT_LIMIT),
                 ),
             )
         val hits = data["hits"].asStringAnyMapList() ?: return emptyList()

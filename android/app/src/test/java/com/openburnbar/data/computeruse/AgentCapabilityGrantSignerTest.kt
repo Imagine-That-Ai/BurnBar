@@ -7,8 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private const val SHA256_DIGEST_BYTES = 32
-private const val VAL_7 = 7
-
 class AgentCapabilityGrantSignerTest {
     @Test
     fun canonicalGrantRequestJsonMatchesSwiftSortedShape() {
@@ -48,7 +46,7 @@ class AgentCapabilityGrantSignerTest {
                 privateKeySeed = seed,
             )
 
-        assertEquals(VAL_7.toLong(), authority.counter)
+        assertEquals(7.toLong(), authority.counter)
         assertEquals(
             PhoneControlSigner.canonicalAgentGrantRequestHashHex(request),
             authority.intentHashBlake3,

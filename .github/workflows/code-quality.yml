@@ -19,9 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -52,9 +52,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -75,9 +75,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -86,24 +86,20 @@ jobs:
       - name: Install functions dependencies
         run: npm ci --prefix functions
 
-      - name: Run knip (functions)
-        run: |
-          cd functions
-          npx knip --reporter compact 2>&1 | tee knip-output.txt || true
-          if grep -qE "^(Unused files|Unused dependencies|Unused devDependencies)" knip-output.txt; then
-            echo "::warning::Knip found unused files/dependencies in functions. See output above."
-          else
-            echo "knip: functions looks clean."
-          fi
+      - name: Run knip ratchet (functions)
+        # Enforcing via count baseline (budgets/knip-baseline.json): new
+        # findings fail, existing debt is tracked and may only shrink. The
+        # previous advisory pipe let findings accumulate invisibly.
+        run: bash scripts/ci/knip-ratchet.sh functions functions
 
   unused-deps-extension:
     name: Unused Dependencies (extension)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -112,24 +108,17 @@ jobs:
       - name: Install extension dependencies
         run: npm ci --prefix extensions/openburnbar
 
-      - name: Run knip (extension)
-        run: |
-          cd extensions/openburnbar
-          npx knip --reporter compact 2>&1 | tee knip-output.txt || true
-          if grep -qE "^(Unused files|Unused dependencies|Unused devDependencies)" knip-output.txt; then
-            echo "::warning::Knip found unused files/dependencies in extension. See output above."
-          else
-            echo "knip: extension looks clean."
-          fi
+      - name: Run knip ratchet (extension)
+        run: bash scripts/ci/knip-ratchet.sh extensions/openburnbar extension
 
   dependency-boundaries:
     name: Dependency Boundaries (dependency-cruiser)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -172,9 +161,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -187,36 +176,30 @@ jobs:
         run: |
           set -euo pipefail
           cd extensions/openburnbar
-          npx size-limit --json 2>&1 | tee size-limit-extension.txt || true
-          echo "Size-limit (extension) output recorded."
+          # size-limit's exit code IS the budget check — swallowing it meant
+          # bundle regressions could never fail this lane.
+          npx size-limit --json 2>&1 | tee size-limit-extension.txt
 
-      - name: Install website dependencies and build
-        run: |
-          npm ci --prefix website
-          npm run build:offline --prefix website
-
-      - name: Check website bundle size
-        run: |
-          set -euo pipefail
-          cd website
-          npx size-limit --json 2>&1 | tee size-limit-website.txt || true
-          echo "Size-limit (website) output recorded."
+      # The website size-limit step was removed: size-limit was never a
+      # dependency of website/ and had no config, so the step had never
+      # measured anything (it ran `|| true` over a missing tool). Per the
+      # advisory-lane policy, a lane that asserts nothing is removed rather
+      # than left green-washing; re-add it deliberately with a config and a
+      # verified budget if website bundle size becomes a tracked concern.
 
       - name: Upload size reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bundle-size-reports
-          path: |
-            extensions/openburnbar/size-limit-extension.txt
-            website/size-limit-website.txt
+          path: extensions/openburnbar/size-limit-extension.txt
 
   android-dependency-health:
     name: Android Dependency Health (dependency-analysis)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - uses: actions/setup-java@v4
         with:
@@ -231,12 +214,23 @@ jobs:
         run: |
           set -euo pipefail
           cd android
-          ./gradlew :app:buildHealth --no-daemon 2>&1 | tee ../android-dep-health.txt || true
+          # :app:buildHealth never existed (buildHealth is a root-project task
+          # in dependency-analysis v2, and the plugin is applied per-project) —
+          # the old '|| true' + warning masked a task-not-found failure on
+          # every run this lane ever had. projectHealth is the real per-module
+          # task; verified green locally on plugin 2.19.0.
+          # Single-JVM compile: the multi-variant analysis otherwise spawns a
+          # 3g Kotlin daemon per variant alongside Gradle's 4g and OOMs even
+          # 16GB runners. In-process strategy shares one 6g heap.
+          ./gradlew :app:projectHealth --no-daemon --max-workers=2 \
+            -Dorg.gradle.jvmargs=-Xmx6g \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            2>&1 | tee ../android-dep-health.txt || true
           if grep -qE "^BUILD FAILED" ../android-dep-health.txt; then
-            echo "::warning::Android dependency-analysis found issues. Review android-dep-health artifact."
-          else
-            echo "Android dependency health check complete."
+            echo "::error::Android dependency-analysis buildHealth FAILED. Review android-dep-health artifact."
+            exit 1
           fi
+          echo "Android dependency health check complete."
 
       - name: Upload Android dependency health report
         if: always()
@@ -250,9 +244,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
