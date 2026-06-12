@@ -351,7 +351,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(value(after: "-C", in: args), workspace.path)
         XCTAssertEqual(value(after: "--agent", in: args), "muse")
         XCTAssertNotNil(value(after: "--prompt", in: args))
-        XCTAssertTrue(value(after: "--prompt", in: args)?.contains("read-only mode") == true)
+        XCTAssertEqual(value(after: "--prompt", in: args)?.contains("read-only mode"), true)
     }
 
     func test_cliBridge_forgeArguments_omitsUnknownAgentAndNarrowsPrompt() {
@@ -479,7 +479,7 @@ final class CLIBridgeTests: XCTestCase {
 
         XCTAssertEqual(payload["ok"] as? Bool, false)
         XCTAssertEqual(payload["status"] as? String, "error")
-        XCTAssertTrue((payload["error"] as? String)?.contains("Path escapes the chat workspace") == true)
+        XCTAssertEqual((payload["error"] as? String)?.contains("Path escapes the chat workspace"), true)
     }
 
     func test_agentToolBroker_deniesWorkspaceWriteThroughSymlinkedDirectory() async throws {
@@ -882,7 +882,8 @@ final class CLIBridgeTests: XCTestCase {
         let error = CLIBridge.codexEventError(from: "Error: quota exhausted for the weekly limit.")
 
         guard case .quotaExhausted(let detail) = error else {
-            return XCTFail("Expected quota exhaustion error, got \(error)")
+            XCTFail("Expected quota exhaustion error, got \(error)")
+            return
         }
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("weekly limit"))
     }
@@ -891,7 +892,8 @@ final class CLIBridgeTests: XCTestCase {
         let error = CLIBridge.codexEventError(from: "Codex is out of limit for this account.")
 
         guard case .quotaExhausted(let detail) = error else {
-            return XCTFail("Expected quota exhaustion error, got \(error)")
+            XCTFail("Expected quota exhaustion error, got \(error)")
+            return
         }
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("out of limit"))
     }
@@ -1448,7 +1450,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(result.events.count, 3)
         XCTAssertEqual(result.events[0], .usage(CLIUsageSnapshot(inputTokens: 2, outputTokens: 3, cacheCreationTokens: 0, cacheReadTokens: 0, reasoningTokens: 0)))
         // Tool call flushed before text
-        XCTAssertEqual(result.streamedText, true)
+        XCTAssertTrue(result.streamedText)
     }
 
     func test_openAICompatibleSSEParser_argumentOnlyDeltaWithoutPriorName() {

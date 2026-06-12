@@ -10,7 +10,7 @@ final class UsageRefreshPipelineTests: XCTestCase {
         let pipeline = UsageRefreshPipeline(
             parsers: [
                 .zai: EmptyParser(provider: .zai),
-                .claudeCode: EmptyParser(provider: .claudeCode),
+                .claudeCode: EmptyParser(provider: .claudeCode)
             ],
             dataStore: store,
             orchestrator: RefreshOrchestrator(

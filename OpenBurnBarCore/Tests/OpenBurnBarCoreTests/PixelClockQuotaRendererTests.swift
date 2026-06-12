@@ -1030,7 +1030,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
     /// Dump each rainbow logo as an ASCII grid for visual review.
     /// Marked `disabled` style by prefixing with `disabled_`; flip to
     /// `test_` to re-print on demand.
-    func disabled_printRainbowGridsForVisualReview() {
+    private func disabled_printRainbowGridsForVisualReview() {
         let providers: [(String, String)] = [
             ("claudecode", "Claude Code"),
             ("codex", "Codex"),

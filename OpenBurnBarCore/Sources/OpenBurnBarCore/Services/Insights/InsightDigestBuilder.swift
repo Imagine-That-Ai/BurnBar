@@ -177,14 +177,33 @@ public struct InsightDigestBuilder: Sendable {
 
     // MARK: - Snapshots
 
+    /// Per-provider rollup accumulated while walking the usage/session rows.
+    private struct ProviderAccumulator {
+        var cost: Double = 0
+        var tokens: Int = 0
+        var sessions: Set<String> = []
+        var topModels: [String: Int] = [:]
+        var titles: [String: Int] = [:]
+        var tools: [String: Int] = [:]
+    }
+
+    /// Per-model rollup accumulated while walking the usage/session rows.
+    private struct ModelAccumulator {
+        var provider: String
+        var cost: Double = 0
+        var tokens: Int = 0
+        var cacheTokens: Int = 0
+        var sessions: Set<String> = []
+        var titles: [String: Int] = [:]
+        var projects: [String: Int] = [:]
+    }
+
     private func makeProviderSnapshots(usages: [InsightUsageRow],
                                        sessions: [InsightSessionRow],
                                        limit: Int) -> [InsightDigest.ProviderSnapshot] {
-        var perProvider: [String: (cost: Double, tokens: Int, sessions: Set<String>,
-                                   topModels: [String: Int], titles: [String: Int],
-                                   tools: [String: Int])] = [:]
+        var perProvider: [String: ProviderAccumulator] = [:]
         for u in usages {
-            var entry = perProvider[u.provider] ?? (0, 0, [], [:], [:], [:])
+            var entry = perProvider[u.provider] ?? ProviderAccumulator()
             entry.cost += u.costUSD
             entry.tokens += u.totalTokens
             entry.sessions.insert(u.sessionID)
@@ -193,7 +212,7 @@ public struct InsightDigestBuilder: Sendable {
         }
         for s in sessions {
             if let title = s.inferredTaskTitle, !title.isEmpty {
-                var entry = perProvider[s.provider] ?? (0, 0, [], [:], [:], [:])
+                var entry = perProvider[s.provider] ?? ProviderAccumulator()
                 entry.titles[title, default: 0] += 1
                 for tool in s.keyTools { entry.tools[tool, default: 0] += 1 }
                 perProvider[s.provider] = entry
@@ -230,12 +249,9 @@ public struct InsightDigestBuilder: Sendable {
     private func makeModelSnapshots(usages: [InsightUsageRow],
                                     sessions: [InsightSessionRow],
                                     limit: Int) -> [InsightDigest.ModelSnapshot] {
-        var perModel: [String: (provider: String, cost: Double, tokens: Int,
-                                cacheTokens: Int, sessions: Set<String>,
-                                titles: [String: Int],
-                                projects: [String: Int])] = [:]
+        var perModel: [String: ModelAccumulator] = [:]
         for u in usages {
-            var entry = perModel[u.model] ?? (u.provider, 0, 0, 0, [], [:], [:])
+            var entry = perModel[u.model] ?? ModelAccumulator(provider: u.provider)
             entry.cost += u.costUSD
             entry.tokens += u.totalTokens
             entry.cacheTokens += u.cacheReadTokens
@@ -248,7 +264,7 @@ public struct InsightDigestBuilder: Sendable {
         let sessionByID = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionID, $0) })
         for u in usages {
             if let s = sessionByID[u.sessionID], let title = s.inferredTaskTitle, !title.isEmpty {
-                var entry = perModel[u.model] ?? (u.provider, 0, 0, 0, [], [:], [:])
+                var entry = perModel[u.model] ?? ModelAccumulator(provider: u.provider)
                 entry.titles[title, default: 0] += 1
                 perModel[u.model] = entry
             }
@@ -534,7 +550,7 @@ public struct InsightDigestBuilder: Sendable {
         guard !benchmarks.isEmpty else { return [] }
         let usedModels = Set(models.map { Self.normalizedModelID($0.id) })
         let preferredCategories = ["coding", "design", "terminal", "agent", "analysis", "general"]
-        return benchmarks
+        return Array(benchmarks
             .filter { benchmark in
                 guard benchmark.score != nil || benchmark.rank != nil || benchmark.costSignal != nil else { return false }
                 return usedModels.isEmpty || usedModels.contains(Self.normalizedModelID(benchmark.modelID))
@@ -552,8 +568,7 @@ public struct InsightDigestBuilder: Sendable {
                 if lhsRank != rhsRank { return lhsRank < rhsRank }
                 return lhs.modelID < rhs.modelID
             }
-            .prefix(limit)
-            .map { $0 }
+            .prefix(limit))
     }
 
     private func makeAnomalies(daily: [InsightDigest.DailyPoint], limit: Int) -> [InsightDigest.PrecomputedAnomaly] {

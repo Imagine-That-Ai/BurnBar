@@ -46,7 +46,7 @@ final class SettingsSearchEngineTests: XCTestCase {
             title: "Café Defaults",
             subtitle: "Diacritic test",
             keywords: ["coffee"]
-        ),
+        )
     ]
 
     func test_emptyQuery_returnsEmpty() {
@@ -90,7 +90,7 @@ final class SettingsSearchEngineTests: XCTestCase {
     func test_tieBreakerByTitleAscending() {
         let items = [
             SettingsItem(id: "b", section: .appearance, pageRoute: .hubRoot, anchorID: "b", title: "Beta", keywords: ["match"]),
-            SettingsItem(id: "a", section: .appearance, pageRoute: .hubRoot, anchorID: "a", title: "Alpha", keywords: ["match"]),
+            SettingsItem(id: "a", section: .appearance, pageRoute: .hubRoot, anchorID: "a", title: "Alpha", keywords: ["match"])
         ]
         XCTAssertEqual(SettingsSearchEngine.search("match", in: items).map(\.id), ["a", "b"])
     }

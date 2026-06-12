@@ -44,7 +44,7 @@ private struct MacAgentReplyNotificationPayload: Sendable {
             "thread_id": threadID,
             "title": title,
             "preview": preview,
-            "deep_link": deepLink ?? "openburnbar://assistants/\(runtime)?threadId=\(threadID)",
+            "deep_link": deepLink ?? "openburnbar://assistants/\(runtime)?threadId=\(threadID)"
         ]
     }
 
@@ -314,7 +314,7 @@ final class MacAgentReplyNotificationListener: NSObject {
             "appLifecycle": NSApp.isActive ? "active" : "background",
             "agentNotificationsEnabled": true,
             "lastSeenAtMillis": Int64(Date().timeIntervalSince1970 * 1000),
-            "updated_at_millis": Int64(Date().timeIntervalSince1970 * 1000),
+            "updated_at_millis": Int64(Date().timeIntervalSince1970 * 1000)
         ]
         if let runtime { payload["activeRuntime"] = runtime }
         if let threadID { payload["activeThreadId"] = threadID }
@@ -362,7 +362,7 @@ final class MacAgentReplyNotificationListener: NSObject {
                 ),
                 "vaultKeyID": key.vaultKeyID,
                 "deviceId": deviceID,
-                "clientReplyId": replyId,
+                "clientReplyId": replyId
             ])
         } catch {
             processedReplyIDs.remove(replyId)
@@ -427,7 +427,7 @@ final class MacAgentReplyNotificationListener: NSObject {
             "status": status,
             "processorDeviceId": deviceID,
             "processedAt": FieldValue.serverTimestamp(),
-            "updatedAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp()
         ]
         if let error {
             payload["errorMessage"] = String(error.prefix(512))

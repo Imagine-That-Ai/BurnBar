@@ -54,7 +54,7 @@ public struct WeeklyRecapRenderer: Sendable {
         lines.append("WINS")
         let win = verdict.bullets.first { $0.type == .reflectiveFact || $0.type == .achievement }
             ?? verdict.bullets.first
-        if let win = win {
+        if let win {
             lines.append("  • \(win.claim)")
         } else {
             lines.append("  • Nothing flagged this week.")
@@ -63,7 +63,7 @@ public struct WeeklyRecapRenderer: Sendable {
         lines.append("")
         lines.append("SURPRISES")
         let surprise = verdict.bullets.first { $0.type == .anomaly || $0.type == .pattern }
-        if let surprise = surprise {
+        if let surprise {
             lines.append("  • \(surprise.claim)")
         } else {
             lines.append("  • No surprises this week.")
@@ -73,7 +73,7 @@ public struct WeeklyRecapRenderer: Sendable {
         lines.append("RISKS")
         let risk = verdict.bullets.first { $0.type == .risk }?.claim
             ?? verdict.anomaly.map { "\($0.label): \($0.detail)" }
-        if let risk = risk {
+        if let risk {
             lines.append("  • \(risk)")
         } else {
             lines.append("  • No risks flagged.")
@@ -103,7 +103,7 @@ public struct WeeklyRecapRenderer: Sendable {
     }
 
     private func formatDelta(_ delta: VerdictDelta?) -> String {
-        guard let delta = delta else { return "" }
+        guard let delta else { return "" }
         let sign = delta.value >= 0 ? "+" : ""
         let valueString: String
         switch delta.unit {

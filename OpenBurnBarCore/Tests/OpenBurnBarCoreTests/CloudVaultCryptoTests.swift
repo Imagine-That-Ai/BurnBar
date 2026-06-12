@@ -47,8 +47,8 @@ final class CloudVaultCryptoTests: XCTestCase {
 
         XCTAssertEqual(bodyHash, sameBodyHash)
         XCTAssertNotEqual(bodyHash, otherBodyHash)
-        XCTAssertTrue(bodyHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
-        XCTAssertTrue(chunkHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertNotNil(bodyHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
+        XCTAssertNotNil(chunkHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
         XCTAssertNotEqual(bodyHash, CloudVaultCrypto.sha256Hex(body))
         XCTAssertNotEqual(chunkHash, CloudVaultCrypto.sha256Hex(chunk))
         XCTAssertEqual(CloudVaultCrypto.sessionBodyHashVersion, 2)
@@ -307,9 +307,9 @@ final class CloudVaultCryptoTests: XCTestCase {
             keyData: key
         )
 
-        XCTAssertFalse(Set(indexHashes).intersection(queryHashes).isEmpty)
-        XCTAssertFalse(Set(indexHashes).intersection(shortQueryHashes).isEmpty)
-        XCTAssertTrue(Set(indexHashes).intersection(unrelatedHashes).isEmpty)
+        XCTAssertFalse(Set(indexHashes).isDisjoint(with: queryHashes))
+        XCTAssertFalse(Set(indexHashes).isDisjoint(with: shortQueryHashes))
+        XCTAssertTrue(Set(indexHashes).isDisjoint(with: unrelatedHashes))
         XCTAssertTrue(indexHashes.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
         XCTAssertFalse(indexHashes.contains("emilio"))
     }
@@ -334,9 +334,9 @@ final class CloudVaultCryptoTests: XCTestCase {
             keyData: key
         )
 
-        XCTAssertFalse(Set(indexHashes).intersection(exactQueryHashes).isEmpty)
-        XCTAssertFalse(Set(indexHashes).intersection(partialQueryHashes).isEmpty)
-        XCTAssertTrue(Set(indexHashes).intersection(unrelatedHashes).isEmpty)
+        XCTAssertFalse(Set(indexHashes).isDisjoint(with: exactQueryHashes))
+        XCTAssertFalse(Set(indexHashes).isDisjoint(with: partialQueryHashes))
+        XCTAssertTrue(Set(indexHashes).isDisjoint(with: unrelatedHashes))
         XCTAssertTrue(indexHashes.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
         XCTAssertFalse(indexHashes.contains("x_ads_api"))
     }
@@ -360,7 +360,7 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(first.count, Set(first).count)
         XCTAssertTrue(first.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
         XCTAssertFalse(first.contains("encrypted"))
-        XCTAssertFalse(Set(first).intersection(relatedHashes).isEmpty)
+        XCTAssertFalse(Set(first).isDisjoint(with: relatedHashes))
         XCTAssertGreaterThanOrEqual(
             Set(first).intersection(relatedHashes).count,
             Set(first).intersection(unrelatedHashes).count
@@ -377,7 +377,7 @@ final class CloudVaultCryptoTests: XCTestCase {
         let meaningHashes = try CloudVaultCrypto.semanticHashes(for: meaningQuery, keyData: key)
         let unrelatedHashes = try CloudVaultCrypto.semanticHashes(for: unrelated, keyData: key)
 
-        XCTAssertFalse(Set(indexedHashes).intersection(meaningHashes).isEmpty)
+        XCTAssertFalse(Set(indexedHashes).isDisjoint(with: meaningHashes))
         XCTAssertGreaterThan(
             Set(indexedHashes).intersection(meaningHashes).count,
             Set(indexedHashes).intersection(unrelatedHashes).count
@@ -403,7 +403,7 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertNotEqual(first, otherVault)
         // Opaque shape: "pm_" + 32 lowercase hex — passes requiredIdentifier's
         // [a-z0-9_-] filter, and never echoes the plaintext slug.
-        XCTAssertTrue(first.range(of: "^pm_[a-f0-9]{32}$", options: .regularExpression) != nil)
+        XCTAssertNotNil(first.range(of: "^pm_[a-f0-9]{32}$", options: .regularExpression))
         XCTAssertFalse(first.contains(slug))
 
         // Independent recomputation of the documented recipe:
@@ -433,7 +433,7 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(first, second)
         XCTAssertNotEqual(first, other)
         // Full HMAC-SHA256 digest (64 hex) — satisfies requireHexDigest.
-        XCTAssertTrue(first.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertNotNil(first.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
         // Never the keyless SHA-256 a curious server could guess (no dedup oracle).
         let plaintextSHA256 = SHA256.hash(data: Data(plaintext.utf8))
             .map { String(format: "%02x", $0) }.joined()
@@ -464,7 +464,7 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(first, second)
         XCTAssertNotEqual(first, otherSlug)
         XCTAssertNotEqual(first, otherKey)
-        XCTAssertTrue(first.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertNotNil(first.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
         XCTAssertFalse(first.contains(slug))
 
         // The slug info label differs from content, so the same input under the
@@ -512,6 +512,6 @@ final class CloudVaultCryptoTests: XCTestCase {
 
         XCTAssertEqual(unwrapped, vaultKey)
         XCTAssertEqual(wrapped.verificationHash, try CloudVaultCrypto.recoveryVerificationHash(for: recoveryKey))
-        XCTAssertTrue(wrapped.verificationHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertNotNil(wrapped.verificationHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
     }
 }

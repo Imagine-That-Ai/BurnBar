@@ -154,7 +154,7 @@ struct DashboardWorkspaceNavButton: View {
     let systemImage: String
     let accent: Color
     let isSelected: Bool
-    var trailingBadge: String? = nil
+    var trailingBadge: String?
     var isCompact: Bool = false
     let action: () -> Void
 

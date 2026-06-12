@@ -180,7 +180,7 @@ public enum ProviderEndpointProfileRegistry {
             mimoTokenPlan(region: .sgp),
             mimoTokenPlan(region: .ams),
             minimaxTokenPlan,
-            minimaxPayg,
+            minimaxPayg
         ]
     }
 

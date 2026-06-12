@@ -92,7 +92,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .antigravity,
         .xAI,
         .mimo,
-        .cursorAgent,
+        .cursorAgent
     ]
 
     public var isQuotaSignalProvider: Bool {
@@ -118,7 +118,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .antigravity,
         .xAI,
         .mimo,
-        .cursorAgent,
+        .cursorAgent
     ]
 
     /// A stable, lowercased, space-stripped token for persisting provider identifiers.

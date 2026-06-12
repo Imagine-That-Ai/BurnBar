@@ -15,7 +15,7 @@ final class SummarySettings {
         didSet { persistence.set(summaryProviderOrderCSV, forKey: "summaryProviderOrderCSV") }
     }
 
-    var summaryDailyCapUSD: Double? = nil {
+    var summaryDailyCapUSD: Double? {
         didSet {
             if let cap = summaryDailyCapUSD {
                 persistence.set(true, forKey: "hasSummaryDailyCapUSD")

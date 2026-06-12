@@ -257,7 +257,7 @@ final class StubToolContext: MobileToolContext {
     var capturedAtomNavigator: (() -> HermesAtomNavigator?)?
     var stubSessions: [MobileToolSessionSummary] = []
     var stubProjectMemoryProvider: (any MobileProjectMemoryProviding)?
-    var stubStatus: MobileToolRuntimeStatus = MobileToolRuntimeStatus(
+    var stubStatus = MobileToolRuntimeStatus(
         runtime: "test",
         isReachable: true,
         connectionName: "Test host",

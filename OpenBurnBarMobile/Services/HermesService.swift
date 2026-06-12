@@ -694,7 +694,7 @@ final class HermesService {
     /// `MobileToolContext.atomNavigator` to whatever the chat surface
     /// installed without smuggling protocols through Swift's weak
     /// machinery.
-    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)? = nil
+    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)?
 
     var relayConnections: [HermesConnectionRecord] {
         connections.filter { connection in
@@ -705,7 +705,7 @@ final class HermesService {
     }
 
     var suggestedRelayConnection: HermesConnectionRecord? {
-        relayConnections.sorted { lhs, rhs in
+        relayConnections.min { lhs, rhs in
             let lhsFresh = Self.isRelayConnectionFresh(lhs)
             let rhsFresh = Self.isRelayConnectionFresh(rhs)
             if lhsFresh != rhsFresh {
@@ -714,7 +714,7 @@ final class HermesService {
             let lhsLastSeen = lhs.lastSeenAt ?? lhs.updatedAt
             let rhsLastSeen = rhs.lastSeenAt ?? rhs.updatedAt
             return lhsLastSeen > rhsLastSeen
-        }.first
+        }
     }
 
     var isRemoteRelayEnabled: Bool {
@@ -1507,7 +1507,7 @@ final class HermesService {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Allow attachment-only messages (no text) so users can send a photo
         // and let the model describe / OCR it.
-        guard (!trimmed.isEmpty || !attachments.isEmpty), !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
 
         #if DEBUG
         print("OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
@@ -1711,7 +1711,7 @@ final class HermesService {
 
     func sendVisibleCLIMessage(_ text: String, context: String? = nil, attachments: [HermesAttachment] = []) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!trimmed.isEmpty || !attachments.isEmpty), !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
 
         guard attachments.isEmpty else {
             rejectVisibleCLIAttachmentTurn(text: trimmed, attachments: attachments)
@@ -4099,8 +4099,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                 ))))
             case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong, .signalSessionMessage:  // cov:ignore
                 break
-            case .signalSessionMessage,
-                 .mediaClassify,
+            case .mediaClassify,
                  .mediaBlobAdvertise,
                  .mediaBlobAck,
                  .mediaMirrorRequest,

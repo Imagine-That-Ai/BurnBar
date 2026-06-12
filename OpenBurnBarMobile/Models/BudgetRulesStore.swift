@@ -224,7 +224,7 @@ final class BudgetRulesStore {
             "updatedAt": Timestamp(date: rule.updatedAt),
             "syncedAt": rule.syncedAt.map { Timestamp(date: $0) } as Any,
             "sourceDeviceID": rule.sourceDeviceID as Any,
-            "isEnabled": rule.isEnabled,
+            "isEnabled": rule.isEnabled
         ]
         // Seal the private project name + label instead of writing them in clear.
         if let projectName = rule.projectName {
@@ -273,7 +273,7 @@ final class BudgetRulesStore {
             "limitAtEvent": event.limitAtEvent,
             "occurredAt": Timestamp(date: event.occurredAt),
             "syncedAt": event.syncedAt.map { Timestamp(date: $0) } as Any,
-            "sourceDeviceID": event.sourceDeviceID as Any,
+            "sourceDeviceID": event.sourceDeviceID as Any
         ]
         data = data.compactMapValues { value -> Any? in
             let mirror = Mirror(reflecting: value)

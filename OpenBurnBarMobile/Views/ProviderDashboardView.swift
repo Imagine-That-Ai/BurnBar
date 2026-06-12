@@ -17,7 +17,7 @@ struct ProviderDashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: UnifiedDesignSystem.Spacing.xxl) {
-                if let store = store {
+                if let store {
                     if store.isLoading && store.usages.isEmpty {
                         loadingSection
                     } else if let error = store.error, store.usages.isEmpty {
@@ -145,8 +145,6 @@ struct ProviderDashboardView: View {
             }
         }
     }
-
-
 
     // MARK: - Token Breakdown
 

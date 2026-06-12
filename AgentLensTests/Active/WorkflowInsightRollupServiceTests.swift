@@ -219,4 +219,3 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
         ]
     }
 }
-

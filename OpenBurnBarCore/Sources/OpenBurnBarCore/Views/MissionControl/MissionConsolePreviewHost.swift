@@ -331,7 +331,7 @@ public extension MissionConsoleSnapshot {
         )
     }()
 
-    static let emptyPreview: MissionConsoleSnapshot = MissionConsoleSnapshot(
+    static let emptyPreview = MissionConsoleSnapshot(
         health: .empty,
         runtimes: [
             MissionConsoleRuntime(

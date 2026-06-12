@@ -31,13 +31,13 @@ struct HermesSquareRoot: View {
 
     // MARK: State
 
-    @State private var selectedMissionID: String? = nil
+    @State private var selectedMissionID: String?
     @State private var showCancelForIDs: Set<String> = []
-    @State private var missionToCancel: MissionConsoleActiveTile? = nil
-    @State private var renameTargetItem: ThreadInboxItem? = nil
+    @State private var missionToCancel: MissionConsoleActiveTile?
+    @State private var renameTargetItem: ThreadInboxItem?
     @State private var newTitleText: String = ""
     @State private var isShowingRenameAlert: Bool = false
-    @State private var missionForActionSheet: MissionConsoleActiveTile? = nil
+    @State private var missionForActionSheet: MissionConsoleActiveTile?
 
     @State private var piService = PiService()
     @State private var registry = AgentIdentityRegistry.shared
@@ -1099,13 +1099,12 @@ struct HermesSquareRoot: View {
                 lastActivityAt: nil
             )
         }
-        searchHits = (await localHits + cloudHits)
+        searchHits = Array((await localHits + cloudHits)
             .sorted { lhs, rhs in
                 if lhs.score != rhs.score { return lhs.score > rhs.score }
                 return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
             }
-            .prefix(30)
-            .map { $0 }
+            .prefix(30))
     }
 
     private func reindexSearch() async {
@@ -1289,7 +1288,7 @@ struct HermesSquareRoot: View {
         let snapshot = missionHost.snapshot
         let knownByID = Dictionary(uniqueKeysWithValues: snapshot.activeTiles.map { ($0.id, $0) })
         let now = Date()
-        return group.childMissionIDs.enumerated().map { (idx, id) -> MissionConsoleActiveTile in
+        return group.childMissionIDs.enumerated().map { idx, id -> MissionConsoleActiveTile in
             if let existing = knownByID[id] { return existing }
             let runtimeToken = idx < group.runtimeTokens.count ? group.runtimeTokens[idx] : nil
             // Auto-rescue: a child that's been queued for > 120s without

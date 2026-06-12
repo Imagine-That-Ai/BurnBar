@@ -366,7 +366,7 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
                 enc: event.enc,
                 wrappedKey: mutatingLastByte(ofBase64: event.wrappedKey),
                 expect: "open-fails"
-            ),
+            )
         ]
 
         let fixture = HPKEv3Fixture(

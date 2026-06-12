@@ -170,7 +170,7 @@ final class ControlFrameSealVectorTests: XCTestCase {
         return ["1", "true", "yes"].contains(value.lowercased())
     }
 
-    private static let fixtureURL: URL = URL(fileURLWithPath: #filePath)
+    private static let fixtureURL = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .appendingPathComponent("Fixtures", isDirectory: true)
         .appendingPathComponent("ControlFrameSealVector.json")
@@ -264,7 +264,9 @@ final class ControlFrameSealVectorTests: XCTestCase {
             generator: VectorGenerator(
                 command: "BURNBAR_EMIT_AEAD_VECTORS=1 swift test --package-path OpenBurnBarCore --filter ControlFrameSealVectorTests",
                 language: "swift",
-                note: "Sealed by the production Swift CryptoKit ControlFrameSeal. All inputs (HPKE session key, salt, peerNodeId, frameType, plaintext) are deterministic frozen constants; the AES-GCM nonce inside each envelope was drawn once at emission and is frozen with the fixture. Kotlin opens the identical copy at android/app/src/test/resources/control-seal/ControlFrameSealVector.json (ControlFrameSealVectorTest)."
+                note: "Sealed by the production Swift CryptoKit ControlFrameSeal. All inputs (HPKE session key, salt, peerNodeId, frameType, plaintext) are deterministic frozen constants; " +
+                    "the AES-GCM nonce inside each envelope was drawn once at emission and is frozen with the fixture. " +
+                    "Kotlin opens the identical copy at android/app/src/test/resources/control-seal/ControlFrameSealVector.json (ControlFrameSealVectorTest)."
             ),
             cases: cases
         )

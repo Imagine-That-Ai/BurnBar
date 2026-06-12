@@ -22,7 +22,8 @@ final class MediaCapabilityGateTests: XCTestCase {
             sessionByteBudget: nil
         )
         guard case let .allowed(envelope) = check else {
-            return XCTFail("expected .allowed")
+            XCTFail("expected .allowed")
+            return
         }
         XCTAssertEqual(envelope.feature, .fileTransfer)
     }

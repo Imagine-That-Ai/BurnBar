@@ -798,7 +798,7 @@ struct RoutingClientWiring {
             body = [
                 "model": probeModel,
                 "input": "ping",
-                "max_output_tokens": 1,
+                "max_output_tokens": 1
             ]
         case .opencode, .forge, .droid, .grok:
             let models = advertisedModels.isEmpty
@@ -1084,13 +1084,13 @@ struct RoutingClientWiring {
             "name": "OpenBurnBar Gateway",
             "options": [
                 "baseURL": "\(gateway.baseURL)/v1",
-                "apiKey": gateway.effectiveClientToken,
+                "apiKey": gateway.effectiveClientToken
             ],
             "models": Dictionary(
                 uniqueKeysWithValues: liveModels.map { model in
                     (model.id, ["name": model.displayName.isEmpty ? model.id : model.displayName])
                 }
-            ),
+            )
         ]
         root["model"] = "openburnbar/\(liveModels[0].id)"
         root["provider"] = providers
@@ -1284,7 +1284,7 @@ struct RoutingClientWiring {
                 "base_url": model.droidBaseURL(gateway: gateway),
                 "api_key": gateway.effectiveClientToken,
                 "max_output_tokens": 8192,
-                "provider": model.droidProviderType,
+                "provider": model.droidProviderType
             ] as [String: Any]
         })
         root["custom_models"] = customModels
@@ -1304,7 +1304,7 @@ struct RoutingClientWiring {
             "apiKey": gateway.effectiveClientToken,
             "displayName": droidDisplayName(for: model),
             "maxOutputTokens": 8192,
-            "provider": model.droidProviderType,
+            "provider": model.droidProviderType
         ]
     }
 
@@ -1373,7 +1373,7 @@ struct RoutingClientWiring {
         [
             configURL(for: .droid),
             home.appendingPathComponent(".factory/settings.json"),
-            home.appendingPathComponent(".factory/config.json"),
+            home.appendingPathComponent(".factory/config.json")
         ]
     }
 
@@ -1639,7 +1639,7 @@ struct RoutingClientWiring {
                     continue
                 }
                 if next == "*" {
-                    var prev: Character? = nil
+                    var prev: Character?
                     while let c = iterator.next() {
                         if prev == "*" && c == "/" { break }
                         prev = c

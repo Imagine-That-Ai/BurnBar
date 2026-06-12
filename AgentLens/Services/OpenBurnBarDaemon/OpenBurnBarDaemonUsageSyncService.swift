@@ -14,7 +14,7 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
         let lastQuotaRemainingPercent: Double?
         let lastQuotaResetsAt: Date?
         let lastStatusMessage: String?
-        var updatedAt: Date = Date()
+        var updatedAt = Date()
 
         var id: String { slotID }
     }
@@ -136,11 +136,10 @@ final class OpenBurnBarDaemonUsageSyncService {
 
         return OpenBurnBarDaemonRuntimeSnapshot(
             providerConfigurations: providerConfigurations(from: loadProviderConfigurationSnapshot()),
-            recentUsage: usageRecords
+            recentUsage: Array(usageRecords
                 .compactMap { recentUsage(from: $0) }
                 .sorted { $0.recordedAt > $1.recordedAt }
-                .prefix(6)
-                .map { $0 },
+                .prefix(6)),
             ledgerRecordCount: importedUsages.count,
             importedUsages: importedUsages
         )
@@ -166,11 +165,10 @@ final class OpenBurnBarDaemonUsageSyncService {
 
         return OpenBurnBarDaemonRuntimeSnapshot(
             providerConfigurations: providerConfigurations(from: configSnapshot),
-            recentUsage: usageEvents
+            recentUsage: Array(usageEvents
                 .compactMap { recentUsage(from: $0) }
                 .sorted { $0.recordedAt > $1.recordedAt }
-                .prefix(6)
-                .map { $0 },
+                .prefix(6)),
             ledgerRecordCount: importedUsages.count,
             importedUsages: importedUsages
         )

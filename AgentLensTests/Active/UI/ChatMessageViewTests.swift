@@ -106,7 +106,7 @@ final class ChatMessageViewTests: XCTestCase {
         let message = ViewTestFixtures.makeTranscriptMessage(
             pieces: [
                 ViewTestFixtures.makeTextPiece(value: "First paragraph"),
-                ViewTestFixtures.makeTextPiece(value: "Second paragraph"),
+                ViewTestFixtures.makeTextPiece(value: "Second paragraph")
             ]
         )
         let view = ChatMessageView(

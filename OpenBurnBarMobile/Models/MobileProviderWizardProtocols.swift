@@ -62,8 +62,8 @@ extension ProviderConnectionProviding {
 
 final class LiveHaptics: HapticPerforming {
     func selection() { Haptics.selection() }
-    func light()     { Haptics.light() }
-    func medium()    { Haptics.medium() }
-    func success()   { Haptics.success() }
-    func error()     { Haptics.error() }
+    func light() { Haptics.light() }
+    func medium() { Haptics.medium() }
+    func success() { Haptics.success() }
+    func error() { Haptics.error() }
 }

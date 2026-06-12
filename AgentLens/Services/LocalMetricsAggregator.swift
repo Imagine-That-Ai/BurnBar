@@ -46,7 +46,7 @@ actor LocalMetricsAggregator {
             LocalMetricsJSONLWriter.append(event: [
                 "event": "metrics_snapshot",
                 "search_p50_ms": String(format: "%.1f", snapshot.searchP50Ms ?? 0),
-                "search_p95_ms": String(format: "%.1f", snapshot.searchP95Ms ?? 0),
+                "search_p95_ms": String(format: "%.1f", snapshot.searchP95Ms ?? 0)
             ])
         } catch {
             AppLogger.metrics.silentFailure("compute", error: error)
@@ -176,7 +176,7 @@ enum LocalMetricsJSONLWriter {
             let fileURL = directory.appendingPathComponent(filename)
             rotateIfNeeded(at: fileURL)
             let payload: [String: Any] = [
-                "ts": ISO8601DateFormatter().string(from: Date()),
+                "ts": ISO8601DateFormatter().string(from: Date())
             ].merging(event) { _, new in new }
             let line = try JSONSerialization.data(withJSONObject: payload) + Data([0x0A])
             if FileManager.default.fileExists(atPath: fileURL.path) {

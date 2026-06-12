@@ -538,8 +538,8 @@ struct StreamingBubble<Content: View>: View {
         self.content = content
     }
 
-    @State private var measuredHeight: CGFloat? = nil
-    @State private var measuredWidth: CGFloat? = nil
+    @State private var measuredHeight: CGFloat?
+    @State private var measuredWidth: CGFloat?
 
     var body: some View {
         GeometryReader { proxy in

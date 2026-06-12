@@ -47,7 +47,7 @@ struct ProviderRoutingCockpit: View {
     /// routing layer's `activeAccount` matches, that lane gets a "DRAIN" pin so
     /// the user's selection is reinforced; when routing has failed over to a
     /// different lane, the pin moves there to expose the divergence.
-    var drainTargetProfileID: String? = nil
+    var drainTargetProfileID: String?
 
     @State private var showsHistory = false
 

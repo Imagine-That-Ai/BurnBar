@@ -213,7 +213,7 @@ public struct TrendDataDigest: Codable, Hashable, Sendable {
 
         // Project slices — group recentUsages by projectName, top 6
         let projectGroups = Dictionary(grouping: recentUsages) { $0.projectName }
-        let projectSlices = projectGroups
+        let projectSlices = Array(projectGroups
             .map { project, items -> ProjectSlice in
                 let cost = items.reduce(0.0) { $0 + $1.cost }
                 let tokens = items.reduce(0) { $0 + $1.totalTokens }
@@ -226,8 +226,7 @@ public struct TrendDataDigest: Codable, Hashable, Sendable {
                 )
             }
             .sorted { $0.costUsd > $1.costUsd }
-            .prefix(6)
-            .map { $0 }
+            .prefix(6))
 
         // Recent sessions (top 15 by start time — keeps payload tight)
         let iso = ISO8601DateFormatter()

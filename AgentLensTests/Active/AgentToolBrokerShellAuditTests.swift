@@ -75,8 +75,9 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
         ))
         XCTAssertEqual(denied["ok"] as? Bool, false)
         XCTAssertEqual(denied["status"] as? String, "denied")
-        XCTAssertTrue(
-            (denied["reason"] as? String)?.contains("unrestricted shell requires YOLO trusted mode") == true,
+        XCTAssertEqual(
+            (denied["reason"] as? String)?.contains("unrestricted shell requires YOLO trusted mode"),
+            true,
             "denial must name the YOLO gate, got \(denied["reason"] ?? "nil")"
         )
     }
@@ -102,7 +103,7 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
         ))
         XCTAssertEqual(payload["ok"] as? Bool, true)
         XCTAssertEqual(payload["exitCode"] as? Int, 0)
-        XCTAssertTrue((payload["stdout"] as? String)?.contains("audit-probe-ok") == true)
+        XCTAssertEqual((payload["stdout"] as? String)?.contains("audit-probe-ok"), true)
         XCTAssertEqual(payload["timedOut"] as? Bool, false)
     }
 
@@ -124,7 +125,7 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
             "/.terraform.d",
             "/.cloudflared",
             "/.config/git",
-            "/Library/Application Support/Slack",
+            "/Library/Application Support/Slack"
         ] {
             XCTAssertTrue(
                 profile.contains("(deny file-read* (subpath \"\(home)\(subpath)\"))"),
@@ -136,7 +137,7 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
         for literal in [
             "/.env", "/.envrc",
             "/.cargo/credentials", "/.cargo/credentials.toml",
-            "/.gem/credentials", "/.config/configstore/firebase-tools.json",
+            "/.gem/credentials", "/.config/configstore/firebase-tools.json"
         ] {
             XCTAssertTrue(
                 profile.contains("(deny file-read* (literal \"\(home)\(literal)\"))"),

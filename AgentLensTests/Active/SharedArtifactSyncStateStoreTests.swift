@@ -281,7 +281,8 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
         XCTAssertEqual(decoded.updatedByDeviceID, record.updatedByDeviceID)
         XCTAssertEqual(decoded.resolvedConflictRevisionID, record.resolvedConflictRevisionID)
         guard let decodedUpdatedAt = decoded.updatedAt else {
-            return XCTFail("Expected decoded updatedAt timestamp.")
+            XCTFail("Expected decoded updatedAt timestamp.")
+            return
         }
         XCTAssertEqual(decodedUpdatedAt.timeIntervalSince1970, updatedAt.timeIntervalSince1970, accuracy: 0.001)
     }
@@ -513,4 +514,3 @@ final class SharedArtifactSyncStateStoreTests: XCTestCase {
         )
     }
 }
-

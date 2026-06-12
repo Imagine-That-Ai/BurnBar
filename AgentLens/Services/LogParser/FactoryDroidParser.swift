@@ -128,21 +128,24 @@ final class FactoryDroidParser: LogParser, Sendable {
         return decoded
     }
 
+    /// Token totals and session metadata accumulated while parsing one session.
+    private struct SessionTokenData {
+        var input: Int = 0
+        var output: Int = 0
+        var cacheCreation: Int = 0
+        var cacheRead: Int = 0
+        var model: String = "unknown"
+        var startTime: Date?
+        var endTime: Date?
+    }
+
     private func parseSession(
         sessionId: String,
         jsonlFile: URL,
         settingsFile: URL?,
         projectName: String
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        var tokenData: (
-            input: Int,
-            output: Int,
-            cacheCreation: Int,
-            cacheRead: Int,
-            model: String,
-            startTime: Date?,
-            endTime: Date?
-        ) = (0, 0, 0, 0, "unknown", nil, nil)
+        var tokenData = SessionTokenData()
 
         var usedSettingsTotals = false
         var userCharCount = 0

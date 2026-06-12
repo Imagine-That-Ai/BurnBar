@@ -4,10 +4,10 @@ import OpenBurnBarCore
 // MARK: - Quota Percentage Display Mode
 
 public enum QuotaPercentageDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
-    case remainingPercent = "remainingPercent"
-    case usedPercent = "usedPercent"
-    case absoluteValues = "absoluteValues"
-    case fractional = "fractional"
+    case remainingPercent
+    case usedPercent
+    case absoluteValues
+    case fractional
 
     public var id: String { rawValue }
 
@@ -148,7 +148,6 @@ final class QuotaSettings {
         providerOrder = AgentProvider.quotaSignalProviders
     }
 
-
     var miniMaxQuotaMode: MiniMaxQuotaMode = .tokenPlan {
         didSet { persistence.set(miniMaxQuotaMode, forKey: "miniMaxQuotaMode") }
     }
@@ -165,7 +164,7 @@ final class QuotaSettings {
         didSet { persistence.set(mimoTokenPlanRegion.rawValue, forKey: "mimoTokenPlanRegion") }
     }
 
-    var mimoTokenPlanTier: MimoTokenPlanTier? = nil {
+    var mimoTokenPlanTier: MimoTokenPlanTier? {
         didSet {
             if let mimoTokenPlanTier {
                 persistence.set(mimoTokenPlanTier.rawValue, forKey: "mimoTokenPlanTier")

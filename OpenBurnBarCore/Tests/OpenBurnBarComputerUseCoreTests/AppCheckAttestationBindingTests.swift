@@ -23,8 +23,8 @@ final class AppCheckAttestationBindingTests: XCTestCase {
             AppCheckAttestationBinding.claimKey: [
                 "v": 1,
                 "appId": "1:456:ios:def",
-                "boundAtMillis": Int64(1_800_000_000_000),
-            ],
+                "boundAtMillis": Int64(1_800_000_000_000)
+            ]
         ]
         let claim = AppCheckAttestationBinding.parseClaim(from: token)
         XCTAssertEqual(claim?.appId, "1:456:ios:def")

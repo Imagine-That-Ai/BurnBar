@@ -38,7 +38,7 @@ struct HermesRichBubble: View {
 
     @State private var runs: [HermesRichRun] = []
     @State private var lines: [PretextRichLine] = []
-    @State private var measuredAt: CGFloat? = nil
+    @State private var measuredAt: CGFloat?
 
     @Environment(\.hermesAtomNavigator) private var navigator
 
@@ -185,12 +185,12 @@ struct HermesRichBubble: View {
                 attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
             }
             return attributes
-        case .atom(_, _):
+        case .atom:
             return [
                 .foregroundColor: UIColor(MobileTheme.hermesAureate),
                 .font: Self.roundedUIFont(size: baseSize - 1, weight: .semibold)
             ]
-        case .mention(_):
+        case .mention:
             return [
                 .foregroundColor: UIColor(mentionColor),
                 .font: Self.roundedUIFont(size: baseSize - 1, weight: .semibold)

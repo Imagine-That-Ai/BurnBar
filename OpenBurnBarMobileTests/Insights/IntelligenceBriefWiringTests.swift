@@ -127,7 +127,7 @@ final class IntelligenceBriefWiringTests: XCTestCase {
 
         XCTAssertEqual(captured?.kind, "creative")
         XCTAssertEqual(captured?.runtime, "piAgent")
-        XCTAssertTrue(captured?.prompt.contains("creative/accretive mission") == true)
+        XCTAssertEqual(captured?.prompt.contains("creative/accretive mission"), true)
         XCTAssertEqual(captured?.options.targetProject, "~/Developer/OpenBurnBar")
         XCTAssertEqual(captured?.options.depth, "deep")
         XCTAssertEqual(captured?.options.approvalMode, "risky_only")
@@ -426,7 +426,7 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertTrue(snapshot.isStaleUnclaimed)
         XCTAssertFalse(snapshot.hasBeenClaimedByMac)
         XCTAssertEqual(snapshot.targetProject, "~/Documents/Windsurf/BurnBar")
-        XCTAssertTrue(snapshot.displayLiveSummary?.contains("not claimed") == true)
+        XCTAssertEqual(snapshot.displayLiveSummary?.contains("not claimed"), true)
     }
 
     func test_cliAgentMissionSnapshotDoesNotMarkClaimedQueuedMissionStale() throws {

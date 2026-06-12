@@ -23,7 +23,7 @@ final class PensieveKnowledgeChunkerTests: XCTestCase {
         // B-SEC-2: the batch carries the vault-keyed slugHmac (the opaque filter
         // column) and it matches the documented derivation.
         XCTAssertEqual(batch.slugHmac, try CloudVaultCrypto.pensieveSlugHmac("notes-security-md", keyData: key))
-        XCTAssertTrue(batch.slugHmac.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertNotNil(batch.slugHmac.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
 
         let vector = try XCTUnwrap(batch.vectors.first)
         // Cloaked vector is exactly 384-dim — matches commitKnowledgeBatch's guard.
@@ -72,7 +72,7 @@ final class PensieveKnowledgeChunkerTests: XCTestCase {
         let vector = try XCTUnwrap(batch.vectors.first)
         // Keyed dedup column present and used as the opaque vectorId.
         XCTAssertEqual(vector.vectorId, vector.dedupHash)
-        XCTAssertTrue(vector.dedupHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil)
+        XCTAssertNotNil(vector.dedupHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression))
 
         // The real path leaves the device ONLY sealed: it must NOT appear in any of
         // the cleartext struct fields the encoders pass through verbatim.

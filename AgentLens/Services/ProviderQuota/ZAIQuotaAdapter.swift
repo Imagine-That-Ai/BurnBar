@@ -153,7 +153,7 @@ struct ZAIQuotaAdapter: ProviderQuotaAdapter {
 
         return [
             URLQueryItem(name: "startTime", value: formatter.string(from: startWindow)),
-            URLQueryItem(name: "endTime", value: formatter.string(from: endWindow)),
+            URLQueryItem(name: "endTime", value: formatter.string(from: endWindow))
         ]
     }
 

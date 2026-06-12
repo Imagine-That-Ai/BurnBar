@@ -155,7 +155,7 @@ final class ChartStudioHermesBridge {
             "model": model,
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user",   "content": userPrompt]
+                ["role": "user", "content": userPrompt]
             ],
             "stream": true,
             "temperature": 0.2,

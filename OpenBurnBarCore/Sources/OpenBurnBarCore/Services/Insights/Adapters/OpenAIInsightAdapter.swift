@@ -326,12 +326,12 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
     }
 
     private func parseWindowFilter(_ raw: String?) -> InsightFilter? {
-        guard let raw = raw, let window = parseTimeWindow(raw) else { return nil }
+        guard let raw, let window = parseTimeWindow(raw) else { return nil }
         return InsightFilter(window: window)
     }
 
     private func parseTimeWindow(_ raw: String?) -> InsightTimeWindow? {
-        guard let raw = raw else { return nil }
+        guard let raw else { return nil }
         switch raw {
         case "today": return .today
         case "last24h": return .last24h

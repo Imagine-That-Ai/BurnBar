@@ -663,8 +663,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 continue
             case .mediaDispatcher:
                 guard let dispatcher = mediaDispatcher else { continue }
-                let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
-                    [stream] outboundFrame in
+                let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { [stream] outboundFrame in
                     try await stream.send(outboundFrame)
                 }
                 await dispatcher(frame, ackSender)
@@ -995,7 +994,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     [
                         "deviceId": deviceId,
                         "irohPeerNodeId": nodeId,
-                        "updated_at_millis": nowMillis,
+                        "updated_at_millis": nowMillis
                     ],
                     merge: true
                 )

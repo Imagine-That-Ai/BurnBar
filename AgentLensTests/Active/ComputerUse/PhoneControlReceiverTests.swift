@@ -790,7 +790,8 @@ final class PhoneControlReceiverTests: XCTestCase {
         let dispatched = try await capture.firstAction()
         XCTAssertEqual(dispatched.sessionId, ComputerUseSessionID("session-phone"))
         guard case let .macInput(action) = dispatched.action else {
-            return XCTFail("expected macInput action")
+            XCTFail("expected macInput action")
+            return
         }
         XCTAssertEqual(action.kind, .scroll)
         XCTAssertEqual(action.displayX, 400)
@@ -890,7 +891,8 @@ final class PhoneControlReceiverTests: XCTestCase {
         let dispatched = try await capture.firstAction()
         XCTAssertEqual(dispatched.sessionId, ComputerUseSessionID("session-phone-type"))
         guard case let .macInput(action) = dispatched.action else {
-            return XCTFail("expected macInput action")
+            XCTFail("expected macInput action")
+            return
         }
         XCTAssertEqual(action.kind, .type)
         XCTAssertEqual(action.text, "hello from iphone")
@@ -939,7 +941,8 @@ final class PhoneControlReceiverTests: XCTestCase {
         let dispatched = try await capture.firstAction()
         XCTAssertEqual(dispatched.sessionId, ComputerUseSessionID("session-phone-pointer"))
         guard case let .macInput(action) = dispatched.action else {
-            return XCTFail("expected macInput action")
+            XCTFail("expected macInput action")
+            return
         }
         XCTAssertEqual(action.kind, .pointerMove)
         XCTAssertEqual(action.deltaX, 17)
@@ -994,7 +997,8 @@ final class PhoneControlReceiverTests: XCTestCase {
         let actions = await capture.actions()
         XCTAssertEqual(actions.count, 1)
         guard case let .macInput(action) = actions.first?.action else {
-            return XCTFail("expected first intent to dispatch as macInput")
+            XCTFail("expected first intent to dispatch as macInput")
+            return
         }
         XCTAssertEqual(action.kind, .click)
         XCTAssertEqual(action.displayX, 250)
@@ -1066,7 +1070,8 @@ final class PhoneControlReceiverTests: XCTestCase {
         let actions = await capture.actions()
         XCTAssertEqual(actions.count, 1)
         guard case let .macInput(action) = actions.first?.action else {
-            return XCTFail("expected first intent to dispatch as macInput")
+            XCTFail("expected first intent to dispatch as macInput")
+            return
         }
         XCTAssertEqual(action.kind, .click)
         XCTAssertEqual(action.displayX, 250)
@@ -1142,8 +1147,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
         let dispatcher = coordinator.controlDispatcher
-        await dispatcher(clipboardClassify(uid: "uid-clipboard-paste", connectionId: "conn-clipboard-paste", sessionId: started.sessionId, peerNodeId: peerNodeId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardClassify(uid: "uid-clipboard-paste", connectionId: "conn-clipboard-paste", sessionId: started.sessionId, peerNodeId: peerNodeId)) { frame in
+            await replies.record(frame)
         }
 
         let request = try signedClipboardRequest(
@@ -1153,8 +1158,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             peerNodeId: peerNodeId,
             counter: 1
         )
-        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-paste", connectionId: "conn-clipboard-paste", sessionId: started.sessionId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-paste", connectionId: "conn-clipboard-paste", sessionId: started.sessionId)) { frame in
+            await replies.record(frame)
         }
 
         let responseFrame = try await replies.firstFrame { $0.type == .controlClipboardResponse }
@@ -1236,8 +1241,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
         let dispatcher = coordinator.controlDispatcher
-        await dispatcher(clipboardClassify(uid: "uid-clipboard-grab", connectionId: "conn-clipboard-grab", sessionId: started.sessionId, peerNodeId: peerNodeId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardClassify(uid: "uid-clipboard-grab", connectionId: "conn-clipboard-grab", sessionId: started.sessionId, peerNodeId: peerNodeId)) { frame in
+            await replies.record(frame)
         }
 
         let request = try signedClipboardRequest(
@@ -1247,8 +1252,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             peerNodeId: peerNodeId,
             counter: 1
         )
-        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-grab", connectionId: "conn-clipboard-grab", sessionId: started.sessionId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-grab", connectionId: "conn-clipboard-grab", sessionId: started.sessionId)) { frame in
+            await replies.record(frame)
         }
 
         let responseFrame = try await replies.firstFrame { $0.type == .controlClipboardResponse }
@@ -1333,8 +1338,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
         let dispatcher = coordinator.controlDispatcher
-        await dispatcher(clipboardClassify(uid: "uid-clipboard-noconsent", connectionId: "conn-clipboard-noconsent", sessionId: started.sessionId, peerNodeId: peerNodeId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardClassify(uid: "uid-clipboard-noconsent", connectionId: "conn-clipboard-noconsent", sessionId: started.sessionId, peerNodeId: peerNodeId)) { frame in
+            await replies.record(frame)
         }
 
         let request = try signedClipboardRequest(
@@ -1344,8 +1349,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             peerNodeId: peerNodeId,
             counter: 1
         )
-        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-noconsent", connectionId: "conn-clipboard-noconsent", sessionId: started.sessionId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-noconsent", connectionId: "conn-clipboard-noconsent", sessionId: started.sessionId)) { frame in
+            await replies.record(frame)
         }
 
         let responseFrame = try await replies.firstFrame { $0.type == .controlClipboardResponse }
@@ -1424,8 +1429,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
         let dispatcher = coordinator.controlDispatcher
-        await dispatcher(clipboardClassify(uid: "uid-clipboard-attestation", connectionId: "conn-clipboard-attestation", sessionId: started.sessionId, peerNodeId: peerNodeId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardClassify(uid: "uid-clipboard-attestation", connectionId: "conn-clipboard-attestation", sessionId: started.sessionId, peerNodeId: peerNodeId)) { frame in
+            await replies.record(frame)
         }
 
         let request = try signedClipboardRequest(
@@ -1435,8 +1440,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             peerNodeId: peerNodeId,
             counter: 1
         )
-        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-attestation", connectionId: "conn-clipboard-attestation", sessionId: started.sessionId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-attestation", connectionId: "conn-clipboard-attestation", sessionId: started.sessionId)) { frame in
+            await replies.record(frame)
         }
 
         let responseFrame = try await replies.firstFrame { $0.type == .controlClipboardResponse }
@@ -1512,8 +1517,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             )
         )
         let dispatcher = coordinator.controlDispatcher
-        await dispatcher(clipboardClassify(uid: "uid-clipboard-denied", connectionId: "conn-clipboard-denied", sessionId: started.sessionId, peerNodeId: peerNodeId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardClassify(uid: "uid-clipboard-denied", connectionId: "conn-clipboard-denied", sessionId: started.sessionId, peerNodeId: peerNodeId)) { frame in
+            await replies.record(frame)
         }
 
         let request = try signedClipboardRequest(
@@ -1523,8 +1528,8 @@ final class PhoneControlReceiverTests: XCTestCase {
             peerNodeId: peerNodeId,
             counter: 1
         )
-        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-denied", connectionId: "conn-clipboard-denied", sessionId: started.sessionId)) {
-            frame in await replies.record(frame)
+        await dispatcher(clipboardFrame(request, uid: "uid-clipboard-denied", connectionId: "conn-clipboard-denied", sessionId: started.sessionId)) { frame in
+            await replies.record(frame)
         }
 
         let responseFrame = try await replies.firstFrame { $0.type == .controlClipboardResponse }

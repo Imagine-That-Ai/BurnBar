@@ -54,14 +54,14 @@ struct SubscriptionCard: View {
            isBucketVisible(primary) {
             return primary
         }
-        return visibleDisplayableBuckets.sorted {
+        return visibleDisplayableBuckets.min {
             let lhsRemaining = $0.remainingPercent ?? .infinity
             let rhsRemaining = $1.remainingPercent ?? .infinity
             if lhsRemaining == rhsRemaining {
                 return ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture)
             }
             return lhsRemaining < rhsRemaining
-        }.first
+        }
     }
 
     private var visibleHourlyBucket: ProviderQuotaBucket? {

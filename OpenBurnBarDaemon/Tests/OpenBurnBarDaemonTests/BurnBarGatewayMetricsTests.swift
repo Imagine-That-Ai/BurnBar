@@ -6,7 +6,7 @@ final class BurnBarGatewayMetricsTests: XCTestCase {
     func test_liveSnapshotIncludesGatewayCounters() {
         let snapshot = BurnBarGatewayMetricsSnapshot.live(gatewayEnabled: true)
 
-        XCTAssertEqual(snapshot.gatewayEnabled, true)
+        XCTAssertTrue(snapshot.gatewayEnabled)
         XCTAssertGreaterThanOrEqual(snapshot.uptimeSeconds, 0)
         XCTAssertEqual(snapshot.protocolVersion, BurnBarProtocolVersion.current)
         XCTAssertEqual(snapshot.counters["gateway_enabled"], 1)

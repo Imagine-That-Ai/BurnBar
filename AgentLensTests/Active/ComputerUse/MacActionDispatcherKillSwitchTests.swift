@@ -35,7 +35,7 @@ final class MacActionDispatcherKillSwitchTests: XCTestCase {
             MacInputAction(kind: .click, displayX: 10, displayY: 10),
             MacInputAction(kind: .type, text: "blocked"),
             MacInputAction(kind: .key, key: "Return"),
-            MacInputAction(kind: .scroll, displayX: 10, displayY: 10, dragEndX: 10, dragEndY: 40),
+            MacInputAction(kind: .scroll, displayX: 10, displayY: 10, dragEndX: 10, dragEndY: 40)
         ]
         for action in actions {
             XCTAssertThrowsError(try dispatcher.dispatch(action), "kind \(action.kind) must fail closed") { error in

@@ -8,7 +8,7 @@ import SwiftUI
 struct AuroraLoadingShimmer: View {
     var height: CGFloat = 16
     var cornerRadius: CGFloat = 10
-    var width: CGFloat? = nil
+    var width: CGFloat?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sweep: CGFloat = -1

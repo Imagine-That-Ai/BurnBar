@@ -4,8 +4,8 @@ import SwiftUI
 
 struct OpenBurnBarDashboardOperatingSection: View {
     @Bindable var layer: OpenBurnBarOperatingLayer
-    var onOpenProjectSummary: ((String, String) -> Void)? = nil
-    var onOpenEvidenceEntry: ((OpenBurnBarEvidenceEntry) -> Void)? = nil
+    var onOpenProjectSummary: ((String, String) -> Void)?
+    var onOpenEvidenceEntry: ((OpenBurnBarEvidenceEntry) -> Void)?
 
     var body: some View {
         let snapshot = layer.snapshot

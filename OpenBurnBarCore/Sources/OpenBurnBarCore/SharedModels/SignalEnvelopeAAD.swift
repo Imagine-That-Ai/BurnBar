@@ -119,7 +119,7 @@ public func signalEnvelopeBindingToAAD(_ binding: SignalEnvelopeAAD.Binding) thr
         binding.docId ?? "",
         binding.field ?? "",
         binding.slotId ?? "",
-        String(binding.formatVersion),
+        String(binding.formatVersion)
     ].map { $0.precomposedStringWithCanonicalMapping }
     for segment in segments where segment.unicodeScalars.contains(where: { $0 == "|" || $0 == "\r" || $0 == "\n" }) {
         throw SignalEnvelopeAAD.SignalEnvelopeAADError.reservedCharacterInSegment

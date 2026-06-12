@@ -87,7 +87,7 @@ final class BurnBarResumeServiceTests: XCTestCase {
         XCTAssertEqual(response.kind, "ported")
         XCTAssertEqual(response.targetHarness, "droid")
         XCTAssertEqual(response.targetArgv?.prefix(3), ["droid", "exec", "--file"])
-        XCTAssertTrue(response.briefingMD?.contains("## Trust Boundary") == true)
+        XCTAssertEqual(response.briefingMD?.contains("## Trust Boundary"), true)
     }
 
     func testBriefingIncludesFullTranscriptInsteadOfLastThirtyParagraphs() throws {
@@ -113,8 +113,8 @@ final class BurnBarResumeServiceTests: XCTestCase {
         let response = try service.runResume(BurnBarRunResumeRequest(sessionID: "Codex:full-text", targetHarness: "grok", mode: .print))
 
         XCTAssertEqual(response.kind, "ported")
-        XCTAssertTrue(response.briefingMD?.contains("Paragraph 1") == true)
-        XCTAssertTrue(response.briefingMD?.contains("Paragraph 35") == true)
+        XCTAssertEqual(response.briefingMD?.contains("Paragraph 1"), true)
+        XCTAssertEqual(response.briefingMD?.contains("Paragraph 35"), true)
     }
 
     func testGrokHandoffUsesPromptFilePackage() throws {

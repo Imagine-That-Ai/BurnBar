@@ -97,4 +97,3 @@ actor BurnBarTelegramBotBridge {
         }
     }
 }
-

@@ -84,7 +84,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         let docs = fakeGateway.documents(under: collectionPrefix)
         XCTAssertEqual(docs.count, 1)
 
-        let headPath = docs.keys.sorted().first!
+        let headPath = docs.keys.min()!
         let head = try XCTUnwrap(fakeGateway.documentData(at: headPath))
         XCTAssertEqual(head["title"] as? String, "Runbook")
         XCTAssertEqual(head["contentHash"] as? String, "hash-runbook-v1")
@@ -173,7 +173,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         accountManager.isCloudSyncEnabled = false
         await collaborationSync.sync()
         XCTAssertNotNil(collaborationSync.lastSyncError)
-        XCTAssertTrue(collaborationSync.lastSyncError?.contains("Cloud sync is disabled") == true)
+        XCTAssertEqual(collaborationSync.lastSyncError?.contains("Cloud sync is disabled"), true)
     }
 
     // MARK: - Sync state revival (from quarantine)

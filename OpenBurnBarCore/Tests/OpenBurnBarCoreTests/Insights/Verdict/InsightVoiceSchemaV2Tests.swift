@@ -7,7 +7,8 @@ final class InsightVoiceSchemaV2Tests: XCTestCase {
         let data = Data(InsightVoiceSchemaV2.jsonSchema.utf8)
         let object = try JSONSerialization.jsonObject(with: data, options: [])
         guard let dict = object as? [String: Any] else {
-            return XCTFail("schema should decode to an object at the root")
+            XCTFail("schema should decode to an object at the root")
+            return
         }
         XCTAssertEqual(dict["$id"] as? String,
                        "https://burnbar.ai/insights/voice-v2.schema.json")
@@ -50,7 +51,8 @@ final class InsightVoiceSchemaV2Tests: XCTestCase {
               let typeField = bulletProps["type"] as? [String: Any],
               let enumList = typeField["enum"] as? [String]
         else {
-            return XCTFail("schema shape changed; update test")
+            XCTFail("schema shape changed; update test")
+            return
         }
         let allTypes = Set(VerdictBulletType.allCases.map(\.rawValue))
         XCTAssertEqual(Set(enumList), allTypes)

@@ -5,7 +5,7 @@ struct DashboardWorkspaceNavStrip: View {
     /// When set, drives the Chat tab accent and icon (mercury caduceus for Hermes,
     /// chat bubble otherwise). Defaults to non-Hermes (`whimsy`) when nil so
     /// existing callers continue to compile during incremental adoption.
-    var activeChatBackend: ChatBackendID? = nil
+    var activeChatBackend: ChatBackendID?
     var onNavigate: (DashboardMainRoute) -> Void
 
     private var chatAccent: Color {

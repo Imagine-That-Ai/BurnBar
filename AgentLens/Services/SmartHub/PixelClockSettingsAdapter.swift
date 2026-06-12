@@ -43,7 +43,8 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
         let visibleSetupSSID = await PixelClockNetworkProvisioner.visibleSetupSSID()
         guard hasUSBSetupPort || visibleSetupSSID != nil else {
             throw NSError(domain: "PixelClock", code: 5, userInfo: [
-                NSLocalizedDescriptionKey: "No Pixel Clock setup path found. The TC001 can be powered by its battery or a charge-only cable without exposing USB data to the Mac. Put the clock on Wi-Fi, connect it directly with a data-capable USB cable, or reboot it until the AWTRIX setup Wi-Fi appears."
+                NSLocalizedDescriptionKey: "No Pixel Clock setup path found. The TC001 can be powered by its battery or a charge-only cable without exposing USB data to the Mac. " +
+                    "Put the clock on Wi-Fi, connect it directly with a data-capable USB cable, or reboot it until the AWTRIX setup Wi-Fi appears."
             ])
         }
         let credentials = try wifiCredentials ?? Self.promptForWiFiCredentials()
