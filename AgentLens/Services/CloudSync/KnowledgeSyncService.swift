@@ -163,9 +163,11 @@ public final class KnowledgeSyncService: @unchecked Sendable {
     private let vaultKeyStore: KnowledgeVaultKeyProviding
     private let uidProvider: @Sendable () -> String?
 
-    public private(set) var isSyncing = false
-    public private(set) var lastSyncError: String?
-    public private(set) var lastSyncDate: Date?
+    private let state = Locked(CloudSyncDomainState())
+
+    public var isSyncing: Bool { state.read().isSyncing }
+    public var lastSyncError: String? { state.read().lastSyncError }
+    public var lastSyncDate: Date? { state.read().lastSyncDate }
     public private(set) var lastWritten = 0
 
     public init(
@@ -189,9 +191,8 @@ public final class KnowledgeSyncService: @unchecked Sendable {
         guard Self.processGate.tryEnter() else { return nil }
         defer { Self.processGate.leave() }
 
-        isSyncing = true
-        lastSyncError = nil
-        defer { isSyncing = false }
+        state.beginSyncing()
+        defer { state.endSyncing() }
 
         let vaultKey: Data
         let signalContext: PensieveSignalSealContext?
@@ -201,7 +202,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
                 vaultKey = context.vaultKey
                 signalContext = context
             } catch {
-                lastSyncError = error.localizedDescription
+                state.withLock { $0.lastSyncError = error.localizedDescription }
                 throw error
             }
         } else {
@@ -210,7 +211,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
                 signalContext = nil
             } catch {
                 let error = KnowledgeSyncError.vaultKeyUnavailable
-                lastSyncError = error.localizedDescription
+                state.withLock { $0.lastSyncError = error.localizedDescription }
                 throw error
             }
         }
@@ -254,12 +255,12 @@ public final class KnowledgeSyncService: @unchecked Sendable {
                 lastChunkCount = result.chunkCount
             }
         } catch {
-            lastSyncError = error.localizedDescription
+            state.withLock { $0.lastSyncError = error.localizedDescription }
             throw error
         }
 
         lastWritten = totalWritten
-        lastSyncDate = Date()
+        state.withLock { $0.lastSyncDate = Date() }
         return KnowledgeCommitResult(
             written: totalWritten,
             skipped: totalSkipped,
@@ -275,9 +276,8 @@ public final class KnowledgeSyncService: @unchecked Sendable {
         guard Self.processGate.tryEnter() else { return nil }
         defer { Self.processGate.leave() }
 
-        isSyncing = true
-        lastSyncError = nil
-        defer { isSyncing = false }
+        state.beginSyncing()
+        defer { state.endSyncing() }
 
         var totalWritten = 0
         var totalSkipped = 0
@@ -293,12 +293,12 @@ public final class KnowledgeSyncService: @unchecked Sendable {
                 lastChunkCount = result.chunkCount
             }
         } catch {
-            lastSyncError = error.localizedDescription
+            state.withLock { $0.lastSyncError = error.localizedDescription }
             throw error
         }
 
         lastWritten = totalWritten
-        lastSyncDate = Date()
+        state.withLock { $0.lastSyncDate = Date() }
         return KnowledgeCommitResult(
             written: totalWritten,
             skipped: totalSkipped,

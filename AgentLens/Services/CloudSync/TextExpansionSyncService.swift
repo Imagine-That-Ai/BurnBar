@@ -7,9 +7,11 @@ final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
     private let vaultKeyStore: CloudVaultKeyStore
     private let vaultKeyPublisher: FirebaseSessionLogVaultKeyPublisher
 
-    private(set) var isSyncing = false
-    private(set) var lastSyncError: String?
-    private(set) var lastSyncDate: Date?
+    private let state = Locked(CloudSyncDomainState())
+
+    var isSyncing: Bool { state.read().isSyncing }
+    var lastSyncError: String? { state.read().lastSyncError }
+    var lastSyncDate: Date? { state.read().lastSyncDate }
 
     init(
         context: CloudSyncContext,
@@ -38,22 +40,20 @@ final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
         let textExpansionCloudSyncEnabled = await MainActor.run {
             SettingsManager.shared.textExpansion.cloudSyncEnabled
         }
-        guard !isSyncing,
-              !gate.syncSuppressed,
+        guard !gate.syncSuppressed,
               textExpansionCloudSyncEnabled,
               let uid = gate.account.uid else { return }
-        isSyncing = true
-        lastSyncError = nil
-        defer { isSyncing = false }
+        guard state.beginSyncingIfIdle() else { return }
+        defer { state.endSyncing() }
 
         do {
             let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
             try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: vaultKey, context: context)
             try await uploadPending(uid: uid, vaultKey: vaultKey, deviceId: gate.account.deviceId)
             try await downloadRemote(uid: uid, vaultKey: vaultKey)
-            lastSyncDate = Date()
+            state.withLock { $0.lastSyncDate = Date() }
         } catch {
-            lastSyncError = error.localizedDescription
+            state.withLock { $0.lastSyncError = error.localizedDescription }
             await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
         }
     }

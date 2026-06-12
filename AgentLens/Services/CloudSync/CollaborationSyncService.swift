@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 /// Sync domain for synchronizing shared/team artifacts between local cache and Firestore.
 ///
@@ -13,9 +14,11 @@ import Foundation
 final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
 
-    private(set) var isSyncing = false
-    private(set) var lastSyncError: String?
-    private(set) var lastSyncDate: Date?
+    private let state = Locked(CloudSyncDomainState())
+
+    var isSyncing: Bool { state.read().isSyncing }
+    var lastSyncError: String? { state.read().lastSyncError }
+    var lastSyncDate: Date? { state.read().lastSyncDate }
     private(set) var lastCollaborationNotice: SharedArtifactCollaborationNotice?
 
     /// Maximum remote artifacts to pull per sync cycle.
@@ -57,7 +60,7 @@ final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
                 message = "Signed-in identity is unavailable. Shared/team sync remains local-only."
             }
 
-            lastSyncError = message
+            state.withLock { $0.lastSyncError = message }
             do {
                 try upsertCollaborationHealth(
                     status: .degraded,
@@ -67,19 +70,18 @@ final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
                     cloudAvailable: false
                 )
             } catch {
-                lastSyncError = "\(message) Health persistence failed: \(error.localizedDescription)"
+                state.withLock { $0.lastSyncError = "\(message) Health persistence failed: \(error.localizedDescription)" }
             }
             return
         }
 
-        isSyncing = true
-        lastSyncError = nil
+        guard state.beginSyncingIfIdle() else { return }
         let scope = SharedArtifactScope.defaultScope(for: uid)
         var report = SharedArtifactSyncReport(scope: scope)
         let deviceId = gate.account.deviceId
 
         defer {
-            isSyncing = false
+            state.endSyncing()
         }
 
         do {
@@ -98,8 +100,10 @@ final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
                 cloudAvailable: true
             )
 
-            lastSyncDate = Date()
-            lastSyncError = errorMessage
+            state.withLock {
+                $0.lastSyncDate = Date()
+                $0.lastSyncError = errorMessage
+            }
         } catch {
             let syncError = error
             await recordSyncError(syncError)
@@ -113,13 +117,13 @@ final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
                 )
             } catch {
                 let healthError = error
-                lastSyncError = "\(syncError.localizedDescription) Health persistence failed: \(healthError.localizedDescription)"
+                state.withLock { $0.lastSyncError = "\(syncError.localizedDescription) Health persistence failed: \(healthError.localizedDescription)" }
             }
         }
     }
 
     private func recordSyncError(_ error: Error) async {
-        lastSyncError = error.localizedDescription
+        state.withLock { $0.lastSyncError = error.localizedDescription }
 
         let nsError = error as NSError
         guard nsError.domain == FirestoreErrorDomain,
