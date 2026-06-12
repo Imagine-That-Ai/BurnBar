@@ -97,7 +97,7 @@ struct AgentLiveStageTelemetryCapsule: View {
         if #available(iOS 26, *) {
             Capsule()
                 .fill(Color.black.opacity(0.3))
-                .glassEffect(.regular, in: Capsule())
+                .liquidGlassEffect(.regular, in: Capsule())
                 .overlay(
                     Capsule()
                         .stroke(Color.white.opacity(0.18), lineWidth: 0.5)

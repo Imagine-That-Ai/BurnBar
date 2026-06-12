@@ -42,7 +42,7 @@ struct AuroraChipRail<Item: Hashable & Identifiable>: View {
                     // tappable elements), so it gets plain — not interactive — glass.
                     Capsule(style: .continuous)
                         .fill(Color.clear)
-                        .glassEffect(.regular, in: Capsule(style: .continuous))
+                        .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
                 } else {
                     Capsule(style: .continuous)
                         .fill(.ultraThinMaterial)

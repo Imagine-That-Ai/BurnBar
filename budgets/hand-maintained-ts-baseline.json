@@ -1,7 +1,7 @@
 {
-  "loc": 27237,
-  "exportedInterfaces": 327,
-  "fileCount": 98,
-  "generatedAt": "2026-06-01T10:22:20.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts excluding types/generated/**; includes GTM ops, resilience, Sentry, Cloud Pro entitlement hardening, Hermes Gateway callables, and formatting ratchet."
+  "loc": 3589,
+  "exportedInterfaces": 393,
+  "fileCount": 181,
+  "generatedAt": "2026-06-12T00:00:00.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Refreshed 2026-06-12 after the prior 27237 baseline went ~7.6x stale and could never fail-close; this binds the ratchet to live LOC again. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
 }

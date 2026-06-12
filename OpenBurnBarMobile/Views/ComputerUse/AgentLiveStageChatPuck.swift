@@ -364,7 +364,7 @@ private extension View {
         if #available(iOS 26.0, *) {
             self
                 .background(.clear)
-                .glassEffect(
+                .liquidGlassEffect(
                     .regular.tint(Color.black.opacity(0.55)).interactive(),
                     in: .rect(cornerRadius: 18)
                 )

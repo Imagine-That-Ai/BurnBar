@@ -1,5 +1,7 @@
 package com.openburnbar.data.hermes
 
+import android.util.Log
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -24,16 +26,12 @@ internal class HermesServiceMessageLaunch(
         }
         val resolvedConversationId = conversationId ?: return
         service.isStreamingInternal.value = true
-        scope.launch {
-            try {
-                messageActions.streamDesktopAgentRelayCompletion(
-                    prompt = content,
-                    modelName = resolvedModelName,
-                    conversationId = resolvedConversationId,
-                )
-            } finally {
-                service.isStreamingInternal.value = false
-            }
+        launchStreamingSend(resolvedModelName) {
+            messageActions.streamDesktopAgentRelayCompletion(
+                prompt = content,
+                modelName = resolvedModelName,
+                conversationId = resolvedConversationId,
+            )
         }
     }
 
@@ -74,18 +72,14 @@ internal class HermesServiceMessageLaunch(
             return
         }
         service.isStreamingInternal.value = true
-        scope.launch {
-            try {
-                messageActions.streamChatCompletionViaRelay(
-                    descriptor = descriptor,
-                    prompt = content,
-                    modelName = resolvedModelName,
-                    attachments = attachments,
-                    conversationId = conversationId,
-                )
-            } finally {
-                service.isStreamingInternal.value = false
-            }
+        launchStreamingSend(resolvedModelName) {
+            messageActions.streamChatCompletionViaRelay(
+                descriptor = descriptor,
+                prompt = content,
+                modelName = resolvedModelName,
+                attachments = attachments,
+                conversationId = conversationId,
+            )
         }
     }
 
@@ -103,18 +97,39 @@ internal class HermesServiceMessageLaunch(
             return
         }
         service.isStreamingInternal.value = true
-        scope.launch {
+        launchStreamingSend(resolvedModelName) {
+            messageActions.streamHttpChatCompletion(
+                endpoint = endpoint,
+                content = content,
+                resolvedModelName = resolvedModelName,
+                attachments = attachments,
+                conversationId = conversationId,
+            )
+        }
+    }
+
+    private fun launchStreamingSend(modelName: String, block: suspend () -> Unit) {
+        scope.launch(sendFailureHandler(modelName)) {
             try {
-                messageActions.streamHttpChatCompletion(
-                    endpoint = endpoint,
-                    content = content,
-                    resolvedModelName = resolvedModelName,
-                    attachments = attachments,
-                    conversationId = conversationId,
-                )
+                block()
             } finally {
                 service.isStreamingInternal.value = false
             }
         }
+    }
+
+    private fun sendFailureHandler(modelName: String): CoroutineExceptionHandler =
+        CoroutineExceptionHandler { _, error ->
+            val message = error.hermesSendFailureMessage()
+            runCatching { Log.e(TAG, "Hermes send failed: $message", error) }
+            messageActions.appendAssistantError(message, modelName)
+            service.runtimeErrorTextInternal.value = message
+        }
+
+    private fun Throwable.hermesSendFailureMessage(): String =
+        message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
+
+    private companion object {
+        private const val TAG = "BurnBar"
     }
 }

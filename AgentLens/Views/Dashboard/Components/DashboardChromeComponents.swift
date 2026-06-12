@@ -247,7 +247,7 @@ private var toolbarPillSurface: some View {
     if #available(macOS 26, *) {
         shape
             .fill(DesignSystem.Colors.surface.opacity(0.15))
-            .glassEffect(.regular, in: shape)
+            .liquidGlassEffect(.regular, in: shape)
     } else {
         ZStack {
             shape.fill(.ultraThinMaterial)
