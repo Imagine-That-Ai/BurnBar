@@ -145,8 +145,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                 ))))
             case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong, .signalSessionMessage:  // cov:ignore
                 break
-            case .signalSessionMessage,
-                 .mediaClassify,
+            case .mediaClassify,
                  .mediaBlobAdvertise,
                  .mediaBlobAck,
                  .mediaMirrorRequest,

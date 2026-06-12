@@ -1945,7 +1945,7 @@ final class MercuryRouter: ObservableObject {
     }
 
     private func getBlurredWallpaperBase64() -> String? {
-        var wallpaperURL: URL? = nil
+        var wallpaperURL: URL?
         if let screen = NSScreen.main {
             wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen)
         }

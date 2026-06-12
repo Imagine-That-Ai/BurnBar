@@ -37,7 +37,7 @@ final class SignalAtRestFallbackPolicyTests: XCTestCase {
         let structural: [OpenBurnBarSignalCoreError] = [
             .noRecipients, .tooManyRecipients, .invalidRecipientKind("x"),
             .duplicateRecipientIdentityKeyId("x"), .invalidEnvelope,
-            .missingRecipientWrap("x"), .invalidContentKey, .recipientPrivateKeyMismatch,
+            .missingRecipientWrap("x"), .invalidContentKey, .recipientPrivateKeyMismatch
         ]
         for err in structural {
             XCTAssertTrue(

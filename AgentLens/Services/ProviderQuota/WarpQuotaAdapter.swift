@@ -175,15 +175,15 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
 
         let used = number(in: dictionary, keys: [
             "credits_used", "creditsUsed", "credit_used", "creditUsed", "used_credits", "usedCredits",
-            "monthly_credits_used", "monthlyCreditsUsed", "budget_used", "budgetUsed", "used",
+            "monthly_credits_used", "monthlyCreditsUsed", "budget_used", "budgetUsed", "used"
         ])
         let limit = number(in: dictionary, keys: [
             "credits_limit", "creditsLimit", "credit_limit", "creditLimit", "monthly_credit_limit",
-            "monthlyCreditLimit", "included_credits", "includedCredits", "budget_limit", "budgetLimit", "limit",
+            "monthlyCreditLimit", "included_credits", "includedCredits", "budget_limit", "budgetLimit", "limit"
         ])
         let remaining = number(in: dictionary, keys: [
             "credits_remaining", "creditsRemaining", "credit_remaining", "creditRemaining", "remaining_credits",
-            "remainingCredits", "budget_remaining", "budgetRemaining", "remaining",
+            "remainingCredits", "budget_remaining", "budgetRemaining", "remaining"
         ])
 
         guard used != nil || limit != nil || remaining != nil else { return nil }

@@ -23,19 +23,19 @@ struct ProxyModelCatalogPanel: View {
     let onStartGateway: () -> Void
     var routeLogEntries: [BurnBarProxyRouteLogEntry] = []
     var routeLogState: ProxyRouteLogState = .idle
-    var onRefreshRouteLog: (() -> Void)? = nil
-    var onClearRouteLog: (() -> Void)? = nil
+    var onRefreshRouteLog: (() -> Void)?
+    var onClearRouteLog: (() -> Void)?
     let droidSyncState: AppConnectState?
     let onSyncDroid: (() -> Void)?
     let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
-    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
-    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
-    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)? = nil
-    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)? = nil
-    var onSetDisplayName: ((ProxyAdvertisedModel, String) async -> String?)? = nil
-    var onClearDisplayName: ((ProxyAdvertisedModel) -> Void)? = nil
+    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)?
+    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)?
+    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)?
+    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)?
+    var onSetDisplayName: ((ProxyAdvertisedModel, String) async -> String?)?
+    var onClearDisplayName: ((ProxyAdvertisedModel) -> Void)?
     /// Bulk advertise toggle for a whole provider: (providerID, modelIDs, isEnabled).
-    var onSetProviderAdvertisement: ((String, [String], Bool) -> Void)? = nil
+    var onSetProviderAdvertisement: ((String, [String], Bool) -> Void)?
 
     @State private var copiedEndpoint = false
     @State private var expandedProviderIDs: Set<String> = []
@@ -814,10 +814,8 @@ struct ProxyProviderLogoView: View {
     let size: CGFloat
 
     private var assetImage: Image? {
-        for candidate in Self.assetCandidates(for: catalogProviderID) {
-            if NSImage(named: candidate) != nil {
-                return Image(candidate)
-            }
+        for candidate in Self.assetCandidates(for: catalogProviderID) where NSImage(named: candidate) != nil {
+            return Image(candidate)
         }
         return nil
     }
@@ -891,13 +889,13 @@ struct ProxyModelProviderSection: View {
     let isExpanded: Bool
     let onToggleExpanded: () -> Void
     let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
-    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
-    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
-    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)? = nil
-    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)? = nil
-    var onSetDisplayName: ((ProxyAdvertisedModel, String) async -> String?)? = nil
-    var onClearDisplayName: ((ProxyAdvertisedModel) -> Void)? = nil
-    var onSetProviderAdvertisement: ((String, [String], Bool) -> Void)? = nil
+    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)?
+    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)?
+    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)?
+    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)?
+    var onSetDisplayName: ((ProxyAdvertisedModel, String) async -> String?)?
+    var onClearDisplayName: ((ProxyAdvertisedModel) -> Void)?
+    var onSetProviderAdvertisement: ((String, [String], Bool) -> Void)?
 
     private let collapsedLimit = 5
 
@@ -1014,12 +1012,12 @@ struct ProxyModelCatalogRow: View {
     let model: ProxyAdvertisedModel
     let onToggleAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
     var existingVariantLevels: Set<BurnBarThinkingLevel> = []
-    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
-    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
-    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)? = nil
-    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)? = nil
-    var onSetDisplayName: ((ProxyAdvertisedModel, String) async -> String?)? = nil
-    var onClearDisplayName: ((ProxyAdvertisedModel) -> Void)? = nil
+    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)?
+    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)?
+    var onUpsertModelAlias: ((ProxyAdvertisedModel, BurnBarModelAlias) async -> String?)?
+    var onRemoveModelAlias: ((ProxyAdvertisedModel) -> Void)?
+    var onSetDisplayName: ((ProxyAdvertisedModel, String) async -> String?)?
+    var onClearDisplayName: ((ProxyAdvertisedModel) -> Void)?
 
     @State private var showsAliasEditor = false
     @State private var aliasDraft = ModelAliasEditorDraft.empty
@@ -1443,7 +1441,6 @@ private struct ModelAliasEditorSheet: View {
         .frame(minWidth: 420)
     }
 }
-
 
 // MARK: - Model Rename Sheet
 //

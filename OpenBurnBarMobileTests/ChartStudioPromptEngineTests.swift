@@ -7,11 +7,11 @@ final class ChartStudioPromptEngineTests: XCTestCase {
     private func makeDigest() -> TrendDataDigest {
         let providers = [
             RollupProviderSummary(provider: "claudecode", providerID: ProviderID(rawValue: "claudecode"), totalRequests: 100, totalTokens: 600_000, totalCost: 60),
-            RollupProviderSummary(provider: "codex",      providerID: ProviderID(rawValue: "codex"),      totalRequests: 100, totalTokens: 400_000, totalCost: 40)
+            RollupProviderSummary(provider: "codex", providerID: ProviderID(rawValue: "codex"), totalRequests: 100, totalTokens: 400_000, totalCost: 40)
         ]
         let models = [
             RollupModelSummary(model: "claude-sonnet-4.5", provider: "claudecode", requests: 50, tokens: 300_000, cost: 30),
-            RollupModelSummary(model: "gpt-5.4-codex",     provider: "codex",      requests: 50, tokens: 200_000, cost: 20)
+            RollupModelSummary(model: "gpt-5.4-codex", provider: "codex", requests: 50, tokens: 200_000, cost: 20)
         ]
         return TrendDataDigest.build(
             windowTotals: [.today: RollupTotals(requests: 10, tokens: 50_000, costUsd: 5.0)],

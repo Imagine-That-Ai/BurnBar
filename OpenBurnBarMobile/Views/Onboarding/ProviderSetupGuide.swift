@@ -788,7 +788,7 @@ extension ProviderSetupGuide {
         .cursor,
         .minimax,
         .zai,
-        .openAI,
+        .openAI
     ]
 
     static func sortedProvidersForOnboarding() -> [AgentProvider] {

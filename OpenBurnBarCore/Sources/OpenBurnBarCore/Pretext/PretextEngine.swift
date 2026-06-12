@@ -54,7 +54,7 @@ public final class PretextEngine: NSObject {
 
     // MARK: Init
 
-    private override init() {
+    override private init() {
         super.init()
         configureWebView()
     }
@@ -368,7 +368,7 @@ public final class PretextEngine: NSObject {
             let script = "window.__pretextDispatch && window.__pretextDispatch(\"\(escaped)\");"
             webView.evaluateJavaScript(script) { [weak self] _, error in
                 guard let self else { return }
-                if let error = error {
+                if let error {
                     if let pending = self.pendingRequests.removeValue(forKey: id) {
                         pending.resume(throwing: PretextError.bridgeError(error.localizedDescription))
                     }

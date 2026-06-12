@@ -610,7 +610,6 @@ struct CLIAgentConversationListView: View {
         }
     }
 
-
 }
 
 enum CLIAgentChatRoute: Identifiable {

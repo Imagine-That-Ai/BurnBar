@@ -290,7 +290,7 @@ struct PulseView: View {
             "Show my biggest sessions",
             "Forecast end-of-day spend"
         ]
-        if let topProvider = topProvider {
+        if let topProvider {
             prompts.append("Why is \(topProvider.displayName) so dominant?")
         }
         return prompts
@@ -315,7 +315,7 @@ final class PulseRouter {
 
     func openBurn(focus: String?) { pendingDestination = .burn(focus: focus) }
     func openStreams() { pendingDestination = .streams }
-    func openHermes()  { pendingDestination = .hermes }
+    func openHermes() { pendingDestination = .hermes }
     func openSession(_ usage: TokenUsage) { pendingDestination = .session(usage) }
     func openProject(_ project: ProjectSummary) { pendingDestination = .project(project) }
     func openProvider(_ provider: AgentProvider) { pendingDestination = .provider(provider) }

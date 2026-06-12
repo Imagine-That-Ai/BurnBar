@@ -379,7 +379,7 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         XCTAssertEqual(metadata.lastQuotaExhaustedAt, exhaustedAt)
         XCTAssertEqual(metadata.exhaustedUntil, exhaustedUntil)
         XCTAssertEqual(metadata.lastQuotaExhaustionDetail, "5-hour quota exhausted")
-        XCTAssertEqual(metadata.isDisabled, true)
+        XCTAssertTrue(metadata.isDisabled)
     }
 
     func test_updatedProfileRecord_usesNormalizedDetectedAccount() {
@@ -1922,7 +1922,7 @@ final class AccountManagerTests: XCTestCase {
 
         let resolvedWindow = AccountManager.googleAuthPresentationWindowForTesting(from: window)
 
-        XCTAssertTrue(resolvedWindow === window)
+        XCTAssertIdentical(resolvedWindow, window)
     }
 
     // MARK: - Shared auth keychain-recovery wrapper

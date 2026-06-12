@@ -340,7 +340,8 @@ enum IntelligenceBriefFixtures {
         let findings: [InsightFinding] = [
             InsightFinding(
                 title: "Sonnet 4.6 absorbs 64% of weekly spend with shrinking marginal value",
-                whyItMatters: "Claude Sonnet 4.6 cost $42.18 across 312 sessions this week — up 18% week-over-week — while cache-hit rate slid from 41% to 29%. Every additional dollar is now buying about 14% fewer cache reuses. Routing burst prompts to a cheaper model would recover the cache curve without changing outcomes.",
+                whyItMatters: "Claude Sonnet 4.6 cost $42.18 across 312 sessions this week — up 18% week-over-week — while cache-hit rate slid from 41% to 29%. " +
+                    "Every additional dollar is now buying about 14% fewer cache reuses. Routing burst prompts to a cheaper model would recover the cache curve without changing outcomes.",
                 evidence: [sonnetCitation, codeagentCitation, dayCitation],
                 confidence: .high,
                 severity: .high,
@@ -348,7 +349,8 @@ enum IntelligenceBriefFixtures {
             ),
             InsightFinding(
                 title: "MiniMax M2.7 spend tripled on a single Saturday with no matching session count",
-                whyItMatters: "Saturday May 9 logged 11 MiniMax M2.7 calls totaling $7.84 — the entire previous week's MiniMax spend in one afternoon. Mean cost-per-session jumped from $0.21 to $0.71, suggesting longer reasoning chains rather than higher volume. Identify whether this is a runaway agent loop before it repeats next week.",
+                whyItMatters: "Saturday May 9 logged 11 MiniMax M2.7 calls totaling $7.84 — the entire previous week's MiniMax spend in one afternoon. " +
+                    "Mean cost-per-session jumped from $0.21 to $0.71, suggesting longer reasoning chains rather than higher volume. Identify whether this is a runaway agent loop before it repeats next week.",
                 evidence: [minimaxCitation, anomalyCitation, sessionCitation, dayCitation],
                 confidence: .medium,
                 severity: .medium,
@@ -508,7 +510,8 @@ enum IntelligenceBriefFixtures {
             generatedAt: now,
             platform: .iOS,
             timeWindow: .last7d,
-            executiveSummary: "Sonnet 4.6 owns 64% of weekly spend at $42 and is losing cache-hit leverage; a Saturday MiniMax runaway tripled its weekly bill in one afternoon; the Anthropic 5-hour bucket already touched 92% twice — start routing short prompts to Haiku and quarantine MiniMax before next weekend.",
+            executiveSummary: "Sonnet 4.6 owns 64% of weekly spend at $42 and is losing cache-hit leverage; a Saturday MiniMax runaway tripled its weekly bill in one afternoon; " +
+                "the Anthropic 5-hour bucket already touched 92% twice — start routing short prompts to Haiku and quarantine MiniMax before next weekend.",
             modelTag: InsightModelTag(
                 providerKey: "anthropic",
                 modelID: "claude-sonnet-4-6",
@@ -582,7 +585,8 @@ enum IntelligenceBriefFixtures {
             generatedAt: now,
             platform: .iOS,
             timeWindow: .last30d,
-            executiveSummary: "CRITICAL: Claude Opus 4.1 is silently consuming 87% of monthly spend across two stalled refactor loops — every dollar is buying about 4% fewer completed tool calls than three weeks ago, and you'll exhaust the monthly cap inside the next 36 hours unless you pause the offending agents tonight.",
+            executiveSummary: "CRITICAL: Claude Opus 4.1 is silently consuming 87% of monthly spend across two stalled refactor loops — every dollar is buying about 4% fewer completed tool calls than three weeks ago, " +
+                "and you'll exhaust the monthly cap inside the next 36 hours unless you pause the offending agents tonight.",
             modelTag: InsightModelTag(
                 providerKey: "anthropic",
                 modelID: "claude-opus-4-1",
@@ -605,7 +609,8 @@ enum IntelligenceBriefFixtures {
             findings: [
                 InsightFinding(
                     title: "Claude Opus 4.1 is absorbing 87% of monthly spend across exactly two long-lived refactor sessions that have not produced a merged commit in 11 days and are silently doubling their reasoning-token budget every retry",
-                    whyItMatters: "Both sessions are stuck in tool-call loops on the same module — Opus keeps re-reading the same 14 files, requesting clarification, and re-emitting the same edit. At the current burn rate you'll exhaust the monthly cap in roughly 36 hours and start hard-throttling every other agent in your stack, including the ones doing actual work.",
+                    whyItMatters: "Both sessions are stuck in tool-call loops on the same module — Opus keeps re-reading the same 14 files, requesting clarification, and re-emitting the same edit. " +
+                        "At the current burn rate you'll exhaust the monthly cap in roughly 36 hours and start hard-throttling every other agent in your stack, including the ones doing actual work.",
                     evidence: [citation, projectCitation],
                     confidence: .high,
                     severity: .critical,
@@ -672,7 +677,7 @@ private func makeProviderSeries(anchor: Date) -> InsightWidgetData.TimeSeries {
     let seriesList: [InsightWidgetData.TimeSeries.Series] = [
         .init(id: "anthropic", name: "Anthropic", colorHex: "#E87060", points: anthropicPoints),
         .init(id: "openai", name: "OpenAI", colorHex: "#9080D8", points: openAIPoints),
-        .init(id: "minimax", name: "MiniMax", colorHex: "#2CCAC0", points: minimaxPoints),
+        .init(id: "minimax", name: "MiniMax", colorHex: "#2CCAC0", points: minimaxPoints)
     ]
     let annotations: [InsightWidgetData.TimeSeries.Annotation] = [
         .init(

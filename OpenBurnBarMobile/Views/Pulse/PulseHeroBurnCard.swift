@@ -60,7 +60,7 @@ private struct PulseHeroBurnCardContent: View {
     let topProvider: AgentProvider?
     let displayMode: UsageDisplayMode
     var scope: PulseTimelineScope = .day
-    var now: Date = Date()
+    var now = Date()
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

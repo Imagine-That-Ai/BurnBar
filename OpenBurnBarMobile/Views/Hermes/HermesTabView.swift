@@ -124,7 +124,6 @@ enum HermesMobileChatPreferences {
     static let agentsLiveBackgroundEnabledKey = "agentsLiveBackgroundEnabled"
 }
 
-
 private enum HermesChatLayout {
     static let hiddenNavigationTrayReserve: CGFloat = 70
     static let composerBottomPadding: CGFloat = 8
@@ -2348,7 +2347,7 @@ struct HermesChatView: View {
     private func send() {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = pendingAttachments
-        guard (!trimmed.isEmpty || !attachments.isEmpty), !service.isStreaming else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty, !service.isStreaming else { return }
         if shouldSendViaBurnBarGateway, !attachments.isEmpty {
             HapticBus.threshold()
             service.failBurnBarGatewayTurn(
@@ -3664,7 +3663,7 @@ struct HermesMessageBubble: View {
     /// only for the most recent assistant turn whose outcome supports
     /// retry — the bubble renders the inline "Try again" pill in that
     /// case. Earlier turns and successful replies pass nil (no pill).
-    var onRetry: (() -> Void)? = nil
+    var onRetry: (() -> Void)?
 
     @State private var permissionSheetItem: SystemPermissionItem?
     @State private var permissionStore = SystemPermissionInboxStore.shared

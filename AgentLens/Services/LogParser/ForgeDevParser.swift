@@ -12,7 +12,7 @@ final class ForgeDevParser: LogParser, Sendable {
         let formats = [
             "yyyy-MM-dd HH:mm:ss",
             "yyyy-MM-dd HH:mm:ss.SSSSSS",
-            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ss.SSS"
         ]
         return formats.map { format in
             let formatter = DateFormatter()

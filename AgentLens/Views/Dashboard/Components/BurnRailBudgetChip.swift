@@ -104,7 +104,7 @@ struct BurnRailBudgetChip: View {
 #Preview("Budget chip — 80% warning") {
     BurnRailBudgetChip(
         rules: [
-            BudgetRule(scope: .credential, providerID: "openrouter", label: "OpenRouter main", amountUSD: 50, period: .month, behavior: .warnThenBlock),
+            BudgetRule(scope: .credential, providerID: "openrouter", label: "OpenRouter main", amountUSD: 50, period: .month, behavior: .warnThenBlock)
         ],
         spendByRule: ["openrouter-abc": 42]
     )

@@ -45,7 +45,7 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         "com.openburnbar.app",
         "com.openburnbar.daemon",
         "com.openburnbar.privileged-input-execution",
-        "com.openburnbar.virtual-hid-bridge",
+        "com.openburnbar.virtual-hid-bridge"
     ]
 
     /// The `(identifier "a" or identifier "b" ...)` sub-clause built from

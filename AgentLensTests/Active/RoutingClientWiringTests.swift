@@ -649,7 +649,8 @@ final class RoutingClientWiringTests: XCTestCase {
         )
 
         guard case .stale(let installedModelIDs, let expectedModelIDs) = status else {
-            return XCTFail("Expected stale Droid sync status, got \(status)")
+            XCTFail("Expected stale Droid sync status, got \(status)")
+            return
         }
         XCTAssertEqual(installedModelIDs, ["MiniMax-M2.5"])
         XCTAssertEqual(expectedModelIDs, ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
@@ -708,10 +709,11 @@ final class RoutingClientWiringTests: XCTestCase {
 
         // Model IDs still match, but the API key is stale → must be .stale.
         guard case .stale(let installedModelIDs, let expectedModelIDs) = status else {
-            return XCTFail(
+            XCTFail(
                 "Expected .stale after gateway token rotation, got \(status). " +
                 "This means Droid CLI would keep sending the old token and receive 401s."
             )
+            return
         }
         XCTAssertEqual(installedModelIDs, ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
         XCTAssertEqual(expectedModelIDs, ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
@@ -956,7 +958,7 @@ final class RoutingClientWiringTests: XCTestCase {
             [
                 "OBB DeepSeek V4 Pro Direct",
                 "OBB DeepSeek V4 Pro OpenCode",
-                "OBB DeepSeek V4 Pro Ollama Cloud",
+                "OBB DeepSeek V4 Pro Ollama Cloud"
             ]
         )
     }

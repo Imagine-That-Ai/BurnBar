@@ -57,8 +57,8 @@ final class EasterEggSimulation {
     private(set) var mode: Mode = .idle
 
     // Canvas geometry (CSS-pixel-equivalent logical points).
-    private var W: CGFloat = 1
-    private var H: CGFloat = 1
+    private var sceneWidth: CGFloat = 1
+    private var sceneHeight: CGFloat = 1
 
     // Shared clock baseline (ms since the event started) so phase offsets line up
     // with the website's `fxStart`-relative timeline.
@@ -102,8 +102,8 @@ final class EasterEggSimulation {
     /// since every offset is `fxStart`-relative). `ledges` are the on-screen UI
     /// rects coins bounce off (rain only); pass empty for none.
     func begin(now: Double, size: CGSize, ledges: [Ledge]) {
-        W = max(size.width, 1)
-        H = max(size.height, 1)
+        sceneWidth = max(size.width, 1)
+        sceneHeight = max(size.height, 1)
         lastNow = now
         switch kind {
         case .logoStorm:
@@ -121,8 +121,8 @@ final class EasterEggSimulation {
 
     /// Keep the working geometry current (window resize between frames).
     func updateSize(_ size: CGSize) {
-        W = max(size.width, 1)
-        H = max(size.height, 1)
+        sceneWidth = max(size.width, 1)
+        sceneHeight = max(size.height, 1)
     }
 
     /// Advance one frame. `now` is ms, `dt` is seconds (already clamped/seeded by
@@ -241,7 +241,7 @@ extension EasterEggSimulation {
             sparks.append(
                 Spark(
                     li: Int(rng.next() % UInt64(logoCount)),
-                    x: rng.cg(0, W), y: rng.cg(0, H),
+                    x: rng.cg(0, sceneWidth), y: rng.cg(0, sceneHeight),
                     vx: 0, vy: 0,
                     size: rng.cg(22, 48),
                     rot: rng.cg(-0.5, 0.5),
@@ -264,8 +264,8 @@ extension EasterEggSimulation {
 
     /// Fireworks explosion: each spark radiates outward from a random burst centre.
     private func burstAll() {
-        let cx = rng.cg(W * 0.2, W * 0.8)
-        let cy = rng.cg(H * 0.2, H * 0.62)
+        let cx = rng.cg(sceneWidth * 0.2, sceneWidth * 0.8)
+        let cy = rng.cg(sceneHeight * 0.2, sceneHeight * 0.62)
         for i in sparks.indices {
             sparks[i].target = nil
             let ang = atan2(sparks[i].y - cy, sparks[i].x - cx) + rng.cg(-0.5, 0.5)
@@ -290,9 +290,9 @@ extension EasterEggSimulation {
             for i in 0..<n { use.append(pts[Int(Double(i) * stride)]) }
         }
 
-        let cx = W * 0.5
-        let cy = H * 0.42
-        let sc = min(W, H) * 0.62
+        let cx = sceneWidth * 0.5
+        let cy = sceneHeight * 0.42
+        let sc = min(sceneWidth, sceneHeight) * 0.62
         let count = use.count
         for j in sparks.indices {
             if j < count {
@@ -378,7 +378,7 @@ extension EasterEggSimulation {
         for i in 0..<nc {
             clouds.append(
                 Cloud(
-                    x: (CGFloat(i) + 0.5) / CGFloat(nc) * W + rng.cg(-30, 30),
+                    x: (CGFloat(i) + 0.5) / CGFloat(nc) * sceneWidth + rng.cg(-30, 30),
                     y: rng.cg(26, 120),
                     w: rng.cg(210, 360),
                     vx: rng.cg(-10, 10),
@@ -420,8 +420,8 @@ extension EasterEggSimulation {
         // Clouds drift + wrap.
         for i in clouds.indices {
             clouds[i].x += clouds[i].vx * dtC
-            if clouds[i].x < -clouds[i].w { clouds[i].x = W + clouds[i].w }
-            if clouds[i].x > W + clouds[i].w { clouds[i].x = -clouds[i].w }
+            if clouds[i].x < -clouds[i].w { clouds[i].x = sceneWidth + clouds[i].w }
+            if clouds[i].x > sceneWidth + clouds[i].w { clouds[i].x = -clouds[i].w }
         }
 
         // Emission window: until +4000ms.
@@ -447,18 +447,18 @@ extension EasterEggSimulation {
                 tokens[k].vx = abs(tokens[k].vx) * 0.5
                 tokens[k].vflip *= 0.85
             }
-            if tokens[k].x > W - r {
-                tokens[k].x = W - r
+            if tokens[k].x > sceneWidth - r {
+                tokens[k].x = sceneWidth - r
                 tokens[k].vx = -abs(tokens[k].vx) * 0.5
                 tokens[k].vflip *= 0.85
             }
 
             // Ledge collisions: bounce off the top band of each UI rect.
             if tokens[k].vy > 0 {
-                for R in rects {
-                    if tokens[k].x > R.l - r, tokens[k].x < R.r + r,
-                       tokens[k].y > R.t - r, tokens[k].y < R.t + 12 {
-                        tokens[k].y = R.t - r
+                for rect in rects {
+                    if tokens[k].x > rect.l - r, tokens[k].x < rect.r + r,
+                       tokens[k].y > rect.t - r, tokens[k].y < rect.t + 12 {
+                        tokens[k].y = rect.t - r
                         tokens[k].vy = -tokens[k].vy * 0.5
                         tokens[k].vx += rng.cg(-30, 30)
                         tokens[k].vflip *= 0.85
@@ -467,8 +467,8 @@ extension EasterEggSimulation {
             }
 
             // Floor: bounce (restitution 0.48) or settle.
-            if tokens[k].y > H - r {
-                tokens[k].y = H - r
+            if tokens[k].y > sceneHeight - r {
+                tokens[k].y = sceneHeight - r
                 if abs(tokens[k].vy) > 55 {
                     tokens[k].vy = -abs(tokens[k].vy) * 0.48
                     tokens[k].vx *= 0.7
@@ -519,12 +519,12 @@ extension EasterEggSimulation {
 
     /// Spawn a 10-coin row at the page edge that arcs out under REVERSE gravity.
     private func boundary(_ edge: EasterEggEdge, _ now: Double) {
-        let y0: CGFloat = edge == .top ? 8 : H - 8
+        let y0: CGFloat = edge == .top ? 8 : sceneHeight - 8
         let dir: CGFloat = edge == .top ? 1 : -1
         let n = 10
         for i in 0..<n {
             let token = Token(
-                x: (CGFloat(i) + 0.5) / CGFloat(n) * W + rng.cg(-14, 14),
+                x: (CGFloat(i) + 0.5) / CGFloat(n) * sceneWidth + rng.cg(-14, 14),
                 y: y0,
                 vx: 0,
                 vy: dir * rng.cg(280, 460),

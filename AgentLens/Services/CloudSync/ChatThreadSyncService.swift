@@ -92,7 +92,7 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
                     "createdAt": Timestamp(date: thread.createdAt),
                     "updatedAt": Timestamp(date: thread.lastActivityAt),
                     "deviceId": deviceId,
-                    "contentIncluded": includeContent,
+                    "contentIncluded": includeContent
                 ]
 
                 if includeContent, let resolvedKey {

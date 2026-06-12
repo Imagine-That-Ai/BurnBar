@@ -285,4 +285,3 @@ extension BurnBarJSONValue {
         return value
     }
 }
-

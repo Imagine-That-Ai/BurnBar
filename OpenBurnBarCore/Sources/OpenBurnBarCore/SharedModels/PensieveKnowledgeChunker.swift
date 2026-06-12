@@ -102,7 +102,7 @@ public enum PensieveKnowledgeChunker {
             ("-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----", "[REDACTED_PRIVATE_KEY]"),
             ("\\b[Bb]earer\\s+[A-Za-z0-9._-]{20,}", "[REDACTED_BEARER]"),
             ("\\b(?:password|passwd|secret|api[_-]?key|token)\\s*[:=]\\s*\\S+", "[REDACTED_SECRET]"),
-            ("\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b", "[REDACTED_JWT]"),
+            ("\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b", "[REDACTED_JWT]")
         ]
         return specs.compactMap { pattern, label in
             (try? NSRegularExpression(pattern: pattern)).map { SecretPattern(regex: $0, label: label) }
@@ -211,7 +211,7 @@ public enum PensieveKnowledgeChunker {
                 "source_path": sourcePath,
                 "chunk_index": index,
                 "sourceKind": sourceKind.rawValue,
-                "sourceSlug": sourceSlug,
+                "sourceSlug": sourceSlug
             ]
             if let title { metadata["page_title"] = redactSecrets(title).prefix(120).description }
             if let section { metadata["section"] = section }

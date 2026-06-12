@@ -5,10 +5,10 @@ import SQLite3
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 private let indexedSearchQueueKey = DispatchSpecificKey<UUID>()
 
-/// Indexed search for the OpenBurnBar daemon.
-/// Supports both lexical FTS and semantic vector search with hybrid RRF fusion.
 // AUDIT(@unchecked Sendable): Mutable state (snapshotContext) and raw SQLite pointer
 // are serialized through dbQueue DispatchQueue; manual thread safety is correct.
+/// Indexed search for the OpenBurnBar daemon.
+/// Supports both lexical FTS and semantic vector search with hybrid RRF fusion.
 final class BurnBarIndexedSearchService: @unchecked Sendable {
     private struct SnapshotContext {
         let embeddingVersionID: String
@@ -122,7 +122,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
 
         // Aggregate count
         var aggregate: Int?
-        if (plan.mode == .mixed || plan.mode == .aggregate), plan.aggregatePatterns.isEmpty == false {
+        if plan.mode == .mixed || plan.mode == .aggregate, plan.aggregatePatterns.isEmpty == false {
             aggregate = try countOccurrences(
                 patterns: plan.aggregatePatterns,
                 providerRaw: query.providerRaw,
@@ -235,7 +235,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         // Semantic search if available
         var semanticResults: [String: (semanticScore: Double, semanticRank: Int)] = [:]
         var semanticPerformed = false
-        var semanticCount: Int? = nil
+        var semanticCount: Int?
 
         if canDoSemantic, let queryEmbedding = query.queryEmbedding {
             let resolvedMetric = query.embeddingDistanceMetric ?? .cosine
@@ -337,7 +337,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         }
 
         // Determine degraded message
-        var degradedMessage: String? = nil
+        var degradedMessage: String?
         if !canDoSemantic && !semanticConfig.enabled {
             degradedMessage = "Semantic search is disabled in daemon configuration."
         } else if !canDoSemantic && semanticConfig.enabled {

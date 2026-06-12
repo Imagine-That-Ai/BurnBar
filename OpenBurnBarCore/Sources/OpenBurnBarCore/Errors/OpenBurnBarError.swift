@@ -48,7 +48,7 @@ public struct OpenBurnBarError: Error, Hashable, Sendable {
         var metadata: [String: String] = [
             "domain": domain.rawValue,
             "code": code,
-            "message": message,
+            "message": message
         ]
         if let underlyingDescription, !underlyingDescription.isEmpty {
             metadata["underlying"] = underlyingDescription

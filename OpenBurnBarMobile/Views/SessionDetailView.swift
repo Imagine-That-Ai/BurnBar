@@ -335,7 +335,7 @@ private struct TokenPill: View {
     let label: String
     let value: Int
     var isTotal = false
-    var color: Color? = nil
+    var color: Color?
 
     var body: some View {
         HStack(spacing: MobileTheme.Spacing.sm) {

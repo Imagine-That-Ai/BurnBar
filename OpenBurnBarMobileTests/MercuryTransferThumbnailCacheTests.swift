@@ -59,7 +59,7 @@ final class MercuryTransferThumbnailCacheTests: XCTestCase {
         let secondResult = await cache.thumbnail(for: url)
         let second = try XCTUnwrap(secondResult)
 
-        XCTAssertTrue(first === second)
+        XCTAssertIdentical(first, second)
     }
 
     func testModifiedFileRegeneratesThumbnail() async throws {
@@ -80,7 +80,7 @@ final class MercuryTransferThumbnailCacheTests: XCTestCase {
 
         let secondResult = await cache.thumbnail(for: url)
         let second = try XCTUnwrap(secondResult)
-        XCTAssertFalse(first === second)
+        XCTAssertNotIdentical(first, second)
         XCTAssertGreaterThan(second.size.height, second.size.width)
     }
 

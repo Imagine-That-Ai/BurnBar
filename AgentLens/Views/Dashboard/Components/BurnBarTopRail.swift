@@ -326,7 +326,7 @@ struct BurnRailSearchOmnibar: View {
     @Binding var text: String
     @FocusState.Binding var focused: Bool
     let onSubmit: (String) -> Void
-    var onScopeChange: ((BurnRailSearchScope) -> Void)? = nil
+    var onScopeChange: ((BurnRailSearchScope) -> Void)?
 
     @State private var hover = false
     @State private var scope: BurnRailSearchScope = .all
@@ -484,7 +484,7 @@ struct BurnRailSearchOmnibar: View {
     // Invisible button outside the field's event chain so the shortcut works
     // regardless of focus.
     private var globalShortcut: some View {
-        Button(action: { focused = true }) { EmptyView() }
+        Button(action: { focused = true }, label: { EmptyView() })
             .buttonStyle(.plain)
             .keyboardShortcut("k", modifiers: .command)
             .opacity(0)
@@ -1154,8 +1154,7 @@ private struct BurnRailSparkline: View {
         for (i, v) in samples.enumerated() {
             let x = CGFloat(i) * step
             let y = size.height * (1 - CGFloat(clamp(v)))
-            if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
-            else { path.addLine(to: CGPoint(x: x, y: y)) }
+            if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
         }
         if closed {
             path.addLine(to: CGPoint(x: size.width, y: size.height))

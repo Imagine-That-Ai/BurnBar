@@ -934,7 +934,7 @@ struct HermesSetupWizardView: View {
             // Check next to the running binary (for dev builds)
             Bundle.main.bundleURL.deletingLastPathComponent()
                 .appendingPathComponent("tools/openburnbar-mcp/hermes-skill/SKILL.md")
-                .path,
+                .path
         ]
 
         guard let repoSkill = candidates.first(where: { fm.fileExists(atPath: $0) }) else { return }

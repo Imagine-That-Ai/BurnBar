@@ -14,8 +14,8 @@ struct DashboardChatOverlay: View {
     var isChatRoute: Bool = false
     let onRequestOpen: () -> Void
     let onOpenConversationJump: (ConversationJumpTarget) -> Void
-    var onMaximize: (() -> Void)? = nil
-    var onPopOut: (() -> Void)? = nil
+    var onMaximize: (() -> Void)?
+    var onPopOut: (() -> Void)?
     let onClose: () -> Void
 
     var body: some View {

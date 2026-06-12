@@ -74,7 +74,7 @@ final class ContextPackExportTests: XCTestCase {
     func test_allTargetsContainSameSessionBodyContent() {
         let sessions = [
             ExportFixtures.makeSession(id: "s1", bodyText: "## Session One\n\nProvider: Claude Code | Project: TestProject\n\nKey files: a.swift\n\nKey commands: cmd1\n\nContent of session one."),
-            ExportFixtures.makeSession(id: "s2", bodyText: "## Session Two\n\nProvider: Claude Code | Project: TestProject\n\nKey files: b.swift\n\nKey commands: cmd2\n\nContent of session two."),
+            ExportFixtures.makeSession(id: "s2", bodyText: "## Session Two\n\nProvider: Claude Code | Project: TestProject\n\nKey files: b.swift\n\nKey commands: cmd2\n\nContent of session two.")
         ]
         let pack = ExportFixtures.makePack(sessions: sessions)
 
@@ -248,7 +248,7 @@ final class ContextPackExportTests: XCTestCase {
 
     func test_exportOutputDeterministicAcrossRuns() {
         let sessions = [
-            ExportFixtures.makeSession(id: "det-1", bodyText: "## Deterministic Session\n\nProvider: Claude Code | Project: TestProject\n\nSummary: Testing determinism.\n\nKey files: det.swift\n\nKey commands: det-cmd\n\nDeterministic content body."),
+            ExportFixtures.makeSession(id: "det-1", bodyText: "## Deterministic Session\n\nProvider: Claude Code | Project: TestProject\n\nSummary: Testing determinism.\n\nKey files: det.swift\n\nKey commands: det-cmd\n\nDeterministic content body.")
         ]
         let pack = ExportFixtures.makePack(sessions: sessions, usageSummary: "1 session; providers: claude-code; ~200 chars")
 
@@ -289,7 +289,7 @@ final class ContextPackExportTests: XCTestCase {
                 id: "multi-3",
                 title: "Third Session",
                 bodyText: "## Third Session\n\nProvider: Claude Code | Project: TestProject\n\nSummary: Third session summary.\n\nKey files: third.swift\n\nKey commands: third-cmd\n\nThird session body content."
-            ),
+            )
         ]
         let pack = ExportFixtures.makePack(
             sessions: sessions,
@@ -394,7 +394,7 @@ final class ContextPackExportTests: XCTestCase {
             ExportFixtures.makeSession(
                 id: "equiv-1",
                 bodyText: "## Equivalence Test\n\nProvider: Claude Code | Project: TestProject\n\nThis is the exact body text that should appear in all exports."
-            ),
+            )
         ]
         let pack = ExportFixtures.makePack(sessions: sessions)
 
@@ -439,7 +439,7 @@ final class ContextPackExportTests: XCTestCase {
         XCTAssertTrue(outputs[.cursor]!.contains("<!--"))
         XCTAssertTrue(outputs[.cursor]!.contains("-->"))
 
-        // MARKDOWN should have table format
+        // MARK: OWN should have table format
         XCTAssertTrue(outputs[.markdown]!.contains("| Property | Value |"))
 
         // CODEX should have minimal ## Context header

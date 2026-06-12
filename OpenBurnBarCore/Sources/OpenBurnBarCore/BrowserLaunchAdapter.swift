@@ -51,7 +51,7 @@ public enum BrowserLaunchAdapter {
         "--disable-extensions",
         "--disable-sync",
         "--disable-translate",
-        "--safebrowsing-disable-auto-update",
+        "--safebrowsing-disable-auto-update"
     ]
 
     /// Safari arguments that are allowlisted.
@@ -59,7 +59,7 @@ public enum BrowserLaunchAdapter {
     /// GUI interaction or WebKit private profile APIs.
     private static let safariAllowlistedArgs: Set<String> = [
         "--new-window",           // Open new window
-        "--private",              // Private browsing
+        "--private"              // Private browsing
     ]
 
     // MARK: - Profile Directory Canonicalization
@@ -93,10 +93,8 @@ public enum BrowserLaunchAdapter {
         // Check these BEFORE path separators so that "--profile-directory=Default" gets
         // caught as suspicious (contains "--") rather than as path separator
         let suspiciousPatterns = ["--", "-=", ";", "&", "|", "`", "$", "(", ")", "{", "}", "[", "]", "<", ">"]
-        for pattern in suspiciousPatterns {
-            if trimmed.contains(pattern) {
-                return .failure(.invalidProfileIdentifier("Profile identifier contains suspicious characters"))
-            }
+        for pattern in suspiciousPatterns where trimmed.contains(pattern) {
+            return .failure(.invalidProfileIdentifier("Profile identifier contains suspicious characters"))
         }
 
         // Reject flag-like patterns that look like shell flags (-x '...')
@@ -437,7 +435,7 @@ public struct BrowserLaunchInvoker {
             configuration.activates = true
 
             let completion: @Sendable (NSRunningApplication?, Error?) -> Void = { _, error in
-                if let error = error {
+                if let error {
                     continuation.resume(returning: .failure(.launchFailed(error.localizedDescription)))
                 } else {
                     continuation.resume(returning: .success(()))
@@ -473,7 +471,7 @@ public struct BrowserLaunchInvoker {
             configuration.activates = true
 
             let completion: @Sendable (NSRunningApplication?, Error?) -> Void = { _, error in
-                if let error = error {
+                if let error {
                     continuation.resume(returning: .failure(.launchFailed(error.localizedDescription)))
                 } else {
                     continuation.resume(returning: .success(()))
@@ -508,23 +506,21 @@ public struct BrowserFilesystemGuard {
     /// These are read-only for the switcher.
     public static let protectedChromeProfilePaths: [String] = [
         "Library/Application Support/Google/Chrome",
-        "Library/Google/Chrome",
+        "Library/Google/Chrome"
     ]
 
     public static let protectedSafariPaths: [String] = [
         "Library/Safari",
         "Library/Application Support/Safari",
         "Library/Caches/Safari",
-        "Library/Cookies",
+        "Library/Cookies"
     ]
 
     /// Returns true if the given path is a protected browser profile path.
     public static func isProtectedBrowserPath(_ path: String) -> Bool {
         let lowercased = path.lowercased()
-        for protected in protectedChromeProfilePaths + protectedSafariPaths {
-            if lowercased.contains(protected.lowercased()) {
-                return true
-            }
+        for protected in protectedChromeProfilePaths + protectedSafariPaths where lowercased.contains(protected.lowercased()) {
+            return true
         }
         return false
     }
@@ -589,6 +585,5 @@ public struct BrowserFilesystemGuard {
         return result
     }
 }
-
 
 #endif

@@ -96,7 +96,8 @@ final class BurnBarUsageRecorderTests: XCTestCase {
         // 2025-06-01T12:00:00Z = unix 1_748_779_200 = Apple reference 770_472_000.
         let referenceSeconds: Double = 770_472_000
         let pythonShapedLine = #"""
-        {"idempotencyKey":"hermes-pyshape-1","event":{"providerID":"hermes","modelID":"minimax-m2.7-highspeed","inputTokens":42,"outputTokens":17,"cacheCreationTokens":0,"cacheReadTokens":0,"reasoningTokens":4,"cost":0.012,"recordedAt":770472000,"sessionID":"hermes-mobile","projectName":"Hermes (proxy)","confidence":"exact"}}
+        {"idempotencyKey":"hermes-pyshape-1","event":{"providerID":"hermes","modelID":"minimax-m2.7-highspeed","inputTokens":42,"outputTokens":17,"cacheCreationTokens":0,\#
+        "cacheReadTokens":0,"reasoningTokens":4,"cost":0.012,"recordedAt":770472000,"sessionID":"hermes-mobile","projectName":"Hermes (proxy)","confidence":"exact"}}
         """#
         try (pythonShapedLine + "\n").write(to: ledgerURL, atomically: true, encoding: .utf8)
 
@@ -144,7 +145,8 @@ final class BurnBarUsageRecorderTests: XCTestCase {
         )
         let eventData = try JSONEncoder().encode(event)
         guard var eventObject = try JSONSerialization.jsonObject(with: eventData) as? [String: Any] else {
-            return XCTFail("Could not build legacy event payload")
+            XCTFail("Could not build legacy event payload")
+            return
         }
         eventObject.removeValue(forKey: "cacheCreationTokens")
         let payload: [String: Any] = [

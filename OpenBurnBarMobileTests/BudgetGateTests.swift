@@ -217,7 +217,7 @@ final class BudgetGateTests: XCTestCase {
 
 @MainActor
 final class MockSpendDataSource: BudgetSpendDataSource {
-    var rollupsByWindow: [RollupWindowKey : UsageRollupDoc] = [:]
+    var rollupsByWindow: [RollupWindowKey: UsageRollupDoc] = [:]
 
     init(spend: Double) {
         let rollup = UsageRollupDoc(

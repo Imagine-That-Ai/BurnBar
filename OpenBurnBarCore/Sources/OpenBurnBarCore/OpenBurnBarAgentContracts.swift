@@ -703,10 +703,8 @@ public struct BurnBarDAGContract: Codable, Hashable, Sendable {
             recursionStack.remove(nodeID)
         }
 
-        for node in nodes {
-            if !visited.contains(node.id) {
-                try dfs(node.id)
-            }
+        for node in nodes where !visited.contains(node.id) {
+            try dfs(node.id)
         }
     }
 

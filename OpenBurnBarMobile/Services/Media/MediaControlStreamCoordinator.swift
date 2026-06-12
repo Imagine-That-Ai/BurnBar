@@ -503,8 +503,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
         uid: String,
         connectionID: String
     ) async {
-        let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
-            [currentSendGate, stream] outbound in
+        let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { [currentSendGate, stream] outbound in
             if let currentSendGate {
                 try await currentSendGate.send(outbound)
             } else {
@@ -656,7 +655,6 @@ final class MediaControlStreamCoordinator: ObservableObject {
         backgroundTrafficSuppressedUntil = nil
         return false
     }
-
 
     @discardableResult
     private func sendHeartbeat(

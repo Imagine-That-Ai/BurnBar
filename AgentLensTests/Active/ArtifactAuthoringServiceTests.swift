@@ -162,4 +162,3 @@ private final class StubArtifactAuthoringTextGenerator: ArtifactAuthoringTextGen
         return response
     }
 }
-

@@ -487,10 +487,8 @@ struct ClaudeCodeJSONLUsageProbe: Sendable {
     /// Session file paths whose token sum changed (or appeared) between snapshots.
     static func changedSessions(before: Snapshot, after: Snapshot) -> [String] {
         var changed: [String] = []
-        for (path, afterTokens) in after.perFileTokens {
-            if before.perFileTokens[path] != afterTokens {
-                changed.append((path as NSString).lastPathComponent)
-            }
+        for (path, afterTokens) in after.perFileTokens where before.perFileTokens[path] != afterTokens {
+            changed.append((path as NSString).lastPathComponent)
         }
         return changed.sorted()
     }
@@ -508,8 +506,7 @@ struct ClaudeCodeJSONLUsageProbe: Sendable {
                 return
             }
             for key in ["input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"] {
-                if let v = usage[key] as? Int { total += v }
-                else if let v = usage[key] as? Double { total += Int(v) }
+                if let v = usage[key] as? Int { total += v } else if let v = usage[key] as? Double { total += Int(v) }
             }
         }
         return total

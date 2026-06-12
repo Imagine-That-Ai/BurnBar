@@ -211,7 +211,9 @@ private struct CastPickStep: View {
             ScrollView {
                 VStack(spacing: DesignSystem.Spacing.sm) {
                     ForEach(devices, id: \.serviceName) { device in
-                        Button(action: { onPick(device) }) {
+                        Button {
+                            onPick(device)
+                        } label: {
                             HStack(spacing: DesignSystem.Spacing.md) {
                                 Image(systemName: iconName(for: device))
                                     .font(.system(size: 24, weight: .light))

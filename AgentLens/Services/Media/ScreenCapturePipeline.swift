@@ -43,8 +43,8 @@ final class ScreenCapturePipeline: NSObject {
         var height: Int = 1080
         var frameRate: Int = 30
         var captureFocusedWindowOnly: Bool = false
-        var displayId: String? = nil
-        var windowID: CGWindowID? = nil
+        var displayId: String?
+        var windowID: CGWindowID?
     }
 
     struct WindowDescriptor: Sendable, Equatable {

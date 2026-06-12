@@ -85,11 +85,10 @@ enum PixelClockSnapshotAdapter {
                 guard let candidate = bestScoredBucket(in: snapshot, for: period) else { return nil }
                 return (candidate.bucket, candidate.score, snapshot.fetchedAt)
             }
-            .sorted { lhs, rhs in
+            .min { lhs, rhs in
                 if lhs.score != rhs.score { return lhs.score < rhs.score }
                 return lhs.fetchedAt > rhs.fetchedAt
-            }
-            .first?
+            }?
             .bucket
     }
 

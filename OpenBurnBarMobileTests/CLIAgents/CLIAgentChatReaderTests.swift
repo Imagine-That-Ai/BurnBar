@@ -228,7 +228,7 @@ final class CLIAgentChatReaderTests: XCTestCase {
         )
         XCTAssertEqual(updated.customTitle, "Quarterly burn deep-dive")
         XCTAssertEqual(updated.labelColorHex, "#FF8800")
-        XCTAssertEqual(updated.isPinned, true)
+        XCTAssertTrue(updated.isPinned ?? false)
         XCTAssertEqual(updated.priorityOrder, 3)
         // Private transcript fields untouched.
         XCTAssertEqual(updated.title, record.title)

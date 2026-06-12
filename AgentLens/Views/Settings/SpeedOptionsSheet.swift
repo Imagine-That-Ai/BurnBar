@@ -21,12 +21,12 @@ struct SpeedOptionsSheet: View {
     }
 
     private let options: [LocalOption] = [
-        LocalOption(id: "qwen3.5:9b",   size: "5.8 GB", description: "Best quality summaries"),
-        LocalOption(id: "qwen3.5:4b",   size: "2.6 GB", description: "Good balance of speed/quality"),
-        LocalOption(id: "qwen3.5:2b",   size: "1.5 GB", description: "Fast, lower quality"),
+        LocalOption(id: "qwen3.5:9b", size: "5.8 GB", description: "Best quality summaries"),
+        LocalOption(id: "qwen3.5:4b", size: "2.6 GB", description: "Good balance of speed/quality"),
+        LocalOption(id: "qwen3.5:2b", size: "1.5 GB", description: "Fast, lower quality"),
         LocalOption(id: "qwen3.5:0.8b", size: "522 MB", description: "Fastest, minimal quality"),
-        LocalOption(id: "llama3.2:3b",  size: "2.0 GB", description: "Meta Llama 3.2 alternative"),
-        LocalOption(id: "phi3.5:3.8b",  size: "2.2 GB", description: "Microsoft Phi-3.5 alternative"),
+        LocalOption(id: "llama3.2:3b", size: "2.0 GB", description: "Meta Llama 3.2 alternative"),
+        LocalOption(id: "phi3.5:3.8b", size: "2.2 GB", description: "Microsoft Phi-3.5 alternative")
     ]
 
     private var fasterOptions: [LocalOption] {

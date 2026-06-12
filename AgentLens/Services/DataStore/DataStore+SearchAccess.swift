@@ -460,7 +460,7 @@ extension DataStore {
                             let conversation = try dbQueue.read { db -> ConversationRecord? in
                                 try ConversationStore.fetchConversationRow(db, id: item.id)
                             }
-                            guard let conversation = conversation else { continue }
+                            guard let conversation else { continue }
                             jumpTargets.append(
                                 ConversationJumpTarget(
                                     conversation: conversation,

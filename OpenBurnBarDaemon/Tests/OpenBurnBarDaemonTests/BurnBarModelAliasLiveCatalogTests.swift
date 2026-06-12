@@ -71,7 +71,7 @@ final class BurnBarModelAliasLiveCatalogTests: XCTestCase {
         )
         let snapshot = try await liveCatalog.snapshot()
         let aliasRow = try XCTUnwrap(snapshot.models.first { $0.id == "my-opus" })
-        XCTAssertEqual(aliasRow.hidesBaseModel, true)
+        XCTAssertTrue(aliasRow.hidesBaseModel ?? false)
     }
 
     func testLiveCatalogDeprioritizesXAIWhenSlotQuotaBelowTwentyPercent() async throws {
@@ -175,8 +175,8 @@ final class BurnBarModelAliasLiveCatalogTests: XCTestCase {
 }
 
 private final class BlockingURLProtocol: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
     }

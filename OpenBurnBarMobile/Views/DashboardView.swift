@@ -223,11 +223,11 @@ struct DashboardView: View {
     }
 
     private var modeToggle: some View {
-        Button(action: {
+        Button {
             withAnimation(.spring(duration: 0.35)) {
                 displayMode = displayMode == .currency ? .tokens : .currency
             }
-        }) {
+        } label: {
             HStack(spacing: 4) {
                 Image(systemName: displayMode == .currency
                       ? "dollarsign.circle.fill"

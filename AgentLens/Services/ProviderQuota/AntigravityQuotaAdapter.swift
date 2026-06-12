@@ -24,7 +24,7 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
         ModelTier(name: "Gemini 3.1 Pro (Low)", windowCap: 300),
         ModelTier(name: "Claude Sonnet 4.6 (Thinking)", windowCap: 120),
         ModelTier(name: "Claude Opus 4.6 (Thinking)", windowCap: 60),
-        ModelTier(name: "GPT-OSS 120B (Medium)", windowCap: 240),
+        ModelTier(name: "GPT-OSS 120B (Medium)", windowCap: 240)
     ]
 
     static let defaultModelName = "Claude Opus 4.6 (Thinking)"
@@ -125,7 +125,7 @@ struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
             let usedCount = Double(eventsInWindow.count)
 
             // --- Compute resetsAt from the earliest event in the 5h window ---
-            var resetsAt: Date? = nil
+            var resetsAt: Date?
             if !eventsInWindow.isEmpty {
                 let sortedTimestamps = eventsInWindow.map { $0.timestamp }.sorted()
                 if let earliestTimestamp = sortedTimestamps.first {

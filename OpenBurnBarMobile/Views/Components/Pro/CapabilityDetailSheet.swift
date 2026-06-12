@@ -42,9 +42,9 @@ struct CloudCapability: Identifiable, Hashable {
             metric: "30 refreshes / day · 300 / month · no laptop required",
             scenario: "You're at the airport. Codex is dry. You tap one button on your iPhone — our hosted runner refreshes your quota, signed in to your account, and pings you when it's ready. Your Mac stays asleep.",
             proofPoints: [
-                .init(label: "DAILY",      value: "30 hosted refreshes"),
-                .init(label: "MONTHLY",    value: "300 (rollover)"),
-                .init(label: "AVG. TIME",  value: "12s end-to-end")
+                .init(label: "DAILY", value: "30 hosted refreshes"),
+                .init(label: "MONTHLY", value: "300 (rollover)"),
+                .init(label: "AVG. TIME", value: "12s end-to-end")
             ],
             stage: .quotaRefresh
         ),
@@ -56,9 +56,9 @@ struct CloudCapability: Identifiable, Hashable {
             metric: "iPhone → iPad → Mac · encrypted · sub-2-second sync",
             scenario: "You start a Hermes conversation on the train. Switch to your iPad at the café — every message, every tool call, every artefact is already there. Walk to your Mac. Same thread, same place in the scrollback.",
             proofPoints: [
-                .init(label: "TRANSPORT",  value: "AES + Apple Sign-In"),
-                .init(label: "SYNC",       value: "≈ 1.4s typical"),
-                .init(label: "RETENTION",  value: "Full history kept")
+                .init(label: "TRANSPORT", value: "AES + Apple Sign-In"),
+                .init(label: "SYNC", value: "≈ 1.4s typical"),
+                .init(label: "RETENTION", value: "Full history kept")
             ],
             stage: .crossDeviceResume
         ),
@@ -70,9 +70,9 @@ struct CloudCapability: Identifiable, Hashable {
             metric: "Every tool call · every chunk · every cost line",
             scenario: "“What did Claude burn last Wednesday during the auth refactor?” Type `auth refactor` — your full session log returns in milliseconds. Tool calls, generated diffs, token spend per turn. Searchable, replayable, on every device.",
             proofPoints: [
-                .init(label: "STORAGE",    value: "Encrypted at rest"),
-                .init(label: "QUERY",      value: "< 200 ms on-device"),
-                .init(label: "SCOPE",      value: "All sessions, forever")
+                .init(label: "STORAGE", value: "Encrypted at rest"),
+                .init(label: "QUERY", value: "< 200 ms on-device"),
+                .init(label: "SCOPE", value: "All sessions, forever")
             ],
             stage: .sessionSearch
         ),
@@ -84,9 +84,9 @@ struct CloudCapability: Identifiable, Hashable {
             metric: "Verified WebSocket · App Check + Apple JWS · sub-200ms",
             scenario: "You're at a coffee shop, your laptop is asleep at home. From your phone, you wake your Mac's Hermes, ask it to refactor a file, and stream the answer back to your hand. End-to-end signed. Nothing leaves your devices unencrypted.",
             proofPoints: [
-                .init(label: "TRUST",      value: "App Check + JWS"),
-                .init(label: "LATENCY",    value: "≈ 180 ms typical"),
-                .init(label: "FALLBACK",   value: "LAN if reachable")
+                .init(label: "TRUST", value: "App Check + JWS"),
+                .init(label: "LATENCY", value: "≈ 180 ms typical"),
+                .init(label: "FALLBACK", value: "LAN if reachable")
             ],
             stage: .remoteRelay
         )

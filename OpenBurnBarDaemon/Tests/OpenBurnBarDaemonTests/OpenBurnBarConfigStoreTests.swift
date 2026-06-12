@@ -133,7 +133,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
             XCTFail("Expected unsupported model error")
         } catch let error as BurnBarConfigStoreError {
             guard case .unsupportedModel(let providerID, let modelID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "zai")
             XCTAssertEqual(modelID, "pony-alpha-2")
@@ -156,7 +157,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
                 XCTFail("Expected invalid base URL error for \(blockedURL)")
             } catch let error as BurnBarConfigStoreError {
                 guard case .invalidBaseURL(let providerID) = error else {
-                    return XCTFail("Unexpected error for \(blockedURL): \(error)")
+                    XCTFail("Unexpected error for \(blockedURL): \(error)")
+                    return
                 }
                 XCTAssertEqual(providerID, "zai")
             }
@@ -246,7 +248,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
             XCTFail("Expected unreadable slot secret to fail the upsert.")
         } catch let error as BurnBarConfigStoreError {
             guard case .credentialReadbackFailed(let providerID, let slotID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "ollama")
             XCTAssertEqual(slotID, "gmail")
@@ -270,7 +273,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
             XCTFail("Expected empty slot credential to fail the upsert.")
         } catch let error as BurnBarConfigStoreError {
             guard case .missingCredential(let providerID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "ollama")
         }
@@ -631,11 +635,11 @@ private final class ClaudeOAuthRefreshURLProtocol: URLProtocol {
         requestBodies = []
     }
 
-    override class func canInit(with request: URLRequest) -> Bool {
+    override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "platform.claude.com"
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
         request
     }
 

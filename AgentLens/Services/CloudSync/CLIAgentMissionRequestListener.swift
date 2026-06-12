@@ -207,7 +207,8 @@ enum CLIAgentMissionRuntimePlanner {
         Commands allowed: \(commandsAllowed ? "yes" : "no")
         File edits allowed: \(fileEditsAllowed ? "yes" : "no")
 
-        Execute this as a concrete, useful mission packet. Inspect the repo or local data before making claims when commands are allowed. Produce actionable findings, acceptance criteria, validation commands, risks, and a mobile-readable result summary. If file edits are not allowed, do not modify files; return a patch plan instead. If code changes are warranted and file edits are allowed, keep them scoped and preserve unrelated work.
+        Execute this as a concrete, useful mission packet. Inspect the repo or local data before making claims when commands are allowed. Produce actionable findings, acceptance criteria, validation commands, risks, and a mobile-readable result summary. \
+        If file edits are not allowed, do not modify files; return a patch plan instead. If code changes are warranted and file edits are allowed, keep them scoped and preserve unrelated work.
 
         \(prompt)
         """
@@ -810,7 +811,7 @@ final class CLIAgentMissionRequestListener {
         let logger = self.logger
         let docID = document.documentID
         let cancellationListener = document.reference.addSnapshotListener { snapshot, _ in
-            guard let snapshot = snapshot, snapshot.exists else { return }
+            guard let snapshot, snapshot.exists else { return }
             let status = snapshot.data()?["status"] as? String
             if status == "cancelled" || status == "canceled" {
                 logger.warning("cancellation signal received for mission id=\(docID, privacy: .public)")

@@ -142,7 +142,7 @@ enum ClaudeCredentialsReader {
         let refreshToken = quotaNonEmpty(oauth["refreshToken"] as? String)
         let expiresAt: Date? = {
             if let ms = oauth["expiresAt"] as? Double { return Date(timeIntervalSince1970: ms / 1000) }
-            if let ms = oauth["expiresAt"] as? Int    { return Date(timeIntervalSince1970: Double(ms) / 1000) }
+            if let ms = oauth["expiresAt"] as? Int { return Date(timeIntervalSince1970: Double(ms) / 1000) }
             if let s = oauth["expiresAt"] as? String, let v = Double(s) {
                 return Date(timeIntervalSince1970: v / 1000)
             }

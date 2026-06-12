@@ -342,7 +342,7 @@ struct MercuryLiveStatusStrip: View {
 /// Shared chip button style — gives every chip the same glass capsule
 /// background, a subtle press scale, and a softly-tinted outline.
 private struct ChipButtonStyle: ButtonStyle {
-    var tint: Color = Color.white.opacity(0.18)
+    var tint = Color.white.opacity(0.18)
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

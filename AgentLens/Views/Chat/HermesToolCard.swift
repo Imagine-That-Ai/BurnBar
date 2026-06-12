@@ -66,7 +66,7 @@ struct HermesToolCard: View {
                         colors: [
                             DesignSystem.Colors.hermesMercury.opacity(0.08),
                             DesignSystem.Colors.hermesAureate.opacity(0.04),
-                            Color.clear,
+                            Color.clear
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing

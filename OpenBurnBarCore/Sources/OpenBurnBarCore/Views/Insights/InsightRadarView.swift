@@ -12,7 +12,7 @@ public struct InsightRadarView: View {
             ZStack {
                 gridRings(center: center, radius: radius)
                 axisLabels(center: center, radius: radius)
-                ForEach(Array(data.series.enumerated()), id: \.offset) { idx, series in
+                ForEach(Array(data.series.enumerated()), id: \.offset) { _, series in
                     let color = InsightFormatting.color(forHex: series.colorHex)
                         ?? InsightFormatting.color(forSeriesID: series.id)
                     polygon(values: series.values, center: center, radius: radius)

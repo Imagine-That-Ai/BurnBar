@@ -26,7 +26,7 @@ struct HourOfDayHeatStrip: View {
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(alignment: .leading) { hourCaption(0, alignment: .leading) }
-        .overlay(alignment: .center)  { hourCaption(12, alignment: .center) }
+        .overlay(alignment: .center) { hourCaption(12, alignment: .center) }
         .overlay(alignment: .trailing) { hourCaption(23, alignment: .trailing) }
     }
 

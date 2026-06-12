@@ -23,8 +23,7 @@ import Security
 /// under a single recursive lock — this makes the kyber replay-guard read-modify-write and
 /// the per-recipient session/identity writes atomic against concurrent decrypts.
 public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore,
-    KyberPreKeyStore, SessionStore
-{
+    KyberPreKeyStore, SessionStore {
     /// Out-of-band trust anchor for remote peer identities (F6). When set, the
     /// closure is the SOLE authority for `isTrustedIdentity`: it receives the
     /// peer's `ProtocolAddress` and the identity key the (untrusted) directory is
@@ -325,7 +324,7 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -339,7 +338,7 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
         ]
         var add = base
         add[kSecValueData as String] = data
@@ -360,7 +359,7 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -376,7 +375,7 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
         ]
         var add = base
         add[kSecValueData as String] = data
@@ -395,7 +394,7 @@ public final class OBBSignalProtocolStore: IdentityKeyStore, PreKeyStore, Signed
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
         ]
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {

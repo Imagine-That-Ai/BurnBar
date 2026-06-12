@@ -196,7 +196,6 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(workingDirectory, "/Users/test/project/Sources")
     }
 
-
     func test_runMigrationsSafely_integrityCheckFails_onCorruptedFile() throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -562,7 +561,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 cost,
                 Date(timeIntervalSince1970: 0),
                 Date(timeIntervalSince1970: 1),
-                Date(timeIntervalSince1970: 2),
+                Date(timeIntervalSince1970: 2)
             ]
         )
     }
@@ -603,7 +602,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 now,
                 now,
                 confidence,
-                providerID,
+                providerID
             ]
         )
     }
@@ -643,6 +642,6 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         "v32_switcher_profiles",
         "v33_backfill_cursors",
         "v34_vector_index_snapshots",
-        "v35_provider_accounts",
+        "v35_provider_accounts"
     ]
 }

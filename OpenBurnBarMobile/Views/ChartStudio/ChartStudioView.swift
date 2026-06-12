@@ -11,7 +11,7 @@ struct ChartStudioView: View {
     let digest: TrendDataDigest
     let hermesService: HermesService
     let onClose: () -> Void
-    var onMinimize: (() -> Void)? = nil
+    var onMinimize: (() -> Void)?
 
     @State private var store = ChartStudioStore()
     @State private var prompt: String = ""
@@ -281,9 +281,9 @@ struct ChartStudioView: View {
     private var canvas: some View {
         AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.heroCorner, padding: AuroraDesign.Layout.heroPadding) {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                if let error = error {
+                if let error {
                     errorView(error)
-                } else if let rendering = rendering {
+                } else if let rendering {
                     renderingView(rendering)
                 } else if isStreaming {
                     streamingView

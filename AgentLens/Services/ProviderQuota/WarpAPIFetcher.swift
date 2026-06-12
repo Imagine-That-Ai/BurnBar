@@ -121,15 +121,15 @@ enum WarpAPIFetcher {
                 "osContext": [
                     "category": "macOS",
                     "name": "macOS",
-                    "version": osVersionString,
-                ] as [String: Any],
-            ] as [String: Any],
+                    "version": osVersionString
+                ] as [String: Any]
+            ] as [String: Any]
         ]
 
         let body: [String: Any] = [
             "query": graphQLQuery,
             "variables": variables,
-            "operationName": "GetRequestLimitInfo",
+            "operationName": "GetRequestLimitInfo"
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

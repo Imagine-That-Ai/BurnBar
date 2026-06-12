@@ -976,7 +976,7 @@ final class SwitcherSettingsUITests: XCTestCase {
 
         XCTAssertEqual(displays.first?.label, "5h")
         XCTAssertEqual(displays.first?.remaining, "42%")
-        XCTAssertTrue(displays.first?.resetText.contains("resets") == true)
+        XCTAssertEqual(displays.first?.resetText.contains("resets"), true)
     }
 
     func test_refreshedBrowserProfileRecord_appliesDetectedChromeSessionDetails() {

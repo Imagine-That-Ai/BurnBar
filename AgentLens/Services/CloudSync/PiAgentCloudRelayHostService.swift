@@ -378,7 +378,7 @@ final class PiAgentCloudRelayHostService {
                 data["status"] = PiAgentRelayRequestStatus.claimed.rawValue
                 data["claimedBy"] = self.connectionID
                 return data as NSDictionary
-            }) { result, error in
+            }, completion: { result, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return
@@ -392,7 +392,7 @@ final class PiAgentCloudRelayHostService {
                     return
                 }
                 continuation.resume(returning: ClaimedRelayRequest(data: data))
-            }
+            })
         }
     }
 

@@ -26,9 +26,9 @@ final class FactoryDroidProviderExecutorTests: XCTestCase {
         XCTAssertTrue(body.contains("Factory answer"))
         XCTAssertEqual(runner.lastEnvironment?["FACTORY_API_KEY"], "fk-secret")
         XCTAssertEqual(runner.lastArguments?.prefix(2), ["exec", "--model"])
-        XCTAssertTrue(runner.lastArguments?.contains("--disabled-tools") == true)
-        XCTAssertFalse(runner.lastArguments?.contains("--auto") == true)
-        XCTAssertFalse(runner.lastArguments?.contains("--skip-permissions-unsafe") == true)
+        XCTAssertEqual(runner.lastArguments?.contains("--disabled-tools"), true)
+        XCTAssertEqual(runner.lastArguments?.contains("--auto"), false)
+        XCTAssertEqual(runner.lastArguments?.contains("--skip-permissions-unsafe"), false)
     }
 
     func testFactoryExecutorMapsStandardToDroidCoreDowngradeAsExhausted() async throws {
@@ -49,7 +49,8 @@ final class FactoryDroidProviderExecutorTests: XCTestCase {
             XCTFail("Expected Factory Standard downgrade to be rejected")
         } catch let error as BurnBarProviderExecutorError {
             guard case .upstreamError(let status, let body) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(status, 402)
             XCTAssertTrue(body.contains("Droid Core fallback is disabled"))
@@ -93,7 +94,8 @@ final class FactoryDroidProviderExecutorTests: XCTestCase {
             XCTFail("Expected Factory limit to be rejected")
         } catch let error as BurnBarProviderExecutorError {
             guard case .upstreamError(let status, let body) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(status, 402)
             XCTAssertFalse(body.contains("fk-secret"))

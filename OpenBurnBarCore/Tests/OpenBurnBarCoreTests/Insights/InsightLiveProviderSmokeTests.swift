@@ -212,6 +212,10 @@ final class InsightLiveProviderSmokeTests: XCTestCase {
             file: file,
             line: line
         )
-        print("LIVE_INSIGHTS_OK provider=\(provider) model=\(result.modelTag.modelID) findings=\(result.findings.count) recommendations=\(result.recommendations.count) widgets=\(result.generatedWidgets.count) inputTokens=\(result.tokenUsage?.inputTokens ?? -1) outputTokens=\(result.tokenUsage?.outputTokens ?? -1)")
+        print(
+            "LIVE_INSIGHTS_OK provider=\(provider) model=\(result.modelTag.modelID) findings=\(result.findings.count) " +
+                "recommendations=\(result.recommendations.count) widgets=\(result.generatedWidgets.count) " +
+                "inputTokens=\(result.tokenUsage?.inputTokens ?? -1) outputTokens=\(result.tokenUsage?.outputTokens ?? -1)"
+        )
     }
 }

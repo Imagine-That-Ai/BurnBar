@@ -57,7 +57,8 @@ final class BurnBarModelVariantConfigStoreTests: XCTestCase {
             XCTFail("Expected an unsupported model error")
         } catch let error as BurnBarConfigStoreError {
             guard case .unsupportedModel(let providerID, let modelID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "anthropic")
             XCTAssertEqual(modelID, "totally-fake-model")

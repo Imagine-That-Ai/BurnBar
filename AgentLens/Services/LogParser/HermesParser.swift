@@ -19,7 +19,7 @@ final class HermesParser: LogParser, Sendable {
         let formats = [
             "yyyy-MM-dd HH:mm:ss",
             "yyyy-MM-dd HH:mm:ss.SSSSSS",
-            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ss.SSS"
         ]
         return formats.map { format in
             let formatter = DateFormatter()
@@ -408,7 +408,7 @@ final class HermesParser: LogParser, Sendable {
             let projectName = scope.projectName(
                 candidates: [
                     stringValue(entry, key: "display_name"),
-                    stringValue(entry, key: "session_key"),
+                    stringValue(entry, key: "session_key")
                 ],
                 fallbackSource: stringValue(entry, key: "platform"),
                 fallbackSessionId: rawSessionId

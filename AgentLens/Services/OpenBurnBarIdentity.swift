@@ -7,25 +7,25 @@ enum OpenBurnBarIdentity {
     static let bundleIdentifier = "com.openburnbar.app"
     static let legacyBundleIdentifiers = [
         "com.burnbar.app",
-        "com.agentlens.app",
+        "com.agentlens.app"
     ]
 
     static let supportDirectoryName = "OpenBurnBar"
     static let legacySupportDirectoryNames = [
         "BurnBar",
-        "AgentLens",
+        "AgentLens"
     ]
 
     static let databaseFileName = "openburnbar.sqlite"
     static let legacyDatabaseFileNames = [
         "burnbar.sqlite",
-        "agentlens.sqlite",
+        "agentlens.sqlite"
     ]
 
     static let cursorConnectorKeychainService = "com.openburnbar.cursor-connector"
     static let legacyCursorConnectorKeychainServices = [
         "com.burnbar.cursor-connector",
-        "com.agentlens.cursor-connector",
+        "com.agentlens.cursor-connector"
     ]
     static let controllerRuntimeKeychainService = "com.openburnbar.controller-runtime"
     static let legacyControllerRuntimeKeychainServices = ["com.burnbar.controller-runtime"]
@@ -47,13 +47,13 @@ enum OpenBurnBarIdentity {
     static let dailyDigestNotificationIdentifier = "openburnbar.daily-digest"
     static let legacyDailyDigestNotificationIdentifiers = [
         "burnbar.daily-digest",
-        "agentlens.daily-digest",
+        "agentlens.daily-digest"
     ]
 
     static let deviceIDKey = "com.openburnbar.deviceId"
     static let legacyDeviceIDKeys = [
         "com.burnbar.deviceId",
-        "com.agentlens.deviceId",
+        "com.agentlens.deviceId"
     ]
 }
 
@@ -83,7 +83,7 @@ struct OpenBurnBarAppPaths {
         [
             databaseURL,
             URL(fileURLWithPath: databaseURL.path + "-wal"),
-            URL(fileURLWithPath: databaseURL.path + "-shm"),
+            URL(fileURLWithPath: databaseURL.path + "-shm")
         ]
     }
 

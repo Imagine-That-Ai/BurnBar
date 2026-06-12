@@ -153,7 +153,7 @@ actor RefreshOrchestrator {
         if let coordinator = cloudSyncCoordinator {
             await coordinator.syncProviderAccounts()
             await coordinator.syncQuotaSnapshots(Array(desktopSnapshots))
-        } else if let cloudSync = cloudSync {
+        } else if let cloudSync {
             await cloudSync.uploadProviderAccountsForIOS()
             await cloudSync.uploadQuotaSnapshotsForIOS(Array(desktopSnapshots))
         }
@@ -165,7 +165,7 @@ actor RefreshOrchestrator {
             await coordinator.syncSessionLogs()
             await coordinator.syncTextExpansionSnippets()
             await coordinator.syncCollaborationArtifacts()
-        } else if let cloudSync = cloudSync {
+        } else if let cloudSync {
             await cloudSync.uploadPending()
             await cloudSync.uploadPendingConversations()
             await cloudSync.uploadPendingSessionLogs()
