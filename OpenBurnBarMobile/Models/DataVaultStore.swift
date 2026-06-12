@@ -125,7 +125,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
     func deleteDomainData(domainId: String) async throws -> (firestoreDocs: Int, storageObjects: Int) {
         let result = try await functions.httpsCallable("deleteDomainData").call([
             "domainId": domainId,
-            "confirm": true,
+            "confirm": true
         ])
         guard let dict = result.data as? [String: Any],
               let deleted = dict["deleted"] as? [String: Any] else {
@@ -161,7 +161,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
     func setupRecovery(method: String, payload: [String: Any]) async throws -> String {
         let result = try await functions.httpsCallable("setupRecovery").call([
             "method": method,
-            "payload": payload,
+            "payload": payload
         ])
         guard let dict = result.data as? [String: Any],
               let recoveryId = dict["recoveryId"] as? String, !recoveryId.isEmpty else {
@@ -379,7 +379,7 @@ final class DataVaultStore {
                 "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
                 "wrappedVaultKey": wrapped.wrappedVaultKeyBase64,
                 "verificationHash": wrapped.verificationHash,
-                "keyVersion": CloudVaultCrypto.currentKeyVersion,
+                "keyVersion": CloudVaultCrypto.currentKeyVersion
             ])
         } catch {
             self.error = error.localizedDescription

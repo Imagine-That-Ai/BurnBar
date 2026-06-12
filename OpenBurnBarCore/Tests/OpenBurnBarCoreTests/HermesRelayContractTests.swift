@@ -304,7 +304,6 @@ final class HermesRelayContractTests: XCTestCase {
         XCTAssertEqual(ported.workingDirectory, "/tmp/app")
     }
 
-
     func testResumeLookupIDStripsArchivePrefix() {
         let now = Date(timeIntervalSince1970: 1_714_200_000)
         let live = CLIAgentSessionRecord(

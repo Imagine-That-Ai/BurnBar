@@ -101,7 +101,7 @@ struct CloudBadge: View {
     var size: Size = .medium
     /// Override the persisted style — used by the picker preview so each
     /// option can render the badge it represents.
-    var styleOverride: CloudBadgeStyle? = nil
+    var styleOverride: CloudBadgeStyle?
 
     @AppStorage(CloudBadgeDefaults.key) private var storedRaw: String = CloudBadgeStyle.defaultStyle.rawValue
 

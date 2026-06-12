@@ -13,9 +13,7 @@ final class ProviderSummaryStore {
 
     func load() async {
         isLoading = true; defer { isLoading = false }
-        do { summaries = try await reader.loadProviderSummaries(); lastError = nil; lastReadAt = Date() }
-        catch let CloudGatewayError.classified(c) { lastError = c }
-        catch { lastError = .other(message: error.localizedDescription) }
+        do { summaries = try await reader.loadProviderSummaries(); lastError = nil; lastReadAt = Date() } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
     }
     var isEmptyCloud: Bool { summaries.isEmpty && lastError == nil }
 }

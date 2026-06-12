@@ -45,7 +45,7 @@ final class ProviderCockpitParserTests: XCTestCase {
                 arguments: [
                     "goose-cockpit-1", "claude-sonnet-4", "Refactor the parser",
                     "/Users/dev/project-x", 1000, 500, 200, 50,
-                    "2026-05-20 10:00:00", "2026-05-20 10:05:00",
+                    "2026-05-20 10:00:00", "2026-05-20 10:05:00"
                 ]
             )
 

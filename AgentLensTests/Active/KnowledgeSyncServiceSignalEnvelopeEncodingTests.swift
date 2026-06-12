@@ -29,8 +29,8 @@ final class KnowledgeSyncServiceSignalEnvelopeEncodingTests: XCTestCase {
                 "docId": "pensieve-vector-2",
                 "field": "sealedCiphertext",
                 "mode": "at-rest",
-                "formatVersion": 1,
-            ],
+                "formatVersion": 1
+            ]
         ]
 
         let payload = try KnowledgeSyncService.encode(batch) { vector in

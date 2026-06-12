@@ -83,7 +83,7 @@ final class ContextPackServiceTests: XCTestCase {
             Fixtures.makeConversation(
                 id: "mid-1", sessionId: "s-mid-1",
                 projectName: "AnchorProject", daysOld: 5
-            ),
+            )
         ]
 
         let params = ContextPackAssemblyParams(
@@ -123,7 +123,7 @@ final class ContextPackServiceTests: XCTestCase {
                 startTime: Fixtures.daysAgo(3).addingTimeInterval(100),
                 endTime: Fixtures.daysAgo(3).addingTimeInterval(3700),
                 indexedAt: Fixtures.daysAgo(3).addingTimeInterval(7300)
-            ),
+            )
         ]
 
         let params = ContextPackAssemblyParams(referenceDate: Fixtures.referenceDate)
@@ -308,7 +308,7 @@ final class ContextPackServiceTests: XCTestCase {
         let candidates = [
             Fixtures.makeConversation(id: "exact-1", sessionId: "s-e1", daysOld: 1, fullText: body),
             Fixtures.makeConversation(id: "exact-2", sessionId: "s-e2", daysOld: 2, fullText: body),
-            Fixtures.makeConversation(id: "exact-3", sessionId: "s-e3", daysOld: 3, fullText: body),
+            Fixtures.makeConversation(id: "exact-3", sessionId: "s-e3", daysOld: 3, fullText: body)
         ]
 
         let params = ContextPackAssemblyParams(
@@ -328,7 +328,7 @@ final class ContextPackServiceTests: XCTestCase {
         let largeCandidates = [
             Fixtures.makeConversation(id: "over-1", sessionId: "s-o1", daysOld: 1, fullText: largeBody),
             Fixtures.makeConversation(id: "over-2", sessionId: "s-o2", daysOld: 2, fullText: largeBody),
-            Fixtures.makeConversation(id: "over-3", sessionId: "s-o3", daysOld: 3, fullText: largeBody),
+            Fixtures.makeConversation(id: "over-3", sessionId: "s-o3", daysOld: 3, fullText: largeBody)
         ]
 
         let packOver = ContextPackService.assemble(
@@ -384,7 +384,7 @@ final class ContextPackServiceTests: XCTestCase {
                 id: "s2", sessionId: "s2", daysOld: 2,
                 keyFiles: ["file2.swift", "file3.swift", "file4.swift"],
                 keyCommands: ["npm build", "swift test"]
-            ),
+            )
         ]
 
         let params = ContextPackAssemblyParams(referenceDate: Fixtures.referenceDate)
@@ -406,7 +406,7 @@ final class ContextPackServiceTests: XCTestCase {
                 projectName: "MyProject", daysOld: 1,
                 keyFiles: ["a.swift"],
                 summary: "Fixed a bug"
-            ),
+            )
         ]
 
         let params = ContextPackAssemblyParams(
@@ -433,7 +433,7 @@ final class ContextPackServiceTests: XCTestCase {
             Fixtures.makeConversation(id: "p-a", sessionId: "s-pa", projectName: "Proj", daysOld: 1),
             Fixtures.makeConversation(id: "p-b", sessionId: "s-pb", projectName: "Proj", daysOld: 3),
             Fixtures.makeConversation(id: "p-c", sessionId: "s-pc", projectName: "Proj", daysOld: 7),
-            Fixtures.makeConversation(id: "p-d", sessionId: "s-pd", projectName: "Proj", daysOld: 10),
+            Fixtures.makeConversation(id: "p-d", sessionId: "s-pd", projectName: "Proj", daysOld: 10)
         ]
 
         let params = ContextPackAssemblyParams(
@@ -449,7 +449,7 @@ final class ContextPackServiceTests: XCTestCase {
             [candidates[3], candidates[1], candidates[0], candidates[2]],
             [candidates[2], candidates[0], candidates[3], candidates[1]],
             [candidates[1], candidates[3], candidates[2], candidates[0]],
-            Array(candidates.reversed()),
+            Array(candidates.reversed())
         ]
 
         for (i, perm) in permutations.enumerated() {
@@ -494,7 +494,7 @@ final class ContextPackServiceTests: XCTestCase {
         // One session with a body exceeding 12k chars
         let hugeBody = String(repeating: "a", count: 50_000)
         let candidates = [
-            Fixtures.makeConversation(id: "huge-1", sessionId: "s-huge", daysOld: 1, fullText: hugeBody),
+            Fixtures.makeConversation(id: "huge-1", sessionId: "s-huge", daysOld: 1, fullText: hugeBody)
         ]
 
         let params = ContextPackAssemblyParams(

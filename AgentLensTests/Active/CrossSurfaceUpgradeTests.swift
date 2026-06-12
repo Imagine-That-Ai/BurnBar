@@ -626,16 +626,25 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             "Both paths must converge to exact confidence")
     }
 
+    /// Fixture row for multi-session convergence tests.
+    private struct ConvergenceSessionFixture {
+        var sessionId: String
+        var provider: AgentProvider
+        var model: String
+        var input: Int
+        var output: Int
+        var cost: Double
+    }
+
     /// Verifies that event-driven and reconciliation paths converge for multiple
     /// sessions with mixed exact/estimate provenance.
     func test_multiSession_eventAndReconciliation_convergeToIdenticalTotals() async throws {
         let baseDate = Date(timeIntervalSince1970: 1_743_900_000)
 
-        let sessions: [(sessionId: String, provider: AgentProvider, model: String,
-                         input: Int, output: Int, cost: Double)] = [
-            ("multi-conv-1", .claudeCode, "claude-4-sonnet", 2000, 1000, 0.10),
-            ("multi-conv-2", .claudeCode, "claude-4-sonnet", 3000, 1500, 0.15),
-            ("multi-conv-3", .factory, "glm-5", 4000, 2000, 0.08),
+        let sessions: [ConvergenceSessionFixture] = [
+            .init(sessionId: "multi-conv-1", provider: .claudeCode, model: "claude-4-sonnet", input: 2000, output: 1000, cost: 0.10),
+            .init(sessionId: "multi-conv-2", provider: .claudeCode, model: "claude-4-sonnet", input: 3000, output: 1500, cost: 0.15),
+            .init(sessionId: "multi-conv-3", provider: .factory, model: "glm-5", input: 4000, output: 2000, cost: 0.08)
         ]
 
         // Path A: direct exact insert
@@ -1108,6 +1117,16 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             "All-time summary must also reflect exact upgrade")
     }
 
+    /// Fixture row for mixed exact/estimate cross-provider summary tests.
+    private struct MixedProvenanceSessionFixture {
+        var sessionId: String
+        var provider: AgentProvider
+        var exact: Bool
+        var input: Int
+        var output: Int
+        var cost: Double
+    }
+
     /// Verifies that after an exact upgrade, provider/project/time-window filtered outputs
     /// and retrieval summaries are consistent (VAL-CROSS-010).
     func test_filteredAndRetrievalSummaries_consistentAfterUpgrade() async throws {
@@ -1119,11 +1138,11 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         let dateRange = windowStart...windowEnd
 
         // Mix of estimate and exact across providers
-        let sessions: [(sessionId: String, provider: AgentProvider, exact: Bool, input: Int, output: Int, cost: Double)] = [
-            ("multi-provider-1", AgentProvider.claudeCode, false, 500, 250, 0.025),
-            ("multi-provider-2", AgentProvider.claudeCode, true, 2000, 1000, 0.10),
-            ("multi-provider-3", AgentProvider.factory, false, 1000, 500, 0.04),
-            ("multi-provider-4", AgentProvider.factory, true, 2000, 1000, 0.08),
+        let sessions: [MixedProvenanceSessionFixture] = [
+            .init(sessionId: "multi-provider-1", provider: .claudeCode, exact: false, input: 500, output: 250, cost: 0.025),
+            .init(sessionId: "multi-provider-2", provider: .claudeCode, exact: true, input: 2000, output: 1000, cost: 0.10),
+            .init(sessionId: "multi-provider-3", provider: .factory, exact: false, input: 1000, output: 500, cost: 0.04),
+            .init(sessionId: "multi-provider-4", provider: .factory, exact: true, input: 2000, output: 1000, cost: 0.08)
         ]
 
         for s in sessions {

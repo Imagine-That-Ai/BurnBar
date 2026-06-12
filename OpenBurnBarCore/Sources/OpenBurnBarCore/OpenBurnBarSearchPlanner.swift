@@ -629,10 +629,8 @@ public struct BurnBarSearchPlan: Sendable, Hashable {
 
         if patterns.isEmpty,
            lower.contains("curse") || lower.contains("cuss") || lower.contains("profan") || lower.contains("swear") {
-            for w in Self.defaultStrongLanguageSamples {
-                if patterns.contains(w) == false {
-                    patterns.append(w)
-                }
+            for w in Self.defaultStrongLanguageSamples where patterns.contains(w) == false {
+                patterns.append(w)
             }
         }
 
@@ -1013,7 +1011,7 @@ public struct BurnBarQueryExpander {
         "knn": ["k nearest neighbors"],
         "rnn": ["recurrent neural network"],
         "cnn": ["convolutional neural network"],
-        "transformer": ["attention mechanism"],
+        "transformer": ["attention mechanism"]
     ]
 
     /// Common programming language abbreviations.
@@ -1038,7 +1036,7 @@ public struct BurnBarQueryExpander {
         "sh": ["shell", "bash"],
         "ps": ["powershell"],
         "vb": ["visual basic"],
-        "fs": ["f#", "f sharp"],
+        "fs": ["f#", "f sharp"]
     ]
 
     /// Synonyms for common technical terms to improve recall.
@@ -1062,7 +1060,7 @@ public struct BurnBarQueryExpander {
         "optimize": ["improve", "enhance", "tune", "accelerate"],
         "debug": ["troubleshoot", "diagnose", "investigate"],
         "feature": ["capability", "functionality", "function"],
-        "performance": ["speed", "latency", "throughput", "efficiency"],
+        "performance": ["speed", "latency", "throughput", "efficiency"]
     ]
 
     /// Expansion result containing original and expanded terms.
@@ -1243,11 +1241,9 @@ public struct BurnBarQueryExpander {
     public func expansionSummary(for query: String) -> String {
         let expansions = expandQuery(query)
         var lines: [String] = []
-        for result in expansions {
-            if result.expansions.count > 1 {
-                let expanded = result.expandedTerms.dropFirst().joined(separator: ", ")
-                lines.append("\"\(result.original)\" expanded to: \(expanded)")
-            }
+        for result in expansions where result.expansions.count > 1 {
+            let expanded = result.expandedTerms.dropFirst().joined(separator: ", ")
+            lines.append("\"\(result.original)\" expanded to: \(expanded)")
         }
         return lines.isEmpty ? "" : lines.joined(separator: "\n")
     }

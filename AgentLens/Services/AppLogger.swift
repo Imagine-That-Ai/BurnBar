@@ -49,7 +49,7 @@ public struct AppLogger: Sendable {
         "prompt", "message", "content", "body", "chatbody", "projectname", "model",
         "project_name", "model_name", "model_id", "path", "filepath", "file_path",
         "directory", "url", "home", "ssh_key", "key_path", "private_key",
-        "cert", "certificate", "session_log", "log_path", "db_path", "database_path",
+        "cert", "certificate", "session_log", "log_path", "db_path", "database_path"
     ]
 
     private static let truncatedValueSuffix = "...[TRUNCATED]"
@@ -59,7 +59,7 @@ public struct AppLogger: Sendable {
     private static let sensitiveValuePatterns: [String] = [
         "sk-", "bearer ", "token=", "apikey=", "secret=", "password=",
         "/Users/", "~", ".ssh", ".aws", ".env", "keychain", "BEGIN RSA",
-        "BEGIN OPENSSH", "-----BEGIN",
+        "BEGIN OPENSSH", "-----BEGIN"
     ]
     
     /// Sanitizes metadata before it leaves the process boundary (e.g. to Sentry).

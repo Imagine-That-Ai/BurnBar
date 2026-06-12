@@ -13,12 +13,12 @@ final class ComputerUseOpenTimestampsClientTests: XCTestCase {
         let client = ComputerUseOpenTimestampsClient()
         await assertThrowsAsync({
             _ = try await client.notarize(digest: Data(repeating: 0xAA, count: 64))
-        }) { error in
+        }, { error in
             guard case ComputerUseOpenTimestampsClient.ClientError.digestTooLong = error else {
                 XCTFail("expected digestTooLong, got \(error)")
                 return
             }
-        }
+        })
     }
 
     func testNotarizeHashesChainFileBytes() async throws {
@@ -106,8 +106,8 @@ private final class RecordingURLProtocol: URLProtocol {
         case failure(Error)
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         // URLProtocol can be invoked with the body either as

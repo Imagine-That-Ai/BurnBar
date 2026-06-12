@@ -24,8 +24,8 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
         StubURLProtocol.handler = { request in
             XCTAssertTrue(request.url?.absoluteString.contains("11434") ?? false,
                           "Only the local Ollama endpoint should be queried (no credentials configured).")
-            XCTAssertTrue(request.url?.path == "/api/tags",
-                          "Local discovery should use Ollama's canonical /api/tags endpoint.")
+            XCTAssertEqual(request.url?.path, "/api/tags",
+                           "Local discovery should use Ollama's canonical /api/tags endpoint.")
             let response = HTTPURLResponse(
                 url: request.url!,
                 statusCode: 200,
@@ -136,8 +136,8 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
 private final class StubURLProtocol: URLProtocol {
     nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         guard let handler = StubURLProtocol.handler else {

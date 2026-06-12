@@ -433,10 +433,8 @@ enum ContextPackService {
     static func dedupeOrdered(_ strings: [String]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
-        for s in strings {
-            if seen.insert(s).inserted {
-                result.append(s)
-            }
+        for s in strings where seen.insert(s).inserted {
+            result.append(s)
         }
         return result
     }
@@ -792,7 +790,7 @@ enum ProjectMemoryService {
                 points: [
                     ProjectMemoryVisualPoint(label: "Sessions", value: Double(Set(usages.map(\.sessionId)).count)),
                     ProjectMemoryVisualPoint(label: "Tokens", value: Double(totalTokens)),
-                    ProjectMemoryVisualPoint(label: "Spend", value: totalCost),
+                    ProjectMemoryVisualPoint(label: "Spend", value: totalCost)
                 ]
             )
         )

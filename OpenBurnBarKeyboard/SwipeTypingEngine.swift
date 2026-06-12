@@ -23,10 +23,8 @@ final class SwipeTypingEngine {
     /// De-duplicated path (consecutive duplicates removed).
     private var keyPath: [Character] {
         var result: [Character] = []
-        for key in visitedKeys {
-            if result.last != key {
-                result.append(key)
-            }
+        for key in visitedKeys where result.last != key {
+            result.append(key)
         }
         return result
     }

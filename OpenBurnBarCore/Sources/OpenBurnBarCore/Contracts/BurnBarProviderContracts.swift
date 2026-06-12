@@ -518,7 +518,6 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         disabledAdvertisedModelIDs = disabled.sorted()
     }
 
-
     /// Bulk variant of `setModelAdvertisement`: flip every supplied model id in
     /// a single mutation so an entire provider can be muted (or unmuted) at
     /// once, after which individual models can be toggled back on selectively.
@@ -946,7 +945,6 @@ public struct BurnBarProviderModelAliasMutationResponse: Codable, Hashable, Send
         self.alias = alias
     }
 }
-
 
 public struct BurnBarProviderModelDisplayNameSetRequest: Codable, Hashable, Sendable {
     public let providerID: String

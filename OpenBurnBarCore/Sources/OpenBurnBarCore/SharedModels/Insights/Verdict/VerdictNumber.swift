@@ -44,7 +44,7 @@ public struct VerdictNumber: Codable, Hashable, Sendable, Identifiable {
         self.rawValue = rawValue
         self.unit = unit
         self.delta = delta
-        self.sparkline = sparkline?.suffix(14).map { $0 }
+        self.sparkline = sparkline.map { Array($0.suffix(14)) }
         self.drillIntent = drillIntent
         self.drillPayload = drillPayload
     }

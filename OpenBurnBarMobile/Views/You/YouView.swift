@@ -503,10 +503,10 @@ private struct CloudMemberCrestRow: View {
     @State private var isPressed = false
 
     var body: some View {
-        Button(action: {
+        Button {
             Haptics.light()
             onTap()
-        }) {
+        } label: {
             HStack(spacing: MobileTheme.Spacing.lg) {
                 CloudBadge(size: .medium)
 

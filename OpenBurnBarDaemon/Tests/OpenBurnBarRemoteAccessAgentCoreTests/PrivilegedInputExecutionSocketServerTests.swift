@@ -99,11 +99,12 @@ final class PrivilegedInputExecutionSocketServerTests: XCTestCase {
         let received = TestEnvelopeRecorder()
         let server = try PrivilegedInputExecutionSocketServer(
             socketPath: socketPath,
-            codeSignatureValidator: { _ in }
-        ) { envelope in
-            received.record(envelope)
-            return PrivilegedInputDispatchResponse(ok: true)
-        }
+            codeSignatureValidator: { _ in },
+            handler: { envelope in
+                received.record(envelope)
+                return PrivilegedInputDispatchResponse(ok: true)
+            }
+        )
         server.start()
         defer { server.stop() }
 
@@ -127,11 +128,12 @@ final class PrivilegedInputExecutionSocketServerTests: XCTestCase {
             socketPath: socketPath,
             codeSignatureValidator: { _ in
                 throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: -1)
+            },
+            handler: { _ in
+                XCTFail("handler must never run for a rejected peer")
+                return PrivilegedInputDispatchResponse(ok: true)
             }
-        ) { _ in
-            XCTFail("handler must never run for a rejected peer")
-            return PrivilegedInputDispatchResponse(ok: true)
-        }
+        )
         server.start()
         defer { server.stop() }
 
@@ -154,8 +156,9 @@ final class PrivilegedInputExecutionSocketServerTests: XCTestCase {
         let socketPath = directory + "/input.sock"
         let server = try PrivilegedInputExecutionSocketServer(
             socketPath: socketPath,
-            codeSignatureValidator: { _ in }
-        ) { _ in PrivilegedInputDispatchResponse(ok: true) }
+            codeSignatureValidator: { _ in },
+            handler: { _ in PrivilegedInputDispatchResponse(ok: true) }
+        )
         defer { server.stop() }
 
         var nodeStat = stat()
@@ -187,7 +190,7 @@ final class TestEnvelopeRecorder: @unchecked Sendable {
 /// fail-closed behavior of the PRODUCTION code-signature validation against
 /// an unsigned (test) process — the in-process counterpart of the nightly
 /// privileged-socket red-team gate.
-final class PrivilegedInputExecutionSocketServerRealValidationTests: XCTestCase {
+final class PrivilegedInputSocketServerRealValidationTests: XCTestCase {
     private var temporaryDirectories: [String] = []
 
     override func tearDown() {

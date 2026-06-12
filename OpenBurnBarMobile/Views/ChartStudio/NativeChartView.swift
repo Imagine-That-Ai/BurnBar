@@ -177,7 +177,7 @@ struct NativeChartView: View {
             for point in series.points {
                 if point.x.asDate != nil { return .time }
                 if case .double = point.x { return .number }
-                if case .int = point.x    { return .number }
+                if case .int = point.x { return .number }
                 if case .string = point.x { return .category }
             }
         }

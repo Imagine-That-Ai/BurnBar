@@ -558,7 +558,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
                 "\(backend.displayName) must not interpolate mobile prompt text into the shell command."
             )
             XCTAssertTrue(plan.arguments.joined(separator: " ").contains("OPENBURNBAR_MISSION_PROMPT"))
-            XCTAssertTrue(plan.extraEnvironment["OPENBURNBAR_MISSION_PROMPT"]?.contains(hostilePrompt) == true)
+            XCTAssertEqual(plan.extraEnvironment["OPENBURNBAR_MISSION_PROMPT"]?.contains(hostilePrompt), true)
         }
     }
 

@@ -58,7 +58,7 @@ public final class MacAccessibilityInspector: @unchecked Sendable {
             Float(y),
             &element
         )
-        guard err == .success, let element = element else { return nil }
+        guard err == .success, let element else { return nil }
 
         let role = attributeString(element, kAXRoleAttribute as CFString)
         let subrole = attributeString(element, kAXSubroleAttribute as CFString)

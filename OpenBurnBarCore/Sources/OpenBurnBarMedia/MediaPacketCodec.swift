@@ -101,7 +101,7 @@ public struct MediaPacketCodec: Sendable {
         let pts = readUInt64BigEndian(from: normalized, at: headerStart + 10)
 
         var afterHeader = headerStart + MediaFrame.headerByteCount
-        var cursor: MediaFrame.CursorMetadata? = nil
+        var cursor: MediaFrame.CursorMetadata?
         if flags.contains(.hasCursorMetadata) {
             let cursorEnd = afterHeader + MediaFrame.cursorMetadataByteCount
             guard cursorEnd <= lengthPrefixBytes + totalPayloadCount else {

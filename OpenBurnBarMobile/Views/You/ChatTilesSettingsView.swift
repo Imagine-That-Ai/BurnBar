@@ -98,8 +98,6 @@ struct ChatTilesSettingsView: View {
         )
     }
 
-
-
     private func detailCopy(for runtime: AssistantRuntimeID) -> String {
         switch runtime {
         case .hermes:   return "Hosted AI assistant connected to your Mac."

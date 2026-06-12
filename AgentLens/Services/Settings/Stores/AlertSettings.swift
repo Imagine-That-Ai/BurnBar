@@ -7,7 +7,7 @@ import Foundation
 final class AlertSettings {
     private let persistence: SettingsPersistenceCoordinator
 
-    var costAlertThreshold: Double? = nil {
+    var costAlertThreshold: Double? {
         didSet {
             if let threshold = costAlertThreshold {
                 persistence.set(true, forKey: "hasCostAlertThreshold")

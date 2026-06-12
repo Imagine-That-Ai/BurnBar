@@ -294,7 +294,7 @@ public struct ControllerKeyKeychainPinBacking: ControllerKeyPinBacking {
             kSecAttrService as String: Self.service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -319,7 +319,7 @@ public struct ControllerKeyKeychainPinBacking: ControllerKeyPinBacking {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
         ]
         let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if updateStatus == errSecItemNotFound {
@@ -335,7 +335,7 @@ public struct ControllerKeyKeychainPinBacking: ControllerKeyPinBacking {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
     }

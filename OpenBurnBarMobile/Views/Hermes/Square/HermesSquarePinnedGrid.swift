@@ -24,9 +24,9 @@ struct HermesSquarePinnedGrid: View {
     var modelProvider: (AgentIdentity) -> AgentProvider? = { _ in nil }
     let onTap: (String) -> Void
     let onLongPress: (String) -> Void
-    var onMoveLeft: ((String) -> Void)? = nil
-    var onMoveRight: ((String) -> Void)? = nil
-    var onUnpin: ((String) -> Void)? = nil
+    var onMoveLeft: ((String) -> Void)?
+    var onMoveRight: ((String) -> Void)?
+    var onUnpin: ((String) -> Void)?
 
     private let columns = 4
     private let cellHeight: CGFloat = 78

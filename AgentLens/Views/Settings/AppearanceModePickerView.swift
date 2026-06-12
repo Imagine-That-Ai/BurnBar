@@ -40,7 +40,7 @@ struct AppearanceModePicker: View {
             bgHex: "0E0D0B", surfaceHex: "171510", elevatedHex: "201E18",
             borderHex: "302C22", textHex: "F0EBE2", textSecHex: "9A9088",
             accentHex: "E87060", accent2Hex: "F0C040"
-        ),
+        )
     ]
 
     var body: some View {

@@ -2452,7 +2452,6 @@ private enum HermesRealtimeRelayDateCodec {
     }
 }
 
-
 public struct HermesRealtimeRelayPayload: Codable, Sendable, Equatable {
     public var operation: HermesRelayOperation?
     public var method: String?

@@ -425,11 +425,11 @@ final class ActivityStore {
             result[model] = current
         }
 
-        return stats.sorted { lhs, rhs in
+        return stats.min { lhs, rhs in
             if lhs.value.tokens != rhs.value.tokens { return lhs.value.tokens > rhs.value.tokens }
             if lhs.value.cost != rhs.value.cost { return lhs.value.cost > rhs.value.cost }
             return lhs.value.lastSeen > rhs.value.lastSeen
-        }.first?.key ?? fallback
+        }?.key ?? fallback
     }
 
     nonisolated private static func latestNonBlank(

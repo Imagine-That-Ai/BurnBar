@@ -100,7 +100,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
     /// Keys that are considered sensitive
     private static let sensitiveKeys: Set<String> = [
         "API_KEY", "APIKEY", "SECRET", "TOKEN", "PASSWORD", "AUTH",
-        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY",
+        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY"
     ]
 
     // MARK: - Runtime Log Capture
@@ -114,7 +114,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
     /// - Debug descriptions of objects
     /// - Recovery suggestions from errors
     /// - Any string output produced during startup/sync flows
-    final class RuntimeLogCapture {
+    private final class RuntimeLogCapture {
         /// All captured log strings from runtime execution
         var capturedLogs: [String] = []
 
@@ -784,14 +784,12 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         logCapture.captureDebugDescription("redactedEnv: \(redactedEnv)")
 
         // Verify the redacted environment is safe to log
-        for (key, value) in redactedEnv {
-            if Self.sensitiveKeys.contains(where: { key.contains($0) }) {
-                XCTAssertEqual(
-                    value,
-                    "[REDACTED]",
-                    "Sensitive key '\(key)' should be redacted to [REDACTED], got: \(value)"
-                )
-            }
+        for (key, value) in redactedEnv where Self.sensitiveKeys.contains(where: { key.contains($0) }) {
+            XCTAssertEqual(
+                value,
+                "[REDACTED]",
+                "Sensitive key '\(key)' should be redacted to [REDACTED], got: \(value)"
+            )
         }
 
         let logs = logCapture.capturedLogs
@@ -809,7 +807,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
             ("token=TEST_TOKEN_PLACEHOLDER", "token pattern"),
             ("password=TEST_PASSWORD_PLACEHOLDER", "password pattern"),
             ("ANTHROPIC_API_KEY=TEST_ANTHROPIC_KEY_PLACEHOLDER", "Anthropic key pattern"),
-            ("Authorization: Bearer TEST_AUTH_HEADER_TOKEN", "Authorization header"),
+            ("Authorization: Bearer TEST_AUTH_HEADER_TOKEN", "Authorization header")
         ]
 
         var allRedactedLogs: [String] = []

@@ -44,7 +44,7 @@ final class AutoSummaryEngine {
     private(set) var summaryCurrentTitle: String = ""
     private(set) var summaryQueue: [SummaryQueueItem] = []
     /// Seconds remaining until the time limit, nil if no limit is set.
-    private(set) var summaryTimeRemaining: TimeInterval? = nil
+    private(set) var summaryTimeRemaining: TimeInterval?
 
     // MARK: - Internal State
 

@@ -1282,5 +1282,4 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
         return BurnBarControllerReviewRunRecordResponse(run: recordedRun, summary: summarySnapshot.summary)
     }
 
-
 }

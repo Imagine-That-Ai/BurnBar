@@ -45,7 +45,7 @@ final class BurnBarConnectorPlaneURLValidationTests: XCTestCase {
             "javascript:alert(1)",
             "data:text/html,hi",
             "ftp://evil.com",
-            "gopher://evil.com",
+            "gopher://evil.com"
         ] {
             XCTAssertThrowsError(
                 try BurnBarConnectorPlaneService.validatedConnectorBaseURL(blocked)
@@ -177,7 +177,7 @@ final class BurnBarConnectorPlaneURLValidationTests: XCTestCase {
             .schemeNotHTTPS("ftp"),
             .missingHost,
             .privateOrReservedIP("10.0.0.1"),
-            .cloudMetadataEndpoint,
+            .cloudMetadataEndpoint
         ]
         for error in cases {
             XCTAssertFalse(error.description.isEmpty, "Error description should not be empty: \(error)")

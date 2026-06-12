@@ -75,7 +75,8 @@ final class HermesInventoryImportServiceTests: XCTestCase {
         await service.importInventory()
 
         guard case let .failed(message) = service.phase else {
-            return XCTFail("Expected .failed phase, got \(service.phase)")
+            XCTFail("Expected .failed phase, got \(service.phase)")
+            return
         }
         XCTAssertTrue(message.contains("Not enough free space"), "Message should be actionable; got: \(message)")
         XCTAssertFalse(message.contains("SQLite"), "Preflight failure should not leak raw GRDB text; got: \(message)")

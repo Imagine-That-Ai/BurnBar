@@ -17,7 +17,7 @@ struct VelocityForecastCard: View {
 
     @Environment(\.mobileBackgroundVisibility) private var backgroundVisibility
     @Environment(\.scenePhase) private var scenePhase
-    @State private var nowTick: Date = Date()
+    @State private var nowTick = Date()
 
     var forecast: VelocityForecast? {
         // Compute live-day totals from usage events. The rollup "today"

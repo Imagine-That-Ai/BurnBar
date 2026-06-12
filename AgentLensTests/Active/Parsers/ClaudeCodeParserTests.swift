@@ -28,7 +28,10 @@ private final class ActiveTestableClaudeCodeParser: LogParser, Sendable {
                   files.contains(where: { $0.pathExtension == "jsonl" }) else {
                 continue
             }
-            return ParseResult(usages: [TokenUsage(provider: .claudeCode, sessionId: "fixture", projectName: projectDir.lastPathComponent, model: "claude", inputTokens: 1, outputTokens: 1, cacheCreationTokens: 0, cacheReadTokens: 0, costUSD: 0, startTime: Date(), endTime: Date())], conversations: [])
+            return ParseResult(
+                usages: [TokenUsage(provider: .claudeCode, sessionId: "fixture", projectName: projectDir.lastPathComponent, model: "claude", inputTokens: 1, outputTokens: 1, cacheCreationTokens: 0, cacheReadTokens: 0, costUSD: 0, startTime: Date(), endTime: Date())],
+                conversations: []
+            )
         }
 
         return ParseResult(usages: [], conversations: [])

@@ -74,13 +74,13 @@ struct QuotaView: View {
         .toolbar {
             if isJiggling {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(action: {
+                    Button {
                         Haptics.light()
                         let modes = QuotaPercentageDisplayMode.allCases
                         if let idx = modes.firstIndex(of: settings.percentageDisplayMode) {
                             settings.percentageDisplayMode = modes[(idx + 1) % modes.count]
                         }
-                    }) {
+                    } label: {
                         Image(systemName: "percent")
                             .foregroundStyle(MobileTheme.ember)
                     }
@@ -264,9 +264,9 @@ struct QuotaProviderCard: View {
     @State private var phase: CGFloat = 0
 
     var body: some View {
-        Button(action: {
+        Button {
             if !isJiggling { onTap() }
-        }) {
+        } label: {
             UnifiedGlassCard {
                 VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
                     headerRow
@@ -285,8 +285,7 @@ struct QuotaProviderCard: View {
             if isJiggling { startJiggling() }
         }
         .onChange(of: isJiggling) { _, newValue in
-            if newValue { startJiggling() }
-            else { phase = 0 }
+            if newValue { startJiggling() } else { phase = 0 }
         }
         .onLongPressGesture(minimumDuration: 0.5) {
             if !isJiggling {

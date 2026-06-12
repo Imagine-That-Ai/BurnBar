@@ -44,7 +44,7 @@ public final class SystemPermissionInboxStore {
     /// inline pill in the assistant message footer.
     public func latestItem(forThread threadID: String) -> SystemPermissionItem? {
         guard let bucket = itemsByThread[threadID], !bucket.isEmpty else { return nil }
-        return bucket.values.sorted { $0.lastChangedAt > $1.lastChangedAt }.first
+        return bucket.values.min { $0.lastChangedAt > $1.lastChangedAt }
     }
 
     public func items(forThread threadID: String) -> [SystemPermissionItem] {

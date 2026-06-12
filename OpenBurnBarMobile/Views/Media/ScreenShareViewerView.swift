@@ -101,7 +101,7 @@ struct ScreenShareViewerView: View {
     @State private var lastLayoutSize: CGSize?
     @State private var interactionMode: ScreenShareInteractionMode = .view
     @State private var isTyping = false
-    @State private var coPilotTarget: (normalizedX: Double, normalizedY: Double, viewPoint: CGPoint)? = nil
+    @State private var coPilotTarget: (normalizedX: Double, normalizedY: Double, viewPoint: CGPoint)?
     @State private var coPilotInstruction: String = ""
     @State private var coPilotRuntime: String = "hermes"
     @State private var panelOffset = CGSize(width: -18, height: 18)
@@ -730,11 +730,11 @@ struct ScreenShareViewerView: View {
         requireGestureFreshness: Bool
     ) -> HermesRealtimeRelayNormalizedRect? {
         guard let context = coordinator.latestFocusContext,
-              (requireGestureFreshness == false ||
+              requireGestureFreshness == false ||
               ScreenShareSmartTextTargetPolicy.acceptsFocusContext(
                 receivedAt: context.receivedAt,
                 gestureStartedAt: lastSmartTextGestureStartedAt
-              )),
+              ),
               ScreenShareAutoTypeFollowPolicy.isActiveTextFocus(
                 context: context,
                 selectedDisplayId: selectedDisplayId,
@@ -2393,8 +2393,8 @@ private struct MirrorControlPanel: View {
     // New tray states
     @State private var trayExpanded = false
     @State private var expansionDirection: ExpansionDirection = .upward
-    @State private var activeDragGroup: MirrorControlGroup? = nil
-    @State private var hoveredOptionIndex: Int? = nil
+    @State private var activeDragGroup: MirrorControlGroup?
+    @State private var hoveredOptionIndex: Int?
     @State private var gestureStartTime = Date()
 
     // Floating pill states
@@ -3435,7 +3435,7 @@ private struct TrackpadGlassSurface: View {
     let onScroll: (Double) -> Void
     @State private var lastTranslation: CGSize = .zero
     @State private var pressStartedAt: Date?
-    @State private var touchLocation: CGPoint? = nil
+    @State private var touchLocation: CGPoint?
     @State private var touchHistory: [CGPoint] = []
     @State private var showSensitivitySlider = false
 
@@ -4338,7 +4338,7 @@ final class ScreenShareViewerCoordinator: ObservableObject {
     typealias Stats = ScreenShareViewerPerformanceStats
 
     let displayLayer: AVSampleBufferDisplayLayer
-    @Published var lastStats: Stats = Stats()
+    @Published var lastStats = Stats()
     @Published var displayAspectRatio: CGFloat?
     @Published var latestFocusContext: ScreenShareSmartZoomContext?
     var longTermReferenceTokenHandler: ((MercuryLTRToken) async -> Void)?

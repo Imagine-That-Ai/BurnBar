@@ -84,7 +84,7 @@ enum MediaAttachmentManifestStore {
             "peerDeviceIdHash": peerDeviceIdHash(for: completion.connectionID),
             "direction": direction(for: completion.direction),
             "createdAt": Timestamp(date: completion.completedAt),
-            "schemaVersion": manifestSchemaVersion,
+            "schemaVersion": manifestSchemaVersion
         ]
         // Defensive: the cleartext name must never co-emit with the sealed one
         // (the rule rejects it). `sealText` already excludes it, but keep the

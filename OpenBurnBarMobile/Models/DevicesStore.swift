@@ -93,9 +93,7 @@ final class DevicesStore {
         let stale = staleDuplicates
         for device in stale {
             actionInFlightFor = device.id
-            do { try await trustGateway.revoke(deviceID: device.id) }
-            catch let CloudGatewayError.classified(c) { lastError = c }
-            catch { lastError = .other(message: error.localizedDescription) }
+            do { try await trustGateway.revoke(deviceID: device.id) } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
         }
         actionInFlightFor = nil
         await load()
@@ -103,29 +101,21 @@ final class DevicesStore {
 
     func load() async {
         isLoading = true; defer { isLoading = false }
-        do { rawDevices = try await reader.loadDevices(); lastError = nil }
-        catch let CloudGatewayError.classified(c) { lastError = c }
-        catch { lastError = .other(message: error.localizedDescription) }
+        do { rawDevices = try await reader.loadDevices(); lastError = nil } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
     }
 
     func bootstrapApproveSelf() async {
         actionInFlightFor = currentDevice?.id; defer { actionInFlightFor = nil }
-        do { try await trustGateway.bootstrapApproveSelf(); await load() }
-        catch let CloudGatewayError.classified(c) { lastError = c }
-        catch { lastError = .other(message: error.localizedDescription) }
+        do { try await trustGateway.bootstrapApproveSelf(); await load() } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
     }
 
     func renameSelf(_ newName: String) async {
         actionInFlightFor = currentDevice?.id; defer { actionInFlightFor = nil }
-        do { try await trustGateway.renameSelf(newName); await load() }
-        catch let CloudGatewayError.classified(c) { lastError = c }
-        catch { lastError = .other(message: error.localizedDescription) }
+        do { try await trustGateway.renameSelf(newName); await load() } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
     }
 
     func revoke(_ device: DeviceRecord) async {
         actionInFlightFor = device.id; defer { actionInFlightFor = nil }
-        do { try await trustGateway.revoke(deviceID: device.id); await load() }
-        catch let CloudGatewayError.classified(c) { lastError = c }
-        catch { lastError = .other(message: error.localizedDescription) }
+        do { try await trustGateway.revoke(deviceID: device.id); await load() } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
     }
 }

@@ -1072,7 +1072,7 @@ struct OpenBurnBarControllerRuntimeSnapshot: Codable, Equatable, Sendable {
     var questions: [OpenBurnBarControllerQuestion]
     var followups: [OpenBurnBarControllerFollowup]
     var missions: [OpenBurnBarControllerMissionRecord]
-    var nextActions: [OpenBurnBarControllerNextAction]? = nil
+    var nextActions: [OpenBurnBarControllerNextAction]?
     var recentEvents: [OpenBurnBarControllerEvent]
 
     static let empty = OpenBurnBarControllerRuntimeSnapshot(

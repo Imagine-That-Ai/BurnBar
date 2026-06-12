@@ -43,7 +43,7 @@ enum OpenBurnBarRuntime {
         loadedImagePaths: [String] = [],
         xCTestFrameworkLoaded: Bool? = nil
     ) -> Bool {
-        if let xCTestFrameworkLoaded = xCTestFrameworkLoaded, xCTestFrameworkLoaded {
+        if let xCTestFrameworkLoaded, xCTestFrameworkLoaded {
             return true
         }
 
@@ -59,7 +59,6 @@ enum OpenBurnBarRuntime {
             || loadedBundlePaths.contains { $0.hasSuffix(".xctest") }
             || loadedImagePaths.contains { $0.contains("libXCTestBundleInject.dylib") }
     }
-
 
     /// Allows tests / harnesses to opt **in** to the live menu-bar scene by setting
     /// `OPENBURNBAR_FORCE_LIVE_SCENE=1`. Default is opt-out (skip the live scene under tests).
@@ -424,7 +423,7 @@ final class WindowManager: ObservableObject {
     private var hermesSetupWindow: NSWindow?
     private var switcherOnboardingWindow: NSWindow?
     private var startupRecoveryWindow: NSWindow?
-    private var dashboardWindowLifecycleDelegate: DashboardWindowLifecycleDelegate?
+    private var dashboardWindowLifecycleHandler: DashboardWindowLifecycleDelegate?
 
     func openDashboard(
         dataStore: DataStore,
@@ -503,7 +502,7 @@ final class WindowManager: ObservableObject {
         window.delegate = lifecycleDelegate
 
         dashboardWindow = window
-        dashboardWindowLifecycleDelegate = lifecycleDelegate
+        dashboardWindowLifecycleHandler = lifecycleDelegate
     }
 
     func openSettings(
@@ -749,7 +748,7 @@ final class WindowManager: ObservableObject {
     // MARK: - Chat Pop-Out Window
 
     private static var chatPopOutWindow: NSWindow?
-    private static var chatPopOutDelegate: ChatPopOutWindowLifecycleDelegate?
+    private static var chatPopOutLifecycleHandler: ChatPopOutWindowLifecycleDelegate?
 
     @discardableResult
     func openChatPopOutWindow(
@@ -803,12 +802,12 @@ final class WindowManager: ObservableObject {
         let delegate = ChatPopOutWindowLifecycleDelegate { closed in
             WindowManager.persistChatPopOutFrame(closed.frame)
             WindowManager.chatPopOutWindow = nil
-            WindowManager.chatPopOutDelegate = nil
+            WindowManager.chatPopOutLifecycleHandler = nil
         }
         window.delegate = delegate
 
         WindowManager.chatPopOutWindow = window
-        WindowManager.chatPopOutDelegate = delegate
+        WindowManager.chatPopOutLifecycleHandler = delegate
         return window
     }
 
@@ -1612,11 +1611,13 @@ struct OpenBurnBarApp: App {
     }
     #endif
 
-    @SceneBuilder
     private var liveMenuBarScene: some Scene {
-        let _ = installCommandRouter()
-        let _ = OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
-        let _ = presentStartupRecoveryIfNeeded()
+        // Side effects stay OUTSIDE any result builder: a plain computed var
+        // sequences statements freely, where `@SceneBuilder` would try to type
+        // each one as a Scene component.
+        _ = installCommandRouter()
+        _ = OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
+        presentStartupRecoveryIfNeeded()
         // The AppDelegate owns the live status item + popover via AppKit
         // (`NSPopover` survives SwiftUI's macOS-26/Tahoe `MenuBarExtra(.window)`
         // regression). SceneBuilder still needs at least one Scene to satisfy
@@ -1624,7 +1625,7 @@ struct OpenBurnBarApp: App {
         // closes its own host window. macOS auto-shows the first scene on
         // launch, so we collapse that auto-opened window the instant SwiftUI
         // hands us the chance.
-        Window("OpenBurnBar", id: "openburnbar.background") {
+        return Window("OpenBurnBar", id: "openburnbar.background") {
             BackgroundSceneSentinel()
         }
         .windowResizability(.contentSize)

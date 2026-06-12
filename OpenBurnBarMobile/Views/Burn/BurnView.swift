@@ -23,7 +23,7 @@ struct BurnView: View {
     @State private var expandedProvider: String?
     @State private var sheetProvider: String?
     @State private var isEditing = false
-    @State private var draggingKey: String? = nil
+    @State private var draggingKey: String?
 
     /// Persisted per-device choice of how the Burn tab is visualized.
     @AppStorage("burnLayoutStyle") private var layoutRaw: String = BurnLayoutStyle.cards.rawValue
@@ -453,7 +453,7 @@ struct BurnView: View {
                         draggingKey = providerKey
                     }
                 }
-                .dropDestination(for: String.self) { items, _ in
+                .dropDestination(for: String.self) { _, _ in
                     draggingKey = nil
                     return true
                 } isTargeted: { isTargeted in
@@ -531,7 +531,7 @@ struct BurnView: View {
                     }
                 }
                 .frame(height: 180)
-                .chartBackground { chartProxy in
+                .chartBackground { _ in
                     GeometryReader { geometry in
                         let frame = geometry.frame(in: .local)
                         LinearGradient(
@@ -621,7 +621,7 @@ struct BurnView: View {
 
     private var quotaItems: [QuotaRingsConstellation.Item] {
         let grouped = quotaStore.snapshotsByProvider
-        return grouped.compactMap { (key, snaps) -> QuotaRingsConstellation.Item? in
+        return grouped.compactMap { key, snaps -> QuotaRingsConstellation.Item? in
             guard let provider = AgentProvider.fromProviderID(ProviderID(rawValue: key))
                 ?? AgentProvider.fromPersistedToken(key) else { return nil }
             let pressure = snaps
@@ -646,16 +646,16 @@ struct BurnView: View {
     private var allProviderKeys: [String] {
         var seen = Set<String>()
         var keys: [String] = []
-        for k in quotaStore.visibleProviders {
-            if seen.insert(k).inserted { keys.append(k) }
+        for k in quotaStore.visibleProviders where seen.insert(k).inserted {
+            keys.append(k)
         }
         let connectedProviderKeys = Set(
             quotaStore.accounts
                 .filter { $0.status != .deleted }
                 .map(\.providerID.rawValue)
         )
-        for k in connectedProviderKeys {
-            if seen.insert(k).inserted { keys.append(k) }
+        for k in connectedProviderKeys where seen.insert(k).inserted {
+            keys.append(k)
         }
         let order = quotaStore.providerOrderTokens
         return keys.sorted { lhs, rhs in

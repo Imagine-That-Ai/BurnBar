@@ -212,9 +212,9 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         // 1. Statusline bridge — most current when the CLI has fired
         //    at least once. Returns immediately if a fresh payload is
         //    available.
-        if (workingCredentials == nil || canUseLocalClaudeSessionForAccount),
-           (!accountScopedQuota || canUseLocalClaudeSessionForAccount),
-           (!usesScopedConfig || canUseLocalClaudeSessionForAccount),
+        if workingCredentials == nil || canUseLocalClaudeSessionForAccount,
+           !accountScopedQuota || canUseLocalClaudeSessionForAccount,
+           !usesScopedConfig || canUseLocalClaudeSessionForAccount,
            postInstallStatus.state == .ready,
            Self.isFreshStatuslineSnapshot(postInstallStatus.lastPayloadAt),
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
@@ -684,7 +684,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let candidates = [
             account["accountUuid"] as? String,
             account["emailAddress"] as? String,
-            account["organizationUuid"] as? String,
+            account["organizationUuid"] as? String
         ]
         return Set(candidates.compactMap { value in
             quotaNonEmpty(value)?.lowercased()
@@ -786,7 +786,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         ("seven_day", "7-day window", .rollingDays),
         ("seven_day_sonnet", "7-day Sonnet window", .rollingDays),
         ("seven_day_opus", "7-day Opus window", .rollingDays),
-        ("seven_day_oauth_apps", "7-day OAuth Apps window", .rollingDays),
+        ("seven_day_oauth_apps", "7-day OAuth Apps window", .rollingDays)
     ]
 
     private func claudeQuotaBuckets(from rateLimits: ClaudeRateLimits) -> [ProviderQuotaBucket] {

@@ -799,7 +799,6 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
                 switch approval.decision {
                 case .approve:
                     markPhoneFirstActionConfirmed()
-                    break
                 case .reject, .rejectAndHalt:
                     lastDeniedReason = .userRejected
                     let entry = appendAuditEntry(

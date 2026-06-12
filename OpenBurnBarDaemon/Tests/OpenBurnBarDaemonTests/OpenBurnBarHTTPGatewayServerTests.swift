@@ -573,7 +573,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
         XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("factory gateway ok"))
         XCTAssertEqual(runner.lastEnvironment?["FACTORY_API_KEY"], "fk-gateway")
-        XCTAssertTrue(runner.lastArguments?.contains("gpt-5.5") == true)
+        XCTAssertEqual(runner.lastArguments?.contains("gpt-5.5"), true)
     }
 
     func testFactoryStandardExhaustionHidesOnlyStandardModelAndKeepsDroidCoreCustomModels() async throws {
@@ -662,8 +662,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/chat/completions"])
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-key")
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"glm-5-turbo""#) == true)
-        XCTAssertFalse(upstreamRequests.last?.body.contains("zai/primary/glm-5-turbo") == true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"glm-5-turbo""#), true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains("zai/primary/glm-5-turbo"), false)
 
         let routeLog = try await harness.proxyRouteLogStore.recent(limit: 5)
         let entry = try XCTUnwrap(routeLog.first)
@@ -787,7 +787,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("degrade answered"))
         let chatRequests = GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/chat/completions" }
         XCTAssertEqual(chatRequests.count, 1)
-        XCTAssertTrue(chatRequests.first?.body.contains(#""model":"deepseek-chat""#) == true)
+        XCTAssertEqual(chatRequests.first?.body.contains(#""model":"deepseek-chat""#), true)
 
         let routeLog = try await harness.proxyRouteLogStore.recent(limit: 5)
         let entry = try XCTUnwrap(routeLog.first)
@@ -857,9 +857,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/chat/completions"])
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer deepseek-route-key")
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"deepseek-v4-pro""#) == true)
-        XCTAssertFalse(upstreamRequests.last?.body.contains(#""model":"deepseek-chat""#) == true)
-        XCTAssertFalse(upstreamRequests.last?.body.contains(#""model":"deepseek-v4-flash""#) == true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"deepseek-v4-pro""#), true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"deepseek-chat""#), false)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"deepseek-v4-flash""#), false)
     }
 
     func testGatewayModelsPrunesRemovedCredentialSlotsFromLiveCatalog() async throws {
@@ -1810,7 +1810,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(chatResponse.statusCode, 200, "body was: \(String(decoding: chatBody, as: UTF8.self))")
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/chat/completions"])
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"glm-5-live-new""#) == true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"glm-5-live-new""#), true)
     }
 
     func testGatewayModelsOnlyAdvertisesMiniMaxLiveModelsTheRouterCanServe() async throws {
@@ -1881,7 +1881,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(String(decoding: chatBody, as: UTF8.self).contains("minimax answered"))
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/chat/completions"])
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"MiniMax-M2.7""#) == true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"MiniMax-M2.7""#), true)
     }
 
     func testGatewayRejectsReasoningOnlyLengthResponsesInsteadOfReturningEmptyAssistantText() async throws {
@@ -1894,7 +1894,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
-            body: #"{"id":"chatcmpl-empty-reasoning","object":"chat.completion","model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"","reasoning_content":"thinking but no final answer yet"},"finish_reason":"length"}],"usage":{"prompt_tokens":3,"completion_tokens":8,"total_tokens":11}}"#
+            body: #"{"id":"chatcmpl-empty-reasoning","object":"chat.completion","model":"deepseek-v4-flash","# +
+                #""choices":[{"index":0,"message":{"role":"assistant","content":"","reasoning_content":"thinking but no final answer yet"},"finish_reason":"length"}],"usage":{"prompt_tokens":3,"completion_tokens":8,"total_tokens":11}}"#
         )
 
         let harness = try GatewayHarness(
@@ -2115,7 +2116,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/zen/go/v1/models", "/zen/go/v1/models", "/zen/go/v1/chat/completions"])
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer opencode-route-key")
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"kimi-k2.6""#) == true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"kimi-k2.6""#), true)
     }
 
     func testGatewayChatCompletionsRejectsUnadvertisedModelBeforeUpstream() async throws {
@@ -2535,7 +2536,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(bodyText.contains("data: [DONE]"), "body was: \(bodyText)")
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/responses", "/v1/chat/completions"])
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""stream":true"#) == true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""stream":true"#), true)
     }
 
     func testGatewayProxiesChatCompletionsAndFailsOverExhaustedPlan() async throws {
@@ -2987,8 +2988,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/search", "/search", "/api/chat"])
         XCTAssertEqual(upstreamRequests.prefix(2).map(\.query), ["c=cloud", "c=cloud"])
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"kimi-k2.6""#) == true)
-        XCTAssertFalse(upstreamRequests.last?.body.contains(#""kimi-k2.6:cloud""#) == true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"kimi-k2.6""#), true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""kimi-k2.6:cloud""#), false)
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-ollama-key")
     }
 
@@ -3112,7 +3113,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"kimi-k2.6:cloud","messages":[{"role":"system","content":"Use burnbar_runtime_status when asked what model you are using."},{"role":"user","content":"What model are ye?"}],"stream":true,"tools":[{"type":"function","function":{"name":"burnbar_runtime_status","description":"Return selected model.","parameters":{"type":"object","properties":{},"required":[]}}}],"tool_choice":"auto"}"#.utf8)
+            body: Data((#"{"model":"kimi-k2.6:cloud","messages":[{"role":"system","content":"Use burnbar_runtime_status when asked what model you are using."},{"role":"user","content":"What model are ye?"}],"stream":true,"# +
+                #""tools":[{"type":"function","function":{"name":"burnbar_runtime_status","description":"Return selected model.","parameters":{"type":"object","properties":{},"required":[]}}}],"tool_choice":"auto"}"#).utf8)
         )
 
         XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
@@ -3126,8 +3128,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/search", "/api/chat"])
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""tools""#) == true)
-        XCTAssertFalse(upstreamRequests.last?.body.contains(#""tool_choice""#) == true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""tools""#), true)
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""tool_choice""#), false)
     }
 
     func testGatewayConvertsOpenAIToolReplayArgumentsForOllamaNativeChat() async throws {
@@ -3156,7 +3158,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"kimi-k2.6:cloud","messages":[{"role":"user","content":"What model are ye?"},{"role":"assistant","content":null,"tool_calls":[{"id":"call_ollama_0","type":"function","function":{"name":"burnbar_runtime_status","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_ollama_0","content":"{\"assistant\":\"Hermes\",\"model\":\"kimi-k2.6:cloud\",\"status\":\"online\"}"}],"stream":true,"tools":[{"type":"function","function":{"name":"burnbar_runtime_status","description":"Return selected model.","parameters":{"type":"object","properties":{},"required":[]}}}],"tool_choice":"auto"}"#.utf8)
+            body: Data((#"{"model":"kimi-k2.6:cloud","messages":[{"role":"user","content":"What model are ye?"},{"role":"assistant","content":null,"tool_calls":[{"id":"call_ollama_0","type":"function","function":{"name":"burnbar_runtime_status","arguments":"{}"}}]},"# +
+                #"{"role":"tool","tool_call_id":"call_ollama_0","content":"{\"assistant\":\"Hermes\",\"model\":\"kimi-k2.6:cloud\",\"status\":\"online\"}"}],"stream":true,"# +
+                #""tools":[{"type":"function","function":{"name":"burnbar_runtime_status","description":"Return selected model.","parameters":{"type":"object","properties":{},"required":[]}}}],"tool_choice":"auto"}"#).utf8)
         )
 
         XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
@@ -4937,12 +4941,12 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         requests = []
     }
 
-    override class func canInit(with request: URLRequest) -> Bool {
+    override static func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }
         return host == "gateway-upstream.test" || host == "ollama.com"
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
         request
     }
 

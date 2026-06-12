@@ -137,7 +137,10 @@ public actor BurnBarGatewayModelHealthStore {
             // + system guard) on this OAuth route, so the public Messages
             // API has nothing more to gate on — a 429 here is a genuine
             // usage signal, not a "you're not Claude Code" rejection.
-            return "\(route.providerDisplayName) Claude Max account '\(accountLabel)' returned HTTP 429 for \(modelID). BurnBar already identifies as Claude Code on this route, so this is most likely a Claude Max usage cap (Anthropic's public Messages API returns an opaque rate_limit_error without distinguishing quota from other gating). BurnBar will stop advertising this model for this account until the cooldown passes; choose another advertised model or wait for the Claude Max window to reset."
+            return "\(route.providerDisplayName) Claude Max account '\(accountLabel)' returned HTTP 429 for \(modelID). " +
+                "BurnBar already identifies as Claude Code on this route, so this is most likely a Claude Max usage cap " +
+                "(Anthropic's public Messages API returns an opaque rate_limit_error without distinguishing quota from other gating). " +
+                "BurnBar will stop advertising this model for this account until the cooldown passes; choose another advertised model or wait for the Claude Max window to reset."
         }
         if let upstreamMessage,
            !upstreamMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

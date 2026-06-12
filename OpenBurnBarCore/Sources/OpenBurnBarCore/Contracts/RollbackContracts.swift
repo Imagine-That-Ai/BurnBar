@@ -173,7 +173,7 @@ public enum RollbackPlanner {
             return sorted
         case .singleFile(let path):
             // First snapshot (newest-first iteration) that touched the path.
-            return sorted.filter { $0.touchedFiles.contains(path) }.prefix(1).map { $0 }
+            return Array(sorted.filter { $0.touchedFiles.contains(path) }.prefix(1))
         case .lastN(let count):
             return Array(sorted.prefix(max(0, count)))
         }

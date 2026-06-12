@@ -36,6 +36,9 @@ final class DataControlCenterViewModel {
 
         var id: String { domain.id }
         var title: String { domain.title }
+        /// True when the domain holds at least one record (the record COUNT,
+        /// not a collection — guards SwiftLint's empty_count rewrites).
+        var hasRecords: Bool { count >= 1 }
         var tier: EncryptionTier { domain.encryptionTier }
         var retention: String { domain.retention }
 
@@ -345,7 +348,7 @@ final class DataControlCenterViewModel {
                 "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
                 "wrappedVaultKey": wrapped.wrappedVaultKeyBase64,
                 "verificationHash": wrapped.verificationHash,
-                "keyVersion": CloudVaultCrypto.currentKeyVersion,
+                "keyVersion": CloudVaultCrypto.currentKeyVersion
             ])
         } catch {
             actionError = Self.userFacing(error)

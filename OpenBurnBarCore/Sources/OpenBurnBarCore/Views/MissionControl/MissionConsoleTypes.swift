@@ -705,7 +705,7 @@ public enum MissionConsoleFormatting {
 
     public static func relativeTime(_ date: Date, reference: Date = Date()) -> String {
         let delta = reference.timeIntervalSince(date)
-        if delta < 5  { return "just now" }
+        if delta < 5 { return "just now" }
         if delta < 60 { return "\(Int(delta))s ago" }
         if delta < 3_600 { return "\(Int(delta / 60))m ago" }
         if delta < 86_400 { return "\(Int(delta / 3_600))h ago" }

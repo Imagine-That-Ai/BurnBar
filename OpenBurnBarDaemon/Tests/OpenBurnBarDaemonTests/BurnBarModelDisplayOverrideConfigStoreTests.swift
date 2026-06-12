@@ -60,7 +60,8 @@ final class BurnBarModelDisplayOverrideConfigStoreTests: XCTestCase {
             XCTFail("Expected an invalid display name error")
         } catch let error as BurnBarConfigStoreError {
             guard case .invalidModelDisplayName(let modelID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(modelID, "claude-opus-4-7")
         }

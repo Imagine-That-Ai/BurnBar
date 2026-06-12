@@ -157,7 +157,7 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         let unrelatedAnonymousFrame = CGRect(x: 3306, y: 0, width: 38, height: 30)
         let displayBounds = [
             CGRect(x: 0, y: 0, width: 1728, height: 1117),
-            CGRect(x: 1728, y: 0, width: 1920, height: 1080),
+            CGRect(x: 1728, y: 0, width: 1920, height: 1080)
         ]
 
         let mirroredFrames = OpenBurnBarMenuExtraClickFallback.mirroredFrames(

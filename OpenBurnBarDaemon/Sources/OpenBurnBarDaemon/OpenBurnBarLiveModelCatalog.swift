@@ -910,9 +910,9 @@ public struct BurnBarLiveModelCatalog: Sendable {
 
         var allDiscovered: [DiscoveredModel] = []
         var seenIDs = Set<String>()
-        var cursor: String? = nil
+        var cursor: String?
         var pagesRemaining = 10  // Safety limit: max 10 pages (1000 models)
-        var lastError: String? = nil
+        var lastError: String?
 
         repeat {
             var endpoint = baseURL.appending(path: "models")

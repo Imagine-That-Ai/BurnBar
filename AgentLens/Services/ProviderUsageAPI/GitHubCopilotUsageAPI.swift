@@ -146,7 +146,7 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
                 for modelEntry in modelBreakdown {
                     let model = modelEntry["name"] as? String ?? "copilot"
                     let totalTokens = modelEntry["total_tokens"] as? Int ?? 0
-                    let _ = modelEntry["avg_tokens_per_request"] as? Int
+                    _ = modelEntry["avg_tokens_per_request"] as? Int
                     let requests = modelEntry["total_engaged_users"] as? Int ?? 1
 
                     guard totalTokens > 0 else { continue }

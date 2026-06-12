@@ -146,7 +146,7 @@ struct MediaPermissionsView: View {
                     label: "Camera",
                     status: camera,
                     isInflight: isRequestingCamera
-                ),
+                )
             ],
             actionTitle: videoActionTitle,
             actionStyle: (mic == .allowed && camera == .allowed) ? .none : .prominent,

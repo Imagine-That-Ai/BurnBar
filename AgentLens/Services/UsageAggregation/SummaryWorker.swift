@@ -102,7 +102,7 @@ actor SummaryWorker {
                                 context: [
                                     "conversationId": conversation.id,
                                     "provider": result.provider.rawValue,
-                                    "model": result.model,
+                                    "model": result.model
                                 ]
                             )
                         }
@@ -143,7 +143,7 @@ actor SummaryWorker {
                             context: [
                                 "conversationId": conversation.id,
                                 "provider": result.provider.rawValue,
-                                "model": result.model,
+                                "model": result.model
                             ]
                         )
                     }
@@ -178,7 +178,7 @@ actor SummaryWorker {
                             context: [
                                 "conversationId": conversation.id,
                                 "provider": result.provider.rawValue,
-                                "model": result.model,
+                                "model": result.model
                             ]
                         )
                     }
@@ -218,7 +218,7 @@ actor SummaryWorker {
                                 context: [
                                     "conversationId": conversation.id,
                                     "provider": result.provider.rawValue,
-                                    "model": result.model,
+                                    "model": result.model
                                 ]
                             )
                         }
@@ -254,7 +254,7 @@ actor SummaryWorker {
                             context: [
                                 "conversationId": conversation.id,
                                 "provider": result.provider.rawValue,
-                                "model": result.model,
+                                "model": result.model
                             ]
                         )
                     }
@@ -293,7 +293,7 @@ actor SummaryWorker {
                             context: [
                                 "conversationId": conversation.id,
                                 "provider": result.provider.rawValue,
-                                "model": result.model,
+                                "model": result.model
                             ]
                         )
                     }

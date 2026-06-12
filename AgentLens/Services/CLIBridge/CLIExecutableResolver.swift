@@ -200,7 +200,7 @@ struct CLIExecutableResolver: Sendable {
             "/usr/local/bin",
             "/usr/bin",
             "/bin",
-            "\(homeDirectory)/.local/bin",
+            "\(homeDirectory)/.local/bin"
         ]
 
         if let executablePath {

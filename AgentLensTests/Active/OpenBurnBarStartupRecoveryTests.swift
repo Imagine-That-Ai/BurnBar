@@ -38,7 +38,7 @@ final class OpenBurnBarStartupRecoveryTests: XCTestCase {
         XCTAssertEqual(paths.databaseSidecarURLs.map(\.lastPathComponent), [
             "openburnbar.sqlite",
             "openburnbar.sqlite-wal",
-            "openburnbar.sqlite-shm",
+            "openburnbar.sqlite-shm"
         ])
     }
 
@@ -47,7 +47,7 @@ final class OpenBurnBarStartupRecoveryTests: XCTestCase {
         try seedDatabaseSidecars(paths: paths, namesAndContents: [
             "openburnbar.sqlite": "db",
             "openburnbar.sqlite-wal": "wal",
-            "openburnbar.sqlite-shm": "shm",
+            "openburnbar.sqlite-shm": "shm"
         ])
 
         let result = try OpenBurnBarStartupRecovery.archiveDatabaseSidecars(
@@ -60,7 +60,7 @@ final class OpenBurnBarStartupRecoveryTests: XCTestCase {
         XCTAssertEqual(Set(result.archivedFiles.map(\.lastPathComponent)), [
             "openburnbar.sqlite",
             "openburnbar.sqlite-wal",
-            "openburnbar.sqlite-shm",
+            "openburnbar.sqlite-shm"
         ])
         for sourceURL in paths.databaseSidecarURLs {
             XCTAssertFalse(fileManager.fileExists(atPath: sourceURL.path), "Expected source sidecar to be removed: \(sourceURL.path)")
@@ -89,7 +89,7 @@ final class OpenBurnBarStartupRecoveryTests: XCTestCase {
         let paths = try makePaths()
         try seedDatabaseSidecars(paths: paths, namesAndContents: [
             "openburnbar.sqlite": "db",
-            "openburnbar.sqlite-wal": "wal",
+            "openburnbar.sqlite-wal": "wal"
         ])
         try "not a directory".write(
             to: paths.startupRecoveryDirectory,

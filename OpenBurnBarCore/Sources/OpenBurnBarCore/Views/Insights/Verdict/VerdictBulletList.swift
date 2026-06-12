@@ -89,7 +89,9 @@ public struct VerdictBulletRow: View {
     }
 
     private func citationChip(_ citation: InsightCitation) -> some View {
-        Button(action: { onCitationTap(citation) }) {
+        Button {
+            onCitationTap(citation)
+        } label: {
             Text(citation.label)
                 .font(UnifiedDesignSystem.Typography.tiny)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
@@ -104,7 +106,9 @@ public struct VerdictBulletRow: View {
     }
 
     private func acceptButton(_ action: VerdictAcceptAction) -> some View {
-        Button(action: { onAcceptAction(action) }) {
+        Button {
+            onAcceptAction(action)
+        } label: {
             HStack(spacing: 4) {
                 Text(action.label)
                     .font(UnifiedDesignSystem.Typography.caption)

@@ -436,11 +436,9 @@ final class SearchIndexStore: Sendable {
                 if oldIDs != newIDs {
                     // New IDs not in old set: insert these new chunks
                     let idsOnlyInNew = newIDs.subtracting(oldIDs)
-                    for chunk in newByHash[hash]! {
-                        if idsOnlyInNew.contains(chunk.id) {
-                            try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
-                            actualAdded += 1
-                        }
+                    for chunk in newByHash[hash]! where idsOnlyInNew.contains(chunk.id) {
+                        try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
+                        actualAdded += 1
                     }
                 }
             }

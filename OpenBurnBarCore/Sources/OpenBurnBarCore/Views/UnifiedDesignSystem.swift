@@ -7,30 +7,30 @@ public enum UnifiedDesignSystem {
 
     // MARK: - Colors
     public enum Colors {
-        public static let ember   = Color(editorial: DesignSystemTokens.emberEditorial,  light: DesignSystemTokens.emberLight,  dark: DesignSystemTokens.emberDark)
-        public static let amber   = Color(editorial: DesignSystemTokens.amberEditorial,  light: DesignSystemTokens.amberLight,  dark: DesignSystemTokens.amberDark)
-        public static let blaze   = Color(editorial: DesignSystemTokens.blazeEditorial,  light: DesignSystemTokens.blazeLight,  dark: DesignSystemTokens.blazeDark)
+        public static let ember   = Color(editorial: DesignSystemTokens.emberEditorial, light: DesignSystemTokens.emberLight, dark: DesignSystemTokens.emberDark)
+        public static let amber   = Color(editorial: DesignSystemTokens.amberEditorial, light: DesignSystemTokens.amberLight, dark: DesignSystemTokens.amberDark)
+        public static let blaze   = Color(editorial: DesignSystemTokens.blazeEditorial, light: DesignSystemTokens.blazeLight, dark: DesignSystemTokens.blazeDark)
         public static let whimsy  = Color(editorial: DesignSystemTokens.whimsyEditorial, light: DesignSystemTokens.whimsyLight, dark: DesignSystemTokens.whimsyDark)
 
-        public static let background      = Color(editorial: DesignSystemTokens.backgroundEditorial,      light: DesignSystemTokens.backgroundLight,      dark: DesignSystemTokens.backgroundDark)
-        public static let surface         = Color(editorial: DesignSystemTokens.surfaceEditorial,         light: DesignSystemTokens.surfaceLight,         dark: DesignSystemTokens.surfaceDark)
+        public static let background      = Color(editorial: DesignSystemTokens.backgroundEditorial, light: DesignSystemTokens.backgroundLight, dark: DesignSystemTokens.backgroundDark)
+        public static let surface         = Color(editorial: DesignSystemTokens.surfaceEditorial, light: DesignSystemTokens.surfaceLight, dark: DesignSystemTokens.surfaceDark)
         public static let surfaceElevated = Color(editorial: DesignSystemTokens.surfaceElevatedEditorial, light: DesignSystemTokens.surfaceElevatedLight, dark: DesignSystemTokens.surfaceElevatedDark)
-        public static let border          = Color(editorial: DesignSystemTokens.borderEditorial,          light: DesignSystemTokens.borderLight,          dark: DesignSystemTokens.borderDark)
-        public static let borderSubtle    = Color(editorial: DesignSystemTokens.borderSubtleEditorial,    light: DesignSystemTokens.borderSubtleLight,    dark: DesignSystemTokens.borderSubtleDark)
+        public static let border          = Color(editorial: DesignSystemTokens.borderEditorial, light: DesignSystemTokens.borderLight, dark: DesignSystemTokens.borderDark)
+        public static let borderSubtle    = Color(editorial: DesignSystemTokens.borderSubtleEditorial, light: DesignSystemTokens.borderSubtleLight, dark: DesignSystemTokens.borderSubtleDark)
 
-        public static let textPrimary   = Color(editorial: DesignSystemTokens.textPrimaryEditorial,   light: DesignSystemTokens.textPrimaryLight,   dark: DesignSystemTokens.textPrimaryDark)
+        public static let textPrimary   = Color(editorial: DesignSystemTokens.textPrimaryEditorial, light: DesignSystemTokens.textPrimaryLight, dark: DesignSystemTokens.textPrimaryDark)
         public static let textSecondary = Color(editorial: DesignSystemTokens.textSecondaryEditorial, light: DesignSystemTokens.textSecondaryLight, dark: DesignSystemTokens.textSecondaryDark)
-        public static let textMuted     = Color(editorial: DesignSystemTokens.textMutedEditorial,     light: DesignSystemTokens.textMutedLight,     dark: DesignSystemTokens.textMutedDark)
+        public static let textMuted     = Color(editorial: DesignSystemTokens.textMutedEditorial, light: DesignSystemTokens.textMutedLight, dark: DesignSystemTokens.textMutedDark)
 
         public static let success = Color(editorial: DesignSystemTokens.successEditorial, light: DesignSystemTokens.successLight, dark: DesignSystemTokens.successDark)
         public static let warning = Color(editorial: DesignSystemTokens.warningEditorial, light: DesignSystemTokens.warningLight, dark: DesignSystemTokens.warningDark)
-        public static let error   = Color(editorial: DesignSystemTokens.errorEditorial,   light: DesignSystemTokens.errorLight,   dark: DesignSystemTokens.errorDark)
+        public static let error   = Color(editorial: DesignSystemTokens.errorEditorial, light: DesignSystemTokens.errorLight, dark: DesignSystemTokens.errorDark)
         public static let accent  = ember
 
         public static let hermesMercury  = Color(editorial: DesignSystemTokens.hermesMercuryEditorial, light: DesignSystemTokens.hermesMercuryLight, dark: DesignSystemTokens.hermesMercuryDark)
         public static let hermesAureate  = Color(editorial: DesignSystemTokens.hermesAureateEditorial, light: DesignSystemTokens.hermesAureateLight, dark: DesignSystemTokens.hermesAureateDark)
 
-        public static let chatUserStroke      = Color(editorial: DesignSystemTokens.chatUserStrokeEditorial,      light: DesignSystemTokens.chatUserStrokeLight,      dark: DesignSystemTokens.chatUserStrokeDark)
+        public static let chatUserStroke      = Color(editorial: DesignSystemTokens.chatUserStrokeEditorial, light: DesignSystemTokens.chatUserStrokeLight, dark: DesignSystemTokens.chatUserStrokeDark)
         public static let chatAssistantStroke = Color(editorial: DesignSystemTokens.chatAssistantStrokeEditorial, light: DesignSystemTokens.chatAssistantStrokeLight, dark: DesignSystemTokens.chatAssistantStrokeDark)
 
         // MARK: - Provider Colors
@@ -49,7 +49,7 @@ public enum UnifiedDesignSystem {
                 p,
                 a,
                 p.opacity(0.6),
-                a.opacity(0.5),
+                a.opacity(0.5)
             ]
         }
 

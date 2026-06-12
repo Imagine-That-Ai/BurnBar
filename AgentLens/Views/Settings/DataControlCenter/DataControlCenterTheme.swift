@@ -52,8 +52,8 @@ enum PensieveTheme {
     // MARK: Tier palette (from PensieveTokens — colorTier*)
 
     static let serverReadable = color(PensieveTokens.colorTierServerReadable, fallback: DesignSystem.Colors.amber)
-    static let zeroAccess     = color(PensieveTokens.colorTierZeroAccess,     fallback: DesignSystem.Colors.textMuted)
-    static let endToEnd       = color(PensieveTokens.colorTierEndToEnd,       fallback: DesignSystem.Colors.teal)
+    static let zeroAccess     = color(PensieveTokens.colorTierZeroAccess, fallback: DesignSystem.Colors.textMuted)
+    static let endToEnd       = color(PensieveTokens.colorTierEndToEnd, fallback: DesignSystem.Colors.teal)
 
     /// The single source of truth for a domain's tier accent. Every tier badge,
     /// chart tint, and inspector ring reads through here so the registry's
@@ -98,12 +98,12 @@ enum PensieveTheme {
     // MARK: Mercury / basin substance (from PensieveTokens — colorMercury*)
 
     static let mercuryBright = color(PensieveTokens.colorMercuryBright, fallback: DesignSystem.Colors.hermesMercury)
-    static let mercuryCore   = color(PensieveTokens.colorMercuryCore,   fallback: DesignSystem.Colors.hermesMercury)
-    static let mercuryDeep   = color(PensieveTokens.colorMercuryDeep,   fallback: DesignSystem.Colors.textMuted)
+    static let mercuryCore   = color(PensieveTokens.colorMercuryCore, fallback: DesignSystem.Colors.hermesMercury)
+    static let mercuryDeep   = color(PensieveTokens.colorMercuryDeep, fallback: DesignSystem.Colors.textMuted)
 
     // MARK: Keys / CTA (from PensieveTokens — colorBrass*)
 
-    static let brassCore   = color(PensieveTokens.colorBrassCore,   fallback: DesignSystem.Colors.ember)
+    static let brassCore   = color(PensieveTokens.colorBrassCore, fallback: DesignSystem.Colors.ember)
     static let brassBright = color(PensieveTokens.colorBrassBright, fallback: DesignSystem.Colors.amber)
 
     /// Wax-crimson — destructive ONLY (panic, delete). Mapped from the seal

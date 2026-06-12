@@ -224,7 +224,7 @@ enum FactoryDashboardScraper {
         // Try token count: "X tokens" or "X / Y tokens"
         if let usedStr = firstCapture(in: html, pattern: #"([0-9,]+)\s*(?:/\s*([0-9,]+)\s*)?tokens"#, options: [.caseInsensitive]) {
             let parts = usedStr.components(separatedBy: "/").map { $0.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespaces) }
-            let used = parts.count > 0 ? Double(parts[0]) : nil
+            let used = !parts.isEmpty ? Double(parts[0]) : nil
             let limit = parts.count > 1 ? Double(parts[1]) : nil
             let pct: Double? = {
                 if let u = used, let l = limit, l > 0 { return (u / l) * 100 }
@@ -360,7 +360,7 @@ enum FactoryDashboardScraper {
             json["accountEmail"],
             (json["user"] as? [String: Any])?["email"],
             (json["account"] as? [String: Any])?["email"],
-            (json["organization"] as? [String: Any])?["email"],
+            (json["organization"] as? [String: Any])?["email"]
         ]
         return candidates
             .compactMap { $0 as? String }

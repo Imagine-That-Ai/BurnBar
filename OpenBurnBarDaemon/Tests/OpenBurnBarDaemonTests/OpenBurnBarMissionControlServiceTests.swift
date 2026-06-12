@@ -798,7 +798,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             return
         }
         XCTAssertEqual(projectedMission.status, .inProgress)
-        XCTAssertEqual(projectedMission.approval.approved, true)
+        XCTAssertTrue(projectedMission.approval.approved)
         XCTAssertEqual(projectedMission.takeoverHistory?.count, 1)
 
         let closureQuestions = after.questions.filter {
@@ -893,9 +893,9 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
 
         XCTAssertEqual(stringValue(projected.metadata["team_owner_id"]), "bob")
         XCTAssertEqual(stringValue(projected.metadata["team_assignee_id"]), "worker-b")
-        XCTAssertEqual(boolValue(projected.metadata["role_can_approve"]), false)
-        XCTAssertEqual(boolValue(projected.metadata["role_can_transfer"]), true)
-        XCTAssertEqual(boolValue(projected.metadata["role_can_answer_closure"]), true)
+        XCTAssertFalse(boolValue(projected.metadata["role_can_approve"]) ?? true)
+        XCTAssertTrue(boolValue(projected.metadata["role_can_transfer"]) ?? false)
+        XCTAssertTrue(boolValue(projected.metadata["role_can_answer_closure"]) ?? false)
         XCTAssertEqual(stringValue(projected.metadata["audit_event_id"]), "audit-transfer-2")
         XCTAssertEqual(stringValue(projected.metadata["audit_summary"]), "ownership transferred from alice to bob")
 
@@ -1141,7 +1141,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertTrue(prLinkage.isMerged)
         XCTAssertEqual(prLinkage.mergeCommitSHA, "abc123def")
         XCTAssertEqual(stringValue(refreshedMission.metadata["pr_state"]), "merged")
-        XCTAssertEqual(boolValue(refreshedMission.metadata["pr_is_merged"]), true)
+        XCTAssertTrue(boolValue(refreshedMission.metadata["pr_is_merged"]) ?? false)
 
         let pendingQuestions = try await harness.service.questionsList(
             BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 200)
@@ -1158,7 +1158,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
 
         let launches = await launcher.launches
         XCTAssertEqual(launches.count, 1)
-        XCTAssertTrue(launches.first?.prompt.contains("OpenBurnBar mission execution for project apollo.") == true)
+        XCTAssertEqual(launches.first?.prompt.contains("OpenBurnBar mission execution for project apollo."), true)
         XCTAssertEqual(boolValue(launches.first?.metadata["missionExecution"]), true)
     }
 
@@ -1252,7 +1252,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(created.mission.status, .awaitingApproval, "Mission status must be awaiting_approval on creation")
 
         // - approval.approved=false
-        XCTAssertEqual(created.mission.approval.approved, false, "Mission approval.approved must be false on creation")
+        XCTAssertFalse(created.mission.approval.approved, "Mission approval.approved must be false on creation")
         XCTAssertNil(created.mission.approval.approvedAt, "Mission approval.approvedAt must be nil on creation")
         XCTAssertNil(created.mission.approval.approvedBy, "Mission approval.approvedBy must be nil on creation")
         XCTAssertNil(created.mission.approval.note, "Mission approval.note must be nil on creation")
@@ -1278,7 +1278,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
         let missionID = try XCTUnwrap(created.mission.id)
         XCTAssertEqual(created.mission.status, .awaitingApproval)
-        XCTAssertEqual(created.mission.approval.approved, false)
+        XCTAssertFalse(created.mission.approval.approved)
 
         // VAL-DAEMON-002: daemon.mission.approve records actor/note/timestamp and transitions
         // mission to approved unless mission is already cancelled.
@@ -1292,7 +1292,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
 
         // Verify approval metadata is stamped
-        XCTAssertEqual(approved.mission.approval.approved, true, "Mission must be approved")
+        XCTAssertTrue(approved.mission.approval.approved, "Mission must be approved")
         XCTAssertEqual(approved.mission.approval.approvedBy, "operator-alice", "approvedBy must match actor")
         XCTAssertEqual(approved.mission.approval.note, "Looks good, proceed with caution.", "note must match")
         XCTAssertNotNil(approved.mission.approval.approvedAt, "approvedAt must be set")
@@ -1766,7 +1766,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
         let missionID = try XCTUnwrap(created.mission.id)
         XCTAssertEqual(created.mission.status, .awaitingApproval)
-        XCTAssertEqual(created.mission.approval.approved, false)
+        XCTAssertFalse(created.mission.approval.approved)
 
         // Attempt to dispatch - should fail
         do {
@@ -1953,7 +1953,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             )
         )
         let missionID = try XCTUnwrap(created.mission.id)
-        XCTAssertEqual(created.mission.approval.approved, false)
+        XCTAssertFalse(created.mission.approval.approved)
 
         // Attempt to dispatch — must fail with missionNotApproved BEFORE calling launcher
         do {
@@ -2646,7 +2646,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Initial approval")
         )
         XCTAssertEqual(approved.mission.status, .approved)
-        XCTAssertEqual(approved.mission.approval.approved, true)
+        XCTAssertTrue(approved.mission.approval.approved)
 
         // Cancel the mission
         let cancelled = try await harness.service.missionCancel(
@@ -2662,7 +2662,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         // VAL-DAEMON-002 note: Approval preserves cancelled status
         // The approval metadata is updated but status remains cancelled
         XCTAssertEqual(reApproved.mission.status, .cancelled, "Cancelled mission must remain cancelled even after approval attempt")
-        XCTAssertEqual(reApproved.mission.approval.approved, true, "Approval metadata should still be set to true")
+        XCTAssertTrue(reApproved.mission.approval.approved, "Approval metadata should still be set to true")
         XCTAssertEqual(reApproved.mission.approval.approvedBy, "operator", "Approval actor should be recorded")
         XCTAssertNotNil(reApproved.mission.approval.approvedAt, "Approval timestamp should be recorded")
     }
@@ -2832,7 +2832,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertTrue(launchedReview, "Expected one scheduled review launch before timeout.")
         XCTAssertEqual(launches.count, 1)
         XCTAssertEqual(launches.first?.modelID, "glm-5")
-        XCTAssertTrue(launches.first?.prompt.contains("OpenBurnBar daily review for project Apollo") == true)
+        XCTAssertEqual(launches.first?.prompt.contains("OpenBurnBar daily review for project Apollo"), true)
 
         let refreshedProjects = try await harness.service.controllerProjects(
             BurnBarControllerProjectsListRequest(includePaused: true, limit: 20)
@@ -2980,7 +2980,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let launchesAfterFirstCycle = await launcher.launches
         XCTAssertEqual(launchesAfterFirstCycle.count, 1)
         XCTAssertEqual(launchesAfterFirstCycle.first?.modelID, "glm-5")
-        XCTAssertTrue(launchesAfterFirstCycle.first?.prompt.contains("OpenBurnBar daily review for project Apollo") == true)
+        XCTAssertEqual(launchesAfterFirstCycle.first?.prompt.contains("OpenBurnBar daily review for project Apollo"), true)
         XCTAssertEqual(stringValue(launchesAfterFirstCycle.first?.metadata["controller_review_origin"]), "scheduled")
         XCTAssertNotNil(stringValue(launchesAfterFirstCycle.first?.metadata["scheduled_review_task_id"]))
         XCTAssertEqual(
@@ -2991,8 +2991,9 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             stringArrayValue(launchesAfterFirstCycle.first?.metadata["notification_intent_channels"]),
             ["local", "telegram"]
         )
-        XCTAssertTrue(
-            stringValue(launchesAfterFirstCycle.first?.metadata["notification_intent_dedupe_key"])?.contains("apollo") == true
+        XCTAssertEqual(
+            stringValue(launchesAfterFirstCycle.first?.metadata["notification_intent_dedupe_key"])?.contains("apollo"),
+            true
         )
 
         try await harness.service.runTransportCycle(now: now.addingTimeInterval(60))
@@ -3094,11 +3095,11 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(stringValue(refreshed.mission?.results.first?.metadata["provider_id"]), "zai")
         XCTAssertEqual(numberValue(refreshed.mission?.results.first?.metadata["input_tokens"]), 800)
         XCTAssertEqual(numberValue(refreshed.mission?.metadata["total_tokens"]), 1_060)
-        XCTAssertTrue(refreshed.mission?.results.first?.evidenceRefs.contains(runID.rawValue) == true)
+        XCTAssertEqual(refreshed.mission?.results.first?.evidenceRefs.contains(runID.rawValue), true)
 
         let launches = await launcher.launches
         XCTAssertEqual(launches.count, 1)
-        XCTAssertTrue(launches.first?.prompt.contains("OpenBurnBar mission execution for project orion.") == true)
+        XCTAssertEqual(launches.first?.prompt.contains("OpenBurnBar mission execution for project orion."), true)
         XCTAssertEqual(boolValue(launches.first?.metadata["missionExecution"]), true)
     }
 
@@ -3193,19 +3194,19 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(refreshed.mission?.takeoverHistory?.count, 1)
         XCTAssertEqual(refreshed.mission?.takeoverHistory?.first?.status, .launched)
         XCTAssertEqual(refreshed.mission?.packets.count, 2)
-        XCTAssertTrue(refreshed.mission?.packets.contains(where: { $0.runID == takeoverRunID }) == true)
+        XCTAssertEqual(refreshed.mission?.packets.contains(where: { $0.runID == takeoverRunID }), true)
 
         try await harness.service.runTransportCycle(now: now.addingTimeInterval(90))
 
         refreshed = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
         XCTAssertEqual(refreshed.mission?.takeoverHistory?.first?.status, .completed)
         XCTAssertEqual(refreshed.mission?.packets.count, 2)
-        XCTAssertTrue(refreshed.mission?.results.contains(where: { $0.runID == takeoverRunID }) == true)
+        XCTAssertEqual(refreshed.mission?.results.contains(where: { $0.runID == takeoverRunID }), true)
 
         let launches = await launcher.launches
         XCTAssertEqual(launches.count, 2)
         XCTAssertEqual(boolValue(launches.last?.metadata["autoTakeover"]), true)
-        XCTAssertTrue(launches.last?.prompt.contains("OpenBurnBar auto-takeover for mission Recover the rollout packet") == true)
+        XCTAssertEqual(launches.last?.prompt.contains("OpenBurnBar auto-takeover for mission Recover the rollout packet"), true)
     }
 
     // MARK: - VAL-EXEC-004: Auto-takeover triggers only for qualifying source runs
@@ -4176,7 +4177,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(numberValue(refreshed.mission?.metadata["total_tokens"]), 1_060)
 
         // Evidence reference to the run
-        XCTAssertTrue(refreshed.mission?.results.first?.evidenceRefs.contains(runID.rawValue) == true)
+        XCTAssertEqual(refreshed.mission?.results.first?.evidenceRefs.contains(runID.rawValue), true)
     }
 
     // MARK: - VAL-EXEC-012: Run journal captures deterministic replayable execution timeline
@@ -4850,7 +4851,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let finalState = await scheduler.currentState()
 
         // VAL-EXEC-013: DAG completion should mark critical path as complete
-        XCTAssertTrue(finalState.criticalPath?.isComplete == true, "Critical path should be marked complete")
+        XCTAssertEqual(finalState.criticalPath?.isComplete, true, "Critical path should be marked complete")
         XCTAssertEqual(finalState.phase, .completed, "Scheduler should be in completed state")
     }
 

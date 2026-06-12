@@ -9,7 +9,7 @@ struct CodexQuotaAdapter: ProviderQuotaAdapter {
         let codexConfigURL = Self.codexConfigURL(context: context)
         let candidateDirectories = [
             codexConfigURL.appendingPathComponent("sessions", isDirectory: true),
-            codexConfigURL.appendingPathComponent("archived_sessions", isDirectory: true),
+            codexConfigURL.appendingPathComponent("archived_sessions", isDirectory: true)
         ]
 
         let freshnessCutoff = Date().addingTimeInterval(-CodexQuotaScanPolicy.freshnessWindow)

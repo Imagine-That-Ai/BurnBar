@@ -10,7 +10,7 @@ final class AssistantModelMergerTests: XCTestCase {
     func test_dropsHermesSelfLoopFromLiveRelay() {
         let live = [
             opt("hermes-agent", provider: "hermes"),
-            opt("claude-opus-4-7", provider: "anthropic"),
+            opt("claude-opus-4-7", provider: "anthropic")
         ]
         let rows = AssistantModelMerger.merge(
             runtime: .hermes,
@@ -26,7 +26,7 @@ final class AssistantModelMergerTests: XCTestCase {
         let live = [
             opt("pi-agent", provider: "pi"),
             opt("pi", provider: "pi"),
-            opt("kimi-k2-6", provider: "kimi"),
+            opt("kimi-k2-6", provider: "kimi")
         ]
         let rows = AssistantModelMerger.merge(
             runtime: .pi,
@@ -40,7 +40,7 @@ final class AssistantModelMergerTests: XCTestCase {
     func test_dropsOpenClawSelfLoop() {
         let live = [
             opt("openclaw", provider: "openclaw"),
-            opt("qwen3-coder:30b", provider: "ollama"),
+            opt("qwen3-coder:30b", provider: "ollama")
         ]
         let rows = AssistantModelMerger.merge(
             runtime: .openClaw,
@@ -55,7 +55,7 @@ final class AssistantModelMergerTests: XCTestCase {
         // `hermes-mini` is a hypothetical real model — the guard must be
         // an exact match on the placeholder token, not a prefix strip.
         let live = [
-            cat("hermes-mini", provider: "hermes"),
+            cat("hermes-mini", provider: "hermes")
         ]
         let rows = AssistantModelMerger.merge(
             runtime: .hermes,
@@ -232,7 +232,7 @@ final class AssistantModelMergerTests: XCTestCase {
         let catalog = [
             cat("claude-opus-4-7", provider: "anthropic"),
             cat("gpt-5-5", provider: "openai"),
-            cat("kimi-k2-6", provider: "kimi"),
+            cat("kimi-k2-6", provider: "kimi")
         ]
         let rows = AssistantModelMerger.merge(
             runtime: .hermes,

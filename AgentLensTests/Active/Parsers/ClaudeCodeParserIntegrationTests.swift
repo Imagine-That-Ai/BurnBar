@@ -7,7 +7,7 @@ import XCTest
 @MainActor
 final class ClaudeCodeParserIntegrationTests: XCTestCase {
 
-    var harness: ParserIntegrationTestHarness!
+    private var harness: ParserIntegrationTestHarness!
 
     override func setUp() async throws {
         try await super.setUp()

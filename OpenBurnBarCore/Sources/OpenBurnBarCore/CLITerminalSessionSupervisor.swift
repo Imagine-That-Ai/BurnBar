@@ -57,7 +57,7 @@ public enum CLIQuotaExhaustionClassifier {
             "credit balance is too low",
             "billing quota exceeded",
             "out of limit",
-            "out of limits",
+            "out of limits"
         ]
 
         let rateLimitPatterns = [
@@ -71,7 +71,7 @@ public enum CLIQuotaExhaustionClassifier {
             "weekly limit reached",
             "monthly limit reached",
             "monthly credit limit reached",
-            "5 hour limit reached",
+            "5 hour limit reached"
         ]
 
         let cliSpecificPatterns: [String]
@@ -80,45 +80,45 @@ public enum CLIQuotaExhaustionClassifier {
             cliSpecificPatterns = [
                 "codex quota",
                 "chatgpt plan limit",
-                "run codex and use /status to refresh local quota data",
+                "run codex and use /status to refresh local quota data"
             ]
         case .claude:
             cliSpecificPatterns = [
                 "claude code usage limit",
                 "anthropic quota",
-                "rate-limit payload",
+                "rate-limit payload"
             ]
         case .opencode:
             cliSpecificPatterns = [
                 "opencode quota",
                 "opencode go quota",
-                "opencode credit",
+                "opencode credit"
             ]
         case .droid:
             cliSpecificPatterns = [
                 "droid quota",
                 "factory quota",
-                "factory usage limit",
+                "factory usage limit"
             ]
         case .forge:
             cliSpecificPatterns = [
                 "forge quota",
                 "forge credit",
-                "provider quota",
+                "provider quota"
             ]
         case .antigravity:
             cliSpecificPatterns = [
                 "antigravity quota",
                 "agy quota",
                 "gemini quota",
-                "google ai quota",
+                "google ai quota"
             ]
         case .grok:
             cliSpecificPatterns = [
                 "grok quota",
                 "xai quota",
                 "supergrok limit",
-                "grok build limit",
+                "grok build limit"
             ]
         case .cursorAgent:
             cliSpecificPatterns = [
@@ -127,7 +127,7 @@ public enum CLIQuotaExhaustionClassifier {
                 "cursor-agent quota",
                 "cursor-agent limit",
                 "cursor agent quota",
-                "cursor agent limit",
+                "cursor agent limit"
             ]
         }
 
