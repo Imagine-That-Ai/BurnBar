@@ -71,9 +71,26 @@ private enum AgentNotificationReplySealer {
         return encoder
     }()
 
-    static func sealedReplyMap(replyText: String, keyData: Data, vaultKeyID: String) throws -> [String: Any] {
+    static func sealedReplyMap(
+        replyText: String,
+        uid: String,
+        replyID: String,
+        keyData: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
         let payload = try encoder.encode(AgentNotificationReplyPrivatePayload(replyText: replyText))
-        let sealed = try CloudVaultCrypto.sealPayload(payload, keyData: keyData, vaultKeyID: vaultKeyID)
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "agent_notification_replies",
+            docID: replyID,
+            field: "sealedReplyPayload"
+        )
+        let sealed = try CloudVaultCrypto.sealPayload(
+            payload,
+            keyData: keyData,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return CloudVaultCrypto.sealedPayloadDictionary(sealed)
     }
 }
@@ -303,16 +320,19 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         do {
             guard let uid = Auth.auth().currentUser?.uid else { return }
             let key = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid)
+            let replyId = "\(eventID)_\(deviceID)"
             _ = try await callable.call([
                 "eventId": eventID,
                 "sealedReplyPayload": try AgentNotificationReplySealer.sealedReplyMap(
                     replyText: replyText,
+                    uid: uid,
+                    replyID: replyId,
                     keyData: key.keyData,
                     vaultKeyID: key.vaultKeyID
                 ),
                 "vaultKeyID": key.vaultKeyID,
                 "deviceId": deviceID,
-                "clientReplyId": "\(eventID)_\(deviceID)"
+                "clientReplyId": replyId
             ])
         } catch {
             #if DEBUG

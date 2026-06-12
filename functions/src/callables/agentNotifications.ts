@@ -159,8 +159,11 @@ function parseSealedPayload(raw: unknown): AgentNotificationReplyCommand["sealed
   const algorithm = stringValue(raw.algorithm);
   const vaultKeyID = stringValue(raw.vaultKeyID);
   const sealedBoxBase64 = stringValue(raw.sealedBoxBase64);
+  const aad = optionalBoundedString(raw.aad, "sealedReplyPayload.aad", 1_024);
   if (
-    schemaVersion !== 1 ||
+    typeof schemaVersion !== "number" ||
+    typeof keyVersion !== "number" ||
+    ![1, 2].includes(schemaVersion) ||
     algorithm !== "AES-256-GCM" ||
     keyVersion !== 1 ||
     !vaultKeyID ||
@@ -175,6 +178,7 @@ function parseSealedPayload(raw: unknown): AgentNotificationReplyCommand["sealed
     keyVersion,
     vaultKeyID,
     sealedBoxBase64,
+    ...(aad ? { aad } : {}),
   };
 }
 

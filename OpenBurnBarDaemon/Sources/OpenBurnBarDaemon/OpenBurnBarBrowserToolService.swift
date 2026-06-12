@@ -40,7 +40,12 @@ public actor BurnBarBrowserToolService {
     ) {
         self.fileURL = fileURL
         self.fetcher = fetcher ?? { url in
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let delegate = BurnBarBrowserRedirectGuard()
+            let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+            defer {
+                session.invalidateAndCancel()
+            }
+            let (data, response) = try await session.data(from: url)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw URLError(.badServerResponse)
             }
@@ -252,7 +257,10 @@ public actor BurnBarBrowserToolService {
                 )
             }
             let arguments = request.arguments ?? BurnBarBrowserActionArguments(url: request.url)
-            _ = try validatedURL(arguments.url ?? request.url)
+            _ = try OpenBurnBarBrowserTargetPolicy.validatedURL(
+                arguments.url ?? request.url,
+                allowDataURL: request.action == .goto
+            )
             let response = try await executePlaywrightAction(request.action, arguments: arguments)
             return browserResponse(
                 from: response,
@@ -567,25 +575,7 @@ public actor BurnBarBrowserToolService {
     }
 
     private func validatedURL(_ rawValue: String) throws -> URL {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false, let url = URL(string: trimmed) else {
-            throw NSError(
-                domain: "BurnBarBrowserToolService",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Browser action URL is invalid."]
-            )
-        }
-        guard let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              let host = url.host,
-              host.isEmpty == false else {
-            throw NSError(
-                domain: "BurnBarBrowserToolService",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Browser action URL must use http or https with a host."]
-            )
-        }
-        return url
+        try OpenBurnBarBrowserTargetPolicy.validatedURL(rawValue)
     }
 
     private static func defaultState() -> BurnBarStoredBrowserToolingFile {
@@ -657,5 +647,22 @@ public actor BurnBarBrowserToolService {
             }
         }
         return links
+    }
+}
+
+final class BurnBarBrowserRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        guard let url = request.url,
+              (try? OpenBurnBarBrowserTargetPolicy.validatedURL(url.absoluteString)) != nil else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
     }
 }

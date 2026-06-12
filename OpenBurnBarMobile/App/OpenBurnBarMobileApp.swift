@@ -98,6 +98,10 @@ struct OpenBurnBarMobileApp: App {
         appSkin == .editorial ? MobileTheme.ember : customization.themePalette.tintColor
     }
 
+    init() {
+        MobileDataProtectionBootstrap.apply()
+    }
+
     var body: some Scene {
         WindowGroup {
             AuthGateView()

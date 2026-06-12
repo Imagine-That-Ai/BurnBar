@@ -71,9 +71,37 @@ private enum CLIAgentMissionCloudSealer {
         return decoder
     }()
 
-    static func seal<T: Encodable>(_ payload: T, vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+    static func missionAADContext(uid: String, documentID: String, field: String) throws -> CloudVaultAADContext {
+        try CloudVaultAADContext(
+            uid: uid,
+            collection: "cli_agent_mission_requests",
+            docID: documentID,
+            field: field
+        )
+    }
+
+    static func missionEventAADContext(uid: String, requestID: String, eventID: String) throws -> CloudVaultAADContext {
+        try CloudVaultAADContext(
+            uid: uid,
+            collection: "cli_agent_mission_requests/events",
+            docID: "\(requestID)/\(eventID)",
+            field: "sealedPayload"
+        )
+    }
+
+    static func seal<T: Encodable>(
+        _ payload: T,
+        vaultKey: Data,
+        vaultKeyID: String,
+        aadContext: CloudVaultAADContext? = nil
+    ) throws -> [String: Any] {
         let data = try encoder.encode(payload)
-        let sealed = try CloudVaultCrypto.sealPayload(data, keyData: vaultKey, vaultKeyID: vaultKeyID)
+        let sealed = try CloudVaultCrypto.sealPayload(
+            data,
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return CloudVaultCrypto.sealedPayloadDictionary(sealed)
     }
 
@@ -91,7 +119,12 @@ private enum CLIAgentMissionCloudSealer {
         guard let legacyEnvelope = CloudVaultCrypto.sealedPayload(from: sealedData["sealedPayload"]) else {
             throw MobileCloudVaultSignalPayloadError.invalidSignalEnvelope
         }
-        let plaintext = try CloudVaultCrypto.openPayload(legacyEnvelope, keyData: resolvedKey.keyData)
+        let aadContext = try missionAADContext(uid: uid, documentID: docId, field: "sealedPayload")
+        let plaintext = try CloudVaultCrypto.openPayload(
+            legacyEnvelope,
+            keyData: resolvedKey.keyData,
+            aadContext: aadContext
+        )
         return try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
             domainID: "conversations_chat",
             uid: uid,
@@ -142,19 +175,37 @@ private enum CLIAgentMissionCloudSealer {
               let envelope = CloudVaultCrypto.sealedPayload(from: data[field])
         else { return nil }
         do {
-            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            let aadContext: CloudVaultAADContext?
+            if let uid, let documentID {
+                aadContext = try? missionAADContext(uid: uid, documentID: documentID, field: field)
+            } else {
+                aadContext = nil
+            }
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
             return try decoder.decode(CLIAgentMissionPrivatePayload.self, from: payload)
         } catch {
             return nil
         }
     }
 
-    static func openEventPayload(_ data: [String: Any], vaultKey: Data?) -> CLIAgentMissionEventPrivatePayload? {
+    static func openEventPayload(
+        _ data: [String: Any],
+        uid: String? = nil,
+        requestID: String? = nil,
+        eventID: String? = nil,
+        vaultKey: Data?
+    ) -> CLIAgentMissionEventPrivatePayload? {
         guard let vaultKey,
               let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"])
         else { return nil }
         do {
-            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            let aadContext: CloudVaultAADContext?
+            if let uid, let requestID, let eventID {
+                aadContext = try? missionEventAADContext(uid: uid, requestID: requestID, eventID: eventID)
+            } else {
+                aadContext = nil
+            }
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
             return try decoder.decode(CLIAgentMissionEventPrivatePayload.self, from: payload)
         } catch {
             return nil
@@ -231,6 +282,7 @@ final class CLIAgentMissionDispatcher {
             deliveryMode: deliveryMode,
             parentHermesThreadID: parentHermesThreadID,
             presentationMode: presentationMode,
+            uid: uid,
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
@@ -263,6 +315,9 @@ final class CLIAgentMissionDispatcher {
                 sourceSkillID: sourceSkillID,
                 deliveryMode: deliveryMode,
                 now: Date(),
+                uid: uid,
+                requestID: id,
+                eventID: "000001",
                 vaultKey: resolvedKey.keyData,
                 vaultKeyID: resolvedKey.vaultKeyID
             ),
@@ -342,7 +397,13 @@ final class CLIAgentMissionDispatcher {
                     return
                 }
                 latestEvents = snapshot?.documents.compactMap { doc in
-                    CLIAgentMissionEvent(data: doc.data(), vaultKey: localVaultKey)
+                    CLIAgentMissionEvent(
+                        data: doc.data(),
+                        vaultKey: localVaultKey,
+                        uid: uid,
+                        requestID: requestID,
+                        eventID: doc.documentID
+                    )
                 } ?? []
                 emitLatest()
             }
@@ -480,6 +541,7 @@ final class CLIAgentMissionDispatcher {
                 parentHermesThreadID: parentHermesThreadID,
                 presentationMode: presentationMode,
                 personaScopeJSON: personaScopeJSON,
+                uid: uid,
                 vaultKey: resolvedKey.keyData,
                 vaultKeyID: resolvedKey.vaultKeyID
             )
@@ -517,6 +579,9 @@ final class CLIAgentMissionDispatcher {
                     sourceSkillID: sourceSkillID,
                     deliveryMode: deliveryMode,
                     now: Date(),
+                    uid: uid,
+                    requestID: missionID,
+                    eventID: "000001",
                     vaultKey: resolvedKey.keyData,
                     vaultKeyID: resolvedKey.vaultKeyID
                 ),
@@ -722,6 +787,8 @@ final class CLIAgentMissionDispatcher {
         // sealedStateSchemaVersion, sealedStateVaultKeyID, updatedAt).
         let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
         let update = try Self.cancelMissionUpdate(
+            uid: uid,
+            requestID: requestID,
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
@@ -735,8 +802,23 @@ final class CLIAgentMissionDispatcher {
     /// cancel summary is sealed into `sealedStatePayload`; no plaintext
     /// `liveSummary` is written. Diff keys exactly match the
     /// `validMobileMissionCancel()` rule allowlist.
-    static func cancelMissionUpdate(vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+    static func cancelMissionUpdate(
+        uid: String? = nil,
+        requestID: String? = nil,
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
         let privatePayload = CLIAgentMissionPrivatePayload(liveSummary: "Mission cancelled by user.")
+        let aadContext: CloudVaultAADContext?
+        if let uid, let requestID {
+            aadContext = try CLIAgentMissionCloudSealer.missionAADContext(
+                uid: uid,
+                documentID: requestID,
+                field: "sealedStatePayload"
+            )
+        } else {
+            aadContext = nil
+        }
         return [
             "status": "cancelled",
             "contentSealed": true,
@@ -745,7 +827,8 @@ final class CLIAgentMissionDispatcher {
             "sealedStatePayload": try CLIAgentMissionCloudSealer.seal(
                 privatePayload,
                 vaultKey: vaultKey,
-                vaultKeyID: vaultKeyID
+                vaultKeyID: vaultKeyID,
+                aadContext: aadContext
             ),
             "updatedAt": FieldValue.serverTimestamp()
         ]
@@ -893,6 +976,7 @@ enum CLIAgentMissionRequestPayloadFactory {
         presentationMode: CLIAgentChatPresentationMode = .nativeChat,
         personaScopeJSON: String? = nil,
         now: Date = Date(),
+        uid: String? = nil,
         vaultKey: Data,
         vaultKeyID: String
     ) throws -> [String: Any] {
@@ -935,7 +1019,16 @@ enum CLIAgentMissionRequestPayloadFactory {
             personaScopeJSON: personaScopeJSON?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
             synthesisSummary: nil
         )
-        return try applySealedPrivatePayload(privatePayload, to: payload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        let aadContext = try uid.map {
+            try CLIAgentMissionCloudSealer.missionAADContext(uid: $0, documentID: id, field: "sealedPayload")
+        }
+        return try applySealedPrivatePayload(
+            privatePayload,
+            to: payload,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
     }
 
     static func sealGroupPayload(
@@ -1067,6 +1160,9 @@ enum CLIAgentMissionRequestPayloadFactory {
         eventImportance: SkillRunEventImportance = .normal,
         skillStepID: String = "queued",
         now: Date = Date(),
+        uid: String? = nil,
+        requestID: String? = nil,
+        eventID: String = "000001",
         vaultKey: Data,
         vaultKeyID: String
     ) throws -> [String: Any] {
@@ -1087,7 +1183,23 @@ enum CLIAgentMissionRequestPayloadFactory {
             artifactPath: event["artifactPath"] as? String,
             changedFilePath: event["changedFilePath"] as? String
         )
-        try applySealedEventPayload(privatePayload, to: &event, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        let aadContext: CloudVaultAADContext?
+        if let uid, let requestID {
+            aadContext = try CLIAgentMissionCloudSealer.missionEventAADContext(
+                uid: uid,
+                requestID: requestID,
+                eventID: eventID
+            )
+        } else {
+            aadContext = nil
+        }
+        try applySealedEventPayload(
+            privatePayload,
+            to: &event,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return event
     }
 
@@ -1095,7 +1207,8 @@ enum CLIAgentMissionRequestPayloadFactory {
         _ privatePayload: CLIAgentMissionPrivatePayload,
         to payload: [String: Any],
         vaultKey: Data,
-        vaultKeyID: String
+        vaultKeyID: String,
+        aadContext: CloudVaultAADContext? = nil
     ) throws -> [String: Any] {
         var payload = payload
         for key in [
@@ -1115,7 +1228,12 @@ enum CLIAgentMissionRequestPayloadFactory {
         payload["contentSealed"] = true
         payload["sealedSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
         payload["vaultKeyID"] = vaultKeyID
-        payload["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        payload["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(
+            privatePayload,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return payload
     }
 
@@ -1123,7 +1241,8 @@ enum CLIAgentMissionRequestPayloadFactory {
         _ privatePayload: CLIAgentMissionEventPrivatePayload,
         to event: inout [String: Any],
         vaultKey: Data,
-        vaultKeyID: String
+        vaultKeyID: String,
+        aadContext: CloudVaultAADContext? = nil
     ) throws {
         for key in ["title", "message", "fullMessage", "toolName", "artifactPath", "changedFilePath"] {
             event.removeValue(forKey: key)
@@ -1131,7 +1250,12 @@ enum CLIAgentMissionRequestPayloadFactory {
         event["contentSealed"] = true
         event["sealedSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
         event["vaultKeyID"] = vaultKeyID
-        event["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        event["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(
+            privatePayload,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
     }
 }
 
@@ -1178,13 +1302,25 @@ struct CLIAgentMissionEvent: Equatable, Sendable, Identifiable {
         self.init(data: data, vaultKey: nil)
     }
 
-    init?(data: Any, vaultKey: Data?) {
+    init?(
+        data: Any,
+        vaultKey: Data?,
+        uid: String? = nil,
+        requestID: String? = nil,
+        eventID: String? = nil
+    ) {
         guard let map = data as? [String: Any],
               let timestamp = map["timestamp"] as? String,
               let phase = map["phase"] as? String else {
             return nil
         }
-        let sealed = CLIAgentMissionCloudSealer.openEventPayload(map, vaultKey: vaultKey)
+        let sealed = CLIAgentMissionCloudSealer.openEventPayload(
+            map,
+            uid: uid,
+            requestID: requestID,
+            eventID: eventID,
+            vaultKey: vaultKey
+        )
         guard let message = sealed?.message ?? map["message"] as? String else {
             return nil
         }
@@ -1259,6 +1395,8 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         let statePrivate = CLIAgentMissionCloudSealer.openPrivatePayload(
             data,
             field: "sealedStatePayload",
+            uid: uid,
+            documentID: documentID,
             vaultKey: vaultKey
         )
         guard let title = requestPrivate?.title ?? data["title"] as? String,

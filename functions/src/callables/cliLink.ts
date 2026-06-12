@@ -9,7 +9,11 @@ import { randomBytes, createHash } from "node:crypto";
 import { db } from "../adminRuntime.js";
 import { logError, wrapCallableHandler } from "../logging.js";
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
-import { assertActiveBurnBarProEntitlement, REMOTE_MCP_TOKEN_HMAC_SECRET } from "./shared.js";
+import {
+  assertActiveBurnBarProEntitlement,
+  REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64,
+  REMOTE_MCP_TOKEN_HMAC_SECRET,
+} from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { getConfig } from "../config.js";
 import { isSha256Hex, safeEqualHex } from "../hermesGateway.js";
@@ -164,7 +168,7 @@ export const completeCliLink = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
-    secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET],
+    secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET, REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64],
   },
   wrapCallableHandler("completeCliLink", async (request: CallableRequest<{ userCode?: unknown; nonce?: unknown }>) => {
     const uid = request.auth?.uid;
@@ -174,7 +178,8 @@ export const completeCliLink = onCall(
     await assertActiveBurnBarProEntitlement(uid);
 
     const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
-    if (!tokenSecret) {
+    const tokenEd25519PrivateKeyBase64PEM = REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64.value();
+    if (!tokenSecret && !tokenEd25519PrivateKeyBase64PEM) {
       throw new HttpsError("failed-precondition", "Remote MCP token signing secret is not configured.");
     }
 
@@ -213,6 +218,7 @@ export const completeCliLink = onCall(
       displayName: sessionData.displayName,
       entitlementFamily: "burnbar_pro",
       tokenSecret,
+      tokenEd25519PrivateKeyBase64PEM,
       audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.burnbar.ai/mcp",
     });
 
@@ -227,6 +233,7 @@ export const completeCliLink = onCall(
       clientId: grantResult.clientId,
       scopes: grantResult.scopes,
       grantMode: grantResult.grantMode,
+      tokenSigningAlgorithm: grantResult.tokenSigningAlgorithm,
     });
 
     return {

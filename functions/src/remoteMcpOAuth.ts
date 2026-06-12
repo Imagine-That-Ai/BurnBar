@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, createPrivateKey, randomBytes, sign as signDetached } from "node:crypto";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
@@ -20,10 +20,25 @@ export interface RemoteMcpAccessClaims {
   jti: string;
 }
 
-export function signRemoteMcpAccessToken(claims: RemoteMcpAccessClaims, secret: string): string {
+function privateKeyFromBase64PEM(value: string) {
+  return createPrivateKey(Buffer.from(value, "base64").toString("utf8"));
+}
+
+export function signRemoteMcpAccessToken(
+  claims: RemoteMcpAccessClaims,
+  secret?: string,
+  ed25519PrivateKeyBase64PEM?: string,
+): { token: string; algorithm: "ed25519" | "hmac-sha256" } {
   const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  if (ed25519PrivateKeyBase64PEM) {
+    const sig = signDetached(null, Buffer.from(body), privateKeyFromBase64PEM(ed25519PrivateKeyBase64PEM)).toString("base64url");
+    return { token: `ed25519.${body}.${sig}`, algorithm: "ed25519" };
+  }
+  if (!secret) {
+    throw new HttpsError("failed-precondition", "Remote MCP token signer is not configured.");
+  }
   const sig = createHmac("sha256", secret).update(body).digest("base64url");
-  return `${body}.${sig}`;
+  return { token: `${body}.${sig}`, algorithm: "hmac-sha256" };
 }
 
 export function assertPkce(verifier: string, challenge: string): void {
@@ -45,7 +60,8 @@ export async function issueRemoteMcpGrantForSignedInUser(
     grantMode?: RemoteMcpGrantMode;
     entitlementFamily: "burnbar_pro" | "hosted_quota_sync";
     entitlementExpiresAt?: string;
-    tokenSecret: string;
+    tokenSecret?: string;
+    tokenEd25519PrivateKeyBase64PEM?: string;
     audience: string;
   },
 ) {
@@ -68,7 +84,7 @@ export async function issueRemoteMcpGrantForSignedInUser(
     entitlementFamily: input.entitlementFamily,
     entitlementExpiresAt: input.entitlementExpiresAt,
   });
-  const accessToken = signRemoteMcpAccessToken(
+  const signedAccessToken = signRemoteMcpAccessToken(
     {
       sub: uid,
       aud: input.audience,
@@ -80,6 +96,7 @@ export async function issueRemoteMcpGrantForSignedInUser(
       jti: `mcp_${randomBytes(16).toString("hex")}`,
     },
     input.tokenSecret,
+    input.tokenEd25519PrivateKeyBase64PEM,
   );
   await db.doc(`users/${uid}/remote_mcp_audit_events/${Date.now()}_${grant.grantId}`).set({
     eventKind: "grant_issued",
@@ -91,7 +108,8 @@ export async function issueRemoteMcpGrantForSignedInUser(
   });
   return {
     tokenType: "Bearer",
-    accessToken,
+    accessToken: signedAccessToken.token,
+    tokenSigningAlgorithm: signedAccessToken.algorithm,
     expiresIn: 15 * 60,
     refreshToken,
     clientId,

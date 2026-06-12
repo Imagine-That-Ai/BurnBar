@@ -10,6 +10,7 @@ import com.openburnbar.data.computeruse.InMemoryPhoneControlCounterStore
 import com.openburnbar.data.computeruse.PhoneControlSender
 import com.openburnbar.data.media.VideoReceivePipeline
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
+import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,6 +53,7 @@ class ScreenShareViewerActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableOpenBurnBarScreenPrivacy()
         bindCoordinatorHandlers()
         setContent {
             ScreenShareViewerActivityContent(this@ScreenShareViewerActivity)

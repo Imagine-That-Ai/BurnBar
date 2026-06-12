@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import com.openburnbar.ui.media.MercuryIncomingSheet
 
 /**
@@ -26,6 +27,7 @@ import com.openburnbar.ui.media.MercuryIncomingSheet
 class IncomingCallActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableOpenBurnBarScreenPrivacy()
         enableLockScreenSemantics()
 
         val connectionId = intent.getStringExtra(EXTRA_CONNECTION_ID).orEmpty()

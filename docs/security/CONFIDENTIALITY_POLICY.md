@@ -13,6 +13,8 @@ guarantees are meant to be inspectable. But "the code is open" is not the same a
 
 The secret scanners (gitleaks, trufflehog, detect-secrets) cannot catch any of
 this — none of it is a credential. This policy and its guard fill that gap.
+For public privacy/security wording, also follow the claim boundaries in
+[`SECURITY_CLAIMS_REGISTER.md`](SECURITY_CLAIMS_REGISTER.md).
 
 > TL;DR: secrets → secret scanners. **Sensitive-but-not-a-secret content → the
 > confidentiality guard.** Both run on every PR.

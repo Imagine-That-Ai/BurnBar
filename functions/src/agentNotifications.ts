@@ -94,6 +94,7 @@ export interface CloudVaultSealedPayload {
   keyVersion: number;
   vaultKeyID: string;
   sealedBoxBase64: string;
+  aad?: string;
 }
 
 export interface AgentNotificationReplyCommand {

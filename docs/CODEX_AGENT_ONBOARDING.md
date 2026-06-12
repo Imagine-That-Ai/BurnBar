@@ -41,8 +41,10 @@ What is not in this onboarding:
 3. Mint a hosted bearer from the OpenBurnBar macOS app
    (**Settings → Remote MCP → Generate token**), then run
    `openburnbar mcp login <token>` once. The token is stored in the
-   macOS Keychain under `com.openburnbar.mcp-remote/default`, with a
-   `~/.openburnbar/mcp-remote-token` fallback for non-Keychain hosts.
+   macOS Keychain under `com.openburnbar.mcp-remote/default`. Plaintext
+   env/file token sources are disabled by default and require
+   `OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE=true` for tests or
+   disposable CI.
 4. Print the Codex config block and append it to your Codex config:
 
    ```bash
@@ -142,9 +144,10 @@ BURNBAR_DB_PATH = "/Users/you/exports/openburnbar.sqlite"
 
 1. macOS Keychain — `service=com.openburnbar.mcp-remote`,
    `account=default`.
-2. Local fallback — `~/.openburnbar/mcp-remote-token` (file mode `0600`).
-3. Process env — `OPENBURNBAR_MCP_ACCESS_TOKEN` always wins over the
-   stored values when set.
+2. Local fallback — `~/.openburnbar/mcp-remote-token` (file mode `0600`),
+   only when `OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE=true`.
+3. Process env — `OPENBURNBAR_MCP_ACCESS_TOKEN`, only when the same
+   insecure-source opt-in is set.
 
 Option A (stdio shim) reads any of these automatically. Option B
 (native HTTP) reads only `OPENBURNBAR_MCP_ACCESS_TOKEN` because that's

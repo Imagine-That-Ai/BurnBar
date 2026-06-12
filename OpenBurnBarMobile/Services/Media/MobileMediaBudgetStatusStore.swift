@@ -14,12 +14,12 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
     private(set) var latestStatus: MediaBudgetStatus?
     private(set) var lastKnownStatus: MediaBudgetStatus?
     private(set) var failClosedDueToPermissionDenied = false
-    @Published private(set) var mediaKillSwitch = false
+    @Published private(set) var mediaKillSwitch = true
 
     private let documentPath: String
     private let isSignedInProvider: () -> Bool
     private static let commercialRemoteConfigDefaults: [String: NSObject] = [
-        "media_kill_switch": NSNumber(value: false),
+        "media_kill_switch": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
         "media_normal_file_gb_per_day": NSNumber(value: 5),
@@ -28,7 +28,7 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
         "media_soft_screen_share_min_per_day": NSNumber(value: 30),
         "computer_use_budget_soft_usd": NSNumber(value: 1_500),
         "computer_use_budget_hard_usd": NSNumber(value: 2_500),
-        "computer_use_kill_switch": NSNumber(value: false),
+        "computer_use_kill_switch": NSNumber(value: true),
         "computer_use_phone_control_attestation_required": NSNumber(value: false),
         "computer_use_phone_control_secure_enclave_key": NSNumber(value: true),
         "computer_use_control_seal_enabled": NSNumber(value: true),
@@ -74,8 +74,10 @@ final class MobileMediaBudgetStatusStore: ObservableObject {
         guard FirebaseApp.app() != nil else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
         remoteConfig.setDefaults(Self.commercialRemoteConfigDefaults)
-        remoteConfig.fetchAndActivate { [weak self] _, _ in
-            let mediaKillSwitch = remoteConfig.configValue(forKey: "media_kill_switch").boolValue
+        remoteConfig.fetchAndActivate { [weak self] _, error in
+            let mediaKillSwitch = error == nil
+                ? remoteConfig.configValue(forKey: "media_kill_switch").boolValue
+                : true
             Task { @MainActor in
                 self?.mediaKillSwitch = mediaKillSwitch
             }

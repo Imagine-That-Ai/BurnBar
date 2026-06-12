@@ -51,7 +51,19 @@ export function checkAlertPolicies(expectedPolicies) {
   ]);
   if (!result.ok) return { ok: false, error: result.stderr || result.stdout, project: PROJECT };
 
+  const channelResult = run("gcloud", [
+    "monitoring",
+    "channels",
+    "list",
+    "--project",
+    PROJECT,
+    "--format=json",
+  ]);
+  if (!channelResult.ok) return { ok: false, error: channelResult.stderr || channelResult.stdout, project: PROJECT };
+
   const policies = JSON.parse(result.stdout || "[]");
+  const channels = JSON.parse(channelResult.stdout || "[]");
+  const channelsByName = new Map(channels.map((channel) => [channel.name, channel]));
   const byDisplayName = new Map();
   for (const policy of policies) {
     const entries = byDisplayName.get(policy.displayName) || [];
@@ -63,6 +75,19 @@ export function checkAlertPolicies(expectedPolicies) {
     const matches = byDisplayName.get(expected.displayName) || [];
     const policy = matches[0];
     const metricTypes = policy ? metricTypesForPolicy(policy) : [];
+    const notificationChannels = policy?.notificationChannels || [];
+    const notificationChannelStatuses = notificationChannels.map((name) => {
+      const channel = channelsByName.get(name);
+      return {
+        name,
+        present: Boolean(channel),
+        enabled: channel?.enabled === true,
+        type: channel?.type || null,
+        displayName: channel?.displayName || null,
+        verificationStatus: channel?.verificationStatus || null,
+      };
+    });
+    const liveNotificationChannelCount = notificationChannelStatuses.filter((channel) => channel.present && channel.enabled).length;
     const missingMetricTypes = expected.requiredMetricTypes.filter(
       (metricType) => !metricTypes.includes(metricType),
     );
@@ -71,13 +96,15 @@ export function checkAlertPolicies(expectedPolicies) {
       present: matches.length === 1,
       duplicateCount: Math.max(0, matches.length - 1),
       enabled: policy?.enabled === true,
-      notificationChannels: policy?.notificationChannels || [],
+      notificationChannels,
+      notificationChannelStatuses,
+      liveNotificationChannelCount,
       metricTypes,
       missingMetricTypes,
       ok:
         matches.length === 1
         && policy?.enabled === true
-        && (policy.notificationChannels || []).length > 0
+        && liveNotificationChannelCount > 0
         && missingMetricTypes.length === 0,
     };
   });

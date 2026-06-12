@@ -1473,21 +1473,22 @@ export const revokeEscrowDeviceTrust = onCall(
         throw new HttpsError("not-found", "Escrow device is not registered.");
       }
 
-      await ref.set(
-        {
-          trustState: "revoked",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-
       const grants = await db
         .collection(`users/${uid}/escrow_grants`)
         .where("targetDeviceId", "==", deviceId)
         .where("status", "==", "granted")
         .get();
       const now = Timestamp.now();
+      const receiptId = `revoke_${Date.now()}_${randomBytes(6).toString("hex")}`;
       const batch = db.batch();
+      batch.set(
+        ref,
+        {
+          trustState: "revoked",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
       for (const grant of grants.docs) {
         batch.set(
           grant.ref,
@@ -1497,6 +1498,62 @@ export const revokeEscrowDeviceTrust = onCall(
           },
           { merge: true },
         );
+      }
+
+      const activeWrapperSnap = await db
+        .collection(`users/${uid}/cloud_vault_key_wrappers`)
+        .where("targetDeviceId", "==", deviceId)
+        .where("status", "==", "active")
+        .get();
+      for (const wrapper of activeWrapperSnap.docs) {
+        batch.set(
+          wrapper.ref,
+          {
+            status: "revoked",
+            revokedAt: now,
+            revokedByDeviceTrustRevocationId: receiptId,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+
+      let cloudVaultRotationRequired = false;
+      let cloudVaultRotationRequirementId: string | null = null;
+      let cloudVaultRotationBlockedReason: string | null = null;
+      const stateSnap = await db.doc(`users/${uid}/cloud_vault_state/current`).get();
+      const state = recordOrUndefined(stateSnap.data());
+      if (stateSnap.exists && state?.status === "active" && typeof state.vaultKeyID === "string") {
+        const trustedDevicesSnap = await db.collection(`users/${uid}/escrow_devices`).where("trustState", "==", "trusted").get();
+        const survivorDeviceIds = trustedDevicesSnap.docs
+          .map((doc) => doc.id)
+          .filter((trustedDeviceId) => trustedDeviceId !== deviceId)
+          .sort();
+        if (survivorDeviceIds.length > 0) {
+          cloudVaultRotationRequired = true;
+          cloudVaultRotationRequirementId = receiptId;
+          batch.set(db.doc(`users/${uid}/cloud_vault_rotation_requirements/${receiptId}`), {
+            requirementId: receiptId,
+            uid,
+            status: "pending",
+            reason: "device_revoked",
+            revokedDeviceId: deviceId,
+            revokedAt: now,
+            receiptId,
+            currentVaultKeyID: state.vaultKeyID,
+            currentVaultGeneration: typeof state.vaultGeneration === "number" ? state.vaultGeneration : 1,
+            survivorDeviceIds,
+            rotateCallable: "rotateCloudVaultKey",
+            nextRotationReason: "revocation_rewrap",
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            schemaVersion: 1,
+          });
+        } else {
+          cloudVaultRotationBlockedReason = "no_surviving_trusted_device";
+        }
+      } else {
+        cloudVaultRotationBlockedReason = "no_active_cloud_vault_state";
       }
 
       // F2 — atomic revoke. A revoked device's controller record must be
@@ -1551,7 +1608,6 @@ export const revokeEscrowDeviceTrust = onCall(
       // F2 — emit a revocation receipt: a durable, tamper-evident audit record
       // of exactly what this revocation cleared, returned to the operator so a
       // revoke is observable and attributable rather than silent.
-      const receiptId = `revoke_${Date.now()}_${randomBytes(6).toString("hex")}`;
       await appendComputerUseAuditEvent(uid, {
         message: "phone_control_peer_revoked_receipt",
         receiptId,
@@ -1561,6 +1617,10 @@ export const revokeEscrowDeviceTrust = onCall(
         clearedAgentGrantAuthority,
         revokedSignalSessions,
         signalSessionRevokeFailed,
+        revokedCloudVaultWrappers: activeWrapperSnap.size,
+        cloudVaultRotationRequired,
+        cloudVaultRotationRequirementId,
+        cloudVaultRotationBlockedReason,
       });
 
       logInfo({
@@ -1572,6 +1632,10 @@ export const revokeEscrowDeviceTrust = onCall(
         cleared_agent_grant_authority: clearedAgentGrantAuthority,
         revoked_signal_sessions: revokedSignalSessions,
         signal_session_revoke_failed: signalSessionRevokeFailed,
+        revoked_cloud_vault_wrappers: activeWrapperSnap.size,
+        cloud_vault_rotation_required: cloudVaultRotationRequired,
+        cloud_vault_rotation_requirement_id: cloudVaultRotationRequirementId,
+        cloud_vault_rotation_blocked_reason: cloudVaultRotationBlockedReason,
         receipt_id: receiptId,
       });
       return {
@@ -1583,6 +1647,10 @@ export const revokeEscrowDeviceTrust = onCall(
         clearedAgentGrantAuthority,
         revokedSignalSessions,
         signalSessionRevokeFailed,
+        revokedCloudVaultWrappers: activeWrapperSnap.size,
+        cloudVaultRotationRequired,
+        cloudVaultRotationRequirementId,
+        cloudVaultRotationBlockedReason,
         receiptId,
       };
     },

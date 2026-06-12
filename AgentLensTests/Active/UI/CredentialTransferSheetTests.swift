@@ -50,6 +50,22 @@ final class CredentialTransferSheetTests: XCTestCase {
         }
     }
 
+    func test_defaultMacCredentialExportGatewayFailsClosed() async {
+        let gateway = DefaultMacCredentialTransferGateway()
+        var stages: [MacExportStage] = []
+
+        await gateway.startExport(provider: .minimax, destinationDeviceID: "iphone") { stage in
+            stages.append(stage)
+        }
+
+        XCTAssertEqual(stages.count, 1)
+        if case .failed(let message) = stages.first {
+            XCTAssertTrue(message.contains("No credential was read"))
+        } else {
+            XCTFail("Expected fail-closed export stage, got \(String(describing: stages.first))")
+        }
+    }
+
     func test_deviceTrustViewModelDeduplicatesRepeatedPhysicalDevices() async {
         let gateway = FakeMacDeviceTrustGateway(devices: [
             MacTrustedDevice(id: "iphone-old", displayName: "Alberto’s iPhone", platform: "iOS"),
@@ -62,6 +78,56 @@ final class CredentialTransferSheetTests: XCTestCase {
 
         XCTAssertEqual(vm.trustedDevices.count, 2)
         XCTAssertEqual(vm.trustedDevices.map(\.displayName), ["MacBook Pro", "Alberto’s iPhone"])
+    }
+
+    func test_deviceTrustRevokeReportsCompletedCloudVaultRotation() async {
+        let gateway = FakeMacDeviceTrustGateway(devices: [
+            MacTrustedDevice(id: "iphone", displayName: "iPhone", platform: "iOS")
+        ])
+        gateway.revocationResult = ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult(
+            revokedCloudVaultWrappers: 1,
+            cloudVaultRotationRequired: true,
+            cloudVaultRotationRequirementId: "revoke_1",
+            cloudVaultRotationBlockedReason: nil,
+            cloudVaultRotationJobId: "cvr_1",
+            cloudVaultRotationCompleted: true,
+            cloudVaultRotationFailureMessage: nil,
+            cloudVaultRotationRewrappedDocuments: 2,
+            cloudVaultRotationRewrappedStorageBlobs: 1
+        )
+        let vm = DeviceTrustViewModel(gateway: gateway)
+
+        await vm.revoke(deviceID: "iphone")
+
+        XCTAssertEqual(gateway.revokedDeviceIDs, ["iphone"])
+        XCTAssertEqual(vm.trustedDevices, [])
+        XCTAssertTrue(vm.lastStatusMessage?.contains("Cloud Vault rotated") == true)
+        XCTAssertTrue(vm.lastStatusMessage?.contains("2 documents") == true)
+        XCTAssertTrue(vm.lastStatusMessage?.contains("1 encrypted blob") == true)
+        XCTAssertNil(vm.lastErrorMessage)
+    }
+
+    func test_deviceTrustRevokeReportsRotationFailureWithoutMaskingRevocation() async {
+        let gateway = FakeMacDeviceTrustGateway(devices: [
+            MacTrustedDevice(id: "iphone", displayName: "iPhone", platform: "iOS")
+        ])
+        gateway.revocationResult = ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult(
+            revokedCloudVaultWrappers: 1,
+            cloudVaultRotationRequired: true,
+            cloudVaultRotationRequirementId: "revoke_1",
+            cloudVaultRotationBlockedReason: nil,
+            cloudVaultRotationFailureMessage: "Cloud Vault key is unavailable on this device."
+        )
+        let vm = DeviceTrustViewModel(gateway: gateway)
+
+        await vm.revoke(deviceID: "iphone")
+
+        XCTAssertEqual(gateway.revokedDeviceIDs, ["iphone"])
+        XCTAssertEqual(vm.trustedDevices, [])
+        XCTAssertTrue(vm.lastStatusMessage?.contains("Device revoked") == true)
+        XCTAssertTrue(vm.lastStatusMessage?.contains("still needs attention") == true)
+        XCTAssertTrue(vm.lastStatusMessage?.contains("Cloud Vault key is unavailable") == true)
+        XCTAssertNil(vm.lastErrorMessage)
     }
 
     func test_devicesSettingsExposeNestHubControls() throws {

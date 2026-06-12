@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { mintDevelopmentToken, verifyAccessTokenString, type AccessTokenClaims } from "./auth.js";
+import { mintAccessToken, verifyAccessTokenString, type AccessTokenClaims } from "./auth.js";
 import { MCP_RESOURCE } from "./config.js";
 import { requireActiveBurnBarPro, requireActiveRemoteMcpClient } from "./entitlements.js";
 import { HttpError } from "./errors.js";
@@ -99,8 +99,7 @@ export async function handleRefreshTokenGrant(
     throw new HttpError(400, "The expiring access token must be presented to locate the grant.", "invalid_request");
   }
 
-  const secret = process.env.MCP_TOKEN_HMAC_SECRET;
-  if (!secret) {
+  if (!process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 && !process.env.MCP_TOKEN_HMAC_SECRET) {
     throw new HttpError(503, "MCP token signer is not configured.", "token_signer_unconfigured");
   }
 
@@ -159,7 +158,7 @@ export async function handleRefreshTokenGrant(
     exp: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL_SECONDS,
     jti: `mcp_${randomBytes(16).toString("hex")}`,
   };
-  const accessToken = mintDevelopmentToken(accessClaims, secret);
+  const accessToken = mintAccessToken(accessClaims);
 
   return {
     token_type: "Bearer",
