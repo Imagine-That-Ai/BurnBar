@@ -24,6 +24,10 @@
 #     (or an explicit, documented prefix) plus a mandatory written reason.
 #     Waived files are reported in the verdict JSON under "waived" — they are
 #     excluded from the percentage, never counted as covered.
+#   * Swift declaration-only added lines (stored properties, type shells,
+#     imports, cases) are not executable lines. LLVM does not emit counters for
+#     them, even when the containing module is linked and its Codable paths are
+#     exercised, so they are excluded before the no-evidence fallback.
 #   Test-file presence, directory existence, or any other proxy is NEVER
 #   evidence (see DILIGENCE_REPORT_2026-06-11 §5.1 / finding CG-1).
 #
@@ -287,6 +291,57 @@ def merged_line_map(rel_path):
     return merged, "+".join(sources)
 
 
+STRUCTURAL_SWIFT_DECLARATION = re.compile(
+    r"^\s*(?:public|private|fileprivate|internal|open|package)?\s*"
+    r"(?:final\s+|indirect\s+)?(?:struct|class|enum|actor|protocol|extension)\b"
+)
+STORED_PROPERTY_DECLARATION = re.compile(
+    r"^\s*(?:public|private|fileprivate|internal|open|package)?\s*"
+    r"(?:static\s+|class\s+)?(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s*:"
+)
+NON_EXECUTABLE_DECLARATION = re.compile(
+    r"^\s*(?:public|private|fileprivate|internal|open|package)?\s*"
+    r"(?:typealias|associatedtype|case)\b"
+)
+
+
+def is_structural_swift_line(text):
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if stripped in {"{", "}", "};", "],", "]", "),", ")"}:
+        return True
+    if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+        return True
+    if stripped.startswith("@") or stripped.startswith("import "):
+        return True
+    if STRUCTURAL_SWIFT_DECLARATION.match(stripped):
+        return True
+    if NON_EXECUTABLE_DECLARATION.match(stripped):
+        return True
+    if STORED_PROPERTY_DECLARATION.match(stripped):
+        # Computed properties and closure defaults can carry executable logic;
+        # keep those fail-closed when no line evidence exists.
+        return "{" not in stripped and "=" not in stripped
+    return False
+
+
+def filter_structural_swift_lines(rel_path, line_nums):
+    abs_path = os.path.join(repo_root, rel_path)
+    if not os.path.isfile(abs_path):
+        return line_nums
+    with open(abs_path, encoding="utf-8", errors="replace") as fh:
+        src_lines = fh.read().splitlines()
+    executable = []
+    for ln in line_nums:
+        idx = ln - 1
+        if not (0 <= idx < len(src_lines)):
+            continue
+        if not is_structural_swift_line(src_lines[idx]):
+            executable.append(ln)
+    return executable
+
+
 # Full-path and basename maps for the app aggregate fallback.
 file_map_by_path = {}
 file_map_by_base = {}
@@ -417,8 +472,12 @@ for rel_path in gated_files:
     else:
         cov_item = file_map_by_path.get(rel_path) or file_map_by_base.get(os.path.basename(rel_path))
         if not cov_item:
-            # No lane produced any measurement for this file: every changed
-            # line counts as uncovered. There is no presence-based escape.
+            changed_lines = filter_structural_swift_lines(rel_path, changed_lines)
+            if not changed_lines:
+                continue
+            # No lane produced any measurement for this file: every executable
+            # changed line counts as uncovered. There is no presence-based
+            # escape.
             method = "no_evidence"
             exc = len(changed_lines)
             hit = 0

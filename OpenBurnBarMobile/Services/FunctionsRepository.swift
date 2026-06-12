@@ -633,46 +633,8 @@ final class FunctionsRepository: HermesGatewayRepository {
         )
     }
 
-    func completePiAgentPairing(
-        pairingId: String,
-        code: String,
-        connectionId: String? = nil,
-        displayName: String,
-        mode: PiConnectionMode = .directURL,
-        endpointURL: String,
-        advertisedModel: String? = nil,
-        selectedInstanceID: String? = nil,
-        redisURL: String? = nil,
-        capabilities: [String] = ["chat_completions"],
-        instances: [PiAgentInstanceRecord] = [],
-        models: [PiAgentRuntimeModelOption] = [],
-        relayPublicKey: String? = nil,
-        relayKeyVersion: Int? = nil,
-        relayEncryption: String? = nil,
-        realtimeRelayURL: String? = nil,
-        realtimeRelayStatus: String? = nil,
-        deviceId: String? = nil
-    ) async throws -> PiConnectionRecord {
-        try await piPairing.completePiAgentPairing(
-            pairingId: pairingId,
-            code: code,
-            connectionId: connectionId,
-            displayName: displayName,
-            mode: mode,
-            endpointURL: endpointURL,
-            advertisedModel: advertisedModel,
-            selectedInstanceID: selectedInstanceID,
-            redisURL: redisURL,
-            capabilities: capabilities,
-            instances: instances,
-            models: models,
-            relayPublicKey: relayPublicKey,
-            relayKeyVersion: relayKeyVersion,
-            relayEncryption: relayEncryption,
-            realtimeRelayURL: realtimeRelayURL,
-            realtimeRelayStatus: realtimeRelayStatus,
-            deviceId: deviceId
-        )
+    func completePiAgentPairing(_ request: PiAgentPairingCompletionRequest) async throws -> PiConnectionRecord {
+        try await piPairing.completePiAgentPairing(request)
     }
 
     func listPiAgentConnections(includeRevoked: Bool = false) async throws -> [PiConnectionRecord] {

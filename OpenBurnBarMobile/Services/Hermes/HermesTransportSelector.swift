@@ -84,16 +84,16 @@ final class HermesTransportSelector {
     }
 
     var suggestedRelayConnection: HermesConnectionRecord? {
-        relayConnections.sorted { lhs, rhs in
+        relayConnections.max { lhs, rhs in
             let lhsFresh = Self.isRelayConnectionFresh(lhs)
             let rhsFresh = Self.isRelayConnectionFresh(rhs)
             if lhsFresh != rhsFresh {
-                return lhsFresh
+                return !lhsFresh && rhsFresh
             }
             let lhsLastSeen = lhs.lastSeenAt ?? lhs.updatedAt
             let rhsLastSeen = rhs.lastSeenAt ?? rhs.updatedAt
-            return lhsLastSeen > rhsLastSeen
-        }.first
+            return lhsLastSeen < rhsLastSeen
+        }
     }
 
     /// Pure decision core of `HermesService.preferredRelayConnection` —

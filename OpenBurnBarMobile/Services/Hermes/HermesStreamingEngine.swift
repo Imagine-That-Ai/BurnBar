@@ -968,7 +968,6 @@ final class HermesStreamingEngine {
         try await streamCompletion(coordinator: coordinator, context: context, iteration: iteration + 1)
     }
 
-
     func handleStreamError(_ error: Error, coordinator: HermesStreamingCoordinating) {
         coordinator.isStreaming = false
         coordinator.isReachable = false

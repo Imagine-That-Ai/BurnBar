@@ -114,6 +114,12 @@ final class SettingsManager {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceSubStoreDidChange),
+            name: .appearanceModeDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
             name: .appearanceSkinDidChange,
             object: nil
         )
