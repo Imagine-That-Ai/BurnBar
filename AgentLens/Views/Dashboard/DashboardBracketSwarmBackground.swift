@@ -30,7 +30,7 @@ struct BracketSwarmBackground: View {
     var body: some View {
         GeometryReader { proxy in
             TimelineView(.periodic(from: .now, by: Self.animationCadence)) { timeline in
-                Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, size in
+                Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, _ in
                     guard !swarms.isEmpty else { return }
                     let time = timeline.date.timeIntervalSinceReferenceDate * speedMultiplier
 
@@ -105,7 +105,7 @@ struct BracketSwarmBackground: View {
             DashboardBracePalette(
                 primary: DesignSystem.Colors.whimsy.opacity(0.48),
                 glow: DesignSystem.Colors.whimsy.opacity(0.18)
-            ),
+            )
         ]
     }
 

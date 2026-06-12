@@ -6,8 +6,6 @@ import OpenBurnBarComputerUseCore
 import AppKit
 #endif
 
-
-
 protocol ChatSessionSearchProviding: Sendable {
     func search(query: String) async -> [SearchResult]
 }
@@ -585,11 +583,9 @@ final class ChatSessionController {
         var short = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !short.isEmpty else { return "Model" }
         let prefixes = ["NousResearch/", "meta-llama/", "mistralai/", "Qwen/", "google/", "deepseek-ai/"]
-        for prefix in prefixes {
-            if short.hasPrefix(prefix) {
-                short = String(short.dropFirst(prefix.count))
-                break
-            }
+        for prefix in prefixes where short.hasPrefix(prefix) {
+            short = String(short.dropFirst(prefix.count))
+            break
         }
         if short.count > 32 {
             short = String(short.prefix(30)) + "…"
@@ -1286,7 +1282,7 @@ final class ChatSessionController {
     func send() async {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachmentsToSend = pendingAttachments
-        guard (!trimmed.isEmpty || !attachmentsToSend.isEmpty), !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachmentsToSend.isEmpty, !isStreaming else { return }
 
         streamError = nil
         conversationJumpTargets = []

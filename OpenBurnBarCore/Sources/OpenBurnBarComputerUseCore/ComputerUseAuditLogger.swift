@@ -42,8 +42,8 @@ public final class ComputerUseAuditLogger {
 
     private let fileManager: FileManager
     private let hasher: ComputerUseAuditHasher
-    private(set) public var headHashHex: String
-    private(set) public var nextEntryIndex: Int
+    public private(set) var headHashHex: String
+    public private(set) var nextEntryIndex: Int
 
     public init(
         sessionId: ComputerUseSessionID,

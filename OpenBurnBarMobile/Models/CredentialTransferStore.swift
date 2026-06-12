@@ -31,9 +31,7 @@ final class CredentialTransferStore {
             unsupported = try await reader.loadUnsupportedEnvelopes()
             history = try await reader.loadImportHistory()
             lastError = nil
-        }
-        catch let CloudGatewayError.classified(c) { lastError = c }
-        catch { lastError = .other(message: error.localizedDescription) }
+        } catch let CloudGatewayError.classified(c) { lastError = c } catch { lastError = .other(message: error.localizedDescription) }
     }
 
     func startImport(_ envelope: AvailableEnvelope) async {

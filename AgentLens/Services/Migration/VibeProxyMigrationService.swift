@@ -284,7 +284,7 @@ struct VibeProxyMigrationService: Sendable {
                 return [
                     home.appendingPathComponent(".factory/settings.local.json"),
                     home.appendingPathComponent(".factory/settings.json"),
-                    home.appendingPathComponent(".factory/config.json"),
+                    home.appendingPathComponent(".factory/config.json")
                 ].contains(where: fileLooksVibeProxyOwned)
             default:
                 return fileLooksVibeProxyOwned(wiring.configURL(for: target))

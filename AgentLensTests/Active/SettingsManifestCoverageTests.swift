@@ -51,7 +51,7 @@ final class SettingsManifestCoverageTests: XCTestCase {
             SettingsFocus.gatewayAuthToken,
             SettingsFocus.hermesGatewayURL,
             SettingsFocus.hermesGatewayToken,
-            SettingsFocus.alertsDailySpend,
+            SettingsFocus.alertsDailySpend
         ]
         for item in SettingsManifest.all {
             guard let focus = item.focusID else { continue }

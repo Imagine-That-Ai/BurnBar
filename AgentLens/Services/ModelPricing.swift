@@ -95,7 +95,7 @@ private extension ModelPricing {
 }
 
 private struct OpenBurnBarCatalogLookup {
-    static let shared: OpenBurnBarCatalogLookup = OpenBurnBarCatalogLookup()
+    static let shared = OpenBurnBarCatalogLookup()
 
     #if canImport(OpenBurnBarCore)
     private let catalog: BurnBarCatalog?

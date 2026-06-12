@@ -60,7 +60,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
             "| cat /etc/passwd",
             "`id`",
             "$(whoami)",
-            "${HOME}",
+            "${HOME}"
         ]
 
         for attempt in injectionAttempts {
@@ -82,7 +82,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
             "--no-default-browser-check",
             "--no-first-run",
             "--disable-extensions",
-            "--disable-sync",
+            "--disable-sync"
         ]
 
         for arg in allowlisted {
@@ -98,7 +98,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
             "--headless",
             "--no-sandbox",
             "--user-data-dir=/tmp/chrome",
-            "--proxy-server=http://proxy:8080",
+            "--proxy-server=http://proxy:8080"
         ]
 
         for arg in disallowed {
@@ -349,7 +349,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
         let chromePaths = [
             "/Users/test/Library/Application Support/Google/Chrome/Default",
             "/Users/test/Library/Google/Chrome/Profile 1",
-            "~/Library/Application Support/Google/Chrome",
+            "~/Library/Application Support/Google/Chrome"
         ]
 
         for path in chromePaths {
@@ -364,7 +364,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
         let safariPaths = [
             "/Users/test/Library/Safari/Bookmarks",
             "/Users/test/Library/Application Support/Safari",
-            "/Users/test/Library/Cookies/Cookies.binarycookies",
+            "/Users/test/Library/Cookies/Cookies.binarycookies"
         ]
 
         for path in safariPaths {
@@ -379,7 +379,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
         let safePaths = [
             "/Users/test/Documents",
             "/Users/test/Desktop",
-            "/tmp/chrome_temp",
+            "/tmp/chrome_temp"
         ]
 
         for path in safePaths {
@@ -459,7 +459,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
             .launchConfigurationFailed("reason"),
             .launchTimeout,
             .launchFailed("detail"),
-            .noActiveProfile,
+            .noActiveProfile
         ]
 
         for error in errors {
@@ -475,7 +475,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
             .profileTypeMismatch(expected: .chrome, actual: .safari),
             .disallowedArgument("--test"),
             .launchTimeout,
-            .noActiveProfile,
+            .noActiveProfile
         ]
 
         for error in errors {

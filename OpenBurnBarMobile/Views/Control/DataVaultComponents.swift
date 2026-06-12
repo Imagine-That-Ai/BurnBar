@@ -40,7 +40,7 @@ struct DataVaultBasinHero: View {
                                 LinearGradient(
                                     colors: [
                                         EncryptionTier.endToEnd.tierColor,
-                                        EncryptionTier.serverReadable.tierColor,
+                                        EncryptionTier.serverReadable.tierColor
                                     ],
                                     startPoint: .leading,
                                     endPoint: .trailing

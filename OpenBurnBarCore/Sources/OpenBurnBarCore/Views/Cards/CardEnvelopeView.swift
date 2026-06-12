@@ -151,7 +151,7 @@ public struct CardDiffView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 8) {
                     diffColumn(label: "Before", text: payload.before, tint: DesignSystemColors.error.opacity(0.18))
-                    diffColumn(label: "After",  text: payload.after,  tint: DesignSystemColors.success.opacity(0.18))
+                    diffColumn(label: "After", text: payload.after, tint: DesignSystemColors.success.opacity(0.18))
                 }
             }
         }
@@ -421,7 +421,7 @@ public struct CardTooLargeView: View {
 
     private func formatted(_ bytes: Int) -> String {
         if bytes >= 1_048_576 { return String(format: "%.1f MB", Double(bytes) / 1_048_576.0) }
-        if bytes >= 1024       { return String(format: "%.1f KB", Double(bytes) / 1024.0) }
+        if bytes >= 1024 { return String(format: "%.1f KB", Double(bytes) / 1024.0) }
         return "\(bytes) B"
     }
 }

@@ -49,7 +49,8 @@ final class InsightVoicePostProcessorTests: XCTestCase {
         )
         let processor = InsightVoicePostProcessor()
         guard case .accepted(let clean, let report) = processor.process(v) else {
-            return XCTFail("expected acceptance")
+            XCTFail("expected acceptance")
+            return
         }
         XCTAssertEqual(clean.bullets.count, 1)
         XCTAssertEqual(clean.bullets.first?.claim, "You spent $4 today.")
@@ -60,7 +61,8 @@ final class InsightVoicePostProcessorTests: XCTestCase {
     func testRejectsHeadlineContainingBannedPhrase() {
         let v = makeVerdict(headline: "It seems that you spent $4 today.")
         guard case .rejected(let reason, _) = InsightVoicePostProcessor().process(v) else {
-            return XCTFail("expected rejection")
+            XCTFail("expected rejection")
+            return
         }
         XCTAssertEqual(reason, .headlineBannedPhrase)
     }
@@ -81,7 +83,8 @@ final class InsightVoicePostProcessorTests: XCTestCase {
             ]
         )
         guard case .accepted(let clean, let report) = InsightVoicePostProcessor().process(v) else {
-            return XCTFail("expected acceptance")
+            XCTFail("expected acceptance")
+            return
         }
         XCTAssertEqual(clean.bullets.count, 1)
         XCTAssertEqual(report.bulletsDropped, 1)
@@ -110,7 +113,8 @@ final class InsightVoicePostProcessorTests: XCTestCase {
         }
         guard case .accepted(let clean, let report) = InsightVoicePostProcessor()
             .process(v, citationValidator: validator) else {
-            return XCTFail("expected acceptance")
+            XCTFail("expected acceptance")
+            return
         }
         XCTAssertEqual(clean.bullets.count, 1)
         XCTAssertEqual(report.bulletsDropped, 1)
@@ -127,7 +131,8 @@ final class InsightVoicePostProcessorTests: XCTestCase {
             ]
         )
         guard case .rejected(let reason, _) = InsightVoicePostProcessor().process(v) else {
-            return XCTFail("expected rejection")
+            XCTFail("expected rejection")
+            return
         }
         XCTAssertEqual(reason, .noBulletsAfterProcessing)
     }
@@ -147,7 +152,8 @@ final class InsightVoicePostProcessorTests: XCTestCase {
             provenance: InsightModelTag(providerKey: "x", modelID: "y", displayName: "Z", egressTier: .localOnly)
         )
         guard case .rejected(let reason, _) = InsightVoicePostProcessor().process(v) else {
-            return XCTFail("expected rejection")
+            XCTFail("expected rejection")
+            return
         }
         XCTAssertEqual(reason, .ringCountInvalid)
     }
@@ -164,7 +170,8 @@ final class InsightVoicePostProcessorTests: XCTestCase {
             ]
         )
         guard case .accepted(let clean, _) = InsightVoicePostProcessor().process(v) else {
-            return XCTFail("expected acceptance")
+            XCTFail("expected acceptance")
+            return
         }
         XCTAssertEqual(clean.bullets.count, 1)
         XCTAssertEqual(clean.bullets.first?.type, .pattern,
@@ -184,7 +191,8 @@ final class InsightVoicePostProcessorTests: XCTestCase {
             ]
         )
         guard case .accepted(let clean, _) = InsightVoicePostProcessor().process(v) else {
-            return XCTFail("expected acceptance")
+            XCTFail("expected acceptance")
+            return
         }
         XCTAssertEqual(clean.bullets.first?.acceptAction?.label.count, 28)
     }

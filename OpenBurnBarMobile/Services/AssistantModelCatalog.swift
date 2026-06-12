@@ -224,7 +224,7 @@ public enum AssistantModelCatalog {
     /// Where to fetch the live catalog from. Points at the website's
     /// public JSON so we can drop new models in via a content push
     /// without an app release.
-    public static let remoteCatalogURL: URL = URL(string: "https://burnbar.ai/data/models.json")!
+    public static let remoteCatalogURL = URL(string: "https://burnbar.ai/data/models.json")!
 
     /// Synchronous access used by the picker. Returns whatever's currently
     /// cached in `AssistantModelCatalogStore`. The first call from any

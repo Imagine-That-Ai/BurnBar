@@ -116,7 +116,7 @@ public struct ComputerUseAuditHasher: Sendable {
     }
 
     /// The empty parent hash used to seed chain start.
-    public static let genesisParentHashHex: String = String(repeating: "0", count: 64)
+    public static let genesisParentHashHex = String(repeating: "0", count: 64)
 
     public static let canonicalJSONEncoder: JSONEncoder = {
         let encoder = JSONEncoder()

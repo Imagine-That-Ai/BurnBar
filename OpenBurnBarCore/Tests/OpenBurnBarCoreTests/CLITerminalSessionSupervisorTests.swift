@@ -16,7 +16,8 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         let events = recorder.snapshot()
         XCTAssertEqual(events.count, 1)
         guard case .quotaExhausted(let detail, let source) = events[0] else {
-            return XCTFail("Expected quota exhaustion event")
+            XCTFail("Expected quota exhaustion event")
+            return
         }
         XCTAssertEqual(source, .stderr)
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("5-hour"))
@@ -34,7 +35,8 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         let events = recorder.snapshot()
         XCTAssertEqual(events.count, 1)
         guard case .quotaExhausted(let detail, let source) = events[0] else {
-            return XCTFail("Expected quota exhaustion event")
+            XCTFail("Expected quota exhaustion event")
+            return
         }
         XCTAssertEqual(source, .stderr)
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("monthly credit limit"))

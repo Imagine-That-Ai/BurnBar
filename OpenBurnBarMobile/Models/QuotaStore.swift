@@ -508,8 +508,9 @@ final class QuotaStore {
         )
             .sorted()
             .joined(separator: ",")
+        let visibleProvidersJoined = visibleProviders.joined(separator: ",")
         quotaStoreLogger.info(
-            "Derived quota state: snapshots=\(self.snapshots.count) accounts=\(self.accounts.count) rawSnapshotProviders=[\(rawSnapshotProviders, privacy: .public)] visibleProviders=[\(self.visibleProviders.joined(separator: ","), privacy: .public)] accountProviders=[\(accountProviders, privacy: .public)]"
+            "Derived quota state: snapshots=\(self.snapshots.count) accounts=\(self.accounts.count) rawSnapshotProviders=[\(rawSnapshotProviders, privacy: .public)] visibleProviders=[\(visibleProvidersJoined, privacy: .public)] accountProviders=[\(accountProviders, privacy: .public)]"
         )
     }
 

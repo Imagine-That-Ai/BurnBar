@@ -105,11 +105,11 @@ public struct BurnBarIndexedSearchHit: Codable, Sendable, Hashable {
 /// Indicates the source(s) that contributed to a search hit.
 public enum BurnBarHitSource: String, Codable, Sendable {
     /// Hit found via lexical FTS search.
-    case lexical = "lexical"
+    case lexical
     /// Hit found via semantic vector search.
-    case semantic = "semantic"
+    case semantic
     /// Hit found in both lexical and semantic, combined via RRF.
-    case hybrid = "hybrid"
+    case hybrid
 }
 
 public struct BurnBarSearchQueryResult: Codable, Sendable, Hashable {

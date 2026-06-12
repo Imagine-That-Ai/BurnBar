@@ -316,8 +316,8 @@ final class MobileProviderWizardModelTests: XCTestCase {
         await model.connectTask?.value
         XCTAssertEqual(model.step, .failed)
         XCTAssertEqual(model.errorMessage, "Write failed")
-        XCTAssertTrue(conn.deleteCalls.count == 1, "Account should be deleted after runner save failure")
-        XCTAssertTrue(saver.deleteCalls.count == 1, "Runner should be deleted after save failure")
+        XCTAssertEqual(conn.deleteCalls.count, 1, "Account should be deleted after runner save failure")
+        XCTAssertEqual(saver.deleteCalls.count, 1, "Runner should be deleted after save failure")
     }
 
     // MARK: - Credential kind resolution

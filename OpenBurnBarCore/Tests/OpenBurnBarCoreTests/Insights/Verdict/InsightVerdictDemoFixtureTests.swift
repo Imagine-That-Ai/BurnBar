@@ -12,7 +12,8 @@ final class InsightVerdictDemoFixtureTests: XCTestCase {
         let v = InsightVerdictDemoFixture.sample()
         let result = InsightVoicePostProcessor().process(v)
         guard case .accepted(let cleaned, let report) = result else {
-            return XCTFail("demo fixture should pass post-processor")
+            XCTFail("demo fixture should pass post-processor")
+            return
         }
         XCTAssertGreaterThanOrEqual(cleaned.bullets.count, 1)
         XCTAssertTrue(report.bannedPhraseHits.isEmpty,
@@ -33,7 +34,8 @@ final class InsightVerdictDemoFixtureTests: XCTestCase {
     func testFixtureSessionTraceIsLogicallyOrdered() {
         let v = InsightVerdictDemoFixture.sample()
         guard let trace = v.sessionTrace else {
-            return XCTFail("demo fixture should ship a session trace")
+            XCTFail("demo fixture should ship a session trace")
+            return
         }
         XCTAssertGreaterThan(trace.duration, 0)
         XCTAssertTrue(trace.lanes.allSatisfy { $0.duration >= 0 })

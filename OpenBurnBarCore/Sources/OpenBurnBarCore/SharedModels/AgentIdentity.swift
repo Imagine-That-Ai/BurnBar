@@ -258,18 +258,18 @@ public struct AgentCapabilities: Codable, Sendable, Hashable, OptionSet {
     /// Stable string list for human display + manifest serialisation.
     public var displayPills: [String] {
         var out: [String] = []
-        if contains(.toolUse)       { out.append("Tool use") }
-        if contains(.vision)        { out.append("Vision") }
-        if contains(.audio)         { out.append("Voice") }
-        if contains(.agentLoops)    { out.append("Agent loops") }
-        if contains(.fileEdits)     { out.append("File edits") }
-        if contains(.shell)         { out.append("Shell") }
-        if contains(.webBrowse)     { out.append("Web") }
+        if contains(.toolUse) { out.append("Tool use") }
+        if contains(.vision) { out.append("Vision") }
+        if contains(.audio) { out.append("Voice") }
+        if contains(.agentLoops) { out.append("Agent loops") }
+        if contains(.fileEdits) { out.append("File edits") }
+        if contains(.shell) { out.append("Shell") }
+        if contains(.webBrowse) { out.append("Web") }
         if contains(.codeExecution) { out.append("Code execution") }
-        if contains(.imageGen)      { out.append("Image gen") }
-        if contains(.memory)        { out.append("Memory") }
+        if contains(.imageGen) { out.append("Image gen") }
+        if contains(.memory) { out.append("Memory") }
         if contains(.streamingDiff) { out.append("Streaming diff") }
-        if contains(.mcpUI)         { out.append("MCP-UI") }
+        if contains(.mcpUI) { out.append("MCP-UI") }
         return out
     }
 }

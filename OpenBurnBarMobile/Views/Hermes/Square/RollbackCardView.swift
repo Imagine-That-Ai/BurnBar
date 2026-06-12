@@ -25,7 +25,7 @@ struct RollbackCardView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var newestSnapshot: RollbackSnapshot? {
-        snapshots.sorted { $0.sequence > $1.sequence }.first
+        snapshots.min { $0.sequence > $1.sequence }
     }
 
     private var touchedFiles: [String] {

@@ -27,7 +27,8 @@ final class ControllerKeyPinStoreTests: XCTestCase {
         let key = newKeyBase64()
 
         let result = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", peerNodeId: "ios-phone-aabb")
-        guard case .pinnedFirstUse = result else { return XCTFail("expected pinnedFirstUse, got \(result)") }
+        guard case .pinnedFirstUse = result else { XCTFail("expected pinnedFirstUse, got \(result)") 
+return }
         XCTAssertTrue(result.admits(requireConfirmation: false), "first use admits with the gate off")
         XCTAssertFalse(result.admits(requireConfirmation: true), "first use must be confirmed when the gate is on")
         XCTAssertNotNil(result.safetyCodeForConfirmation, "first use surfaces a code to compare")
@@ -44,7 +45,8 @@ final class ControllerKeyPinStoreTests: XCTestCase {
 
         _ = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", peerNodeId: "p")
         let again = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", peerNodeId: "p")
-        guard case .matchesPendingConfirmation = again else { return XCTFail("expected pending, got \(again)") }
+        guard case .matchesPendingConfirmation = again else { XCTFail("expected pending, got \(again)") 
+return }
         XCTAssertTrue(again.admits(requireConfirmation: false))
         XCTAssertFalse(again.admits(requireConfirmation: true))
     }
@@ -62,7 +64,7 @@ final class ControllerKeyPinStoreTests: XCTestCase {
         let result = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", peerNodeId: "p")
         XCTAssertEqual(result, .matchesConfirmedPin)
         XCTAssertTrue(result.admits(requireConfirmation: true), "a confirmed pin admits even under enforcement")
-        XCTAssertTrue(store.pinnedRecord(uid: "u1", peerNodeId: "p")?.confirmed == true)
+        XCTAssertEqual(store.pinnedRecord(uid: "u1", peerNodeId: "p")?.confirmed, true)
     }
 
     func testConfirmIsIdempotentAndRejectsWrongKey() {
@@ -92,7 +94,8 @@ final class ControllerKeyPinStoreTests: XCTestCase {
         _ = store.confirm(advertisedKeyBase64: real, uid: "u", peerNodeId: "p")
 
         let swapped = store.verifyOrPin(advertisedKeyBase64: attacker, uid: "u", peerNodeId: "p")
-        guard case .mismatch = swapped else { return XCTFail("expected mismatch, got \(swapped)") }
+        guard case .mismatch = swapped else { XCTFail("expected mismatch, got \(swapped)") 
+return }
         XCTAssertFalse(swapped.admits(requireConfirmation: false), "key swap refused even with the gate off")
         XCTAssertFalse(swapped.admits(requireConfirmation: true))
         // The pin is NOT overwritten by the attacker key.
@@ -108,11 +111,13 @@ final class ControllerKeyPinStoreTests: XCTestCase {
         _ = store.verifyOrPin(advertisedKeyBase64: oldKey, uid: "u", peerNodeId: "p")
         // A rotated key is refused until the operator deliberately re-pairs.
         guard case .mismatch = store.verifyOrPin(advertisedKeyBase64: newKey, uid: "u", peerNodeId: "p") else {
-            return XCTFail("rotated key should be refused before re-pair")
+            XCTFail("rotated key should be refused before re-pair")
+            return
         }
         store.clearPin(uid: "u", peerNodeId: "p")
         guard case .pinnedFirstUse = store.verifyOrPin(advertisedKeyBase64: newKey, uid: "u", peerNodeId: "p") else {
-            return XCTFail("after re-pair the new key pins fresh")
+            XCTFail("after re-pair the new key pins fresh")
+            return
         }
     }
 
@@ -131,7 +136,8 @@ final class ControllerKeyPinStoreTests: XCTestCase {
         backing.failReads(with: -25300) // errSecItemNotFound is .absent; use a generic read error
         let store = makeStore(backing)
         let result = store.verifyOrPin(advertisedKeyBase64: newKeyBase64(), uid: "u", peerNodeId: "p")
-        guard case .unknownKeychainError = result else { return XCTFail("expected keychain error, got \(result)") }
+        guard case .unknownKeychainError = result else { XCTFail("expected keychain error, got \(result)") 
+return }
         XCTAssertFalse(result.admits(requireConfirmation: false))
         XCTAssertFalse(result.admits(requireConfirmation: true))
     }
@@ -141,7 +147,8 @@ final class ControllerKeyPinStoreTests: XCTestCase {
         backing.failWrites(with: -34018) // errSecMissingEntitlement
         let store = makeStore(backing)
         let result = store.verifyOrPin(advertisedKeyBase64: newKeyBase64(), uid: "u", peerNodeId: "p")
-        guard case .unknownKeychainError = result else { return XCTFail("expected keychain error, got \(result)") }
+        guard case .unknownKeychainError = result else { XCTFail("expected keychain error, got \(result)") 
+return }
         XCTAssertFalse(result.admits(requireConfirmation: false), "a phantom (unpersisted) pin must not admit")
     }
 
@@ -155,11 +162,13 @@ final class ControllerKeyPinStoreTests: XCTestCase {
         _ = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", peerNodeId: "p")
         // Same peer string, different uid → independent pin (no cross-account match).
         guard case .pinnedFirstUse = store.verifyOrPin(advertisedKeyBase64: key, uid: "u2", peerNodeId: "p") else {
-            return XCTFail("different uid must be an independent pin")
+            XCTFail("different uid must be an independent pin")
+            return
         }
         // Same uid, different peer → independent pin.
         guard case .pinnedFirstUse = store.verifyOrPin(advertisedKeyBase64: key, uid: "u1", peerNodeId: "q") else {
-            return XCTFail("different peer must be an independent pin")
+            XCTFail("different peer must be an independent pin")
+            return
         }
     }
 

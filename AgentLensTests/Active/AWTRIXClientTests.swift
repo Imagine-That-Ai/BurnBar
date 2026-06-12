@@ -594,8 +594,8 @@ final class AWTRIXClientTests: XCTestCase {
         XCTAssertEqual(commandSets.count, 2)
         XCTAssertEqual(commandSets[0].map { $0.first }, [UInt8(0x0D), UInt8(0x09), UInt8(0x00), UInt8(0x08)])
         XCTAssertEqual(commandSets[1].map { $0.first }, [UInt8(0x0D), UInt8(0x09), UInt8(0x00), UInt8(0x08)])
-        XCTAssertTrue(String(data: commandSets[0][2].dropFirst(8), encoding: .utf8)?.contains("CODEX") == true)
-        XCTAssertTrue(String(data: commandSets[1][2].dropFirst(8), encoding: .utf8)?.contains("CLAUDE") == true)
+        XCTAssertEqual(String(data: commandSets[0][2].dropFirst(8), encoding: .utf8)?.contains("CODEX"), true)
+        XCTAssertEqual(String(data: commandSets[1][2].dropFirst(8), encoding: .utf8)?.contains("CLAUDE"), true)
     }
 }
 
@@ -662,11 +662,11 @@ private final class AWTRIXStubURLProtocol: URLProtocol, @unchecked Sendable {
         set { handlerLock.write(newValue) }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool {
+    override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host?.hasPrefix("192.168.68.") == true
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
         request
     }
 

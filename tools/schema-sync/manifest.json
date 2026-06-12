@@ -1,7 +1,7 @@
 {
   "version": 1,
   "canonicalRoot": "tools/schema-sync/typespec",
-  "handMirrorDocs": "Hand mirror entries verify that hand-maintained native/TS schema copies still carry every field the generated canon defines (field name + optionality). Each entry may be a bare path string (checked against every generated *Doc interface in the domain) or an object { path, interfaces?, language?, knownDrift? }. `interfaces` pins which generated interfaces the mirror must carry; omit it to require all of them. `knownDrift` grandfathers the pre-existing divergences enumerated by check-hand-mirror.mjs (each entry is `Interface.field` for a missing field or `Interface.field#opt` for an optionality mismatch); the checker FAILS when live drift exceeds the listed set, so new drift is caught while the strangler migration burns the list down. legacy.ts is registered as a `tsHandMirror` so its dual-defined doc types are field-checked against the generated canon.",
+  "handMirrorDocs": "Hand mirror entries verify that hand-maintained native/TS schema copies still carry every field the generated canon defines (field name + optionality). check-hand-mirror.mjs loops every domain below. Each mirror entry may be a bare path string or an object { path, interfaces?, knownDrift? }. `interfaces` pins which generated interfaces the mirror must carry; omit it to auto-detect (TS mirrors: every generated interface the mirror file re-declares as `export interface`; native mirrors: every generated interface in the domain). `knownDrift` grandfathers the pre-existing divergences the checker enumerates — each token is `Interface.field` for a field present in generated output but absent from the mirror, or `Interface.field#opt` for an optionality mismatch (TS mirrors only). The gate FAILS closed when live drift exceeds the listed set (new drift) AND when a listed token is no longer real drift (stale grandfather), so the list ratchets down as the TypeSpec strangler migration burns it off. functions/src/types/legacy.ts is registered as a `tsHandMirror` so the doc types it re-declares a second time are field-checked against the canon; do NOT converge it by editing legacy.ts in this gate — burn the list down domain-at-a-time.",
   "domains": [
     {
       "id": "usage-quota",
@@ -222,13 +222,7 @@
         "typescript": "functions/src/types/generated/iroh-pairing.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/IrohPairingModels.kt"
-      },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy.ts",
-          "interfaces": ["IrohPairingDoc"]
-        }
-      ]
+      }
     },
     {
       "id": "pi-agent-relay",
@@ -314,13 +308,7 @@
         "typescript": "functions/src/types/generated/entitlements.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/EntitlementModels.kt"
-      },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy.ts",
-          "interfaces": ["EscrowDeviceDoc"]
-        }
-      ]
+      }
     },
     {
       "id": "insights",
@@ -352,13 +340,7 @@
         "typescript": "functions/src/types/generated/missions.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MissionModels.kt"
-      },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy.ts",
-          "interfaces": ["MissionDispatchDoc"]
-        }
-      ]
+      }
     },
     {
       "id": "media-analytics",
@@ -389,13 +371,7 @@
         "typescript": "functions/src/types/generated/device-links.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/DeviceLinkModels.kt"
-      },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy.ts",
-          "interfaces": ["ProviderAccountDeviceLinkDoc"]
-        }
-      ]
+      }
     },
     {
       "id": "model-benchmarks",
@@ -408,13 +384,7 @@
         "typescript": "functions/src/types/generated/model-benchmarks.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ModelBenchmarkModels.kt"
-      },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy.ts",
-          "interfaces": ["ModelBenchmarkSnapshotDoc", "ModelBenchmarkSourceStatusDoc"]
-        }
-      ]
+      }
     }
   ]
 }

@@ -38,12 +38,14 @@ final class OpenBurnBarQueryTracerTrimTests: XCTestCase {
         XCTAssertEqual(OpenBurnBarQueryTracer.shared.queryCount, 2_501)
 
         let log = OpenBurnBarQueryTracer.shared.queryLog
-        XCTAssertTrue(
-            log.last?.sql.contains("newest-marker") == true,
+        XCTAssertEqual(
+            log.last?.sql.contains("newest-marker"),
+            true,
             "trimming must drop the OLDEST entries, never the newest"
         )
-        XCTAssertTrue(
-            log.first?.sql.contains("VALUES (2500)") == true,
+        XCTAssertEqual(
+            log.first?.sql.contains("VALUES (2500)"),
+            true,
             "after dropping the oldest 2 500, the log starts at statement #2500"
         )
     }

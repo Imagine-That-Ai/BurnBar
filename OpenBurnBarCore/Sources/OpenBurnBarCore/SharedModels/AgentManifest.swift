@@ -329,7 +329,7 @@ extension AgentManifest {
         let trimmed = s.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         guard trimmed.count == 6 else { return false }
         return trimmed.allSatisfy { c in
-            let hex: Set<Character> = ["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f","A","B","C","D","E","F"]
+            let hex: Set<Character> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f", "A", "B", "C", "D", "E", "F"]
             return hex.contains(c)
         }
     }

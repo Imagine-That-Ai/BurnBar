@@ -370,7 +370,7 @@ public struct BurnBarSwitcherKeychainCredentialStore: BurnBarSwitcherCredentialP
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
             ,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
         let context = LAContext()
         context.interactionNotAllowed = true

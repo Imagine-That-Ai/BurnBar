@@ -50,10 +50,9 @@ public actor BurnBarMissionControlStore {
 
     public func projects(_ request: BurnBarControllerProjectsListRequest) throws -> [BurnBarReviewProjectSnapshot] {
         try ensureLoaded()
-        return summaryEnricher.enrichedProjects()
+        return Array(summaryEnricher.enrichedProjects()
             .filter { request.includePaused || $0.status != .paused }
-            .prefix(request.limit)
-            .map { $0 }
+            .prefix(request.limit))
     }
 
     public func upsertProject(_ project: BurnBarReviewProjectSnapshot) throws -> (BurnBarReviewProjectSnapshot, BurnBarControllerEvent) {
@@ -87,14 +86,13 @@ public actor BurnBarMissionControlStore {
 
     public func questions(_ request: BurnBarQuestionsListRequest) throws -> [BurnBarPendingQuestionSnapshot] {
         try ensureLoaded()
-        return projection?.questions.values
+        return Array(projection?.questions.values
             .filter { item in
                 (request.projectSlug == nil || item.projectSlug == request.projectSlug)
                     && request.statuses.contains(item.status)
             }
             .sorted { $0.askedAt > $1.askedAt }
-            .prefix(request.limit)
-            .map { $0 } ?? []
+            .prefix(request.limit) ?? [])
     }
 
     public func createQuestion(_ question: BurnBarPendingQuestionSnapshot) throws -> (BurnBarPendingQuestionSnapshot, BurnBarControllerEvent) {
@@ -264,14 +262,13 @@ public actor BurnBarMissionControlStore {
 
     public func followups(_ request: BurnBarFollowupsListRequest) throws -> [BurnBarFollowupSnapshot] {
         try ensureLoaded()
-        return projection?.followups.values
+        return Array(projection?.followups.values
             .filter { item in
                 (request.projectSlug == nil || item.projectSlug == request.projectSlug)
                     && request.statuses.contains(item.status)
             }
             .sorted { ($0.nextNudgeAt ?? $0.createdAt) < ($1.nextNudgeAt ?? $1.createdAt) }
-            .prefix(request.limit)
-            .map { $0 } ?? []
+            .prefix(request.limit) ?? [])
     }
 
     public func createFollowup(_ request: BurnBarFollowupCreateRequest) throws -> BurnBarFollowupMutationResponse {
@@ -415,7 +412,7 @@ public actor BurnBarMissionControlStore {
 
     public func missions(_ request: BurnBarMissionListRequest) throws -> [BurnBarMissionSnapshot] {
         try ensureLoaded()
-        return projection?.missions.values
+        return Array(projection?.missions.values
             .filter { item in
                 (request.projectSlug == nil || item.projectSlug == request.projectSlug)
                     && request.statuses.contains(item.status)
@@ -427,8 +424,7 @@ public actor BurnBarMissionControlStore {
                 // Tie-break: missionID ascending (lexicographic)
                 return lhs.id.rawValue < rhs.id.rawValue
             }
-            .prefix(request.limit)
-            .map { $0 } ?? []
+            .prefix(request.limit) ?? [])
     }
 
     public func createMission(_ request: BurnBarMissionCreateRequest) throws -> BurnBarMissionMutationResponse {
@@ -815,11 +811,10 @@ public actor BurnBarMissionControlStore {
 
     public func simulatorRuns(_ request: BurnBarSimulatorListRequest) throws -> BurnBarSimulatorListResponse {
         try ensureLoaded()
-        let runs = projection?.simulatorRuns.values
+        let runs = Array(projection?.simulatorRuns.values
             .filter { request.projectSlug == nil || $0.projectSlug == request.projectSlug }
             .sorted { $0.startedAt > $1.startedAt }
-            .prefix(request.limit)
-            .map { $0 } ?? []
+            .prefix(request.limit) ?? [])
         return BurnBarSimulatorListResponse(runs: runs)
     }
 
@@ -1072,13 +1067,12 @@ public actor BurnBarMissionControlStore {
             .filter { question in
                 missionClosureQuestionMissionID(for: question) == missionID
             }
-            .sorted { lhs, rhs in
+            .min { lhs, rhs in
                 if lhs.askedAt != rhs.askedAt {
                     return lhs.askedAt < rhs.askedAt
                 }
                 return lhs.id.rawValue < rhs.id.rawValue
             }
-            .first
     }
 
     private func missionClosureQuestionMissionID(
@@ -1202,8 +1196,7 @@ public actor BurnBarMissionControlStore {
             explicitTeamKeys.contains(key)
                 || key.hasPrefix("team_")
                 || key.hasPrefix("role_")
-                || key.hasPrefix("audit_")
-        {
+                || key.hasPrefix("audit_") {
             updated[key] = value
         }
 
@@ -1212,8 +1205,7 @@ public actor BurnBarMissionControlStore {
                 explicitTeamKeys.contains(key)
                     || key.hasPrefix("team_")
                     || key.hasPrefix("role_")
-                    || key.hasPrefix("audit_")
-            {
+                    || key.hasPrefix("audit_") {
                 updated[key] = value
             }
         }

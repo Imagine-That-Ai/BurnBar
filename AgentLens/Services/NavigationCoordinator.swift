@@ -16,7 +16,7 @@ enum NavigationDestination: Hashable, Sendable {
 /// Replaces `NotificationCenter` post-based navigation with a modern SwiftUI pattern.
 @Observable
 @MainActor
-final class NavigationCoordinator: Sendable {
+final class NavigationCoordinator {
     
     // MARK: - Navigation State
     

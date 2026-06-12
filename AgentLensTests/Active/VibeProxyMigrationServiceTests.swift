@@ -26,7 +26,7 @@ final class VibeProxyMigrationServiceTests: XCTestCase {
                 "type": "openai-compat",
                 "provider": "zai",
                 "label": "GLM Plan",
-                "api_key": "z1",
+                "api_key": "z1"
             ],
             to: tempHome.appendingPathComponent(".cli-proxy-api/zai.json")
         )
@@ -46,7 +46,7 @@ final class VibeProxyMigrationServiceTests: XCTestCase {
             [
                 "type": "qwen",
                 "email": "alberto@example.com",
-                "api_key": "q2",
+                "api_key": "q2"
             ],
             to: tempHome.appendingPathComponent(".cli-proxy-api/qwen.json")
         )
@@ -73,7 +73,7 @@ final class VibeProxyMigrationServiceTests: XCTestCase {
             [
                 "type": "codex",
                 "email": "chatgpt@example.com",
-                "expired": false,
+                "expired": false
             ],
             to: tempHome.appendingPathComponent(".cli-proxy-api/codex.json")
         )
@@ -83,7 +83,8 @@ final class VibeProxyMigrationServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.importableRecords.count, 0)
         XCTAssertEqual(snapshot.reconnectRecords.count, 1)
         guard case .needsReconnect(let reason) = snapshot.reconnectRecords[0].disposition else {
-            return XCTFail("expected reconnect disposition")
+            XCTFail("expected reconnect disposition")
+            return
         }
         XCTAssertTrue(reason.contains("Reconnect"))
     }
@@ -93,7 +94,7 @@ final class VibeProxyMigrationServiceTests: XCTestCase {
             [
                 "type": "gemini",
                 "email": "gemini@example.com",
-                "access_token": "ya29.oauth-session-token",
+                "access_token": "ya29.oauth-session-token"
             ],
             to: tempHome.appendingPathComponent(".cli-proxy-api/gemini.json")
         )
@@ -121,9 +122,9 @@ final class VibeProxyMigrationServiceTests: XCTestCase {
                         "id": "custom:VibeProxy-Claude",
                         "model": "claude-sonnet",
                         "provider": "anthropic",
-                        "baseUrl": "http://localhost:8317",
-                    ],
-                ],
+                        "baseUrl": "http://localhost:8317"
+                    ]
+                ]
             ],
             to: tempHome.appendingPathComponent(".factory/settings.local.json")
         )

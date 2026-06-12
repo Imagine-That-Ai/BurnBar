@@ -281,7 +281,7 @@ public struct BurnBarAgentLoopService: Sendable {
         }
 
         let normalizedArguments: BurnBarJSONValue?
-        if (action == .browserScreenshot || action == .browserExtract), arguments == nil {
+        if action == .browserScreenshot || action == .browserExtract, arguments == nil {
             normalizedArguments = .object([:])
         } else {
             normalizedArguments = arguments

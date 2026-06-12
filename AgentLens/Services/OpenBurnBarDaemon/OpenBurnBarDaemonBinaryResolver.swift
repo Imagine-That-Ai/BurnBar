@@ -52,7 +52,7 @@ enum OpenBurnBarDaemonBinaryResolver {
         let appParent = appBundleURL.deletingLastPathComponent()
         let bundleNames = [
             OpenBurnBarDaemonManager.resourceBundleName,
-            OpenBurnBarDaemonManager.legacyResourceBundleNames[0],
+            OpenBurnBarDaemonManager.legacyResourceBundleNames[0]
         ]
         let candidates = bundleNames.flatMap { bundleName in
             [
@@ -61,7 +61,7 @@ enum OpenBurnBarDaemonBinaryResolver {
                 appBundleURL.appendingPathComponent("Contents/Resources/\(bundleName)"),
                 appBundleURL.appendingPathComponent("Contents/Frameworks/\(bundleName)"),
                 appParent.appendingPathComponent(bundleName),
-                appParent.appendingPathComponent("PackageFrameworks").appendingPathComponent(bundleName),
+                appParent.appendingPathComponent("PackageFrameworks").appendingPathComponent(bundleName)
             ]
         }
         return candidates.first { fileManager.fileExists(atPath: $0.path) }

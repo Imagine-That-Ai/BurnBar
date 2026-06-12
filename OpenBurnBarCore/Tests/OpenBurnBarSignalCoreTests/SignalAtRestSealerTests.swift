@@ -117,7 +117,7 @@ final class SignalAtRestSealerTests: XCTestCase {
                     recipientKind: "escrow",
                     recipientIdentityKeyId: "escrow-key-1",
                     publicKeyData: escrow.publicKey.serialize()
-                ),
+                )
             ],
             binding: binding,
             senderIdentityKeyId: "device-key-1",
@@ -253,7 +253,7 @@ final class SignalAtRestSealerTests: XCTestCase {
                     recipientKind: "device",
                     recipientIdentityKeyId: "device-key-1",
                     publicKeyData: identity.publicKey.serialize()
-                ),
+                )
             ],
             binding: binding,
             senderIdentityKeyId: "device-key-1",

@@ -256,8 +256,7 @@ final class MacFileTransferService: ObservableObject {
         // the dispatcher expects. The gate is shared by mirror acks,
         // presence replies, Remote Unlock responses, and video frames so
         // concurrent writers cannot corrupt the single bi-stream.
-        let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
-            [sendGate] outbound in
+        let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { [sendGate] outbound in
             try await sendGate.send(outbound)
         }
         do {

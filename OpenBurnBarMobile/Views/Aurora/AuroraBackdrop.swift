@@ -296,7 +296,7 @@ private struct AuroraMeshGradient: View {
 
         // 4×4 grid of mesh points, anchored at corners + interior eddies.
         let points: [SIMD2<Float>] = [
-            SIMD2<Float>(0.0, 0.0),  SIMD2<Float>(0.34 + tiltX, 0.04 + tiltY),
+            SIMD2<Float>(0.0, 0.0), SIMD2<Float>(0.34 + tiltX, 0.04 + tiltY),
             SIMD2<Float>(0.66 - tiltX, 0.10 - tiltY), SIMD2<Float>(1.0, 0.0),
 
             SIMD2<Float>(0.02 + tiltX, 0.32 + Float(drift) + tiltY),
@@ -418,8 +418,7 @@ private struct AuroraRibbon: View {
                 let x = CGFloat(i) / CGFloat(segments) * size.width
                 let progress = CGFloat(i) / CGFloat(segments)
                 let y = size.height * 0.35 + sin(progress * frequency + phase * .pi * 2) * amplitude
-                if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
-                else { path.addLine(to: CGPoint(x: x, y: y)) }
+                if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
             }
             // Mirror for ribbon thickness
             for i in stride(from: segments, through: 0, by: -1) {
@@ -440,7 +439,7 @@ private struct AuroraRibbon: View {
                             MobileTheme.amber.opacity(colorScheme == .dark ? 0.30 : 0.14),
                             MobileTheme.hermesMercury.opacity(colorScheme == .dark ? 0.18 : 0.08)
                         ]),
-                        startPoint: CGPoint(x: 0, y: 0),
+                        startPoint: CGPoint.zero,
                         endPoint: CGPoint(x: size.width, y: size.height)
                     )
                 )

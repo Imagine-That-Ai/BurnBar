@@ -7,7 +7,7 @@ import XCTest
 @MainActor
 final class HermesParserIntegrationTests: XCTestCase {
 
-    var harness: ParserIntegrationTestHarness!
+    private var harness: ParserIntegrationTestHarness!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -80,7 +80,7 @@ final class HermesParserIntegrationTests: XCTestCase {
         XCTAssertEqual(result.usages.count, 2)
         XCTAssertEqual(sessionIDs, Set([
             "world-critic::\(sharedSessionId)",
-            "world-director::\(sharedSessionId)",
+            "world-director::\(sharedSessionId)"
         ]))
     }
 

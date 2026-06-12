@@ -402,7 +402,7 @@ struct BurnTimelineBody: View {
 
     /// Ordered sparkline points for a provider key across the digest's days.
     private func series(for key: String) -> [Sparkline.Point] {
-        digest.daily.enumerated().map { (offset, day) in
+        digest.daily.enumerated().map { offset, day in
             Sparkline.Point(id: offset, value: day.perProvider[key] ?? 0)
         }
     }

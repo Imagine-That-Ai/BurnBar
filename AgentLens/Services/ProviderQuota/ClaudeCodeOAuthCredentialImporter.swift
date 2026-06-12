@@ -113,7 +113,7 @@ struct ClaudeCodeOAuthCredentialImporter {
         let root = URL(fileURLWithPath: configDirectory, isDirectory: true)
         return [
             root.appendingPathComponent(".credentials.json", isDirectory: false),
-            root.appendingPathComponent("credentials.json", isDirectory: false),
+            root.appendingPathComponent("credentials.json", isDirectory: false)
         ]
     }
 

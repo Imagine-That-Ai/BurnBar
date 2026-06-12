@@ -121,4 +121,3 @@ actor BurnBarEventKitBridge {
             ?? store.calendars(for: .event).first(where: \.allowsContentModifications)
     }
 }
-

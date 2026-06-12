@@ -393,13 +393,12 @@ final class SmartHubBridgeController {
     static func preferredRepairCastDevice(from devices: [CastDevice]) -> CastDevice? {
         devices
             .filter(\.supportsDisplay)
-            .sorted { lhs, rhs in
+            .min { lhs, rhs in
                 let lhsScore = repairDeviceScore(lhs)
                 let rhsScore = repairDeviceScore(rhs)
                 if lhsScore != rhsScore { return lhsScore > rhsScore }
                 return lhs.friendlyName.localizedCaseInsensitiveCompare(rhs.friendlyName) == .orderedAscending
             }
-            .first
     }
 
     private static func repairDeviceScore(_ device: CastDevice) -> Int {

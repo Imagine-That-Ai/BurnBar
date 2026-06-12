@@ -18,7 +18,7 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         let store = TestSwitcherProfileStore(profiles: [primary, fallback], activeProfileID: primary.id)
         let credentials = TestCredentialStore(values: [
             "\(primary.id):codex": "sk-work",
-            "\(fallback.id):codex": "sk-personal",
+            "\(fallback.id):codex": "sk-personal"
         ])
         let runner = TestTerminalRunner(results: [
             .init(terminationStatus: 1, quotaExhaustedDetail: "5-hour limit reached", capturedOutput: "5-hour limit reached"),
@@ -58,7 +58,7 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         let updatedPrimary = try XCTUnwrap(store.fetchProfile(id: primary.id))
         XCTAssertNotNil(updatedPrimary.cliMetadata?.lastQuotaExhaustedAt)
         XCTAssertNotNil(updatedPrimary.cliMetadata?.exhaustedUntil)
-        XCTAssertTrue(updatedPrimary.cliMetadata?.lastQuotaExhaustionDetail?.contains("5-hour") == true)
+        XCTAssertEqual(updatedPrimary.cliMetadata?.lastQuotaExhaustionDetail?.contains("5-hour"), true)
     }
 
     func testShellExecutorHonorsRequestedProfileOverride() async throws {
@@ -92,7 +92,7 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertEqual(result.launchedProfileID, second.id)
         XCTAssertEqual(result.attemptedProfileIDs, [second.id])
         let invocations = await runner.invocationsSnapshot()
-        XCTAssertEqual(invocations.first?.environment["ANTHROPIC_API_KEY"], nil)
+        XCTAssertNil(invocations.first?.environment["ANTHROPIC_API_KEY"])
     }
 
     func testShellExecutorClearsPersistedQuotaExhaustionAfterSuccessfulLaunch() async throws {
@@ -215,14 +215,14 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         let runner = TestTerminalRunner(results: [
             .init(terminationStatus: 1, quotaExhaustedDetail: "weekly limit reached", capturedOutput: "weekly limit reached"),
             .init(terminationStatus: 0, quotaExhaustedDetail: nil, capturedOutput: ""),
-            .init(terminationStatus: 0, quotaExhaustedDetail: nil, capturedOutput: ""),
+            .init(terminationStatus: 0, quotaExhaustedDetail: nil, capturedOutput: "")
         ])
 
         let executor = BurnBarCLIShellExecutor(
             profileStore: store,
             credentialStore: TestCredentialStore(values: [
                 "\(primary.id):codex": "sk-work",
-                "\(fallback.id):codex": "sk-personal",
+                "\(fallback.id):codex": "sk-personal"
             ]),
             terminalRunner: runner,
             environmentProvider: { ["TERM": "xterm-256color"] },

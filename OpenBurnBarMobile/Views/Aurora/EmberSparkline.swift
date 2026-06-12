@@ -26,8 +26,7 @@ struct EmberSparkline: View {
                 let normalized = (v - mn) / range
                 let y = size.height - CGFloat(normalized) * size.height
                 let pt = CGPoint(x: x, y: y)
-                if i == 0 { linePath.move(to: pt) }
-                else { linePath.addLine(to: pt) }
+                if i == 0 { linePath.move(to: pt) } else { linePath.addLine(to: pt) }
                 areaPath.addLine(to: pt)
             }
             areaPath.addLine(to: CGPoint(x: size.width, y: size.height))

@@ -361,7 +361,7 @@ final class ProjectionChunkerTests: XCTestCase {
 
         // Chunk IDs are derived from document ID and other factors
         XCTAssertFalse(chunks.isEmpty, "Should create at least one chunk")
-        XCTAssertTrue(chunks.first?.id.hasPrefix("chunk-") == true)
+        XCTAssertEqual(chunks.first?.id.hasPrefix("chunk-"), true)
     }
 
     func test_chunker_chunkIDContainsOrdinal() {
@@ -749,7 +749,7 @@ final class ProjectionChunkerTests: XCTestCase {
 
         XCTAssertFalse(chunks.isEmpty)
         // Emoji should be preserved in chunk text
-        XCTAssertTrue(chunks.first?.text.contains("👋") == true)
+        XCTAssertEqual(chunks.first?.text.contains("👋"), true)
     }
 
     func test_chunker_handlesMixedUnicode() {

@@ -17,11 +17,11 @@ struct HarnessModelBadge: View {
     let harness: AgentProvider
     let model: AgentProvider?
     var size: CGFloat = 44
-    var availability: RuntimeStatus? = nil
+    var availability: RuntimeStatus?
     var modelScale: CGFloat = 0.52
     /// When true, applies an accent ring around the harness logo. Used in
     /// the Hermes Square pinned grid where each tile gets a brand halo.
-    var ringStroke: Color? = nil
+    var ringStroke: Color?
 
     private var modelBadgeSize: CGFloat { size * min(max(modelScale, 0.28), 0.60) }
     /// Outer chrome footprint so callers can size containers correctly —

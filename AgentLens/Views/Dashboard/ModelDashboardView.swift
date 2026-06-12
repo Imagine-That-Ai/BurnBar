@@ -81,7 +81,7 @@ struct ModelCard: View {
                                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                                     .textCase(.uppercase)
 
-                                ForEach(Array(rankedProviderBreakdown.prefix(3).enumerated()), id: \.element.id) { index, pu in
+                                ForEach(Array(rankedProviderBreakdown.prefix(3).enumerated()), id: \.element.id) { _, pu in
                                     HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                                         Capsule()
                                             .fill(UnifiedDesignSystem.Colors.primary(for: pu.provider))
@@ -143,7 +143,7 @@ struct ModelDashboardView: View {
     let modelName: String
     let dataStore: DataStore
     let timeRange: TimeRange
-    var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
+    var onOpenSessionLog: ((ConversationJumpTarget) -> Void)?
 
     @Environment(SettingsManager.self) private var settingsManager
     @State private var selectedSession: TokenUsage?
@@ -286,7 +286,7 @@ struct ModelDashboardView: View {
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 } else {
                     VStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                        ForEach(Array(topAgents.enumerated()), id: \.element.id) { index, pu in
+                        ForEach(Array(topAgents.enumerated()), id: \.element.id) { _, pu in
                             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
                                 HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                                     Capsule()

@@ -2,7 +2,6 @@ import Foundation
 import OpenBurnBarCore
 import SQLite3
 
-
 protocol ProviderQuotaAdapter: Sendable {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot
 }

@@ -148,8 +148,7 @@ final class LiveCloudReader: CloudReader {
     }
 
     func loadProviderSummaries() async throws -> [ProviderConnectionDoc] {
-        do { return try await firestore.fetchProviderConnections() }
-        catch { throw classify(error) }
+        do { return try await firestore.fetchProviderConnections() } catch { throw classify(error) }
     }
 
     func loadDevices() async throws -> [DeviceRecord] {
@@ -497,8 +496,13 @@ final class LiveEscrowGateway: EscrowGateway {
         // Download
         onStage(.downloading)
         let doc: DocumentSnapshot
-        do { doc = try await db.collection("users").document(uid).collection("escrow_envelopes").document(envelope.id).getDocument() }
-        catch { onStage(.failed(.permissionDenied)); await writeAudit(uid: uid, type: "import_download_failed", envelopeId: envelope.id, providerId: pid, error: error.localizedDescription); return }
+        do {
+            doc = try await db.collection("users").document(uid).collection("escrow_envelopes").document(envelope.id).getDocument()
+        } catch {
+            onStage(.failed(.permissionDenied))
+            await writeAudit(uid: uid, type: "import_download_failed", envelopeId: envelope.id, providerId: pid, error: error.localizedDescription)
+            return
+        }
 
         guard let data = doc.data(),
               let ctB64 = data["ciphertext"] as? String,

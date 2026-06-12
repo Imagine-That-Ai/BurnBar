@@ -888,7 +888,7 @@ struct HermesThinkingStylePickerSheet: View {
     private var glyphCountRaw: String = HermesThinkingGlyphCountChoice.defaultChoice.rawValue
     @AppStorage(HermesThinkingBounceChoice.storageKey)
     private var bounceRaw: String = HermesThinkingBounceChoice.defaultChoice.rawValue
-    @State private var customPickerColor: Color = Color(hex: "FF9F0A")
+    @State private var customPickerColor = Color(hex: "FF9F0A")
     @Environment(\.dismiss) private var dismiss
 
     init(provider: AgentProvider? = nil, modelName: String? = nil) {

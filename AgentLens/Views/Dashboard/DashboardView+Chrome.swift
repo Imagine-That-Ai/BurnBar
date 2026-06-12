@@ -174,10 +174,10 @@ extension DashboardView {
         let id = "openburnbar.openburnbar"
         let candidates = [
             URL(string: "cursor:extension/\(id)"),
-            URL(string: "vscode:extension/\(id)"),
+            URL(string: "vscode:extension/\(id)")
         ].compactMap { $0 }
-        for url in candidates {
-            if NSWorkspace.shared.open(url) { return }
+        for url in candidates where NSWorkspace.shared.open(url) {
+            return
         }
     }
 

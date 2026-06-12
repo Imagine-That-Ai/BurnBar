@@ -20,9 +20,9 @@ struct MobileProjectMemoryWikiView: View {
 
     // Interactions
     @State private var expandedSections: Set<String> = ["recent-work"]
-    @State private var selectedVisualPointLabel: String? = nil
+    @State private var selectedVisualPointLabel: String?
     @State private var evidenceSearchText = ""
-    @State private var evidenceFilterModel: String? = nil
+    @State private var evidenceFilterModel: String?
 
     private var allSessions: [TokenUsage] {
         store.sessions(for: project)

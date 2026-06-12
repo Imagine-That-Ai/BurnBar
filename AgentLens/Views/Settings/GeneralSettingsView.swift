@@ -694,20 +694,16 @@ struct QuotaCustomizationSettingsDetailView: View {
         var seenKeys = Set<String>()
         var list: [ProviderQuotaBucket] = []
         for snapshot in snapshots {
-            for bucket in snapshot.displayableQuotaBuckets {
-                if !seenKeys.contains(bucket.key) {
-                    seenKeys.insert(bucket.key)
-                    list.append(bucket)
-                }
+            for bucket in snapshot.displayableQuotaBuckets where !seenKeys.contains(bucket.key) {
+                seenKeys.insert(bucket.key)
+                list.append(bucket)
             }
         }
 
         if list.isEmpty, let single = quotaService.snapshot(for: provider) {
-            for bucket in single.displayableQuotaBuckets {
-                if !seenKeys.contains(bucket.key) {
-                    seenKeys.insert(bucket.key)
-                    list.append(bucket)
-                }
+            for bucket in single.displayableQuotaBuckets where !seenKeys.contains(bucket.key) {
+                seenKeys.insert(bucket.key)
+                list.append(bucket)
             }
         }
 

@@ -126,7 +126,7 @@ struct DataControlCenterView: View {
                 Text(row.title)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
-                if row.count > 0 {
+                if row.hasRecords {
                     Text("\(row.count) records")
                         .font(.system(size: 10))
                         .foregroundStyle(DesignSystem.Colors.textMuted)

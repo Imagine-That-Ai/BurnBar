@@ -263,10 +263,10 @@ struct AgentBrandZoneView: View {
                 .foregroundStyle(DesignSystemColors.textSecondary)
             if let stats = identity.lastSevenDays {
                 HStack(spacing: 16) {
-                    statBlock(label: "Threads",  value: "\(stats.threadCount)")
+                    statBlock(label: "Threads", value: "\(stats.threadCount)")
                     statBlock(label: "Missions", value: "\(stats.missionCount)")
-                    statBlock(label: "Burn",     value: MissionConsoleFormatting.cost(stats.burnUSD))
-                    statBlock(label: "Success",  value: String(format: "%.0f%%", stats.successRate * 100))
+                    statBlock(label: "Burn", value: MissionConsoleFormatting.cost(stats.burnUSD))
+                    statBlock(label: "Success", value: String(format: "%.0f%%", stats.successRate * 100))
                 }
             } else {
                 Text("No telemetry yet — start a thread or dispatch a mission.")
@@ -1116,8 +1116,7 @@ final class AgentSubscriptionTopicStore {
         let opaqueID = try Self.documentID(agentURI: topic.agentURI, topicID: topic.topicID, vaultKey: vaultKey)
         try await topicCollection.document(opaqueID).setData(payload, merge: true)
         for legacyID in Self.legacyCleartextDocumentIDs(agentURI: topic.agentURI, topicID: topic.topicID)
-            where legacyID != opaqueID
-        {
+            where legacyID != opaqueID {
             try? await topicCollection.document(legacyID).delete()
         }
         mergeLocal(topic)
