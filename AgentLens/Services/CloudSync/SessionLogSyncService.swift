@@ -44,11 +44,9 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
     private let vaultKeyPublisher: SessionLogVaultKeyPublishing
     private var archivedSessionMirror: SessionLogArchivedSessionMirroring?
 
-    private let state = Locked(CloudSyncDomainState())
-
-    var isSyncing: Bool { state.read().isSyncing }
-    var lastSyncError: String? { state.read().lastSyncError }
-    var lastSyncDate: Date? { state.read().lastSyncDate }
+    private(set) var isSyncing = false
+    private(set) var lastSyncError: String?
+    private(set) var lastSyncDate: Date?
 
     init(
         context: CloudSyncContext,
@@ -119,10 +117,11 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
 
         let deviceId = gate.account.deviceId
 
-        state.beginSyncing()
+        isSyncing = true
+        lastSyncError = nil
 
         defer {
-            state.endSyncing()
+            isSyncing = false
             Self.processGate.leave()
         }
 
@@ -146,7 +145,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                 let unsynced = try context.dataStore.fetchUnsyncedSessionLogs(limit: 50)
                 guard !unsynced.isEmpty else {
                     if !processedAnyBatch {
-                        state.withLock { $0.lastSyncDate = Date() }
+                        lastSyncDate = Date()
                     }
                     break
                 }
@@ -462,10 +461,8 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                 }
             } while drainAll
 
-            state.withLock {
-                $0.lastSyncDate = Date()
-                $0.lastSyncError = nil
-            }
+            lastSyncDate = Date()
+            lastSyncError = nil
         } catch {
             progress?.fail(error.localizedDescription)
             await recordSyncError(error)
@@ -491,7 +488,7 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
     }
 
     private func recordSyncError(_ error: Error) async {
-        state.withLock { $0.lastSyncError = error.localizedDescription }
+        lastSyncError = error.localizedDescription
 
         let nsError = error as NSError
         guard nsError.domain == FirestoreErrorDomain,
