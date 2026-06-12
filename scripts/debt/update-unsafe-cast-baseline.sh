@@ -8,7 +8,7 @@ tmp_path="$(mktemp "${TMPDIR:-/tmp}/unsafe-cast-baseline.XXXXXX")"
 
 trap 'rm -f "${tmp_path}"' EXIT
 
-node "${scanner_path}" --repo-root "${repo_root}" --format json > "${tmp_path}"
+node "${scanner_path}" --repo-root "${repo_root}" --format json --ts-mode token-fallback > "${tmp_path}"
 mkdir -p "$(dirname "${baseline_path}")"
 mv "${tmp_path}" "${baseline_path}"
 chmod 644 "${baseline_path}"
