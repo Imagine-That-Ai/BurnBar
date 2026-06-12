@@ -62,7 +62,9 @@ RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi\.xcframework(/|$)
 # libsignal submodule, FFI binary, .gitmodules, LICENSES — remains
 # unconditional, and in degraded no-base mode the exception is disabled.
 ack_present=0
-if [[ -n "${MERGE_BASE:-}" ]] && git log "$MERGE_BASE..HEAD" --format=%B 2>/dev/null | grep -Eq '^Rule0-Ack: \S'; then
+# No `grep -q` here: under `set -o pipefail` its early exit SIGPIPEs git log
+# and fails the whole pipeline, silently disabling the ack on large branches.
+if [[ -n "${MERGE_BASE:-}" ]] && git log "$MERGE_BASE..HEAD" --format=%B 2>/dev/null | grep -E '^Rule0-Ack: \S' >/dev/null; then
   ack_present=1
 fi
 
