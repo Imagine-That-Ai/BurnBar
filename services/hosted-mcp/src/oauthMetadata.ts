@@ -6,20 +6,21 @@ export function protectedResourceMetadata() {
     authorization_servers: [MCP_AUTH_ISSUER],
     scopes_supported: ["search:read", "conversation:read", "usage:read", "index:status"],
     bearer_methods_supported: ["header"],
-    resource_documentation: "https://openburnbar.com/docs/remote-mcp"
+    resource_documentation: "https://burnbar.ai/docs/remote-mcp"
   };
 }
 
 export function authorizationServerMetadata() {
+  // Grants are minted out-of-band by the device-code link flow (startCliLink ->
+  // completeCliLink). The only OAuth endpoint this server exposes is the refresh
+  // token endpoint, so we advertise exactly that — no authorization_code, no
+  // authorize/revoke endpoints (which would 404). Discovery must only point at
+  // routes that exist on this service.
   return {
     issuer: MCP_AUTH_ISSUER,
-    authorization_endpoint: `${MCP_AUTH_ISSUER}/oauth/authorize`,
     token_endpoint: `${MCP_AUTH_ISSUER}/oauth/token`,
-    revocation_endpoint: `${MCP_AUTH_ISSUER}/oauth/revoke`,
-    response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
-    code_challenge_methods_supported: ["S256"],
+    grant_types_supported: ["refresh_token"],
     scopes_supported: ["search:read", "conversation:read", "usage:read", "index:status"],
-    token_endpoint_auth_methods_supported: ["none", "client_secret_post"]
+    token_endpoint_auth_methods_supported: ["none"]
   };
 }

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { userInfo, hostname } from "node:os";
-import { writeAccessToken } from "./oauth.js";
+import { writeAccessToken, writeRefreshToken } from "./oauth.js";
 import { readVaultKey } from "./vaultStore.js";
 import { DEFAULT_ENDPOINT } from "./shim.js";
 
@@ -103,9 +103,15 @@ export async function runLoginFlow(): Promise<void> {
       const pollData = await pollResponse.json() as {
         status: "authorization_pending" | "approved" | "expired" | "denied";
         accessToken?: string;
+        refreshToken?: string;
       };
       if (pollData.status === "approved" && pollData.accessToken) {
         writeAccessToken(pollData.accessToken);
+        // Store the durable refresh token so the shim can silently re-mint the
+        // 15-minute access token instead of hard-401ing forever.
+        if (pollData.refreshToken) {
+          writeRefreshToken(pollData.refreshToken);
+        }
         console.log("✔ CLI device authorization approved. Token stored securely.");
         tokenStored = true;
         break;
