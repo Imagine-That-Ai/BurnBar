@@ -670,20 +670,26 @@ final class AccountManager {
         }
     }
 
-    private static func googleAuthPresentationWindow(from window: NSWindow) -> NSWindow {
+    private static func googleAuthPresentationWindow(from window: NSWindow, activate: Bool = true) -> NSWindow {
+        let presentationWindow = googleAuthPresentationWindowCandidate(from: window, windows: NSApp.windows)
+        guard activate, presentationWindow.isVisible, !presentationWindow.isMiniaturized else {
+            return presentationWindow
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        presentationWindow.makeKeyAndOrderFront(nil)
+        return presentationWindow
+    }
+
+    private static func googleAuthPresentationWindowCandidate(from window: NSWindow, windows: [NSWindow]) -> NSWindow {
         var candidate = window
         while let parent = candidate.sheetParent {
             candidate = parent
         }
         if candidate.isVisible, !candidate.isMiniaturized {
-            NSApp.activate(ignoringOtherApps: true)
-            candidate.makeKeyAndOrderFront(nil)
             return candidate
         }
-        let fallback = NSApp.windows.first { $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil }
+        let fallback = windows.first { $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil }
         if let fallback {
-            NSApp.activate(ignoringOtherApps: true)
-            fallback.makeKeyAndOrderFront(nil)
             return fallback
         }
         return window
@@ -1023,7 +1029,7 @@ final class AccountManager {
     }
 
     static func googleAuthPresentationWindowForTesting(from window: NSWindow) -> NSWindow {
-        googleAuthPresentationWindow(from: window)
+        googleAuthPresentationWindow(from: window, activate: false)
     }
     #endif
 }
