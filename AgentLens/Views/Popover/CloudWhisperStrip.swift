@@ -153,7 +153,7 @@ struct CloudWhisperStrip: View {
         if #available(macOS 26, *) {
             Rectangle()
                 .fill(stripGradient)
-                .glassEffect(.regular, in: .rect)
+                .liquidGlassEffect(.regular, in: .rect)
         } else {
             ZStack {
                 Rectangle().fill(.ultraThinMaterial)

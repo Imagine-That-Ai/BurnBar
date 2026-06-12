@@ -66,6 +66,16 @@ enum SettingsManifest {
             subtitle: "Active, reconverging token-ember swarms from burnbar.ai",
             keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"]
         ),
+        SettingsItem(
+            id: "theme.appearance.glassTransparency",
+            section: .appearance,
+            pageRoute: .theme,
+            anchorID: SettingsAnchor.glassTransparency,
+            title: "Liquid Glass Transparency",
+            subtitle: "Make glass surfaces clearer or frostier than the system default",
+            keywords: ["glass", "transparency", "translucent", "frosted", "clear", "blur", "liquid", "opacity", "see-through", "material"],
+            helpText: "Zero matches this device's appearance settings, including Reduce Transparency. Slide toward Clear for more see-through glass, or Frosted for more privacy and contrast."
+        ),
 
         // MARK: UI Mode
 
@@ -416,6 +426,7 @@ enum SettingsManifest {
         SettingsAnchor.usageDisplay,
         SettingsAnchor.usePremiumSOTAUX,
         SettingsAnchor.useWebsiteBackground,
+        SettingsAnchor.glassTransparency,
         SettingsAnchor.uiMode,
         SettingsAnchor.dailyBudget,
         SettingsAnchor.costAlerts,

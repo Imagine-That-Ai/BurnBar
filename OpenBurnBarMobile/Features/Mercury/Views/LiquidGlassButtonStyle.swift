@@ -44,6 +44,8 @@ struct LiquidGlassButtonStyle: ButtonStyle {
     var usePremiumSOTAUX: Bool = false
 
     @AppStorage("usePremiumSOTAUX") private var globalUsePremiumSOTAUX: Bool = false
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func makeBody(configuration: Configuration) -> some View {
         let activeSOTA = usePremiumSOTAUX || globalUsePremiumSOTAUX
@@ -70,10 +72,15 @@ struct LiquidGlassButtonStyle: ButtonStyle {
                                 )
                             )
                             .opacity(isEnabled ? 1 : 0.3)
-                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .liquidGlassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     } else {
+                        let t = LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .fill(.ultraThinMaterial)
+                            .opacity(LiquidGlassTransparency.fallbackPlateOpacity(t))
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(.thickMaterial)
+                            .opacity(LiquidGlassTransparency.frostScrimOpacity(t))
 
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .fill(

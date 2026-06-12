@@ -67,6 +67,16 @@ enum SettingsManifest {
             helpText: "Editorial re-skins OpenBurnBar in the light, paper-bright app.burnbar.ai console palette: one coral accent, ink text, hairlines."
         ),
         SettingsItem(
+            id: "general.appearance.glassTransparency",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.appearanceGlassTransparency,
+            title: "Liquid Glass Transparency",
+            subtitle: "Make glass surfaces clearer or frostier than the system default",
+            keywords: ["glass", "transparency", "translucent", "frosted", "clear", "blur", "liquid", "opacity", "see-through", "material"],
+            helpText: "Zero matches this Mac's appearance settings, including Reduce transparency. Slide toward Clear for more see-through glass, or Frosted for more privacy and contrast."
+        ),
+        SettingsItem(
             id: "general.appearance.menuBar",
             tab: .general,
             pageRoute: .appearance,
@@ -710,6 +720,7 @@ enum SettingsManifest {
         SettingsAnchor.operatorWizard,
         SettingsAnchor.appearanceTheme,
         SettingsAnchor.appearanceSkin,
+        SettingsAnchor.appearanceGlassTransparency,
         SettingsAnchor.appearanceMenuBar,
         SettingsAnchor.appearanceLaunchAtLogin,
         SettingsAnchor.usePremiumSOTAUX,
