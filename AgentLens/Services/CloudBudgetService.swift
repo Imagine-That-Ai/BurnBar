@@ -160,7 +160,7 @@ final class CloudBudgetService {
             "updatedAt": rule.updatedAt,
             "syncedAt": rule.syncedAt as Any,
             "sourceDeviceID": rule.sourceDeviceID as Any,
-            "isEnabled": rule.isEnabled,
+            "isEnabled": rule.isEnabled
         ]
         // Seal the private project name + label instead of writing them in clear.
         if let projectName = rule.projectName {
@@ -200,7 +200,7 @@ final class CloudBudgetService {
             "limitAtEvent": event.limitAtEvent,
             "occurredAt": event.occurredAt,
             "syncedAt": event.syncedAt as Any,
-            "sourceDeviceID": event.sourceDeviceID as Any,
+            "sourceDeviceID": event.sourceDeviceID as Any
         ]
         data = data.compactMapValues { $0 }
         return data

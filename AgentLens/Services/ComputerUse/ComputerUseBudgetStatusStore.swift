@@ -79,7 +79,7 @@ final class ComputerUseBudgetStatusStore {
             "computer_use_budget_listener_failed",
             metadata: [
                 "error": error.localizedDescription,
-                "code": String(describing: code),
+                "code": String(describing: code)
             ]
         )
 

@@ -10,7 +10,7 @@ import XCTest
 @MainActor
 final class CodexTokenAccountingRegressionTests: XCTestCase {
 
-    var harness: ParserIntegrationTestHarness!
+    private var harness: ParserIntegrationTestHarness!
 
     override func setUp() async throws {
         try await super.setUp()

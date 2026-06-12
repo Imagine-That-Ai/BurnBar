@@ -822,12 +822,10 @@ public actor BurnBarParallelDAGScheduler {
             let current = queue.removeFirst()
             topoOrder.append(current)
 
-            for neighbor in adjacency[current] ?? [] {
-                if !completedSet.contains(neighbor) {
-                    inDegree[neighbor]! -= 1
-                    if inDegree[neighbor] == 0 {
-                        queue.append(neighbor)
-                    }
+            for neighbor in adjacency[current] ?? [] where !completedSet.contains(neighbor) {
+                inDegree[neighbor]! -= 1
+                if inDegree[neighbor] == 0 {
+                    queue.append(neighbor)
                 }
             }
         }

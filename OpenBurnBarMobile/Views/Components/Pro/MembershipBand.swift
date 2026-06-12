@@ -22,7 +22,7 @@ struct MembershipBand: View {
     var variant: Variant = .upsell
     var icon: String = "sparkle"
     var ctaLabel: String = "OPEN CLOUD"
-    var action: (() -> Void)? = nil
+    var action: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 

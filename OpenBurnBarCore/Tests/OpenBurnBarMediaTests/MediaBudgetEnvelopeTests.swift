@@ -46,7 +46,8 @@ final class MediaBudgetEnvelopeTests: XCTestCase {
 
     func testSoftCapLevelDecodesFromFirestoreCanonicalString() throws {
         // Master plan uses snake_case for the level enum on the wire.
-        let raw = #"{"level":"soft_cap","projectedMonthEndUSD":700,"monthToDateUSD":350,"lastEvaluatedAt":1700000000,"activeEnvelope":{"screenShareDailyMinutes":30,"screenSharePerSessionMinutes":30,"videoCallDailyMinutes":120,"videoCallPerCallMinutes":20,"fileTransferDailyGBIn":2,"fileTransferDailyGBOut":2}}"#
+        let raw = #"{"level":"soft_cap","projectedMonthEndUSD":700,"monthToDateUSD":350,"lastEvaluatedAt":1700000000,"# +
+            #""activeEnvelope":{"screenShareDailyMinutes":30,"screenSharePerSessionMinutes":30,"videoCallDailyMinutes":120,"videoCallPerCallMinutes":20,"fileTransferDailyGBIn":2,"fileTransferDailyGBOut":2}}"#
         let decoded = try JSONDecoder().decode(MediaBudgetStatus.self, from: Data(raw.utf8))
         XCTAssertEqual(decoded.level, .softCap)
     }

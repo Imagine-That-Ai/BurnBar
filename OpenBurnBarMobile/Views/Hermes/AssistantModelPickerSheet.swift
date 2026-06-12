@@ -20,15 +20,15 @@ struct AssistantModelPickerSheet: View {
     let runtime: AssistantRuntimeID
     @Bindable var hermesService: HermesService
     @Bindable var piService: PiService
-    var onChange: ((AssistantModelOption) -> Void)? = nil
+    var onChange: ((AssistantModelOption) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var accountStore = AccountStore.shared
     @State private var refreshing = false
-    @State private var cliPreference: String? = nil
-    @State private var cliCatalog: CLIRuntimeModelCatalogResponse? = nil
-    @State private var cliCatalogError: String? = nil
-    @State private var showProviderWizard: AgentProvider? = nil
+    @State private var cliPreference: String?
+    @State private var cliCatalog: CLIRuntimeModelCatalogResponse?
+    @State private var cliCatalogError: String?
+    @State private var showProviderWizard: AgentProvider?
 
     var body: some View {
         NavigationStack {
@@ -675,8 +675,7 @@ struct AssistantModelPickerSheet: View {
     private func inferAgentProvider(for option: AssistantModelOption) -> AgentProvider {
         let token = ProviderID(rawValue: option.providerID).rawValue
         if let provider = AgentProvider.mobileAccountConnectableProviders
-            .first(where: { $0.providerID.rawValue == token })
-        {
+            .first(where: { $0.providerID.rawValue == token }) {
             return provider
         }
         return hermesAgentProvider(for: option.providerID + " " + option.modelID)

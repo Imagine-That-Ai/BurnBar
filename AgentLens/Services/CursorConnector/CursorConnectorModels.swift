@@ -532,7 +532,7 @@ struct OpenBurnBarProviderCatalogInfo: Hashable, Sendable {
 }
 
 struct OpenBurnBarConnectorCatalogLookup: Sendable {
-    static let shared: OpenBurnBarConnectorCatalogLookup = OpenBurnBarConnectorCatalogLookup()
+    static let shared = OpenBurnBarConnectorCatalogLookup()
 
     private let providerInfos: [String: OpenBurnBarProviderCatalogInfo]
     #if canImport(OpenBurnBarCore)

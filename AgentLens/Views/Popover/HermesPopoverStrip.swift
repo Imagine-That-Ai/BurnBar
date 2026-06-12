@@ -195,7 +195,7 @@ struct AssistantsPopoverStrip: View {
                 .init(color: DesignSystem.Colors.hermesMercury, location: max(0, p - w)),
                 .init(color: .white.opacity(0.7), location: p),
                 .init(color: DesignSystem.Colors.hermesAureate, location: min(1, p + w)),
-                .init(color: DesignSystem.Colors.hermesAureate.opacity(0.4), location: 1),
+                .init(color: DesignSystem.Colors.hermesAureate.opacity(0.4), location: 1)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing

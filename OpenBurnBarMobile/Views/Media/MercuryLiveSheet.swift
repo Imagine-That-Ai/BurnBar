@@ -96,7 +96,7 @@ struct MercuryLiveSheet: View {
     /// runtime's CLI interactively in a Terminal and pin the stream to just
     /// that window (a focused native TUI) instead of mirroring the whole
     /// display. `nil` keeps the standard full-display Mercury Live mirror.
-    var terminalRuntime: String? = nil
+    var terminalRuntime: String?
 
     @State private var lastAck: HermesRealtimeRelayMirrorAck?
     @State private var lastAckReceivedAt: Date?
@@ -144,7 +144,7 @@ struct MercuryLiveSheet: View {
     @State private var activeMirrorSessionId: String?
     @State private var activeMirrorViewerId: String?
     @State private var activeMirrorViewerRole: String?
-    @State private var backgroundImage: UIImage? = nil
+    @State private var backgroundImage: UIImage?
     @ObservedObject private var personalizationStore = MercuryPersonalizationStore.shared
     @ObservedObject private var transferHistoryStore = MercuryTransferHistoryStore.shared
     @State private var dashboardStore = DashboardStore()
@@ -443,7 +443,7 @@ struct MercuryLiveSheet: View {
     private var backgroundView: some View {
         switch personalization.background {
         case .wallpaper:
-            if let backgroundImage = backgroundImage, personalization.mimicLoginBackground {
+            if let backgroundImage, personalization.mimicLoginBackground {
                 Image(uiImage: backgroundImage)
                     .resizable()
                     .scaledToFill()
@@ -514,7 +514,7 @@ struct MercuryLiveSheet: View {
     }
 
     private func decodeWallpaper(_ base64: String?) {
-        guard let base64 = base64,
+        guard let base64,
               let data = Data(base64Encoded: base64),
               let image = UIImage(data: data) else {
             self.backgroundImage = nil

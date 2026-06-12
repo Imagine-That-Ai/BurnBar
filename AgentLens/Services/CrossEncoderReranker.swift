@@ -405,7 +405,6 @@ typealias OpenAICrossEncoderReranker = OpenAICompatibleCrossEncoderReranker
 
 // MARK: - CLI Reranker
 
-
 final class CLICrossEncoderReranker: RetrievalRerankProviding {
     enum Provider {
         case codex
@@ -479,7 +478,6 @@ final class CLICrossEncoderReranker: RetrievalRerankProviding {
 }
 
 // MARK: - Mock Reversing Reranker (for testing)
-
 
 final class MockReversingReranker: RetrievalRerankProviding {
     func rerank(

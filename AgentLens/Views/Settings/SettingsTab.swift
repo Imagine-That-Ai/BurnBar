@@ -167,7 +167,7 @@ struct SettingsToggle: View {
     var body: some View {
         Toggle(isOn: $isOn) {
             HStack(spacing: DesignSystem.Spacing.md) {
-                if let icon = icon {
+                if let icon {
                     Image(systemName: icon)
                         .font(.system(size: 14))
                         .foregroundStyle(DesignSystem.Colors.textMuted)

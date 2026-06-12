@@ -38,7 +38,7 @@ final class MediaAttachmentManifestStoreTests: XCTestCase {
     /// writer does not emit).
     private let allowedKeys: Set<String> = [
         "id", "blobHash", "sealedFilename", "mime", "size",
-        "peerDeviceIdHash", "direction", "createdAt", "expireAt", "schemaVersion",
+        "peerDeviceIdHash", "direction", "createdAt", "expireAt", "schemaVersion"
     ]
 
     func test_encodeManifest_sealsFilename_writesNoPlaintext() throws {
@@ -149,16 +149,16 @@ final class MediaAttachmentManifestStoreTests: XCTestCase {
         let past = Timestamp(date: Date().addingTimeInterval(-86_400))
 
         XCTAssertTrue(MediaAttachmentManifestStore.isActiveMediaEntitlement([
-            "active": true, "expireAt": future,
+            "active": true, "expireAt": future
         ]))
         XCTAssertFalse(MediaAttachmentManifestStore.isActiveMediaEntitlement([
-            "active": true, "expireAt": past,
+            "active": true, "expireAt": past
         ]))
         XCTAssertFalse(MediaAttachmentManifestStore.isActiveMediaEntitlement([
-            "active": false, "expireAt": future,
+            "active": false, "expireAt": future
         ]))
         XCTAssertFalse(MediaAttachmentManifestStore.isActiveMediaEntitlement([
-            "active": true,
+            "active": true
         ]))
     }
 }

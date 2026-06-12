@@ -4,11 +4,11 @@ import Foundation
 
 /// Supported export targets for context packs.
 enum ContextPackExportTarget: String, CaseIterable, Sendable {
-    case claude = "claude"
-    case codex = "codex"
-    case cursor = "cursor"
-    case hermes = "hermes"
-    case markdown = "markdown"
+    case claude
+    case codex
+    case cursor
+    case hermes
+    case markdown
 
     /// User-facing display name for the export target.
     var displayName: String {

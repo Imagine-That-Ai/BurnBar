@@ -2046,7 +2046,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
-            kSecUseAuthenticationContext as String: context,
+            kSecUseAuthenticationContext as String: context
         ]
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {

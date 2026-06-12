@@ -14,8 +14,8 @@ struct AuroraNavigationTray: View {
     @Binding var selection: AuroraNavDestination
     let destinations: [AuroraNavDestination]
     /// Optional user identity that the `.you` tab renders as the avatar.
-    var userPhotoURL: URL? = nil
-    var userDisplayName: String? = nil
+    var userPhotoURL: URL?
+    var userDisplayName: String?
     /// Cloud entitlement state. Free users see a breathing `ProBadgeDot`
     /// at the corner of the `.you` tab; members see a tiny `MercuryCrest`.
     /// The single dot/crest swap is the universal whisper-vs-status signal
@@ -216,8 +216,8 @@ struct AuroraTabItem: View {
     let iconSize: CGFloat
     let isSelected: Bool
     let isPressed: Bool
-    var userPhotoURL: URL? = nil
-    var userDisplayName: String? = nil
+    var userPhotoURL: URL?
+    var userDisplayName: String?
     var cloudIndicator: CloudIndicator = .none
 
     @Environment(\.colorScheme) private var colorScheme

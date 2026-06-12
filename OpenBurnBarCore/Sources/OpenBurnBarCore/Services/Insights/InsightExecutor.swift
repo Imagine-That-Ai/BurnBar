@@ -132,7 +132,7 @@ public struct InsightExecutor: Sendable {
         let format: ValueFormat
         let value: Double
         var spark: [Double] = []
-        var context: String? = nil
+        var context: String?
         switch metric {
         case .totalCost:
             label = "Cost"
@@ -907,7 +907,7 @@ public struct InsightExecutor: Sendable {
                                     usages: [InsightUsageRow]) -> InsightWidgetData.UseCaseCluster {
         let counts = Dictionary(grouping: sessions, by: { InsightDigestBuilder.inferUseCase(session: $0, taxonomy: taxonomy) })
             .mapValues { $0 }
-        let clusters = counts.map { (label, sessions) in
+        let clusters = counts.map { label, sessions in
             InsightWidgetData.UseCaseCluster.Cluster(
                 id: label,
                 label: label,
@@ -964,7 +964,7 @@ public struct InsightExecutor: Sendable {
             .mapValues { $0.reduce(0) { $0 + $1.costUSD } }
         let tokensBySession = Dictionary(grouping: usages, by: { "\($0.provider)|\($0.sessionID)" })
             .mapValues { $0.reduce(0) { $0 + $1.totalTokens } }
-        let sortedSessions = sessions.sorted { (lhs, rhs) -> Bool in
+        let sortedSessions = sessions.sorted { lhs, rhs -> Bool in
             let lk = "\(lhs.provider)|\(lhs.sessionID)"
             let rk = "\(rhs.provider)|\(rhs.sessionID)"
             return (costBySession[lk] ?? 0) > (costBySession[rk] ?? 0)

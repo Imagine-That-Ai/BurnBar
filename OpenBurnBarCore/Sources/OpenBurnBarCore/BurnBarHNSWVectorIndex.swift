@@ -275,7 +275,7 @@ private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersis
             try withUnsafeBytes(of: &reserved2) { try handle.write(contentsOf: $0) }
         }
 
-        if let quantizer = quantizer {
+        if let quantizer {
             try quantizer.write(to: handle)
         }
 
@@ -287,7 +287,7 @@ private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersis
             try withUnsafeBytes(of: &levelLE) { try handle.write(contentsOf: $0) }
 
             // Write vector
-            if let quantizer = quantizer {
+            if let quantizer {
                 let encoded = quantizer.encode(vector: node.vector)
                 try encoded.withUnsafeBufferPointer { buffer in
                     try handle.write(contentsOf: UnsafeRawBufferPointer(buffer))
@@ -465,7 +465,8 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
                 actual: Int(header.dimensions)
             )
         }
-        guard header.count > 0 else { return ([], []) }
+        let nodeCount = Int(header.count)
+        guard nodeCount > 0 else { return ([], []) }
 
         let query = hnswPreparedVector(vector, metric: metric)
 
@@ -478,7 +479,7 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
         return data.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return ([], []) }
             let totalCount = Int(header.count)
-            let _ = Int(header.m)  // M parameter preserved in header for future use
+            _ = Int(header.m)  // M parameter preserved in header for future use
             let maxLevel = Int(header.maxLevel)
             let entryPointIndex = Int(header.entryPointIndex)
 
@@ -537,7 +538,8 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
                     return UnsafeBufferPointer(start: nil, count: 0)
                 }
                 let info = meta.layerNeighborInfo[layer]
-                guard info.count > 0 else {
+                let neighborCount = info.count
+                guard neighborCount > 0 else {
                     return UnsafeBufferPointer(start: nil, count: 0)
                 }
                 let ptr = base.advanced(by: info.offset).assumingMemoryBound(to: UInt32.self)

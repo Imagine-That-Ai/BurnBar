@@ -274,16 +274,16 @@ private struct PermissionsCard: View {
         switch coordinator.liveStatus(for: step) {
         case .granted: return "Granted"
         case .requesting: return "Watching…"
-            default:
-                switch step.kind {
-                case .camera, .microphone: return "Allow now"
-                case .screenRecording, .accessibility, .remoteDesktop: return "Prompt and open Settings"
-                case .systemExtension: return virtualHIDInstaller.isInstalling
-                    ? "Setting up…"
-                    : "Set Up Input"
-                case .fullDiskAccess: return "Open Settings"
-                case .automation: return "Request Access"
-                }
+        default:
+            switch step.kind {
+            case .camera, .microphone: return "Allow now"
+            case .screenRecording, .accessibility, .remoteDesktop: return "Prompt and open Settings"
+            case .systemExtension: return virtualHIDInstaller.isInstalling
+                ? "Setting up…"
+                : "Set Up Input"
+            case .fullDiskAccess: return "Open Settings"
+            case .automation: return "Request Access"
+            }
         }
     }
 

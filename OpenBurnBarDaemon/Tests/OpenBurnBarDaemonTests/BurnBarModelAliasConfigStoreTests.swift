@@ -17,7 +17,8 @@ final class BurnBarModelAliasConfigStoreTests: XCTestCase {
             XCTFail("Expected an unsupported model error")
         } catch let error as BurnBarConfigStoreError {
             guard case .unsupportedModel(let providerID, let modelID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "anthropic")
             XCTAssertEqual(modelID, "totally-fake-model")
@@ -36,7 +37,8 @@ final class BurnBarModelAliasConfigStoreTests: XCTestCase {
             XCTFail("Expected an invalid alias id error")
         } catch let error as BurnBarConfigStoreError {
             guard case .invalidModelAliasID = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
         }
     }
@@ -64,7 +66,8 @@ final class BurnBarModelAliasConfigStoreTests: XCTestCase {
             XCTFail("Expected a variant collision error")
         } catch let error as BurnBarConfigStoreError {
             guard case .modelAliasConflictsWithVariant(let aliasID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(aliasID, "claude-opus-4-7-high")
         }
@@ -84,7 +87,8 @@ final class BurnBarModelAliasConfigStoreTests: XCTestCase {
             XCTFail("Expected a catalog collision error")
         } catch let error as BurnBarConfigStoreError {
             guard case .modelAliasConflictsWithCatalogModel(let aliasID, let baseModelID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(aliasID, "claude-sonnet-4-6")
             XCTAssertEqual(baseModelID, "claude-opus-4-7")

@@ -171,7 +171,7 @@ struct SessionSummaryWizardView: View {
                             .font(DesignSystem.Typography.body)
                             .fontWeight(.medium)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        if let badge = badge {
+                        if let badge {
                             Text(badge)
                                 .font(DesignSystem.Typography.tiny)
                                 .padding(.horizontal, 6).padding(.vertical, 2)

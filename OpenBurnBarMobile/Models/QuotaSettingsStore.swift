@@ -3,10 +3,10 @@ import SwiftUI
 import OpenBurnBarCore
 
 public enum QuotaPercentageDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
-    case remainingPercent = "remainingPercent"
-    case usedPercent = "usedPercent"
-    case absoluteValues = "absoluteValues"
-    case fractional = "fractional"
+    case remainingPercent
+    case usedPercent
+    case absoluteValues
+    case fractional
 
     public var id: String { rawValue }
 

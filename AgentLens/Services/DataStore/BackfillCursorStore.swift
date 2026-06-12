@@ -141,7 +141,7 @@ final class BackfillCursorStore: Sendable {
             // before comparison bridges this gap without needing epsilon tolerance.
             // Forward movement (diff > 0) and equal timestamps (diff == 0) pass.
             // Any true backward movement (diff < 0) is rejected.
-            if let current = current, let currentBound = current.lastProcessedWindowUpperBound {
+            if let current, let currentBound = current.lastProcessedWindowUpperBound {
                 let normalizedCurrent = Self.normalizeToStoragePrecision(currentBound)
                 let normalizedNew = Self.normalizeToStoragePrecision(newUpperBound)
                 let diff = normalizedNew.timeIntervalSince(normalizedCurrent)

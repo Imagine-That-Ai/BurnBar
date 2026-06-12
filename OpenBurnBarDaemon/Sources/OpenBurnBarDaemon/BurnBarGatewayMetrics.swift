@@ -81,7 +81,7 @@ public enum BurnBarDaemonMetricsCounters {
         defer { lock.unlock() }
         var counters = [
             "rpc_requests_total": rpcRequestsTotal,
-            "rpc_errors_total": rpcErrorsTotal,
+            "rpc_errors_total": rpcErrorsTotal
         ]
         if let p95 = percentile(rpcLatencyMsSamples, p: 0.95) {
             counters["rpc_latency_ms_p95"] = p95
@@ -170,7 +170,7 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
         var counters = [
             "daemon_heartbeat_present": heartbeat == nil ? 0 : 1,
             "gateway_enabled": gatewayEnabled ? 1 : 0,
-            "heartbeat_stale": heartbeatStale ? 1 : 0,
+            "heartbeat_stale": heartbeatStale ? 1 : 0
         ].merging(BurnBarDaemonMetricsCounters.snapshot()) { current, _ in current }
         if let listenerBound = BurnBarDaemonMetricsCounters.gatewayListenerBoundCounter() {
             counters["gateway_listener_bound"] = listenerBound

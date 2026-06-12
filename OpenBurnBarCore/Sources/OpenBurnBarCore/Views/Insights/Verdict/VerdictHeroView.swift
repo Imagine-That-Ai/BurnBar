@@ -92,7 +92,9 @@ public struct VerdictHeroView: View {
                          systemImage: "sparkles",
                          tint: UnifiedDesignSystem.Colors.whimsy)
             } else if isStale {
-                Button(action: { onRefresh?() }) {
+                Button {
+                    onRefresh?()
+                } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 12, weight: .semibold))
@@ -186,7 +188,9 @@ public struct VerdictHeroView: View {
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
             HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
                 ForEach(rec.citations) { cite in
-                    Button(action: { onCitationTap(cite) }) {
+                    Button {
+                        onCitationTap(cite)
+                    } label: {
                         Text(cite.label)
                             .font(UnifiedDesignSystem.Typography.tiny)
                             .padding(.horizontal, UnifiedDesignSystem.Spacing.xs)
@@ -199,7 +203,9 @@ public struct VerdictHeroView: View {
                     .buttonStyle(.plain)
                 }
                 Spacer(minLength: 0)
-                Button(action: { onAcceptAction(rec.acceptAction) }) {
+                Button {
+                    onAcceptAction(rec.acceptAction)
+                } label: {
                     HStack(spacing: 4) {
                         Text(rec.acceptAction.label)
                             .font(UnifiedDesignSystem.Typography.caption)
@@ -236,7 +242,9 @@ public struct VerdictHeroView: View {
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 .textCase(.uppercase)
             ForEach(verdict.followUps, id: \.self) { question in
-                Button(action: { onFollowUpTap(question) }) {
+                Button {
+                    onFollowUpTap(question)
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.up.right")
                             .font(.system(size: 12, weight: .semibold))

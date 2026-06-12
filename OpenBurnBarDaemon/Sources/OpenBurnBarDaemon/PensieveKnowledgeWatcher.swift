@@ -267,7 +267,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
                 "sessionPath": fileURL.path,
                 "modifiedAt": ISO8601DateFormatter().string(from: modified),
                 "sourceKind": PensieveSourceKind.chatMemory.rawValue,
-                "schemaVersion": 1,
+                "schemaVersion": 1
             ]
             if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) {
                 try? data.write(to: sentinelURL, options: .atomic)
@@ -334,7 +334,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             "sourceSlug": batch.sourceSlug,
             "slugHmac": batch.slugHmac,
             "embeddingModelVersion": batch.embeddingModelVersion,
-            "vectors": batch.vectors.map(encode(_:)),
+            "vectors": batch.vectors.map(encode(_:))
         ]
     }
 
@@ -347,7 +347,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             "dedupHash": vector.dedupHash,
             "sourceKind": vector.sourceKind.rawValue,
             "chunkIndex": vector.chunkIndex,
-            "byteCount": vector.byteCount,
+            "byteCount": vector.byteCount
         ]
     }
 
@@ -357,7 +357,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             "keyVersion": sealed.keyVersion,
             "nonce": sealed.nonce,
             "ciphertext": sealed.ciphertext,
-            "tag": sealed.tag,
+            "tag": sealed.tag
         ]
     }
 }

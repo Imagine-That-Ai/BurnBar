@@ -75,7 +75,7 @@ final class InsightGatewayTests: XCTestCase {
                        egressTier: .userKey, capabilities: capabilities)]
             }
             func investigate(request: InsightInvestigateRequest,
-                              tools: InsightToolBroker?) -> AsyncThrowingStream<InsightInvestigateEvent, Error> {
+                             tools: InsightToolBroker?) -> AsyncThrowingStream<InsightInvestigateEvent, Error> {
                 AsyncThrowingStream { $0.finish() }
             }
         }

@@ -58,13 +58,12 @@ final class CloudStoreSubscribeUITests: XCTestCase {
             "Double Click to Pay"
         ]
 
-        for candidate in candidates {
-            if app.descendants(matching: .any)
-                .matching(NSPredicate(format: "label CONTAINS[c] %@", candidate))
-                .firstMatch
-                .exists {
-                return true
-            }
+        for candidate in candidates
+        where app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", candidate))
+            .firstMatch
+            .exists {
+            return true
         }
 
         let subscribeButtons = app.buttons.matching(

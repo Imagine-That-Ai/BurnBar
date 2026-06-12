@@ -827,11 +827,11 @@ enum OpenBurnBarDaemonSocketClient {
         }
 
         let mappedMissions = missions.map { mission in
-            let latestPacket = mission.packets.sorted {
+            let latestPacket = mission.packets.min {
                 ($0.dispatchedAt ?? .distantPast) > ($1.dispatchedAt ?? .distantPast)
-            }.first
+            }
             let activePacket = mission.packets.first(where: { [.queued, .dispatched, .running].contains($0.status) }) ?? latestPacket
-            let latestResult = mission.results.sorted(by: { $0.createdAt > $1.createdAt }).first
+            let latestResult = mission.results.min(by: { $0.createdAt > $1.createdAt })
             let missionPRLinkage = mission.prLinkage ?? latestResult?.prLinkage
             let packetSummary = latestPacket.map { packet in
                 "\(packet.workerName): \(packet.objective)"
@@ -855,8 +855,7 @@ enum OpenBurnBarDaemonSocketClient {
                 )
             }
             let latestTakeover = mission.takeoverHistory?
-                .sorted(by: { $0.updatedAt > $1.updatedAt })
-                .first
+                .min(by: { $0.updatedAt > $1.updatedAt })
             let ownerPrincipalID = stringValue(in: mission.metadata["team_owner_id"])
                 ?? stringValue(in: mission.metadata["owner_principal_id"])
                 ?? mission.approval.approvedBy
@@ -1000,7 +999,7 @@ enum OpenBurnBarDaemonSocketClient {
     }
 
     private static func replayLabel(from runs: [BurnBarSimulatorRunSnapshot]) -> String {
-        guard let latest = runs.sorted(by: { $0.startedAt > $1.startedAt }).first else {
+        guard let latest = runs.min(by: { $0.startedAt > $1.startedAt }) else {
             return "Replay idle"
         }
         let status: String

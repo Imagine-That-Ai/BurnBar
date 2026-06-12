@@ -57,7 +57,7 @@ final class BurnBarBrowserToolServiceComputerUseTests: XCTestCase {
 
         XCTAssertEqual(recorder.action, .goto)
         XCTAssertEqual(recorder.arguments?.url, "https://example.com/dashboard")
-        XCTAssertEqual(response.ok, true)
+        XCTAssertTrue(response.ok)
         XCTAssertEqual(response.engine, .playwright)
         XCTAssertTrue(response.summary.contains("https://example.com/dashboard"))
         XCTAssertEqual(response.detail, "42 ms")
@@ -84,9 +84,9 @@ final class BurnBarBrowserToolServiceComputerUseTests: XCTestCase {
             arguments: BurnBarBrowserActionArguments(selector: "button")
         ))
 
-        XCTAssertEqual(response.ok, false)
+        XCTAssertFalse(response.ok)
         XCTAssertTrue(response.summary.contains("cannot run interactive browser actions"))
-        XCTAssertTrue(response.detail?.contains("Choose Playwright") == true)
+        XCTAssertEqual(response.detail?.contains("Choose Playwright"), true)
     }
 
     func testRejectsNonHttpBrowserURLs() async throws {

@@ -405,7 +405,6 @@ extension CLIAgentSessionActionResponse {
     }
 }
 
-
 // MARK: Resume lookup id
 
 extension CLIAgentSessionRecord {

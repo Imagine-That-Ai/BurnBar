@@ -229,7 +229,6 @@ struct AgentsModelsView: View {
         }
     }
 
-
     private func setProviderAdvertisement(_ providerID: String, modelIDs: [String], isEnabled: Bool) {
         Task {
             await daemonManager.setProviderModelsAdvertisement(

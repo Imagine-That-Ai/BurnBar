@@ -415,7 +415,7 @@ final class AccountManager {
             URLQueryItem(name: "v", value: "FirebaseAuth-iOS"),
             URLQueryItem(name: "eventId", value: eventID),
             URLQueryItem(name: "providerId", value: "github.com"),
-            URLQueryItem(name: "clientId", value: clientID),
+            URLQueryItem(name: "clientId", value: clientID)
         ]
         guard let url = components.url else {
             throw AccountError.invalidCredential
@@ -425,9 +425,7 @@ final class AccountManager {
 
     private func presentOAuthWebSession(url: URL, window: NSWindow) async throws -> URL {
         let callbackScheme = Self.reversedClientID() ?? Bundle.main.bundleIdentifier ?? "com.openburnbar.app"
-        return try await withCheckedThrowingContinuation { (
-            continuation: CheckedContinuation<URL, Error>
-        ) in
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
             let presentationContext = WebAuthPresentationContext(window: window)
             let session = ASWebAuthenticationSession(
                 url: url,

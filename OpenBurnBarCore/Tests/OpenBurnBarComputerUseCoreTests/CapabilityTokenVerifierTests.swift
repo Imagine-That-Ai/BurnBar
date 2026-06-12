@@ -53,7 +53,8 @@ final class CapabilityTokenVerifierTests: XCTestCase {
             request: request,
             now: Date(timeIntervalSince1970: 100)
         ) else {
-            return XCTFail("Expected expired")
+            XCTFail("Expected expired")
+            return
         }
     }
 
@@ -78,7 +79,8 @@ final class CapabilityTokenVerifierTests: XCTestCase {
             XCTFail("Expected success")
         }
         guard case .failure(.nonceReplay) = verifier.verify(request: request) else {
-            return XCTFail("Expected nonce replay")
+            XCTFail("Expected nonce replay")
+            return
         }
     }
 
@@ -100,7 +102,8 @@ final class CapabilityTokenVerifierTests: XCTestCase {
             requiredAttestationHashBlake3: "bbb"
         )
         guard case .failure(.attestationMismatch) = verifier.verify(request: request) else {
-            return XCTFail("Expected attestation mismatch")
+            XCTFail("Expected attestation mismatch")
+            return
         }
     }
 

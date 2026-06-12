@@ -821,12 +821,11 @@ enum MobileInsightsTemplates {
     }
 
     private static func widget(_ kind: InsightWidgetKind,
-                                _ title: String,
-                                _ binding: InsightDataBinding,
-                                spec: InsightWidgetSpec? = nil) -> InsightWidget {
+                               _ title: String,
+                               _ binding: InsightDataBinding,
+                               spec: InsightWidgetSpec? = nil) -> InsightWidget {
         let resolvedSpec: InsightWidgetSpec
-        if let spec { resolvedSpec = spec }
-        else {
+        if let spec { resolvedSpec = spec } else {
             switch kind {
             case .kpiTile: resolvedSpec = .kpiTile(.init(metricLabel: title))
             case .timeSeriesLine: resolvedSpec = .timeSeries(.init(style: .line))

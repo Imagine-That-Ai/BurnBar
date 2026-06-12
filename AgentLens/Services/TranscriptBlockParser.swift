@@ -103,7 +103,7 @@ enum TranscriptBlockParser {
                 while i < lines.count {
                     let ml = lines[i].trimmingCharacters(in: .whitespaces)
                     if ml.hasPrefix("## ") || ml.hasPrefix("# ") { break }
-                    if (ml.allSatisfy({ $0 == "-" || $0 == "=" }) && ml.count >= 3) { break }
+                    if ml.allSatisfy({ $0 == "-" || $0 == "=" }) && ml.count >= 3 { break }
                     msgLines.append(lines[i])
                     i += 1
                 }
@@ -239,7 +239,7 @@ enum TranscriptBlockParser {
                 if pl.hasPrefix("|") && pl.hasSuffix("|") { break }
                 if pl.hasPrefix("Human:") || pl.hasPrefix("H:") { break }
                 if pl.hasPrefix("Assistant:") || pl.hasPrefix("A:") { break }
-                if (pl.allSatisfy({ $0 == "-" || $0 == "=" }) && pl.count >= 3) { break }
+                if pl.allSatisfy({ $0 == "-" || $0 == "=" }) && pl.count >= 3 { break }
                 plainLines.append(lines[i])
                 i += 1
             }

@@ -38,7 +38,8 @@ final class CLILaunchInvokerTests: XCTestCase {
             XCTFail("Expected quota exhaustion to fail the launch")
         case .failure(let error):
             guard case .quotaExhausted(let detail) = error else {
-                return XCTFail("Expected .quotaExhausted, got \(error)")
+                XCTFail("Expected .quotaExhausted, got \(error)")
+                return
             }
             XCTAssertTrue(detail.localizedCaseInsensitiveContains("quota exhausted"))
         }
@@ -61,7 +62,8 @@ final class CLILaunchInvokerTests: XCTestCase {
                 XCTFail("Expected quota exhaustion to fail the launch")
             case .failure(let error):
                 guard case .quotaExhausted(let detail) = error else {
-                    return XCTFail("Expected .quotaExhausted, got \(error)")
+                    XCTFail("Expected .quotaExhausted, got \(error)")
+                    return
                 }
                 XCTAssertTrue(detail.localizedCaseInsensitiveContains("quota exhausted"))
             }

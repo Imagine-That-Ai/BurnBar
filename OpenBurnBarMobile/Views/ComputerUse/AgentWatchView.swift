@@ -206,14 +206,18 @@ public struct AgentWatchView<Placeholder: View>: View {
             }
             if let pending = state.pendingApproval {
                 HStack(spacing: 12) {
-                    Button(action: { rejectAction(pending, true) }) {
+                    Button {
+                        rejectAction(pending, true)
+                    } label: {
                         Text("Reject + Halt")
                             .font(.system(size: 13, weight: .semibold))
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
 
-                    Button(action: { rejectAction(pending, false) }) {
+                    Button {
+                        rejectAction(pending, false)
+                    } label: {
                         Text("Reject")
                             .font(.system(size: 13))
                     }
@@ -221,7 +225,9 @@ public struct AgentWatchView<Placeholder: View>: View {
 
                     Spacer()
 
-                    Button(action: { approveAction(pending) }) {
+                    Button {
+                        approveAction(pending)
+                    } label: {
                         Text("Approve")
                             .font(.system(size: 13, weight: .semibold))
                     }

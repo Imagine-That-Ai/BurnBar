@@ -12,7 +12,6 @@ struct ConversationIndexingReport: Equatable {
     }
 }
 
-
 final class ConversationIndexer {
     static var shared: ConversationIndexer {
         ConversationIndexer()

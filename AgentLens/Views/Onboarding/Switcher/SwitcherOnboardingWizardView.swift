@@ -35,18 +35,18 @@ struct OnboardingProvider: Identifiable, Equatable {
     }
 
     static let defaultOrder: [OnboardingProvider] = [
-        OnboardingProvider(id: "chrome",    label: "Google Chrome",   icon: "globe",         bundledLogoName: "ChromeLogo",    color: Color(hex: "4285F4"), kind: .chrome),
-        OnboardingProvider(id: "safari",    label: "Safari",          icon: "safari",        bundledLogoName: "SafariLogo",    color: Color(hex: "0071E3"), kind: .safari),
-        OnboardingProvider(id: "openai",    label: "OpenAI / Codex",  icon: "bubble.left",   bundledLogoName: "OpenAILogo",    color: Color(hex: "00A67E"), kind: .openAI),
-        OnboardingProvider(id: "claude",    label: "Claude",          icon: "bubble.right",  bundledLogoName: "ClaudeCodeLogo", color: Color(hex: "CC785C"), kind: .claude),
-        OnboardingProvider(id: "codexcli",  label: "Codex CLI",       icon: "terminal.fill", bundledLogoName: "CodexLogo",    color: Color(hex: "00A67E"), kind: .codexCLI),
+        OnboardingProvider(id: "chrome", label: "Google Chrome", icon: "globe", bundledLogoName: "ChromeLogo", color: Color(hex: "4285F4"), kind: .chrome),
+        OnboardingProvider(id: "safari", label: "Safari", icon: "safari", bundledLogoName: "SafariLogo", color: Color(hex: "0071E3"), kind: .safari),
+        OnboardingProvider(id: "openai", label: "OpenAI / Codex", icon: "bubble.left", bundledLogoName: "OpenAILogo", color: Color(hex: "00A67E"), kind: .openAI),
+        OnboardingProvider(id: "claude", label: "Claude", icon: "bubble.right", bundledLogoName: "ClaudeCodeLogo", color: Color(hex: "CC785C"), kind: .claude),
+        OnboardingProvider(id: "codexcli", label: "Codex CLI", icon: "terminal.fill", bundledLogoName: "CodexLogo", color: Color(hex: "00A67E"), kind: .codexCLI),
         OnboardingProvider(id: "claudecli", label: "Claude Code CLI", icon: "terminal.fill", bundledLogoName: "ClaudeCodeLogo", color: Color(hex: "CC785C"), kind: .claudeCLI),
-        OnboardingProvider(id: "opencode",  label: "OpenCode",        icon: "terminal.fill", bundledLogoName: nil,             color: DesignSystem.Colors.whimsy, kind: .openCodeCLI),
-        OnboardingProvider(id: "droidcli",  label: "Droid CLI",       icon: "terminal.fill", bundledLogoName: "FactoryLogo",    color: Color(hex: "8B5CF6"), kind: .droidCLI),
-        OnboardingProvider(id: "forgecli",  label: "Forge CLI",       icon: "terminal.fill", bundledLogoName: "ForgeLogo",      color: Color(hex: "F97316"), kind: .forgeCLI),
+        OnboardingProvider(id: "opencode", label: "OpenCode", icon: "terminal.fill", bundledLogoName: nil, color: DesignSystem.Colors.whimsy, kind: .openCodeCLI),
+        OnboardingProvider(id: "droidcli", label: "Droid CLI", icon: "terminal.fill", bundledLogoName: "FactoryLogo", color: Color(hex: "8B5CF6"), kind: .droidCLI),
+        OnboardingProvider(id: "forgecli", label: "Forge CLI", icon: "terminal.fill", bundledLogoName: "ForgeLogo", color: Color(hex: "F97316"), kind: .forgeCLI),
         OnboardingProvider(id: "antigravitycli", label: "Antigravity CLI", icon: "terminal.fill", bundledLogoName: "AntigravityLogo", color: Color(hex: "6C63FF"), kind: .antigravityCLI),
         OnboardingProvider(id: "grokcli", label: "Grok Build CLI", icon: "terminal.fill", bundledLogoName: "GrokLogo", color: Color(hex: "111111"), kind: .grokCLI),
-        OnboardingProvider(id: "cursoragentcli", label: "Cursor Agent CLI", icon: "terminal.fill", bundledLogoName: "CursorLogo", color: Color(hex: "00E5FF"), kind: .cursorAgentCLI),
+        OnboardingProvider(id: "cursoragentcli", label: "Cursor Agent CLI", icon: "terminal.fill", bundledLogoName: "CursorLogo", color: Color(hex: "00E5FF"), kind: .cursorAgentCLI)
     ]
 }
 

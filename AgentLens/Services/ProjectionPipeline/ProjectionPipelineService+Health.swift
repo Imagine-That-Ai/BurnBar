@@ -56,7 +56,6 @@ extension ProjectionPipelineService {
         }
     }
 
-
     internal func upsertSemanticProjectionHealth(
         status: RetrievalHealthStatus,
         errorCode: String?,

@@ -377,7 +377,6 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         ))
     }
 
-
     public func sign<Intent: Encodable>(
         intent: Intent,
         peerNodeId: String,
@@ -548,7 +547,6 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             signatureBase64: signature.base64EncodedString()
         )
     }
-
 
     public struct SignedAuthority: Codable, Hashable, Sendable {
         public let peerNodeId: String

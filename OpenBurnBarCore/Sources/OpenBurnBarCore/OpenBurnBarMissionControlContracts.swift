@@ -993,4 +993,3 @@ public struct BurnBarFollowupSnapshot: Codable, Hashable, Identifiable, Sendable
         self.metadata = metadata
     }
 }
-

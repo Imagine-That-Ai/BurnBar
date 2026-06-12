@@ -70,8 +70,7 @@ struct SparklineMini: View {
                             let x = Double(i) * dx
                             let normalized = (v - minV) / (maxV - minV)
                             let y = (1.0 - normalized) * geo.size.height
-                            if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
-                            else { path.addLine(to: CGPoint(x: x, y: y)) }
+                            if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
                         }
                     }
                     .stroke(accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))

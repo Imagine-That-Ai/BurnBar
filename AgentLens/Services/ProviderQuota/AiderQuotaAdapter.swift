@@ -167,7 +167,7 @@ struct AiderQuotaAdapter: ProviderQuotaAdapter {
     private func findAnalyticsFiles(fileManager: FileManager) -> [URL] {
         let candidatePaths = [
             ("~/.aider/analytics.jsonl" as NSString).expandingTildeInPath,
-            ("~/.aider/analytics.json" as NSString).expandingTildeInPath,
+            ("~/.aider/analytics.json" as NSString).expandingTildeInPath
         ]
 
         return candidatePaths.compactMap { path in

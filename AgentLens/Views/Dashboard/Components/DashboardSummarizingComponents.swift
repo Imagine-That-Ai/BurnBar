@@ -74,7 +74,8 @@ struct AnimatedMiningPickView: NSViewRepresentable {
     <path d="m115.2 181.1 9.25 0.5-6.32 2.84-2.93-3.34z" fill="#D14F00"/>
     </g>
     <g id="pickaxe">
-    <path d="m52.34 35.95c19.41-3.43 37.71-1 64.02 11.76l2.36-1.47 3.44 0.46c2.51-1.13 5.87-0.54 7.87 2.12l4.82 4.62c2.21 2.28 1.91 5.87-0.6 7.83l2.28 3.8-0.89 1.88c17.32 19.27 24.77 35.23 23.81 61.29-5.27-18.65-17.72-36.63-32.23-47.29l-10.56 3.87-1.54-1.29c-13.37 14.18-26.5 26.41-35.09 39.91l-1.21 0.87-12.53-10.59 34.93-41.68 1.13-4.34 1.21-9.61c-14.21-10.9-29.24-17.99-51.22-22.14z" fill="#424A52"/>
+    <path d="m52.34 35.95c19.41-3.43 37.71-1 64.02 11.76l2.36-1.47 3.44 0.46c2.51-1.13 5.87-0.54 7.87 2.12l4.82 4.62c2.21 2.28 1.91 5.87-0.6 7.83l2.28 3.8-0.89 1.88c17.32 19.27 \
+    24.77 35.23 23.81 61.29-5.27-18.65-17.72-36.63-32.23-47.29l-10.56 3.87-1.54-1.29c-13.37 14.18-26.5 26.41-35.09 39.91l-1.21 0.87-12.53-10.59 34.93-41.68 1.13-4.34 1.21-9.61c-14.21-10.9-29.24-17.99-51.22-22.14z" fill="#424A52"/>
     <path d="m54.05 35.8c18.93-0.62 39.67 3.53 59.87 14.43l-3.28 4.53c-13.37-8.98-30.98-15.74-56.59-18.96z" fill="#5A6470"/>
     <path d="m122.7 47.01c2.66-0.85 5.46 0.1 6.9 2.25l5.16 5.1c1.53 2.02 0.98 5.25-0.84 6.25l-9.45-7.89-1.77-5.71z" fill="#2B3036"/>
     <path d="m125.1 47.01c2 0 4.01 1.13 4.83 2.67l0.38 2.35-3.52 2.28-3.36-3.8 0.23-3.1c0.38-0.3 0.96-0.4 1.44-0.4z" fill="#424A52"/>
@@ -108,7 +109,6 @@ struct AnimatedMiningPickView: NSViewRepresentable {
     </svg>
     </body></html>
     """
-    // swiftlint:enable line_length
 }
 
 // MARK: - Summarizing Status Strip
@@ -125,7 +125,7 @@ struct SummarizingStatusStrip: View {
     private static let oreColors: [Color] = [
         Color(red: 0.820, green: 0.259, blue: 0),
         Color(red: 0.906, green: 0.588, blue: 0.086),
-        Color(red: 0.478, green: 0.408, blue: 0.820),
+        Color(red: 0.478, green: 0.408, blue: 0.820)
     ]
 
     private var progress: Double {
@@ -211,7 +211,7 @@ struct SummarizingStatusStrip: View {
                     colors: [
                         Color(red: 0.820, green: 0.259, blue: 0).opacity(0.18),
                         Color(red: 0.478, green: 0.408, blue: 0.820).opacity(0.12),
-                        Color.clear,
+                        Color.clear
                     ],
                     startPoint: .leading,
                     endPoint: .trailing
@@ -224,7 +224,7 @@ struct SummarizingStatusStrip: View {
                 colors: [
                     Color(red: 0.820, green: 0.259, blue: 0).opacity(0.7),
                     Color(red: 0.906, green: 0.588, blue: 0.086).opacity(0.5),
-                    Color(red: 0.478, green: 0.408, blue: 0.820).opacity(0.6),
+                    Color(red: 0.478, green: 0.408, blue: 0.820).opacity(0.6)
                 ],
                 startPoint: .leading,
                 endPoint: .trailing
@@ -267,7 +267,7 @@ struct SummaryProgressPanel: View {
     private static let oreGradient: [Color] = [
         Color(red: 0.820, green: 0.259, blue: 0),
         Color(red: 0.906, green: 0.588, blue: 0.086),
-        Color(red: 0.478, green: 0.408, blue: 0.820),
+        Color(red: 0.478, green: 0.408, blue: 0.820)
     ]
 
     private var progress: Double {
@@ -284,7 +284,7 @@ struct SummaryProgressPanel: View {
                     colors: [
                         Color(red: 0.820, green: 0.259, blue: 0).opacity(0.2),
                         Color(red: 0.478, green: 0.408, blue: 0.820).opacity(0.15),
-                        Color.clear,
+                        Color.clear
                     ],
                     startPoint: .leading, endPoint: .trailing
                 )

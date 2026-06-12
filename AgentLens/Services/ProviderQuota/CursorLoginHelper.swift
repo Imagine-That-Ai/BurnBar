@@ -16,7 +16,7 @@ import WebKit
 /// and capture the resulting session cookies.
 
 @MainActor
-final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
+final class CursorLoginHelper: NSObject, WKNavigationDelegate {
     private static var activeHelpers: [ObjectIdentifier: CursorLoginHelper] = [:]
 
     // MARK: - Types
@@ -51,7 +51,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
 
     private var continuation: CheckedContinuation<LoginResult, any Error>?
     private var webView: WKWebView?
-    private var windowDelegate: WindowDelegate?
+    private var windowLifecycleHandler: WindowDelegate?
 
     private init(continuation: CheckedContinuation<LoginResult, any Error>) {
         self.continuation = continuation
@@ -79,11 +79,11 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
         window.center()
 
         // Close window → user cancelled
-        let windowDelegate = WindowDelegate(onClose: { [weak self] in
+        let windowLifecycleHandler = WindowDelegate(onClose: { [weak self] in
             self?.finish(.failure(CursorLoginError.userCancelled))
         })
-        self.windowDelegate = windowDelegate
-        window.delegate = windowDelegate
+        self.windowLifecycleHandler = windowLifecycleHandler
+        window.delegate = windowLifecycleHandler
 
         window.makeKeyAndOrderFront(nil)
 
@@ -158,7 +158,7 @@ final class CursorLoginHelper: NSObject, WKNavigationDelegate, Sendable {
         webView = nil
         window?.delegate = nil
         window?.close()
-        windowDelegate = nil
+        windowLifecycleHandler = nil
         Self.activeHelpers.removeValue(forKey: ObjectIdentifier(self))
 
         switch result {

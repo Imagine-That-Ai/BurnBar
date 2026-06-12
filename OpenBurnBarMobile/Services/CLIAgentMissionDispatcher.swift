@@ -751,7 +751,6 @@ final class CLIAgentMissionDispatcher {
         ]
     }
 
-
     enum DispatchError: LocalizedError {
         case firebaseUnavailable
         case notSignedIn

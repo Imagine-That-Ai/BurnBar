@@ -14,8 +14,8 @@ final class MediaBudgetStatusStoreTests: XCTestCase {
                 "videoCallDailyMinutes": 120,
                 "videoCallPerCallMinutes": 20,
                 "fileTransferDailyGBIn": 2,
-                "fileTransferDailyGBOut": 2,
-            ],
+                "fileTransferDailyGBOut": 2
+            ]
         ])
         XCTAssertEqual(status.level, .softCap)
         XCTAssertEqual(status.projectedMonthEndUSD, 0)
@@ -42,8 +42,8 @@ final class MediaBudgetStatusStoreTests: XCTestCase {
                 "videoCallDailyMinutes": 0,
                 "videoCallPerCallMinutes": 0,
                 "fileTransferDailyGBIn": 0,
-                "fileTransferDailyGBOut": 0,
-            ],
+                "fileTransferDailyGBOut": 0
+            ]
         ])
         store.handleSnapshot(snapshot: nil, error: NSError(
             domain: FirestoreErrorDomain,

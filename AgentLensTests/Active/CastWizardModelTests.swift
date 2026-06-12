@@ -44,8 +44,8 @@ final class CastWizardModelTests: XCTestCase {
     func testDefaultBridgeURL_buildsLocalDotLocalURL() {
         let url = CastWizardModel.defaultBridgeURL()
         XCTAssertNotNil(url)
-        XCTAssertTrue(url?.absoluteString.hasSuffix("/render.html") == true)
-        XCTAssertTrue(url?.absoluteString.contains(":8787") == true)
+        XCTAssertEqual(url?.absoluteString.hasSuffix("/render.html"), true)
+        XCTAssertEqual(url?.absoluteString.contains(":8787"), true)
     }
 
     // MARK: - Helpers

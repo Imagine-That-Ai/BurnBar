@@ -74,7 +74,7 @@ struct MissionFAB: View {
 
     private var glowColor: Color {
         if !host.snapshot.health.daemonState.isLive { return DesignSystem.Colors.textMuted }
-        if host.snapshot.approvalAsks.count > 0 { return DesignSystem.Colors.hermesAureate }
+        if !host.snapshot.approvalAsks.isEmpty { return DesignSystem.Colors.hermesAureate }
         let live = host.snapshot.activeTiles.filter { $0.phase.isLive }
         let blocked = host.snapshot.activeTiles.filter { $0.phase == .blocked }
         if !blocked.isEmpty { return DesignSystem.Colors.ember }
@@ -123,7 +123,7 @@ struct MissionFAB: View {
     }
 
     private var helpText: String {
-        if host.snapshot.approvalAsks.count > 0 {
+        if !host.snapshot.approvalAsks.isEmpty {
             return "Mission Console — \(host.snapshot.approvalAsks.count) approval pending. ⇧⌘M"
         }
         let live = host.snapshot.activeTiles.filter { $0.phase.isLive }.count

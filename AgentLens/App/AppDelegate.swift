@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var lastHandledStatusItemEventTime: TimeInterval = 0
 
     // live wallpaper variables
-    public var dataStore: DataStore? = nil {
+    var dataStore: DataStore? {
         didSet {
             setupWallpaperObservers()
             if let dataStore {
@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
         }
     }
-    public var daemonManager: OpenBurnBarDaemonManager? = nil {
+    var daemonManager: OpenBurnBarDaemonManager? {
         didSet {
             setupWallpaperObservers()
         }
@@ -203,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {
-        if let popover = popover, popover.isShown {
+        if let popover, popover.isShown {
             popover.performClose(sender)
         } else {
             showPopover(sender)
@@ -1130,7 +1130,6 @@ private enum OpenBurnBarStatusItemBrandMark {
     }
 }
 
-
 // MARK: - Status Item Geometry Helpers
 enum OpenBurnBarMenuExtraClickFallback {
     static func click(_ point: CGPoint, hits frame: CGRect) -> Bool {
@@ -1309,8 +1308,8 @@ enum SwarmWallpaperColorDriverBuilder {
 @Observable
 @MainActor
 public final class SwarmWallpaperViewModel {
-    public var pointer: CGPoint? = nil
-    public var colorDriver: SwarmColorDriver? = nil
+    public var pointer: CGPoint?
+    public var colorDriver: SwarmColorDriver?
     public var isBatteryThrottled: Bool = false
     public var isPaused: Bool = false
     var background: DesktopWallpaperBackground = SettingsManager.shared.appearance.desktopWallpaperBackground
@@ -1449,7 +1448,7 @@ public class BurnBarWallpaperPanel: NSPanel {
         // `@Observable` view-model is written at most ~30 times/sec instead
         // of at the raw HID rate (≥ 60 Hz on macOS).
         self.mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            guard let self = self, !self.viewModel.isPaused else { return }
+            guard let self, !self.viewModel.isPaused else { return }
             let globalPoint = NSEvent.mouseLocation
 
             if self.targetScreen.frame.contains(globalPoint) {
@@ -1462,7 +1461,7 @@ public class BurnBarWallpaperPanel: NSPanel {
 
         // Global mouse click tracking to cycle swarm when clicking on the desktop background.
         // Finder becomes frontmost after the click is dispatched, so validation is deferred.
-        self.clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+        self.clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
             self?.scheduleDesktopClickCycleIfNeeded()
         }
     }

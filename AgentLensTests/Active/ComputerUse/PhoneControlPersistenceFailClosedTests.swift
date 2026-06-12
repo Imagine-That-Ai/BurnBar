@@ -40,7 +40,8 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
     func test_loadOutcome_absentFileIsAbsentAndLoadIsEmpty() {
         let store = PhoneControlReplayCounterStore(fileURL: temporaryFileURL("replay-absent"))
         guard case .absent = store.loadOutcome() else {
-            return XCTFail("A missing file is a legitimate first run and must read .absent")
+            XCTFail("A missing file is a legitimate first run and must read .absent")
+            return
         }
         XCTAssertEqual(store.load(), [:])
     }
@@ -51,7 +52,8 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
 
         let reloaded = PhoneControlReplayCounterStore(fileURL: url)
         guard case .loaded(let counters) = reloaded.loadOutcome() else {
-            return XCTFail("A decodable snapshot must read .loaded")
+            XCTFail("A decodable snapshot must read .loaded")
+            return
         }
         XCTAssertEqual(counters, ["peer-a": 7, "peer-b": 3])
         XCTAssertEqual(reloaded.load(), ["peer-a": 7, "peer-b": 3])
@@ -63,7 +65,8 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
 
         let store = PhoneControlReplayCounterStore(fileURL: url)
         guard case .unreadable = store.loadOutcome() else {
-            return XCTFail("An existing-but-undecodable snapshot must read .unreadable, never an empty baseline")
+            XCTFail("An existing-but-undecodable snapshot must read .unreadable, never an empty baseline")
+            return
         }
         // The legacy `load()` shape stays empty-map for callers that only need
         // a baseline; the *validator* is responsible for failing closed.
@@ -77,7 +80,8 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
         try full.prefix(full.count / 2).write(to: url)
 
         guard case .unreadable = PhoneControlReplayCounterStore(fileURL: url).loadOutcome() else {
-            return XCTFail("A truncated snapshot must read .unreadable")
+            XCTFail("A truncated snapshot must read .unreadable")
+            return
         }
     }
 

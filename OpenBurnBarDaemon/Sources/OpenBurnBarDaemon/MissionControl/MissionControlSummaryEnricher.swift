@@ -22,12 +22,10 @@ struct MissionControlSummaryEnricher {
                 } ?? []
                 let latestDaily = projection?.reviewRuns.values
                     .filter { $0.projectSlug == base.projectSlug && $0.cadence == .daily }
-                    .sorted { $0.recordedAt > $1.recordedAt }
-                    .first?.recordedAt
+                    .min { $0.recordedAt > $1.recordedAt }?.recordedAt
                 let latestWeekly = projection?.reviewRuns.values
                     .filter { $0.projectSlug == base.projectSlug && $0.cadence == .weekly }
-                    .sorted { $0.recordedAt > $1.recordedAt }
-                    .first?.recordedAt
+                    .min { $0.recordedAt > $1.recordedAt }?.recordedAt
                 let freshness = freshnessState(latestReviewAt: [latestDaily, latestWeekly].compactMap { $0 }.max())
                 let nextScheduledReviewAt = nextScheduledReviewAt(
                     for: base,
@@ -39,7 +37,7 @@ struct MissionControlSummaryEnricher {
                     status = .paused
                 } else if freshness == .stale {
                     status = .stale
-                } else if pendingQuestions > 0 || openFollowups > 0 || activeMissions.count > 0 {
+                } else if pendingQuestions > 0 || openFollowups > 0 || !activeMissions.isEmpty {
                     status = .needsAttention
                 } else {
                     status = base.status == .onboarding ? .onboarding : .healthy
@@ -63,8 +61,8 @@ struct MissionControlSummaryEnricher {
                     pendingQuestionCount: pendingQuestions,
                     openFollowupCount: openFollowups,
                     activeMissionCount: activeMissions.count,
-                    activeMissionID: activeMissions.sorted { $0.updatedAt > $1.updatedAt }.first?.id,
-                    needsOperatorAttention: pendingQuestions > 0 || openFollowups > 0 || activeMissions.count > 0,
+                    activeMissionID: activeMissions.min { $0.updatedAt > $1.updatedAt }?.id,
+                    needsOperatorAttention: pendingQuestions > 0 || openFollowups > 0 || !activeMissions.isEmpty,
                     ingestionSource: base.ingestionSource,
                     metadata: base.metadata
                 )
@@ -76,7 +74,7 @@ struct MissionControlSummaryEnricher {
         let projects = enrichedProjects().filter { request.projectSlug == nil || $0.projectSlug == request.projectSlug }
         let missionSnapshots = projection?.missions.values.filter {
             request.projectSlug == nil || $0.projectSlug == request.projectSlug
-        }.map { $0 } ?? []
+        } ?? []
         let pendingQuestions = projection?.questions.values.filter {
             (request.projectSlug == nil || $0.projectSlug == request.projectSlug) && $0.status == .pending
         }.count ?? 0
@@ -92,7 +90,7 @@ struct MissionControlSummaryEnricher {
             .max()
         let freshness = freshnessState(latestReviewAt: latestReviewAt)
         let recentEvents = request.includeRecentEvents
-            ? (cachedEvents ?? [])
+            ? Array((cachedEvents ?? [])
                 .filter { request.projectSlug == nil || $0.projectSlug == request.projectSlug }
                 .sorted(by: { lhs, rhs in
                     if lhs.sequence == rhs.sequence {
@@ -100,8 +98,7 @@ struct MissionControlSummaryEnricher {
                     }
                     return lhs.sequence > rhs.sequence
                 })
-                .prefix(20)
-                .map { $0 }
+                .prefix(20))
             : []
         let projectionStatus = request.includeProjectionStatus
             ? projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: projection?.rebuiltAt ?? Date())
@@ -286,23 +283,31 @@ struct MissionControlSummaryEnricher {
             metadata: request.metadata
         )
 
-        let payloads: [(BurnBarControllerEventFamily, String, String, String?, BurnBarJSONValue)] = [
-            (.controller, "project_upserted", project.displayName, project.summary, try BurnBarJSONValue.fromEncodable(project)),
-            (.question, "question_created", question.title, question.prompt, try BurnBarJSONValue.fromEncodable(question)),
-            (.mission, "mission_created", mission.title, mission.summary, try BurnBarJSONValue.fromEncodable(mission))
+        struct SimulatorEventPayload {
+            let family: BurnBarControllerEventFamily
+            let eventType: String
+            let summary: String
+            let detail: String?
+            let payload: BurnBarJSONValue
+        }
+
+        let payloads: [SimulatorEventPayload] = [
+            .init(family: .controller, eventType: "project_upserted", summary: project.displayName, detail: project.summary, payload: try BurnBarJSONValue.fromEncodable(project)),
+            .init(family: .question, eventType: "question_created", summary: question.title, detail: question.prompt, payload: try BurnBarJSONValue.fromEncodable(question)),
+            .init(family: .mission, eventType: "mission_created", summary: mission.title, detail: mission.summary, payload: try BurnBarJSONValue.fromEncodable(mission))
         ]
 
         return payloads.enumerated().map { index, item in
             BurnBarControllerEvent(
                 id: BurnBarControllerEventID(rawValue: "sim-event-\(request.seed)-\(index)"),
-                family: item.0,
-                eventType: item.1,
+                family: item.family,
+                eventType: item.eventType,
                 projectSlug: request.projectSlug,
                 recordedAt: now.addingTimeInterval(Double(index)),
                 sequence: index + 1,
-                summary: item.2,
-                detail: item.3,
-                metadata: ["payload": item.4],
+                summary: item.summary,
+                detail: item.detail,
+                metadata: ["payload": item.payload],
                 isReplay: false
             )
         }

@@ -14,12 +14,12 @@ public struct CadenceArtifact: Sendable, Identifiable {
     public let provenance: InsightModelTag
 
     public enum Cadence: String, Codable, Sendable, CaseIterable {
-        case daily = "daily"
-        case weekly = "weekly"
-        case monthly = "monthly"
-        case annual = "annual"
-        case anomaly = "anomaly"
-        case milestone = "milestone"
+        case daily
+        case weekly
+        case monthly
+        case annual
+        case anomaly
+        case milestone
     }
 
     public enum Payload: Sendable {

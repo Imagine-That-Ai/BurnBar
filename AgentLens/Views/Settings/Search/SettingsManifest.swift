@@ -701,7 +701,7 @@ enum SettingsManifest {
             subtitle: "Reach Pi from the cloud relay endpoint (now under Agents → Runtimes)",
             keywords: ["pi", "raspberry", "relay", "remote", "tunnel", "cloud"],
             logoProviders: [.piAgent]
-        ),
+        )
     ]
 
     /// Map of anchor IDs back to the page route that owns them — used by
@@ -776,7 +776,7 @@ enum SettingsManifest {
         SettingsAnchor.hermesGatewayToken,
         SettingsAnchor.hermesPiHosts,
         SettingsAnchor.hermesRelay,
-        SettingsAnchor.hermesPiRelay,
+        SettingsAnchor.hermesPiRelay
     ]).union(providerItems.map(\.anchorID))
 
     private static let providerItems: [SettingsItem] = {

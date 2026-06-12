@@ -337,7 +337,7 @@ final class AgentLiveStagePresenterTests: XCTestCase {
         // Should not trap; every point is >= half of zero, so all
         // conditions are false → bottomTrailing.
         let corner = AgentLiveStagePresenter.nearestCorner(
-            for: CGPoint(x: 0, y: 0),
+            for: CGPoint.zero,
             in: .zero
         )
         // With width=0, height=0, both comparisons are !(x < 0) = true,

@@ -55,7 +55,7 @@ final class OpenAIEmbeddingProvider: ChunkEmbeddingProviding, QueryEmbeddingProv
     static let supportedModels: [String] = [
         "text-embedding-3-small",
         "text-embedding-3-large",
-        "text-embedding-ada-002",
+        "text-embedding-ada-002"
     ]
 
     let descriptor: EmbeddingModelDescriptor
@@ -125,7 +125,7 @@ final class OpenAIEmbeddingProvider: ChunkEmbeddingProviding, QueryEmbeddingProv
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": descriptor.modelName,
             "input": input,
-            "encoding_format": "float",
+            "encoding_format": "float"
         ])
 
         let (data, response) = try await session.data(for: request)

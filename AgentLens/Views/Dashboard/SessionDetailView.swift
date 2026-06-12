@@ -7,7 +7,7 @@ struct SessionDetailView: View {
     let session: TokenUsage
     let theme: ProviderTheme
     var dataStore: DataStore
-    var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
+    var onOpenSessionLog: ((ConversationJumpTarget) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(SettingsManager.self) private var settingsManager: SettingsManager?

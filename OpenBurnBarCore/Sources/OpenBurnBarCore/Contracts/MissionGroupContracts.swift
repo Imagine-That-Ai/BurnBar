@@ -301,9 +301,9 @@ public enum MissionGroupPhaseReducer {
         "canceled", "cancelled"
     ]
 
-    public static func isLive(_ s: String)      -> Bool { liveStates.contains(s.lowercased()) }
-    public static func isTerminal(_ s: String)  -> Bool { terminalStates.contains(s.lowercased()) }
-    public static func isFailed(_ s: String)    -> Bool { failedStates.contains(s.lowercased()) }
+    public static func isLive(_ s: String) -> Bool { liveStates.contains(s.lowercased()) }
+    public static func isTerminal(_ s: String) -> Bool { terminalStates.contains(s.lowercased()) }
+    public static func isFailed(_ s: String) -> Bool { failedStates.contains(s.lowercased()) }
     public static func isCancelled(_ s: String) -> Bool { cancelledStates.contains(s.lowercased()) }
 }
 

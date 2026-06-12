@@ -4,8 +4,8 @@ import SwiftUI
 /// App-wide visual persona. Each mode adapts typography, color, spacing,
 /// and motion to fit a specific use-case or mood.
 public enum UIMode: String, CaseIterable, Identifiable, Sendable {
-    case standard = "standard"
-    case cooking  = "cooking"
+    case standard
+    case cooking
 
     public var id: String { rawValue }
 

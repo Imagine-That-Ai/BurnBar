@@ -122,8 +122,8 @@ internal class HermesServiceMessageLaunch(
         CoroutineExceptionHandler { _, error ->
             val message = error.hermesSendFailureMessage()
             runCatching { Log.e(TAG, "Hermes send failed: $message", error) }
-            messageActions.appendAssistantError(message, modelName)
             service.runtimeErrorTextInternal.value = message
+            messageActions.appendAssistantError(message, modelName)
         }
 
     private fun Throwable.hermesSendFailureMessage(): String =

@@ -94,7 +94,7 @@ struct ProjectsView: View {
         // a one-frame empty flash. Every subsequent body invocation hits the
         // cached `@State` value and skips the aggregation entirely.
         if lastMergedProjectsKey == nil,
-           (!dataStore.usages.isEmpty || !daemonManager.controllerProjects.isEmpty) {
+           !dataStore.usages.isEmpty || !daemonManager.controllerProjects.isEmpty {
             return Self.computeMergedProjects(
                 usages: dataStore.usages,
                 controllerProjects: daemonManager.controllerProjects
@@ -1390,7 +1390,7 @@ private extension ProjectMemoryFreshness {
 
 private struct ProjectMemoryHeroCard: View {
     let snapshot: ProjectMemorySnapshot
-    var onTap: (() -> Void)? = nil
+    var onTap: (() -> Void)?
     @State private var isHovered = false
 
     private var coverVisual: ProjectMemoryVisual? {
@@ -1398,7 +1398,9 @@ private struct ProjectMemoryHeroCard: View {
     }
 
     var body: some View {
-        Button(action: { onTap?() }) {
+        Button {
+            onTap?()
+        } label: {
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(
@@ -1406,7 +1408,7 @@ private struct ProjectMemoryHeroCard: View {
                             colors: [
                                 DesignSystem.Colors.hermesMercury.opacity(0.22),
                                 DesignSystem.Colors.hermesAureate.opacity(0.22),
-                                DesignSystem.Colors.surfaceElevated.opacity(0.7),
+                                DesignSystem.Colors.surfaceElevated.opacity(0.7)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -1476,12 +1478,14 @@ private struct ProjectMemoryHeroCard: View {
 
 private struct ProjectMemoryPageCard: View {
     let page: ProjectMemoryPage
-    var onTap: (() -> Void)? = nil
-    var onCitationTap: (([ProjectMemoryCitation]) -> Void)? = nil
+    var onTap: (() -> Void)?
+    var onCitationTap: (([ProjectMemoryCitation]) -> Void)?
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: { onTap?() }) {
+        Button {
+            onTap?()
+        } label: {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 Text(page.title)
                     .font(DesignSystem.Typography.headline)
@@ -1543,7 +1547,7 @@ private struct ProjectMemoryPageCard: View {
 
 private struct ProjectMemoryVisualCard: View {
     let visual: ProjectMemoryVisual
-    var onTap: (() -> Void)? = nil
+    var onTap: (() -> Void)?
     @State private var isHovered = false
 
     private var maxValue: Double {
@@ -1551,7 +1555,9 @@ private struct ProjectMemoryVisualCard: View {
     }
 
     var body: some View {
-        Button(action: { onTap?() }) {
+        Button {
+            onTap?()
+        } label: {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 Text(visual.title)
                     .font(DesignSystem.Typography.caption)
@@ -1809,7 +1815,6 @@ private struct ControllerProjectEditorSheet: View {
     }
 }
 
-
 // MARK: - Editorial Subviews (shared by all Project Memory detail sheets)
 
 /// Identifiable bridge so multiple citations OR a single citation can drive
@@ -1992,7 +1997,7 @@ private struct HermesReadingCard: View {
     let title: String
     let placeholder: String
     let controller: ProjectMemoryInsightController
-    var onRetry: (() -> Void)? = nil
+    var onRetry: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -2177,7 +2182,7 @@ private struct NumberedSectionRow: View {
     let onCitationTap: (ProjectMemoryCitation) -> Void
     let onCombinedCitationTap: (() -> Void)?
     var pivotQueries: [WikiQuery] = []
-    var onPivotTap: ((WikiQuery) -> Void)? = nil
+    var onPivotTap: ((WikiQuery) -> Void)?
 
     private var trimmedBody: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2670,7 +2675,7 @@ extension WikiQuery {
 }
 
 struct WikiBreadcrumbItem: Identifiable {
-    let id: UUID = UUID()
+    let id = UUID()
     let label: String
     let action: (() -> Void)?
 }
@@ -2837,7 +2842,7 @@ struct WikiTableOfContents: View {
 }
 
 struct WikiSeeAlsoItem: Identifiable {
-    let id: UUID = UUID()
+    let id = UUID()
     let label: String
     let detail: String?
     let symbol: String

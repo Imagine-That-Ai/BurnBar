@@ -39,7 +39,8 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             missingToken,
             verifier: leafVerifier
         ) else {
-            return XCTFail("Expected missing token")
+            XCTFail("Expected missing token")
+            return
         }
 
         let disallowed = VirtualHIDBridgeCapabilityGate.Request(
@@ -53,7 +54,8 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             disallowed,
             verifier: leafVerifier
         ) else {
-            return XCTFail("Expected disallowed type")
+            XCTFail("Expected disallowed type")
+            return
         }
     }
 
@@ -79,7 +81,8 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             missingToken,
             verifier: leafVerifier
         ) else {
-            return XCTFail("Expected missing credential token")
+            XCTFail("Expected missing credential token")
+            return
         }
 
         let clickToken = try issuer.mintRemoteUnlockToken(
@@ -92,7 +95,8 @@ final class VirtualHIDBridgeCapabilityGateTests: XCTestCase {
             wrongAction,
             verifier: leafVerifier
         ) else {
-            return XCTFail("Expected click token to be rejected for credential typing")
+            XCTFail("Expected click token to be rejected for credential typing")
+            return
         }
     }
 }

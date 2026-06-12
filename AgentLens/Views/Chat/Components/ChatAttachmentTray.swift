@@ -9,11 +9,11 @@ import OpenBurnBarCore
 struct ChatAttachmentTray: View {
     var attachments: [HermesAttachment]
     var isHermes: Bool
-    var attachmentError: String? = nil
+    var attachmentError: String?
     /// `nil` for read-only transcript rows.
-    var onRemove: ((String) -> Void)? = nil
+    var onRemove: ((String) -> Void)?
     /// Called when the user clicks a chip to reveal it in Finder.
-    var onReveal: ((HermesAttachment) -> Void)? = nil
+    var onReveal: ((HermesAttachment) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
