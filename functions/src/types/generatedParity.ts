@@ -7,9 +7,17 @@
  * and THIS file proves — on every `tsc` run — that the emitted canon is
  * byte-for-byte type-identical to:
  *
- *   1. the runtime registry in functions/src/hermesGateway.ts, and
+ *   1. the doc types the runtime registry (functions/src/hermesGateway.ts)
+ *      exports, and
  *   2. the @openburnbar/signal-envelope-contracts envelope types the runtime
  *      aliases for the signalEnvelope sub-documents.
+ *
+ * Since WP5-GW-REEXPORT the runtime registry RE-EXPORTS the generated canon
+ * instead of hand-maintaining duplicate interfaces, so pin set 1 holds by
+ * construction today. The pins stay deliberately: they fail the build the
+ * moment anyone unfolds a re-export back into a local hand copy that drifts
+ * from the canon. Pin set 2 still guards real drift between emit/generate.mjs,
+ * the .tsp, and the contracts package.
  *
  * `Equals` is the exact-type-identity trick (it distinguishes `a?: string`
  * from a missing field and from `a: string | undefined`, unlike mutual
