@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.pulse
@@ -15,8 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -131,7 +130,7 @@ internal fun PulseViewScaffold(
                 )
             state.rollups == null ->
                 EmptyStateView(
-                    icon = Icons.Filled.ShowChart,
+                    icon = Icons.AutoMirrored.Filled.ShowChart,
                     title = "No Usage Data",
                     message = "Start using AI to see your burn here.",
                 )

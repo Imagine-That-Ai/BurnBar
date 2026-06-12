@@ -15,17 +15,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-private const val VAL_0_000001 = 0.000_001
-private const val VAL_0_2 = 0.2
-private const val VAL_0_4 = 0.4
-private const val VAL_16_0 = 16.0
-private const val VAL_41_L = 41L
-private const val VAL_42_L = 42L
-private const val VAL_43_L = 43L
-private const val VAL_65536 = 65_536
-private const val VAL_7_0 = 7.0
-private const val VAL_721692800_123 = 721_692_800.123
-
 class PhoneControlSenderTest {
     private val privateSeed = ByteArray(32) { index -> (index + 1).toByte() }
 
@@ -63,12 +52,12 @@ class PhoneControlSenderTest {
         val input = frame.control?.inputIntent
         assertNotNull(input)
         assertEquals(HermesRealtimeRelayInputIntentKind.SCROLL, input?.kind)
-        assertEquals(VAL_0_4, input?.normalizedX ?: -1.0, 0.0)
-        assertEquals(VAL_0_2, input?.normalizedY2 ?: -1.0, 0.0)
+        assertEquals(0.4, input?.normalizedX ?: -1.0, 0.0)
+        assertEquals(0.2, input?.normalizedY2 ?: -1.0, 0.0)
         assertNotNull(input?.clientIntentId)
         assertEquals("android-phone-1", input?.authority?.peerNodeId)
         assertEquals(1L, input?.authority?.counter)
-        assertEquals(VAL_721692800_123, input?.authority?.timestamp ?: -1.0, VAL_0_000001)
+        assertEquals(721_692_800.123, input?.authority?.timestamp ?: -1.0, 0.000_001)
         assertEquals(authority.intentHashBlake3, input?.authority?.intentHashBlake3)
 
         PhoneControlSignerVerify.verify(
@@ -152,8 +141,8 @@ class PhoneControlSenderTest {
 
         val input = frames.single().control?.inputIntent
         assertEquals(HermesRealtimeRelayInputIntentKind.POINTER_MOVE, input?.kind)
-        assertEquals(VAL_16_0, input?.normalizedX2 ?: -1.0, 0.0)
-        assertEquals(-VAL_7_0, input?.normalizedY2 ?: 1.0, 0.0)
+        assertEquals(16.0, input?.normalizedX2 ?: -1.0, 0.0)
+        assertEquals(-7.0, input?.normalizedY2 ?: 1.0, 0.0)
     }
 
     @Test
@@ -165,7 +154,7 @@ class PhoneControlSenderTest {
                 connectionId = "conn-1",
                 peerNodeId = "android-phone-1",
                 signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
-                counterStore = InMemoryPhoneControlCounterStore(mapOf("android-phone-1" to VAL_41_L)),
+                counterStore = InMemoryPhoneControlCounterStore(mapOf("android-phone-1" to 41L)),
                 nowMillis = { 1_700_000_000_000L },
                 frameSink = { frames += it },
             )
@@ -173,10 +162,10 @@ class PhoneControlSenderTest {
         val first = sender.send(PhoneControlIntent(kind = PhoneControlIntentKind.PANIC))
         val second = sender.send(PhoneControlIntent(kind = PhoneControlIntentKind.PANIC))
 
-        assertEquals(VAL_42_L, first.counter)
-        assertEquals(VAL_43_L, second.counter)
-        assertEquals(VAL_42_L, frames[0].control?.inputIntent?.authority?.counter)
-        assertEquals(VAL_43_L, frames[1].control?.inputIntent?.authority?.counter)
+        assertEquals(42L, first.counter)
+        assertEquals(43L, second.counter)
+        assertEquals(42L, frames[0].control?.inputIntent?.authority?.counter)
+        assertEquals(43L, frames[1].control?.inputIntent?.authority?.counter)
     }
 
     @Test
@@ -216,7 +205,7 @@ class PhoneControlSenderTest {
         assertEquals(HermesRealtimeRelayClipboardAction.PASTE_TO_MAC, request?.action)
         assertEquals("text/plain", request?.contentType)
         assertEquals("hello", request?.text)
-        assertEquals(VAL_65536, request?.maxBytes)
+        assertEquals(65_536, request?.maxBytes)
         assertNotNull(request?.clientIntentId)
         assertEquals("android-phone-1", request?.authority?.peerNodeId)
         assertEquals(1L, request?.authority?.counter)

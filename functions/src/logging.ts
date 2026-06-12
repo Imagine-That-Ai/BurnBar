@@ -199,7 +199,7 @@ export async function withCallableLogging<T>(
  * Wraps a callable handler with start/success/error structured logs.
  * Prefer migrating exports from raw `onCall` to `onCallWithLogging` for SLO probes.
  */
-export function onCallWithLogging<T, R>(
+export function onCallWithLogging<R>(
   name: string,
   handler: (request: { auth?: { uid?: string }; rawRequest?: { headers?: Record<string, unknown> } }) => Promise<R>,
 ): (request: { auth?: { uid?: string }; rawRequest?: { headers?: Record<string, unknown> } }) => Promise<R> {

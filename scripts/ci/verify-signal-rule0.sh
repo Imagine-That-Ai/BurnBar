@@ -49,10 +49,33 @@ CHANGED="$(printf '%s\n' "$CHANGED" | sort -u | sed '/^$/d')"
 # submodule/FFI swap or a license/third-party edit) without false-blocking copy.
 RULE0='(^|/)(Vendor/libsignal(/|$)|Vendor/OpenBurnBarSignalFfi\.xcframework(/|$)|packages/libsignal-bridge/|third_party/|LICENSES/|THIRD_PARTY|REUSE\.toml|LICENSE|NOTICE)|(^|/)\.gitmodules$'
 
+# Owner-routed exception (exactly one path): third_party/hermes-agent/
+# manifest.json is the provenance PIN that the C-5 gate REQUIRES updating on
+# every vendored-agent bump — an unconditional block here is why a previous
+# bump was kept out of its PR entirely, splitting the attestation from the
+# gate (diligence 2026-06-11 LB-4). The handoff Rule-0 demands ("route
+# through the legal/ownership owner") is expressed as an explicit, auditable
+# `Rule0-Ack: <reason>` trailer in a branch commit message: the owner writes
+# the ack, the trailer is permanent history, and the C-5 verifier
+# (verify-vendored-agent-source.sh, required on PRs) independently validates
+# the manifest's pin+hash in the same run. Every OTHER protected path —
+# libsignal submodule, FFI binary, .gitmodules, LICENSES — remains
+# unconditional, and in degraded no-base mode the exception is disabled.
+ack_present=0
+# No `grep -q` here: under `set -o pipefail` its early exit SIGPIPEs git log
+# and fails the whole pipeline, silently disabling the ack on large branches.
+if [[ -n "${MERGE_BASE:-}" ]] && git log "$MERGE_BASE..HEAD" --format=%B 2>/dev/null | grep -E '^Rule0-Ack: \S' >/dev/null; then
+  ack_present=1
+fi
+
 violations=0
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
   if printf '%s' "$f" | grep -Eq "$RULE0"; then
+    if [[ "$f" == "third_party/hermes-agent/manifest.json" && "$ack_present" == "1" ]]; then
+      echo "  RULE-0 ACK (owner-routed): $f — Rule0-Ack trailer present; C-5 verifier validates the pin in this run."
+      continue
+    fi
     echo "  RULE-0 VIOLATION: $f"
     violations=$((violations + 1))
   fi

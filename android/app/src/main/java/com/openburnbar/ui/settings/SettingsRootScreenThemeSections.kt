@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.settings
@@ -461,9 +460,23 @@ internal fun RowScope.ThemePrefsAppearanceCard(
                 }
             }
             Column {
-                Text(text = appearance.displayName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface)
+                Text(
+                    text = appearance.displayName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = if (useWebsiteBackground) Color.White else MaterialTheme.colorScheme.onSurface,
+                )
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(text = appearance.description, fontSize = 11.sp, lineHeight = 13.sp, color = if (useWebsiteBackground) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = appearance.description,
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
+                    color = if (useWebsiteBackground) {
+                        Color.White.copy(alpha = 0.7f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
             }
         }
     }

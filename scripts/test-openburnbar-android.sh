@@ -26,7 +26,7 @@ if [[ -z "${JAVA_HOME:-}" ]]; then
 fi
 
 if [[ -z "${ANDROID_HOME:-}" ]]; then
-    export ANDROID_HOME="${HOME}/Library/Android"
+    export ANDROID_HOME="${HOME}/Library/Android/sdk"
 fi
 export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
 

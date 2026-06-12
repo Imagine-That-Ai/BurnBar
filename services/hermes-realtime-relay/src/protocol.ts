@@ -142,7 +142,9 @@ export function parseFrame(
 
   const text = Array.isArray(raw)
     ? Buffer.concat(raw).toString("utf8")
-    : Buffer.from(raw).toString("utf8");
+    : raw instanceof ArrayBuffer
+      ? Buffer.from(raw).toString("utf8")
+      : raw.toString("utf8");
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);

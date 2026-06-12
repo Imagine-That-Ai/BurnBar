@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber", "LongParameterList")
 
 package com.openburnbar.ui.hermes
 

@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber", "ThrowsCount", "UnnecessaryParentheses")
 // Wire-format NAL/codec byte layout literals; named constants obscure OBVCFG1 parsing.
 
 package com.openburnbar.data.media

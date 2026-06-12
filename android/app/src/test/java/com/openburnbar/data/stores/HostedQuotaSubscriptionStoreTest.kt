@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar.data.stores
 
@@ -38,8 +36,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-
-private const val VAL_123456789_L = 123456789L
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HostedQuotaSubscriptionStoreTest {
@@ -116,7 +112,7 @@ class HostedQuotaSubscriptionStoreTest {
         every { proPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
         every { proPurchase.products } returns listOf(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
         every { proPurchase.purchaseToken } returns "pro-token"
-        every { proPurchase.purchaseTime } returns VAL_123456789_L
+        every { proPurchase.purchaseTime } returns 123456789L
         every { proPurchase.isAcknowledged } returns true
 
         val purchasesListenerSlot = slot<PurchasesResponseListener>()
@@ -405,7 +401,7 @@ class HostedQuotaSubscriptionStoreTest {
         every { mockPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
         every { mockPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
         every { mockPurchase.purchaseToken } returns "mock-purchase-token"
-        every { mockPurchase.purchaseTime } returns VAL_123456789_L
+        every { mockPurchase.purchaseTime } returns 123456789L
         every { mockPurchase.isAcknowledged } returns true
 
         val purchasesListenerSlot = slot<PurchasesResponseListener>()
@@ -434,7 +430,7 @@ class HostedQuotaSubscriptionStoreTest {
         assertNull(store.error.value)
         assertTrue(store.isActive.value)
         assertEquals(HostedQuotaSubscriptionStore.PRODUCT_ID, store.activeProductID.value)
-        assertEquals(VAL_123456789_L, store.purchaseDate.value)
+        assertEquals(123456789L, store.purchaseDate.value)
         assertEquals(java.time.Instant.parse("2026-06-30T12:00:00Z").toEpochMilli(), store.expirationDate.value)
     }
 
@@ -450,7 +446,7 @@ class HostedQuotaSubscriptionStoreTest {
         every { mockPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
         every { mockPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
         every { mockPurchase.purchaseToken } returns "expired-purchase-token"
-        every { mockPurchase.purchaseTime } returns VAL_123456789_L
+        every { mockPurchase.purchaseTime } returns 123456789L
         every { mockPurchase.isAcknowledged } returns true
 
         val purchasesListenerSlot = slot<PurchasesResponseListener>()
@@ -479,7 +475,7 @@ class HostedQuotaSubscriptionStoreTest {
         assertNull(store.error.value)
         assertFalse(store.isActive.value)
         assertNull(store.activeProductID.value)
-        assertEquals(VAL_123456789_L, store.purchaseDate.value)
+        assertEquals(123456789L, store.purchaseDate.value)
         assertEquals(java.time.Instant.parse("2020-01-01T00:00:00Z").toEpochMilli(), store.expirationDate.value)
     }
 
@@ -496,14 +492,14 @@ class HostedQuotaSubscriptionStoreTest {
         every { staleCloudPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
         every { staleCloudPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
         every { staleCloudPurchase.purchaseToken } returns "stale-cloud-token"
-        every { staleCloudPurchase.purchaseTime } returns VAL_123456789_L
+        every { staleCloudPurchase.purchaseTime } returns 123456789L
         every { staleCloudPurchase.isAcknowledged } returns true
 
         val cloudProPurchase = mockk<Purchase>()
         every { cloudProPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
         every { cloudProPurchase.products } returns listOf(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
         every { cloudProPurchase.purchaseToken } returns "cloud-pro-token"
-        every { cloudProPurchase.purchaseTime } returns VAL_123456789_L + 1
+        every { cloudProPurchase.purchaseTime } returns 123456789L + 1
         every { cloudProPurchase.isAcknowledged } returns false
 
         val purchasesListenerSlot = slot<PurchasesResponseListener>()
@@ -547,7 +543,7 @@ class HostedQuotaSubscriptionStoreTest {
         assertNull(store.error.value)
         assertTrue(store.isActive.value)
         assertEquals(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID, store.activeProductID.value)
-        assertEquals(VAL_123456789_L + 1, store.purchaseDate.value)
+        assertEquals(123456789L + 1, store.purchaseDate.value)
         assertEquals(java.time.Instant.parse("2026-06-30T12:00:00Z").toEpochMilli(), store.expirationDate.value)
         coVerify(exactly = 1) {
             mockFunctions.verifyGooglePlayBurnBarProSubscription(
@@ -577,7 +573,7 @@ class HostedQuotaSubscriptionStoreTest {
         every { mockPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
         every { mockPurchase.products } returns listOf(HostedQuotaSubscriptionStore.PRODUCT_ID)
         every { mockPurchase.purchaseToken } returns "pending-ack-token"
-        every { mockPurchase.purchaseTime } returns VAL_123456789_L
+        every { mockPurchase.purchaseTime } returns 123456789L
         every { mockPurchase.isAcknowledged } returns false
 
         val purchasesListenerSlot = slot<PurchasesResponseListener>()

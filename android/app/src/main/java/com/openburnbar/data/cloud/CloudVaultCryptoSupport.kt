@@ -7,6 +7,8 @@ import javax.crypto.spec.SecretKeySpec
 import org.signal.libsignal.protocol.ecc.ECPrivateKey
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 
+private const val FIXED_COORDINATE_BYTES = 32
+
 internal object CloudVaultCryptoSupport {
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_NONCE_BYTES = 12
@@ -76,9 +78,10 @@ internal object CloudVaultCryptoSupport {
             .generatePublic(java.security.spec.ECPublicKeySpec(java.security.spec.ECPoint(x, y), params))
     }
 
-    fun fixed32(value: java.math.BigInteger): ByteArray {
-        val raw = value.toByteArray()
-        val positive = if (raw.size > SHA256_DIGEST_BYTES) raw.copyOfRange(raw.size - SHA256_DIGEST_BYTES, raw.size) else raw
-        return ByteArray(SHA256_DIGEST_BYTES - positive.size) + positive
-    }
+}
+
+internal fun cloudVaultFixed32(value: java.math.BigInteger): ByteArray {
+    val raw = value.toByteArray()
+    val positive = if (raw.size > FIXED_COORDINATE_BYTES) raw.copyOfRange(raw.size - FIXED_COORDINATE_BYTES, raw.size) else raw
+    return ByteArray(FIXED_COORDINATE_BYTES - positive.size) + positive
 }

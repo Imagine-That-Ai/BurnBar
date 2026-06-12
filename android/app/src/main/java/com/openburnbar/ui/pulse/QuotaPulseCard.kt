@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.pulse
@@ -8,7 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -233,7 +232,7 @@ private fun QuotaPulseDefaultBody(
         fleetSubtitle = fleetMeta.fleetSubtitle,
     )
     Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
     QuotaPulseProviderList(items = items, onSelect = onSelect, onOpenBurn = onOpenBurn)
 }

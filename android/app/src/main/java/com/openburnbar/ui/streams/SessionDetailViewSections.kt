@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.streams
@@ -18,7 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -122,7 +121,7 @@ internal fun SessionDetailTokenBreakdownCard(usage: TokenUsage) {
                 if (usage.reasoningTokens > 0) {
                     SessionDetailTokenPill(label = "Reasoning", value = usage.reasoningTokens, color = Color(0xFFB580E8))
                 }
-                Divider(modifier = Modifier.padding(vertical = 2.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
                 SessionDetailTokenPill(label = "Total", value = usage.totalTokens, isTotal = true)
             }
         }

@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 @preconcurrency import FirebaseAppCheck
 @preconcurrency import FirebaseAuth
+import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
@@ -1626,10 +1627,22 @@ extension HermesGatewayRepository {
 final class FunctionsRepository: HermesGatewayRepository {
     static let shared = FunctionsRepository()
 
-    private let functions = Functions.functions()
+    private var cachedFunctions: Functions?
+
+    private func functionsClient() throws -> Functions {
+        if let cachedFunctions {
+            return cachedFunctions
+        }
+        guard FirebaseApp.app() != nil else {
+            throw FunctionsError.firebaseUnavailable
+        }
+        let functions = Functions.functions()
+        cachedFunctions = functions
+        return functions
+    }
 
     func connectProviderCredential(provider: String, credential: String, kind: CredentialKind) async throws -> ProviderConnectionDoc {
-        let callable = functions.httpsCallable("connectProviderCredential")
+        let callable = try functionsClient().httpsCallable("connectProviderCredential")
         let result = try await callable.call([
             "provider": provider,
             "credential": credential,
@@ -1654,7 +1667,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         deviceDisplayName: String? = nil,
         metadata: ProviderAccountConnectMetadata? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = functions.httpsCallable("connectProviderAccount")
+        let callable = try functionsClient().httpsCallable("connectProviderAccount")
         var payload: [String: Any] = [
             "provider": providerID.rawValue,
             "credential": credential,
@@ -1707,7 +1720,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = functions.httpsCallable("connectHostedQuotaAccount")
+        let callable = try functionsClient().httpsCallable("connectHostedQuotaAccount")
         var payload: [String: Any] = [
             "provider": providerID.rawValue,
             "credential": credential
@@ -1741,7 +1754,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = functions.httpsCallable("connectSelfHostedQuotaAccount")
+        let callable = try functionsClient().httpsCallable("connectSelfHostedQuotaAccount")
         var payload: [String: Any] = ["provider": providerID.rawValue]
         if let label, label.isEmpty == false {
             payload["label"] = label
@@ -1766,17 +1779,17 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func deleteProviderCredential(provider: String) async throws {
-        let callable = functions.httpsCallable("deleteProviderCredential")
+        let callable = try functionsClient().httpsCallable("deleteProviderCredential")
         _ = try await callable.call(["provider": provider])
     }
 
     func refreshProviderQuota(provider: String) async throws {
-        let callable = functions.httpsCallable("refreshProviderQuota")
+        let callable = try functionsClient().httpsCallable("refreshProviderQuota")
         _ = try await callable.call(["provider": provider])
     }
 
     func refreshProviderAccountQuota(accountID: String) async throws -> ProviderQuotaSnapshot {
-        let callable = functions.httpsCallable("refreshProviderAccountQuota")
+        let callable = try functionsClient().httpsCallable("refreshProviderAccountQuota")
         let result = try await callable.call(["accountID": accountID])
         guard let data = result.data as? [String: Any],
               let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
@@ -1796,7 +1809,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = functions.httpsCallable("connectHostedQuotaAccount")
+        let callable = try functionsClient().httpsCallable("connectHostedQuotaAccount")
         var payload: [String: Any] = [
             "provider": providerID.rawValue,
             "credential": credential,
@@ -1817,12 +1830,12 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func deleteHostedQuotaCredentials(accountID: String = "codex_default") async throws {
-        let callable = functions.httpsCallable("deleteHostedQuotaCredentials")
+        let callable = try functionsClient().httpsCallable("deleteHostedQuotaCredentials")
         _ = try await callable.call(["accountID": accountID])
     }
 
     func updateProviderAccount(accountID: String, label: String? = nil, isDefault: Bool? = nil, disabled: Bool? = nil) async throws -> ProviderAccountDoc {
-        let callable = functions.httpsCallable("updateProviderAccount")
+        let callable = try functionsClient().httpsCallable("updateProviderAccount")
         var payload: [String: Any] = ["accountID": accountID]
         if let label { payload["label"] = label }
         if let isDefault { payload["isDefault"] = isDefault }
@@ -1838,7 +1851,7 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func deleteProviderAccount(accountID: String) async throws {
-        let callable = functions.httpsCallable("deleteProviderAccount")
+        let callable = try functionsClient().httpsCallable("deleteProviderAccount")
         _ = try await callable.call(["accountID": accountID])
     }
 
@@ -1846,12 +1859,12 @@ final class FunctionsRepository: HermesGatewayRepository {
     /// counters from raw history. Routine refreshes omit it and are served
     /// from the incremental counters when those are healthy.
     func rebuildUsageRollups(force: Bool = false) async throws {
-        let callable = functions.httpsCallable("rebuildUsageRollups")
+        let callable = try functionsClient().httpsCallable("rebuildUsageRollups")
         _ = try await callable.call(["force": force])
     }
 
     func searchStreams(query: String, limit: Int = 25) async throws -> [StreamSearchHit] {
-        let callable = functions.httpsCallable("searchStreams")
+        let callable = try functionsClient().httpsCallable("searchStreams")
         let result = try await callable.call([
             "query": query,
             "limit": max(1, min(limit, 50))
@@ -1870,7 +1883,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         semanticHashes: [String] = [],
         limit: Int = 25
     ) async throws -> [CloudConversationSearchHit] {
-        let callable = functions.httpsCallable("searchEncryptedConversationIndex")
+        let callable = try functionsClient().httpsCallable("searchEncryptedConversationIndex")
         let result = try await callable.call([
             "tokenHashes": Array(tokenHashes.prefix(10)),
             "semanticHashes": Array(semanticHashes.prefix(12)),
@@ -1906,7 +1919,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         cursorDocId: String? = nil,
         includeAggregates: Bool = true
     ) async throws -> ConversationQueryResponse {
-        let callable = functions.httpsCallable("queryConversations")
+        let callable = try functionsClient().httpsCallable("queryConversations")
         var payload: [String: Any] = [
             "sort": sort,
             "direction": direction,
@@ -1936,7 +1949,7 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func encryptedSessionBlobDownloadURL(storagePath: String) async throws -> URL {
-        let callable = functions.httpsCallable("getEncryptedSessionBlobDownloadUrl")
+        let callable = try functionsClient().httpsCallable("getEncryptedSessionBlobDownloadUrl")
         let result = try await callable.call(["storagePath": storagePath])
         guard let dict = result.data as? [String: Any],
               let raw = dict["downloadURL"] as? String,
@@ -1947,7 +1960,7 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func uploadProviderQuotaSnapshot(_ snapshot: ProviderQuotaSnapshot) async throws -> ProviderQuotaSnapshot {
-        let callable = functions.httpsCallable("uploadProviderQuotaSnapshot")
+        let callable = try functionsClient().httpsCallable("uploadProviderQuotaSnapshot")
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let jsonData = try encoder.encode(snapshot)
@@ -1971,7 +1984,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         platform: String? = nil,
         displayName: String? = nil
     ) async throws -> HermesPairingSessionRecord {
-        let callable = functions.httpsCallable("createHermesPairing")
+        let callable = try functionsClient().httpsCallable("createHermesPairing")
         var payload: [String: Any] = [:]
         if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
         if let platform, !platform.isEmpty { payload["platform"] = platform }
@@ -1990,7 +2003,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         advertisedModel: String? = nil,
         capabilities: [String] = ["chat_completions"]
     ) async throws -> HermesConnectionRecord {
-        let callable = functions.httpsCallable("completeHermesPairing")
+        let callable = try functionsClient().httpsCallable("completeHermesPairing")
         var payload: [String: Any] = [
             "pairingId": pairingId,
             "code": code,
@@ -2011,7 +2024,7 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func listHermesConnections() async throws -> [HermesConnectionRecord] {
-        let callable = functions.httpsCallable("listHermesConnections")
+        let callable = try functionsClient().httpsCallable("listHermesConnections")
         let result = try await callable.call([:])
         guard
             let dict = result.data as? [String: Any],
@@ -2023,12 +2036,12 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func revokeHermesConnection(connectionId: String) async throws {
-        let callable = functions.httpsCallable("revokeHermesConnection")
+        let callable = try functionsClient().httpsCallable("revokeHermesConnection")
         _ = try await callable.call(["connectionId": connectionId])
     }
 
     func revokeRemoteMcpClient(clientID: String) async throws {
-        let callable = functions.httpsCallable("revokeRemoteMcpClient")
+        let callable = try functionsClient().httpsCallable("revokeRemoteMcpClient")
         _ = try await callable.call(["clientId": clientID])
     }
 
@@ -2048,7 +2061,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         phoneRelayEncryption: String? = nil,
         phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle? = nil
     ) async throws -> HermesGatewayClientRecord {
-        let callable = functions.httpsCallable("approveHermesGatewayDeviceGrant")
+        let callable = try functionsClient().httpsCallable("approveHermesGatewayDeviceGrant")
         var payload: [String: Any] = [
             "userCode": userCode,
             "destinationId": destinationId,
@@ -2111,7 +2124,9 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     private func prepareHermesGatewayApprovalContext() async throws {
-        guard let user = Auth.auth().currentUser, !user.isAnonymous else {
+        guard FirebaseApp.app() != nil,
+              let user = Auth.auth().currentUser,
+              !user.isAnonymous else {
             throw FunctionsError.gatewayApprovalNotAuthenticated
         }
         do {
@@ -2149,13 +2164,13 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func listHermesGatewayClients(includeRevoked: Bool = false) async throws -> [HermesGatewayClientRecord] {
-        let callable = functions.httpsCallable("listHermesGatewayClients")
+        let callable = try functionsClient().httpsCallable("listHermesGatewayClients")
         let result = try await callable.call(["includeRevoked": includeRevoked])
         return try Self.decodeHermesGatewayValue(HermesGatewayClientsResponse.self, from: result.data).clients
     }
 
     func revokeHermesGatewayClient(clientId: String) async throws {
-        let callable = functions.httpsCallable("revokeHermesGatewayClient")
+        let callable = try functionsClient().httpsCallable("revokeHermesGatewayClient")
         _ = try await callable.call(["clientId": clientId])
     }
 
@@ -2167,7 +2182,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         targetClientId: String? = nil,
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
-        let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
+        let callable = try functionsClient().httpsCallable("enqueueHermesGatewayEvent")
         var payload: [String: Any] = [
             "destinationId": destinationId,
             "threadId": threadId,
@@ -2196,7 +2211,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         targetClientId: String? = nil,
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
-        let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
+        let callable = try functionsClient().httpsCallable("enqueueHermesGatewayEvent")
         var payload: [String: Any] = [
             "destinationId": destinationId,
             "senderId": "burnbar-ios",
@@ -2346,7 +2361,9 @@ final class FunctionsRepository: HermesGatewayRepository {
         kind: String? = nil,
         extraSealedFields: [String: Any] = [:]
     ) throws {
-        guard let uid = Auth.auth().currentUser?.uid, !uid.isEmpty else {
+        guard FirebaseApp.app() != nil,
+              let uid = Auth.auth().currentUser?.uid,
+              !uid.isEmpty else {
             throw FunctionsError.gatewayTargetMissingRelayKey
         }
         try sealGatewayEventPayload(
@@ -2639,14 +2656,14 @@ final class FunctionsRepository: HermesGatewayRepository {
             sealedOversightPayload = payload
         }
 
-        let callable = functions.httpsCallable("setHermesGatewayOversightMode")
+        let callable = try functionsClient().httpsCallable("setHermesGatewayOversightMode")
         _ = try await callable.call([
             "clientId": clientId,
             "mode": mode
         ])
 
         if let sealedOversightPayload {
-            let ev = functions.httpsCallable("enqueueHermesGatewayEvent")
+            let ev = try functionsClient().httpsCallable("enqueueHermesGatewayEvent")
             _ = try await FirebaseCallableExecutor(ev).call(FirebaseCallablePayload(sealedOversightPayload))
         }
     }
@@ -2696,7 +2713,7 @@ final class FunctionsRepository: HermesGatewayRepository {
             kind: "approval_decision",
             extraSealedFields: extra
         )
-        let callable = functions.httpsCallable("enqueueHermesGatewayEvent")
+        let callable = try functionsClient().httpsCallable("enqueueHermesGatewayEvent")
         _ = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
     }
 
@@ -2707,7 +2724,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         platform: String? = nil,
         displayName: String? = nil
     ) async throws -> PiPairingSessionRecord {
-        let callable = functions.httpsCallable("createPiAgentPairing")
+        let callable = try functionsClient().httpsCallable("createPiAgentPairing")
         var payload: [String: Any] = [:]
         if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
         if let platform, !platform.isEmpty { payload["platform"] = platform }
@@ -2737,7 +2754,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         realtimeRelayStatus: String? = nil,
         deviceId: String? = nil
     ) async throws -> PiConnectionRecord {
-        let callable = functions.httpsCallable("completePiAgentPairing")
+        let callable = try functionsClient().httpsCallable("completePiAgentPairing")
         var payload: [String: Any] = [
             "pairingId": pairingId,
             "code": code,
@@ -2764,7 +2781,7 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func listPiAgentConnections(includeRevoked: Bool = false) async throws -> [PiConnectionRecord] {
-        let callable = functions.httpsCallable("listPiAgentConnections")
+        let callable = try functionsClient().httpsCallable("listPiAgentConnections")
         let result = try await callable.call(["includeRevoked": includeRevoked])
         guard
             let dict = result.data as? [String: Any],
@@ -2776,7 +2793,7 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func revokePiAgentConnection(connectionId: String, deviceId: String? = nil) async throws {
-        let callable = functions.httpsCallable("revokePiAgentConnection")
+        let callable = try functionsClient().httpsCallable("revokePiAgentConnection")
         var payload: [String: Any] = ["connectionId": connectionId]
         if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
         _ = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
@@ -2792,7 +2809,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         models: [PiAgentRuntimeModelOption]? = nil,
         deviceId: String? = nil
     ) async throws {
-        let callable = functions.httpsCallable("updatePiAgentConnectionStatus")
+        let callable = try functionsClient().httpsCallable("updatePiAgentConnectionStatus")
         var payload: [String: Any] = [
             "connectionId": connectionId,
             "status": status.rawValue
@@ -2867,7 +2884,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         productID: String,
         clientPlatform: String? = nil
     ) async throws -> String {
-        let callable = functions.httpsCallable("beginEntitlementBinding")
+        let callable = try functionsClient().httpsCallable("beginEntitlementBinding")
         var payload: [String: Any] = ["productID": productID]
         if let clientPlatform { payload["clientPlatform"] = clientPlatform }
         let result = try await callable.call(payload)
@@ -2891,7 +2908,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         signedRenewalInfoJWS: String? = nil,
         productID: String? = nil
     ) async throws -> HostedQuotaEntitlementResponse {
-        let callable = functions.httpsCallable("verifyHostedQuotaEntitlement")
+        let callable = try functionsClient().httpsCallable("verifyHostedQuotaEntitlement")
         var payload: [String: Any] = ["signedTransactionJWS": signedTransactionJWS]
         if let signedRenewalInfoJWS { payload["signedRenewalInfoJWS"] = signedRenewalInfoJWS }
         if let productID { payload["productID"] = productID }
@@ -2917,7 +2934,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         productID: String? = nil,
         signedTransactionJWS: String? = nil
     ) async throws -> HostedQuotaEntitlementResponse {
-        let callable = functions.httpsCallable("restoreHostedQuotaEntitlement")
+        let callable = try functionsClient().httpsCallable("restoreHostedQuotaEntitlement")
         var payload: [String: Any] = [:]
         if let productID { payload["productID"] = productID }
         if let signedTransactionJWS, !signedTransactionJWS.isEmpty {
@@ -2932,7 +2949,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         signedTransactionJWS: String,
         productID: String
     ) async throws -> CloudProTopUpCreditResponse {
-        let callable = functions.httpsCallable("verifyCloudProTopUp")
+        let callable = try functionsClient().httpsCallable("verifyCloudProTopUp")
         let result = try await callable.call([
             "signedTransactionJWS": signedTransactionJWS,
             "productID": productID
@@ -3043,6 +3060,7 @@ private extension ProviderQuotaSnapshot {
 
 enum FunctionsError: Error, LocalizedError, Equatable {
     case decodingFailed
+    case firebaseUnavailable
     case gatewayTargetMissingRelayKey
     case gatewayRelayKeyChanged
     case gatewayAttachmentUnreadable
@@ -3054,6 +3072,8 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .decodingFailed: return "Failed to decode cloud function response."
+        case .firebaseUnavailable:
+            return "BurnBar Cloud is still starting. Try again after sign-in finishes."
         case .gatewayTargetMissingRelayKey:
             // Benefit-first, jargon-free per the copy policy: messages stay
             // private, so they can only send once the Mac is ready.
@@ -3088,7 +3108,7 @@ extension FunctionsRepository {
         deviceDisplayName: String,
         capability: DeviceLinkCapability
     ) async throws {
-        let callable = functions.httpsCallable("adoptProviderAccountForDevice")
+        let callable = try functionsClient().httpsCallable("adoptProviderAccountForDevice")
         _ = try await callable.call([
             "accountID": accountID,
             "deviceID": deviceID,
@@ -3098,7 +3118,7 @@ extension FunctionsRepository {
     }
 
     func revokeProviderAccountDeviceLink(accountID: String, deviceID: String) async throws {
-        let callable = functions.httpsCallable("revokeProviderAccountDeviceLink")
+        let callable = try functionsClient().httpsCallable("revokeProviderAccountDeviceLink")
         _ = try await callable.call([
             "accountID": accountID,
             "deviceID": deviceID
@@ -3106,7 +3126,7 @@ extension FunctionsRepository {
     }
 
     func backfillProviderAccountDeviceLinks() async throws {
-        let callable = functions.httpsCallable("backfillProviderAccountDeviceLinks")
+        let callable = try functionsClient().httpsCallable("backfillProviderAccountDeviceLinks")
         _ = try await callable.call([:])
     }
 }

@@ -4,672 +4,1330 @@
       "collectionGroup": "usage",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "usage",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "usage",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "deviceId", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "deviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "usage",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "usage",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "deviceId", "order": "ASCENDING"},
-        {"fieldPath": "sessionId", "order": "ASCENDING"}
+        {
+          "fieldPath": "deviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sessionId",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "usage",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "startTime", "order": "ASCENDING"},
-        {"fieldPath": "updatedAt", "order": "ASCENDING"}
+        {
+          "fieldPath": "startTime",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "chunks",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "uid", "order": "ASCENDING"},
-        {"fieldPath": "terms", "arrayConfig": "CONTAINS"}
+        {
+          "fieldPath": "uid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "terms",
+          "arrayConfig": "CONTAINS"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "deviceId", "order": "ASCENDING"},
-        {"fieldPath": "sessionId", "order": "ASCENDING"}
+        {
+          "fieldPath": "deviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sessionId",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "costUSD", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "costUSD",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "totalTokens", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalTokens",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "costUSD", "order": "DESCENDING"}
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "costUSD",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "costUSD", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "costUSD",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "endTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "endTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "totalTokens", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalTokens",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "endTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "totalTokens", "order": "DESCENDING"}
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalTokens",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "hermes_gateway_events",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "clientId", "order": "ASCENDING"},
-        {"fieldPath": "createdAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "clientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "hermes_gateway_messages",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "clientId", "order": "ASCENDING"},
-        {"fieldPath": "createdAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "clientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "endTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "costUSD", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "costUSD",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "totalTokens", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalTokens",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "endTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "costUSD", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "costUSD",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "totalTokens", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalTokens",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "endTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "costUSD", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "costUSD",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "totalTokens", "order": "DESCENDING"}
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalTokens",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "startTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "endTime", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endTime",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "costUSD", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "costUSD",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "model", "order": "ASCENDING"},
-        {"fieldPath": "projectName", "order": "ASCENDING"},
-        {"fieldPath": "totalTokens", "order": "DESCENDING"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "model",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "projectName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalTokens",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_chunks",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "tokenHashes", "arrayConfig": "CONTAINS"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tokenHashes",
+          "arrayConfig": "CONTAINS"
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_chunks",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "provider", "order": "ASCENDING"},
-        {"fieldPath": "semanticHashes", "arrayConfig": "CONTAINS"}
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "semanticHashes",
+          "arrayConfig": "CONTAINS"
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_postings",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "postingKey", "order": "ASCENDING"},
-        {"fieldPath": "provider", "order": "ASCENDING"}
+        {
+          "fieldPath": "postingKey",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "provider",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "sourceKind", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "sourceKind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "sourceSlug", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "sourceSlug",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "embeddingModelVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
-        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "embeddingModelVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
-        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
-        {"fieldPath": "sourceKind", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "embeddingModelVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sourceKind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
-        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
-        {"fieldPath": "slugHmac", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "embeddingModelVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "slugHmac",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "embeddingModelVersion", "order": "ASCENDING"},
-        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
-        {"fieldPath": "sourceKind", "order": "ASCENDING"},
-        {"fieldPath": "slugHmac", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "embeddingModelVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sourceKind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "slugHmac",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
-        {"fieldPath": "sourceKind", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sourceKind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
-        {"fieldPath": "slugHmac", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "slugHmac",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "cloud_search_knowledge",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "dedupHashVersion", "order": "ASCENDING"},
-        {"fieldPath": "sourceKind", "order": "ASCENDING"},
-        {"fieldPath": "slugHmac", "order": "ASCENDING"},
-        {"fieldPath": "embedding", "vectorConfig": {"dimension": 384, "flat": {}}}
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sourceKind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "slugHmac",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 384,
+            "flat": {}
+          }
+        }
       ]
     },
     {
       "collectionGroup": "remote_mcp_grants",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "clientId", "order": "ASCENDING"},
-        {"fieldPath": "revokedAt", "order": "ASCENDING"}
+        {
+          "fieldPath": "clientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "revokedAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "remote_mcp_audit_events",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "eventKind", "order": "ASCENDING"},
-        {"fieldPath": "createdAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "eventKind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "remote_mcp_rate_limits",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "bucket", "order": "ASCENDING"},
-        {"fieldPath": "windowStart", "order": "DESCENDING"}
+        {
+          "fieldPath": "bucket",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "windowStart",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "entitlements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "id", "order": "ASCENDING"},
-        {"fieldPath": "active", "order": "ASCENDING"}
+        {
+          "fieldPath": "id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "entitlements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "id", "order": "ASCENDING"},
-        {"fieldPath": "originalTransactionID", "order": "ASCENDING"}
+        {
+          "fieldPath": "id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "originalTransactionID",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "entitlements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "source", "order": "ASCENDING"},
-        {"fieldPath": "active", "order": "ASCENDING"}
+        {
+          "fieldPath": "source",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "entitlements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "productID", "order": "ASCENDING"},
-        {"fieldPath": "source", "order": "ASCENDING"}
+        {
+          "fieldPath": "productID",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "source",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "provider_accounts",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "status", "order": "ASCENDING"},
-        {"fieldPath": "storageScope", "order": "ASCENDING"},
-        {"fieldPath": "lastRefreshAt", "order": "ASCENDING"}
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "storageScope",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastRefreshAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "provider_connections",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "status", "order": "ASCENDING"},
-        {"fieldPath": "lastRefreshAt", "order": "ASCENDING"}
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastRefreshAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "provider_account_device_links",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "accountID", "order": "ASCENDING"},
-        {"fieldPath": "status", "order": "ASCENDING"},
-        {"fieldPath": "lastObservedAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "accountID",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastObservedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "pi_agent_relay_requests",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "connectionId", "order": "ASCENDING"},
-        {"fieldPath": "status", "order": "ASCENDING"},
-        {"fieldPath": "createdAt", "order": "ASCENDING"}
+        {
+          "fieldPath": "connectionId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "devices",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "platform", "order": "ASCENDING"},
-        {"fieldPath": "lastActiveAt", "order": "DESCENDING"}
+        {
+          "fieldPath": "platform",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastActiveAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "escrow_grants",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "targetDeviceId", "order": "ASCENDING"},
-        {"fieldPath": "status", "order": "ASCENDING"}
+        {
+          "fieldPath": "targetDeviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "escrow_audit_events",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "actorDeviceId", "order": "ASCENDING"},
-        {"fieldPath": "timestamp", "order": "DESCENDING"}
+        {
+          "fieldPath": "actorDeviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "cloud_vault_key_wrappers",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "targetDeviceId", "order": "ASCENDING"},
-        {"fieldPath": "status", "order": "ASCENDING"}
+        {
+          "fieldPath": "targetDeviceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "hermes_relay_requests",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "connectionId", "order": "ASCENDING"},
-        {"fieldPath": "status", "order": "ASCENDING"}
+        {
+          "fieldPath": "connectionId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "voip_outbound",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        {"fieldPath": "status", "order": "ASCENDING"},
-        {"fieldPath": "retryAt", "order": "ASCENDING"}
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "retryAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "one_time_prekeys",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "status", "order": "ASCENDING"},
-        {"fieldPath": "expiresAt", "order": "ASCENDING"}
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "expiresAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "kyber_prekeys",
       "queryScope": "COLLECTION",
       "fields": [
-        {"fieldPath": "status", "order": "ASCENDING"},
-        {"fieldPath": "expiresAt", "order": "ASCENDING"}
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "expiresAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "fcm_outbound",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "retryAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "agent_notification_events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAtMillis",
+          "order": "ASCENDING"
+        }
       ]
     }
   ],
@@ -1117,6 +1775,43 @@
     {
       "collectionGroup": "usage_rollups",
       "fieldPath": "providerSummaries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stripe_webhook_events",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "arrayConfig": "CONTAINS",
+          "queryScope": "COLLECTION"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "pop_nonces",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "_rate_limits",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "hermes_gateway_device_sessions",
+      "fieldPath": "expiresAt",
+      "ttl": true,
       "indexes": []
     }
   ]

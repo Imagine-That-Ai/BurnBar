@@ -2,11 +2,20 @@ package com.openburnbar.data.hermes
 
 import java.net.URLDecoder
 
-private const val VAL_1000000 = 1_000_000
-private const val VAL_1000000_0 = 1_000_000.0
-private const val VAL_1000000000 = 1_000_000_000
-private const val VAL_1000000000_0 = 1_000_000_000.0
-private const val VAL_3 = 3
+/** Token counts at or above this format with the "M" suffix instead of "k". */
+private const val MILLION_TOKEN_FORMAT_THRESHOLD = 1_000_000
+
+/** Divisor converting a raw token count into millions for "%.1fM" display. */
+private const val TOKENS_PER_MILLION = 1_000_000.0
+
+/** Token counts at or above this format with the "B" suffix instead of "M". */
+private const val BILLION_TOKEN_FORMAT_THRESHOLD = 1_000_000_000
+
+/** Divisor converting a raw token count into billions for "%.2fB" display. */
+private const val TOKENS_PER_BILLION = 1_000_000_000.0
+
+/** Length of the `://` separator between a URL scheme and the rest of the URL. */
+private const val URL_SCHEME_SEPARATOR_LENGTH = 3
 
 // MARK: - HermesAtom
 //
@@ -131,15 +140,15 @@ sealed class HermesAtom {
     companion object {
         fun formatTokenCount(value: Int): String {
             if (value < 1_000) return value.toString()
-            if (value < VAL_1000000) {
+            if (value < MILLION_TOKEN_FORMAT_THRESHOLD) {
                 val k = value / 1_000.0
                 return "%.1fk".format(k)
             }
-            if (value >= VAL_1000000000) {
-                val b = value / VAL_1000000000_0
+            if (value >= BILLION_TOKEN_FORMAT_THRESHOLD) {
+                val b = value / TOKENS_PER_BILLION
                 return "%.2fB".format(b)
             }
-            val m = value / VAL_1000000_0
+            val m = value / TOKENS_PER_MILLION
             return "%.1fM".format(m)
         }
     }
@@ -195,7 +204,7 @@ object HermesAtomURL {
         if (schemeIndex <= 0) return null
         val scheme = trimmed.substring(0, schemeIndex).lowercase()
         if (scheme != HERMES_ATOM_URL_SCHEME) return null
-        val afterScheme = trimmed.substring(schemeIndex + VAL_3)
+        val afterScheme = trimmed.substring(schemeIndex + URL_SCHEME_SEPARATOR_LENGTH)
         val questionMark = afterScheme.indexOf('?')
         val host =
             (if (questionMark >= 0) afterScheme.substring(0, questionMark) else afterScheme)

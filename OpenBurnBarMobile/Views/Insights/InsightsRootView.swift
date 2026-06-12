@@ -329,10 +329,23 @@ private struct AdaptiveInsightsLayout: View {
         }
     }
 
+    @ViewBuilder
     private var composerBar: some View {
-        InsightsMobileComposerBar(store: store)
-            .padding(UnifiedDesignSystem.Spacing.md)
-            .background(.thinMaterial)
+        // Gated at the call site (not via the adapter's fallback) because the
+        // adapter's pre-26 branch uses `background(_, in: shape)`, which is
+        // shape-bounded and never extends into safe areas. The original
+        // `.background(.thinMaterial)` bleeds into the bottom safe area, which
+        // the iPad layout relies on: composerBar abuts the bottom safe-area
+        // boundary, so the material must run under the home indicator.
+        if #available(iOS 26, *) {
+            InsightsMobileComposerBar(store: store)
+                .padding(UnifiedDesignSystem.Spacing.md)
+                .liquidGlassSurface(in: .rect)
+        } else {
+            InsightsMobileComposerBar(store: store)
+                .padding(UnifiedDesignSystem.Spacing.md)
+                .background(.thinMaterial)
+        }
     }
 
     /// Renders the verdict hero pinned above the brief on every layout.

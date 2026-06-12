@@ -55,22 +55,40 @@ struct LiquidGlassButtonStyle: ButtonStyle {
             .padding(.horizontal, 20)
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(.ultraThinMaterial)
-
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    accent.opacity(configuration.isPressed ? 0.45 : 0.28),
-                                    accent.opacity(configuration.isPressed ? 0.28 : 0.10)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    if #available(iOS 26, *) {
+                        // Native Liquid Glass: no material underneath — the
+                        // accent gradient rides on top of pure glass as a wash.
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        accent.opacity(configuration.isPressed ? 0.45 : 0.28),
+                                        accent.opacity(configuration.isPressed ? 0.28 : 0.10)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .opacity(isEnabled ? 1 : 0.3)
-                    
+                            .opacity(isEnabled ? 1 : 0.3)
+                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    } else {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(.ultraThinMaterial)
+
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        accent.opacity(configuration.isPressed ? 0.45 : 0.28),
+                                        accent.opacity(configuration.isPressed ? 0.28 : 0.10)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .opacity(isEnabled ? 1 : 0.3)
+                    }
+
                     if isEnabled && activeSOTA {
                         ShimmerSweepView(accent: accent)
                     }

@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (alpha); token-per-line extraction obscures structure.
 
 package com.openburnbar.data.domains
@@ -93,12 +92,13 @@ object PensieveControlTokens {
     private fun hex(value: String): Color {
         val raw = value.removePrefix("#")
         return when (raw.length) {
-            6 -> Color(("FF$raw").toLong(16))
+            6 -> Color("FF$raw".toLong(16))
             8 -> Color(raw.toLong(16)) // already AARRGGBB
             else -> Color.Unspecified
         }
     }
 
+    // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     private fun rgba(value: String): Color {
         val inner = value.substringAfter("(", "").substringBefore(")", "")
         if (inner.isBlank()) return Color.Unspecified

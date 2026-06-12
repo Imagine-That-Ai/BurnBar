@@ -22,8 +22,8 @@ export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
 export { sendVoIPOutbound, retryStuckVoIPPushes } from "./apnsSender.js";
-export { sendFcmOutbound } from "./fcmAndroidSender.js";
-export { onCliSessionAgentReplyNotification, onMobileAssistantAgentReplyNotification } from "./agentNotifications.js";
+export { retryStuckFcmPushes, sendFcmOutbound } from "./fcmAndroidSender.js";
+export { onCliSessionAgentReplyNotification, onMobileAssistantAgentReplyNotification, retryStuckAgentReplyEvents } from "./agentNotifications.js";
 export { submitAgentNotificationReply } from "./callables/agentNotifications.js";
 
 export {

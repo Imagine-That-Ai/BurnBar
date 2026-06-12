@@ -11,14 +11,16 @@
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { FieldValue, getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
+import { getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import {
+  beginFullRebuildAttempt,
   computeUserRollups,
   computeUserRollupsFromCounters,
   drainPendingCounterDeltas,
+  recordRollupRebuildFailure,
   writeUserRollups,
 } from "./rollups.js";
 import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "./quota.js";
@@ -26,7 +28,6 @@ import { runQuotaRefreshSweep } from "./quotaRefreshSweep.js";
 import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
 import { buildAndPersistRouterRundown } from "./routerRundown.js";
 import { anchorAuditHeads } from "./callables/auditLog.js";
-import type { Provider } from "./types.js";
 import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
 import { logError } from "./logging.js";
 import { runScheduledJob, scheduledFirestore } from "./scheduledOps.js";
@@ -45,6 +46,13 @@ export const rebuildRollups = onSchedule(
     schedule: "every 5 minutes",
     region: FUNCTIONS_REGION,
     // Use the default compute service account; no special invoker needed.
+    // The repair path replays a user's FULL usage history (recursiveDelete of
+    // four counter collections + a paginated raw-usage rescan held in memory)
+    // and must outlive the 60 s / 256 MiB scheduler defaults: a timeout here
+    // used to kill the rebuild mid-flight, leaving users deleted-but-unrebuilt
+    // with the kill invisible to the in-process circuit breaker.
+    timeoutSeconds: 540,
+    memory: "512MiB",
   },
   async (_event) =>
     runScheduledJob("rebuildRollups", async () => {
@@ -54,6 +62,7 @@ export const rebuildRollups = onSchedule(
         rollupRepairPageSize,
         rollupMaxConsecutiveFullRebuildFailures,
         rollupFullRebuildCircuitBreakerMinutes,
+        rollupPendingDeltaDrainMaxPages,
       } = getConfig();
 
       const snapshot = await scheduledFirestore("rollup_jobs.dirty", () =>
@@ -74,6 +83,9 @@ export const rebuildRollups = onSchedule(
       const uniqueUids = [...new Set(jobs)];
 
       for (const uid of uniqueUids) {
+        // True once this iteration claimed the full-rebuild gate (and thus
+        // owns an in-flight attempt marker the failure path must clear).
+        let claimedFullRebuildGate = false;
         try {
           // If a previous incremental attempt failed, the counters may be
           // corrupt. Fall back to a full rebuild that re-reads all raw usage
@@ -81,55 +93,61 @@ export const rebuildRollups = onSchedule(
           const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
           const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
           const needsFullRebuild = job?.lastErrorCode != null;
-          const circuitOpenUntilMillis = job?.fullRebuildCircuitOpenUntil
-            ? Date.parse(job.fullRebuildCircuitOpenUntil)
-            : 0;
-          if (needsFullRebuild && Number.isFinite(circuitOpenUntilMillis) && circuitOpenUntilMillis > Date.now()) {
-            logError({
-              event: "rollup.full_rebuild_circuit_open",
-              uid,
-              error: `full rebuild paused until ${job?.fullRebuildCircuitOpenUntil}`,
-            });
-            continue;
-          }
 
           let rollups;
           if (needsFullRebuild) {
+            // The gate persists the attempt marker BEFORE the destructive
+            // rebuild starts, so even a timeout/OOM-killed invocation
+            // advances the breaker on the next pass (see
+            // beginFullRebuildAttempt); a fresh marker from a still-running
+            // invocation dedupes concurrent rebuilds.
+            const gate = await beginFullRebuildAttempt(db, uid, {
+              maxConsecutiveFullRebuildFailures: rollupMaxConsecutiveFullRebuildFailures,
+              circuitBreakerMinutes: rollupFullRebuildCircuitBreakerMinutes,
+            });
+            if (gate.status === "circuit_open") {
+              // Stable jsonPayload.event key — GCP log metrics/alerts are
+              // wired to exactly this string. Do not rename.
+              logError({
+                event: "rollup.full_rebuild_circuit_open",
+                uid,
+                error: `full rebuild paused until ${gate.openUntil}`,
+              });
+              continue;
+            }
+            if (gate.status !== "started") {
+              continue;
+            }
+            claimedFullRebuildGate = true;
             // computeUserRollups purges the pending-delta queue as part of
             // the raw-usage counter rebuild.
             rollups = await computeUserRollups(db, uid, { repairPageSize: rollupRepairPageSize });
+            // `dirtiedAt` observed before compute: events that land
+            // mid-compute refresh it, which keeps the job dirty for the next
+            // pass. Success clears this invocation's attempt marker.
+            await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { clearFullRebuildAttempt: true });
           } else {
             // Fold queued trigger deltas into the counters, then project.
             // A drain failure lands in the catch below, which records
             // `lastErrorCode` and routes the next pass to the full rebuild.
-            await drainPendingCounterDeltas(db, uid);
+            const drain = await drainPendingCounterDeltas(db, uid, { maxPages: rollupPendingDeltaDrainMaxPages });
             rollups = await computeUserRollupsFromCounters(db, uid);
+            // A capped drain left queue docs behind: keep the job dirty so
+            // the next 5-minute tick resumes the queue.
+            await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
           }
-          // `dirtiedAt` observed before compute: events that land mid-compute
-          // refresh it, which keeps the job dirty for the next pass.
-          await writeUserRollups(db, uid, rollups, job?.dirtiedAt);
         } catch (err) {
+          // Stable jsonPayload.event key — GCP log metrics/alerts are wired
+          // to exactly this string. Do not rename.
           logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
-          const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
-          const jobSnap = await jobRef.get();
-          const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : null;
-          const wasFullRebuildFailure = job?.lastErrorCode != null;
-          const consecutiveFullRebuildFailures = wasFullRebuildFailure
-            ? (job?.consecutiveFullRebuildFailures ?? 0) + 1
-            : FieldValue.delete();
-          const breakerShouldOpen =
-            typeof consecutiveFullRebuildFailures === "number" &&
-            consecutiveFullRebuildFailures >= rollupMaxConsecutiveFullRebuildFailures;
-          await jobRef.set(
-            {
-              lastErrorCode: errorMessage(err),
-              consecutiveFullRebuildFailures,
-              fullRebuildCircuitOpenUntil: breakerShouldOpen
-                ? new Date(Date.now() + rollupFullRebuildCircuitBreakerMinutes * 60 * 1000).toISOString()
-                : FieldValue.delete(),
-            },
-            { merge: true },
-          );
+          await recordRollupRebuildFailure(db, uid, errorMessage(err), {
+            maxConsecutiveFullRebuildFailures: rollupMaxConsecutiveFullRebuildFailures,
+            circuitBreakerMinutes: rollupFullRebuildCircuitBreakerMinutes,
+            // A cheap-path failure never wrote an attempt marker; clearing
+            // one here could erase a CONCURRENT full rebuild's marker and
+            // hide its kill from the breaker.
+            clearAttemptMarker: claimedFullRebuildGate,
+          });
         }
       }
     }),

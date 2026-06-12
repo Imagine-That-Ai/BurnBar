@@ -84,3 +84,87 @@ public enum CloudVaultDeviceTrustChain {
         }
     }
 }
+
+public struct CloudVaultTrustedDeviceActionProofPayload: Sendable, Hashable {
+    public let uid: String
+    public let deviceId: String
+    public let actionKind: String
+    public let subjectId: String
+    public let approve: Bool
+    public let nonce: String
+    public let issuedAtMillis: Int64
+    public let deviceSignalIdentityKeyId: String
+    public let deviceSignalIdentityPublicKeyFingerprint: String
+
+    public init(
+        uid: String,
+        deviceId: String,
+        actionKind: String,
+        subjectId: String,
+        approve: Bool,
+        nonce: String,
+        issuedAtMillis: Int64,
+        deviceSignalIdentityKeyId: String,
+        deviceSignalIdentityPublicKeyFingerprint: String
+    ) {
+        self.uid = uid
+        self.deviceId = deviceId
+        self.actionKind = actionKind
+        self.subjectId = subjectId
+        self.approve = approve
+        self.nonce = nonce
+        self.issuedAtMillis = issuedAtMillis
+        self.deviceSignalIdentityKeyId = deviceSignalIdentityKeyId
+        self.deviceSignalIdentityPublicKeyFingerprint = deviceSignalIdentityPublicKeyFingerprint
+    }
+}
+
+public enum CloudVaultTrustedDeviceActionProof {
+    public static let version = 1
+    public static let algorithm = CloudVaultDeviceTrustChain.algorithm
+    public static let domain = "OpenBurnBar-TrustedDeviceAction-v1"
+
+    public static func canonicalPayload(_ payload: CloudVaultTrustedDeviceActionProofPayload) -> Data {
+        let segments = [
+            "uid", payload.uid,
+            "deviceId", payload.deviceId,
+            "actionKind", payload.actionKind,
+            "subjectId", payload.subjectId,
+            "approve", payload.approve ? "true" : "false",
+            "nonce", payload.nonce,
+            "issuedAtMillis", "\(payload.issuedAtMillis)",
+            "deviceSignalIdentityKeyId", payload.deviceSignalIdentityKeyId,
+            "deviceSignalIdentityPublicKeyFingerprint", payload.deviceSignalIdentityPublicKeyFingerprint
+        ]
+        var canonical = "\(domain)\n"
+        for segment in segments {
+            let utf8Count = segment.data(using: .utf8)?.count ?? 0
+            canonical += "\(utf8Count):\(segment)\n"
+        }
+        return Data(canonical.utf8)
+    }
+
+    public static func sign(
+        _ payload: CloudVaultTrustedDeviceActionProofPayload,
+        identity: OpenBurnBarSignalIdentityKeypair
+    ) throws -> String {
+        let privateKey = try PrivateKey(identity.privateKeyData)
+        return privateKey.generateSignature(message: canonicalPayload(payload)).base64EncodedString()
+    }
+
+    public static func verify(
+        _ payload: CloudVaultTrustedDeviceActionProofPayload,
+        signatureBase64: String,
+        publicKeyData: Data
+    ) -> Bool {
+        guard let signature = Data(base64Encoded: signatureBase64) else {
+            return false
+        }
+        do {
+            let publicKey = try PublicKey(publicKeyData)
+            return try publicKey.verifySignature(message: canonicalPayload(payload), signature: signature)
+        } catch {
+            return false
+        }
+    }
+}

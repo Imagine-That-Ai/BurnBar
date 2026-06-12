@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.insights
@@ -49,14 +48,11 @@ import com.openburnbar.ui.theme.AuroraSpacing
  * Phones use 2 columns; tablets use 6 in split mode, 12 when full-width.
  * The projection algorithm reflows widgets proportionally.
  */
-@Suppress("UnusedParameter")
 @Composable
 fun InsightsCanvasGrid(
     canvas: InsightCanvas,
     selectedWidgetId: String?,
     onSelect: (String) -> Unit,
-    onMove: (String, Int, Int) -> Unit,
-    onConfigure: (String) -> Unit,
     onCitationTap: (InsightCitation) -> Unit,
     modifier: Modifier = Modifier,
 ) {

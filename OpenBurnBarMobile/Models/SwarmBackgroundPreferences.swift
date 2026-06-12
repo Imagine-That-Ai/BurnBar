@@ -134,6 +134,10 @@ public enum MobileDecorativeRenderPolicy {
 
 extension EnvironmentValues {
     @Entry var mobileBackgroundVisibility: MobileBackgroundVisibility = .prominent
+    /// True while a Hermes chat reply is actively streaming. The swarm
+    /// background reads this to throttle its frame rate so the murmuration
+    /// stops competing with streaming text for the same frame budget.
+    @Entry var hermesStreamingActive: Bool = false
 }
 
 public struct SwarmBackgroundPreferences: Codable, Equatable {

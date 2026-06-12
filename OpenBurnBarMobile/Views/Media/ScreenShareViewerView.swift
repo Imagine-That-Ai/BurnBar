@@ -1209,7 +1209,7 @@ struct ScreenShareViewerView: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                     .padding(7)
-                    .background(.thinMaterial, in: Circle())
+                    .liquidGlassInteractive(in: .circle, fallback: .thinMaterial)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss tip")
@@ -1217,7 +1217,7 @@ struct ScreenShareViewerView: View {
         .padding(.vertical, 11)
         .padding(.leading, 16)
         .padding(.trailing, 10)
-        .background(.ultraThinMaterial, in: Capsule())
+        .liquidGlassSurface(in: Capsule())
         .overlay(
             Capsule()
                 .strokeBorder(Color(red: 0.17, green: 0.79, blue: 0.75).opacity(0.45), lineWidth: 1)
@@ -2768,8 +2768,16 @@ private struct MirrorControlPanel: View {
     @ViewBuilder
     private func popOutItemBackground(isHovered: Bool, disabled: Bool) -> some View {
         if isHovered {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.ultraThinMaterial)
+            if #available(iOS 26.0, *) {
+                // The pop-out plate is already Liquid Glass; a material fill on
+                // top would block its refraction. The hover highlight rides on
+                // the glass as a translucent wash instead.
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.16))
+            } else {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(
                     LinearGradient(
@@ -3081,7 +3089,7 @@ private struct MirrorControlPanel: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .liquidGlassSurface(in: Capsule())
                     .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
                     .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
                     .frame(maxWidth: 300)
@@ -3147,8 +3155,16 @@ private struct MirrorControlPanel: View {
             .background(
                 ZStack {
                     if selected {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.ultraThinMaterial)
+                        if #available(iOS 26.0, *) {
+                            // Rail icons sit on a Liquid Glass dock plate; the
+                            // selected state stays a translucent wash so the
+                            // glass underneath keeps refracting.
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.18))
+                        } else {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        }
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(
                                 LinearGradient(
@@ -3571,45 +3587,47 @@ private struct TrackpadGlassSurface: View {
 
     @ViewBuilder
     private var trackpadSensitivityControl: some View {
-        HStack(spacing: 6) {
-            if showSensitivitySlider {
-                HStack(spacing: 8) {
-                    Image(systemName: "tortoise")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.5))
-                    Slider(
-                        value: $sensitivity,
-                        in: 0.3...3.0,
-                        step: 0.1
-                    )
-                    .tint(Color(red: 0.17, green: 0.79, blue: 0.75))
-                    .frame(width: 100)
-                    Image(systemName: "hare")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.5))
+        LiquidGlassGroup(spacing: 6) {
+            HStack(spacing: 6) {
+                if showSensitivitySlider {
+                    HStack(spacing: 8) {
+                        Image(systemName: "tortoise")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.5))
+                        Slider(
+                            value: $sensitivity,
+                            in: 0.3...3.0,
+                            step: 0.1
+                        )
+                        .tint(Color(red: 0.17, green: 0.79, blue: 0.75))
+                        .frame(width: 100)
+                        Image(systemName: "hare")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .liquidGlassInteractive(in: Capsule())
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.5, anchor: .trailing).combined(with: .opacity),
+                        removal: .scale(scale: 0.8, anchor: .trailing).combined(with: .opacity)
+                    ))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial, in: Capsule())
-                .transition(.asymmetric(
-                    insertion: .scale(scale: 0.5, anchor: .trailing).combined(with: .opacity),
-                    removal: .scale(scale: 0.8, anchor: .trailing).combined(with: .opacity)
-                ))
-            }
 
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                    showSensitivitySlider.toggle()
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        showSensitivitySlider.toggle()
+                    }
+                } label: {
+                    Image(systemName: sensitivityIcon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .frame(width: 32, height: 32)
+                        .liquidGlassInteractive(in: .circle)
                 }
-            } label: {
-                Image(systemName: sensitivityIcon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial, in: Circle())
+                .accessibilityLabel("Trackpad sensitivity: \(sensitivityLabel)")
+                .accessibilityHint("Tap to adjust pointer speed")
             }
-            .accessibilityLabel("Trackpad sensitivity: \(sensitivityLabel)")
-            .accessibilityHint("Tap to adjust pointer speed")
         }
     }
 
@@ -3712,19 +3730,16 @@ private struct StreamStateOverlay: View {
             .padding(.horizontal, 28)
             .padding(.vertical, 32)
             .frame(maxWidth: 380)
-            .background(
+            .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.25), .white.opacity(0.05)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.5
-                            )
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.25), .white.opacity(0.05)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
                     )
             )
             .shadow(color: Color.black.opacity(0.45), radius: 24, x: 0, y: 12)

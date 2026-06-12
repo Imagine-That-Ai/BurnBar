@@ -80,23 +80,21 @@ export function mintDevelopmentToken(claims: AccessTokenClaims, secret = process
   return `${body}.${sig}`;
 }
 
-export function verifyBearerToken(header: string | undefined): AccessTokenClaims {
-  if (!header) {
-    throw new HttpError(401, "Missing OpenBurnBar MCP bearer token.", "missing_auth");
+/**
+ * Verify an HMAC access token string (the `<body>.<sig>` form, no "Bearer " prefix)
+ * and return its claims. When `allowExpired` is true the expiry gate is skipped —
+ * used by the refresh-token endpoint, which must accept a just-expired access token
+ * as the locator for the grant it is rotating.
+ */
+export function verifyAccessTokenString(token: string, options: { allowExpired?: boolean } = {}): AccessTokenClaims {
+  const trimmed = token.trim();
+  if (!trimmed || trimmed.includes(" ")) {
+    throw new HttpError(401, "Malformed OpenBurnBar MCP access token.", "malformed_token");
   }
-  const trimmed = header.trim();
-  const separator = trimmed.indexOf(" ");
-  if (separator <= 0 || trimmed.slice(0, separator).toLowerCase() !== "bearer") {
-    throw new HttpError(401, "Bearer token must be sent in the Authorization header.", "invalid_auth_header");
-  }
-  const token = trimmed.slice(separator + 1).trim();
-  if (!token || token.includes(" ")) {
-    throw new HttpError(401, "Bearer token must be sent in the Authorization header.", "invalid_auth_header");
-  }
-  if (token.includes("?")) {
+  if (trimmed.includes("?")) {
     throw new HttpError(401, "Tokens in query strings are rejected.", "token_query_string_rejected");
   }
-  const [body, sig] = token.split(".");
+  const [body, sig] = trimmed.split(".");
   if (!body || !sig) {
     throw new HttpError(401, "Malformed OpenBurnBar MCP access token.", "malformed_token");
   }
@@ -125,10 +123,26 @@ export function verifyBearerToken(header: string | undefined): AccessTokenClaims
   if (!Array.isArray(claims.scopes)) {
     throw new HttpError(401, "OpenBurnBar MCP token has invalid scopes.", "invalid_scopes");
   }
-  if (claims.exp * 1000 <= Date.now()) {
+  if (!options.allowExpired && claims.exp * 1000 <= Date.now()) {
     throw new HttpError(401, "OpenBurnBar MCP access token expired.", "expired_token");
   }
   return claims;
+}
+
+export function verifyBearerToken(header: string | undefined): AccessTokenClaims {
+  if (!header) {
+    throw new HttpError(401, "Missing OpenBurnBar MCP bearer token.", "missing_auth");
+  }
+  const trimmed = header.trim();
+  const separator = trimmed.indexOf(" ");
+  if (separator <= 0 || trimmed.slice(0, separator).toLowerCase() !== "bearer") {
+    throw new HttpError(401, "Bearer token must be sent in the Authorization header.", "invalid_auth_header");
+  }
+  const token = trimmed.slice(separator + 1).trim();
+  if (!token || token.includes(" ")) {
+    throw new HttpError(401, "Bearer token must be sent in the Authorization header.", "invalid_auth_header");
+  }
+  return verifyAccessTokenString(token);
 }
 
 export function requireScope(claims: AccessTokenClaims, scope: string): void {

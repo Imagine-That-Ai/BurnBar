@@ -1,31 +1,73 @@
 package com.openburnbar
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import com.openburnbar.services.media.AgentReplyNotificationState
 import androidx.fragment.app.FragmentActivity
 import com.openburnbar.ui.navigation.BurnBarNavHost
 import com.openburnbar.ui.theme.AuroraTheme
 
 class MainActivity : FragmentActivity() {
+    /**
+     * POST_NOTIFICATIONS runtime-permission launcher. Mirrors the
+     * [HermesSquareVoiceSheet] microphone pattern: registered up front, the
+     * grant result is persisted so the cloud fan-out (and the device doc's
+     * `agentNotificationsEnabled`) reflects the real OS permission state instead
+     * of a hardcoded `true`.
+     */
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            AgentReplyNotificationState.recordPermissionResult(applicationContext, granted)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = android.graphics.Color.TRANSPARENT
-        window.navigationBarColor = android.graphics.Color.TRANSPARENT
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            window.isNavigationBarContrastEnforced = false
-            window.isStatusBarContrastEnforced = false
-        }
+        requestNotificationPermissionIfNeeded()
         handleIntent(intent)
         setContent {
             AuroraTheme {
                 BurnBarNavHost()
             }
         }
+    }
+
+    /**
+     * On Android 13+ (TIRAMISU) POST_NOTIFICATIONS is a runtime permission; the
+     * manifest declaration alone delivers nothing. Without this prompt every
+     * agent-reply and Mercury-call notification is silently suppressed by the
+     * OS while the backend marks the push "sent". Request it once at the first
+     * notification-relevant entry point (app open). Pre-13 the permission is
+     * granted at install time, so the launcher persists the granted state
+     * directly.
+     */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = true)
+            return
+        }
+        val alreadyGranted =
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        if (alreadyGranted) {
+            AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = true)
+            return
+        }
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     override fun onNewIntent(intent: Intent) {

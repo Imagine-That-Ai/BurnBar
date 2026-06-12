@@ -7,6 +7,7 @@ import com.openburnbar.BuildConfig
 import com.openburnbar.data.cloud.CloudConversationSearchService
 import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.cloud.CloudVaultSealedText
 import com.openburnbar.data.firebase.ConversationFacetRow
 import com.openburnbar.data.firebase.ConversationQueryResponse
 import com.openburnbar.data.firebase.FunctionsRepository
@@ -66,7 +67,7 @@ internal class ConversationCockpitQueryRunner(
         } catch (e: FirebaseFunctionsException) {
             if (token != store.queryToken) return
             if (isUnauthenticated(e) && searchService.prepareCallableAuth(forceRefresh = true)) {
-                retryAfterAuth(store, reset, token, e)
+                retryAfterAuth(store, reset, token)
             } else {
                 handleFailure(store, e, reset)
             }
@@ -86,8 +87,7 @@ internal class ConversationCockpitQueryRunner(
         return false
     }
 
-    @Suppress("UnusedParameter")
-    private suspend fun retryAfterAuth(store: ConversationCockpitStore, reset: Boolean, token: Int, original: Exception) {
+    private suspend fun retryAfterAuth(store: ConversationCockpitStore, reset: Boolean, token: Int) {
         try {
             val response = queryPage(store, reset)
             if (token != store.queryToken) return
@@ -117,34 +117,10 @@ internal class ConversationCockpitQueryRunner(
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (key != null && uid != null) {
             row.sealedTitle?.let { sealed ->
-                title =
-                    runCatching {
-                        CloudVaultCrypto.openText(
-                            sealed,
-                            key,
-                            CloudVaultAADContext(
-                                uid = uid,
-                                collection = "session_logs",
-                                docID = row.id,
-                                field = "sealedTitle",
-                            ),
-                        )
-                    }.getOrNull()
+                title = openCockpitSealedText(sealed, key, uid, row.id, "sealedTitle")
             }
             row.sealedBodyPreview?.let { sealed ->
-                preview =
-                    runCatching {
-                        CloudVaultCrypto.openText(
-                            sealed,
-                            key,
-                            CloudVaultAADContext(
-                                uid = uid,
-                                collection = "session_logs",
-                                docID = row.id,
-                                field = "sealedBodyPreview",
-                            ),
-                        )
-                    }.getOrNull()
+                preview = openCockpitSealedText(sealed, key, uid, row.id, "sealedBodyPreview")
             }
         }
         return CockpitConversationRow(
@@ -169,6 +145,27 @@ internal class ConversationCockpitQueryRunner(
             bodyHash = row.bodyHash,
             bodyHashVersion = row.bodyHashVersion ?: 0,
         )
+    }
+
+    private fun openCockpitSealedText(
+        sealed: CloudVaultSealedText,
+        key: ByteArray,
+        uid: String,
+        rowId: String,
+        field: String,
+    ): String? {
+        return runCatching {
+            CloudVaultCrypto.openText(
+                sealed,
+                key,
+                CloudVaultAADContext(
+                    uid = uid,
+                    collection = "session_logs",
+                    docID = rowId,
+                    field = field,
+                ),
+            )
+        }.getOrNull()
     }
 
     private fun refreshFacetOptions(store: ConversationCockpitStore) {

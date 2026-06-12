@@ -181,7 +181,7 @@ struct CloudStoreView: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                             .frame(width: 30, height: 30)
-                            .background(.ultraThinMaterial, in: Circle())
+                            .liquidGlassInteractive(in: .circle)
                     }
                     .accessibilityLabel("Close")
                 }
@@ -245,10 +245,32 @@ extension Notification.Name {
 private struct CloudStorePosterHero: View {
     let store: HostedQuotaSubscriptionStore
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathe = false
+
+    /// The poster wears the viewer's tier palette — warm ember until they
+    /// hold a power tier (`.none` shares the warm Cloud stops).
+    private var posterTier: CloudTier { store.cloudTier }
+
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.md) {
-            CloudBadge(size: .large)
-                .padding(.top, MobileTheme.Spacing.lg)
+            ZStack {
+                Circle()
+                    .fill(posterTier.holoGradient)
+                    .frame(width: 110, height: 110)
+                    .blur(radius: 30)
+                    .opacity(breathe ? 0.50 : 0.26)
+                    .scaleEffect(breathe ? 1.08 : 0.92)
+                CloudBadge(size: .large)
+                    .offset(y: breathe ? -2.5 : 2.5)
+            }
+            .padding(.top, MobileTheme.Spacing.lg)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 4.6).repeatForever(autoreverses: true)) {
+                    breathe = true
+                }
+            }
 
             VStack(spacing: MobileTheme.Spacing.xs) {
                 Text("OPENBURNBAR")
@@ -1254,7 +1276,22 @@ private struct CloudStoreMemberCard: View {
     @Bindable var store: HostedQuotaSubscriptionStore
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     @State private var showBadgePicker = false
+    @State private var badgeBreathe = false
+
+    /// The member's holographic tier for accents — and for the chip label,
+    /// which never overstates: base Cloud members wear CLOUD, not PRO.
+    /// Delegates to the store's canonical §4.2 tier resolution.
+    private var memberTier: CloudTier { store.cloudTier }
+
+    private var memberTierLabel: String {
+        switch memberTier {
+        case .ultra:        return "ULTRA"
+        case .pro:          return "PRO"
+        case .none, .cloud: return "CLOUD"
+        }
+    }
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
@@ -1269,21 +1306,42 @@ private struct CloudStoreMemberCard: View {
                         Haptics.selection()
                         showBadgePicker = true
                     } label: {
-                        CloudBadge(size: .large)
+                        // The badge floats on a breathing tier-colored halo —
+                        // the certificate's living centerpiece.
+                        ZStack {
+                            Circle()
+                                .fill(memberTier.holoGradient)
+                                .frame(width: 96, height: 96)
+                                .blur(radius: 26)
+                                .opacity(badgeBreathe ? 0.55 : 0.30)
+                                .scaleEffect(badgeBreathe ? 1.08 : 0.92)
+                            CloudBadge(size: .large)
+                                .offset(y: badgeBreathe ? -2 : 2)
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Change Cloud badge")
                     .padding(.top, MobileTheme.Spacing.xl)
+                    .onAppear {
+                        guard !reduceMotion else { return }
+                        withAnimation(.easeInOut(duration: 4.2).repeatForever(autoreverses: true)) {
+                            badgeBreathe = true
+                        }
+                    }
 
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
-                            Text(store.isActiveUltra ? "ULTRA" : "PRO")
+                            Text(memberTierLabel)
                                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                                 .tracking(1.8)
-                                .foregroundStyle(ProTheme.Membership.surface)
+                                .foregroundStyle(ProTheme.Membership.letterpress)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(ProTheme.Membership.foilEdge))
+                                .background(Capsule().fill(memberTier.holoGradient))
+                                .overlay(
+                                    HoloSheenSweep(tint: .white, period: 6.0, bandOpacity: 0.5)
+                                        .clipShape(Capsule(style: .continuous))
+                                )
                             Text("OPENBURNBAR CLOUD")
                                 .font(MobileTheme.Typography.tiny)
                                 .fontWeight(.heavy)
@@ -1366,13 +1424,25 @@ private struct CloudStoreMemberCard: View {
                         endPoint: .bottomTrailing
                     )
                 )
-            // Foil ribbon along the top edge.
-            ProTheme.Membership.foilEdge
-                .frame(height: 80)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .opacity(0.28)
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
+            // The member's tier crest as a faint iridescent ghost behind the
+            // certificate header — replaces the old hard-edged foil band.
+            HolographicCrestAura(
+                crestImageName: memberTier.crestAssetName,
+                gradient: memberTier.holoGradient,
+                intensity: .card
+            )
+            .mask(
+                LinearGradient(
+                    colors: [.white, .white.opacity(0.0)],
+                    startPoint: .top,
+                    endPoint: UnitPoint(x: 0.5, y: 0.72)
+                )
+            )
+            .blendMode(.plusLighter)
+            .allowsHitTesting(false)
+            // Living dust + a slow glint across the whole certificate.
+            HoloSparksOverlay(colors: memberTier.holoStops)
+            HoloSheenSweep(tint: .white, period: 7.5, bandOpacity: 0.16)
             // Halo behind the crest.
             RadialGradient(
                 colors: [
@@ -1434,11 +1504,13 @@ private struct CloudStoreMemberCard: View {
     }
 
     private var actionRow: some View {
+        // Both actions wear the membership vocabulary — the foil CTA and a
+        // quiet engraved secondary — instead of the utilitarian Aurora
+        // buttons, so the certificate stays one coherent object.
         HStack(spacing: MobileTheme.Spacing.md) {
-            Link(destination: URL(string: "https://apps.apple.com/account/subscriptions")!) {
-                Label("Manage", systemImage: "creditcard.fill")
+            FoilCTAButton(title: "Manage", icon: "creditcard.fill") {
+                openURL(URL(string: "https://apps.apple.com/account/subscriptions")!)
             }
-            .buttonStyle(.aurora(.primary, fullWidth: true))
             .accessibilityLabel("Manage subscription in App Store")
 
             Button {
@@ -1446,14 +1518,28 @@ private struct CloudStoreMemberCard: View {
             } label: {
                 HStack(spacing: 6) {
                     if store.isLoading {
-                        MiningPickLoader(.inline, tint: MobileTheme.Colors.textPrimary)
+                        MiningPickLoader(.inline, tint: ProTheme.Membership.engraving)
                     } else {
                         Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14, weight: .semibold))
                     }
                     Text("Restore")
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.semibold)
                 }
+                .foregroundStyle(ProTheme.Membership.engraving)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, MobileTheme.Spacing.md + 2)
+                .background(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                        .fill(ProTheme.Membership.surfaceElevated)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                        .stroke(ProTheme.Membership.foilEdge, lineWidth: 0.8)
+                )
             }
-            .buttonStyle(.aurora(.secondary, fullWidth: true))
+            .buttonStyle(.plain)
             .disabled(store.isLoading)
             .accessibilityIdentifier("cloudStore.member.restore")
             .accessibilityLabel("Restore purchases")
@@ -1494,40 +1580,6 @@ private struct CloudStoreMemberCard: View {
             parts.append("Member since \(fmt)")
         }
         return parts.joined(separator: ". ")
-    }
-}
-
-// MARK: - Member Sparks Overlay
-
-private struct MemberSparksOverlay: View {
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { context in
-            Canvas { ctx, size in
-                let t = context.date.timeIntervalSinceReferenceDate
-                let count = 8
-                for i in 0..<count {
-                    let seed = Double(i) * 1.234
-                    let phase = (t * 0.22 + seed).truncatingRemainder(dividingBy: 1.0)
-                    let x = size.width * (0.10 + ((sin(seed * 5.7) + 1) * 0.40))
-                    let yStart = size.height * 0.95
-                    let yEnd = size.height * 0.20
-                    let y = yStart + (yEnd - yStart) * CGFloat(phase)
-                    let radius: CGFloat = 1.4
-                    let rect = CGRect(
-                        x: x - radius,
-                        y: y - radius,
-                        width: radius * 2,
-                        height: radius * 2
-                    )
-                    ctx.opacity = (1.0 - phase) * 0.6
-                    let color: Color = (i % 2 == 0)
-                        ? UnifiedDesignSystem.Colors.amber
-                        : MobileTheme.ember
-                    ctx.fill(Path(ellipseIn: rect), with: .color(color))
-                }
-            }
-        }
-        .accessibilityHidden(true)
     }
 }
 

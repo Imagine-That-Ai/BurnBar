@@ -1028,19 +1028,23 @@ final class FirestoreRepository {
 
     // MARK: - Hosted quota entitlement direct read
 
-    /// Read the hosted-cloud entitlement docs directly. Firestore rules accept
-    /// either the legacy `hosted_quota_sync` document or the BurnBar Pro mirror,
-    /// so the iOS UI must reconcile both before deciding a paid user is blocked.
+    /// Read the hosted-cloud entitlement docs directly, highest tier first.
+    /// Firestore rules accept lower-tier mirrors too, but server-seeded Ultra
+    /// members may not have a local StoreKit receipt on this device. Returning
+    /// `burnbar_ultra` before the mirrors keeps membership chrome from
+    /// incorrectly falling back to Pro/Cloud.
     func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse? {
         let uid = try uid()
         var inactiveResponse: HostedQuotaEntitlementResponse?
-        for entitlementID in ["hosted_quota_sync", "burnbar_pro", "burnbar_pro_max"] {
+        for entitlementID in ["burnbar_ultra", "burnbar_pro_max", "burnbar_pro", "hosted_quota_sync"] {
             let snapshot = try await db
                 .document("users/\(uid)/entitlements/\(entitlementID)")
                 .getDocument()
             guard let data = snapshot.data() else { continue }
             let fallbackProductID: String
             switch entitlementID {
+            case "burnbar_ultra":
+                fallbackProductID = "com.openburnbar.ultra.monthly"
             case "burnbar_pro":
                 fallbackProductID = "com.openburnbar.pro.monthly"
             case "burnbar_pro_max":

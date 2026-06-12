@@ -5,8 +5,8 @@ import com.openburnbar.data.insights.InsightAnalysisContext
 import com.openburnbar.data.insights.InsightFilter
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
 
-private const val VAL_10 = 10
-private const val VAL_8 = 8
+private const val ISO_DATE_LENGTH = 10
+private const val RESULT_HASH_PREFIX_LENGTH = 8
 
 /**
  * Android aggregator. Mirrors the Swift `MacInsightAggregator` /
@@ -42,8 +42,8 @@ class AndroidInsightAggregator(
                 return@mapNotNull null
             }
             val model = entry.selectedModel.displayName
-            val day = entry.ranAt.take(VAL_10)
-            "$day: $model ran an analysis (${entry.resultHash.take(VAL_8)})."
+            val day = entry.ranAt.take(ISO_DATE_LENGTH)
+            "$day: $model ran an analysis (${entry.resultHash.take(RESULT_HASH_PREFIX_LENGTH)})."
         }
     }
 

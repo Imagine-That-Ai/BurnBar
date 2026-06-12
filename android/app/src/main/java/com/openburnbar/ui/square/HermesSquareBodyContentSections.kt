@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.square
@@ -53,7 +52,6 @@ import com.openburnbar.data.models.ProjectSummary
 import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.ThreadInboxItem
 import com.openburnbar.ui.theme.AuroraColors
-
 
 // MARK: - Active missions strip (Phase A placeholder)
 
@@ -178,7 +176,6 @@ private fun ActiveMissionsRow(
 
 // MARK: - Project Memory Wiki
 
-@Suppress("UnusedParameter")
 @Composable
 internal fun ProjectMemoryWikiSection(
     projects: List<com.openburnbar.data.models.ProjectSummary>,
@@ -198,7 +195,11 @@ internal fun ProjectMemoryWikiSection(
             )
         } else {
             projects.forEach { project ->
-                ProjectMemoryWikiRow(project = project, onAskWiki = onAskWiki)
+                ProjectMemoryWikiRow(
+                    project = project,
+                    onOpenProject = onOpenProject,
+                    onAskWiki = onAskWiki,
+                )
             }
         }
     }
@@ -226,6 +227,7 @@ private fun ProjectMemoryWikiHeader() {
 @Composable
 private fun ProjectMemoryWikiRow(
     project: com.openburnbar.data.models.ProjectSummary,
+    onOpenProject: (com.openburnbar.data.models.ProjectSummary) -> Unit,
     onAskWiki: (com.openburnbar.data.models.ProjectSummary) -> Unit,
 ) {
     Surface(
@@ -234,7 +236,8 @@ private fun ProjectMemoryWikiRow(
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(bottom = 6.dp),
+            .padding(bottom = 6.dp)
+            .clickable { onOpenProject(project) },
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

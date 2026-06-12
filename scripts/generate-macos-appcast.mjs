@@ -58,6 +58,10 @@ try {
   const commit = required(args, "commit");
   const minimumSystemVersion = args.get("minimum-system-version") ?? "14.0";
   const edSignature = args.get("ed-signature") ?? "";
+  // Security-critical release flag: the in-app updater re-prompts for critical
+  // releases even after the user picked "Later".
+  const criticalRaw = (args.get("critical") ?? "false").toLowerCase();
+  const critical = criticalRaw === "1" || criticalRaw === "true" || criticalRaw === "yes";
   const createdAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   const pubDate = new Date().toUTCString();
   const dmgPath = path.join(releaseDir, dmgName);
@@ -91,7 +95,14 @@ try {
       <sparkle:version>${xmlEscape(build)}</sparkle:version>
       <sparkle:shortVersionString>${xmlEscape(version)}</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>${xmlEscape(minimumSystemVersion)}</sparkle:minimumSystemVersion>
-      <sparkle:releaseNotesLink>${xmlEscape(releaseNotesUrl)}</sparkle:releaseNotesLink>
+      <sparkle:releaseNotesLink>${xmlEscape(releaseNotesUrl)}</sparkle:releaseNotesLink>${
+        critical
+          ? `
+      <sparkle:tags>
+        <sparkle:criticalUpdate></sparkle:criticalUpdate>
+      </sparkle:tags>`
+          : ""
+      }
       <enclosure ${enclosureAttrs.join(" ")} />
     </item>
   </channel>
@@ -106,6 +117,7 @@ try {
     commit,
     correspondingSource: sourceArchiveName,
     createdAt,
+    critical,
     dmg: dmgName,
     downloadUrl,
     length: dmgSize,

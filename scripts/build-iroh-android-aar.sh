@@ -82,11 +82,11 @@ fi
 [[ -x "${CARGO_BIN}" ]] || abort "cargo not found in PATH"
 
 # --- Android SDK + NDK discovery ------------------------------------------------
-ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android}}"
+ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 [[ -d "${ANDROID_SDK}" ]] || abort "Android SDK not found at ${ANDROID_SDK}; export ANDROID_HOME"
 
 ensure_ndk() {
-  local desired_version="${IROH_ANDROID_NDK_VERSION:-26.3.11579264}"
+  local desired_version="${IROH_ANDROID_NDK_VERSION:-29.0.14206865}"
   local ndk_root="${ANDROID_SDK}/ndk/${desired_version}"
   if [[ -d "${ndk_root}" ]]; then
     log "found NDK at ${ndk_root}"
@@ -123,6 +123,16 @@ ANDROID_NDK_HOME="$(ensure_ndk)"
 export ANDROID_NDK_HOME
 export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
 log "using NDK at ${ANDROID_NDK_HOME}"
+
+ANDROID_16KB_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
+android_rustflags() {
+  if [[ -n "${RUSTFLAGS:-}" ]]; then
+    printf '%s %s\n' "${RUSTFLAGS}" "${ANDROID_16KB_RUSTFLAGS}"
+  else
+    printf '%s\n' "${ANDROID_16KB_RUSTFLAGS}"
+  fi
+}
+log "using Rust linker flags for Android 16KB ELF alignment on cargo-ndk builds"
 
 # --- Rust targets --------------------------------------------------------------
 abi_to_rust_target() {
@@ -211,6 +221,7 @@ log "building openburnbar-iroh for ${ABIS[*]} (${PROFILE})"
 (
   cd "${CRATE_DIR}"
   ANDROID_NDK_HOME="${ANDROID_NDK_HOME}" \
+  RUSTFLAGS="$(android_rustflags)" \
   PATH="${HOME}/.cargo/bin:${PATH}" \
     "${CARGO_BIN}" ndk \
       "${CARGO_NDK_ARGS[@]}" \
@@ -236,6 +247,7 @@ if [[ "${PROFILE}" != "debug" ]]; then
   (
     cd "${CRATE_DIR}"
     ANDROID_NDK_HOME="${ANDROID_NDK_HOME}" \
+    RUSTFLAGS="$(android_rustflags)" \
     PATH="${HOME}/.cargo/bin:${PATH}" \
       "${CARGO_BIN}" ndk \
         -t "${BINDGEN_ABI}" \
@@ -262,6 +274,15 @@ if [[ ! -d "${BUILD_DIR}/kotlin-out/uniffi/openburnbar_iroh" ]]; then
   abort "uniffi-bindgen-kotlin did not produce uniffi/openburnbar_iroh/"
 fi
 cp -R "${BUILD_DIR}/kotlin-out/uniffi/openburnbar_iroh/." "${GENERATED_KT_DIR}/"
+find "${GENERATED_KT_DIR}" -name '*.kt' -type f | while IFS= read -r generated_file; do
+  sanitized_file="${generated_file}.sanitized"
+  awk '
+    /^@file:Suppress\(/ { next }
+    /^[[:space:]]*@Suppress\(/ { next }
+    { print }
+  ' "${generated_file}" > "${sanitized_file}"
+  mv "${sanitized_file}" "${generated_file}"
+done
 
 # --- Assemble the AAR ----------------------------------------------------------
 AAR_STAGING="${BUILD_DIR}/staging"

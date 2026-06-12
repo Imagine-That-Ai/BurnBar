@@ -1,5 +1,3 @@
-@file:Suppress("MagicNumber")
-// detekt: test fixtures use literal wire-format / timeout values.
 
 package com.openburnbar.data.media
 
@@ -8,13 +6,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 private const val BITS_PER_BYTE = 8
-private const val VAL_0X03 = 0x03
-private const val VAL_0X26 = 0x26
-private const val VAL_0X40 = 0x40
-private const val VAL_0X42 = 0x42
-private const val VAL_16 = 16
-private const val VAL_24 = 24
-private const val VAL_4 = 4
 
 class VideoDecoderConfigurationPayloadTest {
     @Test
@@ -22,8 +13,8 @@ class VideoDecoderConfigurationPayloadTest {
         val payload =
             VideoDecoderConfigurationPayload(
                 codec = VideoDecoderConfigurationPayload.Codec.HEVC,
-                parameterSets = listOf(byteArrayOf(VAL_0X40.toByte(), 0x01), byteArrayOf(VAL_0X42.toByte(), 0x01, 0x02)),
-                samplePayload = lengthPrefixed(byteArrayOf(VAL_0X26.toByte(), 0x01, 0x02)),
+                parameterSets = listOf(byteArrayOf(0x40.toByte(), 0x01), byteArrayOf(0x42.toByte(), 0x01, 0x02)),
+                samplePayload = lengthPrefixed(byteArrayOf(0x26.toByte(), 0x01, 0x02)),
             )
 
         val decoded = VideoDecoderConfigurationPayload.decodeIfPresent(payload.encoded())
@@ -40,18 +31,18 @@ class VideoDecoderConfigurationPayloadTest {
         val payload =
             VideoDecoderConfigurationPayload(
                 codec = VideoDecoderConfigurationPayload.Codec.HEVC,
-                parameterSets = listOf(byteArrayOf(VAL_0X40.toByte()), byteArrayOf(VAL_0X42.toByte())),
-                samplePayload = lengthPrefixed(byteArrayOf(VAL_0X26.toByte(), 0x01), byteArrayOf(0x02, VAL_0X03.toByte())),
+                parameterSets = listOf(byteArrayOf(0x40.toByte()), byteArrayOf(0x42.toByte())),
+                samplePayload = lengthPrefixed(byteArrayOf(0x26.toByte(), 0x01), byteArrayOf(0x02, 0x03.toByte())),
             )
 
         val normalized = VideoPayloadNormalizer.normalizeForMediaCodec(payload.encoded())
 
         assertArrayEquals(
             byteArrayOf(
-                0x00, 0x00, 0x00, 0x01, VAL_0X40.toByte(),
-                0x00, 0x00, 0x00, 0x01, VAL_0X42.toByte(),
-                0x00, 0x00, 0x00, 0x01, VAL_0X26.toByte(), 0x01,
-                0x00, 0x00, 0x00, 0x01, 0x02, VAL_0X03.toByte(),
+                0x00, 0x00, 0x00, 0x01, 0x40.toByte(),
+                0x00, 0x00, 0x00, 0x01, 0x42.toByte(),
+                0x00, 0x00, 0x00, 0x01, 0x26.toByte(), 0x01,
+                0x00, 0x00, 0x00, 0x01, 0x02, 0x03.toByte(),
             ),
             normalized,
         )
@@ -59,18 +50,18 @@ class VideoDecoderConfigurationPayloadTest {
 
     @Test
     fun normalizerLeavesExistingAnnexBPayloadsUnchanged() {
-        val annexB = byteArrayOf(0x00, 0x00, 0x00, 0x01, VAL_0X26.toByte(), 0x01)
+        val annexB = byteArrayOf(0x00, 0x00, 0x00, 0x01, 0x26.toByte(), 0x01)
 
         assertArrayEquals(annexB, VideoPayloadNormalizer.normalizeForMediaCodec(annexB))
     }
 
     private fun lengthPrefixed(vararg nals: ByteArray): ByteArray {
-        val output = ByteArray(nals.sumOf { VAL_4 + it.size })
+        val output = ByteArray(nals.sumOf { 4 + it.size })
         var offset = 0
         nals.forEach { nal ->
             val length = nal.size
-            output[offset++] = (length ushr VAL_24 and 0xFF).toByte()
-            output[offset++] = (length ushr VAL_16 and 0xFF).toByte()
+            output[offset++] = (length ushr 24 and 0xFF).toByte()
+            output[offset++] = (length ushr 16 and 0xFF).toByte()
             output[offset++] = (length ushr BITS_PER_BYTE and 0xFF).toByte()
             output[offset++] = (length and 0xFF).toByte()
             nal.copyInto(output, offset)

@@ -972,6 +972,7 @@ struct GlassCard<Content: View>: View {
     var interactive: Bool = false
     @ViewBuilder let content: () -> Content
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var isHovered = false
     @State private var isPressed = false
@@ -1036,16 +1037,7 @@ struct GlassCard<Content: View>: View {
     var body: some View {
         content()
             .padding(DesignSystem.Spacing.xs)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(0.55))
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                        .fill(glassSheenGradient)
-                }
-            }
+            .background { backgroundLayer }
             .clipShape(.rect(cornerRadius: DesignSystem.Radius.md))
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
@@ -1060,6 +1052,31 @@ struct GlassCard<Content: View>: View {
             .animation(DesignSystem.Animation.snappy, value: isPressed)
             .onHover { if interactive { isHovered = $0 } }
             .modifier(InteractiveGlassCardGesture(interactive: interactive, isPressed: $isPressed))
+    }
+
+    @ViewBuilder
+    private var backgroundLayer: some View {
+        let shape = RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+        if reduceTransparency {
+            shape.fill(DesignSystem.Colors.surface)
+        } else if #available(macOS 26, *) {
+            // Native Liquid Glass samples the content BEHIND it — a material
+            // fill underneath would block the refraction and read as frosted
+            // plastic. The warm sheen survives as a faint wash riding on top
+            // of pure glass.
+            shape
+                .fill(glassSheenGradient)
+                .glassEffect(
+                    interactive ? .regular.interactive() : .regular,
+                    in: shape
+                )
+        } else {
+            ZStack {
+                shape.fill(.ultraThinMaterial)
+                shape.fill(DesignSystem.Colors.surface.opacity(0.55))
+                shape.fill(glassSheenGradient)
+            }
+        }
     }
 }
 
@@ -1131,29 +1148,43 @@ struct GlassButton: View {
 
     @ViewBuilder
     private var background: some View {
-        ZStack {
-            shape.fill(.ultraThinMaterial)
-            switch style {
-            case .prominent:
-                shape.fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
-                shape.fill(DesignSystem.Colors.ember.opacity(isHovered ? 0.12 : 0.06))
-            case .regular:
-                shape.fill(DesignSystem.Colors.surface.opacity(0.5))
-                shape.fill(Color.white.opacity(isHovered ? 0.05 : 0))
-            case .cool:
-                shape.fill(DesignSystem.Colors.surface.opacity(0.5))
-                // The cool wash drains downward — frost at the top fading to navy below.
-                shape.fill(
-                    LinearGradient(
-                        colors: [
-                            DesignSystem.Colors.frost.opacity(isHovered ? 0.18 : 0.09),
-                            DesignSystem.Colors.abyss.opacity(isHovered ? 0.22 : 0.11)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+        if #available(macOS 26, *) {
+            // Style wash rides on interactive glass; the material + neutral
+            // surface base fills stay pre-26 only (nothing sits under glass).
+            styleWash.glassEffect(.regular.interactive(), in: shape)
+        } else {
+            ZStack {
+                shape.fill(.ultraThinMaterial)
+                switch style {
+                case .prominent:
+                    shape.fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                case .regular, .cool:
+                    shape.fill(DesignSystem.Colors.surface.opacity(0.5))
+                }
+                styleWash
             }
+        }
+    }
+
+    @ViewBuilder
+    private var styleWash: some View {
+        switch style {
+        case .prominent:
+            shape.fill(DesignSystem.Colors.ember.opacity(isHovered ? 0.12 : 0.06))
+        case .regular:
+            shape.fill(Color.white.opacity(isHovered ? 0.05 : 0))
+        case .cool:
+            // The cool wash drains downward — frost at the top fading to navy below.
+            shape.fill(
+                LinearGradient(
+                    colors: [
+                        DesignSystem.Colors.frost.opacity(isHovered ? 0.18 : 0.09),
+                        DesignSystem.Colors.abyss.opacity(isHovered ? 0.22 : 0.11)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
         }
     }
 

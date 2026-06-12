@@ -47,6 +47,7 @@ import com.openburnbar.data.insights.InsightWidget
 import com.openburnbar.data.insights.InsightWidgetData
 import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.ValueFormat
+import com.openburnbar.ui.insights.CitationChipRow
 import com.openburnbar.ui.insights.InsightsColors
 import com.openburnbar.ui.insights.InsightsSpacing
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -106,44 +107,58 @@ fun InsightWidgetRenderer(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         if (showHeader) {
-            WidgetHeader(widget, theme)
+            WidgetHeader(widget)
             Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
         }
         when (widget.kind) {
-            InsightWidgetKind.KPI_TILE -> KpiTileRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.TIME_SERIES_LINE -> TimeSeriesRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.TIME_SERIES_AREA -> TimeSeriesRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.STREAM_GRAPH -> TimeSeriesRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.BAR_RANKING -> RankingRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.DONUT -> DonutRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.TREEMAP -> TreemapRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.HEATMAP -> HeatmapRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.SCATTER -> ScatterRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.SANKEY -> SankeyRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.RADAR -> RadarRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.COHORT -> CohortRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.FUNNEL -> FunnelRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.QUOTA_PULSE -> QuotaPulseRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.FORECAST -> ForecastRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.ANOMALY_TABLE -> AnomalyTableRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.NARRATIVE -> NarrativeRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.RECOMMENDATION -> RecommendationRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.USE_CASE_CLUSTER -> UseCaseClusterRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.AGENT_FOCUS_MATRIX -> FocusMatrixRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.MODEL_FOCUS_MATRIX -> FocusMatrixRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.DRILLDOWN_LIST -> DrilldownListRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.MERMAID -> MermaidRenderer(widget, onCitationTap)
-            InsightWidgetKind.ASCII -> AsciiRenderer(widget, onCitationTap)
-            InsightWidgetKind.COMPOSED -> ComposedRenderer(widget, onCitationTap)
-            InsightWidgetKind.ERROR -> ErrorRenderer(widget, onCitationTap)
+            InsightWidgetKind.KPI_TILE -> KpiTileRenderer(widget, theme)
+            InsightWidgetKind.TIME_SERIES_LINE -> TimeSeriesRenderer(widget)
+            InsightWidgetKind.TIME_SERIES_AREA -> TimeSeriesRenderer(widget)
+            InsightWidgetKind.STREAM_GRAPH -> TimeSeriesRenderer(widget)
+            InsightWidgetKind.BAR_RANKING -> RankingRenderer(widget, theme)
+            InsightWidgetKind.DONUT -> DonutRenderer(widget, theme)
+            InsightWidgetKind.TREEMAP -> TreemapRenderer(widget)
+            InsightWidgetKind.HEATMAP -> HeatmapRenderer(widget)
+            InsightWidgetKind.SCATTER -> ScatterRenderer(widget, theme)
+            InsightWidgetKind.SANKEY -> SankeyRenderer(widget, theme)
+            InsightWidgetKind.RADAR -> RadarRenderer(widget, theme)
+            InsightWidgetKind.COHORT -> CohortRenderer(widget, theme)
+            InsightWidgetKind.FUNNEL -> FunnelRenderer(widget, theme)
+            InsightWidgetKind.QUOTA_PULSE -> QuotaPulseRenderer(widget)
+            InsightWidgetKind.FORECAST -> ForecastRenderer(widget)
+            InsightWidgetKind.ANOMALY_TABLE -> AnomalyTableRenderer(widget)
+            InsightWidgetKind.NARRATIVE -> NarrativeRenderer(widget)
+            InsightWidgetKind.RECOMMENDATION -> RecommendationRenderer(widget)
+            InsightWidgetKind.USE_CASE_CLUSTER -> UseCaseClusterRenderer(widget)
+            InsightWidgetKind.AGENT_FOCUS_MATRIX -> FocusMatrixRenderer(widget, theme)
+            InsightWidgetKind.MODEL_FOCUS_MATRIX -> FocusMatrixRenderer(widget, theme)
+            InsightWidgetKind.DRILLDOWN_LIST -> DrilldownListRenderer(widget)
+            InsightWidgetKind.MERMAID -> MermaidRenderer(widget)
+            InsightWidgetKind.ASCII -> AsciiRenderer(widget)
+            InsightWidgetKind.COMPOSED -> ComposedRenderer(widget)
+            InsightWidgetKind.ERROR -> ErrorRenderer(widget)
+        }
+        val citations = widget.rendererCitations()
+        if (citations.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            CitationChipRow(citations = citations, onTap = onCitationTap)
         }
     }
 }
 
+private fun InsightWidget.rendererCitations(): List<InsightCitation> =
+    when (val widgetData = data) {
+        is InsightWidgetData.AnomalyTable -> widgetData.rows.flatMap { it.citations }
+        is InsightWidgetData.Narrative -> widgetData.citations
+        is InsightWidgetData.Recommendation -> widgetData.citations
+        is InsightWidgetData.Drilldown -> widgetData.rows.map { it.citation }
+        else -> emptyList()
+    }.distinctBy { it.id }
+
 // ─── Widget header ────────────────────────────────────────────────────────────
 
 @Composable
-private fun WidgetHeader(widget: InsightWidget, theme: InsightTheme) {
+private fun WidgetHeader(widget: InsightWidget) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(
             text = widget.title,
@@ -181,7 +196,7 @@ private fun WidgetHeader(widget: InsightWidget, theme: InsightTheme) {
 // ─── KPI Tile ─────────────────────────────────────────────────────────────────
 
 @Composable
-private fun KpiTileRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun KpiTileRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.KPI) ?: return EmptyWidget()
     val accent = InsightsColors.accentsFor(theme).first()
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -229,14 +244,13 @@ private fun KpiTileRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
 // ─── Time Series (Line / Area / Stream) ───────────────────────────────────────
 
 @Composable
-private fun TimeSeriesRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun TimeSeriesRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.TimeSeries) ?: return EmptyWidget()
     Column {
         Text(text = data.yAxisLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (data.series.isNotEmpty() && data.series.first().points.isNotEmpty()) {
             SparklineChart(
                 series = data.series,
-                yFormat = data.yFormat,
                 modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp),
             )
         } else {
@@ -248,7 +262,7 @@ private fun TimeSeriesRenderer(w: InsightWidget, theme: InsightTheme, onCite: (I
 // ─── Ranking (horizontal bars) ────────────────────────────────────────────────
 
 @Composable
-private fun RankingRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun RankingRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.Ranking) ?: return EmptyWidget()
     val maxVal = data.rows.maxOfOrNull { it.value } ?: 1.0
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -277,7 +291,7 @@ private fun RankingRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
 // ─── Donut (ring chart via Canvas) ────────────────────────────────────────────
 
 @Composable
-private fun DonutRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun DonutRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.Distribution) ?: return EmptyWidget()
     val colors = InsightsColors.accentsFor(theme)
     Column {
@@ -308,7 +322,7 @@ private fun DonutRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insigh
 // ─── Quota Pulse ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun QuotaPulseRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun QuotaPulseRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.QuotaState) ?: return EmptyWidget()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         data.buckets.forEach { bucket ->
@@ -339,7 +353,7 @@ private fun QuotaPulseRenderer(w: InsightWidget, theme: InsightTheme, onCite: (I
 // ─── Narrative ────────────────────────────────────────────────────────────────
 
 @Composable
-private fun NarrativeRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun NarrativeRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.Narrative) ?: return EmptyWidget()
     val toneColor =
         when (data.tone) {
@@ -362,7 +376,7 @@ private fun NarrativeRenderer(w: InsightWidget, theme: InsightTheme, onCite: (In
 // ─── Recommendation ──────────────────────────────────────────────────────────
 
 @Composable
-private fun RecommendationRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun RecommendationRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.Recommendation) ?: return EmptyWidget()
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -382,7 +396,7 @@ private fun RecommendationRenderer(w: InsightWidget, theme: InsightTheme, onCite
 // ─── Focus Matrix (Agent / Model) ────────────────────────────────────────────
 
 @Composable
-private fun FocusMatrixRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun FocusMatrixRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.FocusMatrix) ?: return EmptyWidget()
     val colors = InsightsColors.accentsFor(theme)
     Column {
@@ -425,7 +439,7 @@ private fun FocusMatrixRenderer(w: InsightWidget, theme: InsightTheme, onCite: (
 // ─── Anomaly Table ────────────────────────────────────────────────────────────
 
 @Composable
-private fun AnomalyTableRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun AnomalyTableRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.AnomalyTable) ?: return EmptyWidget()
     if (data.rows.isEmpty()) {
         Text("No anomalies detected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -457,7 +471,7 @@ private fun AnomalyTableRenderer(w: InsightWidget, theme: InsightTheme, onCite: 
 // ─── Drilldown List ──────────────────────────────────────────────────────────
 
 @Composable
-private fun DrilldownListRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun DrilldownListRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.Drilldown) ?: return EmptyWidget()
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         data.rows.forEach { row ->
@@ -493,7 +507,7 @@ private fun DrilldownListRenderer(w: InsightWidget, theme: InsightTheme, onCite:
 // ─── Sankey ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun SankeyRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun SankeyRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.Sankey) ?: return EmptyWidget()
     val colors = InsightsColors.accentsFor(theme)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -529,7 +543,7 @@ private fun SankeyRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insig
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RadarRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun RadarRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.Radar) ?: return EmptyWidget()
     if (data.axes.isEmpty() || data.series.isEmpty()) return EmptyWidget()
     val colors = InsightsColors.accentsFor(theme)
@@ -575,7 +589,7 @@ private fun RadarRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insigh
 // ─── Cohort ────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun CohortRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun CohortRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.Cohort) ?: return EmptyWidget()
     if (data.cells.isEmpty() || data.cohortLabels.isEmpty()) return EmptyWidget()
     val colors = InsightsColors.accentsFor(theme)
@@ -618,7 +632,7 @@ private fun CohortRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insig
 // ─── Funnel ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun FunnelRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun FunnelRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.Funnel) ?: return EmptyWidget()
     val maxCount = data.steps.maxOfOrNull { it.count } ?: 1.0
     val colors = InsightsColors.accentsFor(theme)
@@ -653,13 +667,12 @@ private fun FunnelRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insig
 // ─── Forecast ─────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ForecastRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun ForecastRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.Forecast) ?: return EmptyWidget()
     Column {
         if (data.actual.isNotEmpty()) {
             SparklineChart(
                 series = listOf(InsightWidgetData.TimeSeries.Series(id = "actual", name = "Actual", points = data.actual, colorHex = null)),
-                yFormat = data.yFormat,
                 modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp),
             )
         }
@@ -671,7 +684,7 @@ private fun ForecastRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Ins
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun UseCaseClusterRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun UseCaseClusterRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.UseCaseCluster) ?: return EmptyWidget()
     FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         data.clusters.forEach { cluster ->
@@ -683,7 +696,7 @@ private fun UseCaseClusterRenderer(w: InsightWidget, theme: InsightTheme, onCite
 // ─── Scatter (data-visible list until Vico integration) ────────────────────────
 
 @Composable
-private fun ScatterRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun ScatterRenderer(w: InsightWidget, theme: InsightTheme) {
     val data = (w.data as? InsightWidgetData.Scatter) ?: return PlaceholderWidget(w)
     val colors = InsightsColors.accentsFor(theme)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -714,15 +727,15 @@ private fun ScatterRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
 // ─── Treemap (delegates to heatmap grid) ──────────────────────────────────────
 
 @Composable
-private fun TreemapRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun TreemapRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.Heatmap) ?: return PlaceholderWidget(w)
-    HeatmapRenderer(w.copy(data = data), theme, onCite)
+    HeatmapRenderer(w.copy(data = data))
 }
 
 // ─── Heatmap ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun HeatmapRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+private fun HeatmapRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.Heatmap) ?: return EmptyWidget()
     Column {
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -763,7 +776,7 @@ private fun HeatmapRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
 // ─── Mermaid (WebView placeholder) ────────────────────────────────────────────
 
 @Composable
-private fun MermaidRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit) {
+private fun MermaidRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.MermaidDiagram) ?: return EmptyWidget()
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = w.kind.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
@@ -780,7 +793,7 @@ private fun MermaidRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit)
 // ─── ASCII Card ────────────────────────────────────────────────────────────────
 
 @Composable
-private fun AsciiRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit) {
+private fun AsciiRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.ASCIICard) ?: return EmptyWidget()
     Column {
         Text(text = data.headline, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
@@ -798,7 +811,7 @@ private fun AsciiRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit) {
 // ─── Composed ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ComposedRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit) {
+private fun ComposedRenderer(w: InsightWidget) {
     val data = (w.data as? InsightWidgetData.Composed) ?: return EmptyWidget()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         data.children.forEachIndexed { idx, _ ->
@@ -810,7 +823,7 @@ private fun ComposedRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit
 // ─── Error ────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ErrorRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit) {
+private fun ErrorRenderer(w: InsightWidget) {
     val data = w.data as? InsightWidgetData.Error
     if (data != null) Text(text = data.message, style = MaterialTheme.typography.bodySmall, color = InsightsColors.kpiNegative) else EmptyWidget()
 }
@@ -835,7 +848,7 @@ private fun MiniSparkline(data: List<Double>, color: Color, modifier: Modifier =
 }
 
 @Composable
-private fun SparklineChart(series: List<InsightWidgetData.TimeSeries.Series>, yFormat: ValueFormat?, modifier: Modifier = Modifier) {
+private fun SparklineChart(series: List<InsightWidgetData.TimeSeries.Series>, modifier: Modifier = Modifier) {
     val colors =
         listOf(InsightsColors.chartLinePrimary, InsightsColors.chartLineSecondary, InsightsColors.chartLineTertiary, InsightsColors.chartLineQuaternary)
     Canvas(modifier = modifier) {

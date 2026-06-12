@@ -44,14 +44,34 @@ jobs:
 
       - name: Detect BurnBar AGPL product tree
         id: product-tree
+        env:
+          # The ONLY legitimate reason to find no product tree is that this
+          # workflow is running against the MIT Nous/Hermes upstream (a fork PR
+          # whose base repo is NousResearch/hermes-agent, or the explicit MIT
+          # upstream scan dispatch). Any other context — every push/PR/merge to
+          # the BurnBar product repo — MUST have the product tree, so a missing
+          # tree is a real failure (e.g. the libsignal submodule did not fetch,
+          # or LICENSE/runtime-readiness was tampered with), not a silent skip.
+          IS_MIT_UPSTREAM: >-
+            ${{ (github.event_name == 'pull_request' &&
+                 github.event.pull_request.base.repo.full_name == 'NousResearch/hermes-agent') ||
+                (github.event_name == 'workflow_dispatch' &&
+                 github.event.inputs.run_mit_upstream_scan == 'true') }}
         run: |
           if grep -q "GNU AFFERO GENERAL PUBLIC LICENSE" LICENSE && \
              test -f third_party/libsignal/runtime-readiness.json && \
              test -f Vendor/libsignal/LICENSE; then
             echo "run_product_checks=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "${IS_MIT_UPSTREAM}" = "true" ]; then
             echo "Skipping BurnBar product AGPL checks in this MIT upstream checkout."
             echo "run_product_checks=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::BurnBar AGPL product tree not detected outside the MIT upstream context." >&2
+            echo "Expected an AGPL LICENSE, third_party/libsignal/runtime-readiness.json, and the" >&2
+            echo "Vendor/libsignal submodule. A missing tree here means the libsignal submodule did" >&2
+            echo "not fetch or a load-bearing license artifact was removed — this required check fails" >&2
+            echo "closed rather than passing green having executed zero product posture checks." >&2
+            exit 1
           fi
 
       - name: Set up Python

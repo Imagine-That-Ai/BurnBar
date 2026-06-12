@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.settings
@@ -331,42 +330,42 @@ internal fun buildSettingsProvidersGroup(
     onProvidersExpandedChange: (Boolean) -> Unit,
 ): List<RootRow> {
     val list = mutableListOf<RootRow>()
-        list.add(
-            RootRow(
-                anchor = SettingsAnchor.PROVIDERS_ROW,
-                icon = Icons.Filled.Search,
-                title = "Provider connections",
-                subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
-                pageRoute = SettingsPageRoute.ROOT,
-                logoProviderKeys = listOf(
-                    AgentProvider.CLAUDE_CODE.key,
-                    AgentProvider.OPENCODE.key,
-                    AgentProvider.FACTORY.key,
-                    AgentProvider.OPEN_AI.key,
-                ),
-                isCollapsibleHeader = true,
-                isExpanded = providersExpanded,
-                onTap = { onProvidersExpandedChange(!providersExpanded) }
-            )
+    list.add(
+        RootRow(
+            anchor = SettingsAnchor.PROVIDERS_ROW,
+            icon = Icons.Filled.Search,
+            title = "Provider connections",
+            subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
+            pageRoute = SettingsPageRoute.ROOT,
+            logoProviderKeys = listOf(
+                AgentProvider.CLAUDE_CODE.key,
+                AgentProvider.OPENCODE.key,
+                AgentProvider.FACTORY.key,
+                AgentProvider.OPEN_AI.key,
+            ),
+            isCollapsibleHeader = true,
+            isExpanded = providersExpanded,
+            onTap = { onProvidersExpandedChange(!providersExpanded) },
         )
-        if (providersExpanded) {
-            AgentProvider.entries
-                .sortedBy { it.displayName.lowercase() }
-                .forEach { provider ->
-                    list.add(
-                        RootRow(
-                            anchor = SettingsAnchor.provider(provider.key),
-                            icon = Icons.Filled.Search,
-                            title = provider.displayName,
-                            subtitle = "${provider.displayName} quota, usage, and signal",
-                            pageRoute = SettingsPageRoute.ROOT,
-                            logoProviderKeys = listOf(provider.key),
-                            isNested = true,
-                            onTap = {}
-                        )
+    )
+    if (providersExpanded) {
+        AgentProvider.entries
+            .sortedBy { it.displayName.lowercase() }
+            .forEach { provider ->
+                list.add(
+                    RootRow(
+                        anchor = SettingsAnchor.provider(provider.key),
+                        icon = Icons.Filled.Search,
+                        title = provider.displayName,
+                        subtitle = "${provider.displayName} quota, usage, and signal",
+                        pageRoute = SettingsPageRoute.ROOT,
+                        logoProviderKeys = listOf(provider.key),
+                        isNested = true,
+                        onTap = {},
                     )
-                }
-        }
+                )
+            }
+    }
     return list
 }
 

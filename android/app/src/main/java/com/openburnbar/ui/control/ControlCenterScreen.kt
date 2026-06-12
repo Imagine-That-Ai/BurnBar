@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures structure.
 
 package com.openburnbar.ui.control
@@ -92,6 +91,13 @@ internal fun ControlCenterScreen(
         }
     }
     val onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit = { unlockFeature = it }
+    val paneState = ControlCenterPaneState(snapshot, isLoading, error, selectedDomainId)
+    val paneCallbacks = ControlCenterPaneCallbacks(
+        onSelectDomain = { selectedDomainId = it?.ifBlank { null } },
+        onManagePlan = onManagePlan,
+        onDomainAction = onDomainAction,
+        onUnlock = onUnlock,
+    )
 
     Scaffold(
         topBar = {
@@ -107,67 +113,90 @@ internal fun ControlCenterScreen(
         },
         containerColor = Color.Transparent,
     ) { innerPadding ->
-        Box(modifier = modifier.fillMaxSize().padding(innerPadding)) {
-            if (isWide) {
-                ControlCenterListDetail(
-                    snapshot = snapshot,
-                    isLoading = isLoading,
-                    error = error,
-                    store = store,
-                    selectedDomainId = selectedDomainId,
-                    onSelectDomain = { selectedDomainId = it?.ifBlank { null } },
-                    onManagePlan = onManagePlan,
-                    onDomainAction = onDomainAction,
-                    onUnlock = onUnlock,
-                )
-            } else {
-                ControlCenterSinglePane(
-                    snapshot = snapshot,
-                    isLoading = isLoading,
-                    error = error,
-                    store = store,
-                    selectedDomainId = selectedDomainId,
-                    onSelectDomain = { selectedDomainId = it?.ifBlank { null } },
-                    onManagePlan = onManagePlan,
-                    onDomainAction = onDomainAction,
-                    onUnlock = onUnlock,
-                )
-            }
-        }
+        ControlCenterPaneHost(
+            modifier = modifier.padding(innerPadding),
+            isWide = isWide,
+            paneState = paneState,
+            store = store,
+            callbacks = paneCallbacks,
+        )
     }
 
-    com.openburnbar.ui.pro.FeatureUnlockSheet(
-        feature = unlockFeature ?: com.openburnbar.ui.pro.GatedFeatureCatalog.feature(com.openburnbar.ui.pro.GatedFeatureID.DATA_VAULT),
-        show = unlockFeature != null,
-        livePrice = unlockFeature?.let { priceForTier(it.requiredTier) },
+    ControlCenterUnlockSheet(
+        unlockFeature = unlockFeature,
+        priceForTier = priceForTier,
         onUnlock = onManagePlan,
         onDismiss = { unlockFeature = null },
     )
 }
 
 @Composable
-private fun ControlCenterListDetail(
-    snapshot: ControlCenterSnapshot,
-    isLoading: Boolean,
-    error: String?,
+private fun ControlCenterPaneHost(
+    modifier: Modifier,
+    isWide: Boolean,
+    paneState: ControlCenterPaneState,
     store: ControlCenterStore,
-    selectedDomainId: String?,
-    onSelectDomain: (String?) -> Unit,
-    onManagePlan: () -> Unit,
-    onDomainAction: (DataDomain, String) -> Unit,
-    onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit,
+    callbacks: ControlCenterPaneCallbacks,
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        if (isWide) {
+            ControlCenterListDetail(
+                paneState = paneState,
+                store = store,
+                callbacks = callbacks,
+            )
+        } else {
+            ControlCenterSinglePane(
+                paneState = paneState,
+                store = store,
+                callbacks = callbacks,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ControlCenterUnlockSheet(
+    unlockFeature: com.openburnbar.ui.pro.GatedFeature?,
+    priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String?,
+    onUnlock: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    com.openburnbar.ui.pro.FeatureUnlockSheet(
+        feature = unlockFeature ?: com.openburnbar.ui.pro.GatedFeatureCatalog.feature(com.openburnbar.ui.pro.GatedFeatureID.DATA_VAULT),
+        show = unlockFeature != null,
+        livePrice = unlockFeature?.let { priceForTier(it.requiredTier) },
+        onUnlock = onUnlock,
+        onDismiss = onDismiss,
+    )
+}
+
+private data class ControlCenterPaneState(
+    val snapshot: ControlCenterSnapshot,
+    val isLoading: Boolean,
+    val error: String?,
+    val selectedDomainId: String?,
+)
+
+private data class ControlCenterPaneCallbacks(
+    val onSelectDomain: (String?) -> Unit,
+    val onManagePlan: () -> Unit,
+    val onDomainAction: (DataDomain, String) -> Unit,
+    val onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit,
+)
+
+@Composable
+private fun ControlCenterListDetail(
+    paneState: ControlCenterPaneState,
+    store: ControlCenterStore,
+    callbacks: ControlCenterPaneCallbacks,
 ) {
     Row(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(0.42f).fillMaxHeight()) {
             ControlCenterInventoryList(
-                snapshot = snapshot,
-                isLoading = isLoading,
-                error = error,
+                paneState = paneState,
                 store = store,
-                selectedDomainId = selectedDomainId,
-                onSelectDomain = onSelectDomain,
-                onManagePlan = onManagePlan,
-                onUnlock = onUnlock,
+                callbacks = callbacks,
             )
         }
         VerticalDivider(
@@ -175,14 +204,14 @@ private fun ControlCenterListDetail(
             modifier = Modifier.fillMaxHeight(),
         )
         Box(modifier = Modifier.weight(0.58f).fillMaxHeight()) {
-            val row = selectedDomainId?.let { store.row(it) }
+            val row = paneState.selectedDomainId?.let { store.row(it) }
             if (row != null) {
                 DomainDetailPane(
                     domain = row.domain,
                     row = row,
-                    tier = snapshot.tier,
+                    tier = paneState.snapshot.tier,
                     store = store,
-                    onDomainAction = onDomainAction,
+                    onDomainAction = callbacks.onDomainAction,
                 )
             } else {
                 ControlCenterDetailPlaceholder()
@@ -193,55 +222,40 @@ private fun ControlCenterListDetail(
 
 @Composable
 private fun ControlCenterSinglePane(
-    snapshot: ControlCenterSnapshot,
-    isLoading: Boolean,
-    error: String?,
+    paneState: ControlCenterPaneState,
     store: ControlCenterStore,
-    selectedDomainId: String?,
-    onSelectDomain: (String?) -> Unit,
-    onManagePlan: () -> Unit,
-    onDomainAction: (DataDomain, String) -> Unit,
-    onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit,
+    callbacks: ControlCenterPaneCallbacks,
 ) {
-    val selectedRow = selectedDomainId?.let { store.row(it) }
+    val selectedRow = paneState.selectedDomainId?.let { store.row(it) }
     if (selectedRow != null) {
         // Phone: detail replaces the list; back-press handled by host nav.
         Column(modifier = Modifier.fillMaxSize()) {
-            DomainBackBar(title = selectedRow.domain.title, onBack = { onSelectDomain("") })
+            DomainBackBar(title = selectedRow.domain.title, onBack = { callbacks.onSelectDomain("") })
             DomainDetailPane(
                 domain = selectedRow.domain,
                 row = selectedRow,
-                tier = snapshot.tier,
+                tier = paneState.snapshot.tier,
                 store = store,
                 modifier = Modifier.weight(1f),
-                onDomainAction = onDomainAction,
+                onDomainAction = callbacks.onDomainAction,
             )
         }
     } else {
         ControlCenterInventoryList(
-            snapshot = snapshot,
-            isLoading = isLoading,
-            error = error,
+            paneState = paneState.copy(selectedDomainId = null),
             store = store,
-            selectedDomainId = null,
-            onSelectDomain = onSelectDomain,
-            onManagePlan = onManagePlan,
-            onUnlock = onUnlock,
+            callbacks = callbacks,
         )
     }
 }
 
 @Composable
 private fun ControlCenterInventoryList(
-    snapshot: ControlCenterSnapshot,
-    isLoading: Boolean,
-    error: String?,
+    paneState: ControlCenterPaneState,
     store: ControlCenterStore,
-    selectedDomainId: String?,
-    onSelectDomain: (String?) -> Unit,
-    onManagePlan: () -> Unit,
-    onUnlock: (com.openburnbar.ui.pro.GatedFeature) -> Unit,
+    callbacks: ControlCenterPaneCallbacks,
 ) {
+    val snapshot = paneState.snapshot
     val recovery by store.recoveryMethods.collectAsState()
     val recoveryBusy by store.recoveryBusy.collectAsState()
     val panicBusy by store.panicBusy.collectAsState()
@@ -256,23 +270,17 @@ private fun ControlCenterInventoryList(
         contentPadding = PaddingValues(AuroraSpacing.lg.dp),
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
     ) {
-        item { TierBand(tier = snapshot.tier, limits = snapshot.pensieveLimits, onManagePlan = onManagePlan) }
-        error?.let { item { ControlCenterError(it, onDismiss = { store.clearError() }) } }
+        item { TierBand(tier = snapshot.tier, limits = snapshot.pensieveLimits, onManagePlan = callbacks.onManagePlan) }
+        paneState.error?.let { item { ControlCenterError(it, onDismiss = { store.clearError() }) } }
         item { BasinCard(snapshot = snapshot) }
-        item {
-            Text(
-                "What we hold",
-                style = AuroraType.title.copy(fontWeight = FontWeight.Bold),
-                color = PensieveControlTokens.mercuryBright,
-            )
-        }
+        item { ControlCenterInventoryHeading() }
         items(snapshot.rows, key = { it.domain.id }) { row ->
             TransparencyInventoryItem(
                 row = row,
                 tier = snapshot.tier,
-                selected = row.domain.id == selectedDomainId,
-                onClick = { onSelectDomain(row.domain.id) },
-                onUnlock = onUnlock,
+                selected = row.domain.id == paneState.selectedDomainId,
+                onClick = { callbacks.onSelectDomain(row.domain.id) },
+                onUnlock = callbacks.onUnlock,
             )
         }
         item {
@@ -302,6 +310,15 @@ private fun ControlCenterInventoryList(
             )
         }
     }
+}
+
+@Composable
+private fun ControlCenterInventoryHeading() {
+    Text(
+        "What we hold",
+        style = AuroraType.title.copy(fontWeight = FontWeight.Bold),
+        color = PensieveControlTokens.mercuryBright,
+    )
 }
 
 @Composable

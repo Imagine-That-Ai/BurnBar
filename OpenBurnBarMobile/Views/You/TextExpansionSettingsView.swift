@@ -109,8 +109,7 @@ struct MobileTextExpansionSettingsView: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 11)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
+                    .liquidGlassSurface(in: Capsule())
                     .overlay(
                         Capsule()
                             .stroke(Color.white.opacity(0.15), lineWidth: 1)

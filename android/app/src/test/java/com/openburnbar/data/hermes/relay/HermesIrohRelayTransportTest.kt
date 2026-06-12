@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar.data.hermes.relay
 
@@ -40,9 +38,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-private const val VAL_2000 = 2_000
-private const val VAL_32 = 32
-
 /**
  * Loopback-backed unit tests for `HermesIrohRelayTransport`. The test
  * dials a fake Mac via `LoopbackIrohRelayTransport`, unwraps the
@@ -62,7 +57,7 @@ class HermesIrohRelayTransportTest {
     private val rendezvous = LoopbackIrohRelayRendezvous()
 
     init {
-        val seed = ByteArray(VAL_32).also { java.security.SecureRandom().nextBytes(it) }
+        val seed = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
         pairingPrivateKey = EdDSAPrivateKey(EdDSAPrivateKeySpec(seed, pairingSpec))
         val pub = EdDSAPublicKey(EdDSAPublicKeySpec(pairingPrivateKey.a, pairingSpec))
         pairingPublicKeyRaw = pub.abyte
@@ -298,7 +293,7 @@ class HermesIrohRelayTransportTest {
         val server = async { hostTransport.accept(timeoutMillis = 2_000) }
         val unaryOutcome =
             try {
-                withTimeoutOrNull(VAL_2000.toLong()) {
+                withTimeoutOrNull(2_000.toLong()) {
                     transport.sendUnary(payload, timeoutMillis = 150)
                 }
             } catch (error: HermesRelayException) {

@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.settings
@@ -68,7 +67,6 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.AuroraTypography
 import kotlin.math.roundToInt
-
 
 @Composable
 internal fun QuotaCustomizationScaffold(

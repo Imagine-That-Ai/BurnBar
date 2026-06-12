@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar.data.computeruse
 

@@ -48,14 +48,14 @@ struct LiquidGlassFallback: ViewModifier {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(opaqueFill)
         } else if #available(iOS 26.0, *) {
-            ZStack {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(sheenGradient)
-            }
-            .opacity(useWebsiteBackground ? 0.72 : 1.0)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            // Native Liquid Glass samples the content BEHIND it — a material
+            // fill underneath would block the refraction and read as frosted
+            // plastic. The variant's personality survives as the faint sheen
+            // wash riding on top of pure glass.
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(sheenGradient)
+                .opacity(useWebsiteBackground ? 0.72 : 1.0)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
             ZStack {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)

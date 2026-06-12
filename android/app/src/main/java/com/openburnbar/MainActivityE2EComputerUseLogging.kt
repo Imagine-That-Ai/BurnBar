@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // E2E proof logging uses literal hash-prefix thresholds for adb log grep.
 
 package com.openburnbar
@@ -22,7 +21,6 @@ internal object MainActivityE2EComputerUseLogging {
         nowMillis.toDouble() / MainActivityE2EConstants.MILLIS_PER_SECOND -
             MainActivityE2EConstants.SWIFT_REFERENCE_EPOCH_OFFSET_SECONDS
 
-    @Suppress("HardwareIds")
     fun androidDeviceIdForComputerUseProof(activity: MainActivity): String {
         val androidId =
             android.provider.Settings.Secure.getString(

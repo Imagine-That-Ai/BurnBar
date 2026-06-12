@@ -3,7 +3,8 @@ package com.openburnbar.data.media
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-private const val VAL_4 = 4
+// Byte width of the u32 big-endian total-payload-length prefix on every envelope.
+private const val LENGTH_PREFIX_BYTES = 4
 
 /**
  * Length-prefixed binary codec for Mercury media frames. 1:1 port of
@@ -44,7 +45,7 @@ class MediaPacketCodec(
         if (totalPayloadCount > maxPayloadBytes) {
             throw CodecError.PayloadTooLarge(totalPayloadCount, maxPayloadBytes)
         }
-        val buffer = ByteBuffer.allocate(VAL_4 + totalPayloadCount).order(ByteOrder.BIG_ENDIAN)
+        val buffer = ByteBuffer.allocate(LENGTH_PREFIX_BYTES + totalPayloadCount).order(ByteOrder.BIG_ENDIAN)
         buffer.putInt(totalPayloadCount)
         buffer.put(frame.kind.rawValue)
         buffer.put(frame.flags.rawValue)
@@ -74,7 +75,7 @@ class MediaPacketCodec(
         val cursor =
             if (MediaFrame.Flags(flagsByte).contains(MediaFrame.Flags.HAS_CURSOR_METADATA)) {
                 val cursorEnd = payloadStart + MediaFrame.CURSOR_METADATA_BYTE_COUNT
-                if (cursorEnd > VAL_4 + header.totalPayloadCount) {
+                if (cursorEnd > LENGTH_PREFIX_BYTES + header.totalPayloadCount) {
                     throw CodecError.CursorTruncated
                 }
                 val x = buffer.short
@@ -84,7 +85,7 @@ class MediaPacketCodec(
             } else {
                 null
             }
-        val payloadEnd = VAL_4 + header.totalPayloadCount
+        val payloadEnd = LENGTH_PREFIX_BYTES + header.totalPayloadCount
         val payload = envelope.copyOfRange(payloadStart, payloadEnd)
 
         return Decoded(
@@ -109,7 +110,7 @@ class MediaPacketCodec(
     )
 
     private fun decodeEnvelopeHeader(envelope: ByteArray): PacketEnvelopeHeader {
-        val lengthPrefixBytes = VAL_4
+        val lengthPrefixBytes = LENGTH_PREFIX_BYTES
         if (envelope.size < lengthPrefixBytes + MediaFrame.HEADER_BYTE_COUNT) {
             throw CodecError.EnvelopeTooShort
         }

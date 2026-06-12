@@ -402,11 +402,14 @@ struct FeatureUnlockSheet: View {
         VStack {
             HStack {
                 Spacer()
+                // Glass lives on the system chrome only — the holo/crest card
+                // below stays glassless (brand rule).
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.5))
-                        .padding(14)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.7))
+                        .liquidGlassCircleButton(diameter: 28)
+                        .padding(10)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close")

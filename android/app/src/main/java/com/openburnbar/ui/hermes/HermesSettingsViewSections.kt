@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.hermes
@@ -37,7 +36,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -260,7 +259,7 @@ internal fun HermesSettingsDisplaySection() {
             checked = showTps,
             onCheckedChange = { showTps = it },
         )
-        Divider(modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp))
         HermesSettingsDisplayToggle(
             title = "Rich text rendering",
             subtitle = "Renders @mentions and code spans as inline chips.",

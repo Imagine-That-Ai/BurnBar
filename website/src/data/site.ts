@@ -10,7 +10,9 @@ export const SITE = {
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",
-  supportContact: "support@openburnbar.app",
+  // burnbar.ai has live MX (Namecheap forwarding); openburnbar.app was never
+  // registered — mail to it bounced as NXDOMAIN (diligence 2026-06-11 NB-1).
+  supportContact: "support@burnbar.ai",
   privacyContact: "privacy@imagine-that.ai",
   entity: "Imagine That AI LLC",
   license: "AGPL-3.0-only",

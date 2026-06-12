@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.chartstudio
@@ -9,7 +8,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -23,15 +21,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.openburnbar.ui.components.HapticBus
+import com.openburnbar.ui.components.liquidGlassCircleButton
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 
@@ -95,18 +92,7 @@ private fun ChartStudioFabSurface(
                 scaleX = scale
                 scaleY = scale
             }
-            .size(56.dp)
-            .clip(CircleShape)
-            .background(
-                Brush.radialGradient(
-                    colors =
-                    listOf(
-                        AuroraColors.amber,
-                        AuroraColors.ember,
-                        AuroraColors.blaze.copy(alpha = 0.85f),
-                    ),
-                ),
-            )
+            .liquidGlassCircleButton(diameter = 56.dp, tint = AuroraColors.ember)
             .border(
                 width = 1.dp,
                 color = Color.White.copy(alpha = 0.30f),
@@ -137,7 +123,7 @@ private fun ChartStudioFabSurface(
         Icon(
             imageVector = Icons.Filled.AutoAwesome,
             contentDescription = "Chart Studio",
-            tint = Color.White,
+            tint = AuroraColors.ember,
             modifier = Modifier.size(26.dp),
         )
     }

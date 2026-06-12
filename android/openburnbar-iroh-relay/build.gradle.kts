@@ -15,7 +15,6 @@
 // Firestore fallback.
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("org.jlleitschuh.gradle.ktlint")
 }
@@ -35,10 +34,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "21"
-    }
-
     buildFeatures {
         buildConfig = false
     }
@@ -47,15 +42,9 @@ android {
         lintConfig = file("lint.xml")
     }
 
-    sourceSets {
-        named("main") {
-            // The UniFFI-generated Kotlin bindings land under
-            // src/main/java/uniffi/openburnbar_iroh/ from
-            // scripts/build-iroh-android-aar.sh. Standard layout — no
-            // explicit override required, but kept here for clarity.
-            java.srcDir("src/main/java")
-        }
-    }
+    // The UniFFI-generated Kotlin bindings land under the standard
+    // src/main/java/uniffi/openburnbar_iroh/ path from
+    // scripts/build-iroh-android-aar.sh.
 }
 
 dependencies {
@@ -70,10 +59,9 @@ dependencies {
     // primitive across our minSdk range.
     implementation("com.google.crypto.tink:tink-android:1.15.0")
 
-    // jna 5.14 satisfies the generated UniFFI Kotlin bindings' runtime
-    // requirement. The native Rust AAR is consumed by :app directly so this
-    // Android library can still build its own AAR under AGP 8.9+.
-    api("net.java.dev.jna:jna:5.14.0@aar")
+    // JNA 5.19.0 ships 16 KB page-size aligned native libjnidispatch slices.
+    // UniFFI's generated Kotlin bindings use JNA to load the Rust AAR.
+    api("net.java.dev.jna:jna:5.19.0@aar")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

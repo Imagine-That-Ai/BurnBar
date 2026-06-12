@@ -9,11 +9,13 @@ import java.security.MessageDigest
 import java.time.Instant
 
 private const val NANOS_PER_SECOND = 1_000_000_000.0
-private const val VAL_0X20 = 0x20
-private const val VAL_12 = 12
-private const val VAL_16 = 16
-private const val VAL_4 = 4
-private const val VAL_978307200_0 = 978_307_200.0
+private const val MIN_UNESCAPED_CHAR_CODE = 0x20
+private const val CANONICAL_NUMBER_DECIMAL_PLACES = 12
+private const val HEX_RADIX = 16
+private const val UNICODE_ESCAPE_HEX_DIGITS = 4
+
+// Unix seconds at 2001-01-01T00:00:00Z, the Apple/Swift Date reference epoch.
+private const val APPLE_REFERENCE_DATE_EPOCH_SECONDS = 978_307_200.0
 
 internal object PhoneControlSignerJsonEncoding {
     fun sortedJson(fields: LinkedHashMap<String, String>): String =
@@ -28,7 +30,7 @@ internal object PhoneControlSignerJsonEncoding {
             if (asLong.toDouble() == value) return asLong.toString()
         }
         return BigDecimal.valueOf(value)
-            .setScale(VAL_12, RoundingMode.HALF_UP)
+            .setScale(CANONICAL_NUMBER_DECIMAL_PLACES, RoundingMode.HALF_UP)
             .stripTrailingZeros()
             .toPlainString()
     }
@@ -37,7 +39,7 @@ internal object PhoneControlSignerJsonEncoding {
         val instant = Instant.parse(value)
         return instant.epochSecond.toDouble() +
             instant.nano.toDouble() / NANOS_PER_SECOND -
-            VAL_978307200_0
+            APPLE_REFERENCE_DATE_EPOCH_SECONDS
     }
 
     fun quote(value: String): String {
@@ -53,9 +55,9 @@ internal object PhoneControlSignerJsonEncoding {
                 '\r' -> out.append("\\r")
                 '\t' -> out.append("\\t")
                 else -> {
-                    if (ch.code < VAL_0X20) {
+                    if (ch.code < MIN_UNESCAPED_CHAR_CODE) {
                         out.append("\\u")
-                        out.append(ch.code.toString(VAL_16).padStart(VAL_4, '0'))
+                        out.append(ch.code.toString(HEX_RADIX).padStart(UNICODE_ESCAPE_HEX_DIGITS, '0'))
                     } else {
                         out.append(ch)
                     }

@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.hermes
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Business
@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Numbers
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
@@ -144,7 +143,7 @@ fun HermesAtomChip(label: String, url: String, onClick: (String, String) -> Unit
                 .padding(horizontal = 7.dp, vertical = 1.5.dp),
         ) {
             Icon(
-                imageVector = Icons.Filled.OpenInNew,
+                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                 contentDescription = null,
                 tint = AuroraColors.hermesMercury,
                 modifier = Modifier.size(12.dp),

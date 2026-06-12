@@ -1,9 +1,7 @@
 import Darwin
 import Foundation
+import OpenBurnBarComputerUseCore
 import Security
-
-/// `SOL_LOCAL` / `LOCAL_PEERTOKEN` — peer audit token at UNIX socket accept time.
-private let localPeerTokenOption: Int32 = 0x102
 
 public enum PrivilegedPeerAuthenticationFailure: Error, Equatable, Sendable {
     case peerIdentityUnavailable
@@ -17,7 +15,8 @@ public enum PrivilegedPeerAuthenticationFailure: Error, Equatable, Sendable {
 ///
 /// Cheap gate: peer UID must match the interactive console user. Authority: peer process must carry
 /// a valid first-party code signature for `com.openburnbar.*` under the canonical Team ID with
-/// hardened runtime and library validation enabled.
+/// hardened runtime and library validation enabled. The trust primitives are shared with socket
+/// clients via `OpenBurnBarPrivilegedTrust` (`OpenBurnBarComputerUseCore`).
 public struct PrivilegedPeerAuthenticator: Sendable {
     public typealias CodeSignatureValidator = @Sendable (audit_token_t) throws -> Void
 
@@ -53,12 +52,22 @@ public struct PrivilegedPeerAuthenticator: Sendable {
             throw PrivilegedPeerAuthenticationFailure.peerNotConsoleUser
         }
 
-        let auditToken = try readPeerAuditToken(socketFD: socketFD)
+        let auditToken: audit_token_t
+        do {
+            auditToken = try OpenBurnBarPrivilegedTrust.peerAuditToken(socketFD: socketFD)
+        } catch {
+            reject(detail: PrivilegedPeerAuthenticationFailure.auditTokenUnavailable, peerUID: peerUID)
+            throw PrivilegedPeerAuthenticationFailure.auditTokenUnavailable
+        }
         do {
             try validateCodeSignature(auditToken)
         } catch let failure as PrivilegedPeerAuthenticationFailure {
             reject(detail: failure, peerUID: peerUID)
             throw failure
+        } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
+            let wrapped = PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: status)
+            reject(detail: wrapped, peerUID: peerUID)
+            throw wrapped
         } catch {
             let wrapped = PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
             reject(detail: wrapped, peerUID: peerUID)
@@ -72,18 +81,6 @@ public struct PrivilegedPeerAuthenticator: Sendable {
                 peerUID: peerUID
             )
         )
-    }
-
-    private func readPeerAuditToken(socketFD: Int32) throws -> audit_token_t {
-        var token = audit_token_t()
-        var length = socklen_t(MemoryLayout<audit_token_t>.size)
-        let status = withUnsafeMutablePointer(to: &token) { pointer in
-            getsockopt(socketFD, SOL_LOCAL, localPeerTokenOption, pointer, &length)
-        }
-        guard status == 0, length == socklen_t(MemoryLayout<audit_token_t>.size) else {
-            throw PrivilegedPeerAuthenticationFailure.auditTokenUnavailable
-        }
-        return token
     }
 
     private func reject(
@@ -101,58 +98,10 @@ public struct PrivilegedPeerAuthenticator: Sendable {
     }
 
     public static func defaultCodeSignatureValidation(auditToken: audit_token_t) throws {
-        var code: SecCode?
-        var token = auditToken
-        let tokenData = Data(bytes: &token, count: MemoryLayout<audit_token_t>.size)
-        let attributes: [String: Any] = [kSecGuestAttributeAudit as String: tokenData]
-        let status = SecCodeCopyGuestWithAttributes(nil, attributes as CFDictionary, [], &code)
-        guard status == errSecSuccess, let code else {
+        do {
+            try OpenBurnBarPrivilegedTrust.validateCodeSignature(ofAuditToken: auditToken)
+        } catch PrivilegedSocketTrustError.codeSignatureInvalid(let status) {
             throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: status)
-        }
-        try validateCodeSignature(code)
-    }
-
-    private static func validateCodeSignature(_ code: SecCode) throws {
-        var requirement: SecRequirement?
-        let requirementString = OpenBurnBarSigningIdentity.privilegedPeerDesignatedRequirement
-        let requirementStatus = SecRequirementCreateWithString(
-            requirementString as CFString,
-            [],
-            &requirement
-        )
-        guard requirementStatus == errSecSuccess, let requirement else {
-            throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: requirementStatus)
-        }
-
-        let validity = SecCodeCheckValidity(code, [], requirement)
-        guard validity == errSecSuccess else {
-            throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: validity)
-        }
-
-        // M-9: enforce hardened runtime + library validation PROGRAMMATICALLY.
-        // These are CodeDirectory signature flags that the Code Signing
-        // Requirement Language cannot express, so they cannot live in the
-        // designated requirement string above (attempting it produced an
-        // invalid requirement that rejected every peer). Read the running
-        // peer's CodeDirectory flags and require both bits.
-        var staticCode: SecStaticCode?
-        let staticStatus = SecCodeCopyStaticCode(code, [], &staticCode)
-        guard staticStatus == errSecSuccess, let staticCode else {
-            throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: staticStatus)
-        }
-        var infoCF: CFDictionary?
-        let infoStatus = SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: 0), &infoCF)
-        guard infoStatus == errSecSuccess,
-              let info = infoCF as? [String: Any],
-              let flags = info[kSecCodeInfoFlags as String] as? UInt32 else {
-            throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: infoStatus)
-        }
-        let hasHardenedRuntime = (flags & OpenBurnBarSigningIdentity.hardenedRuntimeFlag) != 0
-        let hasLibraryValidation = (flags & OpenBurnBarSigningIdentity.libraryValidationFlag) != 0
-        guard hasHardenedRuntime, hasLibraryValidation else {
-            // errSecCSReqFailed: signature is valid but does not meet our policy
-            // (missing hardened runtime and/or library validation).
-            throw PrivilegedPeerAuthenticationFailure.codeSignatureInvalid(status: errSecCSReqFailed)
         }
     }
 }

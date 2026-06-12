@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.streams
@@ -8,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -317,50 +317,60 @@ internal fun StreamsSegmentTabs(selectedSegment: StreamsSegment, onSelectSegment
     ) {
         StreamsSegment.entries.forEach { segment ->
             val isSelected = selectedSegment == segment
-            val bgGradient = if (isSelected) {
-                Brush.linearGradient(
-                    if (isDark) {
-                        listOf(AuroraColors.ember.copy(alpha = 0.25f), AuroraColors.amber.copy(alpha = 0.12f))
-                    } else {
-                        listOf(AuroraColors.ember.copy(alpha = 0.16f), AuroraColors.amber.copy(alpha = 0.08f))
-                    }
-                )
-            } else {
-                Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
-            }
-            val borderModifier = if (isSelected) {
-                Modifier.border(
-                    width = 0.5.dp,
-                    color = AuroraColors.ember.copy(alpha = 0.35f),
-                    shape = RoundedCornerShape(18.dp)
-                )
-            } else {
-                Modifier
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(bgGradient)
-                    .then(borderModifier)
-                    .clickable {
-                        if (!isSelected) {
-                            onSelectSegment(segment)
-                            HapticBus.tabChange(context)
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = segment.label,
-                    fontSize = 12.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                )
+            StreamsSegmentTab(segment = segment, isSelected = isSelected, isDark = isDark) {
+                if (!isSelected) {
+                    onSelectSegment(segment)
+                    HapticBus.tabChange(context)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun RowScope.StreamsSegmentTab(
+    segment: StreamsSegment,
+    isSelected: Boolean,
+    isDark: Boolean,
+    onClick: () -> Unit,
+) {
+    val bgGradient = if (isSelected) {
+        Brush.linearGradient(
+            if (isDark) {
+                listOf(AuroraColors.ember.copy(alpha = 0.25f), AuroraColors.amber.copy(alpha = 0.12f))
+            } else {
+                listOf(AuroraColors.ember.copy(alpha = 0.16f), AuroraColors.amber.copy(alpha = 0.08f))
+            },
+        )
+    } else {
+        Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+    }
+    val borderModifier = if (isSelected) {
+        Modifier.border(
+            width = 0.5.dp,
+            color = AuroraColors.ember.copy(alpha = 0.35f),
+            shape = RoundedCornerShape(18.dp),
+        )
+    } else {
+        Modifier
+    }
+
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(18.dp))
+            .background(bgGradient)
+            .then(borderModifier)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = segment.label,
+            fontSize = 12.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+        )
     }
 }
 
@@ -387,54 +397,75 @@ internal fun StreamsSearchField(searchQuery: String, onSearchChange: (String) ->
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = null,
-                tint = if (inputFocused) AuroraColors.ember else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.size(18.dp)
-            )
+            StreamsSearchLeadingIcon(inputFocused = inputFocused)
             Spacer(modifier = Modifier.width(8.dp))
-
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .onFocusChanged { inputFocused = it.isFocused },
-                placeholder = {
-                    Text(
-                        "Search sessions, models, projects...",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                },
-                singleLine = true,
-                textStyle = LocalTextStyle.current.copy(
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color.Transparent,
-                    unfocusedBorderColor = Color.Transparent,
-                    disabledBorderColor = Color.Transparent,
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    cursorColor = AuroraColors.ember,
-                ),
+            StreamsSearchTextInput(
+                searchQuery = searchQuery,
+                onSearchChange = onSearchChange,
+                onFocusChanged = { inputFocused = it },
             )
-
             if (searchQuery.isNotEmpty()) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "Clear",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .size(16.dp)
-                        .clickable { onSearchChange("") }
-                )
+                StreamsClearSearchButton(onClear = { onSearchChange("") })
             }
         }
     }
+}
+
+@Composable
+private fun StreamsSearchLeadingIcon(inputFocused: Boolean) {
+    Icon(
+        imageVector = Icons.Filled.Search,
+        contentDescription = null,
+        tint = if (inputFocused) AuroraColors.ember else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        modifier = Modifier.size(18.dp),
+    )
+}
+
+@Composable
+private fun RowScope.StreamsSearchTextInput(
+    searchQuery: String,
+    onSearchChange: (String) -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+) {
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = onSearchChange,
+        modifier = Modifier
+            .weight(1f)
+            .onFocusChanged { onFocusChanged(it.isFocused) },
+        placeholder = {
+            Text(
+                "Search sessions, models, projects...",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
+        },
+        singleLine = true,
+        textStyle = LocalTextStyle.current.copy(
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+        ),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Color.Transparent,
+            unfocusedBorderColor = Color.Transparent,
+            disabledBorderColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            cursorColor = AuroraColors.ember,
+        ),
+    )
+}
+
+@Composable
+private fun StreamsClearSearchButton(onClear: () -> Unit) {
+    Icon(
+        imageVector = Icons.Filled.Close,
+        contentDescription = "Clear",
+        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        modifier = Modifier
+            .size(16.dp)
+            .clickable(onClick = onClear),
+    )
 }
 
 internal data class StreamsSessionsListContext(
@@ -577,97 +608,125 @@ private fun streamsFilterUsages(usages: List<TokenUsage>, searchQuery: String): 
 fun UsageCard(usage: TokenUsage, onAskHermes: (String) -> Unit) {
     AuroraGlassCard {
         Column(modifier = Modifier.padding(AuroraSpacing.md.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ProviderAvatar(providerKey = usage.provider, size = 20)
-                    Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
-                    Text(usage.provider, fontWeight = FontWeight.Bold, fontSize = AuroraTypography.caption.sp)
-                    Text(" · ${usage.model}", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("Cost", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
-                    Text(Formatting.formatCurrency(usage.cost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange, fontSize = 14.sp)
-                }
-            }
+            UsageCardHeader(usage = usage)
             Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Tokens: ${Formatting.formatTokens(usage.inputTokens.toLong() + usage.outputTokens.toLong())}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "Started: ${Formatting.formatRelativeTime(usage.timestamp)}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            UsageCardMetaRow(usage = usage)
             Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    AuroraColors.hermesMercury.copy(alpha = 0.15f),
-                                    AuroraColors.hermesAureate.copy(alpha = 0.08f)
-                                )
-                            )
-                        )
-                        .border(
-                            width = 0.5.dp,
-                            brush = Brush.linearGradient(AuroraGradients.mercuryGradient),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .clickable { onAskHermes("What was this session about?") }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
-                        contentDescription = null,
-                        modifier = Modifier.size(12.dp),
-                        tint = AuroraColors.hermesAureate
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Ask Hermes",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                usage.projectName?.takeIf { it.isNotBlank() }?.let { projName ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Folder,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = projName,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
+            UsageCardActions(usage = usage, onAskHermes = onAskHermes)
         }
+    }
+}
+
+@Composable
+private fun UsageCardHeader(usage: TokenUsage) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ProviderAvatar(providerKey = usage.provider, size = 20)
+            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Text(usage.provider, fontWeight = FontWeight.Bold, fontSize = AuroraTypography.caption.sp)
+            Text(" · ${usage.model}", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text("Cost", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+            Text(Formatting.formatCurrency(usage.cost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange, fontSize = 14.sp)
+        }
+    }
+}
+
+@Composable
+private fun UsageCardMetaRow(usage: TokenUsage) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Tokens: ${Formatting.formatTokens(usage.inputTokens.toLong() + usage.outputTokens.toLong())}",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "Started: ${Formatting.formatRelativeTime(usage.timestamp)}",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun UsageCardActions(usage: TokenUsage, onAskHermes: (String) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AskHermesChip(onAskHermes = onAskHermes)
+        usage.projectName?.takeIf { it.isNotBlank() }?.let { projName ->
+            UsageProjectChip(projectName = projName)
+        }
+    }
+}
+
+@Composable
+private fun AskHermesChip(onAskHermes: (String) -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        AuroraColors.hermesMercury.copy(alpha = 0.15f),
+                        AuroraColors.hermesAureate.copy(alpha = 0.08f),
+                    ),
+                ),
+            )
+            .border(
+                width = 0.5.dp,
+                brush = Brush.linearGradient(AuroraGradients.mercuryGradient),
+                shape = RoundedCornerShape(12.dp),
+            )
+            .clickable { onAskHermes("What was this session about?") }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            modifier = Modifier.size(12.dp),
+            tint = AuroraColors.hermesAureate,
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "Ask Hermes",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun UsageProjectChip(projectName: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Folder,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.size(10.dp),
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = projectName,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

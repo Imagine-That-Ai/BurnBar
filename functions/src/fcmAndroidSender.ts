@@ -22,9 +22,12 @@ import { errorCode, errorMessage, isRecord, stringValue } from "./guards.js";
  * isolation so APNs flows stay unchanged.
  */
 
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, getFirestore } from "firebase-admin/firestore";
+import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
+import * as logger from "firebase-functions/logger";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { pushWithResilience } from "./resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
@@ -102,6 +105,150 @@ export async function pushAndroidFcm(args: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Stuck-FCM retry sweeper
+//
+// The Firestore create trigger only runs once. A transient FCM outage used to
+// leave `fcm_outbound` documents pending forever after the first retryAt write.
+// This mirrors the APNs stuck-push sweeper so both mobile push planes have the
+// same durable recovery semantics.
+// ---------------------------------------------------------------------------
+
+/** Backoff base for transient retries (matches `sendFcmOutbound`'s first retry). */
+const FCM_RETRY_BACKOFF_BASE_MS = 30_000;
+/** Hard ceiling on a single backoff interval so token outages do not disappear for days. */
+const FCM_RETRY_BACKOFF_MAX_MS = 15 * 60_000;
+/** After this many attempts a still-failing push is sealed rejected for operator visibility. */
+export const MAX_FCM_RETRY_ATTEMPTS = 8;
+/** Max documents handled per scheduled tick. */
+const FCM_SWEEP_BATCH_LIMIT = 50;
+
+type FcmPushFn = (args: {
+  fcmToken: string;
+  data: Record<string, string>;
+  documentId: string;
+}) => Promise<SendResult>;
+
+/** Outcome of processing a single stuck FCM document. */
+export type StuckFcmOutcome = "sent" | "rejected" | "rescheduled" | "skipped";
+
+export function nextFcmRetryDelayMs(attempt: number): number {
+  const exponent = Math.max(0, attempt - 1);
+  const raw = FCM_RETRY_BACKOFF_BASE_MS * 2 ** exponent;
+  return Math.min(FCM_RETRY_BACKOFF_MAX_MS, raw);
+}
+
+function stringPayloadFromRecord(payload: unknown): Record<string, string> {
+  if (!isRecord(payload)) return {};
+  return Object.fromEntries(
+    Object.entries(payload).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
+  );
+}
+
+/**
+ * Re-push a due `fcm_outbound` document and persist its next state.
+ *
+ * Success and permanent rejection use the same fields as the create trigger.
+ * Transient failures are rescheduled with bounded exponential backoff until the
+ * retry budget is exhausted, at which point the document becomes `rejected`
+ * instead of remaining invisible as pending work.
+ */
+export async function processStuckFcmPush(
+  snapshot: QueryDocumentSnapshot,
+  push: FcmPushFn,
+  now: Date = new Date(),
+): Promise<StuckFcmOutcome> {
+  const data = snapshot.data();
+  if (!isRecord(data)) return "skipped";
+  if (data.status !== "pending") return "skipped";
+
+  const fcmToken = stringValue(data.fcmToken);
+  const priorAttempts = typeof data.attemptCount === "number" ? data.attemptCount : 0;
+
+  if (!fcmToken) {
+    await snapshot.ref.update({
+      status: "rejected",
+      rejectedAt: Timestamp.fromDate(now),
+      reason: "missing fcmToken",
+    });
+    return "rejected";
+  }
+
+  const result = await push({
+    fcmToken,
+    data: stringPayloadFromRecord(data.payload),
+    documentId: snapshot.id,
+  });
+
+  switch (result.status) {
+    case "sent":
+      await snapshot.ref.update({
+        status: "sent",
+        deliveredAt: Timestamp.fromDate(now),
+        fcmMessageId: result.messageId ?? null,
+      });
+      return "sent";
+    case "rejected":
+      await snapshot.ref.update({
+        status: "rejected",
+        rejectedAt: Timestamp.fromDate(now),
+        errorCode: result.errorCode ?? null,
+        reason: result.reason ?? null,
+      });
+      return "rejected";
+    case "retry": {
+      const attemptCount = priorAttempts + 1;
+      if (attemptCount >= MAX_FCM_RETRY_ATTEMPTS) {
+        await snapshot.ref.update({
+          status: "rejected",
+          rejectedAt: Timestamp.fromDate(now),
+          attemptCount,
+          errorCode: result.errorCode ?? null,
+          reason: result.reason ?? `exhausted ${MAX_FCM_RETRY_ATTEMPTS} retry attempts`,
+        });
+        return "rejected";
+      }
+      await snapshot.ref.update({
+        status: "pending",
+        attemptCount,
+        lastAttemptAt: Timestamp.fromDate(now),
+        lastFailureReason: result.reason ?? null,
+        retryAt: Timestamp.fromMillis(now.getTime() + nextFcmRetryDelayMs(attemptCount)),
+      });
+      return "rescheduled";
+    }
+  }
+}
+
+export async function sweepStuckFcmPushes(
+  db: ReturnType<typeof getFirestore>,
+  push: FcmPushFn,
+  now: Date = new Date(),
+): Promise<Record<StuckFcmOutcome, number>> {
+  const snapshot = await db
+    .collectionGroup("fcm_outbound")
+    .where("status", "==", "pending")
+    .where("retryAt", "<=", Timestamp.fromDate(now))
+    .orderBy("retryAt", "asc")
+    .limit(FCM_SWEEP_BATCH_LIMIT)
+    .get();
+
+  const tally: Record<StuckFcmOutcome, number> = { sent: 0, rejected: 0, rescheduled: 0, skipped: 0 };
+  for (const doc of snapshot.docs) {
+    try {
+      const outcome = await processStuckFcmPush(doc, push, now);
+      tally[outcome] += 1;
+    } catch (err) {
+      tally.skipped += 1;
+      logger.error("retryStuckFcmPushes: failed to process document", {
+        documentPath: doc.ref.path,
+        error: errorMessage(err),
+      });
+    }
+  }
+  return tally;
+}
+
 /**
  * Firestore trigger — fires for each new `fcm_outbound` document. Mirrors
  * `sendVoIPOutbound` but routes Android-bound pushes through FCM.
@@ -125,15 +272,9 @@ export const sendFcmOutbound = onDocumentCreated(
       return;
     }
 
-    const payload = isRecord(data.payload)
-      ? Object.fromEntries(
-          Object.entries(data.payload).flatMap(([key, value]) => (typeof value === "string" ? [[key, value]] : [])),
-        )
-      : {};
-
     const result = await pushAndroidFcm({
       fcmToken,
-      data: payload,
+      data: stringPayloadFromRecord(data.payload),
       documentId: event.params.docId,
     });
 
@@ -158,10 +299,23 @@ export const sendFcmOutbound = onDocumentCreated(
           status: "pending",
           lastAttemptAt: Timestamp.now(),
           lastFailureReason: result.reason ?? null,
-          retryAt: Timestamp.fromMillis(Date.now() + 30_000),
+          retryAt: Timestamp.fromMillis(Date.now() + nextFcmRetryDelayMs(1)),
           attemptCount: (typeof data.attemptCount === "number" ? data.attemptCount : 0) + 1,
         });
         return;
+    }
+  },
+);
+
+export const retryStuckFcmPushes = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    region: FUNCTIONS_REGION,
+  },
+  async () => {
+    const tally = await sweepStuckFcmPushes(getFirestore(), (args) => pushAndroidFcm(args));
+    if (tally.sent || tally.rejected || tally.rescheduled || tally.skipped) {
+      logger.info("retryStuckFcmPushes swept stuck FCM pushes", tally);
     }
   },
 );

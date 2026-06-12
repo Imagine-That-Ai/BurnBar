@@ -1,4 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
 
 package com.openburnbar
 

@@ -766,7 +766,12 @@ private struct ProviderQuotaChip: View {
                     .frame(width: 52, height: 52)
                     .shadow(color: primary.opacity(0.5), radius: 6)
 
-                // Logo glass disc
+                // Logo disc — material, not Liquid Glass: the chip sits inside
+                // an AuroraGlassCard whose iOS 26 background is itself a
+                // glassEffect plate in a different container, and glass cannot
+                // sample other glass (HIG: don't stack glass on glass). The
+                // card owns the glass surface here; material layers legally
+                // over it on every OS version.
                 Circle()
                     .fill(.ultraThinMaterial)
                     .frame(width: 36, height: 36)

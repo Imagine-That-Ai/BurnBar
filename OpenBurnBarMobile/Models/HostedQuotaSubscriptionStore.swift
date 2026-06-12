@@ -701,12 +701,9 @@ final class HostedQuotaSubscriptionStore {
             activeProductID == Self.hostedComputerUseProductID
     }
 
-    /// True when an *Ultra* auto-renewable subscription is the active StoreKit
-    /// entitlement. Ultra's authoritative state is the server-resolved data
-    /// tier (`isActiveUltra`, defined in `HostedQuotaSubscriptionStore+Ultra`),
-    /// which has no Apple product id; this StoreKit-only predicate lets
-    /// `cloudTier` resolve to `.ultra` immediately after purchase, before a
-    /// usage read has populated the resolved tier.
+    /// True when an *Ultra* auto-renewable subscription product is the active
+    /// entitlement. This covers both StoreKit purchases and Firestore direct
+    /// reads that return the server-resolved `burnbar_ultra` document.
     var hasActiveUltraStoreKitProduct: Bool {
         activeProductID == Self.cloudUltraMonthlyProductID ||
             activeProductID == Self.cloudUltraAnnualProductID
@@ -735,6 +732,51 @@ final class HostedQuotaSubscriptionStore {
 
     func displayPrice(for catalogProduct: OpenBurnBarStoreProduct) -> String {
         storeProduct(for: catalogProduct.id)?.displayPrice ?? catalogProduct.fallbackDisplayPrice
+    }
+
+    /// Per-month equivalent of an annual plan's price ("$20.75"), derived from
+    /// the live StoreKit price when loaded and the catalog fallback otherwise.
+    /// `nil` for non-annual products or unparseable prices.
+    func monthlyEquivalentDisplayPrice(for catalogProduct: OpenBurnBarStoreProduct) -> String? {
+        guard catalogProduct.cadence == "Annual" else { return nil }
+        if let product = storeProduct(for: catalogProduct.id)?.storeKitProduct {
+            return (product.price / 12).formatted(product.priceFormatStyle.precision(.fractionLength(2)))
+        }
+        guard let value = Self.numericPrice(from: catalogProduct.fallbackDisplayPrice), value > 0 else { return nil }
+        let symbol = catalogProduct.fallbackDisplayPrice.prefix(while: { !$0.isNumber })
+        let monthly = NSDecimalNumber(decimal: value / 12).doubleValue
+        return "\(symbol)\(String(format: "%.2f", monthly))"
+    }
+
+    /// Whole months effectively free on the annual plan versus twelve monthly
+    /// renewals (e.g. $249/yr vs $24.99/mo → 2). Uses live StoreKit prices only
+    /// when BOTH products are loaded (never mixes a live price with a USD
+    /// fallback), and the catalog fallbacks otherwise. `nil` when the saving
+    /// comes to less than one month.
+    func annualFreeMonths(monthly: OpenBurnBarStoreProduct, annual: OpenBurnBarStoreProduct) -> Int? {
+        let monthlyPrice: Decimal?
+        let annualPrice: Decimal?
+        if let liveMonthly = storeProduct(for: monthly.id)?.storeKitProduct?.price,
+           let liveAnnual = storeProduct(for: annual.id)?.storeKitProduct?.price {
+            monthlyPrice = liveMonthly
+            annualPrice = liveAnnual
+        } else {
+            monthlyPrice = Self.numericPrice(from: monthly.fallbackDisplayPrice)
+            annualPrice = Self.numericPrice(from: annual.fallbackDisplayPrice)
+        }
+        guard let m = monthlyPrice, let a = annualPrice, m > 0 else { return nil }
+        // Round the Decimal BEFORE bridging to NSDecimalNumber.intValue —
+        // a full-precision division result overflows the 64-bit mantissa and
+        // intValue returns garbage.
+        var ratio = (m * 12 - a) / m
+        var wholeMonths = Decimal()
+        NSDecimalRound(&wholeMonths, &ratio, 0, .down)
+        let months = NSDecimalNumber(decimal: wholeMonths).intValue
+        return months >= 1 ? months : nil
+    }
+
+    private static func numericPrice(from display: String) -> Decimal? {
+        Decimal(string: display.filter { $0.isNumber || $0 == "." })
     }
 
     func subscriptionPlan(for productID: String) -> OpenBurnBarStoreProduct? {

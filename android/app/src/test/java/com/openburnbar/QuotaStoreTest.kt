@@ -1,9 +1,8 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar
 
 import android.app.Application
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.stores.QuotaStore
@@ -73,4 +72,35 @@ class QuotaStoreTest {
         advanceUntilIdle()
         assertEquals(100.0, store.snapshots.value.first().percentageRemaining, 0.01)
     }
+
+    @Test
+    fun `load surfaces Firestore permission errors instead of crashing main dispatcher`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        coEvery { mockRepo.fetchQuotaSnapshots() } throws firestorePermissionDenied()
+
+        val store = QuotaStore(mockRepo)
+        store.load()
+        advanceUntilIdle()
+
+        assertEquals("Missing or insufficient permissions.", store.error.value)
+        assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
+    }
+
+    @Test
+    fun `refresh surfaces Firestore permission errors instead of crashing main dispatcher`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        coEvery { mockRepo.fetchQuotaSnapshots() } throws firestorePermissionDenied()
+
+        val store = QuotaStore(mockRepo)
+        store.refresh()
+        advanceUntilIdle()
+
+        assertEquals("Missing or insufficient permissions.", store.error.value)
+        assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
+    }
+
+    private fun firestorePermissionDenied(): FirebaseException =
+        mockk {
+            every { message } returns "Missing or insufficient permissions."
+        }
 }

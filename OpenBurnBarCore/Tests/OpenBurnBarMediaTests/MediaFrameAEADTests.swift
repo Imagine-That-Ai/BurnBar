@@ -20,6 +20,22 @@ final class MediaFrameAEADTests: XCTestCase {
         XCTAssertEqual(opened, plaintext)
     }
 
+    func testSlicedEnvelopeWithNonZeroStartIndexOpens() throws {
+        // The open path deliberately avoids a defensive whole-envelope copy
+        // (a per-frame cost at 30-60fps), so it must handle Data SLICES whose
+        // startIndex is non-zero — the shape a framing/transport layer hands us.
+        let k = key()
+        let plaintext = Data("an encoded H.264 NAL frame".utf8)
+        let sealed = try aead.seal(plaintext: plaintext, key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)
+        var framed = Data("12-byte-pad!".utf8)
+        framed.append(sealed)
+        let slice = framed.suffix(from: framed.startIndex + 12)
+        XCTAssertNotEqual(slice.startIndex, 0)
+        XCTAssertTrue(MediaFrameAEAD.isSealedEnvelope(slice))
+        let opened = try aead.open(envelope: slice, key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)
+        XCTAssertEqual(opened, plaintext)
+    }
+
     func testTamperedFrameIndexFailsToOpen() throws {
         let k = key()
         let sealed = try aead.seal(plaintext: Data("frame".utf8), key: k, streamClass: "media.screen.video", kind: 0x01, gopID: 4, frameIndex: 9)

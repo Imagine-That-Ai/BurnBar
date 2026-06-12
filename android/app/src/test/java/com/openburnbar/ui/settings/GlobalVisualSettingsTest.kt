@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar.ui.settings
 
@@ -115,7 +113,6 @@ class GlobalVisualSettingsTest {
         field.setBoolean(GlobalVisualSettings, value)
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun resetStyle(style: BackgroundStyle) {
         val styleField = GlobalVisualSettings::class.java.getDeclaredField("_backgroundStyle")
         styleField.isAccessible = true
@@ -125,7 +122,6 @@ class GlobalVisualSettingsTest {
         (legacyField.get(GlobalVisualSettings) as MutableState<Any?>).value = style.usesCustomBackdrop
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun setProviderGlyphsState(value: Set<AgentProvider>) {
         val field = GlobalVisualSettings::class.java.getDeclaredField("_providerGlyphs")
         field.isAccessible = true

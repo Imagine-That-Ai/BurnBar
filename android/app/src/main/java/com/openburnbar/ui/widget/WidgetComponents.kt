@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.widget
@@ -63,7 +62,7 @@ const val ASK_CHIP_ASSISTANT_HERMES = "hermes"
 const val ASK_CHIP_ASSISTANT_PI = "pi"
 
 /** Build the launch Intent for an Ask-chip. Public so widgets can compose it. */
-fun askAssistantIntent(context: Context, assistant: String, _prompt: String?): Intent {
+fun askAssistantIntent(context: Context, assistant: String): Intent {
     val uri = "burnbar://$assistant"
     return Intent(context, MainActivity::class.java).apply {
         data = Uri.parse(uri)
@@ -78,14 +77,13 @@ fun askAssistantIntent(context: Context, assistant: String, _prompt: String?): I
 fun WidgetAskChip(
     label: String,
     assistant: String,
-    prompt: String? = null,
     glyph: String? = null,
     accent: Color = WidgetTheme.amber,
     prominent: Boolean = false,
     modifier: GlanceModifier = GlanceModifier,
 ) {
     val context = LocalContext.current
-    val intent = askAssistantIntent(context, assistant, prompt)
+    val intent = askAssistantIntent(context, assistant)
     val displayLabel = if (!glyph.isNullOrEmpty() && prominent) "$glyph  $label" else label
 
     Row(

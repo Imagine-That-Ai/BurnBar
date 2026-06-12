@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Live wallpaper canvas uses literal geometry and animation timing constants.
 
 package com.openburnbar.wallpaper

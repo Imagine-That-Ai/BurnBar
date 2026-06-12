@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; drift
 // fixtures are literal by design.
 
 package com.openburnbar.ui.components

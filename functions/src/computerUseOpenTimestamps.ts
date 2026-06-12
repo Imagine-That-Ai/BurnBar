@@ -141,7 +141,7 @@ function otsStampServiceURL(): string | undefined {
   return configured && configured.length > 0 ? configured : undefined;
 }
 
-function otsVerifierServiceAudience(serviceURL: string): string | undefined {
+function otsVerifierServiceAudience(_serviceURL: string): string | undefined {
   const cfg = readOpenBurnBarFunctionsConfig();
   const configured = (
     process.env.OPENBURNBAR_OTS_VERIFY_AUDIENCE ??

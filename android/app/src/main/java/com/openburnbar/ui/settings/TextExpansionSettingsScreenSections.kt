@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.settings
@@ -65,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import com.openburnbar.data.db.TextExpansionSnippetEntity
 import com.openburnbar.data.text.TextExpansionTrigger
 import com.openburnbar.ui.components.AuroraSettingsToggle
+import com.openburnbar.ui.components.liquidGlassSurface
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -153,9 +153,8 @@ internal fun TextExpansionCloudSyncSection(state: TextExpansionSettingsState) {
     val colors = state.colors
     Surface(
         shape = RoundedCornerShape(AuroraRadius.md.dp),
-        color = colors.surfaceElevatedColor,
-        border = BorderStroke(0.75.dp, colors.borderSubtleColor),
-        modifier = Modifier.fillMaxWidth()
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.md.dp))
     ) {
         Box {
             Box(
@@ -194,12 +193,10 @@ internal fun TextExpansionCloudSyncSection(state: TextExpansionSettingsState) {
 
 @Composable
 internal fun TextExpansionEditorSection(state: TextExpansionSettingsState) {
-    val colors = state.colors
     Surface(
         shape = RoundedCornerShape(AuroraRadius.md.dp),
-        color = colors.surfaceElevatedColor,
-        border = BorderStroke(0.75.dp, colors.borderSubtleColor),
-        modifier = Modifier.fillMaxWidth()
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.md.dp))
     ) {
         Box {
             Box(
@@ -381,12 +378,10 @@ internal fun TextExpansionEditorActions(state: TextExpansionSettingsState) {
 
 @Composable
 internal fun TextExpansionSandboxSection(state: TextExpansionSettingsState) {
-    val colors = state.colors
     Surface(
         shape = RoundedCornerShape(AuroraRadius.md.dp),
-        color = colors.surfaceElevatedColor,
-        border = BorderStroke(0.75.dp, colors.borderSubtleColor),
-        modifier = Modifier.fillMaxWidth()
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.md.dp))
     ) {
         Box {
             Box(modifier = Modifier.width(3.dp).align(Alignment.CenterStart).matchParentSize().background(AuroraColors.hermesAureate))
@@ -496,14 +491,16 @@ internal fun TextExpansionSnippetCard(
 ) {
     val colors = state.colors
     val isSelected = state.editing?.id == snippet.id
-    val cardBorder = if (isSelected) BorderStroke(1.5.dp, AuroraColors.hermesAureate) else BorderStroke(0.75.dp, colors.borderSubtleColor)
-    val cardBg = if (isSelected) colors.surfaceElevatedColor else colors.surfaceColor
+    val glassModifier = modifier.fillMaxWidth().liquidGlassSurface(shape = RoundedCornerShape(AuroraRadius.md.dp))
     Surface(
         onClick = { state.loadDraft(snippet) },
         shape = RoundedCornerShape(AuroraRadius.md.dp),
-        color = cardBg,
-        border = cardBorder,
-        modifier = modifier.fillMaxWidth(),
+        color = Color.Transparent,
+        modifier = if (isSelected) {
+            glassModifier.border(BorderStroke(1.5.dp, AuroraColors.hermesAureate), RoundedCornerShape(AuroraRadius.md.dp))
+        } else {
+            glassModifier
+        },
     ) {
         Box {
             TextExpansionSnippetAccentStrip(snippet, colors)

@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.square
@@ -496,45 +495,51 @@ internal fun AgentBrandZoneOverlays(
             existingTopic = context.activeTopic,
             onDismiss = overlayCallbacks.onDismissSubscribe,
             onAction = { action ->
-                overlayCallbacks.onSubscribeResult(
-                    when (action) {
-                        is SubscribeAction.Subscribe -> {
-                            context.subscriptionStore.subscribe(context.identity, action.cadence, action.deliveryMode)
-                            "Subscribed to ${context.identity.displayName} (${action.cadence.displayLabel.lowercase()}, ${action.deliveryMode.displayLabel.lowercase()})."
-                        }
-                        SubscribeAction.Unsubscribe -> {
-                            context.coroutineScope.launch {
-                                val message =
-                                    runCatching {
-                                        when (context.subscriptionStore.unsubscribe(context.identity.id)) {
-                                            AgentSubscriptionUnsubscribeResult.REMOVED ->
-                                                "Unsubscribed from ${context.identity.displayName}."
-                                            AgentSubscriptionUnsubscribeResult.LOCAL_ONLY_REMOVED ->
-                                                "Removed local subscription for ${context.identity.displayName}."
-                                            AgentSubscriptionUnsubscribeResult.MISSING_CLOUD_KEY ->
-                                                "Connect this device to private cloud backup, then try again."
-                                        }
-                                    }.getOrElse {
-                                        "Could not unsubscribe from ${context.identity.displayName}. Try again."
-                                    }
-                                overlayCallbacks.onSubscribeResult(message)
-                            }
-                            "Removing ${context.identity.displayName} subscription..."
-                        }
-                        is SubscribeAction.SetMuted -> {
-                            context.subscriptionStore.setMuted(context.identity.id, action.muted)
-                            if (action.muted) "Muted ${context.identity.displayName}." else "Unmuted ${context.identity.displayName}."
-                        }
-                        is SubscribeAction.SetDeliveryMode -> {
-                            context.subscriptionStore.setDeliveryMode(context.identity.id, action.deliveryMode)
-                            "${context.identity.displayName} delivery set to ${action.deliveryMode.displayLabel.lowercase()}."
-                        }
-                    },
-                )
+                overlayCallbacks.onSubscribeResult(agentBrandSubscribeActionMessage(context, overlayCallbacks, action))
             },
         )
     }
 }
+
+private fun agentBrandSubscribeActionMessage(
+    context: AgentBrandZoneOverlayContext,
+    overlayCallbacks: AgentBrandZoneOverlayCallbacks,
+    action: SubscribeAction,
+): String = when (action) {
+    is SubscribeAction.Subscribe -> {
+        context.subscriptionStore.subscribe(context.identity, action.cadence, action.deliveryMode)
+        "Subscribed to ${context.identity.displayName} (${action.cadence.displayLabel.lowercase()}, ${action.deliveryMode.displayLabel.lowercase()})."
+    }
+    SubscribeAction.Unsubscribe -> {
+        context.coroutineScope.launch {
+            val message = runCatching {
+                agentBrandUnsubscribeResultMessage(context)
+            }.getOrElse {
+                "Could not unsubscribe from ${context.identity.displayName}. Try again."
+            }
+            overlayCallbacks.onSubscribeResult(message)
+        }
+        "Removing ${context.identity.displayName} subscription..."
+    }
+    is SubscribeAction.SetMuted -> {
+        context.subscriptionStore.setMuted(context.identity.id, action.muted)
+        if (action.muted) "Muted ${context.identity.displayName}." else "Unmuted ${context.identity.displayName}."
+    }
+    is SubscribeAction.SetDeliveryMode -> {
+        context.subscriptionStore.setDeliveryMode(context.identity.id, action.deliveryMode)
+        "${context.identity.displayName} delivery set to ${action.deliveryMode.displayLabel.lowercase()}."
+    }
+}
+
+private suspend fun agentBrandUnsubscribeResultMessage(context: AgentBrandZoneOverlayContext): String =
+    when (context.subscriptionStore.unsubscribe(context.identity.id)) {
+        AgentSubscriptionUnsubscribeResult.REMOVED ->
+            "Unsubscribed from ${context.identity.displayName}."
+        AgentSubscriptionUnsubscribeResult.LOCAL_ONLY_REMOVED ->
+            "Removed local subscription for ${context.identity.displayName}."
+        AgentSubscriptionUnsubscribeResult.MISSING_CLOUD_KEY ->
+            "Connect this device to private cloud backup, then try again."
+    }
 
 internal fun availabilityHexColor(availability: AgentAvailability): Color = when (availability) {
     AgentAvailability.ONLINE -> AuroraColors.success
