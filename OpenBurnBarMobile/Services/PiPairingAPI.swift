@@ -6,9 +6,8 @@ import OpenBurnBarCore
 
 /// Pi-agent pairing domain slice of the Firebase callable surface, split out
 /// of `FunctionsRepository` (tech-debt finding-67). Owns the Pi agent host
-/// pairing/connection lifecycle callables. Method bodies are verbatim moves
-/// from `FunctionsRepository`; the repository remains a facade that forwards
-/// here, so existing call sites keep compiling unchanged.
+/// pairing/connection lifecycle callables. Payload construction stays here;
+/// `FunctionsRepository` remains a small facade over this domain API.
 @MainActor
 protocol PiPairingServicing: AnyObject {
     func createPiAgentPairing(
@@ -17,26 +16,7 @@ protocol PiPairingServicing: AnyObject {
         displayName: String?
     ) async throws -> PiPairingSessionRecord
 
-    func completePiAgentPairing(
-        pairingId: String,
-        code: String,
-        connectionId: String?,
-        displayName: String,
-        mode: PiConnectionMode,
-        endpointURL: String,
-        advertisedModel: String?,
-        selectedInstanceID: String?,
-        redisURL: String?,
-        capabilities: [String],
-        instances: [PiAgentInstanceRecord],
-        models: [PiAgentRuntimeModelOption],
-        relayPublicKey: String?,
-        relayKeyVersion: Int?,
-        relayEncryption: String?,
-        realtimeRelayURL: String?,
-        realtimeRelayStatus: String?,
-        deviceId: String?
-    ) async throws -> PiConnectionRecord
+    func completePiAgentPairing(_ request: PiAgentPairingCompletionRequest) async throws -> PiConnectionRecord
 
     func listPiAgentConnections(includeRevoked: Bool) async throws -> [PiConnectionRecord]
     func revokePiAgentConnection(connectionId: String, deviceId: String?) async throws
@@ -54,6 +34,27 @@ protocol PiPairingServicing: AnyObject {
 }
 
 // MARK: - Pi Agent Pairing API
+
+struct PiAgentPairingCompletionRequest: Sendable {
+    let pairingId: String
+    let code: String
+    let connectionId: String?
+    let displayName: String
+    let mode: PiConnectionMode
+    let endpointURL: String
+    let advertisedModel: String?
+    let selectedInstanceID: String?
+    let redisURL: String?
+    let capabilities: [String]
+    let instances: [PiAgentInstanceRecord]
+    let models: [PiAgentRuntimeModelOption]
+    let relayPublicKey: String?
+    let relayKeyVersion: Int?
+    let relayEncryption: String?
+    let realtimeRelayURL: String?
+    let realtimeRelayStatus: String?
+    let deviceId: String?
+}
 
 @MainActor
 final class PiPairingAPI: PiPairingServicing {
@@ -82,47 +83,40 @@ final class PiPairingAPI: PiPairingServicing {
         return try decodeHermesValue(PiPairingSessionRecord.self, from: result.data)
     }
 
-    func completePiAgentPairing(
-        pairingId: String,
-        code: String,
-        connectionId: String? = nil,
-        displayName: String,
-        mode: PiConnectionMode = .directURL,
-        endpointURL: String,
-        advertisedModel: String? = nil,
-        selectedInstanceID: String? = nil,
-        redisURL: String? = nil,
-        capabilities: [String] = ["chat_completions"],
-        instances: [PiAgentInstanceRecord] = [],
-        models: [PiAgentRuntimeModelOption] = [],
-        relayPublicKey: String? = nil,
-        relayKeyVersion: Int? = nil,
-        relayEncryption: String? = nil,
-        realtimeRelayURL: String? = nil,
-        realtimeRelayStatus: String? = nil,
-        deviceId: String? = nil
-    ) async throws -> PiConnectionRecord {
+    func completePiAgentPairing(_ request: PiAgentPairingCompletionRequest) async throws -> PiConnectionRecord {
         let callable = try functionsClient().httpsCallable("completePiAgentPairing")
         var payload: [String: Any] = [
-            "pairingId": pairingId,
-            "code": code,
-            "displayName": displayName,
-            "mode": mode.rawValue,
-            "endpointURL": endpointURL,
-            "capabilities": capabilities
+            "pairingId": request.pairingId,
+            "code": request.code,
+            "displayName": request.displayName,
+            "mode": request.mode.rawValue,
+            "endpointURL": request.endpointURL,
+            "capabilities": request.capabilities
         ]
-        if let connectionId, !connectionId.isEmpty { payload["connectionId"] = connectionId }
-        if let advertisedModel, !advertisedModel.isEmpty { payload["advertisedModel"] = advertisedModel }
-        if let selectedInstanceID, !selectedInstanceID.isEmpty { payload["selectedInstanceID"] = selectedInstanceID }
-        if let redisURL, !redisURL.isEmpty { payload["redisURL"] = redisURL }
-        if !instances.isEmpty { payload["instances"] = try encodedFunctionValue(instances) }
-        if !models.isEmpty { payload["models"] = try encodedFunctionValue(models) }
-        if let relayPublicKey, !relayPublicKey.isEmpty { payload["relayPublicKey"] = relayPublicKey }
-        if let relayKeyVersion { payload["relayKeyVersion"] = relayKeyVersion }
-        if let relayEncryption, !relayEncryption.isEmpty { payload["relayEncryption"] = relayEncryption }
-        if let realtimeRelayURL, !realtimeRelayURL.isEmpty { payload["realtimeRelayURL"] = realtimeRelayURL }
-        if let realtimeRelayStatus, !realtimeRelayStatus.isEmpty { payload["realtimeRelayStatus"] = realtimeRelayStatus }
-        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
+        if let connectionId = request.connectionId, !connectionId.isEmpty { payload["connectionId"] = connectionId }
+        if let advertisedModel = request.advertisedModel, !advertisedModel.isEmpty {
+            payload["advertisedModel"] = advertisedModel
+        }
+        if let selectedInstanceID = request.selectedInstanceID, !selectedInstanceID.isEmpty {
+            payload["selectedInstanceID"] = selectedInstanceID
+        }
+        if let redisURL = request.redisURL, !redisURL.isEmpty { payload["redisURL"] = redisURL }
+        if !request.instances.isEmpty { payload["instances"] = try encodedFunctionValue(request.instances) }
+        if !request.models.isEmpty { payload["models"] = try encodedFunctionValue(request.models) }
+        if let relayPublicKey = request.relayPublicKey, !relayPublicKey.isEmpty {
+            payload["relayPublicKey"] = relayPublicKey
+        }
+        if let relayKeyVersion = request.relayKeyVersion { payload["relayKeyVersion"] = relayKeyVersion }
+        if let relayEncryption = request.relayEncryption, !relayEncryption.isEmpty {
+            payload["relayEncryption"] = relayEncryption
+        }
+        if let realtimeRelayURL = request.realtimeRelayURL, !realtimeRelayURL.isEmpty {
+            payload["realtimeRelayURL"] = realtimeRelayURL
+        }
+        if let realtimeRelayStatus = request.realtimeRelayStatus, !realtimeRelayStatus.isEmpty {
+            payload["realtimeRelayStatus"] = realtimeRelayStatus
+        }
+        if let deviceId = request.deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
 
         let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
         return try decodeHermesValue(PiConnectionRecord.self, from: result.data)
