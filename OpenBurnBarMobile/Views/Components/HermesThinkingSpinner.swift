@@ -9,6 +9,7 @@ import OpenBurnBarCore
 /// through `HermesThinkingSpinner`, so every thinking surface (Hermes chat,
 /// Quick Ask, Agent Live Stage, Chart Studio) follows the same preference.
 enum HermesThinkingStyle: String, CaseIterable, Identifiable {
+    case swarm
     case braille
     case orbit
     case breathe
@@ -30,12 +31,13 @@ enum HermesThinkingStyle: String, CaseIterable, Identifiable {
     case droplets
 
     static let storageKey = "hermesThinkingStyle"
-    static let defaultStyle: HermesThinkingStyle = .braille
+    static let defaultStyle: HermesThinkingStyle = .swarm
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
+        case .swarm:        return "Swarm"
         case .braille:      return "Braille"
         case .orbit:        return "Orbit"
         case .breathe:      return "Breathe"
@@ -70,6 +72,7 @@ enum HermesThinkingStyle: String, CaseIterable, Identifiable {
         case .scanline, .helix:                    return 0.18
         case .checkerboard:                        return 0.30
         case .droplets:                            return 0.10 // unused — droplets animate natively
+        case .swarm:                               return 0.10 // unused — swarm animates natively
         }
     }
 
@@ -115,6 +118,8 @@ enum HermesThinkingStyle: String, CaseIterable, Identifiable {
             return ["⠉⠙⠚⠒", "⠒⠉⠙⠚", "⠚⠒⠉⠙", "⠙⠚⠒⠉"]
         case .droplets:
             return ["⠿"] // placeholder — droplets render via MercuryThinkingIndicator
+        case .swarm:
+            return ["⠿"] // placeholder — swarm renders via SwarmDotsThinkingIndicator
         }
     }
 }
@@ -311,7 +316,16 @@ struct HermesThinkingSpinner: View {
 
     var body: some View {
         Group {
-            if style == .droplets {
+            if style == .swarm {
+                SwarmDotsThinkingIndicator(
+                    glyphProvider: provider ?? .hermes,
+                    scale: size.pointSize / HermesThinkingSizeChoice.medium.pointSize,
+                    usesBrandGlyphColors: colorChoice == .subtle || colorChoice == .provider,
+                    shading: { date in resolvedStyle(date: date) }
+                )
+                .padding(.vertical, MobileTheme.Spacing.xs)
+                .padding(.horizontal, MobileTheme.Spacing.sm)
+            } else if style == .droplets {
                 dropletsBody
             } else if reduceMotion {
                 frameText(style.frames[0], date: .now)
@@ -392,6 +406,171 @@ struct HermesThinkingSpinner: View {
         case .rainbow: return MobileTheme.ember // base hue; hueRotation cycles it
         case .custom:  return Color(hex: customColorHex)
         }
+    }
+}
+
+// MARK: - Swarm Dots Indicator
+
+/// The default thinking indicator: a miniature of the backdrop murmuration.
+/// A small particle swarm converges into the active provider's brand glyph
+/// (in the logo's real sampled colors), holds, then dissolves and pools into
+/// three reading dots — and back, forever. Same point clouds as the big swarm
+/// (`SwarmGlyphSampler`), same "form by swarm" motion language.
+private struct SwarmDotsThinkingIndicator: View {
+    let glyphProvider: AgentProvider
+    /// 1.0 at medium; scales the whole stage.
+    let scale: CGFloat
+    /// True for the "authentic" color treatments (Subtle/Provider): the glyph
+    /// phase shows the logo's real sampled colors, crossfading to the user's
+    /// shading as the particles pool into dots. Explicit color picks rule the
+    /// whole cycle.
+    let usesBrandGlyphColors: Bool
+    /// Resolves the user's color choice at a moment in time (rainbow cycles).
+    let shading: (Date) -> AnyShapeStyle
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var glyphPoints: [SwarmGlyphPoint] = []
+
+    /// Full cycle length. Phases: glyph hold -> scatter to dots -> dots hold
+    /// -> scatter back.
+    private static let period: Double = 4.6
+    private static let glyphHoldEnd: Double = 1.5
+    private static let toDotsEnd: Double = 2.3
+    private static let dotsHoldEnd: Double = 3.8
+
+    private var stageSize: CGSize {
+        CGSize(width: 76 * scale, height: 34 * scale)
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { context in
+            Canvas { graphics, size in
+                draw(in: &graphics, size: size, date: context.date)
+            }
+        }
+        .frame(width: stageSize.width, height: stageSize.height)
+        .onAppear {
+            glyphPoints = SwarmGlyphSampler.glyphPoints(for: glyphProvider, maxPoints: 84)
+        }
+        .onChange(of: glyphProvider) { _, newProvider in
+            glyphPoints = SwarmGlyphSampler.glyphPoints(for: newProvider, maxPoints: 84)
+        }
+    }
+
+    private func draw(in graphics: inout GraphicsContext, size: CGSize, date: Date) {
+        let points = glyphPoints.isEmpty ? Self.fallbackRing : glyphPoints
+        let count = points.count
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let glyphRadius = min(size.width, size.height) * 0.46
+        let dotSpread = size.width * 0.29
+        let dotClusterRadius = 2.6 * scale
+        let clusterCenters: [CGPoint] = [
+            CGPoint(x: center.x - dotSpread, y: center.y),
+            center,
+            CGPoint(x: center.x + dotSpread, y: center.y)
+        ]
+        let t = date.timeIntervalSinceReferenceDate
+        let phase = t.truncatingRemainder(dividingBy: Self.period)
+        let perCluster = Double((count + 2) / 3)
+        let userStyle = shading(date)
+
+        for index in 0..<count {
+            let hashA = Self.unitHash(index, salt: 1)
+            let hashB = Self.unitHash(index, salt: 2)
+
+            // Morph parameter: 0 = glyph formation, 1 = three dots.
+            // Per-particle stagger makes departures ragged — swarm, not slide.
+            let stagger = hashA * 0.35
+            let m: Double
+            if reduceMotion {
+                m = 1
+            } else if phase < Self.glyphHoldEnd {
+                m = 0
+            } else if phase < Self.toDotsEnd {
+                m = Self.smoothstep((phase - Self.glyphHoldEnd - stagger) / (Self.toDotsEnd - Self.glyphHoldEnd - 0.35))
+            } else if phase < Self.dotsHoldEnd {
+                m = 1
+            } else {
+                m = 1 - Self.smoothstep((phase - Self.dotsHoldEnd - stagger) / (Self.period - Self.dotsHoldEnd - 0.35))
+            }
+
+            let glyphPoint = points[index % count]
+            let glyphTarget = CGPoint(
+                x: center.x + glyphPoint.position.x * glyphRadius,
+                y: center.y + glyphPoint.position.y * glyphRadius
+            )
+
+            let cluster = index % 3
+            let u = (Double(index / 3) + 0.5) / perCluster
+            let spiralRadius = dotClusterRadius * sqrt(u)
+            let spiralAngle = Double(index) * 2.39996323
+            let dotTarget = CGPoint(
+                x: clusterCenters[cluster].x + cos(spiralAngle) * spiralRadius,
+                y: clusterCenters[cluster].y + sin(spiralAngle) * spiralRadius
+            )
+
+            // Wobble is gentle while held in formation and chaotic mid-flight.
+            let chaos = reduceMotion ? 0 : (0.5 + 9.0 * m * (1 - m)) * scale
+            let wobbleX = sin(t * (1.3 + hashA * 1.4) + hashB * .pi * 2) * chaos
+            let wobbleY = cos(t * (1.1 + hashB * 1.6) + hashA * .pi * 2) * chaos
+
+            let position = CGPoint(
+                x: glyphTarget.x + (dotTarget.x - glyphTarget.x) * m + wobbleX,
+                y: glyphTarget.y + (dotTarget.y - glyphTarget.y) * m + wobbleY
+            )
+
+            // Particles read denser in the glyph, plumper as pooled dots.
+            let radius = (0.9 + 0.5 * hashB + 0.9 * m) * scale
+            let rect = CGRect(
+                x: position.x - radius,
+                y: position.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+            let path = Path(ellipseIn: rect)
+            let baseOpacity = 0.62 + 0.38 * hashA
+
+            // Brand-true glyph: logo colors while formed, crossfading to the
+            // user's shading as particles pool into dots. Two weighted fills
+            // only during the brief transition window.
+            if usesBrandGlyphColors, let brand = glyphPoint.brandColor {
+                if m < 1 {
+                    graphics.opacity = baseOpacity * (1 - m) * brand.a
+                    graphics.fill(path, with: .color(brand.color))
+                }
+                if m > 0 {
+                    graphics.opacity = baseOpacity * m
+                    graphics.fill(path, with: .style(userStyle))
+                }
+            } else {
+                graphics.opacity = baseOpacity
+                graphics.fill(path, with: .style(userStyle))
+            }
+        }
+    }
+
+    /// Deterministic per-particle randomness — no `random()` so frames are
+    /// pure functions of (index, time).
+    private static func unitHash(_ index: Int, salt: Int) -> Double {
+        var value = UInt64(bitPattern: Int64(index &+ salt &* 7919)) &* 2654435761
+        value ^= value >> 13
+        value = value &* 1099511628211
+        return Double(value % 4096) / 4096.0
+    }
+
+    private static func smoothstep(_ x: Double) -> Double {
+        let clamped = min(max(x, 0), 1)
+        return clamped * clamped * (3 - 2 * clamped)
+    }
+
+    /// Last-resort formation while glyph sampling warms (or has no logo):
+    /// a clean ring, so the indicator never renders as scattered noise.
+    private static let fallbackRing: [SwarmGlyphPoint] = (0..<84).map { index in
+        let angle = Double(index) / 84.0 * .pi * 2
+        return SwarmGlyphPoint(
+            position: CGPoint(x: cos(angle), y: sin(angle)),
+            brandColor: nil
+        )
     }
 }
 
