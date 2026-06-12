@@ -287,7 +287,15 @@ tasks.register("verifyReleaseFirebaseConfig") {
     }
 }
 
-tasks.matching { it.name.contains("Release") && it.name != "verifyReleaseFirebaseConfig" }.configureEach {
+val releaseArtifactTasksRequiringFirebaseConfig =
+    setOf(
+        "assembleRelease",
+        "bundleRelease",
+        "packageRelease",
+        "publishReleaseBundle",
+        "signReleaseBundle"
+    )
+tasks.matching { it.name in releaseArtifactTasksRequiringFirebaseConfig }.configureEach {
     dependsOn("verifyReleaseFirebaseConfig")
 }
 
