@@ -12,8 +12,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-private const val VAL_7_5 = 7.5
-private const val VAL_9_5 = 9.5
 class BudgetGateTest {
     @Test
     fun testBillingModeParsing() {
@@ -92,12 +90,12 @@ class BudgetGateTest {
         assertEquals(BudgetGateDecision.Kind.ALLOW, resultAllow.decision)
 
         // Scenario 2: Spend reaches warning zone -> WARN
-        every { dao.getGlobalSpend(any(), any()) } returns VAL_7_5
+        every { dao.getGlobalSpend(any(), any()) } returns 7.5
         val resultWarn = gate.evaluate(credential, estimatedCost = 1.0)
         assertEquals(BudgetGateDecision.Kind.WARN, resultWarn.decision)
 
         // Scenario 3: Spend exceeds limit -> BLOCK
-        every { dao.getGlobalSpend(any(), any()) } returns VAL_9_5
+        every { dao.getGlobalSpend(any(), any()) } returns 9.5
         val resultBlock = gate.evaluate(credential, estimatedCost = 1.0)
         assertEquals(BudgetGateDecision.Kind.BLOCK, resultBlock.decision)
     }

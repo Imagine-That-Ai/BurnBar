@@ -114,7 +114,7 @@ private fun buildRuleBasedNarrativeSection(
                 "${digest.totals.sessionCount} sessions and ${digest.totals.totalTokens} tokens.",
                 "${digest.providers.maxByOrNull { it.costUSD }?.displayName ?: "No provider"} led provider spend.",
             ),
-            citations = citations.take(INSIGHT_VAL_3),
+            citations = citations.take(INSIGHT_MAX_CITATIONS),
             sparkline = digest.daily.map { it.costUSD },
         )
     val narrativeWidget =
@@ -126,7 +126,7 @@ private fun buildRuleBasedNarrativeSection(
                 data = narrative,
                 reason = "Default brief lead finding.",
                 modelTag = request.selectedModel,
-                citations = citations.take(INSIGHT_VAL_3),
+                citations = citations.take(INSIGHT_MAX_CITATIONS),
             ),
         )
     val findings =
@@ -134,7 +134,7 @@ private fun buildRuleBasedNarrativeSection(
             InsightFinding(
                 title = headline,
                 whyItMatters = body,
-                evidence = citations.take(INSIGHT_VAL_3),
+                evidence = citations.take(INSIGHT_MAX_CITATIONS),
                 confidence = if (digest.totals.sessionCount > 0) InsightConfidence.HIGH else InsightConfidence.LOW,
                 severity = InsightSeverity.MEDIUM,
                 recommendedAction =
@@ -168,7 +168,7 @@ private fun appendRuleBasedProviderRanking(
     val rankingRows =
         digest.providers
             .sortedByDescending { it.costUSD }
-            .take(INSIGHT_VAL_5)
+            .take(INSIGHT_RANKING_ROW_LIMIT)
             .map { p ->
                 InsightWidgetData.Ranking.Row(
                     id = "p:${p.id}",
@@ -188,7 +188,7 @@ private fun appendRuleBasedProviderRanking(
             BoundInsightWidgetParams(
                 kind = InsightWidgetKind.BAR_RANKING,
                 title = "Provider spend ranking",
-                dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.PROVIDER, INSIGHT_VAL_5, window),
+                dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.PROVIDER, INSIGHT_RANKING_ROW_LIMIT, window),
                 data = rankingData,
                 reason = "Shows the provider driving the main cost signal.",
                 modelTag = request.selectedModel,
@@ -242,7 +242,7 @@ private fun appendRuleBasedTimeSeries(
                 data = tsData,
                 reason = "Shows whether the main finding is a spike or a sustained trend.",
                 modelTag = request.selectedModel,
-                citations = state.citations.take(INSIGHT_VAL_3),
+                citations = state.citations.take(INSIGHT_MAX_CITATIONS),
             ),
         ),
     )
@@ -280,7 +280,7 @@ private fun appendRuleBasedDonut(
                 ),
                 reason = "How spend splits across the providers in this window.",
                 modelTag = request.selectedModel,
-                citations = state.citations.take(INSIGHT_VAL_3),
+                citations = state.citations.take(INSIGHT_MAX_CITATIONS),
             ),
         ),
     )
@@ -296,7 +296,7 @@ private fun appendRuleBasedModelRanking(
     val modelRows =
         digest.models
             .sortedByDescending { it.costUSD }
-            .take(INSIGHT_VAL_5)
+            .take(INSIGHT_RANKING_ROW_LIMIT)
             .map {
                 InsightWidgetData.Ranking.Row(
                     id = "m:${it.id}",
@@ -310,7 +310,7 @@ private fun appendRuleBasedModelRanking(
             BoundInsightWidgetParams(
                 kind = InsightWidgetKind.BAR_RANKING,
                 title = "Top models by cost",
-                dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.MODEL, INSIGHT_VAL_5, window),
+                dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.MODEL, INSIGHT_RANKING_ROW_LIMIT, window),
                 data =
                 InsightWidgetData.Ranking(
                     rows = modelRows,
@@ -319,7 +319,7 @@ private fun appendRuleBasedModelRanking(
                 ),
                 reason = "Which models cost you the most in this window.",
                 modelTag = request.selectedModel,
-                citations = state.citations.take(INSIGHT_VAL_3),
+                citations = state.citations.take(INSIGHT_MAX_CITATIONS),
             ),
         ),
     )
@@ -357,7 +357,7 @@ private fun assembleRuleBasedInsightResult(input: RuleBasedFinalAssembly): Insig
                 question = request.prompt,
                 answer = "${state.headline}. ${state.body} ${state.findings.firstOrNull()?.recommendedAction ?: "Review the cited evidence and choose the next action from the brief."}",
                 bullets = ruleBasedGroundedPointsForReply(digest, topProvider, topModel),
-                citations = state.citations.take(INSIGHT_VAL_3),
+                citations = state.citations.take(INSIGHT_MAX_CITATIONS),
                 source = InsightBriefingAnswer.Source.LOCAL_RULES,
                 modelDisplayName = request.selectedModel.displayName,
             )
@@ -371,9 +371,9 @@ private fun assembleRuleBasedInsightResult(input: RuleBasedFinalAssembly): Insig
         executiveSummary = state.body,
         modelTag = request.selectedModel,
         contextBudget = request.context.budgetReport,
-        findings = state.findings.take(INSIGHT_VAL_6),
+        findings = state.findings.take(INSIGHT_MAX_FINDINGS),
         recommendations = state.recommendations,
-        missionCandidates = missionAdvice.missions.take(INSIGHT_VAL_5),
+        missionCandidates = missionAdvice.missions.take(INSIGHT_MAX_MISSION_CANDIDATES),
         generatedWidgets = state.widgets.take(request.maxGeneratedWidgets),
         followUpQuestions =
         listOf(
@@ -398,8 +398,8 @@ internal fun ruleBasedGroundedPointsForReply(
     topProvider?.let { points.add("${it.displayName}: ${ruleBasedCurrency(it.costUSD)} · ${it.sessionCount} sessions") }
     topModel?.let { points.add("Top model: ${it.id} · ${ruleBasedCurrency(it.costUSD)}") }
     if (digest.daily.isNotEmpty()) {
-        digest.daily.maxByOrNull { it.costUSD }?.let { points.add("Peak day ${it.day.take(INSIGHT_VAL_10)} at ${ruleBasedCurrency(it.costUSD)}") }
+        digest.daily.maxByOrNull { it.costUSD }?.let { points.add("Peak day ${it.day.take(INSIGHT_ISO_DATE_LENGTH)} at ${ruleBasedCurrency(it.costUSD)}") }
     }
     if (points.isEmpty()) points.add("${digest.totals.sessionCount} sessions · ${ruleBasedCurrency(digest.totals.costUSD)} total")
-    return points.take(INSIGHT_VAL_4)
+    return points.take(INSIGHT_MAX_GROUNDED_POINTS)
 }

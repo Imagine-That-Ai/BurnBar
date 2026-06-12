@@ -10,7 +10,7 @@
 
 ## 0. Methodology
 
-I inspected 30+ key files across all targets, sampled module boundaries, counted structural patterns (empty catches, `try?`, `@MainActor`, `Task.detached`, `@unchecked Sendable`), read the existing `ARCHITECTURE_REVIEW.md` and `TECH_DEBT_STRATEGY.md`, and cross-referenced their findings against the actual code. I did not read every one of the ~1,500 files — I sampled strategically at module boundaries, the 10 largest files, contract definitions, and the concurrency/state management layer.
+I inspected 30+ key files across all targets, sampled module boundaries, counted structural patterns (empty catches, `try?`, `@MainActor`, `Task.detached`, `@unchecked Sendable`), read the existing `docs/reviews/ARCHITECTURE_REVIEW.md` and `TECH_DEBT_STRATEGY.md`, and cross-referenced their findings against the actual code. I did not read every one of the ~1,500 files — I sampled strategically at module boundaries, the 10 largest files, contract definitions, and the concurrency/state management layer.
 
 ---
 

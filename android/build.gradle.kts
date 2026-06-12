@@ -12,7 +12,7 @@ plugins {
     // detekt: Kotlin static analysis — dead code, complexity, naming, style
     id("dev.detekt") version "2.0.0-alpha.3" apply false
     // dependency-analysis: detect unused Android Gradle dependencies
-    id("com.autonomousapps.dependency-analysis") version "2.3.0" apply false
+    id("com.autonomousapps.dependency-analysis") version "2.19.0" apply false
     // Macrobenchmark + baseline-profile capture (:macrobenchmark, on-device only).
     // 1.5.0-alpha06 is the first line with AGP 9 new-DSL support.
     id("com.android.test") version "9.2.1" apply false

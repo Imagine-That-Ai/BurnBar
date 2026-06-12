@@ -26,6 +26,25 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Xcode toolchain drift tripwire
+      # All macOS lanes float on the runner image's default Xcode (no
+      # DEVELOPER_DIR pin anywhere — diligence P2-8). A hard path pin breaks
+      # on every image refresh, so this is a drift tripwire instead: the
+      # MAJOR Xcode version must match expectations, and the exact version is
+      # printed in every run log so a silent image migration is attributable.
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "$(uname)" == "Darwin" ]]; then
+          xcodebuild -version
+          major="$(xcodebuild -version | sed -n 's/^Xcode \([0-9]*\).*/\1/p')"
+          expected="26"
+          if [[ "$major" != "$expected" ]]; then
+            echo "::error::Runner Xcode major version is $major, expected $expected. The runner image migrated under us — verify the toolchain and bump 'expected' deliberately."
+            exit 1
+          fi
+        fi
+
     - name: Validate shell script syntax
       shell: bash
       run: |
@@ -92,6 +111,14 @@ runs:
       if: inputs.tier == 'full' || inputs.tier == 'release'
       shell: bash
       run: ./scripts/test-openburnbar-retrieval-evals.sh
+
+    - name: Install OpenBurnBar extension dependencies
+      # The TS unit tests run vitest from extensions/openburnbar; without this
+      # install the full tier dies with `vitest: command not found` (exit 127)
+      # — the bug that kept the nightly lifetime-red after the protoc fix.
+      if: inputs.tier == 'full' || inputs.tier == 'release'
+      shell: bash
+      run: npm ci --prefix extensions/openburnbar
 
     - name: Run OpenBurnBar TypeScript unit tests
       if: inputs.tier == 'full' || inputs.tier == 'release'

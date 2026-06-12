@@ -8,17 +8,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-private const val VAL_0X03 = 0x03
-private const val VAL_0X7A = 0x7A
-private const val VAL_0X7B = 0x7B
-private const val VAL_0X7C = 0x7C
-private const val VAL_3 = 3
-private const val VAL_30 = 30
-private const val VAL_31 = 31
-private const val VAL_32 = 32
-private const val VAL_33 = 33
-private const val VAL_9001_L = 9001L
-
 class MediaFrameV2CodecTest {
     @Test
     fun round_trip_separates_metadata_from_payload_with_explicit_lengths() {
@@ -36,7 +25,7 @@ class MediaFrameV2CodecTest {
                 frameIndex = 7u,
                 presentationTimestampMillis = 1_777_777uL,
                 metadata = metadata,
-                payload = byteArrayOf(VAL_0X7A.toByte(), VAL_0X7B.toByte(), VAL_0X7C.toByte()),
+                payload = byteArrayOf(0x7A.toByte(), 0x7B.toByte(), 0x7C.toByte()),
             )
 
         val encoded = codec.encode(frame, MercuryMediaFrameWireVersion.V2)
@@ -48,7 +37,7 @@ class MediaFrameV2CodecTest {
         assertArrayEquals(frame.payload, decoded.frame.payload)
         val decodedMetadata = MediaFrameV2Metadata.decode(decoded.frame.metadata)
         assertEquals("hevc", decodedMetadata.codec)
-        assertEquals(VAL_9001_L, decodedMetadata.longTermReferenceToken?.value)
+        assertEquals(9001L, decodedMetadata.longTermReferenceToken?.value)
     }
 
     @Test
@@ -91,13 +80,13 @@ class MediaFrameV2CodecTest {
                     kind = MediaFrame.Kind.VIDEO_NAL,
                     gopID = 1u,
                     frameIndex = 2u,
-                    payload = byteArrayOf(VAL_0X03.toByte()),
+                    payload = byteArrayOf(0x03.toByte()),
                 ),
             )
 
         assertEquals(true, MediaFrameV2Codec.isEncodedEnvelope(v2))
         assertEquals(false, MediaFrameV2Codec.isEncodedEnvelope(v1))
-        assertEquals(false, MediaFrameV2Codec.isEncodedEnvelope(MediaFrameV2Codec.MAGIC.take(VAL_3).toByteArray()))
+        assertEquals(false, MediaFrameV2Codec.isEncodedEnvelope(MediaFrameV2Codec.MAGIC.take(3).toByteArray()))
     }
 
     @Test
@@ -124,15 +113,15 @@ class MediaFrameV2CodecTest {
                 MediaFrameV2(
                     kind = MediaFrameV2Kind.CODEC_NEGOTIATION,
                     metadata = byteArrayOf(0x01, 0x02),
-                    payload = byteArrayOf(VAL_0X03.toByte()),
+                    payload = byteArrayOf(0x03.toByte()),
                 ),
                 MercuryMediaFrameWireVersion.V2,
             )
         // Corrupt metadata length to claim more bytes than the envelope carries.
-        encoded[VAL_30] = 0x00
-        encoded[VAL_31] = 0x00
-        encoded[VAL_32] = 0x00
-        encoded[VAL_33] = 0x7F
+        encoded[30] = 0x00
+        encoded[31] = 0x00
+        encoded[32] = 0x00
+        encoded[33] = 0x7F
 
         assertThrows(MediaFrameV2Codec.CodecError.HeaderTruncated::class.java) {
             MediaFrameV2Codec().decode(encoded)

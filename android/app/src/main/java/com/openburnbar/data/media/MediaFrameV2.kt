@@ -5,7 +5,8 @@ import java.nio.ByteOrder
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-private const val VAL_4 = 4
+// Byte width of the u32 big-endian total-payload-length prefix on every envelope.
+private const val LENGTH_PREFIX_BYTES = 4
 
 @JvmInline
 value class MediaFrameV2Kind(val rawValue: Byte) {
@@ -106,7 +107,7 @@ class MediaFrameV2Codec(
         if (totalPayloadCount > maxPayloadBytes) {
             throw CodecError.PayloadTooLarge(totalPayloadCount, maxPayloadBytes)
         }
-        return ByteBuffer.allocate(VAL_4 + totalPayloadCount)
+        return ByteBuffer.allocate(LENGTH_PREFIX_BYTES + totalPayloadCount)
             .order(ByteOrder.BIG_ENDIAN)
             .putInt(totalPayloadCount)
             .put(MAGIC)
@@ -161,7 +162,7 @@ class MediaFrameV2Codec(
     )
 
     private fun decodeEnvelopeHeader(envelope: ByteArray): EnvelopeHeader {
-        val lengthPrefixBytes = VAL_4
+        val lengthPrefixBytes = LENGTH_PREFIX_BYTES
         if (envelope.size < lengthPrefixBytes + FIXED_HEADER_BYTE_COUNT) {
             throw CodecError.EnvelopeTooShort
         }
@@ -207,7 +208,7 @@ class MediaFrameV2Codec(
         const val DEFAULT_MAX_PAYLOAD_BYTES: Int = 2 * 1024 * 1024
 
         fun isEncodedEnvelope(envelope: ByteArray): Boolean {
-            val headerStart = VAL_4
+            val headerStart = LENGTH_PREFIX_BYTES
             if (envelope.size < headerStart + MAGIC.size) return false
             return MAGIC.indices.all { index -> envelope[headerStart + index] == MAGIC[index] }
         }

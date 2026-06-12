@@ -12,8 +12,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-internal const val VAL_256 = 256
-private const val VAL_32 = 32
+internal const val WRAPPING_KEY_SIZE_BITS = 256
+private const val IROH_SECRET_KEY_BYTES = 32
 
 /**
  * Android-side persistence of the iroh BLOB endpoint's 32-byte secret
@@ -36,7 +36,7 @@ class IrohBlobKeyStore(context: Context) {
     fun secretKeyMaterial(): IrohSecretKeyMaterial {
         val existing = loadFromStore()
         if (existing != null) return IrohSecretKeyMaterial(existing)
-        val fresh = ByteArray(VAL_32).also { SecureRandom().nextBytes(it) }
+        val fresh = ByteArray(IROH_SECRET_KEY_BYTES).also { SecureRandom().nextBytes(it) }
         saveToStore(fresh)
         return IrohSecretKeyMaterial(fresh)
     }
@@ -58,7 +58,7 @@ class IrohBlobKeyStore(context: Context) {
                 Cipher.getInstance(AES_GCM_TRANSFORM).apply {
                     init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
                 }
-            cipher.doFinal(wrapped).takeIf { it.size == VAL_32 }
+            cipher.doFinal(wrapped).takeIf { it.size == IROH_SECRET_KEY_BYTES }
         } catch (_: Throwable) {
             null
         }
@@ -95,7 +95,7 @@ class IrohBlobKeyStore(context: Context) {
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(VAL_256)
+                .setKeySize(WRAPPING_KEY_SIZE_BITS)
                 .build()
         generator.init(spec)
         return generator.generateKey()

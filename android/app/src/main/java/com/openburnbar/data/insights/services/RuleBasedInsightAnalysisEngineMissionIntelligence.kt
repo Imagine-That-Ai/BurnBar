@@ -175,7 +175,7 @@ private fun appendRuleBasedDiligenceMission(
         )
     if (diligenceEvidence.isEmpty()) return
     val quotaHot =
-        context.quotaRisk?.let { it.limit != null && it.limit > 0.0 && it.used / it.limit >= INSIGHT_VAL_0_8 }
+        context.quotaRisk?.let { it.limit != null && it.limit > 0.0 && it.used / it.limit >= INSIGHT_QUOTA_HOT_UTILIZATION }
             ?: false
     missions.add(
         InsightMissionCandidate(
@@ -229,7 +229,7 @@ private fun appendRuleBasedTechDebtMission(
             projectDisplayName = context.topProject?.displayName,
             lens = InsightMissionCandidate.Lens.TECH_DEBT,
             priority =
-            if (model.costUSD > maxOf(1.0, digest.totals.costUSD * INSIGHT_VAL_0_35)) {
+            if (model.costUSD > maxOf(1.0, digest.totals.costUSD * INSIGHT_DOMINANT_MODEL_COST_SHARE)) {
                 InsightMissionCandidate.Priority.HIGH
             } else {
                 InsightMissionCandidate.Priority.MEDIUM

@@ -191,3 +191,15 @@ assets/generated/
 
 # Claude Code local worktrees (transient)
 .claude/worktrees/
+
+# Hygiene sweep 2026-06-11 (diligence P1-9): run/CI artifacts never belong in git.
+# Raw logs regenerate from their runners (scripts/e2e/ios-iroh-gate.sh, CI jobs);
+# structured evidence (JSON/JSONL exports) stays tracked, raw .log streams do not.
+*.log
+verify-ops-plane-summary.json
+apple-login.png
+pensieve-route-snapshot.md
+fix_silently.py
+
+# vitest/c8 output — never a source artifact
+functions/coverage/

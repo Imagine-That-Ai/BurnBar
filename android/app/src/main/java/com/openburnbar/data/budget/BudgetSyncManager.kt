@@ -10,7 +10,7 @@ import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private const val VAL_500 = 500
+private const val RECENT_EVENTS_SYNC_LIMIT = 500
 
 class BudgetSyncManager(
     private val context: Context,
@@ -44,7 +44,7 @@ class BudgetSyncManager(
             }
 
             // 2. Upload local events that haven't been synced (syncedAt is null)
-            val unsyncedEvents = dao.getRecentEvents(VAL_500).filter { it.syncedAt == null }
+            val unsyncedEvents = dao.getRecentEvents(RECENT_EVENTS_SYNC_LIMIT).filter { it.syncedAt == null }
             if (unsyncedEvents.isNotEmpty()) {
                 Log.d("BudgetSync", "Uploading ${unsyncedEvents.size} local events...")
                 val modelsToUpload =

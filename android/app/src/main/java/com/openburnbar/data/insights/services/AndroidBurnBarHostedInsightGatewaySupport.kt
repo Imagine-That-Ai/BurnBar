@@ -19,9 +19,10 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-private const val VAL_280 = 280
-private const val VAL_3 = 3
-private const val VAL_4 = 4
+private const val PROMPT_PREVIEW_MAX_CHARS = 280
+private const val MAX_BRIEFING_CITATIONS = 3
+private const val MAX_FINDING_BULLETS = 3
+private const val MAX_BRIEFING_BULLETS = 4
 
 internal data class HostedCallableResponse(
     val envelope: String,
@@ -47,7 +48,7 @@ internal suspend fun invokeHostedInsightCallable(
             "platform" to "android",
             "modelID" to modelID,
             "instruction" to hostedInstructionWireString(request.instruction),
-            "promptPreview" to request.prompt.take(VAL_280),
+            "promptPreview" to request.prompt.take(PROMPT_PREVIEW_MAX_CHARS),
             "request" to hostedJsonElementToNative(requestJSON),
         )
     val callable =
@@ -124,7 +125,7 @@ internal fun attachHostedFollowUpBriefing(
                 question = request.prompt,
                 answer = hostedComposeAnswerBody(stamped),
                 bullets = hostedComposeGroundedPoints(stamped),
-                citations = stamped.citations.take(VAL_3),
+                citations = stamped.citations.take(MAX_BRIEFING_CITATIONS),
                 source = InsightBriefingAnswer.Source.HOSTED_FALLBACK,
                 modelDisplayName = resolvedDisplayName,
                 isFallback = false,
@@ -146,10 +147,10 @@ private fun hostedComposeAnswerBody(result: InsightAnalysisResult): String = bui
 }.joinToString(" ")
 
 private fun hostedComposeGroundedPoints(result: InsightAnalysisResult): List<String> = (
-    result.findings.take(VAL_3).map { it.title } +
+    result.findings.take(MAX_FINDING_BULLETS).map { it.title } +
         result.anomalies.take(2).map { "Spike: ${it.title}" } +
         result.recommendations.take(2).map { "Action: ${it.title}" }
-    ).take(VAL_4)
+    ).take(MAX_BRIEFING_BULLETS)
 
 private fun hostedParseEgressTier(raw: String?): InsightEgressTier? {
     if (raw.isNullOrBlank()) return null

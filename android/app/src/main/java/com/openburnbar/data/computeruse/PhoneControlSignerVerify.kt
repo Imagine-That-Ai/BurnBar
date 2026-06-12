@@ -98,8 +98,8 @@ object PhoneControlSignerVerify {
      */
     private fun isValidPublicKeySize(publicKey: ByteArray, keyKind: PhoneControlSigningKeyKind): Boolean =
         when (keyKind) {
-            PhoneControlSigningKeyKind.ED25519 -> publicKey.size == VAL_32
-            PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 -> publicKey.size == VAL_65 || publicKey.size == VAL_64
+            PhoneControlSigningKeyKind.ED25519 -> publicKey.size == ED25519_PUBLIC_KEY_BYTES
+            PhoneControlSigningKeyKind.SECURE_ENCLAVE_P256 -> publicKey.size == P256_X963_PUBLIC_KEY_BYTES || publicKey.size == P256_RAW_XY_PUBLIC_KEY_BYTES
         }
 
     private fun validateAuthoritySignatureOrError(
@@ -144,6 +144,6 @@ object PhoneControlSignerVerify {
     }
 }
 
-private const val VAL_32 = 32
-private const val VAL_64 = 64
-private const val VAL_65 = 65
+private const val ED25519_PUBLIC_KEY_BYTES = 32
+private const val P256_RAW_XY_PUBLIC_KEY_BYTES = 64
+private const val P256_X963_PUBLIC_KEY_BYTES = 65

@@ -12,8 +12,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-private const val VAL_600000_L = 600_000L
-
 class HermesCompositeRelayTransportTest {
     private val payload =
         HermesRelayPayload(
@@ -140,11 +138,11 @@ class HermesCompositeRelayTransportTest {
                 firestoreFallback = firestore,
             )
         val received = mutableListOf<String>()
-        composite.sendStreaming(cliPayload, VAL_600000_L) { received.add(it) }
+        composite.sendStreaming(cliPayload, 600_000L) { received.add(it) }
 
         assertEquals(listOf("""{"kind":"completed","text":"via-firestore"}"""), received)
-        coVerify(exactly = 1) { iroh.sendStreaming(cliPayload, VAL_600000_L, any()) }
-        coVerify(exactly = 1) { firestore.sendStreaming(cliPayload, VAL_600000_L, any()) }
+        coVerify(exactly = 1) { iroh.sendStreaming(cliPayload, 600_000L, any()) }
+        coVerify(exactly = 1) { firestore.sendStreaming(cliPayload, 600_000L, any()) }
     }
 
     @Test

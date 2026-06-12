@@ -1,5 +1,6 @@
 import type { WebSocket } from "ws";
 import { RelayLimitError } from "./errors.js";
+import { logWarning, uidHash } from "./logging.js";
 import {
   assertFrameForUid,
   assertRoleCanSend,
@@ -29,6 +30,8 @@ export interface RelaySocket {
   on(event: "message", listener: (data: Buffer) => void): unknown;
   on(event: "close", listener: () => void): unknown;
   on(event: "error", listener: (error: Error) => void): unknown;
+  /** Bytes queued by the transport but not yet sent (ws exposes this). */
+  readonly bufferedAmount?: number;
 }
 
 export interface RelayDependencies {
@@ -39,6 +42,13 @@ export interface RelayDependencies {
   sessionID: string;
   maxFrameBytes: number;
   presenceTTLSeconds?: number;
+  /**
+   * Outbound backpressure watermark. When the transport has more than this
+   * many bytes queued for a socket, the consumer is too slow for the relay's
+   * fan-out and the connection is closed (1013) instead of buffering
+   * unboundedly in relay memory. Clients already reconnect on close.
+   */
+  maxOutboundBufferedBytes?: number;
 }
 
 export class HermesRealtimeRelaySession {
@@ -50,6 +60,7 @@ export class HermesRealtimeRelaySession {
   private subscribedChannels = new Set<string>();
   private unsubscribeCallbacks: Array<() => Promise<void>> = [];
   private activeRequestRuntimes = new Map<string, HermesRelayRuntime>();
+  private readonly maxOutboundBufferedBytes: number;
   private presenceTimer: NodeJS.Timeout | undefined;
   private leaseTimer: NodeJS.Timeout | undefined;
   private closed = false;
@@ -59,6 +70,7 @@ export class HermesRealtimeRelaySession {
     private readonly deps: RelayDependencies
   ) {
     this.presenceTTLSeconds = deps.presenceTTLSeconds ?? 45;
+    this.maxOutboundBufferedBytes = deps.maxOutboundBufferedBytes ?? 4 * 1024 * 1024;
     this.quota = deps.quota ?? new NoopRelayQuotaStore();
   }
 
@@ -200,6 +212,9 @@ export class HermesRealtimeRelaySession {
   private async subscribe(channel: string): Promise<void> {
     if (this.subscribedChannels.has(channel)) return;
     const unsubscribe = await this.deps.bus.subscribe(channel, (message) => {
+      if (this.isOutboundBackpressured()) {
+        return;
+      }
       this.observeOutboundFrame(message).catch(() => undefined);
       this.socket.send(message);
     });
@@ -214,6 +229,34 @@ export class HermesRealtimeRelaySession {
     });
     this.unsubscribeCallbacks.push(unsubscribe);
     this.subscribedChannels.add(channel);
+  }
+
+  /**
+   * Slow-consumer guard on the relayed-frame fan-out path. Heartbeats bound
+   * how long a dead socket lingers, but a live-yet-slow consumer would grow
+   * the ws send buffer without limit while the bus keeps publishing. Past the
+   * watermark we disconnect (1013 — try again later) and stop forwarding;
+   * the client's reconnect resumes from current state.
+   */
+  private isOutboundBackpressured(): boolean {
+    const buffered = this.socket.bufferedAmount;
+    if (buffered === undefined || buffered <= this.maxOutboundBufferedBytes) {
+      return false;
+    }
+    if (!this.closed) {
+      logWarning("relay.outbound_backpressure_disconnect", {
+        uid: uidHash(this.deps.uid),
+        role: this.deps.role,
+        bufferedBytes: buffered,
+        watermarkBytes: this.maxOutboundBufferedBytes,
+      });
+      this.socket.close(1013, "Hermes relay consumer too slow; reconnect.");
+      // cleanup() flips this.closed synchronously, so repeat bus callbacks
+      // arriving before the socket's own close event neither re-log nor
+      // double-clean.
+      this.cleanup().catch(() => undefined);
+    }
+    return true;
   }
 
   private handleControlMessage(message: string): void {
