@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; replay
 // counters and freshness windows are literal by design.
 
 package com.openburnbar.data.computeruse

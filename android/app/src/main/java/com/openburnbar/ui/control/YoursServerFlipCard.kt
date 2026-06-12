@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout/animation literals; token-per-line extraction obscures structure.
 
 package com.openburnbar.ui.control

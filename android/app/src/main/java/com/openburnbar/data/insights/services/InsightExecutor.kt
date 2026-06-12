@@ -30,7 +30,7 @@ object InsightExecutor {
             is InsightDataBinding.Heatmap -> InsightExecutorBindings.executeHeatmap(binding, digest)
             is InsightDataBinding.Quota -> InsightExecutorBindings.executeQuota(binding, digest)
             is InsightDataBinding.Forecast -> InsightExecutorExtendedBindings.executeForecast(binding, digest)
-            is InsightDataBinding.Anomaly -> InsightExecutorExtendedBindings.executeAnomaly(binding, digest)
+            is InsightDataBinding.Anomaly -> InsightExecutorExtendedBindings.executeAnomaly(digest)
             is InsightDataBinding.UseCaseClusters ->
                 InsightWidgetData.Empty(
                     reason = "Use-case clustering requires macOS session data not available on Android",
@@ -53,8 +53,8 @@ object InsightExecutor {
                     binding.bindings.map { execute(it, digest, canvasFilter) },
                 )
             is InsightDataBinding.Scatter -> InsightExecutorExtendedBindings.executeScatter(binding, digest)
-            is InsightDataBinding.Sankey -> InsightExecutorExtendedBindings.executeSankey(binding, digest)
-            is InsightDataBinding.Radar -> InsightExecutorExtendedBindings.executeRadar(binding, digest)
+            is InsightDataBinding.Sankey -> InsightExecutorExtendedBindings.executeSankey(digest)
+            is InsightDataBinding.Radar -> InsightExecutorExtendedBindings.executeRadar(digest)
             is InsightDataBinding.Cohort ->
                 InsightWidgetData.Cohort(
                     cohortLabels = emptyList(),

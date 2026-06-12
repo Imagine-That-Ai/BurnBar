@@ -60,7 +60,7 @@ class RuleBasedVerdictEngine(
     fun produce(digest: InsightDigest, window: VerdictWindow, priorDigest: InsightDigest? = null, now: Date = Date()): InsightVerdict {
         val rings = buildVerdictRings(thresholds, digest, priorDigest)
         val keyNumbers = buildVerdictKeyNumbers(digest, priorDigest)
-        val bullets = buildVerdictBullets(thresholds, digest, priorDigest, window)
+        val bullets = buildVerdictBullets(thresholds, digest, priorDigest)
         val anomaly = buildAnomaly(digest)
         val recommendation = buildRecommendation(digest)
         val dominantProvider = digest.providers.maxByOrNull { it.costUSD }?.id

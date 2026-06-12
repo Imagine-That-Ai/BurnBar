@@ -45,7 +45,6 @@ internal object RelaySealSenderIdentity {
     fun relaySenderKeyId(publicKeyX963: ByteArray): String =
         "relay-v3-" + CloudVaultCrypto.sha256Hex(publicKeyX963).take(KEY_ID_HEX_CHARS)
 
-    @Suppress("LongParameterList")
     suspend fun prepareAndPublish(
         uid: String,
         connectionId: String,

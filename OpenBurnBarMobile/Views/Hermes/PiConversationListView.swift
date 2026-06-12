@@ -292,6 +292,7 @@ struct PiChatThreadView: View {
     @State private var input: String = ""
     @State private var showConnectionSheet = false
     @State private var permissionGrantThreadID: String?
+    @State private var showThinkingStylePicker = false
     @State private var atomRouter = HermesAtomRouter()
 
     /// `.tool` messages exist purely as context for the upstream model
@@ -336,6 +337,11 @@ struct PiChatThreadView: View {
                         Label("Agent permissions", systemImage: "hand.raised")
                     }
                     Button {
+                        showThinkingStylePicker = true
+                    } label: {
+                        Label("Thinking Style", systemImage: "circle.dotted")
+                    }
+                    Button {
                         Task { await service.refreshRuntime() }
                     } label: {
                         Label("Re-check connection", systemImage: "arrow.clockwise")
@@ -356,6 +362,11 @@ struct PiChatThreadView: View {
                 hermesService: nil,
                 piService: service,
                 focusedRuntime: .pi
+            )
+        }
+        .sheet(isPresented: $showThinkingStylePicker) {
+            HermesThinkingStylePickerSheet(
+                modelName: service.messages.last(where: { $0.role == .assistant })?.modelName
             )
         }
         .sheet(
@@ -491,11 +502,19 @@ struct PiChatThreadView: View {
                     piOutcomeBadge(for: msg)
                 }
                 if !msg.text.isEmpty || msg.toolCalls.isEmpty || msg.isStreaming {
-                    Text(msg.text.isEmpty ? (msg.isStreaming ? "…" : "") : msg.text)
-                        .font(MobileTheme.Typography.body)
-                        .foregroundStyle(msg.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
-                        .padding(.horizontal, MobileTheme.Spacing.md)
-                        .padding(.vertical, MobileTheme.Spacing.sm)
+                    Group {
+                        if msg.text.isEmpty, msg.isStreaming {
+                            // The shared thinking spinner (user-chosen style/
+                            // color/size) replaces the bare "…" placeholder.
+                            HermesThinkingSpinner(modelName: msg.modelName)
+                        } else {
+                            Text(msg.text)
+                                .font(MobileTheme.Typography.body)
+                                .foregroundStyle(msg.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
+                                .padding(.horizontal, MobileTheme.Spacing.md)
+                                .padding(.vertical, MobileTheme.Spacing.sm)
+                        }
+                    }
                         .background(
                             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
                                 .fill(piBubbleFill(for: msg))

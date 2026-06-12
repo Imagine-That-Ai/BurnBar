@@ -1,7 +1,5 @@
-@file:Suppress("MagicNumber", "TooManyFunctions")
 // Security-pinned E2EE/trust code under active remediation; behavior is pinned by tests and
 // a P0 migration gate. Lint findings here are wire-format/defensive-coding by design -
-// suppressed rather than restructured. See docs: detekt remediation plan, phase 3.
 package com.openburnbar.data.computeruse
 
 import java.math.BigInteger

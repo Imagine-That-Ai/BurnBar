@@ -137,9 +137,7 @@ class AudioReceivePipeline(
         }
     }
 
-    @Suppress("unused")
     val activeBufferSize: Int get() = jitterBuffer.size
 
-    @Suppress("unused")
     val streamType: Int = AudioManager.STREAM_VOICE_CALL
 }

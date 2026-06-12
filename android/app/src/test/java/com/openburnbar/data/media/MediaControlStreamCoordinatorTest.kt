@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "LargeClass", "TooManyFunctions")
-// detekt: JUnit backtick BDD test names; Mercury media.control table-driven integration matrix.
 
 package com.openburnbar.data.media
 

@@ -1,7 +1,6 @@
 package com.openburnbar.data.media
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -69,7 +68,6 @@ class MicrophoneCaptureService(
     private var ns: NoiseSuppressor? = null
     private var captureJob: Job? = null
 
-    @SuppressLint("MissingPermission") // we check above
     fun start() {
         val granted =
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -111,7 +109,6 @@ class MicrophoneCaptureService(
         throw Failure.StartupFailed(message)
     }
 
-    @SuppressLint("MissingPermission")
     private fun createInitializedRecord(channelConfig: Int, encoding: Int, bufferSize: Int): AudioRecord {
         val newRecord =
             try {
@@ -174,6 +171,5 @@ class MicrophoneCaptureService(
         scope.cancel()
     }
 
-    @Suppress("unused")
     val pcmFrameByteCount: Int get() = sampleRateHz * frameDurationMs / 1000 * 2
 }

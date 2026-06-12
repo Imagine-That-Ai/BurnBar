@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose Canvas literals (dp/alpha/geometry); token-per-line extraction obscures the drawing.
 
 package com.openburnbar.ui.control

@@ -327,7 +327,6 @@ class AssistantChatHistoryStore internal constructor(
         }.onFailure { Log.e(tag, "Failed to save chat history", it) }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     // Cloud-mirror coroutine converts any producer/Firestore failure into _lastSyncError.
     private fun scheduleCloudMirror(thread: AssistantChatThread, immediate: Boolean = false) {
         val cloud = cloud ?: return
@@ -560,7 +559,6 @@ internal class AssistantChatFirestoreMirror(
         }
     }
 
-    @Suppress("ReturnCount")
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     internal fun decodeThread(
         documentID: String,

@@ -3,7 +3,6 @@
     androidx.compose.material3.ExperimentalMaterial3Api::class,
 )
 
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.settings
@@ -1082,7 +1081,6 @@ internal suspend fun saveStillWallpaper(view: View, context: Context) {
                     )
                 outputStream = uri?.let { context.contentResolver.openOutputStream(it) }
             } else {
-                @Suppress("DEPRECATION")
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
                 val burnBarDir = java.io.File(dir, "BurnBar")
                 burnBarDir.mkdirs()

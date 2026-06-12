@@ -1,9 +1,7 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.square
 
-import android.annotation.SuppressLint
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -18,10 +16,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 internal fun MiniProgramWebView(
     sandboxURL: String,
+    agentURI: String,
     heightHintDp: Int,
     installedAgentURIs: Set<String>,
     csp: String,
@@ -60,6 +58,7 @@ internal fun MiniProgramWebView(
                     }
                 addJavascriptInterface(
                     MiniProgramJSBridge(
+                        hostAgentURI = agentURI,
                         installedAgentURIs = installedAgentURIs,
                         postBack = { json ->
                             evaluateJavascript(
@@ -122,6 +121,7 @@ private fun miniProgramHostHtml(sandboxURL: String, csp: String): String =
 private const val MAX_CALL_PAYLOAD_BYTES = 16_384
 
 private class MiniProgramJSBridge(
+    private val hostAgentURI: String,
     private val installedAgentURIs: Set<String>,
     private val postBack: WebView.(String) -> Unit,
     private val onCall: (AndroidMiniProgramCall) -> Unit,
@@ -130,8 +130,9 @@ private class MiniProgramJSBridge(
     fun invoke(json: String) {
         if (json.toByteArray(Charsets.UTF_8).size > MAX_CALL_PAYLOAD_BYTES) return
         val call = AndroidMiniProgramCall.fromJsonString(json) ?: return
-        if (call.agentURI !in installedAgentURIs) return
-        onCall(call)
+        val claimedAgentURI = call.agentURI.ifBlank { hostAgentURI }
+        if (claimedAgentURI != hostAgentURI || claimedAgentURI !in installedAgentURIs) return
+        onCall(call.copy(agentURI = claimedAgentURI))
     }
 }
 

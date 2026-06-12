@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.insights.verdict
@@ -41,6 +40,7 @@ import com.openburnbar.data.insights.verdict.VerdictBulletType
 import com.openburnbar.data.insights.verdict.VerdictDelta
 import com.openburnbar.data.insights.verdict.VerdictRecommendation
 import com.openburnbar.data.insights.verdict.VerdictRing
+import com.openburnbar.data.insights.verdict.VerdictTraceStrip
 import kotlin.math.roundToInt
 
 /**
@@ -54,7 +54,6 @@ import kotlin.math.roundToInt
  * (Material 3 surface colors here vs UnifiedDesignSystem.Colors on
  * Apple).
  */
-@Suppress("UnusedParameter")
 @Composable
 fun VerdictHeroSection(
     verdict: InsightVerdict,
@@ -101,6 +100,9 @@ fun VerdictHeroSection(
             displayName = verdict.provenance.displayName,
             egressTier = verdict.provenance.egressTier.displayLabel,
         )
+        verdict.sessionTrace?.let { trace ->
+            TraceStripButton(trace = trace, onTraceTap = onTraceTap)
+        }
         RingsStrip(rings = verdict.rings)
         VerdictHeroBullets(
             bullets = verdict.bullets,
@@ -117,6 +119,20 @@ fun VerdictHeroSection(
         VerdictHeroFollowUps(
             followUps = verdict.followUps,
             onFollowUpTap = onFollowUpTap,
+        )
+    }
+}
+
+@Composable
+private fun TraceStripButton(trace: VerdictTraceStrip, onTraceTap: (String) -> Unit) {
+    TextButton(
+        onClick = { onTraceTap(trace.sessionID) },
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+    ) {
+        Text(
+            text = "Trace · ${trace.summary}",
+            style = MaterialTheme.typography.labelMedium,
+            color = trace.tint.toComposeColor(),
         )
     }
 }

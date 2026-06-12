@@ -360,7 +360,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 #if !DISTRIBUTION_MAS
         // cov:ignore on the next line -- status-menu wiring; behavior is
         // line-gated in the DirectDownload* companion tests.
-        // swiftlint:disable:next line_length
         menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: "") // cov:ignore -- menu glue
 #endif
         menu.addItem(.separator())

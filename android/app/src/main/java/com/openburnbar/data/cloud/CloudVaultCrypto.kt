@@ -1,7 +1,5 @@
-@file:Suppress("CyclomaticComplexMethod", "MagicNumber", "MaxLineLength", "ReturnCount", "TooManyFunctions", "UnnecessaryParentheses")
 // Security-pinned E2EE/trust code under active remediation; behavior is pinned by tests and
-// a P0 migration gate. Lint findings here are wire-format/defensive-coding by design -
-// suppressed rather than restructured. See docs: detekt remediation plan, phase 3.
+// a P0 migration gate.
 package com.openburnbar.data.cloud
 
 import android.security.keystore.KeyGenParameterSpec
@@ -603,49 +601,96 @@ object CloudVaultCrypto {
         )
 
     fun signalEnvelopeFromMap(raw: Map<*, *>?): CloudVaultSignalEnvelope? {
-        if (raw == null) return null
-        val ciphertextLayerRaw = raw["ciphertextLayer"] as? Map<*, *> ?: return null
-        val keyDeliveryRaw = raw["keyDelivery"] as? Map<*, *> ?: return null
-        val bindingRaw = raw["binding"] as? Map<*, *> ?: return null
-        val wrapRaws = keyDeliveryRaw["wraps"] as? List<*> ?: return null
-        val wraps =
-            wrapRaws.map { rawWrap ->
-                val wrap = rawWrap as? Map<*, *> ?: return null
-                CloudVaultSignalAtRestWrap(
-                    recipientKind = wrap["recipientKind"] as? String ?: return null,
-                    recipientIdentityKeyId = wrap["recipientIdentityKeyId"] as? String ?: return null,
-                    recipientIdentityKeyB64 = wrap["recipientIdentityKeyB64"] as? String ?: return null,
-                    sealedContentKeyB64 = wrap["sealedContentKeyB64"] as? String ?: return null,
-                )
-            }
+        val parts = signalEnvelopeParts(raw) ?: return null
+        val header = signalEnvelopeHeader(raw) ?: return null
+        val ciphertextLayer = signalCiphertextLayer(parts.ciphertextLayer) ?: return null
+        val keyDelivery = signalKeyDelivery(parts.keyDelivery, parts.wraps) ?: return null
+        val binding = signalBinding(parts.binding) ?: return null
         return CloudVaultSignalEnvelope(
-            signalEnvelopeFormatVersion = (raw["signalEnvelopeFormatVersion"] as? Number)?.toInt() ?: return null,
-            mode = raw["mode"] as? String ?: return null,
-            relayEncryption = raw["relayEncryption"] as? String ?: return null,
-            ciphertextLayer =
-                CloudVaultSignalCiphertextLayer(
-                    payloadCiphertextB64 = ciphertextLayerRaw["payloadCiphertextB64"] as? String ?: return null,
-                    payloadAADLabel = ciphertextLayerRaw["payloadAADLabel"] as? String ?: return null,
-                    schemaVersion = (ciphertextLayerRaw["schemaVersion"] as? Number)?.toInt() ?: return null,
-                ),
-            keyDelivery =
-                CloudVaultSignalAtRestKeyDelivery(
-                    scheme = keyDeliveryRaw["scheme"] as? String ?: return null,
-                    wraps = wraps,
-                    contentKeyLength = (keyDeliveryRaw["contentKeyLength"] as? Number)?.toInt() ?: return null,
-                ),
-            binding =
-                CloudVaultSignalBinding(
-                    uid = bindingRaw["uid"] as? String ?: return null,
-                    scope = bindingRaw["scope"] as? String ?: return null,
-                    collection = bindingRaw["collection"] as? String ?: return null,
-                    docId = bindingRaw["docId"] as? String ?: return null,
-                    field = bindingRaw["field"] as? String ?: return null,
-                    mode = bindingRaw["mode"] as? String ?: return null,
-                    formatVersion = (bindingRaw["formatVersion"] as? Number)?.toInt() ?: return null,
-                ),
+            signalEnvelopeFormatVersion = header.formatVersion,
+            mode = header.mode,
+            relayEncryption = header.relayEncryption,
+            ciphertextLayer = ciphertextLayer,
+            keyDelivery = keyDelivery,
+            binding = binding,
         )
     }
+
+    private data class SignalEnvelopeHeader(
+        val formatVersion: Int,
+        val mode: String,
+        val relayEncryption: String,
+    )
+
+    private data class SignalEnvelopeParts(
+        val ciphertextLayer: Map<*, *>,
+        val keyDelivery: Map<*, *>,
+        val binding: Map<*, *>,
+        val wraps: List<CloudVaultSignalAtRestWrap>,
+    )
+
+    private fun signalEnvelopeParts(raw: Map<*, *>?): SignalEnvelopeParts? {
+        val ciphertextLayer = raw?.get("ciphertextLayer") as? Map<*, *> ?: return null
+        val keyDelivery = raw["keyDelivery"] as? Map<*, *> ?: return null
+        val binding = raw["binding"] as? Map<*, *> ?: return null
+        val wraps =
+            (keyDelivery["wraps"] as? List<*>)?.map { signalWrapFromMap(it) ?: return null }
+                ?: return null
+        return SignalEnvelopeParts(ciphertextLayer, keyDelivery, binding, wraps)
+    }
+
+    private fun signalEnvelopeHeader(raw: Map<*, *>?): SignalEnvelopeHeader? {
+        return SignalEnvelopeHeader(
+            formatVersion = signalInt(raw, "signalEnvelopeFormatVersion") ?: return null,
+            mode = signalString(raw, "mode") ?: return null,
+            relayEncryption = signalString(raw, "relayEncryption") ?: return null,
+        )
+    }
+
+    private fun signalCiphertextLayer(raw: Map<*, *>): CloudVaultSignalCiphertextLayer? {
+        return CloudVaultSignalCiphertextLayer(
+            payloadCiphertextB64 = signalString(raw, "payloadCiphertextB64") ?: return null,
+            payloadAADLabel = signalString(raw, "payloadAADLabel") ?: return null,
+            schemaVersion = signalInt(raw, "schemaVersion") ?: return null,
+        )
+    }
+
+    private fun signalKeyDelivery(
+        raw: Map<*, *>,
+        wraps: List<CloudVaultSignalAtRestWrap>,
+    ): CloudVaultSignalAtRestKeyDelivery? {
+        return CloudVaultSignalAtRestKeyDelivery(
+            scheme = signalString(raw, "scheme") ?: return null,
+            wraps = wraps,
+            contentKeyLength = signalInt(raw, "contentKeyLength") ?: return null,
+        )
+    }
+
+    private fun signalBinding(raw: Map<*, *>): CloudVaultSignalBinding? {
+        return CloudVaultSignalBinding(
+            uid = signalString(raw, "uid") ?: return null,
+            scope = signalString(raw, "scope") ?: return null,
+            collection = signalString(raw, "collection") ?: return null,
+            docId = signalString(raw, "docId") ?: return null,
+            field = signalString(raw, "field") ?: return null,
+            mode = signalString(raw, "mode") ?: return null,
+            formatVersion = signalInt(raw, "formatVersion") ?: return null,
+        )
+    }
+
+    private fun signalWrapFromMap(raw: Any?): CloudVaultSignalAtRestWrap? {
+        val wrap = raw as? Map<*, *> ?: return null
+        return CloudVaultSignalAtRestWrap(
+            recipientKind = signalString(wrap, "recipientKind") ?: return null,
+            recipientIdentityKeyId = signalString(wrap, "recipientIdentityKeyId") ?: return null,
+            recipientIdentityKeyB64 = signalString(wrap, "recipientIdentityKeyB64") ?: return null,
+            sealedContentKeyB64 = signalString(wrap, "sealedContentKeyB64") ?: return null,
+        )
+    }
+
+    private fun signalString(raw: Map<*, *>?, key: String): String? = raw?.get(key) as? String
+
+    private fun signalInt(raw: Map<*, *>?, key: String): Int? = (raw?.get(key) as? Number)?.toInt()
 
     private fun sealedPayloadAAD(vaultKeyID: String, keyVersion: Int, aadContext: CloudVaultAADContext?): ByteArray =
         aadContext?.bytes

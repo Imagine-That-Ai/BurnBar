@@ -58,7 +58,6 @@ class CallKitFacade(private val context: Context) {
         runCatching { telecom.addNewIncomingCall(handle, extras) }
     }
 
-    @Suppress("unused")
     fun cancelIncomingCall(connectionId: String) {
         // Hand-off to the broadcast-driven decline path so the
         // foreground service stays the single owner of call lifecycle.
@@ -114,6 +113,5 @@ class MercuryConnectionService : ConnectionService() {
         return object : android.telecom.Connection() {}.apply { setActive() }
     }
 
-    @Suppress("unused")
     private val placeholderAddress: Uri = Uri.parse("mercury://burnbar")
 }

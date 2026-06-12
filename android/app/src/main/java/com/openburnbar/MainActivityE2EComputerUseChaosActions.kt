@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // E2E harness uses literal intent bounds and interval defaults for adb-driven chaos tests.
 
 package com.openburnbar

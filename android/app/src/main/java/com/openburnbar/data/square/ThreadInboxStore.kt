@@ -233,7 +233,6 @@ class ThreadInboxStore private constructor(
      * Mac-written field (transcript, tokenUsage, endedAt, resume handle, …)
      * survives the rename losslessly.
      */
-    @Suppress("ReturnCount")
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     private suspend fun resealSessionWithCustomTitle(
         uid: String,
@@ -356,7 +355,6 @@ class ThreadInboxStore private constructor(
      * payload fails to decode, or the agent token isn't recognised — the same
      * fail-soft contract the plaintext branch and the iOS reader use.
      */
-    @Suppress("ReturnCount")
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     private fun parseSealedCLISession(
         data: Map<String, Any>,

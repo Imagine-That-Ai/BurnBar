@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.square
@@ -44,6 +43,7 @@ import com.openburnbar.ui.theme.AuroraColors
 
 @Composable
 internal fun RollbackCardContent(
+    sessionID: String,
     snapshots: List<RollbackSnapshot>,
     newest: RollbackSnapshot?,
     onSubmit: (RollbackScope) -> Unit,
@@ -55,7 +55,13 @@ internal fun RollbackCardContent(
             Spacer(modifier = Modifier.width(6.dp))
             Text("Rollback", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.weight(1f))
-            Text("${snapshots.size} snapshots", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Session ${sessionID.take(8)} · ${snapshots.size} snapshots",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         if (snapshots.isEmpty()) {
             Text(

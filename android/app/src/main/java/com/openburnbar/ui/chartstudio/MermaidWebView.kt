@@ -1,9 +1,7 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.chartstudio
 
-import android.annotation.SuppressLint
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +24,6 @@ import org.json.JSONObject
  * `evaluateJavascript` whenever the source string changes — no full page
  * reload, so the JS state stays alive.
  */
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun MermaidCanvas(spec: MermaidSpec, modifier: Modifier = Modifier) {
     val context = LocalContext.current

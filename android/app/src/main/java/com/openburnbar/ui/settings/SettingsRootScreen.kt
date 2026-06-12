@@ -45,7 +45,6 @@ fun SettingsRootScreen(
                 onBack = { router.page = SettingsPageRoute.THEME_PREFS }
             )
             SettingsPageRoute.QUOTA_PREFS -> QuotaCustomizationScreen(
-                router = router,
                 onBack = { router.page = SettingsPageRoute.ROOT }
             )
             SettingsPageRoute.BUDGET_PREFS -> BudgetSettingsScreen(

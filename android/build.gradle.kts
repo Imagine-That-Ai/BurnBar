@@ -9,7 +9,7 @@ plugins {
     // 12.3.0 = last stable 12.x; fixes pre-commit hook binary-file and
     // configuration-cache bugs. Compatible with Kotlin 2.2.x and Gradle 9.x.
     id("org.jlleitschuh.gradle.ktlint") version "12.3.0" apply false
-    // detekt: Kotlin static analysis — dead code, complexity, naming, style
+    // Kotlin static analysis: dead code, complexity, naming, style.
     id("dev.detekt") version "2.0.0-alpha.3" apply false
     // dependency-analysis: detect unused Android Gradle dependencies
     id("com.autonomousapps.dependency-analysis") version "2.19.0" apply false

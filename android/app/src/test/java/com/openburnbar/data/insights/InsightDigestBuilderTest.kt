@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "LargeClass", "TooManyFunctions")
-// detekt: JUnit backtick BDD test names; digest-builder cap/shrink/hash regression matrix.
 
 package com.openburnbar.data.insights
 
