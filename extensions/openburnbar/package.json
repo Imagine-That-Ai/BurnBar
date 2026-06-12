@@ -251,6 +251,7 @@
     "@typescript-eslint/parser": "8.60.0",
     "@vitest/coverage-v8": "4.1.8",
     "@vscode/test-electron": "^2.5.2",
+    "esbuild": "0.28.1",
     "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
     "knip": "5.88.1",
@@ -268,7 +269,8 @@
     "serialize-javascript": "^7.0.0",
     "diff": "^8.0.4",
     "vite": "^7.3.2",
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.10",
+    "esbuild": "0.28.1"
   },
   "size-limit": [
     {
