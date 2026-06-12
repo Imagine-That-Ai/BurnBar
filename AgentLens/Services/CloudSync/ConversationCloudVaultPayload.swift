@@ -204,7 +204,7 @@ enum ConversationCloudSealer {
                 keyData: keyData,
                 aadContext: aadContext
             )
-            return try? decoder.decode(ConversationCloudPrivatePayload.self, from: payloadData)
+            return try decoder.decode(ConversationCloudPrivatePayload.self, from: payloadData)
         } catch {
             return nil
         }
