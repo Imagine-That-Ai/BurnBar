@@ -1401,7 +1401,9 @@ private struct HermesGatewayClientsResponse: Decodable, Sendable {
     let clients: [HermesGatewayClientRecord]
 }
 
-private struct FirebaseCallablePayload: @unchecked Sendable {
+/// Internal (not `private`) since the per-domain API splits of
+/// `FunctionsRepository` (tech-debt finding-67) call it from their own files.
+struct FirebaseCallablePayload: @unchecked Sendable {
     let rawValue: NSDictionary
 
     init(_ payload: [String: Any]) {
@@ -1493,7 +1495,9 @@ private enum ParsePrimitives {
     }
 }
 
-private final class FirebaseCallableExecutor: @unchecked Sendable {
+/// Internal (not `private`) since the per-domain API splits of
+/// `FunctionsRepository` (tech-debt finding-67) call it from their own files.
+final class FirebaseCallableExecutor: @unchecked Sendable {
     private let callable: HTTPSCallable
 
     init(_ callable: HTTPSCallable) {
@@ -1707,15 +1711,17 @@ extension HermesGatewayRepository {
     }
 }
 
-// MARK: - Functions Repository
+// MARK: - Functions Client Provider
 
+/// Lazily builds and caches the shared `Functions` client exactly the way
+/// `FunctionsRepository.functionsClient()` always did, so every per-domain
+/// API split out of the repository (tech-debt finding-67) keeps the same
+/// single-lazy-client + fail-before-Firebase-configures behavior.
 @MainActor
-final class FunctionsRepository: HermesGatewayRepository {
-    static let shared = FunctionsRepository()
-
+final class FunctionsClientProvider {
     private var cachedFunctions: Functions?
 
-    private func functionsClient() throws -> Functions {
+    func client() throws -> Functions {
         if let cachedFunctions {
             return cachedFunctions
         }
@@ -1726,19 +1732,46 @@ final class FunctionsRepository: HermesGatewayRepository {
         cachedFunctions = functions
         return functions
     }
+}
+
+// MARK: - Functions Repository
+
+/// Facade over the Firebase callable surface. The provider-account,
+/// StoreKit-entitlement, and Pi-pairing domains live in their own API objects
+/// (`ProviderAccountsAPI`, `EntitlementsAPI`, `PiPairingAPI` — tech-debt
+/// finding-67); this type forwards to them so every existing call site keeps
+/// compiling unchanged. The conversation-search and Hermes Gateway domains
+/// intentionally stay in this file for now: the privacy plaintext scanner
+/// (scripts/privacy/scan-chat-cloud-plaintext.mjs) pins their symbols to this
+/// path, and gate changes must ride in their own PR.
+@MainActor
+final class FunctionsRepository: HermesGatewayRepository {
+    static let shared = FunctionsRepository()
+
+    private let clientProvider: FunctionsClientProvider
+
+    /// Per-domain callable APIs. New call sites may depend on these (or their
+    /// protocols) directly instead of the whole repository.
+    let providerAccounts: ProviderAccountsAPI
+    let entitlements: EntitlementsAPI
+    let piPairing: PiPairingAPI
+
+    init() {
+        let clientProvider = FunctionsClientProvider()
+        self.clientProvider = clientProvider
+        self.providerAccounts = ProviderAccountsAPI(client: clientProvider)
+        self.entitlements = EntitlementsAPI(client: clientProvider)
+        self.piPairing = PiPairingAPI(client: clientProvider)
+    }
+
+    private func functionsClient() throws -> Functions {
+        try clientProvider.client()
+    }
+
+    // MARK: Provider accounts (delegates to ProviderAccountsAPI)
 
     func connectProviderCredential(provider: String, credential: String, kind: CredentialKind) async throws -> ProviderConnectionDoc {
-        let callable = try functionsClient().httpsCallable("connectProviderCredential")
-        let result = try await callable.call([
-            "provider": provider,
-            "credential": credential,
-            "credentialKind": kind.rawValue
-        ])
-        // Representative migration (WP2-TYPED-IOS): the response decode now flows
-        // through the shared helper, which surfaces `DecodingError` context via
-        // `FunctionsError.responseDecodingFailed` instead of the previous `try?`
-        // that silently collapsed every parse failure into `.decodingFailed`.
-        return try FirebaseCallableExecutor.decodeResponse(ProviderConnectionDoc.self, from: result.data)
+        try await providerAccounts.connectProviderCredential(provider: provider, credential: credential, kind: kind)
     }
 
     func connectProviderAccount(
@@ -1751,49 +1784,16 @@ final class FunctionsRepository: HermesGatewayRepository {
         deviceDisplayName: String? = nil,
         metadata: ProviderAccountConnectMetadata? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("connectProviderAccount")
-        var payload: [String: Any] = [
-            "provider": providerID.rawValue,
-            "credential": credential,
-            "credentialKind": kind.rawValue
-        ]
-        if let label, label.isEmpty == false {
-            payload["label"] = label
-        }
-        if let accountID, accountID.isEmpty == false {
-            payload["accountID"] = accountID
-        }
-        if let sourceDeviceID, sourceDeviceID.isEmpty == false {
-            payload["sourceDeviceID"] = sourceDeviceID
-        }
-        if let deviceDisplayName, deviceDisplayName.isEmpty == false {
-            payload["deviceDisplayName"] = deviceDisplayName
-        }
-        if let metadata {
-            if let endpointProfileID = metadata.endpointProfileID {
-                payload["endpointProfileID"] = endpointProfileID
-            }
-            if let region = metadata.region {
-                payload["region"] = region.rawValue
-            }
-            if let tier = metadata.tokenPlanTier {
-                payload["tokenPlanTier"] = tier.rawValue
-            }
-            if let cycle = metadata.tokenPlanBillingCycle {
-                payload["tokenPlanBillingCycle"] = cycle.rawValue
-            }
-            if let authMethodID = metadata.authMethodID {
-                payload["authMethodID"] = authMethodID
-            }
-        }
-        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
-        guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
-              let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
-            throw FunctionsError.decodingFailed
-        }
-        return doc
+        try await providerAccounts.connectProviderAccount(
+            providerID: providerID,
+            credential: credential,
+            kind: kind,
+            label: label,
+            accountID: accountID,
+            sourceDeviceID: sourceDeviceID,
+            deviceDisplayName: deviceDisplayName,
+            metadata: metadata
+        )
     }
 
     func connectHostedQuotaAccount(
@@ -1804,31 +1804,14 @@ final class FunctionsRepository: HermesGatewayRepository {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("connectHostedQuotaAccount")
-        var payload: [String: Any] = [
-            "provider": providerID.rawValue,
-            "credential": credential
-        ]
-        if let label, label.isEmpty == false {
-            payload["label"] = label
-        }
-        if let accountID, accountID.isEmpty == false {
-            payload["accountID"] = accountID
-        }
-        if let sourceDeviceID, sourceDeviceID.isEmpty == false {
-            payload["sourceDeviceID"] = sourceDeviceID
-        }
-        if let deviceDisplayName, deviceDisplayName.isEmpty == false {
-            payload["deviceDisplayName"] = deviceDisplayName
-        }
-        let result = try await callable.call(payload)
-        guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
-              let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
-            throw FunctionsError.decodingFailed
-        }
-        return doc
+        try await providerAccounts.connectHostedQuotaAccount(
+            providerID: providerID,
+            credential: credential,
+            label: label,
+            accountID: accountID,
+            sourceDeviceID: sourceDeviceID,
+            deviceDisplayName: deviceDisplayName
+        )
     }
 
     func connectSelfHostedQuotaAccount(
@@ -1838,52 +1821,25 @@ final class FunctionsRepository: HermesGatewayRepository {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("connectSelfHostedQuotaAccount")
-        var payload: [String: Any] = ["provider": providerID.rawValue]
-        if let label, label.isEmpty == false {
-            payload["label"] = label
-        }
-        if let accountID, accountID.isEmpty == false {
-            payload["accountID"] = accountID
-        }
-        if let sourceDeviceID, sourceDeviceID.isEmpty == false {
-            payload["sourceDeviceID"] = sourceDeviceID
-        }
-        if let deviceDisplayName, deviceDisplayName.isEmpty == false {
-            payload["deviceDisplayName"] = deviceDisplayName
-        }
-        let result = try await callable.call(payload)
-        guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
-              let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
-            throw FunctionsError.decodingFailed
-        }
-        return doc
+        try await providerAccounts.connectSelfHostedQuotaAccount(
+            providerID: providerID,
+            label: label,
+            accountID: accountID,
+            sourceDeviceID: sourceDeviceID,
+            deviceDisplayName: deviceDisplayName
+        )
     }
 
     func deleteProviderCredential(provider: String) async throws {
-        let callable = try functionsClient().httpsCallable("deleteProviderCredential")
-        _ = try await callable.call(["provider": provider])
+        try await providerAccounts.deleteProviderCredential(provider: provider)
     }
 
     func refreshProviderQuota(provider: String) async throws {
-        let callable = try functionsClient().httpsCallable("refreshProviderQuota")
-        _ = try await callable.call(["provider": provider])
+        try await providerAccounts.refreshProviderQuota(provider: provider)
     }
 
     func refreshProviderAccountQuota(accountID: String) async throws -> ProviderQuotaSnapshot {
-        // Representative migration to the typed callable helper (WP2-TYPED-IOS):
-        // request is `Encodable`, response is `Decodable`, and a malformed
-        // response surfaces `DecodingError` context instead of collapsing into an
-        // opaque `try?` failure. The encoded request `{accountID}` is byte-for-byte
-        // the same wire shape as the previous `["accountID": accountID]` dictionary.
-        struct Request: Encodable { let accountID: String }
-        return try await FirebaseCallableExecutor.call(
-            "refreshProviderAccountQuota",
-            Request(accountID: accountID),
-            using: functionsClient()
-        )
+        try await providerAccounts.refreshProviderAccountQuota(accountID: accountID)
     }
 
     func connectHostedQuotaAccount(
@@ -1895,58 +1851,31 @@ final class FunctionsRepository: HermesGatewayRepository {
         sourceDeviceID: String? = nil,
         deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("connectHostedQuotaAccount")
-        var payload: [String: Any] = [
-            "provider": providerID.rawValue,
-            "credential": credential,
-            "credentialKind": kind.rawValue
-        ]
-        if let label, label.isEmpty == false { payload["label"] = label }
-        if let accountID, accountID.isEmpty == false { payload["accountID"] = accountID }
-        if let sourceDeviceID, sourceDeviceID.isEmpty == false { payload["sourceDeviceID"] = sourceDeviceID }
-        if let deviceDisplayName, deviceDisplayName.isEmpty == false { payload["deviceDisplayName"] = deviceDisplayName }
-        let result = try await callable.call(payload)
-        guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
-              let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
-            throw FunctionsError.decodingFailed
-        }
-        return doc
+        try await providerAccounts.connectHostedQuotaAccount(
+            providerID: providerID,
+            credential: credential,
+            kind: kind,
+            label: label,
+            accountID: accountID,
+            sourceDeviceID: sourceDeviceID,
+            deviceDisplayName: deviceDisplayName
+        )
     }
 
     func deleteHostedQuotaCredentials(accountID: String = "codex_default") async throws {
-        let callable = try functionsClient().httpsCallable("deleteHostedQuotaCredentials")
-        _ = try await callable.call(["accountID": accountID])
+        try await providerAccounts.deleteHostedQuotaCredentials(accountID: accountID)
     }
 
     func updateProviderAccount(accountID: String, label: String? = nil, isDefault: Bool? = nil, disabled: Bool? = nil) async throws -> ProviderAccountDoc {
-        let callable = try functionsClient().httpsCallable("updateProviderAccount")
-        var payload: [String: Any] = ["accountID": accountID]
-        if let label { payload["label"] = label }
-        if let isDefault { payload["isDefault"] = isDefault }
-        if let disabled { payload["disabled"] = disabled }
-        let result = try await callable.call(payload)
-        guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
-              let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
-            throw FunctionsError.decodingFailed
-        }
-        return doc
+        try await providerAccounts.updateProviderAccount(accountID: accountID, label: label, isDefault: isDefault, disabled: disabled)
     }
 
     func deleteProviderAccount(accountID: String) async throws {
-        let callable = try functionsClient().httpsCallable("deleteProviderAccount")
-        _ = try await callable.call(["accountID": accountID])
+        try await providerAccounts.deleteProviderAccount(accountID: accountID)
     }
 
-    /// `force` is the explicit repair path: the server rebuilds the usage
-    /// counters from raw history. Routine refreshes omit it and are served
-    /// from the incremental counters when those are healthy.
     func rebuildUsageRollups(force: Bool = false) async throws {
-        let callable = try functionsClient().httpsCallable("rebuildUsageRollups")
-        _ = try await callable.call(["force": force])
+        try await providerAccounts.rebuildUsageRollups(force: force)
     }
 
     func searchStreams(query: String, limit: Int = 25) async throws -> [StreamSearchHit] {
@@ -2046,21 +1975,7 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func uploadProviderQuotaSnapshot(_ snapshot: ProviderQuotaSnapshot) async throws -> ProviderQuotaSnapshot {
-        let callable = try functionsClient().httpsCallable("uploadProviderQuotaSnapshot")
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let jsonData = try encoder.encode(snapshot)
-        guard let payload = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-            throw FunctionsError.decodingFailed
-        }
-        let result = try await callable.call(payload)
-        guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
-              let responseData = try? JSONSerialization.data(withJSONObject: sanitized),
-              let snap = try? JSONDecoder().decode(ProviderQuotaSnapshot.self, from: responseData) else {
-            throw FunctionsError.decodingFailed
-        }
-        return snap
+        try await providerAccounts.uploadProviderQuotaSnapshot(snapshot)
     }
 
     // MARK: Hermes host pairing
@@ -2619,21 +2534,18 @@ final class FunctionsRepository: HermesGatewayRepository {
         _ = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
     }
 
-    // MARK: Pi Agent host pairing
+    // MARK: Pi Agent host pairing (delegates to PiPairingAPI)
 
     func createPiAgentPairing(
         deviceId: String? = nil,
         platform: String? = nil,
         displayName: String? = nil
     ) async throws -> PiPairingSessionRecord {
-        let callable = try functionsClient().httpsCallable("createPiAgentPairing")
-        var payload: [String: Any] = [:]
-        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
-        if let platform, !platform.isEmpty { payload["platform"] = platform }
-        if let displayName, !displayName.isEmpty { payload["displayName"] = displayName }
-
-        let result = try await callable.call(payload)
-        return try decodeHermesValue(PiPairingSessionRecord.self, from: result.data)
+        try await piPairing.createPiAgentPairing(
+            deviceId: deviceId,
+            platform: platform,
+            displayName: displayName
+        )
     }
 
     func completePiAgentPairing(
@@ -2656,49 +2568,34 @@ final class FunctionsRepository: HermesGatewayRepository {
         realtimeRelayStatus: String? = nil,
         deviceId: String? = nil
     ) async throws -> PiConnectionRecord {
-        let callable = try functionsClient().httpsCallable("completePiAgentPairing")
-        var payload: [String: Any] = [
-            "pairingId": pairingId,
-            "code": code,
-            "displayName": displayName,
-            "mode": mode.rawValue,
-            "endpointURL": endpointURL,
-            "capabilities": capabilities
-        ]
-        if let connectionId, !connectionId.isEmpty { payload["connectionId"] = connectionId }
-        if let advertisedModel, !advertisedModel.isEmpty { payload["advertisedModel"] = advertisedModel }
-        if let selectedInstanceID, !selectedInstanceID.isEmpty { payload["selectedInstanceID"] = selectedInstanceID }
-        if let redisURL, !redisURL.isEmpty { payload["redisURL"] = redisURL }
-        if !instances.isEmpty { payload["instances"] = try encodedFunctionValue(instances) }
-        if !models.isEmpty { payload["models"] = try encodedFunctionValue(models) }
-        if let relayPublicKey, !relayPublicKey.isEmpty { payload["relayPublicKey"] = relayPublicKey }
-        if let relayKeyVersion { payload["relayKeyVersion"] = relayKeyVersion }
-        if let relayEncryption, !relayEncryption.isEmpty { payload["relayEncryption"] = relayEncryption }
-        if let realtimeRelayURL, !realtimeRelayURL.isEmpty { payload["realtimeRelayURL"] = realtimeRelayURL }
-        if let realtimeRelayStatus, !realtimeRelayStatus.isEmpty { payload["realtimeRelayStatus"] = realtimeRelayStatus }
-        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
-
-        let result = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
-        return try decodeHermesValue(PiConnectionRecord.self, from: result.data)
+        try await piPairing.completePiAgentPairing(
+            pairingId: pairingId,
+            code: code,
+            connectionId: connectionId,
+            displayName: displayName,
+            mode: mode,
+            endpointURL: endpointURL,
+            advertisedModel: advertisedModel,
+            selectedInstanceID: selectedInstanceID,
+            redisURL: redisURL,
+            capabilities: capabilities,
+            instances: instances,
+            models: models,
+            relayPublicKey: relayPublicKey,
+            relayKeyVersion: relayKeyVersion,
+            relayEncryption: relayEncryption,
+            realtimeRelayURL: realtimeRelayURL,
+            realtimeRelayStatus: realtimeRelayStatus,
+            deviceId: deviceId
+        )
     }
 
     func listPiAgentConnections(includeRevoked: Bool = false) async throws -> [PiConnectionRecord] {
-        let callable = try functionsClient().httpsCallable("listPiAgentConnections")
-        let result = try await callable.call(["includeRevoked": includeRevoked])
-        guard
-            let dict = result.data as? [String: Any],
-            let connections = dict["connections"]
-        else {
-            throw FunctionsError.decodingFailed
-        }
-        return try decodeHermesValue([PiConnectionRecord].self, from: connections)
+        try await piPairing.listPiAgentConnections(includeRevoked: includeRevoked)
     }
 
     func revokePiAgentConnection(connectionId: String, deviceId: String? = nil) async throws {
-        let callable = try functionsClient().httpsCallable("revokePiAgentConnection")
-        var payload: [String: Any] = ["connectionId": connectionId]
-        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
-        _ = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
+        try await piPairing.revokePiAgentConnection(connectionId: connectionId, deviceId: deviceId)
     }
 
     func updatePiAgentConnectionStatus(
@@ -2711,18 +2608,16 @@ final class FunctionsRepository: HermesGatewayRepository {
         models: [PiAgentRuntimeModelOption]? = nil,
         deviceId: String? = nil
     ) async throws {
-        let callable = try functionsClient().httpsCallable("updatePiAgentConnectionStatus")
-        var payload: [String: Any] = [
-            "connectionId": connectionId,
-            "status": status.rawValue
-        ]
-        if let advertisedModel, !advertisedModel.isEmpty { payload["advertisedModel"] = advertisedModel }
-        if let selectedInstanceID, !selectedInstanceID.isEmpty { payload["selectedInstanceID"] = selectedInstanceID }
-        if let capabilities { payload["capabilities"] = capabilities }
-        if let instances { payload["instances"] = try encodedFunctionValue(instances) }
-        if let models { payload["models"] = try encodedFunctionValue(models) }
-        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
-        _ = try await FirebaseCallableExecutor(callable).call(FirebaseCallablePayload(payload))
+        try await piPairing.updatePiAgentConnectionStatus(
+            connectionId: connectionId,
+            status: status,
+            advertisedModel: advertisedModel,
+            selectedInstanceID: selectedInstanceID,
+            capabilities: capabilities,
+            instances: instances,
+            models: models,
+            deviceId: deviceId
+        )
     }
 
     private func decodeHermesValue<T: Decodable>(_ type: T.Type, from raw: Any) throws -> T {
@@ -2769,81 +2664,40 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
     #endif
 
-    private func encodedFunctionValue<T: Encodable>(_ value: T) throws -> Any {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(value)
-        return try JSONSerialization.jsonObject(with: data)
-    }
+    // MARK: Apple-verified hosted quota entitlement (delegates to EntitlementsAPI)
 
-    // MARK: Apple-verified hosted quota entitlement
-
-    /// Mint a fresh `appAccountToken` UUID before calling `Product.purchase()`.
-    /// The server records the token alongside the signed-in UID so the
-    /// reconciler can later attribute the purchase to the correct user
-    /// without trusting any in-flight callable arguments.
     func beginEntitlementBinding(
         productID: String,
         clientPlatform: String? = nil
     ) async throws -> String {
-        let callable = try functionsClient().httpsCallable("beginEntitlementBinding")
-        var payload: [String: Any] = ["productID": productID]
-        if let clientPlatform { payload["clientPlatform"] = clientPlatform }
-        let result = try await callable.call(payload)
-        guard
-            let dict = result.data as? [String: Any],
-            let token = dict["appAccountToken"] as? String,
-            !token.isEmpty
-        else {
-            throw FunctionsError.decodingFailed
-        }
-        return token
+        try await entitlements.beginEntitlementBinding(
+            productID: productID,
+            clientPlatform: clientPlatform
+        )
     }
 
-    /// Send a verified StoreKit 2 transaction JWS to the server. The server
-    /// chain-verifies the JWS against AppleRootCA-G3 / G2 / AppleInc Root,
-    /// reconciles live state via the App Store Server API, and returns
-    /// the canonical `HostedQuotaEntitlementDoc` it just wrote.
     @discardableResult
     func verifyHostedQuotaEntitlement(
         signedTransactionJWS: String,
         signedRenewalInfoJWS: String? = nil,
         productID: String? = nil
     ) async throws -> HostedQuotaEntitlementResponse {
-        let callable = try functionsClient().httpsCallable("verifyHostedQuotaEntitlement")
-        var payload: [String: Any] = ["signedTransactionJWS": signedTransactionJWS]
-        if let signedRenewalInfoJWS { payload["signedRenewalInfoJWS"] = signedRenewalInfoJWS }
-        if let productID { payload["productID"] = productID }
-        let result = try await callable.call(payload)
-        return try decodeHostedQuotaEntitlement(result.data)
+        try await entitlements.verifyHostedQuotaEntitlement(
+            signedTransactionJWS: signedTransactionJWS,
+            signedRenewalInfoJWS: signedRenewalInfoJWS,
+            productID: productID
+        )
     }
 
-    /// Re-run live App Store Server reconciliation. Powers the
-    /// "Restore Purchases" affordance.
-    ///
-    /// Two callable contracts:
-    ///   - With `signedTransactionJWS` (preferred): the server verifies
-    ///     it through the same pipeline as `verifyHostedQuotaEntitlement`,
-    ///     so even a brand-new install with no server doc can recover an
-    ///     entitlement after `AppStore.sync()` populates
-    ///     `Transaction.currentEntitlements`.
-    ///   - Without `signedTransactionJWS`: the server reads the existing
-    ///     entitlement doc's `originalTransactionID`, pulls live state
-    ///     from ASC, and reconciles. Returns `failed-precondition` when
-    ///     no doc exists on file.
     @discardableResult
     func restoreHostedQuotaEntitlement(
         productID: String? = nil,
         signedTransactionJWS: String? = nil
     ) async throws -> HostedQuotaEntitlementResponse {
-        let callable = try functionsClient().httpsCallable("restoreHostedQuotaEntitlement")
-        var payload: [String: Any] = [:]
-        if let productID { payload["productID"] = productID }
-        if let signedTransactionJWS, !signedTransactionJWS.isEmpty {
-            payload["signedTransactionJWS"] = signedTransactionJWS
-        }
-        let result = try await callable.call(payload)
-        return try decodeHostedQuotaEntitlement(result.data)
+        try await entitlements.restoreHostedQuotaEntitlement(
+            productID: productID,
+            signedTransactionJWS: signedTransactionJWS
+        )
     }
 
     @discardableResult
@@ -2851,59 +2705,11 @@ final class FunctionsRepository: HermesGatewayRepository {
         signedTransactionJWS: String,
         productID: String
     ) async throws -> CloudProTopUpCreditResponse {
-        let callable = try functionsClient().httpsCallable("verifyCloudProTopUp")
-        let result = try await callable.call([
-            "signedTransactionJWS": signedTransactionJWS,
-            "productID": productID
-        ])
-        return try decodeCloudProTopUpCredit(result.data)
-    }
-
-    private func decodeHostedQuotaEntitlement(_ raw: Any?) throws -> HostedQuotaEntitlementResponse {
-        guard let dict = raw as? [String: Any] else {
-            throw FunctionsError.decodingFailed
-        }
-        let active = dict["active"] as? Bool ?? false
-        let productID = (dict["productID"] as? String) ?? ""
-        let transactionID = dict["transactionID"] as? String
-        let originalTransactionID = dict["originalTransactionID"] as? String
-        let environment = dict["environment"] as? String
-        let expiresAt = (dict["expiresAt"] as? String).flatMap(Self.iso8601.date(from:))
-        let revokedAt = (dict["revokedAt"] as? String).flatMap(Self.iso8601.date(from:))
-        let revocationReason = dict["revocationReason"] as? Int
-        return HostedQuotaEntitlementResponse(
-            active: active,
-            productID: productID,
-            transactionID: transactionID,
-            originalTransactionID: originalTransactionID,
-            environment: environment,
-            expiresAt: expiresAt,
-            revokedAt: revokedAt,
-            revocationReason: revocationReason
+        try await entitlements.verifyCloudProTopUp(
+            signedTransactionJWS: signedTransactionJWS,
+            productID: productID
         )
     }
-
-    private func decodeCloudProTopUpCredit(_ raw: Any?) throws -> CloudProTopUpCreditResponse {
-        guard let dict = raw as? [String: Any],
-              let monthKey = dict["monthKey"] as? String,
-              let kind = dict["kind"] as? String else {
-            throw FunctionsError.decodingFailed
-        }
-        let credited = dict["credited"] as? Bool ?? false
-        let units = (dict["units"] as? Int) ?? Int(dict["units"] as? Double ?? 0)
-        return CloudProTopUpCreditResponse(
-            credited: credited,
-            monthKey: monthKey,
-            units: units,
-            kind: kind
-        )
-    }
-
-    private static let iso8601: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 }
 
 // MARK: - Apple-verified hosted quota entitlement DTO
@@ -3003,37 +2809,28 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     }
 }
 
-// MARK: - Provider Account Device Links
+// MARK: - Provider Account Device Links (delegates to ProviderAccountsAPI)
 
 extension FunctionsRepository {
-    /// Adopt a provider account onto this device with the given capability.
-    /// Mirrors the macOS owner-link write that happens automatically when
-    /// `connectSelfHostedQuotaAccount` runs on the Mac.
     func adoptProviderAccountForDevice(
         accountID: String,
         deviceID: String,
         deviceDisplayName: String,
         capability: DeviceLinkCapability
     ) async throws {
-        let callable = try functionsClient().httpsCallable("adoptProviderAccountForDevice")
-        _ = try await callable.call([
-            "accountID": accountID,
-            "deviceID": deviceID,
-            "deviceDisplayName": deviceDisplayName,
-            "capability": capability.rawValue
-        ])
+        try await providerAccounts.adoptProviderAccountForDevice(
+            accountID: accountID,
+            deviceID: deviceID,
+            deviceDisplayName: deviceDisplayName,
+            capability: capability
+        )
     }
 
     func revokeProviderAccountDeviceLink(accountID: String, deviceID: String) async throws {
-        let callable = try functionsClient().httpsCallable("revokeProviderAccountDeviceLink")
-        _ = try await callable.call([
-            "accountID": accountID,
-            "deviceID": deviceID
-        ])
+        try await providerAccounts.revokeProviderAccountDeviceLink(accountID: accountID, deviceID: deviceID)
     }
 
     func backfillProviderAccountDeviceLinks() async throws {
-        let callable = try functionsClient().httpsCallable("backfillProviderAccountDeviceLinks")
-        _ = try await callable.call([:])
+        try await providerAccounts.backfillProviderAccountDeviceLinks()
     }
 }
