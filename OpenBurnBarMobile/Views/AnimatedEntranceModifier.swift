@@ -43,7 +43,7 @@ struct GlassCard<Content: View>: View {
                         // solid surface fill (never material), so keep it.
                         RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
                             .fill(Color.clear)
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
+                            .liquidGlassEffect(.regular, in: RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
                     } else {
                         RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
                             .fill(MobileTheme.Colors.surface)

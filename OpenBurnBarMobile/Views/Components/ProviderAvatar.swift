@@ -87,7 +87,7 @@ struct ProviderAvatar: View {
                         Circle()
                             .stroke(auroraStrokeGradient, lineWidth: 1)
                     )
-                    .glassEffect(.regular)
+                    .liquidGlassEffect(.regular)
             } else {
                 Circle()
                     .fill(.ultraThinMaterial)

@@ -104,7 +104,7 @@ struct BurnLayoutSwitcher: View {
             if #available(iOS 26, *) {
                 Capsule(style: .continuous)
                     .fill(Color.clear)
-                    .glassEffect(.regular, in: Capsule(style: .continuous))
+                    .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
             }
         }
     }

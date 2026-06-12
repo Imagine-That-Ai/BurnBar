@@ -65,7 +65,7 @@ struct MissionFAB: View {
         if #available(macOS 26, *) {
             Circle()
                 .fill(.clear)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .liquidGlassEffect(.regular.interactive(), in: .circle)
         } else {
             Circle()
                 .fill(DesignSystem.Colors.surfaceElevated)

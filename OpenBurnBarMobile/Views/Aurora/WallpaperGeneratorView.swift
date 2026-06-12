@@ -775,7 +775,7 @@ struct WallpaperGeneratorView: View {
                     // Interactive glass sampling the live swarm — nothing is
                     // drawn under the glass; the on-state rides as a soft
                     // white tint ON the glass shape.
-                    core.glassEffect(
+                    core.liquidGlassEffect(
                         isOn.wrappedValue
                             ? .regular.tint(Color.white.opacity(0.3)).interactive()
                             : .regular.interactive(),
@@ -1481,7 +1481,7 @@ private extension View {
         legacy: (Self) -> Legacy
     ) -> some View {
         if #available(iOS 26, *) {
-            self.glassEffect(.regular, in: shape)
+            self.liquidGlassEffect(.regular, in: shape)
         } else {
             legacy(self)
         }

@@ -57,6 +57,16 @@ struct ThemeSettingsView: View {
             }
 
             Section {
+                LiquidGlassTransparencyControl()
+                    .settingsAnchor(SettingsAnchor.glassTransparency)
+                    .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+            } header: {
+                Text("Liquid Glass")
+            } footer: {
+                Text("Zero matches this device's appearance settings, including Reduce Transparency. Slide toward Clear for more see-through glass, or Frosted for more privacy and contrast. System chrome like the tab bar follows iOS settings only.")
+            }
+
+            Section {
                 Toggle(isOn: $usePremiumSOTAUX) {
                     SettingsLabel(icon: "sparkles", color: MobileTheme.blaze, title: "Premium SOTA UX")
                 }
@@ -152,5 +162,110 @@ struct ThemeSettingsView: View {
             WallpaperGeneratorView(colorDriver: dashboard.swarmColorDriver)
         }
         .task { await dashboard.load() }
+    }
+}
+
+// MARK: - Liquid Glass transparency control
+
+/// Slider + live preview for `LiquidGlassTransparency`. The preview capsule
+/// renders through the same `liquidGlassSurface` adapter as the rest of the
+/// app, so dragging the slider shows exactly what every glass surface will do.
+private struct LiquidGlassTransparencyControl: View {
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    /// Magnetic detent: snap to the system center when the thumb lands close.
+    private var sliderValue: Binding<Double> {
+        Binding(
+            get: { LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: false) },
+            set: { rawTransparency = abs($0) < 0.06 ? 0 : $0 }
+        )
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            preview
+
+            HStack(spacing: 12) {
+                Text("Frosted")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: sliderValue, in: LiquidGlassTransparency.range)
+                    .tint(MobileTheme.ember)
+                    .accessibilityLabel("Glass transparency")
+                    .accessibilityValue(accessibilityDescription)
+                Text("Clear")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text(statusText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if rawTransparency != 0 {
+                    Button("Reset to System") { rawTransparency = 0 }
+                        .font(.footnote.weight(.semibold))
+                        .buttonStyle(.borderless)
+                        .tint(MobileTheme.ember)
+                }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: rawTransparency == 0)
+    }
+
+    /// A colorful backdrop with crisp detail behind a real glass capsule, so
+    /// the see-through level is obvious at a glance.
+    private var preview: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            MobileTheme.ember.opacity(0.92),
+                            MobileTheme.whimsy.opacity(0.85),
+                            MobileTheme.amber.opacity(0.9)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            HStack(spacing: 18) {
+                ForEach(0..<5, id: \.self) { index in
+                    Circle()
+                        .fill(.white.opacity(0.85))
+                        .frame(width: 10 + CGFloat(index) * 5, height: 10 + CGFloat(index) * 5)
+                }
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "flame.fill")
+                    .font(.subheadline)
+                Text("Liquid Glass")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .liquidGlassSurface(in: Capsule())
+        }
+        .frame(height: 88)
+        .accessibilityHidden(true)
+    }
+
+    private var statusText: String {
+        if reduceTransparency && rawTransparency > 0 {
+            return "Reduce Transparency is on — glass stays frosted until it's turned off."
+        }
+        let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: false)
+        if t == 0 { return "Matching this device's appearance settings." }
+        let percent = Int((abs(t) * 100).rounded())
+        return t > 0 ? "\(percent)% clearer than system." : "\(percent)% frostier than system."
+    }
+
+    private var accessibilityDescription: String {
+        let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: false)
+        if t == 0 { return "System default" }
+        let percent = Int((abs(t) * 100).rounded())
+        return t > 0 ? "\(percent) percent clearer" : "\(percent) percent frostier"
     }
 }

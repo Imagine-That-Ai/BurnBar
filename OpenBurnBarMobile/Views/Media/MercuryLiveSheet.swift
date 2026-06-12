@@ -535,7 +535,7 @@ struct MercuryLiveSheet: View {
         if #available(iOS 26, *) {
             shape
                 .fill(wash)
-                .glassEffect(.regular.interactive(), in: shape)
+                .liquidGlassEffect(.regular.interactive(), in: shape)
         } else {
             ZStack {
                 shape

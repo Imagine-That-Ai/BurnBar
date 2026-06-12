@@ -34,6 +34,7 @@ struct LiquidGlassFallback: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
 
     func body(content: Content) -> some View {
         content
@@ -55,11 +56,19 @@ struct LiquidGlassFallback: ViewModifier {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(sheenGradient)
                 .opacity(useWebsiteBackground ? 0.72 : 1.0)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .liquidGlassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
+            // Pre-26 plate honors the glass transparency preference the same
+            // way the shared adapters do: the material fades toward the raw
+            // backdrop for "clearer", a thick frost scrim rises for "frostier".
+            let t = LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
             ZStack {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.ultraThinMaterial)
+                    .opacity(LiquidGlassTransparency.fallbackPlateOpacity(t))
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.thickMaterial)
+                    .opacity(LiquidGlassTransparency.frostScrimOpacity(t))
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(sheenGradient)
             }
