@@ -347,9 +347,13 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
 
         switch runtime {
         case AssistantRuntimeID.hermes.rawValue:
-            HermesService.shared.loadMobileThread(id: threadID)
-            HermesService.shared.selectedSessionID = threadID
-            HermesService.shared.sendMessage(replyText)
+            // Send through the per-surface instance the main chat binds —
+            // sending on `.shared` reached the model but the reply never
+            // appeared in any visible transcript (no UI binds `.shared`).
+            let hermes = HermesService.mainSurface ?? HermesService.shared
+            hermes.loadMobileThread(id: threadID)
+            hermes.selectedSessionID = threadID
+            hermes.sendMessage(replyText)
         case AssistantRuntimeID.pi.rawValue, "piagent", "pi_agent":
             let history = MobileChatHistoryStore.shared
             history.bootstrap()
