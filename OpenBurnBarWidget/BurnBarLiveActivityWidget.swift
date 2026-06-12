@@ -169,8 +169,8 @@ struct ProviderBadgeWidget: View {
     }
 
     var color: Color {
-        guard let p = providerEnum else { return WidgetDesignSystem.Colors.amber }
-        return DesignSystemColors.primary(for: p)
+        guard let provider = providerEnum else { return WidgetDesignSystem.Colors.amber }
+        return DesignSystemColors.primary(for: provider)
     }
 
     var body: some View {
@@ -209,7 +209,11 @@ struct SessionActivePillWidget: View {
         .padding(.vertical, 4)
         .background(
             Capsule(style: .continuous)
-                .fill(sessionActive ? WidgetDesignSystem.Colors.success.opacity(0.15) : WidgetDesignSystem.Colors.border.opacity(0.15))
+                .fill(
+                    sessionActive
+                        ? WidgetDesignSystem.Colors.success.opacity(0.15)
+                        : WidgetDesignSystem.Colors.border.opacity(0.15)
+                )
         )
         .foregroundStyle(sessionActive ? WidgetDesignSystem.Colors.success : .secondary)
     }
@@ -236,8 +240,8 @@ struct PulsingDotWidget: View {
 // MARK: - Helpers
 
 private func providerColor(from name: String) -> Color {
-    guard let p = AgentProvider.fromPersistedToken(name) else {
+    guard let provider = AgentProvider.fromPersistedToken(name) else {
         return WidgetDesignSystem.Colors.amber
     }
-    return DesignSystemColors.primary(for: p)
+    return DesignSystemColors.primary(for: provider)
 }
