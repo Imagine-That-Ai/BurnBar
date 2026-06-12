@@ -38,6 +38,8 @@ import kotlinx.serialization.json.Json
 
 private const val CLOUD_THREAD_FETCH_LIMIT = 200
 private const val CLOUD_MIRROR_DEBOUNCE_MS = 600
+private const val THREAD_FILE_ESCAPE_RADIX = 16
+private const val THREAD_FILE_ESCAPE_HEX_WIDTH = 4
 
 /** Data-domain id whose sealingScheme gates at-rest Signal sealing for chat + CLI. */
 private const val SIGNAL_CHAT_DOMAIN = "conversations_chat"
@@ -411,6 +413,11 @@ private data class AssistantChatHistoryIndex(
     val tombstones: Map<String, Long> = emptyMap(),
 )
 
+private data class DecodedThreadFile(
+    val thread: AssistantChatThread,
+    val digest: Int,
+)
+
 /**
  * JSON-on-disk persistence under the app's files dir.
  *
@@ -467,16 +474,20 @@ internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLoca
         val index = loadIndex(partition)
         val threads = mutableListOf<AssistantChatThread>()
         val digests = mutableMapOf<String, Int>()
-        for (threadID in index.threadIDs) {
-            val file = threadFile(partition, threadID)
-            if (!file.exists()) continue
-            val text = runCatching { file.readText() }.getOrNull() ?: continue
-            val thread = runCatching { json.decodeFromString<AssistantChatThread>(text) }.getOrNull() ?: continue
-            threads.add(thread)
-            digests[thread.id] = text.hashCode()
+        for (decoded in index.threadIDs.mapNotNull { loadThreadFile(partition, it) }) {
+            threads.add(decoded.thread)
+            digests[decoded.thread.id] = decoded.digest
         }
         digestCache[partition] = digests
         return AssistantChatHistorySnapshot(threads = threads, tombstones = index.tombstones)
+    }
+
+    private fun loadThreadFile(partition: String, threadID: String): DecodedThreadFile? {
+        val file = threadFile(partition, threadID)
+        if (!file.exists()) return null
+        val text = runCatching { file.readText() }.getOrNull() ?: return null
+        val thread = runCatching { json.decodeFromString<AssistantChatThread>(text) }.getOrNull() ?: return null
+        return DecodedThreadFile(thread = thread, digest = text.hashCode())
     }
 
     private fun saveSnapshot(snapshot: AssistantChatHistorySnapshot, partition: String) {
@@ -606,15 +617,23 @@ internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLoca
             val out =
                 buildString {
                     for (ch in raw) {
-                        if (ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '_' || ch == '-') {
+                        if (isSafeThreadFileChar(ch)) {
                             append(ch)
                         } else {
-                            append("_").append(ch.code.toString(16).padStart(4, '0'))
+                            append("_").append(
+                                ch.code.toString(THREAD_FILE_ESCAPE_RADIX).padStart(THREAD_FILE_ESCAPE_HEX_WIDTH, '0'),
+                            )
                         }
                     }
                 }
             return out.ifEmpty { "_thread" }
         }
+
+        private fun isSafeThreadFileChar(ch: Char): Boolean =
+            isAsciiAlphanumeric(ch) || ch == '_' || ch == '-'
+
+        private fun isAsciiAlphanumeric(ch: Char): Boolean =
+            ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9'
     }
 }
 
