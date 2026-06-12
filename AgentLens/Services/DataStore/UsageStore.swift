@@ -110,7 +110,7 @@ final class UsageStore: Sendable {
                 usage.provider.rawValue,
                 usage.sessionId,
                 usage.sourceDeviceId,
-                usagePartition,
+                usagePartition
             ]
         )
     }
@@ -138,7 +138,7 @@ final class UsageStore: Sendable {
                 AgentProvider.factory.rawValue,
                 usage.sessionId,
                 usage.sourceDeviceId,
-                usagePartition,
+                usagePartition
             ]
         ) ?? 0
         return count > 0
@@ -161,7 +161,7 @@ final class UsageStore: Sendable {
                 AgentProvider.ollama.rawValue,
                 usage.sessionId,
                 usage.sourceDeviceId,
-                usagePartition,
+                usagePartition
             ]
         )
     }
@@ -192,7 +192,7 @@ final class UsageStore: Sendable {
                 usage.model,
                 usage.sourceDeviceId,
                 usagePartition,
-                usage.provenanceConfidence.precedence,
+                usage.provenanceConfidence.precedence
             ]
         )
     }
@@ -612,6 +612,20 @@ final class UsageStore: Sendable {
 
     // MARK: - Summary Builders
 
+    /// Per-model accumulator shared by the provider, credential, and project
+    /// summary builders. Tracks token buckets, cost, and provenance rollup.
+    private struct ModelRollup {
+        var input: Int
+        var output: Int
+        var cacheCreation: Int
+        var cacheRead: Int
+        var reasoning: Int
+        var cost: Double
+        var bestConfidence: UsageProvenanceConfidence
+        var bestMethod: UsageProvenanceMethod
+        var hasEstimated: Bool
+    }
+
     static func makeProviderSummaries(from usages: [TokenUsage]) -> [ProviderSummary] {
         AgentProvider.allCases.compactMap { provider -> ProviderSummary? in
             let providerUsages = usages.filter { $0.provider == provider }
@@ -623,7 +637,7 @@ final class UsageStore: Sendable {
             let totalOutputTokens = providerUsages.reduce(0) { $0 + $1.outputTokens }
 
             // Track model data including provenance
-            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod, hasEstimated: Bool)] = [:]
+            var modelData: [String: ModelRollup] = [:]
             for usage in providerUsages {
                 let existing = modelData[usage.model]
                 let newConfidence = usage.provenanceConfidence
@@ -643,16 +657,16 @@ final class UsageStore: Sendable {
                 }
                 let rowIsEstimated = newConfidence != .exact && newConfidence != .derivedExact
                 let existingHasEstimated = existing?.hasEstimated ?? false
-                modelData[usage.model] = (
-                    (existing?.0 ?? 0) + usage.inputTokens,
-                    (existing?.1 ?? 0) + usage.outputTokens,
-                    (existing?.2 ?? 0) + usage.cacheCreationTokens,
-                    (existing?.3 ?? 0) + usage.cacheReadTokens,
-                    (existing?.4 ?? 0) + usage.reasoningTokens,
-                    (existing?.5 ?? 0) + usage.cost,
-                    bestConfidence,
-                    bestMethod,
-                    existingHasEstimated || rowIsEstimated
+                modelData[usage.model] = ModelRollup(
+                    input: (existing?.input ?? 0) + usage.inputTokens,
+                    output: (existing?.output ?? 0) + usage.outputTokens,
+                    cacheCreation: (existing?.cacheCreation ?? 0) + usage.cacheCreationTokens,
+                    cacheRead: (existing?.cacheRead ?? 0) + usage.cacheReadTokens,
+                    reasoning: (existing?.reasoning ?? 0) + usage.reasoningTokens,
+                    cost: (existing?.cost ?? 0) + usage.cost,
+                    bestConfidence: bestConfidence,
+                    bestMethod: bestMethod,
+                    hasEstimated: existingHasEstimated || rowIsEstimated
                 )
             }
 
@@ -678,17 +692,17 @@ final class UsageStore: Sendable {
             }
 
             let modelBreakdown = modelData.map { modelName, data in
-                let totalModelTokens = data.0 + data.1 + data.2 + data.3 + data.4
+                let totalModelTokens = data.input + data.output + data.cacheCreation + data.cacheRead + data.reasoning
                 return ModelUsage(
                     modelName: modelName,
-                    inputTokens: data.0,
-                    outputTokens: data.1,
-                    cacheCreationTokens: data.2,
-                    cacheReadTokens: data.3,
-                    reasoningTokens: data.4,
+                    inputTokens: data.input,
+                    outputTokens: data.output,
+                    cacheCreationTokens: data.cacheCreation,
+                    cacheReadTokens: data.cacheRead,
+                    reasoningTokens: data.reasoning,
                     totalTokens: totalModelTokens,
-                    cost: data.5,
-                    percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0,
+                    cost: data.cost,
+                    percentage: totalCost > 0 ? (data.cost / totalCost) * 100 : 0,
                     provenanceConfidence: data.bestConfidence,
                     provenanceMethod: data.bestMethod,
                     hasEstimatedContributions: data.hasEstimated
@@ -711,7 +725,6 @@ final class UsageStore: Sendable {
         }.sorted { $0.totalCost > $1.totalCost }
     }
 
-
     /// Aggregates `token_usage` rows by `(provider, providerAccountID)` to power the
     /// "Spend by Credential" dashboard lane. Mirrors `makeProviderSummaries` but slices
     /// at the credential dimension so users with multiple API keys (or distinct OAuth
@@ -728,7 +741,7 @@ final class UsageStore: Sendable {
             groups[key, default: []].append(usage)
         }
 
-        return groups.compactMap { (key, rows) -> CredentialSummary? in
+        return groups.compactMap { key, rows -> CredentialSummary? in
             guard !rows.isEmpty else { return nil }
 
             let totalCost = rows.reduce(0) { $0 + $1.cost }
@@ -750,7 +763,7 @@ final class UsageStore: Sendable {
             let accountSource = rows.compactMap { $0.providerAccountSource }.first
 
             // Per-model rollup (same shape as makeProviderSummaries).
-            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod, hasEstimated: Bool)] = [:]
+            var modelData: [String: ModelRollup] = [:]
             for usage in rows {
                 let existing = modelData[usage.model]
                 let newConfidence = usage.provenanceConfidence
@@ -770,16 +783,16 @@ final class UsageStore: Sendable {
                 }
                 let rowIsEstimated = newConfidence != .exact && newConfidence != .derivedExact
                 let existingHasEstimated = existing?.hasEstimated ?? false
-                modelData[usage.model] = (
-                    (existing?.0 ?? 0) + usage.inputTokens,
-                    (existing?.1 ?? 0) + usage.outputTokens,
-                    (existing?.2 ?? 0) + usage.cacheCreationTokens,
-                    (existing?.3 ?? 0) + usage.cacheReadTokens,
-                    (existing?.4 ?? 0) + usage.reasoningTokens,
-                    (existing?.5 ?? 0) + usage.cost,
-                    bestConfidence,
-                    bestMethod,
-                    existingHasEstimated || rowIsEstimated
+                modelData[usage.model] = ModelRollup(
+                    input: (existing?.input ?? 0) + usage.inputTokens,
+                    output: (existing?.output ?? 0) + usage.outputTokens,
+                    cacheCreation: (existing?.cacheCreation ?? 0) + usage.cacheCreationTokens,
+                    cacheRead: (existing?.cacheRead ?? 0) + usage.cacheReadTokens,
+                    reasoning: (existing?.reasoning ?? 0) + usage.reasoningTokens,
+                    cost: (existing?.cost ?? 0) + usage.cost,
+                    bestConfidence: bestConfidence,
+                    bestMethod: bestMethod,
+                    hasEstimated: existingHasEstimated || rowIsEstimated
                 )
             }
 
@@ -803,17 +816,17 @@ final class UsageStore: Sendable {
             }
 
             let modelBreakdown = modelData.map { modelName, data in
-                let totalModelTokens = data.0 + data.1 + data.2 + data.3 + data.4
+                let totalModelTokens = data.input + data.output + data.cacheCreation + data.cacheRead + data.reasoning
                 return ModelUsage(
                     modelName: modelName,
-                    inputTokens: data.0,
-                    outputTokens: data.1,
-                    cacheCreationTokens: data.2,
-                    cacheReadTokens: data.3,
-                    reasoningTokens: data.4,
+                    inputTokens: data.input,
+                    outputTokens: data.output,
+                    cacheCreationTokens: data.cacheCreation,
+                    cacheReadTokens: data.cacheRead,
+                    reasoningTokens: data.reasoning,
                     totalTokens: totalModelTokens,
-                    cost: data.5,
-                    percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0,
+                    cost: data.cost,
+                    percentage: totalCost > 0 ? (data.cost / totalCost) * 100 : 0,
                     provenanceConfidence: data.bestConfidence,
                     provenanceMethod: data.bestMethod,
                     hasEstimatedContributions: data.hasEstimated
@@ -840,7 +853,6 @@ final class UsageStore: Sendable {
         .sorted { $0.totalCost > $1.totalCost }
     }
 
-
     /// Aggregates `token_usage` rows by `projectName` to power the "Spend by Project" lane.
     /// Mirrors `makeCredentialSummaries` but slices on the project dimension. Free-text
     /// project names are deduplicated by exact match (no case folding) so users see what
@@ -852,7 +864,7 @@ final class UsageStore: Sendable {
             groups[key, default: []].append(usage)
         }
 
-        return groups.compactMap { (projectName, rows) -> ProjectSpendSummary? in
+        return groups.compactMap { projectName, rows -> ProjectSpendSummary? in
             guard !rows.isEmpty else { return nil }
 
             let totalCost = rows.reduce(0) { $0 + $1.cost }
@@ -877,7 +889,7 @@ final class UsageStore: Sendable {
             .sorted { $0.cost > $1.cost }
 
             // Model rollup within this project.
-            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod, hasEstimated: Bool)] = [:]
+            var modelData: [String: ModelRollup] = [:]
             for usage in rows {
                 let existing = modelData[usage.model]
                 let newConfidence = usage.provenanceConfidence
@@ -897,16 +909,16 @@ final class UsageStore: Sendable {
                 }
                 let rowIsEstimated = newConfidence != .exact && newConfidence != .derivedExact
                 let existingHasEstimated = existing?.hasEstimated ?? false
-                modelData[usage.model] = (
-                    (existing?.0 ?? 0) + usage.inputTokens,
-                    (existing?.1 ?? 0) + usage.outputTokens,
-                    (existing?.2 ?? 0) + usage.cacheCreationTokens,
-                    (existing?.3 ?? 0) + usage.cacheReadTokens,
-                    (existing?.4 ?? 0) + usage.reasoningTokens,
-                    (existing?.5 ?? 0) + usage.cost,
-                    bestConfidence,
-                    bestMethod,
-                    existingHasEstimated || rowIsEstimated
+                modelData[usage.model] = ModelRollup(
+                    input: (existing?.input ?? 0) + usage.inputTokens,
+                    output: (existing?.output ?? 0) + usage.outputTokens,
+                    cacheCreation: (existing?.cacheCreation ?? 0) + usage.cacheCreationTokens,
+                    cacheRead: (existing?.cacheRead ?? 0) + usage.cacheReadTokens,
+                    reasoning: (existing?.reasoning ?? 0) + usage.reasoningTokens,
+                    cost: (existing?.cost ?? 0) + usage.cost,
+                    bestConfidence: bestConfidence,
+                    bestMethod: bestMethod,
+                    hasEstimated: existingHasEstimated || rowIsEstimated
                 )
             }
 
@@ -930,17 +942,17 @@ final class UsageStore: Sendable {
             }
 
             let modelBreakdown = modelData.map { modelName, data in
-                let totalModelTokens = data.0 + data.1 + data.2 + data.3 + data.4
+                let totalModelTokens = data.input + data.output + data.cacheCreation + data.cacheRead + data.reasoning
                 return ModelUsage(
                     modelName: modelName,
-                    inputTokens: data.0,
-                    outputTokens: data.1,
-                    cacheCreationTokens: data.2,
-                    cacheReadTokens: data.3,
-                    reasoningTokens: data.4,
+                    inputTokens: data.input,
+                    outputTokens: data.output,
+                    cacheCreationTokens: data.cacheCreation,
+                    cacheReadTokens: data.cacheRead,
+                    reasoningTokens: data.reasoning,
                     totalTokens: totalModelTokens,
-                    cost: data.5,
-                    percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0,
+                    cost: data.cost,
+                    percentage: totalCost > 0 ? (data.cost / totalCost) * 100 : 0,
                     provenanceConfidence: data.bestConfidence,
                     provenanceMethod: data.bestMethod,
                     hasEstimatedContributions: data.hasEstimated

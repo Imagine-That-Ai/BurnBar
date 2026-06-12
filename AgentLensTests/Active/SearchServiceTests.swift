@@ -203,7 +203,8 @@ final class SearchServiceTests: XCTestCase {
             let doc = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conv.id }),
             let chunk = try store.fetchSearchChunks(documentID: doc.id).first
         else {
-            return XCTFail("Expected projected conversation chunk")
+            XCTFail("Expected projected conversation chunk")
+            return
         }
 
         let semanticProvider = StubSemanticCandidateProvider(
@@ -1042,7 +1043,8 @@ final class SearchServiceTests: XCTestCase {
             let doc = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conv.id }),
             let chunk = try store.fetchSearchChunks(documentID: doc.id).first
         else {
-            return XCTFail("Expected projected chunk")
+            XCTFail("Expected projected chunk")
+            return
         }
 
         let semanticProvider = StubSemanticCandidateProvider(

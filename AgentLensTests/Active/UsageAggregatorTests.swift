@@ -180,7 +180,7 @@ final class UsageAggregatorTests: XCTestCase {
         await aggregator.refreshAll()
 
         // Verify errors are cleared
-        XCTAssertEqual(aggregator.errors[.factory], nil)
+        XCTAssertNil(aggregator.errors[.factory])
     }
 
     func test_refreshAll_setsLastRefreshOnSuccess() async throws {
@@ -551,7 +551,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
     func test_extractUsageTokens_normalizesFromTotal() throws {
         let usage: [String: Any] = [
-            "total_tokens": 300,
+            "total_tokens": 300
             // No input or output explicitly
         ]
 

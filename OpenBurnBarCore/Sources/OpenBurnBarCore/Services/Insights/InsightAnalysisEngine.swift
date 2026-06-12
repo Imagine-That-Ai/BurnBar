@@ -632,18 +632,28 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         return canvas
     }
 
+    /// Executive-summary payload shared between the deterministic base
+    /// builder and the prompt-intent specializer.
+    struct ExecutiveSummary {
+        var headline: String
+        var body: String
+        var bullets: [String]
+        var tone: InsightWidgetData.Narrative.Tone
+        var action: String
+    }
+
     private static func executiveSummary(
         digest: InsightDigest,
         topProvider: InsightDigest.ProviderSnapshot?,
         biggestDay: InsightDigest.DailyPoint?
-    ) -> (headline: String, body: String, bullets: [String], tone: InsightWidgetData.Narrative.Tone, action: String) {
+    ) -> ExecutiveSummary {
         guard digest.rowCount > 0 || digest.totals.sessionCount > 0 else {
-            return (
-                "No synced activity in this window",
-                "Insights has no usable rows for this window yet. The next useful move is to refresh sync or choose a broader window.",
-                ["Included sources were still budgeted and audited.", "No raw transcript content was sent."],
-                .neutral,
-                "Refresh data or switch the window to 30 days."
+            return ExecutiveSummary(
+                headline: "No synced activity in this window",
+                body: "Insights has no usable rows for this window yet. The next useful move is to refresh sync or choose a broader window.",
+                bullets: ["Included sources were still budgeted and audited.", "No raw transcript content was sent."],
+                tone: .neutral,
+                action: "Refresh data or switch the window to 30 days."
             )
         }
         let cost = currency(digest.totals.costUSD)
@@ -651,16 +661,16 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         let topDayText = biggestDay.map { "\(ISO8601DateFormatter().string(from: $0.day).prefix(10)) at \(currency($0.costUSD))" }
         var bullets = [
             "\(digest.totals.sessionCount) sessions and \(digest.totals.totalTokens) tokens.",
-            "\(topProviderName) led provider spend.",
+            "\(topProviderName) led provider spend."
         ]
         if let topDayText { bullets.append("Highest day was \(topDayText).") }
         let tone: InsightWidgetData.Narrative.Tone = digest.anomalies.contains { $0.score >= 3 } ? .warning : .neutral
-        return (
-            "\(cost) analyzed across \(digest.totals.sessionCount) sessions",
-            "The main thing to inspect is whether \(topProviderName) is doing the right work for its cost profile.",
-            bullets,
-            tone,
-            "Open the generated provider ranking and compare the top model against cheaper configured routes."
+        return ExecutiveSummary(
+            headline: "\(cost) analyzed across \(digest.totals.sessionCount) sessions",
+            body: "The main thing to inspect is whether \(topProviderName) is doing the right work for its cost profile.",
+            bullets: bullets,
+            tone: tone,
+            action: "Open the generated provider ranking and compare the top model against cheaper configured routes."
         )
     }
 
@@ -856,13 +866,12 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
                 guard let usedScore, let candidateScore = candidate.score else { return true }
                 return candidateScore >= usedScore - 0.08
             }
-            .sorted {
+            .min {
                 let lhsCost = $0.costSignal ?? 0
                 let rhsCost = $1.costSignal ?? 0
                 if lhsCost != rhsCost { return lhsCost > rhsCost }
                 return ($0.score ?? 0) > ($1.score ?? 0)
             }
-            .first
     }
 
     private static func bestBenchmark(
@@ -873,12 +882,12 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
     }
 
     private static func bestBenchmark(in benchmarks: [InsightDigest.ModelBenchmarkSummary]) -> InsightDigest.ModelBenchmarkSummary? {
-        benchmarks.sorted {
+        benchmarks.min {
             let lhsScore = $0.score ?? -1
             let rhsScore = $1.score ?? -1
             if lhsScore != rhsScore { return lhsScore > rhsScore }
             return ($0.rank ?? Int.max) < ($1.rank ?? Int.max)
-        }.first
+        }
     }
 
     private static func benchmarkCitation(_ benchmark: InsightDigest.ModelBenchmarkSummary) -> InsightCitation {
@@ -998,14 +1007,14 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
     /// headline + body reflect what the user actually asked, not the
     /// default "biggest provider" framing.
     static func specialize(
-        summary: (headline: String, body: String, bullets: [String], tone: InsightWidgetData.Narrative.Tone, action: String),
+        summary: ExecutiveSummary,
         for intent: PromptIntent,
         digest: InsightDigest,
         topProvider: InsightDigest.ProviderSnapshot?,
         topModel: InsightDigest.ModelSnapshot?,
         biggestDay: InsightDigest.DailyPoint?,
         quotaRisk: InsightDigest.QuotaSnapshotSummary?
-    ) -> (headline: String, body: String, bullets: [String], tone: InsightWidgetData.Narrative.Tone, action: String) {
+    ) -> ExecutiveSummary {
         switch intent {
         case .generalBrief:
             return summary
@@ -1015,7 +1024,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             let day = String(ISO8601DateFormatter().string(from: biggestDay.day).prefix(10))
             let cost = currency(biggestDay.costUSD)
             let provider = topProvider?.displayName ?? "your top provider"
-            return (
+            return ExecutiveSummary(
                 headline: "Cost peaked on \(day) at \(cost)",
                 body: "\(provider) was the largest contributor on that day. Re-run with a tighter window or cap top-spend models if the spike isn't a planned investment.",
                 bullets: summary.bullets,
@@ -1028,7 +1037,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             // If we have at least one project, build a deterministic
             // "where it leaked" story; otherwise fall back.
             if let leakProvider = topProvider {
-                return (
+                return ExecutiveSummary(
                     headline: "Where spend leaked",
                     body: "\(leakProvider.displayName) led with \(currency(leakProvider.costUSD)) across \(leakProvider.sessionCount) sessions. Inspect that provider's biggest sessions first — that's where the dollar density is.",
                     bullets: summary.bullets,
@@ -1040,7 +1049,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
 
         case .routeToCheaper:
             guard let topModel else { return summary }
-            return (
+            return ExecutiveSummary(
                 headline: "Route routine work off \(topModel.id)",
                 body: "\(topModel.id) is carrying the largest model cost in this window. For prompts under ~2K input tokens and short replies, a cheaper sibling model usually closes the quality gap.",
                 bullets: summary.bullets,
@@ -1049,7 +1058,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             )
 
         case .benchmarkPerformance:
-            return (
+            return ExecutiveSummary(
                 headline: "Cheapest benchmark-equivalent route",
                 body: "The router can compare your top models against public benchmark scores (Artificial Analysis / Design Arena / Terminal-Bench). Look for a sibling model with similar rank but a meaningfully lower cost signal.",
                 bullets: summary.bullets,
@@ -1058,7 +1067,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             )
 
         case .uiOrDesignFit:
-            return (
+            return ExecutiveSummary(
                 headline: "UI / design work model fit",
                 body: "Design tasks reward visual reasoning more than raw token throughput. If a top spender is the routine default for layout / Figma reads, swap to a vision-capable Sonnet-class model and keep the cheaper one for boilerplate.",
                 bullets: summary.bullets,
@@ -1069,7 +1078,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         case .quotaRisk:
             if let risky = quotaRisk, let limit = risky.limit, limit > 0 {
                 let pct = Int((risky.used / limit) * 100)
-                return (
+                return ExecutiveSummary(
                     headline: "\(risky.providerID) \(risky.bucketName) at \(pct)%",
                     body: "This bucket is the closest to its ceiling in the included window. If you have a heavy run planned in the next 24h, switch the router default before you start.",
                     bullets: summary.bullets,

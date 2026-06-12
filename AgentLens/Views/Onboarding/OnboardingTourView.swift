@@ -31,7 +31,7 @@ struct OnboardingTourView: View {
             iconGradient: DesignSystem.Colors.mercuryGradient,
             title: "Hermes Chat",
             description: "Your local AI companion. Ask questions about your usage, search conversations, or let Hermes analyze your workflow patterns."
-        ),
+        )
     ]
 
     var body: some View {

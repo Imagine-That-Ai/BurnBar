@@ -75,7 +75,7 @@ struct DashboardModelLeaderRow: View {
     let rank: Int
     let item: (model: String, provider: AgentProvider, cost: Double, tokens: Int)
     let settingsManager: SettingsManager
-    var onTap: (() -> Void)? = nil
+    var onTap: (() -> Void)?
 
     private var theme: ProviderTheme { .theme(for: item.provider) }
 

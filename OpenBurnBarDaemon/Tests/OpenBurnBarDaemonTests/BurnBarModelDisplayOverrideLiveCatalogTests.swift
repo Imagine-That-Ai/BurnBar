@@ -20,7 +20,7 @@ final class BurnBarModelDisplayOverrideLiveCatalogTests: XCTestCase {
         let snapshot = try await harness.liveCatalog.snapshot()
         let row = try XCTUnwrap(snapshot.models.first { $0.id == "claude-opus-4-7" })
         XCTAssertEqual(row.displayName, "My Work Opus")
-        XCTAssertEqual(row.displayNameIsCustom, true)
+        XCTAssertTrue(row.displayNameIsCustom ?? false)
         // The wire id is unchanged — routing stays on the canonical model.
         XCTAssertEqual(row.id, "claude-opus-4-7")
     }
@@ -33,7 +33,7 @@ final class BurnBarModelDisplayOverrideLiveCatalogTests: XCTestCase {
             displayName: "My Work Opus"
         )
         var snapshot = try await harness.liveCatalog.snapshot()
-        XCTAssertEqual(try XCTUnwrap(snapshot.models.first { $0.id == "claude-opus-4-7" }).displayNameIsCustom, true)
+        XCTAssertTrue(try XCTUnwrap(snapshot.models.first { $0.id == "claude-opus-4-7" }).displayNameIsCustom ?? false)
 
         try await harness.configStore.clearModelDisplayName(
             providerID: "anthropic",
@@ -41,7 +41,7 @@ final class BurnBarModelDisplayOverrideLiveCatalogTests: XCTestCase {
         )
         snapshot = try await harness.liveCatalog.snapshot()
         let row = try XCTUnwrap(snapshot.models.first { $0.id == "claude-opus-4-7" })
-        XCTAssertEqual(row.displayNameIsCustom, false)
+        XCTAssertFalse(row.displayNameIsCustom ?? true)
         XCTAssertNotEqual(row.displayName, "My Work Opus")
     }
 

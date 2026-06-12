@@ -445,7 +445,8 @@ final class BurnBarRunServiceTests: XCTestCase {
             XCTFail("Expected observer control rejection")
         } catch let error as BurnBarClientRegistryError {
             guard case .controllerRequired(let rejectedClientID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(rejectedClientID, observerID)
         }
@@ -973,7 +974,8 @@ final class BurnBarRunServiceTests: XCTestCase {
             XCTFail("Expected controller-only tool claim guard")
         } catch let error as BurnBarClientRegistryError {
             guard case .controllerRequired(let rejectedClientID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(rejectedClientID, observerID)
         }
@@ -1976,7 +1978,8 @@ final class BurnBarRunServiceTests: XCTestCase {
             XCTFail("Expected retryRequiresFailedRun error for non-failed run")
         } catch let error as BurnBarRunServiceError {
             guard case .retryRequiresFailedRun(let runID) = error else {
-                return XCTFail("Expected retryRequiresFailedRun error, got: \(error)")
+                XCTFail("Expected retryRequiresFailedRun error, got: \(error)")
+                return
             }
             XCTAssertEqual(runID, completedRun.runID)
         }

@@ -92,7 +92,7 @@ public enum CLILaunchAdapter {
         "ANTIGRAVITY_HOME",
         "GEMINI_HOME",
         "CURSOR_AGENT_HOME",
-        "CURSOR_AGENT_CONFIG_PATH",
+        "CURSOR_AGENT_CONFIG_PATH"
     ]
 
     // MARK: - Additional Arguments Allowlist
@@ -109,7 +109,7 @@ public enum CLILaunchAdapter {
         "--dry-run",
         "--working-dir=",
         "--config=",
-        "--project=",
+        "--project="
     ]
 
     // MARK: - Executable Resolution
@@ -278,7 +278,7 @@ public enum CLILaunchAdapter {
             "/opt/homebrew/bin",
             "/usr/local/bin",
             "/usr/bin",
-            "/bin",
+            "/bin"
         ]
     }
 
@@ -300,7 +300,7 @@ public enum CLILaunchAdapter {
             "\(homeDirectory)/.bun/bin",
             "\(homeDirectory)/.volta/bin",
             "\(homeDirectory)/.asdf/shims",
-            "\(homeDirectory)/.mise/shims",
+            "\(homeDirectory)/.mise/shims"
         ]
 
         directories.append(contentsOf:
@@ -329,7 +329,7 @@ public enum CLILaunchAdapter {
         let extensionRoots = [
             "\(homeDirectory)/.cursor/extensions",
             "\(homeDirectory)/.vscode/extensions",
-            "\(homeDirectory)/.windsurf/extensions",
+            "\(homeDirectory)/.windsurf/extensions"
         ]
 
         var directories: [String] = []
@@ -547,10 +547,8 @@ public enum CLILaunchAdapter {
                 guard !valuePart.isEmpty else { return nil }
                 // Verify the value doesn't contain suspicious patterns
                 let suspicious = [";", "&", "|", "`", "$", "(", ")", "{", "}", "[", "]", "<", ">"]
-                for pattern in suspicious {
-                    if valuePart.contains(pattern) {
-                        return nil
-                    }
+                for pattern in suspicious where valuePart.contains(pattern) {
+                    return nil
                 }
                 return arg
             }
@@ -729,7 +727,7 @@ public enum CLILaunchAdapter {
         }
 
         // Validate working directory if specified
-        var workingDirectory: String? = nil
+        var workingDirectory: String?
         if let wd = metadata.workingDirectory, !wd.isEmpty {
             let wdResult = validateWorkingDirectory(wd)
             switch wdResult {
@@ -1677,7 +1675,7 @@ public struct CLILaunchRedactor {
     /// Keys that are considered sensitive and should never appear in logs.
     private static let sensitiveKeys: Set<String> = [
         "API_KEY", "APIKEY", "SECRET", "TOKEN", "PASSWORD", "AUTH",
-        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY",
+        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY"
     ]
 
     /// Redacts sensitive patterns from a string for safe logging.
@@ -1728,6 +1726,5 @@ public struct CLILaunchRedactor {
         return result
     }
 }
-
 
 #endif

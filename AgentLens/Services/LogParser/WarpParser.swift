@@ -219,7 +219,7 @@ final class WarpParser: LogParser, Sendable {
             String(timestamp.timeIntervalSince1970),
             String(extracted.input),
             String(extracted.output),
-            String(extracted.cacheRead),
+            String(extracted.cacheRead)
         ].joined(separator: "|"))
         let confidence: UsageProvenanceConfidence = extracted.hasExplicitPrimaryBucket ? .exact : .derivedExact
         let cost = ModelPricing.lookup(model: model).cost(
@@ -261,7 +261,7 @@ final class WarpParser: LogParser, Sendable {
             String(timestamp.timeIntervalSince1970),
             model,
             context.userText,
-            context.assistantText,
+            context.assistantText
         ].joined(separator: "|"))
         let cost = ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens)
 
@@ -294,7 +294,7 @@ final class WarpParser: LogParser, Sendable {
     ) -> ConversationRecord? {
         let sections = [
             userText.isEmpty ? nil : "User: \(userText)",
-            assistantText.isEmpty ? nil : "Assistant: \(assistantText)",
+            assistantText.isEmpty ? nil : "Assistant: \(assistantText)"
         ].compactMap { $0 }
         guard !sections.isEmpty else { return nil }
 
@@ -410,7 +410,7 @@ final class WarpParser: LogParser, Sendable {
 
     private static func containsUsageKeys(_ dictionary: [String: Any]) -> Bool {
         let keys = Set(dictionary.keys.map { $0.lowercased() })
-        return !keys.intersection([
+        return !keys.isDisjoint(with: [
             "input_tokens",
             "prompt_tokens",
             "inputtokens",
@@ -422,8 +422,8 @@ final class WarpParser: LogParser, Sendable {
             "cache_read_input_tokens",
             "cache_creation_input_tokens",
             "total_tokens",
-            "totaltokens",
-        ]).isEmpty
+            "totaltokens"
+        ])
     }
 
     private static func stableHash(_ value: String) -> String {
@@ -459,7 +459,7 @@ private struct WarpParseContext {
 
         context.sessionId = Self.string(in: dictionary, keys: [
             "session_id", "sessionId", "conversation_id", "conversationId", "thread_id", "threadId",
-            "request_id", "requestId", "trace_id", "traceId", "terminal_session_id", "terminalSessionId",
+            "request_id", "requestId", "trace_id", "traceId", "terminal_session_id", "terminalSessionId"
         ])
         if context.sessionId == nil,
            let integrations = dictionary["integrations"] as? [String: Any],
@@ -475,10 +475,10 @@ private struct WarpParseContext {
 
         let userText = Self.text(in: dictionary, keys: [
             "prompt", "query", "input", "input_buffer", "inputBuffer", "user_input", "userInput",
-            "message", "text", "content", "command",
+            "message", "text", "content", "command"
         ])
         let assistantText = Self.text(in: dictionary, keys: [
-            "response", "answer", "completion", "output", "assistant_message", "assistantMessage",
+            "response", "answer", "completion", "output", "assistant_message", "assistantMessage"
         ])
         context.userText = userText ?? ""
         context.assistantText = assistantText ?? ""

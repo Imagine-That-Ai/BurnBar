@@ -68,7 +68,7 @@ struct ModelLaneScene: View {
         }
         let sortedKeys = byDay.keys.sorted()
         let values = sortedKeys.map { byDay[$0] ?? 0 }
-        return values.suffix(14).map { $0 }
+        return Array(values.suffix(14))
     }
 
     private func velocityFor(model: String) -> Double {

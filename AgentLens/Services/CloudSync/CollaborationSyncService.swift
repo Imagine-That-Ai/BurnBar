@@ -1202,7 +1202,6 @@ final class CollaborationSyncService: CloudSyncDomain, @unchecked Sendable {
         return try SharedArtifactCloudCodec.decode(documentID: documentID, data: data)
     }
 
-
     func upsertCollaborationHealth(
         status: RetrievalHealthStatus,
         errorCode: String?,

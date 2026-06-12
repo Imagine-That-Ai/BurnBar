@@ -27,21 +27,22 @@ struct SmartDisplaysSection: View {
     var body: some View {
         SmartDisplayReorderable(
             settingsManager: settingsManager,
-            header: { kind, _ in label(for: kind) }
-        ) { kind, _ in
-            switch kind {
-            case .nestHub:
-                NestHubSettingsCard(
-                    settingsManager: settingsManager,
-                    runtimeContext: runtimeContext
-                )
-            case .pixelClock:
-                PixelClockSettingsCard(
-                    settingsManager: settingsManager,
-                    runtimeContext: runtimeContext
-                )
+            header: { kind, _ in label(for: kind) },
+            content: { kind, _ in
+                switch kind {
+                case .nestHub:
+                    NestHubSettingsCard(
+                        settingsManager: settingsManager,
+                        runtimeContext: runtimeContext
+                    )
+                case .pixelClock:
+                    PixelClockSettingsCard(
+                        settingsManager: settingsManager,
+                        runtimeContext: runtimeContext
+                    )
+                }
             }
-        }
+        )
     }
 }
 

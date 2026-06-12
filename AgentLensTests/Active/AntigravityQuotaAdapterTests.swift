@@ -7,8 +7,8 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
     /// Fixed reference clock so history window math does not depend on wall time.
     private static let referenceEpochMs: Double = 1_750_000_000_000
 
-    var tempDirectoryURL: URL!
-    var fileManager: FileManager!
+    private var tempDirectoryURL: URL!
+    private var fileManager: FileManager!
 
     override func setUp() {
         super.setUp()
@@ -36,7 +36,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             fileManager: fileManager,
             session: session,
             environment: [
-                AntigravityQuotaAdapter.referenceDateEnvironmentKey: String(format: "%.0f", Self.referenceEpochMs),
+                AntigravityQuotaAdapter.referenceDateEnvironmentKey: String(format: "%.0f", Self.referenceEpochMs)
             ],
             homeDirectoryURL: tempDirectoryURL,
             dataStoreActor: dataStoreActor,
@@ -92,7 +92,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(snapshot.sourceKind, .unavailable)
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("not found") == true)
+        XCTAssertTrue(snapshot.statusMessage.contains("not found"))
     }
 
     func testFetch_whenHistoryExists_producesPerModelBuckets() async throws {
@@ -219,7 +219,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let mockLines = [
             historyLine(display: "R1", hoursAgo: 1.0, anchorMs: nowMs),
             historyLine(display: "R2", hoursAgo: 2.0, anchorMs: nowMs),
-            historyLine(display: "R3", hoursAgo: 3.0, anchorMs: nowMs),
+            historyLine(display: "R3", hoursAgo: 3.0, anchorMs: nowMs)
         ]
 
         try writeHistory(lines: mockLines)

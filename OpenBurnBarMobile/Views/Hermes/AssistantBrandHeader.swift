@@ -19,8 +19,8 @@ struct AssistantBrandHeader: View {
     let runtimeStatus: RuntimeStatus
     let modelSnapshot: AssistantModelLens.ModelSnapshot
     let endpointLabel: String?
-    var onTapModel: (() -> Void)? = nil
-    var onTapStatus: (() -> Void)? = nil
+    var onTapModel: (() -> Void)?
+    var onTapStatus: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {

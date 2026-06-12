@@ -264,7 +264,7 @@ public actor ComputerUseRunCoordinator {
             // Manual / Step modes need an explicit approval unless the
             // action is purely read-only (mac.inspect).
             let approvedBy: ComputerUseAuditEntry.ApprovedBy
-            var approvalId: String? = nil
+            var approvalId: String?
             if approvedByCandidate == .trustedScope {
                 approvedBy = .trustedScope
             } else if isReadOnlyInspect(action: action) {

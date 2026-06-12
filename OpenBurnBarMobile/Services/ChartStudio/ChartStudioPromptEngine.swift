@@ -106,7 +106,8 @@ public struct ChartStudioPromptEngine: Sendable {
 
         # EXAMPLES
         // 1) bar chart of cost by provider over 7d
-        {"kind":"swift_chart","title":"Cost by provider · 7d","swift_chart":{"kind":"bar","title":"Cost by provider · 7d","xAxis":{"title":"Provider","kind":"category"},"yAxis":{"title":"Cost (USD)","kind":"linear"},"series":[{"name":"USD","points":[{"x":"Claude Code","y":92.10,"group":"Claude Code"},{"x":"Codex","y":24.80,"group":"Codex"}]}],"valueFormat":"currency"}}
+        {"kind":"swift_chart","title":"Cost by provider · 7d","swift_chart":{"kind":"bar","title":"Cost by provider · 7d","xAxis":{"title":"Provider","kind":"category"},\
+        "yAxis":{"title":"Cost (USD)","kind":"linear"},"series":[{"name":"USD","points":[{"x":"Claude Code","y":92.10,"group":"Claude Code"},{"x":"Codex","y":24.80,"group":"Codex"}]}],"valueFormat":"currency"}}
 
         // 2) Mermaid sequence diagram
         {"kind":"mermaid","title":"Agent → tool flow","mermaid":{"title":"Agent → tool flow","source":"sequenceDiagram\\nUser->>Agent: Plan\\nAgent->>Tool: search()\\nTool-->>Agent: results\\nAgent-->>User: response"}}
@@ -115,7 +116,8 @@ public struct ChartStudioPromptEngine: Sendable {
         {"kind":"insight","title":"Cache savings","insight":{"title":"Cache saved you ~$12.40","body":"Claude Code cache reads covered 58% of prompts this week.","sparkline":[1,2,3,4,5,6],"tone":"positive"}}
 
         // 4) ASCII bar chart — terminal aesthetic
-        {"kind":"ascii","title":"This week · cost by provider","ascii":{"title":"This week · cost by provider","subtitle":"USD, last 7 days","variant":"bar","blocks":[{"label":"Claude Code","lines":["▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉  $92.10"],"accent":"#E07868"},{"label":"Codex","lines":["▉▉▉▉▉  $24.80"],"accent":"#9080D8"},{"label":"Hermes","lines":["▉▉  $11.30"],"accent":"#C8BFB5"}],"footnote":"7-day window · cost only"}}
+        {"kind":"ascii","title":"This week · cost by provider","ascii":{"title":"This week · cost by provider","subtitle":"USD, last 7 days","variant":"bar","blocks":[{"label":"Claude Code","lines":["▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉  $92.10"],"accent":"#E07868"},\
+        {"label":"Codex","lines":["▉▉▉▉▉  $24.80"],"accent":"#9080D8"},{"label":"Hermes","lines":["▉▉  $11.30"],"accent":"#C8BFB5"}],"footnote":"7-day window · cost only"}}
 
         // 5) ASCII sparkline — last 14 days
         {"kind":"ascii","title":"Burn velocity (14d)","ascii":{"variant":"sparkline","blocks":[{"label":"daily $","lines":["▁▂▂▃▅▆▇█▇▆▅▄▃▄"],"accent":"#2CCAC0"}],"footnote":"low ░ → high █"}}

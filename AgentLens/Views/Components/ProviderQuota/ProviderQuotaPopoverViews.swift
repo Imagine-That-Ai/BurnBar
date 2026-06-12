@@ -386,8 +386,6 @@ struct QuotaPopoverBar: View {
         )
     }
 
-
-
     @ViewBuilder
     private func routingHintLine(provider: AgentProvider, state: ProviderRoutingStateSnapshot) -> some View {
         HStack(spacing: 4) {
@@ -819,8 +817,7 @@ struct QuotaPopoverBar: View {
         case .minimax:
             do {
                 let trimmed = localMiniMaxKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty { try ks.removeAPIKey(for: "minimax") }
-                else { try ks.setAPIKey(trimmed, for: "minimax") }
+                if trimmed.isEmpty { try ks.removeAPIKey(for: "minimax") } else { try ks.setAPIKey(trimmed, for: "minimax") }
                 settingsManager.miniMaxQuotaMode = localMiniMaxMode
             } catch {
                 AppLogger.dataStore.silentFailure("saveAPIKey(minimax)", error: error)
@@ -828,16 +825,14 @@ struct QuotaPopoverBar: View {
         case .zai:
             do {
                 let trimmed = localZaiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty { try ks.removeAPIKey(for: "zai") }
-                else { try ks.setAPIKey(trimmed, for: "zai") }
+                if trimmed.isEmpty { try ks.removeAPIKey(for: "zai") } else { try ks.setAPIKey(trimmed, for: "zai") }
             } catch {
                 AppLogger.dataStore.silentFailure("saveAPIKey(zai)", error: error)
             }
         case .cursor:
             do {
                 let trimmed = localCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty { try ks.removeAPIKey(for: "cursor_cookie") }
-                else { try ks.setAPIKey(trimmed, for: "cursor_cookie") }
+                if trimmed.isEmpty { try ks.removeAPIKey(for: "cursor_cookie") } else { try ks.setAPIKey(trimmed, for: "cursor_cookie") }
             } catch {
                 AppLogger.dataStore.silentFailure("saveAPIKey(cursor_cookie)", error: error)
             }

@@ -356,8 +356,7 @@ public enum ChartSpecRenderer {
             } else if ch == "\"" {
                 inString.toggle()
             } else if !inString {
-                if ch == "{" { depth += 1 }
-                else if ch == "}" {
+                if ch == "{" { depth += 1 } else if ch == "}" {
                     depth -= 1
                     if depth == 0 {
                         endIndex = raw.index(after: i)

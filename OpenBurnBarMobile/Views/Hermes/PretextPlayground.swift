@@ -25,11 +25,11 @@ struct PretextPlayground: View {
     @State private var targetLines: Int = 3
     @State private var preWrap: Bool = false
 
-    @State private var measureResult: PretextLinesResult? = nil
-    @State private var shrinkWidth: CGFloat? = nil
-    @State private var naturalWidth: CGFloat? = nil
+    @State private var measureResult: PretextLinesResult?
+    @State private var shrinkWidth: CGFloat?
+    @State private var naturalWidth: CGFloat?
     @State private var measurementInflight: Bool = false
-    @State private var measurementError: String? = nil
+    @State private var measurementError: String?
 
     enum Mode: String, CaseIterable, Identifiable {
         case measure = "Measure"

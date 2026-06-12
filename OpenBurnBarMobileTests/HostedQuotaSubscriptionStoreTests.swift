@@ -29,7 +29,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             "com.openburnbar.proMax.v2.monthly",
             "com.openburnbar.proMax.annual",
             "com.openburnbar.ultra.monthly",
-            "com.openburnbar.ultra.annual.v2",
+            "com.openburnbar.ultra.annual.v2"
         ])
         XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.fallbackDisplayPrice), [
             "$7.99",
@@ -37,7 +37,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             "$24.99",
             "$249",
             "$59.99",
-            "$599",
+            "$599"
         ])
         XCTAssertEqual(OpenBurnBarProductCatalog.subscriptions.map(\.entitlementID), [
             "burnbar_pro",
@@ -45,16 +45,16 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             "burnbar_pro_max",
             "burnbar_pro_max",
             "burnbar_ultra",
-            "burnbar_ultra",
+            "burnbar_ultra"
         ])
         XCTAssertEqual(OpenBurnBarProductCatalog.topUps.map(\.id), [
             "com.openburnbar.agentControl.actions100",
-            "com.openburnbar.floo.relay50gb",
+            "com.openburnbar.floo.relay50gb"
         ])
         XCTAssertEqual(OpenBurnBarProductCatalog.topUps.map(\.fallbackDisplayPrice), ["$4.99", "$4.99"])
         XCTAssertEqual(OpenBurnBarProductCatalog.topUps.map(\.topUpKind), [
             "agent_control_actions_100",
-            "floo_relay_50gb",
+            "floo_relay_50gb"
         ])
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
@@ -413,8 +413,8 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(service.bindingRequests.count, 0)
         XCTAssertEqual(service.verifyRequests.count, 0)
         XCTAssertFalse(store.isActive)
-        XCTAssertTrue(store.error?.contains("Sign in to OpenBurnBar") == true)
-        XCTAssertFalse(store.error?.localizedCaseInsensitiveContains("Unauthenticated") == true)
+        XCTAssertEqual(store.error?.contains("Sign in to OpenBurnBar"), true)
+        XCTAssertEqual(store.error?.localizedCaseInsensitiveContains("Unauthenticated"), false)
     }
 
     func testSignedOutTopUpDoesNotStartConsumablePurchase() async throws {
@@ -437,7 +437,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertFalse(didCallPurchase)
         XCTAssertEqual(service.bindingRequests.count, 0)
         XCTAssertEqual(service.topUpRequests.count, 0)
-        XCTAssertTrue(store.error?.contains("Sign in to OpenBurnBar") == true)
+        XCTAssertEqual(store.error?.contains("Sign in to OpenBurnBar"), true)
     }
 
     func testPurchaseFetchesProductWhenLoadHasNotCompleted() async throws {

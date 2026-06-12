@@ -84,7 +84,7 @@ struct OpenBurnBarOperatingFreshnessStrip: View {
 
 struct OpenBurnBarMissionSummaryCard: View {
     let summary: OpenBurnBarMissionSummary
-    var onOpenSummary: ((String, String) -> Void)? = nil
+    var onOpenSummary: ((String, String) -> Void)?
 
     var body: some View {
         Button {
@@ -177,7 +177,7 @@ struct OpenBurnBarMissionSummaryCard: View {
 
 struct OpenBurnBarDirectionSummaryCard: View {
     let summary: OpenBurnBarDirectionSummary
-    var onOpenSummary: ((String, String) -> Void)? = nil
+    var onOpenSummary: ((String, String) -> Void)?
 
     var body: some View {
         Button {
@@ -249,7 +249,7 @@ struct OpenBurnBarDirectionSummaryCard: View {
 
 struct OpenBurnBarBurnSummaryCard: View {
     let summary: OpenBurnBarBurnSummary
-    var onOpenSummary: ((String, String) -> Void)? = nil
+    var onOpenSummary: ((String, String) -> Void)?
 
     var body: some View {
         Button {
@@ -297,7 +297,7 @@ struct OpenBurnBarBurnSummaryCard: View {
 
 struct OpenBurnBarEvidencePanel: View {
     let summary: OpenBurnBarEvidenceSummary
-    var onOpenEntry: ((OpenBurnBarEvidenceEntry) -> Void)? = nil
+    var onOpenEntry: ((OpenBurnBarEvidenceEntry) -> Void)?
 
     var body: some View {
         GlassCard {
@@ -374,7 +374,7 @@ struct OpenBurnBarEvidencePanel: View {
 
 struct OpenBurnBarEvidenceEntryRow: View {
     let entry: OpenBurnBarEvidenceEntry
-    var onOpen: ((OpenBurnBarEvidenceEntry) -> Void)? = nil
+    var onOpen: ((OpenBurnBarEvidenceEntry) -> Void)?
 
     var body: some View {
         Button {

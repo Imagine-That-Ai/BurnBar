@@ -52,7 +52,7 @@ final class MacInsightAggregator {
         "firestore_rollups",
         "quota_snapshots",
         "provider_accounts",
-        "mac_prior_analyses",
+        "mac_prior_analyses"
     ]
 
     private func loadPriorRunSummaries() async -> [String] {

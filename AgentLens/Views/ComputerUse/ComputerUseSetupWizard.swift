@@ -184,8 +184,7 @@ public struct ComputerUseSetupWizard: View {
                     .buttonStyle(.bordered)
             }
             Button(model.currentStep == .complete ? "Done" : "Continue") {
-                if model.currentStep == .complete { onComplete() }
-                else { model.goForward() }
+                if model.currentStep == .complete { onComplete() } else { model.goForward() }
             }
             .buttonStyle(.borderedProminent)
             .disabled(!model.canAdvance)
@@ -256,7 +255,7 @@ public final class ComputerUseSetupWizardModel: ObservableObject {
     @Published public var currentStep: ComputerUseSetupWizard.Step = .overview
     @Published public var accessibilityGranted: Bool = false
     @Published public var playwrightReady: Bool = false
-    @Published public var sampleStatus: SampleActionStatus = SampleActionStatus()
+    @Published public var sampleStatus = SampleActionStatus()
     @Published public var sampleIsRunning: Bool = false
 
     public var requestAccessibility: () -> Void = {}

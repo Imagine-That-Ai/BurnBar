@@ -87,7 +87,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
     ///
     /// Used by VAL-CROSS-006 tests to verify that runtime emitted logs
     /// don't contain raw secrets.
-    final class RuntimeLogCapture {
+    private final class RuntimeLogCapture {
         /// All captured log strings from runtime execution
         var capturedLogs: [String] = []
 
@@ -2988,9 +2988,18 @@ private struct UnavailableBrowserProvider: BrowserAvailabilityProviding {
 
 // MARK: - SwitcherProfileStore Helper Extension
 
+/// Spec describing one profile to create via `SwitcherProfileStore.createProfiles(_:)`.
+struct SwitcherProfileCreationSpec {
+    var targetKind: SwitcherProfileTargetKind
+    var browserType: SwitcherBrowserProfileType?
+    var cliType: SwitcherCLIProfileType?
+    var browserMeta: SwitcherBrowserProfileMetadata?
+    var cliMeta: SwitcherCLIProfileMetadata?
+}
+
 extension SwitcherProfileStore {
     /// Creates multiple profiles in order.
-    func createProfiles(_ specs: [(targetKind: SwitcherProfileTargetKind, browserType: SwitcherBrowserProfileType?, cliType: SwitcherCLIProfileType?, browserMeta: SwitcherBrowserProfileMetadata?, cliMeta: SwitcherCLIProfileMetadata?)]) throws -> [SwitcherProfileRecord] {
+    func createProfiles(_ specs: [SwitcherProfileCreationSpec]) throws -> [SwitcherProfileRecord] {
         var records: [SwitcherProfileRecord] = []
         for spec in specs {
             let record = SwitcherProfileRecord(

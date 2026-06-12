@@ -179,7 +179,8 @@ final class BurnBarAgentStackTests: XCTestCase {
               case .array(let changes)? = payload["changes"],
               case .object(let firstChange)? = changes.first,
               case .string(let text)? = firstChange["text"] else {
-            return XCTFail("Expected apply_patch arguments with updated text.")
+            XCTFail("Expected apply_patch arguments with updated text.")
+            return
         }
         XCTAssertEqual(text, "export const value = 2;\n")
     }
@@ -207,7 +208,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         )
         XCTAssertEqual(approval?.tool, .runTerminal)
         XCTAssertEqual(approval?.risk, .high)
-        XCTAssertEqual(policy.indicatesProgress(for: BurnBarToolCallSnapshot(
+        XCTAssertTrue(policy.indicatesProgress(for: BurnBarToolCallSnapshot(
             callID: "call-1",
             runID: BurnBarRunID(rawValue: "run-1"),
             tool: .searchWorkspace,
@@ -216,8 +217,8 @@ final class BurnBarAgentStackTests: XCTestCase {
             requestedBy: BurnBarClientID(rawValue: "client-a"),
             requestedAt: Date(),
             output: .object(["matches": .array([])])
-        )), true)
-        XCTAssertEqual(policy.indicatesProgress(for: BurnBarToolCallSnapshot(
+        )))
+        XCTAssertFalse(policy.indicatesProgress(for: BurnBarToolCallSnapshot(
             callID: "call-2",
             runID: BurnBarRunID(rawValue: "run-2"),
             tool: .readFile,
@@ -226,7 +227,7 @@ final class BurnBarAgentStackTests: XCTestCase {
             requestedBy: BurnBarClientID(rawValue: "client-a"),
             requestedAt: Date(),
             output: nil
-        )), false)
+        )))
     }
 
     func testPolicyEngineRiskAndApprovalMatrix() {
@@ -327,7 +328,8 @@ final class BurnBarAgentStackTests: XCTestCase {
         XCTAssertEqual(action?.tool, .searchWorkspace)
         guard case .object(let payload)? = action?.arguments,
               case .string(let query)? = payload["query"] else {
-            return XCTFail("Expected search query payload.")
+            XCTFail("Expected search query payload.")
+            return
         }
         XCTAssertEqual(query, "BurnBarRunService")
     }

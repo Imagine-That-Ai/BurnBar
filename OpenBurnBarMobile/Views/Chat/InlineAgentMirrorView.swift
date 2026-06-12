@@ -474,20 +474,20 @@ struct InlineAgentMirrorView: View {
                 return [
                     "Open BurnBar on your Mac.",
                     "Sign in with the same OpenBurnBar account.",
-                    "Enable Hermes Remote Relay in BurnBar's Hermes settings.",
+                    "Enable Hermes Remote Relay in BurnBar's Hermes settings."
                 ]
             case .noFrames:
                 return [
                     "Confirm BurnBar is still running on your Mac (menu bar icon visible).",
                     "Open System Settings \u{2192} Privacy & Security \u{2192} Screen Recording and make sure BurnBar is on. Toggle it off and back on if you just granted it.",
                     "Wake the Mac if it dozed. Locked / sleeping Macs produce no frames.",
-                    "Quit and relaunch BurnBar on the Mac, then tap Try Again here.",
+                    "Quit and relaunch BurnBar on the Mac, then tap Try Again here."
                 ]
             case .generic:
                 return [
                     "Tap Try Again to retry the handshake.",
                     "If it keeps failing, open Settings to confirm your Mac relay is online.",
-                    "Switch back to Smart view (top toggle) to keep chatting in the meantime.",
+                    "Switch back to Smart view (top toggle) to keep chatting in the meantime."
                 ]
             }
         }

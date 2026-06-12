@@ -287,7 +287,7 @@ extension AccountSwitcherSettingsView {
                 colors: [
                     Color(hex: "F3E8E6"),
                     Color(hex: "F5E4DE"),
-                    Color(hex: "F0DDD4"),
+                    Color(hex: "F0DDD4")
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -528,13 +528,13 @@ extension AccountSwitcherSettingsView {
 
         let cliOrder: [(SwitcherCLIProfileType, String, String, Color)] = [
             (.claude, "Claude Code", "terminal.fill", Color(hex: "CC785C")),
-            (.codex,  "Codex",       "terminal.fill", Color(hex: "00A67E")),
-            (.opencode, "OpenCode",  "terminal.fill", DesignSystem.Colors.whimsy),
+            (.codex, "Codex", "terminal.fill", Color(hex: "00A67E")),
+            (.opencode, "OpenCode", "terminal.fill", DesignSystem.Colors.whimsy),
             (.droid, "Droid", "terminal.fill", Color(hex: "8B5CF6")),
             (.forge, "Forge", "flame.fill", Color(hex: "F97316")),
             (.antigravity, "Antigravity", "terminal.fill", Color(hex: "6C63FF")),
             (.grok, "Grok Build", "terminal.fill", Color(hex: "111111")),
-            (.cursorAgent, "Cursor Agent", "terminal.fill", Color(hex: "00E5FF")),
+            (.cursorAgent, "Cursor Agent", "terminal.fill", Color(hex: "00E5FF"))
         ]
 
         var groups: [ProfileGroup] = []
@@ -825,7 +825,7 @@ extension AccountSwitcherSettingsView {
         let normalizedProfileID = normalizedQuotaIdentifier(profile.id)
         let normalizedSourceIDs = Set([
             "switcher-cli:\(cliType.rawValue):\(profile.id)",
-            "switcher:\(profile.id)",
+            "switcher:\(profile.id)"
         ].compactMap(normalizedQuotaIdentifier))
         return quotaService.snapshots(for: provider.providerID).first { snapshot in
             normalizedQuotaIdentifier(snapshot.accountID) == normalizedProfileID

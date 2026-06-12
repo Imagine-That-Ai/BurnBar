@@ -26,7 +26,7 @@ final class NewAdapterIntegrationTests: XCTestCase {
         if dbExists {
             // Verify DB has the expected schema
             var db: OpaquePointer?
-            guard sqlite3_open(dbPath, &db) == SQLITE_OK, let db = db else {
+            guard sqlite3_open(dbPath, &db) == SQLITE_OK, let db else {
                 XCTFail("Could not open Forge DB")
                 return
             }
@@ -59,7 +59,7 @@ final class NewAdapterIntegrationTests: XCTestCase {
         }
 
         var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK, let db = db else { return }
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK, let db else { return }
         defer { sqlite3_close(db) }
 
         var stmt: OpaquePointer?
@@ -93,7 +93,7 @@ final class NewAdapterIntegrationTests: XCTestCase {
         }
 
         var db: OpaquePointer?
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK, let db = db else {
+        guard sqlite3_open(dbPath, &db) == SQLITE_OK, let db else {
             XCTFail("Could not open Hermes state.db")
             return
         }

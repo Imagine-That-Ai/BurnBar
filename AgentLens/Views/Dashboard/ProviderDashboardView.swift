@@ -350,10 +350,10 @@ struct ProviderCard: View {
         }
 
         let raw: [(label: String, value: Int, color: Color)] = [
-            ("Input",   max(0, summary.totalInputTokens),  paletteColor(0, fallback: theme.primaryColor)),
-            ("Cache W", max(0, cacheCreationTokens),       paletteColor(2, fallback: theme.primaryColor.opacity(0.6))),
-            ("Cache R", max(0, cacheReadTokens),           paletteColor(1, fallback: theme.accentColor)),
-            ("Output",  max(0, summary.totalOutputTokens), paletteColor(3, fallback: theme.accentColor.opacity(0.6))),
+            ("Input", max(0, summary.totalInputTokens), paletteColor(0, fallback: theme.primaryColor)),
+            ("Cache W", max(0, cacheCreationTokens), paletteColor(2, fallback: theme.primaryColor.opacity(0.6))),
+            ("Cache R", max(0, cacheReadTokens), paletteColor(1, fallback: theme.accentColor)),
+            ("Output", max(0, summary.totalOutputTokens), paletteColor(3, fallback: theme.accentColor.opacity(0.6)))
         ]
 
         return raw
@@ -548,7 +548,7 @@ struct ProviderDashboardView: View {
     let provider: AgentProvider
     let dataStore: DataStore
     let timeRange: TimeRange
-    var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
+    var onOpenSessionLog: ((ConversationJumpTarget) -> Void)?
 
     @Environment(SettingsManager.self) private var settingsManager
     @State private var selectedSession: TokenUsage?
@@ -868,7 +868,6 @@ struct ProviderDashboardView: View {
             displayMode: settingsManager.usageDisplayMode
         )
     }
-
 
     private func formatTokens(_ tokens: Int) -> String {
         tokens.formatAsTokens()

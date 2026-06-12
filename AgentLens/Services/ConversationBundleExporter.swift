@@ -83,7 +83,7 @@ enum ConversationBundleExporter {
             "Generated \(iso.string(from: Date())) · \(records.count) conversation\(records.count == 1 ? "" : "s")",
             "",
             "| Provider | Title | Project | When | Messages | File |",
-            "|----------|-------|---------|------|----------|------|",
+            "|----------|-------|---------|------|----------|------|"
         ]
 
         var usedFilenames: Set<String> = []

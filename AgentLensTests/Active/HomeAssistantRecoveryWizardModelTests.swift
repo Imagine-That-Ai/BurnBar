@@ -5,9 +5,9 @@ import XCTest
 @MainActor
 final class HomeAssistantRecoveryWizardModelTests: XCTestCase {
 
-    var session: URLSession!
-    var configStore: InMemoryConfigStore!
-    var tokenStore: InMemoryHomeAssistantTokenStore!
+    private var session: URLSession!
+    private var configStore: InMemoryConfigStore!
+    private var tokenStore: InMemoryHomeAssistantTokenStore!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -35,8 +35,8 @@ final class HomeAssistantRecoveryWizardModelTests: XCTestCase {
 
         // 3. probe URL
         HomeAssistantStubURLProtocol.handler = { request in
-            XCTAssertTrue(request.url?.absoluteString.hasSuffix("/api/") == true,
-                          "expected probe to hit /api/, got \(request.url?.absoluteString ?? "nil")")
+            XCTAssertEqual(request.url?.absoluteString.hasSuffix("/api/"), true,
+                           "expected probe to hit /api/, got \(request.url?.absoluteString ?? "nil")")
             let response = HTTPURLResponse(
                 url: request.url!, statusCode: 401, httpVersion: nil,
                 headerFields: ["X-HA-Version": "2026.5.0"]
@@ -71,7 +71,8 @@ final class HomeAssistantRecoveryWizardModelTests: XCTestCase {
 
         // 5. pick the display
         guard case let .pickDisplay(_, players) = model.step else {
-            return XCTFail("expected pickDisplay")
+            XCTFail("expected pickDisplay")
+            return
         }
         XCTAssertEqual(players.count, 1)
         model.pickDisplay(players[0])
@@ -99,7 +100,8 @@ final class HomeAssistantRecoveryWizardModelTests: XCTestCase {
         model.runLiveTest()
         await waitForStep(model, key: "done")
 
-        guard case let .done(config) = model.step else { return XCTFail("expected done") }
+        guard case let .done(config) = model.step else { XCTFail("expected done") 
+return }
         XCTAssertEqual(config.mediaPlayerEntityID, "media_player.kitchen_display")
         XCTAssertEqual(config.setupMode, .rest)
         XCTAssertTrue(config.lastTestPassed)
@@ -115,7 +117,10 @@ final class HomeAssistantRecoveryWizardModelTests: XCTestCase {
         model.inputURLString = "homeassistant.local:8123"
         model.probeEnteredURL()
         await waitForStep(model, key: "failed")
-        guard case let .failed(message, _, previous) = model.step else { return XCTFail() }
+        guard case let .failed(message, _, previous) = model.step else {
+            XCTFail("Expected the wizard to reach the .failed step, got \(model.step)")
+            return
+        }
         XCTAssertTrue(message.contains("Couldn't reach") || message.contains("not reach"))
         XCTAssertEqual(previous, .findInstance)
     }
@@ -136,7 +141,10 @@ final class HomeAssistantRecoveryWizardModelTests: XCTestCase {
         }
         model.validateToken()
         await waitForStep(model, key: "failed")
-        guard case let .failed(message, _, previous) = model.step else { return XCTFail() }
+        guard case let .failed(message, _, previous) = model.step else {
+            XCTFail("Expected the wizard to reach the .failed step, got \(model.step)")
+            return
+        }
         XCTAssertTrue(message.lowercased().contains("rejected"))
         XCTAssertEqual(previous, .connectToken)
     }
@@ -170,7 +178,10 @@ final class HomeAssistantRecoveryWizardModelTests: XCTestCase {
         model.inputAccessToken = "tok"
         model.validateToken()
         await waitForStep(model, key: "pickDisplay")
-        guard case let .pickDisplay(_, players) = model.step else { return XCTFail() }
+        guard case let .pickDisplay(_, players) = model.step else {
+            XCTFail("Expected the wizard to reach the .pickDisplay step, got \(model.step)")
+            return
+        }
         model.pickDisplay(players[0])
 
         // Now install fails with 404
@@ -189,7 +200,8 @@ final class HomeAssistantRecoveryWizardModelTests: XCTestCase {
         model.inputURLString = "http://homeassistant.local:8123"
         // Manually bring model to blueprint step.
         model.chooseBlueprintFallback()
-        guard case .blueprintIntro = model.step else { return XCTFail("expected blueprintIntro") }
+        guard case .blueprintIntro = model.step else { XCTFail("expected blueprintIntro") 
+return }
         let config = model.saveBlueprintWebhook()
         XCTAssertNotNil(config)
         XCTAssertEqual(config?.setupMode, .blueprint)

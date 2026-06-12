@@ -75,7 +75,7 @@ struct CloudBadge: View {
     }
 
     var size: Size = .medium
-    var styleOverride: CloudBadgeStyle? = nil
+    var styleOverride: CloudBadgeStyle?
 
     @AppStorage(CloudBadgeDefaults.key) private var storedRaw: String = CloudBadgeStyle.defaultStyle.rawValue
 
@@ -97,7 +97,7 @@ struct CloudBadge: View {
 /// Wraps `CloudBadge` in a soft ember halo so it lifts off the gradient.
 struct CloudBadgeWithHalo: View {
     var size: CloudBadge.Size = .medium
-    var styleOverride: CloudBadgeStyle? = nil
+    var styleOverride: CloudBadgeStyle?
 
     var body: some View {
         ZStack {

@@ -47,10 +47,6 @@ struct RestrictedLogPathValidator: Sendable {
     /// Whether restricted mode is active. When false, all paths are allowed.
     let restrictedMode: Bool
 
-    init(restrictedMode: Bool) {
-        self.restrictedMode = restrictedMode
-    }
-
     /// Returns the resolved path to use for the given provider.
     ///
     /// If `restrictedMode` is true and `customPath` is non-nil but not under a

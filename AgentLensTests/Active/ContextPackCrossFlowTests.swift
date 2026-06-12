@@ -254,7 +254,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
                 id: "s3", sessionId: "session-3",
                 projectName: "OtherProject", daysOld: 3,
                 keyFiles: ["other.swift"]
-            ),
+            )
         ]
 
         // Both use SAME anchorProject for equivalence testing
@@ -342,7 +342,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
                 id: "parity-d", sessionId: "parity-d-session",
                 projectName: "OtherProject", daysOld: 1,
                 summary: "Other project session"
-            ),
+            )
         ]
 
         // Anchor to ParityProject
@@ -412,7 +412,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
                 id: "parity-s2", sessionId: "parity-2",
                 projectName: "ParityProject", daysOld: 2,
                 summary: "Parity session two"
-            ),
+            )
         ]
 
         // Anchor to ParityProject
@@ -465,7 +465,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
                 id: "det-b", sessionId: "det-b-session",
                 projectName: "DetProject", daysOld: 2,
                 summary: "Deterministic session B"
-            ),
+            )
         ]
 
         // Test anchored (Session Detail) entrypoint
@@ -517,7 +517,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
                 id: "env-s1", sessionId: "env-session-1",
                 projectName: "EnvProject", daysOld: 1,
                 summary: "Envelope test session"
-            ),
+            )
         ]
 
         let pack = assembleAnchored(candidates: candidates, anchorProject: "EnvProject")
@@ -581,7 +581,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
             CrossFlowFixtures.makeConversation(
                 id: "nav-s2", sessionId: "nav-session-2",
                 projectName: "NavProject", daysOld: 2
-            ),
+            )
         ]
 
         // Simulate multiple open/dismiss cycles
@@ -686,7 +686,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
                 id: "other-proj-s1", sessionId: "other-s1",
                 projectName: "OtherProject", daysOld: 1,
                 summary: "Other project session"
-            ),
+            )
         ]
 
         // Anchored to TargetProject - should boost same-project sessions
@@ -726,7 +726,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
             CrossFlowFixtures.makeConversation(
                 id: "default-s1", sessionId: "default-s1",
                 projectName: "DefaultProject", daysOld: 1
-            ),
+            )
         ]
 
         // Both entrypoints should default to claude target
@@ -766,7 +766,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
             CrossFlowFixtures.makeConversation(
                 id: "available-s1", sessionId: "avail-1",
                 projectName: "AvailableProject", daysOld: 1
-            ),
+            )
         ]
 
         // Anchor to non-existent project
@@ -821,7 +821,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
                 id: "old-s1", sessionId: "old-1",
                 projectName: "OldProject", daysOld: 30,
                 summary: "Old project session"
-            ),
+            )
         ]
 
         // Dashboard (unanchored) - no project boost, uses recency weighting

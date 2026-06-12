@@ -334,7 +334,7 @@ struct AgentSwitcherSheet: View {
     let onManageConnections: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var pickerRuntime: AssistantRuntimeID? = nil
+    @State private var pickerRuntime: AssistantRuntimeID?
 
     private var resolver: AssistantStatusResolver {
         AssistantStatusResolver(hermesService: hermesService, piService: piService)

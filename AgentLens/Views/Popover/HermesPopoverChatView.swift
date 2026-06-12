@@ -282,11 +282,9 @@ struct AssistantsPopoverChatView: View {
     private static func abbreviateModelName(_ name: String) -> String {
         var short = name
         let prefixes = ["NousResearch/", "meta-llama/", "mistralai/", "Qwen/", "google/", "deepseek-ai/"]
-        for prefix in prefixes {
-            if short.hasPrefix(prefix) {
-                short = String(short.dropFirst(prefix.count))
-                break
-            }
+        for prefix in prefixes where short.hasPrefix(prefix) {
+            short = String(short.dropFirst(prefix.count))
+            break
         }
         if short.count > 32 {
             short = String(short.prefix(30)) + "…"
@@ -780,7 +778,7 @@ private struct HermesPopoverBubble: View {
     /// Same pairing algorithm as `ChatMessageView.unifiedToolCalls(from:)`.
     private func unifiedToolCalls(from pieces: [ChatTranscriptPiece]) -> [UnifiedToolCallDisplay] {
         let lastUnpairedToolUseID: String? = {
-            var id: String? = nil
+            var id: String?
             var i = 0
             while i < pieces.count {
                 if pieces[i].kind == .toolUse {

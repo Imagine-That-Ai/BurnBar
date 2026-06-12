@@ -1801,7 +1801,7 @@ private final class ProdSwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter
 /// Provides deterministic data for testing error/empty/loaded state rendering.
 final class MockSwitcherDataLoading: SwitcherDataLoading {
     var profilesToReturn: [SwitcherProfileRecord] = []
-    var activeProfileState: SwitcherActiveProfileState = SwitcherActiveProfileState(activeProfileID: nil, updatedAt: Date())
+    var activeProfileState = SwitcherActiveProfileState(activeProfileID: nil, updatedAt: Date())
     var fetchError: Error?
     var setActiveError: Error?
     var setActiveCallCount = 0

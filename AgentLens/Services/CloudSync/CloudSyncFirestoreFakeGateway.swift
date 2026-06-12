@@ -85,13 +85,11 @@ private final class FakeDocumentStore: @unchecked Sendable {
         lock.withLock {
             let prefix = collectionPath + "/"
             var result: [String: [String: Any]] = [:]
-            for (path, data) in documents {
-                if path.hasPrefix(prefix) {
-                    // Only direct children of this collection.
-                    let remainder = String(path.dropFirst(prefix.count))
-                    if !remainder.contains("/") {
-                        result[path] = data
-                    }
+            for (path, data) in documents where path.hasPrefix(prefix) {
+                // Only direct children of this collection.
+                let remainder = String(path.dropFirst(prefix.count))
+                if !remainder.contains("/") {
+                    result[path] = data
                 }
             }
             return result
@@ -334,11 +332,11 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
         limit: Int?
     ) {
         var docs = store.documents(under: collectionPath)
-            .map { (path, data) in (path, data) }
+            .map { path, data in (path, data) }
 
         // Apply predicates
         for predicate in predicates {
-            docs = docs.filter { (_, data) in
+            docs = docs.filter { _, data in
                 predicate.matches(data: data)
             }
         }
@@ -356,7 +354,7 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
             docs = Array(docs.prefix(limit))
         }
 
-        self.documents = docs.map { (path, data) in
+        self.documents = docs.map { path, data in
             CloudSyncDocumentSnapshotFakeGateway(documentID: path.lastPathComponent, data: data)
         }
     }

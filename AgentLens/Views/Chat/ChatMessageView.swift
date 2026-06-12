@@ -44,7 +44,7 @@ struct ChatMessageView: View {
     var showViaBadge: Bool
     var isHermes: Bool = false
     /// When set (e.g. Hermes `/v1/models`), shows vendor logo beside assistant turns.
-    var assistantModelKey: String? = nil
+    var assistantModelKey: String?
     /// Display mode: rich agent bubbles or raw CLI output.
     var viewMode: ChatViewMode = .agent
 
@@ -247,7 +247,7 @@ struct ChatMessageView: View {
         // during a live stream. Using toolResult would fire isRunning on the
         // closing piece, which has already landed by definition.
         let lastUnpairedToolUseID: String? = {
-            var id: String? = nil
+            var id: String?
             var i = 0
             while i < pieces.count {
                 if pieces[i].kind == .toolUse {

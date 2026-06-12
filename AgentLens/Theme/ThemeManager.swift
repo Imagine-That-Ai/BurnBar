@@ -17,7 +17,7 @@ final class ThemeManager {
         DesignSystem.Colors.blaze,
         DesignSystem.Colors.whimsy,
         Color(hex: "34D399"),
-        Color(hex: "F472B6"),
+        Color(hex: "F472B6")
     ]
 
     static func chartColor(for index: Int) -> Color {

@@ -285,8 +285,11 @@ internal class HermesServiceMessageActions(
             }
             finalizeAssistantStream(assistantID, accumulated, modelName, rescue)
         } catch (e: IOException) {
-            appendAssistantError(e.message ?: e.javaClass.simpleName, modelName)
+            // Publish runtimeErrorText BEFORE the message append: observers wake
+            // on the message and must already see the error state (same ordering
+            // fix as sendFailureHandler in HermesServiceMessageLaunch).
             service.runtimeErrorTextInternal.value = e.message
+            appendAssistantError(e.message ?: e.javaClass.simpleName, modelName)
         }
     }
 
@@ -423,8 +426,9 @@ internal class HermesServiceMessageActions(
             markRuntimeHealthy()
         } catch (e: IOException) {
             val error = e.message ?: e.javaClass.simpleName
-            appendAssistantError(error, modelName)
+            // Error state first, then the message observers synchronize on.
             service.runtimeErrorTextInternal.value = error
+            appendAssistantError(error, modelName)
             service.isConnectedInternal.value = false
             service.isReachableInternal.value = false
         }

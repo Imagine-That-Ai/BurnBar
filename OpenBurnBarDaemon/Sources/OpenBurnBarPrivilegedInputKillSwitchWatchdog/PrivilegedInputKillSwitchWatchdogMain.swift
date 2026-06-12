@@ -55,7 +55,7 @@ enum PrivilegedInputKillSwitchWatchdog {
 
         while true {
             var clientAddr = sockaddr()
-            var clientLen: socklen_t = socklen_t(MemoryLayout<sockaddr>.size)
+            var clientLen = socklen_t(MemoryLayout<sockaddr>.size)
             let client = accept(server, &clientAddr, &clientLen)
             if client < 0 {
                 if errno == EINTR { continue }

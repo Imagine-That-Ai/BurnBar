@@ -169,7 +169,7 @@ struct MembershipBackdrop: View {
 
 struct MembershipSeal: View {
     let text: String
-    var systemImage: String? = nil
+    var systemImage: String?
     var prominent: Bool = false
 
     var body: some View {

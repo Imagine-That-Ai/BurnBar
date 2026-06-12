@@ -1515,7 +1515,10 @@ final class HermesServiceTests: XCTestCase {
                 return Self.response(
                     status: 200,
                     url: request.url!,
-                    body: #"{"data":[{"id":"hermes-agent","owned_by":"hermes"},{"id":"glm-5","owned_by":"zai","display_name":"GLM-5","account_id":"primary","account_label":"Z.AI Pro","source_id":"provider:zai:primary","source_kind":"provider_account","capabilities":["chat"],"quota_state":"healthy","route_eligible":true},{"id":"MiniMax-M2.7","owned_by":"minimax"},{"id":"kimi-k2.6","owned_by":"moonshot"},{"id":"gemma4:e4b","owned_by":"ollama-local","provider_id":"ollama-local","provider_name":"Ollama Local","display_name":"gemma4:e4b (8.0B Q4_K_M)"},{"id":"local-qwen","owned_by":"lmstudio-local","provider_id":"lmstudio-local","provider_name":"LM Studio Local"}]}"#
+                    body: #"{"data":[{"id":"hermes-agent","owned_by":"hermes"},"# +
+                        #"{"id":"glm-5","owned_by":"zai","display_name":"GLM-5","account_id":"primary","account_label":"Z.AI Pro","source_id":"provider:zai:primary","source_kind":"provider_account","capabilities":["chat"],"quota_state":"healthy","route_eligible":true},"# +
+                        #"{"id":"MiniMax-M2.7","owned_by":"minimax"},{"id":"kimi-k2.6","owned_by":"moonshot"},{"id":"gemma4:e4b","owned_by":"ollama-local","provider_id":"ollama-local","provider_name":"Ollama Local","display_name":"gemma4:e4b (8.0B Q4_K_M)"},"# +
+                        #"{"id":"local-qwen","owned_by":"lmstudio-local","provider_id":"lmstudio-local","provider_name":"LM Studio Local"}]}"#
                 )
             default:
                 return Self.response(status: 200, url: request.url!, body: "{}")
@@ -3227,11 +3230,11 @@ private final class FakeHermesConnectionRepository: HermesConnectionListing {
 private final class MockHermesURLProtocol: URLProtocol {
     nonisolated(unsafe) static var requestHandler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
 
-    override class func canInit(with request: URLRequest) -> Bool {
+    override static func canInit(with request: URLRequest) -> Bool {
         true
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
         request
     }
 

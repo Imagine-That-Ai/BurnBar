@@ -11,7 +11,7 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
             "activeActionsPerRun": 25,
             "activeActionsPerDay": 100,
             "activeSessionsPerDay": 2,
-            "perUserDailySpendCeilingUSD": 2.5,
+            "perUserDailySpendCeilingUSD": 2.5
         ])
         XCTAssertEqual(envelope.level, .softCap)
         XCTAssertEqual(envelope.activeActionsPerRun, 25)
@@ -36,7 +36,7 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
             "activeActionsPerRun": 25,
             "activeActionsPerDay": 100,
             "activeSessionsPerDay": 2,
-            "perUserDailySpendCeilingUSD": 2.5,
+            "perUserDailySpendCeilingUSD": 2.5
         ])
         store.handleSnapshot(snapshot: nil, error: NSError(
             domain: FirestoreErrorDomain,
