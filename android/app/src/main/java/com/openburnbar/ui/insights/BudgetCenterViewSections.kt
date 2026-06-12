@@ -44,6 +44,7 @@ import com.openburnbar.ui.components.AuroraButton
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraType
+import com.openburnbar.util.Formatting
 
 @Composable
 internal fun BudgetCenterSummaryBanner(
@@ -97,7 +98,7 @@ private fun BudgetCenterSummarySpendRow(totalSpend: Double, totalLimit: Double, 
     ) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                text = "$${"%.2f".format(totalSpend)}",
+                text = Formatting.formatCurrency(totalSpend),
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -232,7 +233,7 @@ private fun BudgetCenterForecastMetricsRow(metrics: BudgetForecastMetrics, isDar
         Column {
             Text("Daily Average Run Rate", style = AuroraType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                text = "$${"%.2f".format(metrics.dailyAverage)} / day",
+                text = "${Formatting.formatCurrency(metrics.dailyAverage)} / day",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
             )
@@ -240,7 +241,7 @@ private fun BudgetCenterForecastMetricsRow(metrics: BudgetForecastMetrics, isDar
         Column(horizontalAlignment = Alignment.End) {
             Text("Projected Month End", style = AuroraType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                text = "$${"%.2f".format(metrics.monthEndSpend)}",
+                text = Formatting.formatCurrency(metrics.monthEndSpend),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 color = budgetForecastMonthEndColor(metrics, isDark),

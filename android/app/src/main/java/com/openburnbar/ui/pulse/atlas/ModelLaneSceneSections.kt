@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.components.AuroraSparkline
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraType
+import com.openburnbar.util.Formatting
 
 @Composable
 internal fun LaneRowTitle(lane: Lane) {
@@ -112,7 +113,7 @@ internal fun LaneRowStats(lane: Lane) {
         )
         Spacer(Modifier.weight(1f))
         Text(
-            text = "$${"%.2f".format(lane.model.costUsd)}",
+            text = Formatting.formatCurrency(lane.model.costUsd),
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.Medium,

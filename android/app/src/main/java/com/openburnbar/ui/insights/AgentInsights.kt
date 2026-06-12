@@ -8,6 +8,7 @@ import com.openburnbar.data.insights.InsightDigest
 import com.openburnbar.data.insights.InsightMissionCandidate
 import com.openburnbar.data.insights.InsightTimeWindow
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.util.Formatting
 
 /**
  * Cross-platform-parallel scope for the per-agent Insights surface on Android.
@@ -199,7 +200,7 @@ object AgentInsightsBundleAssembler {
     }
 
     private fun formatUSD(value: Double): String {
-        return if (value < 10.0) "$%.2f".format(value) else "$%.0f".format(value)
+        return if (value < 10.0) Formatting.formatCurrency(value) else Formatting.formatShortCurrency(value)
     }
 
     private fun formatCompact(value: Double): String = when {

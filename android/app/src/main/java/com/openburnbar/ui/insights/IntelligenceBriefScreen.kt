@@ -65,6 +65,7 @@ import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
+import com.openburnbar.util.Formatting
 import kotlinx.coroutines.delay
 
 /**
@@ -607,7 +608,7 @@ object IntelligenceBriefFormatting {
 
     fun tokenUsageLabel(usage: InsightTokenUsage, cost: Double?): String {
         val total = usage.totalTokens
-        return if (cost != null) "$total tokens · $%.4f".format(cost) else "$total tokens"
+        return if (cost != null) "$total tokens · ${Formatting.formatPreciseCurrency(cost)}" else "$total tokens"
     }
 
     fun auditFooter(result: InsightAnalysisResult): String {
