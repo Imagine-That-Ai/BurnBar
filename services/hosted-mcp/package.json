@@ -7,13 +7,14 @@
     "node": "22"
   },
   "scripts": {
-    "prebuild": "../../scripts/build-signal-envelope-contracts.sh",
+    "prebuild": "../../scripts/build-signal-envelope-contracts.sh && ../../scripts/build-entitlements.sh",
     "build": "tsc",
     "lint": "tsc --noEmit",
     "start": "node lib/server.js",
     "test": "npm run build && node --test lib/*.test.js"
   },
   "dependencies": {
+    "@openburnbar/entitlements": "file:../../packages/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:../../packages/signal-envelope-contracts",
     "firebase-admin": "13.10.0"
   },

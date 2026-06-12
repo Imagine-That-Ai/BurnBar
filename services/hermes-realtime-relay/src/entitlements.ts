@@ -1,4 +1,5 @@
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { entitlementExpiryMillis } from "@openburnbar/entitlements";
 import { RelayHttpError } from "./errors.js";
 import type { EntitlementFirestore } from "./firestoreTypes.js";
 
@@ -105,21 +106,4 @@ function entitlementProductID(entitlementID: string, data: Record<string, unknow
   if (entitlementID === "burnbar_pro") return "com.openburnbar.pro.monthly";
   if (entitlementID === "hosted_quota_sync") return "com.openburnbar.hostedQuotaSync.cloud.monthly";
   return "";
-}
-
-function entitlementExpiryMillis(data: Record<string, unknown>): number {
-  if (hasMillisTimestamp(data.expireAt)) {
-    return data.expireAt.toMillis();
-  }
-  if (typeof data.expiresAt === "string") {
-    return Date.parse(data.expiresAt);
-  }
-  return Number.NaN;
-}
-
-function hasMillisTimestamp(value: unknown): value is { toMillis(): number } {
-  return typeof value === "object"
-    && value !== null
-    && "toMillis" in value
-    && typeof value.toMillis === "function";
 }
