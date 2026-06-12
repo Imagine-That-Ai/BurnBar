@@ -1643,6 +1643,39 @@ final class OpenBurnBarDatabase: Sendable {
             try db.execute(sql: "CREATE INDEX IF NOT EXISTS conversations_deleted_idx ON conversations(deletedAt)")
         }
 
+        migrator.registerMigration("v48_conversation_fts_orphan_repair") { db in
+            // One-shot repair for the conversations_fts leak (C10). Historically the
+            // upsert used `INSERT OR REPLACE INTO conversations`, which deletes and
+            // re-inserts the row. With recursive_triggers OFF (the SQLite default)
+            // the conversations_ad delete trigger does not fire on REPLACE, so the
+            // prior full-text copy was never removed from the standalone
+            // conversations_fts table. Every 60s refresh tick re-upserted active
+            // conversations, leaking one orphaned FTS copy per tick — on the order of
+            // millions of rows / gigabytes of disk on long-lived databases.
+            //
+            // The upsert now uses ON CONFLICT(id) DO UPDATE (stable rowid + the
+            // conversations_au AFTER UPDATE trigger), so no new orphans are created.
+            // This migration purges the existing orphans by clearing the standalone
+            // FTS table and rebuilding it from the live conversations rows.
+            guard try db.tableExists("conversations_fts") else { return }
+            guard try db.tableExists("conversations") else { return }
+
+            try db.execute(sql: "DELETE FROM conversations_fts")
+            try db.execute(
+                sql: """
+                INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)
+                SELECT rowid, inferredTaskTitle, fullText FROM conversations
+                """
+            )
+
+            // TODO(C10): The rebuild reclaims FTS rows but not the freed pages on
+            // disk; only VACUUM compacts the file. VACUUM cannot run inside a
+            // migration transaction and must be guarded by a free-disk check
+            // (free >= current DB size) — never unguarded. No free-disk helper
+            // exists yet, so the post-migration VACUUM is deferred to a follow-up
+            // that adds the guard and runs it outside the migration transaction.
+        }
+
         return migrator
     }
 
