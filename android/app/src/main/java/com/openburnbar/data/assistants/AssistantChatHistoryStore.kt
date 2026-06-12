@@ -401,50 +401,221 @@ class AssistantChatHistoryStore internal constructor(
 }
 
 /**
- * JSON-on-disk persistence under the app's files dir. One file per partition
- * key (typically a Firebase uid, or `"local"` when signed out).
+ * Compact metadata index persisted alongside the per-thread body files. Holds
+ * only what the conversation list and offline-delete bookkeeping need, so it
+ * stays small even as history grows.
+ */
+@Serializable
+private data class AssistantChatHistoryIndex(
+    val threadIDs: List<String> = emptyList(),
+    val tombstones: Map<String, Long> = emptyMap(),
+)
+
+/**
+ * JSON-on-disk persistence under the app's files dir.
+ *
+ * Storage layout (finding-178 — per-thread split): instead of one monolithic
+ * `assistant-chat-history-<partition>.json` rewritten in full on *every* chat
+ * turn (O(total history) per turn, single-file blast radius), each partition
+ * gets a directory holding:
+ *
+ *   * `index.json` — a compact metadata index (thread id list + tombstones).
+ *   * `thread-<sanitizedID>.json` — one compact file per thread body.
+ *
+ * A [save] only rewrites the thread files whose serialized body actually
+ * changed plus the index, so a streaming turn touches a single small file
+ * rather than the whole history. JSON is compact (no `prettyPrint`) to keep the
+ * bytes — and the encode cost — minimal. A one-time idempotent migration
+ * explodes the legacy single-file snapshot into the new layout. The
+ * [AssistantChatLocalStore] protocol surface is unchanged.
  */
 internal class AssistantChatFileLocalStore(context: Context) : AssistantChatLocalStore {
-    private val directory: File = File(context.filesDir, "assistant-chat-history").apply { mkdirs() }
+    private val root: File = File(context.filesDir, "assistant-chat-history").apply { mkdirs() }
     private var partitionKey: String = "local"
     private val json =
         Json {
             ignoreUnknownKeys = true
             encodeDefaults = true
-            prettyPrint = true
         }
+
+    /** Per-partition cache of the last-written content hash per thread id, so a
+     * [save] can skip rewriting unchanged bodies. Keyed by partition so
+     * switching users never cross-contaminates. */
+    private val digestCache = mutableMapOf<String, MutableMap<String, Int>>()
+    private val migratedPartitions = mutableSetOf<String>()
 
     override fun setActivePartition(key: String) {
         partitionKey = key
     }
 
     override fun load(): AssistantChatHistorySnapshot {
-        val file = fileFor(partitionKey)
-        if (!file.exists()) return AssistantChatHistorySnapshot()
-        return runCatching {
-            json.decodeFromString<AssistantChatHistorySnapshot>(file.readText())
-        }.getOrElse {
-            // Legacy shape: a bare list of threads.
-            runCatching {
-                val threads = json.decodeFromString<List<AssistantChatThread>>(file.readText())
-                AssistantChatHistorySnapshot(threads = threads)
-            }.getOrDefault(AssistantChatHistorySnapshot())
-        }
+        migrateLegacyFileIfNeeded(partitionKey)
+        return loadSnapshot(partitionKey)
     }
 
     override fun save(snapshot: AssistantChatHistorySnapshot) {
-        val tmp = File(directory, "${fileNameFor(partitionKey)}.tmp")
-        tmp.writeText(json.encodeToString(snapshot))
-        if (!tmp.renameTo(fileFor(partitionKey))) {
-            // Some filesystems refuse rename if target exists.
-            fileFor(partitionKey).delete()
-            tmp.renameTo(fileFor(partitionKey))
+        migrateLegacyFileIfNeeded(partitionKey)
+        saveSnapshot(snapshot, partitionKey)
+    }
+
+    private fun loadSnapshot(partition: String): AssistantChatHistorySnapshot {
+        val dir = partitionDir(partition)
+        if (!dir.exists()) {
+            digestCache[partition] = mutableMapOf()
+            return AssistantChatHistorySnapshot()
+        }
+        val index = loadIndex(partition)
+        val threads = mutableListOf<AssistantChatThread>()
+        val digests = mutableMapOf<String, Int>()
+        for (threadID in index.threadIDs) {
+            val file = threadFile(partition, threadID)
+            if (!file.exists()) continue
+            val text = runCatching { file.readText() }.getOrNull() ?: continue
+            val thread = runCatching { json.decodeFromString<AssistantChatThread>(text) }.getOrNull() ?: continue
+            threads.add(thread)
+            digests[thread.id] = text.hashCode()
+        }
+        digestCache[partition] = digests
+        return AssistantChatHistorySnapshot(threads = threads, tombstones = index.tombstones)
+    }
+
+    private fun saveSnapshot(snapshot: AssistantChatHistorySnapshot, partition: String) {
+        val dir = partitionDir(partition).apply { mkdirs() }
+        val previousDigests = digestCache[partition] ?: loadDigestsFromDisk(partition)
+        val nextDigests = mutableMapOf<String, Int>()
+        val liveIDs = snapshot.threads.map { it.id }.toSet()
+
+        // 1. Write only the thread bodies whose serialized content changed.
+        for (thread in snapshot.threads) {
+            val text = json.encodeToString(thread)
+            val digest = text.hashCode()
+            nextDigests[thread.id] = digest
+            val file = threadFile(partition, thread.id)
+            if (previousDigests[thread.id] == digest && file.exists()) continue
+            atomicWrite(dir, file, text)
+        }
+
+        // 2. Remove thread files no longer part of the snapshot.
+        for (staleID in previousDigests.keys) {
+            if (staleID !in liveIDs) threadFile(partition, staleID).delete()
+        }
+
+        // 3. Rewrite the small index (cheap regardless of history size).
+        val index = AssistantChatHistoryIndex(threadIDs = snapshot.threads.map { it.id }, tombstones = snapshot.tombstones)
+        atomicWrite(dir, indexFile(partition), json.encodeToString(index))
+
+        digestCache[partition] = nextDigests
+    }
+
+    private fun loadIndex(partition: String): AssistantChatHistoryIndex {
+        val file = indexFile(partition)
+        if (!file.exists()) {
+            // No index but the directory exists — recover by scanning thread files.
+            return AssistantChatHistoryIndex(threadIDs = scanThreadIDs(partition))
+        }
+        return runCatching { json.decodeFromString<AssistantChatHistoryIndex>(file.readText()) }
+            .getOrElse { AssistantChatHistoryIndex(threadIDs = scanThreadIDs(partition)) }
+    }
+
+    private fun loadDigestsFromDisk(partition: String): MutableMap<String, Int> {
+        val dir = partitionDir(partition)
+        if (!dir.exists()) return mutableMapOf()
+        val digests = mutableMapOf<String, Int>()
+        val ids = loadIndex(partition).threadIDs.ifEmpty { scanThreadIDs(partition) }
+        for (threadID in ids) {
+            val text = runCatching { threadFile(partition, threadID).readText() }.getOrNull() ?: continue
+            digests[threadID] = text.hashCode()
+        }
+        return digests
+    }
+
+    private fun scanThreadIDs(partition: String): List<String> {
+        val dir = partitionDir(partition)
+        val names = dir.list() ?: return emptyList()
+        return names.mapNotNull { name ->
+            if (name.startsWith("thread-") && name.endsWith(".json")) {
+                name.removePrefix("thread-").removeSuffix(".json")
+            } else {
+                null
+            }
         }
     }
 
-    private fun fileNameFor(partition: String): String = "assistant-chat-history-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}.json"
+    /**
+     * One-time idempotent migration: explode the legacy single-file snapshot
+     * (`assistant-chat-history-<partition>.json`, either the envelope shape or a
+     * bare thread array) into the per-thread directory layout. Safe to run twice
+     * — the legacy file is consumed after the new layout is durably written, and
+     * a partition that already has an index treats the legacy file as stale.
+     */
+    private fun migrateLegacyFileIfNeeded(partition: String) {
+        if (partition in migratedPartitions) return
+        migratedPartitions.add(partition)
 
-    private fun fileFor(partition: String): File = File(directory, fileNameFor(partition))
+        val legacy = legacyFile(partition)
+        if (!legacy.exists()) return
+
+        // New layout already authoritative — drop the stale legacy file.
+        if (indexFile(partition).exists()) {
+            legacy.delete()
+            return
+        }
+
+        val text = runCatching { legacy.readText() }.getOrNull() ?: return
+        val snapshot =
+            runCatching { json.decodeFromString<AssistantChatHistorySnapshot>(text) }
+                .getOrElse {
+                    runCatching {
+                        AssistantChatHistorySnapshot(threads = json.decodeFromString<List<AssistantChatThread>>(text))
+                    }.getOrNull()
+                } ?: run {
+                    // Unreadable legacy file: leave it rather than lose data.
+                    digestCache[partition] = mutableMapOf()
+                    return
+                }
+
+        digestCache[partition] = mutableMapOf()
+        saveSnapshot(snapshot, partition)
+        legacy.delete()
+    }
+
+    private fun atomicWrite(dir: File, target: File, text: String) {
+        val tmp = File(dir, "${target.name}.tmp")
+        tmp.writeText(text)
+        if (!tmp.renameTo(target)) {
+            // Some filesystems refuse rename if the target exists.
+            target.delete()
+            tmp.renameTo(target)
+        }
+    }
+
+    private fun partitionDir(partition: String): File =
+        File(root, "partition-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}")
+
+    private fun indexFile(partition: String): File = File(partitionDir(partition), "index.json")
+
+    private fun threadFile(partition: String, threadID: String): File =
+        File(partitionDir(partition), "thread-${sanitizeThreadFileComponent(threadID)}.json")
+
+    private fun legacyFile(partition: String): File =
+        File(root, "assistant-chat-history-${AssistantChatHistoryStore.sanitizePartitionKey(partition)}.json")
+
+    companion object {
+        /** Filesystem-safe, 1:1-reversible-via-index thread file component. */
+        fun sanitizeThreadFileComponent(raw: String): String {
+            val out =
+                buildString {
+                    for (ch in raw) {
+                        if (ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '_' || ch == '-') {
+                            append(ch)
+                        } else {
+                            append("_").append(ch.code.toString(16).padStart(4, '0'))
+                        }
+                    }
+                }
+            return out.ifEmpty { "_thread" }
+        }
+    }
 }
 
 /**
