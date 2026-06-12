@@ -138,6 +138,7 @@ struct PulseView: View {
                 .padding(.top, MobileTheme.Spacing.sm)
                 .padding(.bottom, MobileTheme.Spacing.xxl)
             }
+            .pulseScrollEdgeChrome()
             .scrollDismissesKeyboard(.interactively)
             .trackEasterEggScroll(tag: "pulse")
             .refreshable {
@@ -146,9 +147,11 @@ struct PulseView: View {
                 HapticBus.refreshFinished()
             }
         }
+        // Title stays for navigation semantics (back labels from pushed
+        // screens); the bar itself is hidden — the tab bar already says
+        // Pulse, so the big headline was pure chrome.
         .navigationTitle("Pulse")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
         .task { await initialLoad() }
         .sheet(isPresented: $showCloudStore) {
             NavigationStack {
@@ -317,4 +320,23 @@ final class PulseRouter {
     func openProject(_ project: ProjectSummary) { pendingDestination = .project(project) }
     func openProvider(_ provider: AgentProvider) { pendingDestination = .provider(provider) }
     func clear() { pendingDestination = nil }
+}
+
+// MARK: - Pulse Scroll Chrome
+
+private struct PulseScrollEdgeChrome: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func pulseScrollEdgeChrome() -> some View {
+        modifier(PulseScrollEdgeChrome())
+    }
 }
