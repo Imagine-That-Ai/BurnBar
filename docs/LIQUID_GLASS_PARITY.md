@@ -55,6 +55,13 @@ fluent API). The pre-26 branches of the card systems (`auroraGlass`, Mercury
 plate-opacity/frost-scrim math. Direct `glassEffect` calls are banned outside
 `Theme/LiquidGlass.swift` — route through the adapters or `liquidGlassEffect`.
 
+macOS window payoff: `DashboardBackdrop` layers `LiquidGlassWindowBlend`
+(an `NSVisualEffectView`, `.underWindowBackground`/`.behindWindow`) under the
+dashboard and fades the window's own plates/swarm toward it as the Clear
+adjustment rises — the desktop shows through the whole window. Card sheen
+washes (`GlassCard`, `auroraGlass`) thin with the same curve. At 0 every
+layer renders exactly as before.
+
 Settings UI: iOS `ThemeSettingsView` → "Liquid Glass" section (slider with
 live preview capsule, magnetic center detent, reset); macOS
 `AppearanceCorkboardSection` → "Liquid Glass Transparency" row. Both are
