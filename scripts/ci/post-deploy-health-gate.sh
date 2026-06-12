@@ -134,34 +134,58 @@ if [[ -n "${DEPLOY_HEALTH_JSON:-}" ]]; then
   echo "Wrote ${DEPLOY_HEALTH_JSON}"
 fi
 
-# H13: crash reporting must be enabled in production. The deploy lane writes
-# the functions runtime env (FUNCTIONS_RUNTIME_ENV_FILE) with SENTRY_DSN +
-# SENTRY_ENVIRONMENT before this gate runs. Assert both are present so a DSN
-# regression (cleared secret, dropped writer line) turns this gate red instead
-# of letting functions ship dark. Fatal only when HEALTH_GATE_REQUIRE_SENTRY=1
-# (real production deploys); dry runs that skip the deploy set 0 so the
-# no-deploy lane is never permanently red.
+# H13: crash reporting must be enabled in production. We probe the LIVE
+# healthReady body (already captured to /tmp/ob-health-ready.json above) for
+# sentry.enabled=true. This proves the deployed functions runtime actually has
+# SENTRY_DSN wired — a DSN regression (cleared secret, dropped writer line)
+# leaves the field false and turns this gate red instead of letting functions
+# ship dark. Probing the running endpoint (not a local env file) is the real
+# end-to-end signal: it reflects what prod is actually serving. Fatal only when
+# HEALTH_GATE_REQUIRE_SENTRY=1 (real production deploys); dry runs / synthetic
+# lanes set 0 so the no-deploy lane is never permanently red.
 REQUIRE_SENTRY="${HEALTH_GATE_REQUIRE_SENTRY:-0}"
-SENTRY_ENV_FILE="${FUNCTIONS_RUNTIME_ENV_FILE:-functions/.env.burnbar}"
+EXPECTED_SENTRY_ENV="${HEALTH_GATE_SENTRY_ENVIRONMENT:-production}"
+READY_BODY_FILE="/tmp/ob-health-ready.json"
+
+sentry_enabled_in_body() {
+  local body_file="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -e '.sentry.enabled == true' "$body_file" >/dev/null 2>&1
+    return $?
+  fi
+  # jq-less fallback: match "enabled":true inside a "sentry":{...} object.
+  grep -Eq '"sentry"[[:space:]]*:[[:space:]]*\{[^}]*"enabled"[[:space:]]*:[[:space:]]*true' "$body_file"
+}
+
+sentry_environment_in_body() {
+  local body_file="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.sentry.environment // ""' "$body_file" 2>/dev/null
+    return 0
+  fi
+  grep -Eo '"sentry"[[:space:]]*:[[:space:]]*\{[^}]*"environment"[[:space:]]*:[[:space:]]*"[^"]*"' "$body_file" \
+    | grep -Eo '"environment"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | sed -E 's/.*"environment"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/' \
+    | tail -n1
+}
+
 if [[ "$REQUIRE_SENTRY" == "1" ]]; then
-  echo "==> Sentry enablement (${SENTRY_ENV_FILE})"
-  if [[ ! -f "$SENTRY_ENV_FILE" ]]; then
-    echo "FAIL: HEALTH_GATE_REQUIRE_SENTRY=1 but ${SENTRY_ENV_FILE} is missing — the deploy never wrote a runtime env, so Sentry cannot be enabled." >&2
+  echo "==> Sentry enablement (live healthReady: ${FUNCTIONS_HEALTH_READY_URL})"
+  if [[ ! -f "$READY_BODY_FILE" ]]; then
+    echo "FAIL: HEALTH_GATE_REQUIRE_SENTRY=1 but ${READY_BODY_FILE} is missing — the healthReady probe never captured a body, so Sentry enablement cannot be verified." >&2
     exit 1
   fi
-  sentry_dsn_line="$(grep -E '^SENTRY_DSN=' "$SENTRY_ENV_FILE" | tail -n1 || true)"
-  sentry_env_line="$(grep -E '^SENTRY_ENVIRONMENT=' "$SENTRY_ENV_FILE" | tail -n1 || true)"
-  sentry_dsn_value="${sentry_dsn_line#SENTRY_DSN=}"
-  sentry_env_value="${sentry_env_line#SENTRY_ENVIRONMENT=}"
-  if [[ -z "$sentry_dsn_value" ]]; then
-    echo "FAIL: SENTRY_DSN is empty in ${SENTRY_ENV_FILE} — production functions would ship with crash reporting disabled (H13). Set the SENTRY_DSN_FUNCTIONS Actions secret." >&2
+  if ! sentry_enabled_in_body "$READY_BODY_FILE"; then
+    echo "FAIL: live healthReady does not report sentry.enabled=true — production functions are serving with crash reporting disabled (H13). Verify the deploy wrote SENTRY_DSN to the functions runtime env (SENTRY_DSN_FUNCTIONS Actions secret)." >&2
+    echo "last healthReady body snippet: $(head -c 256 "$READY_BODY_FILE" 2>/dev/null || true)" >&2
     exit 1
   fi
-  if [[ "$sentry_env_value" != "production" ]]; then
-    echo "FAIL: SENTRY_ENVIRONMENT='${sentry_env_value:-<unset>}' (expected 'production') in ${SENTRY_ENV_FILE} — production Sentry events would be misattributed (H13)." >&2
+  sentry_env_value="$(sentry_environment_in_body "$READY_BODY_FILE")"
+  if [[ "$sentry_env_value" != "$EXPECTED_SENTRY_ENV" ]]; then
+    echo "FAIL: live healthReady reports sentry.environment='${sentry_env_value:-<unset>}' (expected '${EXPECTED_SENTRY_ENV}') — production Sentry events would be misattributed (H13)." >&2
     exit 1
   fi
-  echo "OK Sentry enabled (environment=${sentry_env_value}, dsn present)"
+  echo "OK Sentry enabled on live healthReady (environment=${sentry_env_value})"
 else
   echo "::notice title=Sentry assertion skipped::HEALTH_GATE_REQUIRE_SENTRY!=1 (dry run or synthetic lane); not asserting production crash reporting."
 fi
