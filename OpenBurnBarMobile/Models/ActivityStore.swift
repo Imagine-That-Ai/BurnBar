@@ -1,6 +1,7 @@
 import Foundation
 import OpenBurnBarCore
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 
@@ -229,7 +230,7 @@ final class ActivityStore {
     }
 
     private func searchEncryptedCloudIndex(query: String) async throws -> [CloudConversationSearchRow] {
-        guard let uid = Auth.auth().currentUser?.uid else { return [] }
+        guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return [] }
         guard let vaultKey = try await unlockCloudVaultKeyIfAvailable() else { return [] }
         let tokenHashes = try CloudVaultCrypto.searchQueryTokenHashes(for: query, keyData: vaultKey, limit: 10)
         let semanticHashes = try CloudVaultCrypto.semanticHashes(for: query, keyData: vaultKey, limit: 12)
@@ -979,7 +980,7 @@ struct CloudVaultGateway {
     /// Firestore with this device's keypair on first use and caching it in the Keychain. Returns
     /// `nil` when the user is signed out or no active wrapper has reached this device yet.
     func unlockKey() async throws -> Data? {
-        guard let uid = Auth.auth().currentUser?.uid else { return nil }
+        guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return nil }
         let keyStore = CloudVaultKeyStore()
         if let cached = try keyStore.loadKey(uid: uid) {
             return cached
@@ -1015,7 +1016,8 @@ struct CloudVaultGateway {
     /// the versioned external session body hash before returning the UTF-8 transcript. The blob's
     /// own HMAC is verified inside `CloudVaultCrypto.openBlob`.
     func downloadBody(storagePath: String, bodyHash: String, bodyHashVersion: Int, vaultKey: Data) async throws -> String {
-        guard let uid = Auth.auth().currentUser?.uid,
+        guard FirebaseApp.app() != nil,
+              let uid = Auth.auth().currentUser?.uid,
               let documentID = Self.sessionLogDocumentID(from: storagePath) else {
             throw CloudConversationSearchError.transcriptUnavailable
         }
@@ -1234,8 +1236,12 @@ struct CloudConversationAuthGate {
     var prepareIDToken: @MainActor (_ forcingRefresh: Bool) async -> Bool
 
     static let live = CloudConversationAuthGate(
-        currentUID: { Auth.auth().currentUser?.uid },
+        currentUID: {
+            guard FirebaseApp.app() != nil else { return nil }
+            return Auth.auth().currentUser?.uid
+        },
         prepareIDToken: { forcingRefresh in
+            guard FirebaseApp.app() != nil else { return false }
             guard let user = Auth.auth().currentUser else { return false }
             return await withCheckedContinuation { continuation in
                 user.getIDTokenResult(forcingRefresh: forcingRefresh) { result, error in
