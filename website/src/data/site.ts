@@ -10,7 +10,7 @@ export const SITE = {
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",
-  supportContact: "support@openburnbar.app",
+  supportContact: "support@burnbar.ai",
   privacyContact: "privacy@imagine-that.ai",
   entity: "Imagine That AI LLC",
   license: "AGPL-3.0-only",
