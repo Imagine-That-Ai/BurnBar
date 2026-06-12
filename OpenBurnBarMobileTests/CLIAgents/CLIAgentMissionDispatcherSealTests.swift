@@ -109,6 +109,49 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         XCTAssertEqual(snapshot.liveSummary, "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it.")
     }
 
+    func test_missionSnapshotOpensPathBoundLegacyPayloadAndRejectsRelocation() throws {
+        let uid = "mission-legacy-user-\(UUID().uuidString)"
+        let documentID = "mission-legacy-bound"
+        let key = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let doc = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: documentID,
+            title: "Bound legacy mission",
+            prompt: "Verify AAD.",
+            missionKind: "chat",
+            requestedRuntime: "codex",
+            targetProject: "BurnBar",
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            uid: uid,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
+
+        let snapshot = try XCTUnwrap(
+            CLIAgentMissionSnapshot(
+                documentID: documentID,
+                data: doc,
+                vaultKey: key,
+                uid: uid
+            )
+        )
+        XCTAssertEqual(snapshot.title, "Bound legacy mission")
+        XCTAssertEqual(snapshot.targetProject, "BurnBar")
+
+        XCTAssertNil(
+            CLIAgentMissionSnapshot(
+                documentID: "mission-legacy-relocated",
+                data: doc,
+                vaultKey: key,
+                uid: uid
+            ),
+            "CLI mission legacy CloudVault payloads must fail closed when moved to another Firestore document."
+        )
+    }
+
     func test_missionSnapshotOpensPathBoundSignalEnvelopeAndRejectsRelocation() throws {
         let uid = "mission-signal-user-\(UUID().uuidString)"
         let documentID = "mission-signal"

@@ -85,6 +85,83 @@ public enum ComputerUseDenyRegistry {
             urlPrefix: "https://github.com/login/oauth/authorize"
         ),
         ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_file_url"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser file URLs",
+            urlPrefix: "file://"
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_localhost_http"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser localhost HTTP",
+            urlPrefix: "http://localhost"
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_localhost_https"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser localhost HTTPS",
+            urlPrefix: "https://localhost"
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_loopback_ipv4_http"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser loopback IPv4 HTTP",
+            urlPrefix: "http://127."
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_loopback_ipv4_https"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser loopback IPv4 HTTPS",
+            urlPrefix: "https://127."
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_loopback_ipv6_http"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser loopback IPv6 HTTP",
+            urlPrefix: "http://[::1]"
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_loopback_ipv6_https"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser loopback IPv6 HTTPS",
+            urlPrefix: "https://[::1]"
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_link_local_http"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser link-local HTTP",
+            urlPrefix: "http://169.254."
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_link_local_https"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Browser link-local HTTPS",
+            urlPrefix: "https://169.254."
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_google_metadata_http"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Google metadata endpoint HTTP",
+            urlPrefix: "http://metadata.google.internal"
+        ),
+        ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("builtin.browser_google_metadata_https"),
+            effect: .deny,
+            origin: .builtIn,
+            label: "Google metadata endpoint HTTPS",
+            urlPrefix: "https://metadata.google.internal"
+        ),
+        ComputerUseScopeRule(
             id: ComputerUseScopeRuleID("builtin.admin_paths"),
             effect: .deny,
             origin: .builtIn,
@@ -119,6 +196,12 @@ public enum ComputerUseDenyRegistry {
         ),
         ComputerUseScopeContext(
             url: "https://accounts.google.com/o/oauth2/v2/auth?...",
+            bundleId: "com.google.Chrome"
+        ),
+        ComputerUseScopeContext(url: "file:///etc/passwd", bundleId: "com.google.Chrome"),
+        ComputerUseScopeContext(url: "http://127.0.0.1:11434/api/tags", bundleId: "com.google.Chrome"),
+        ComputerUseScopeContext(
+            url: "http://metadata.google.internal/computeMetadata/v1",
             bundleId: "com.google.Chrome"
         )
     ]

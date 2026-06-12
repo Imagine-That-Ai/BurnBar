@@ -81,6 +81,7 @@ const REQUIRED_CODEQL_CHECKS = [
   "Analyze (swift)",
   "Analyze (javascript-typescript)",
   "Analyze (python)",
+  "Analyze (java-kotlin)",
 ];
 const REQUIRED_GITHUB_SECURITY_SETTINGS = [
   "dependabot_security_updates",

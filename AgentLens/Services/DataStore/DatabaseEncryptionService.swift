@@ -39,11 +39,20 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible {
     /// requested. We hard-fail instead of silently shipping plaintext.
     case cipherUnavailable
 
+    /// Encryption is required, but the on-disk database is a legacy plaintext
+    /// SQLite file. Opening it plaintext would violate the security contract,
+    /// and keying it directly would corrupt/brick data; a proven SQLCipher
+    /// migration must run before this app can open the store again.
+    case plaintextDatabaseRequiresMigration(path: String)
+
     var description: String {
         switch self {
         case .cipherUnavailable:
             return "SQLCipher is not active in this build (PRAGMA cipher_version was empty); "
                 + "the database would be written in plaintext. Refusing to open with encryption requested."
+        case let .plaintextDatabaseRequiresMigration(path):
+            return "Database encryption is enabled, but the existing database is plaintext at \(path). "
+                + "Refusing plaintext fallback; run the verified SQLCipher migration before opening."
         }
     }
 }
@@ -301,8 +310,8 @@ extension DatabaseEncryptionService {
     /// `prepareDatabase` lazily for each connection, this self-check fires when the
     /// pool actually opens a connection — so a keyed `DatabasePool(...)` open
     /// HARD-FAILS rather than ever silently shipping plaintext. The caller
-    /// (`DataStoreCoordinator.makeDatabasePool`) catches that error and falls back
-    /// to the acknowledged-plaintext escape hatch instead of crashing.
+    /// (`DataStoreCoordinator.makeDatabasePool`) surfaces that startup failure
+    /// instead of downgrading to plaintext.
     ///
     /// - Throws: `DatabaseEncryptionError.cipherUnavailable` synchronously when the
     ///   key fails charset validation; and via `prepareDatabase` (at connection

@@ -9,7 +9,8 @@
  *    valid x9.63 key whose peerNodeId derives from sha256(x963) (schemaVersion 3);
  *  - a peerNodeId that does not match the published key is rejected;
  *  - revoke atomically deletes the device's controller record + agent-grant
- *    authority and emits a revocation receipt audit event + receiptId.
+ *    authority, revokes active CloudVault wrappers, creates a survivor-owned
+ *    rotation requirement, and emits a revocation receipt audit event + receiptId.
  */
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
@@ -274,6 +275,20 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
 
   beforeEach(async () => {
     seedTrustedDeviceAndPairing();
+    store.set(`users/${UID}/escrow_devices/mac-1`, { platform: "macOS", trustState: "trusted", keyVersion: 1 });
+    store.set(`users/${UID}/cloud_vault_state/current`, {
+      uid: UID,
+      status: "active",
+      vaultKeyID: `v1_${"a".repeat(32)}`,
+      vaultGeneration: 7,
+    });
+    store.set(`users/${UID}/cloud_vault_key_wrappers/wrap-phone`, {
+      uid: UID,
+      targetDeviceId: DEVICE,
+      sourceDeviceId: "mac-1",
+      status: "active",
+      vaultKeyID: `v1_${"a".repeat(32)}`,
+    });
     // Publish a controller + grant authority for the device, then revoke it.
     const key = ed25519Key();
     await invokeCallable(publishPhoneControlAuthority, {
@@ -296,12 +311,18 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
       ok: boolean;
       revokedControllerPeerNodeIds: string[];
       clearedAgentGrantAuthority: boolean;
+      revokedCloudVaultWrappers: number;
+      cloudVaultRotationRequired: boolean;
+      cloudVaultRotationRequirementId: string;
       receiptId: string;
     }>(revokeEscrowDeviceTrust, { deviceId: DEVICE });
 
     expect(res.ok).toBe(true);
     expect(res.revokedControllerPeerNodeIds).toContain(peerNodeId);
     expect(res.clearedAgentGrantAuthority).toBe(true);
+    expect(res.revokedCloudVaultWrappers).toBe(1);
+    expect(res.cloudVaultRotationRequired).toBe(true);
+    expect(res.cloudVaultRotationRequirementId).toBe(res.receiptId);
     expect(res.receiptId).toMatch(/^revoke_/);
 
     // Atomic clear: the controller record and grant authority are gone.
@@ -309,6 +330,16 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
     expect(store.has(`users/${UID}/agent_grant_authorities/${DEVICE}`)).toBe(false);
     // Device itself is flipped to revoked.
     expect(store.get(`users/${UID}/escrow_devices/${DEVICE}`)?.trustState).toBe("revoked");
+    expect(store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-phone`)?.status).toBe("revoked");
+
+    const requirement = store.get(`users/${UID}/cloud_vault_rotation_requirements/${res.receiptId}`);
+    expect(requirement?.status).toBe("pending");
+    expect(requirement?.reason).toBe("device_revoked");
+    expect(requirement?.revokedDeviceId).toBe(DEVICE);
+    expect(requirement?.currentVaultGeneration).toBe(7);
+    expect(requirement?.survivorDeviceIds).toEqual(["mac-1"]);
+    expect(requirement?.rotateCallable).toBe("rotateCloudVaultKey");
+    expect(requirement?.nextRotationReason).toBe("revocation_rewrap");
 
     // A revocation receipt audit event was written.
     const receipts = [...store.entries()].filter(
@@ -317,6 +348,9 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
     expect(receipts).toHaveLength(1);
     expect(receipts[0][1].receiptId).toBe(res.receiptId);
     expect(receipts[0][1].revokedControllerPeerNodeIds).toContain(peerNodeId);
+    expect(receipts[0][1].revokedCloudVaultWrappers).toBe(1);
+    expect(receipts[0][1].cloudVaultRotationRequired).toBe(true);
+    expect(receipts[0][1].cloudVaultRotationRequirementId).toBe(res.receiptId);
   });
 });
 

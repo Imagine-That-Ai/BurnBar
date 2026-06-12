@@ -10,6 +10,68 @@ import OpenBurnBarSignalCore
 
 /// WS4 Mac client for App Check attestation binding and escrow device trust callables.
 enum ComputerUseSecurityCallableClient {
+    struct EscrowDeviceTrustRevocationResult: Sendable, Equatable {
+        let revokedCloudVaultWrappers: Int
+        let cloudVaultRotationRequired: Bool
+        let cloudVaultRotationRequirementId: String?
+        let cloudVaultRotationBlockedReason: String?
+        let cloudVaultRotationJobId: String?
+        let cloudVaultRotationCompleted: Bool
+        let cloudVaultRotationFailureMessage: String?
+        let cloudVaultRotationRewrappedDocuments: Int
+        let cloudVaultRotationRewrappedStorageBlobs: Int
+
+        init(
+            revokedCloudVaultWrappers: Int,
+            cloudVaultRotationRequired: Bool,
+            cloudVaultRotationRequirementId: String?,
+            cloudVaultRotationBlockedReason: String?,
+            cloudVaultRotationJobId: String? = nil,
+            cloudVaultRotationCompleted: Bool = false,
+            cloudVaultRotationFailureMessage: String? = nil,
+            cloudVaultRotationRewrappedDocuments: Int = 0,
+            cloudVaultRotationRewrappedStorageBlobs: Int = 0
+        ) {
+            self.revokedCloudVaultWrappers = revokedCloudVaultWrappers
+            self.cloudVaultRotationRequired = cloudVaultRotationRequired
+            self.cloudVaultRotationRequirementId = cloudVaultRotationRequirementId
+            self.cloudVaultRotationBlockedReason = cloudVaultRotationBlockedReason
+            self.cloudVaultRotationJobId = cloudVaultRotationJobId
+            self.cloudVaultRotationCompleted = cloudVaultRotationCompleted
+            self.cloudVaultRotationFailureMessage = cloudVaultRotationFailureMessage
+            self.cloudVaultRotationRewrappedDocuments = cloudVaultRotationRewrappedDocuments
+            self.cloudVaultRotationRewrappedStorageBlobs = cloudVaultRotationRewrappedStorageBlobs
+        }
+
+        func withCompletedCloudVaultRotation(jobId: String, progress: CloudVaultRotationRewrapProgress) -> Self {
+            Self(
+                revokedCloudVaultWrappers: revokedCloudVaultWrappers,
+                cloudVaultRotationRequired: cloudVaultRotationRequired,
+                cloudVaultRotationRequirementId: cloudVaultRotationRequirementId,
+                cloudVaultRotationBlockedReason: cloudVaultRotationBlockedReason,
+                cloudVaultRotationJobId: jobId,
+                cloudVaultRotationCompleted: true,
+                cloudVaultRotationFailureMessage: nil,
+                cloudVaultRotationRewrappedDocuments: progress.rewrappedDocuments,
+                cloudVaultRotationRewrappedStorageBlobs: progress.rewrappedStorageBlobs
+            )
+        }
+
+        func withCloudVaultRotationFailure(_ message: String) -> Self {
+            Self(
+                revokedCloudVaultWrappers: revokedCloudVaultWrappers,
+                cloudVaultRotationRequired: cloudVaultRotationRequired,
+                cloudVaultRotationRequirementId: cloudVaultRotationRequirementId,
+                cloudVaultRotationBlockedReason: cloudVaultRotationBlockedReason,
+                cloudVaultRotationJobId: cloudVaultRotationJobId,
+                cloudVaultRotationCompleted: false,
+                cloudVaultRotationFailureMessage: message,
+                cloudVaultRotationRewrappedDocuments: cloudVaultRotationRewrappedDocuments,
+                cloudVaultRotationRewrappedStorageBlobs: cloudVaultRotationRewrappedStorageBlobs
+            )
+        }
+    }
+
     enum ClientError: LocalizedError {
         case notAuthenticated
         case invalidResponse(String)
@@ -177,8 +239,12 @@ enum ComputerUseSecurityCallableClient {
     }
 
     /// Revokes escrow device trust and active grants server-side.
-    static func revokeEscrowDeviceTrust(deviceId: String) async throws {
-        _ = try requireSignedInUser()
+    @discardableResult
+    static func revokeEscrowDeviceTrust(
+        deviceId: String,
+        rotatingDeviceId: String? = nil
+    ) async throws -> EscrowDeviceTrustRevocationResult {
+        let uid = try requireSignedInUser().uid
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
@@ -188,6 +254,161 @@ enum ComputerUseSecurityCallableClient {
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
         }
+        let revocation = EscrowDeviceTrustRevocationResult(
+            revokedCloudVaultWrappers: dict["revokedCloudVaultWrappers"] as? Int ?? 0,
+            cloudVaultRotationRequired: dict["cloudVaultRotationRequired"] as? Bool ?? false,
+            cloudVaultRotationRequirementId: dict["cloudVaultRotationRequirementId"] as? String,
+            cloudVaultRotationBlockedReason: dict["cloudVaultRotationBlockedReason"] as? String
+        )
+        guard revocation.cloudVaultRotationRequired else { return revocation }
+        guard let requirementId = revocation.cloudVaultRotationRequirementId,
+              !requirementId.isEmpty,
+              let rotatingDeviceId,
+              !rotatingDeviceId.isEmpty else {
+            return revocation.withCloudVaultRotationFailure(
+                "Cloud Vault rotation is required, but this Mac's trusted device identity is unavailable."
+            )
+        }
+
+        do {
+            let rotation = try await performRevocationCloudVaultRotation(
+                uid: uid,
+                requirementId: requirementId,
+                rotatingDeviceId: rotatingDeviceId
+            )
+            return revocation.withCompletedCloudVaultRotation(jobId: rotation.jobId, progress: rotation.progress)
+        } catch {
+            return revocation.withCloudVaultRotationFailure(error.localizedDescription)
+        }
+    }
+
+    private struct RevocationCloudVaultRotationResult {
+        let jobId: String
+        let progress: CloudVaultRotationRewrapProgress
+    }
+
+    private static func performRevocationCloudVaultRotation(
+        uid: String,
+        requirementId: String,
+        rotatingDeviceId: String
+    ) async throws -> RevocationCloudVaultRotationResult {
+        let firestore = Firestore.firestore()
+        let userRef = firestore.collection("users").document(uid)
+        let requirementSnapshot = try await userRef.collection("cloud_vault_rotation_requirements")
+            .document(requirementId)
+            .getDocument()
+        guard let requirement = requirementSnapshot.data(),
+              requirement["status"] as? String == "pending",
+              requirement["rotateCallable"] as? String == "rotateCloudVaultKey",
+              let currentVaultKeyID = requirement["currentVaultKeyID"] as? String else {
+            throw ClientError.invalidResponse("Cloud Vault rotation requirement is missing or already consumed.")
+        }
+        let currentVaultGeneration = intValue(requirement["currentVaultGeneration"]) ?? 1
+        let survivorDeviceIds = (requirement["survivorDeviceIds"] as? [String] ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
+        guard survivorDeviceIds.contains(rotatingDeviceId) else {
+            throw ClientError.invalidResponse("This Mac is not a surviving trusted device for the required Cloud Vault rotation.")
+        }
+
+        guard let currentKey = try await MacCloudVaultKeyAccess.keyForReading(
+            uid: uid,
+            deviceId: rotatingDeviceId,
+            firestore: firestore
+        ) else {
+            throw ClientError.invalidResponse("This Mac does not have the current Cloud Vault key needed to rotate after revocation.")
+        }
+        guard currentKey.vaultKeyID == currentVaultKeyID else {
+            throw ClientError.invalidResponse(
+                "Cloud Vault rotation requirement expected \(currentVaultKeyID), but this Mac has \(currentKey.vaultKeyID)."
+            )
+        }
+
+        let localIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: rotatingDeviceId)
+        try await SignalIdentityPublicKeyPublisher.publishIfNeeded(
+            userRef: userRef,
+            deviceId: rotatingDeviceId,
+            platform: "macOS",
+            identity: localIdentity
+        )
+
+        let nextKey = CloudVaultCrypto.generateVaultKey()
+        let nextVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: nextKey)
+        let nextVaultGeneration = currentVaultGeneration + 1
+        var survivorWrappers: [[String: Any]] = []
+        for survivorDeviceId in survivorDeviceIds {
+            let survivor = try await CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                uid: uid,
+                userRef: userRef,
+                deviceId: survivorDeviceId,
+                localIdentity: localIdentity
+            )
+            let wrapped = try CloudVaultCrypto.wrapVaultKey(
+                nextKey,
+                recipientPublicKey: survivor.escrowPublicKeyData
+            )
+            survivorWrappers.append([
+                "wrapperId": "\(nextVaultKeyID)_\(survivor.deviceId)_\(survivor.keyVersion)",
+                "targetDeviceId": survivor.deviceId,
+                "sourceDeviceId": rotatingDeviceId,
+                "publicKeyFingerprint": survivor.escrowPublicKeyFingerprint,
+                "keyVersion": survivor.keyVersion,
+                "vaultKeyID": nextVaultKeyID,
+                "wrappedVaultKey": wrapped.base64EncodedString()
+            ])
+        }
+
+        let rotationNonce = try await issueHighRiskActionNonce()
+        let rotationResult = try await functions.httpsCallable("rotateCloudVaultKey").call([
+            "callerDeviceId": rotatingDeviceId,
+            "currentVaultKeyID": currentVaultKeyID,
+            "newVaultKeyID": nextVaultKeyID,
+            "expectedVaultGeneration": nextVaultGeneration,
+            "survivorWrappers": survivorWrappers,
+            "reason": "revocation_rewrap",
+            "rotationRequirementId": requirementId,
+            "nonce": rotationNonce,
+        ])
+        guard let rotationDict = rotationResult.data as? [String: Any],
+              rotationDict["ok"] as? Bool == true,
+              let jobId = rotationDict["jobId"] as? String,
+              !jobId.isEmpty else {
+            throw ClientError.invalidResponse("Cloud Vault key rotation was not queued.")
+        }
+
+        try CloudVaultKeyStore().saveKey(nextKey, uid: uid)
+
+        var worker = CloudVaultRotationRewrapWorker()
+        worker.firestore = firestore
+        do {
+            let progress = try await worker.runDocumentRewrap(
+                uid: uid,
+                deviceId: rotatingDeviceId,
+                jobId: jobId,
+                oldKeyData: currentKey.keyData,
+                newKeyData: nextKey,
+                newVaultKeyID: nextVaultKeyID,
+                vaultGeneration: nextVaultGeneration
+            )
+            return RevocationCloudVaultRotationResult(jobId: jobId, progress: progress)
+        } catch {
+            try? await userRef.collection("cloud_vault_rotation_jobs").document(jobId).setData([
+                "status": "failed",
+                "failureReason": String(error.localizedDescription.prefix(500)),
+                "failedAt": FieldValue.serverTimestamp(),
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+            throw ClientError.invalidResponse(
+                "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func intValue(_ raw: Any?) -> Int? {
+        if let value = raw as? Int { return value }
+        if let value = raw as? NSNumber { return value.intValue }
+        return nil
     }
 
     static func publishIrohPairingPublicKey(

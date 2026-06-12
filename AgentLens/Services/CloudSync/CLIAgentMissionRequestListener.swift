@@ -43,18 +43,58 @@ private enum CLIAgentMissionCloudSealer {
         return decoder
     }()
 
-    static func seal<T: Encodable>(_ payload: T, vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+    static func missionAADContext(uid: String, requestID: String, field: String) throws -> CloudVaultAADContext {
+        try CloudVaultAADContext(
+            uid: uid,
+            collection: "cli_agent_mission_requests",
+            docID: requestID,
+            field: field
+        )
+    }
+
+    static func missionEventAADContext(uid: String, requestID: String, eventID: String) throws -> CloudVaultAADContext {
+        try CloudVaultAADContext(
+            uid: uid,
+            collection: "cli_agent_mission_requests/events",
+            docID: "\(requestID)/\(eventID)",
+            field: "sealedPayload"
+        )
+    }
+
+    static func seal<T: Encodable>(
+        _ payload: T,
+        vaultKey: Data,
+        vaultKeyID: String,
+        aadContext: CloudVaultAADContext? = nil
+    ) throws -> [String: Any] {
         let data = try encoder.encode(payload)
-        let sealed = try CloudVaultCrypto.sealPayload(data, keyData: vaultKey, vaultKeyID: vaultKeyID)
+        let sealed = try CloudVaultCrypto.sealPayload(
+            data,
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return CloudVaultCrypto.sealedPayloadDictionary(sealed)
     }
 
-    static func openPrivatePayload(_ data: [String: Any], field: String = "sealedPayload", vaultKey: Data?) -> CLIAgentMissionPrivatePayload? {
+    static func openPrivatePayload(
+        _ data: [String: Any],
+        field: String = "sealedPayload",
+        uid: String? = nil,
+        requestID: String? = nil,
+        vaultKey: Data?
+    ) -> CLIAgentMissionPrivatePayload? {
         guard let vaultKey,
               let envelope = CloudVaultCrypto.sealedPayload(from: data[field])
         else { return nil }
         do {
-            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+            let aadContext: CloudVaultAADContext?
+            if let uid, let requestID {
+                aadContext = try? missionAADContext(uid: uid, requestID: requestID, field: field)
+            } else {
+                aadContext = nil
+            }
+            let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
             return try decoder.decode(CLIAgentMissionPrivatePayload.self, from: payload)
         } catch {
             return nil
@@ -742,7 +782,11 @@ final class CLIAgentMissionRequestListener {
         )
     }
 
-    private func openMissionPrivatePayload(data: [String: Any], uid: String) async throws -> CLIAgentMissionPrivatePayload? {
+    private func openMissionPrivatePayload(
+        data: [String: Any],
+        uid: String,
+        requestID: String
+    ) async throws -> CLIAgentMissionPrivatePayload? {
         guard data["sealedPayload"] != nil else { return nil }
         guard let key = try await MacCloudVaultKeyAccess.keyForReading(
             uid: uid,
@@ -751,7 +795,12 @@ final class CLIAgentMissionRequestListener {
         ) else {
             throw CloudVaultAccessError.vaultKeyUnavailable
         }
-        guard let privatePayload = CLIAgentMissionCloudSealer.openPrivatePayload(data, vaultKey: key.keyData) else {
+        guard let privatePayload = CLIAgentMissionCloudSealer.openPrivatePayload(
+            data,
+            uid: uid,
+            requestID: requestID,
+            vaultKey: key.keyData
+        ) else {
             throw CloudVaultAccessError.vaultKeyMismatch(expected: (data["vaultKeyID"] as? String) ?? "unknown", actual: key.vaultKeyID)
         }
         return privatePayload
@@ -775,6 +824,7 @@ final class CLIAgentMissionRequestListener {
 
     private func sealedStateUpdate(
         uid: String,
+        requestID: String,
         payload: [String: Any],
         liveSummary: String? = nil,
         resultPreview: String? = nil,
@@ -800,7 +850,17 @@ final class CLIAgentMissionRequestListener {
             synthesisSummary: synthesisSummary
         )
         let key = try await missionVaultKey(uid: uid)
-        payload["sealedStatePayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: key.keyData, vaultKeyID: key.vaultKeyID)
+        let aadContext = try CLIAgentMissionCloudSealer.missionAADContext(
+            uid: uid,
+            requestID: requestID,
+            field: "sealedStatePayload"
+        )
+        payload["sealedStatePayload"] = try CLIAgentMissionCloudSealer.seal(
+            privatePayload,
+            vaultKey: key.keyData,
+            vaultKeyID: key.vaultKeyID,
+            aadContext: aadContext
+        )
         payload["sealedStateSchemaVersion"] = CLIAgentMissionCloudSealer.sealedStateSchemaVersion
         payload["sealedStateVaultKeyID"] = key.vaultKeyID
         return payload
@@ -827,7 +887,11 @@ final class CLIAgentMissionRequestListener {
         }
         let privatePayload: CLIAgentMissionPrivatePayload?
         do {
-            privatePayload = try await openMissionPrivatePayload(data: rawData, uid: uid)
+            privatePayload = try await openMissionPrivatePayload(
+                data: rawData,
+                uid: uid,
+                requestID: document.documentID
+            )
         } catch {
             logger.error("mission id=\(document.documentID, privacy: .public) cannot be opened with this Mac vault key: \(error.localizedDescription, privacy: .public)")
             do {
@@ -897,7 +961,12 @@ final class CLIAgentMissionRequestListener {
                 claimPayload["selectedModelID"] = requestedModelID
             }
             try await document.reference.setData(
-                try await sealedStateUpdate(uid: uid, payload: claimPayload, liveSummary: claimSummary),
+                try await sealedStateUpdate(
+                    uid: uid,
+                    requestID: document.documentID,
+                    payload: claimPayload,
+                    liveSummary: claimSummary
+                ),
                 merge: true
             )
             await recordEvent(
@@ -934,6 +1003,7 @@ final class CLIAgentMissionRequestListener {
             try await document.reference.setData(
                 try await sealedStateUpdate(
                     uid: uid,
+                    requestID: document.documentID,
                     payload: [
                         "status": "starting",
                         "updatedAt": FieldValue.serverTimestamp()
@@ -969,6 +1039,7 @@ final class CLIAgentMissionRequestListener {
             try await document.reference.setData(
                 try await sealedStateUpdate(
                     uid: uid,
+                    requestID: document.documentID,
                     payload: [
                         "status": "running",
                         "updatedAt": FieldValue.serverTimestamp()
@@ -1034,6 +1105,7 @@ final class CLIAgentMissionRequestListener {
                 try await document.reference.setData(
                     try await sealedStateUpdate(
                         uid: uid,
+                        requestID: document.documentID,
                         payload: payload,
                         liveSummary: liveSummary,
                         resultPreview: safeDirectOutput,
@@ -1171,6 +1243,7 @@ final class CLIAgentMissionRequestListener {
             try await document.reference.setData(
                 try await sealedStateUpdate(
                     uid: uid,
+                    requestID: document.documentID,
                     payload: payload,
                     liveSummary: liveSummary,
                     resultPreview: sealedResultPreview,
@@ -1211,6 +1284,7 @@ final class CLIAgentMissionRequestListener {
             try await document.reference.setData(
                 try await sealedStateUpdate(
                     uid: uid,
+                    requestID: document.documentID,
                     payload: [
                         "status": "cancelled",
                         "completedAt": ISO8601DateFormatter().string(from: Date()),
@@ -1271,6 +1345,7 @@ final class CLIAgentMissionRequestListener {
             try await document.reference.setData(
                 try await sealedStateUpdate(
                     uid: uid,
+                    requestID: document.documentID,
                     payload: [
                         "status": "failed",
                         "completedAt": ISO8601DateFormatter().string(from: Date()),
@@ -1347,6 +1422,7 @@ final class CLIAgentMissionRequestListener {
             try await document.reference.setData(
                 try await sealedStateUpdate(
                     uid: uid,
+                    requestID: document.documentID,
                     payload: [
                         "status": "waiting_for_approval",
                         "claimedBy": accountManager.deviceId,
@@ -1397,6 +1473,7 @@ final class CLIAgentMissionRequestListener {
             try await document.reference.setData(
                 try await sealedStateUpdate(
                     uid: uid,
+                    requestID: document.documentID,
                     payload: [
                         "status": "canceled",
                         "completedAt": ISO8601DateFormatter().string(from: Date()),
@@ -2119,6 +2196,7 @@ final class CLIAgentMissionRequestListener {
             try await reference.setData(
                 try await sealedStateUpdate(
                     uid: uid,
+                    requestID: requestID,
                     payload: [
                         "lastEventSequence": nextSequence,
                         "updatedAt": FieldValue.serverTimestamp()
@@ -2130,7 +2208,14 @@ final class CLIAgentMissionRequestListener {
             let eventID = CLIAgentMissionEventFactory.eventID(for: nextSequence)
             let key = try await missionVaultKey(uid: uid)
             try await reference.collection("events").document(eventID).setData(
-                try CLIAgentMissionEventFactory.sealedEvent(event, vaultKey: key.keyData, vaultKeyID: key.vaultKeyID),
+                try CLIAgentMissionEventFactory.sealedEvent(
+                    event,
+                    uid: uid,
+                    requestID: requestID,
+                    eventID: eventID,
+                    vaultKey: key.keyData,
+                    vaultKeyID: key.vaultKeyID
+                ),
                 merge: false
             )
         } catch {
@@ -2257,7 +2342,14 @@ struct CLIAgentMissionEventFactory {
         return event
     }
 
-    static func sealedEvent(_ event: [String: Any], vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+    static func sealedEvent(
+        _ event: [String: Any],
+        uid: String,
+        requestID: String,
+        eventID: String,
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
         var sealed = event
         let privatePayload = CLIAgentMissionEventPrivatePayload(
             title: event["title"] as? String,
@@ -2273,7 +2365,17 @@ struct CLIAgentMissionEventFactory {
         sealed["contentSealed"] = true
         sealed["sealedSchemaVersion"] = CLIAgentMissionCloudSealer.sealedSchemaVersion
         sealed["vaultKeyID"] = vaultKeyID
-        sealed["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(privatePayload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        let aadContext = try CLIAgentMissionCloudSealer.missionEventAADContext(
+            uid: uid,
+            requestID: requestID,
+            eventID: eventID
+        )
+        sealed["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(
+            privatePayload,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return sealed
     }
 

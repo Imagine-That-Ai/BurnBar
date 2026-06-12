@@ -121,6 +121,26 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         await coordinator.stop()
         XCTAssertTrue(encoders[1].didStop)
     }
+
+    func testActiveScreenShareStopsWhenAdmissionIsRevoked() async throws {
+        let gate = MutableMediaCapabilityGate()
+        let coordinator = MediaSessionCoordinator(
+            capabilityGate: gate,
+            admissionRecheckIntervalNanoseconds: UInt64.max,
+            screenCaptureFactory: { _, _ in RecordingScreenCaptureSession() }
+        )
+
+        try await coordinator.startScreenShare(
+            peerDeviceID: "iphone",
+            sink: RecordingMediaSink()
+        )
+        XCTAssertEqual(coordinator.phase, .active(feature: .screenShare))
+
+        gate.result = .denied(reason: .killSwitchActive)
+        await coordinator.recheckActiveAdmissionForTesting()
+
+        XCTAssertEqual(coordinator.phase, .ended(reason: .budgetHardCap))
+    }
 }
 
 @MainActor
@@ -181,4 +201,16 @@ private final class RecordingMediaSink: MediaStreamSink, @unchecked Sendable {
     func write(frame: MediaFrame) async {}
     func write(frameV2: MediaFrameV2) async {}
     func close() async {}
+}
+
+private final class MutableMediaCapabilityGate: MediaCapabilityGate, @unchecked Sendable {
+    var result: MediaCapabilityCheck = .allowed(envelope: MediaCapabilityEnvelope(feature: .screenShare))
+
+    func check(
+        feature: MediaStreamClass.Feature,
+        sessionDurationLimitSeconds: Int?,
+        sessionByteBudget: Int64?
+    ) async -> MediaCapabilityCheck {
+        result
+    }
 }

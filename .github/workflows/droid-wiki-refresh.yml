@@ -10,11 +10,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Factory Droid
-        run: curl -fsSL https://app.factory.ai/cli | sh
+      - name: Locate Factory Droid
+        id: droid
+        run: |
+          set -euo pipefail
+          if command -v droid >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            droid --version
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Droid wiki refresh skipped"
+              echo ""
+              echo "Factory Droid is not preinstalled on this runner. The workflow refuses mutable curl-pipe-shell installers; provision a pinned Droid binary before enabling this job."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Generate wiki
         id: generate-wiki
+        if: steps.droid.outputs.present == 'true'
         continue-on-error: true
         timeout-minutes: 10
         # CI is non-interactive, so Droid cannot ask for tool permission

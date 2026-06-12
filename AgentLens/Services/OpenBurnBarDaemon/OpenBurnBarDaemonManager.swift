@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import CryptoKit
 import Foundation
 import Observation
@@ -114,6 +115,34 @@ struct OpenBurnBarDaemonDependencies: Sendable {
     let upsertControllerProject: @Sendable (URL, BurnBarReviewProjectSnapshot) throws -> BurnBarReviewProjectSnapshot?
     let recordControllerReviewRun: @Sendable (URL, BurnBarReviewRunSnapshot) throws -> BurnBarControllerReviewRunRecordResponse
 
+    let validateDaemonBinary: @Sendable (URL) throws -> Void
+
+    init(
+        fileManager: FileManager,
+        runProcess: @escaping @Sendable (String, [String]) throws -> String,
+        resolveDaemonBinary: @escaping @Sendable () -> URL?,
+        requestHealth: @escaping @Sendable (URL) throws -> BurnBarHealthResponse,
+        requestConfig: @escaping @Sendable (URL) throws -> BurnBarProviderConfigurationSnapshot,
+        updateConfig: @escaping @Sendable (URL, BurnBarProviderConfigurationSnapshot) throws -> BurnBarProviderConfigurationSnapshot,
+        requestRecentUsage: @escaping @Sendable (URL, Int) throws -> [BurnBarUsageEvent],
+        requestControllerProjects: @escaping @Sendable (URL) throws -> [BurnBarReviewProjectSnapshot],
+        upsertControllerProject: @escaping @Sendable (URL, BurnBarReviewProjectSnapshot) throws -> BurnBarReviewProjectSnapshot?,
+        recordControllerReviewRun: @escaping @Sendable (URL, BurnBarReviewRunSnapshot) throws -> BurnBarControllerReviewRunRecordResponse,
+        validateDaemonBinary: @escaping @Sendable (URL) throws -> Void = { _ in }
+    ) {
+        self.fileManager = fileManager
+        self.runProcess = runProcess
+        self.resolveDaemonBinary = resolveDaemonBinary
+        self.requestHealth = requestHealth
+        self.requestConfig = requestConfig
+        self.updateConfig = updateConfig
+        self.requestRecentUsage = requestRecentUsage
+        self.requestControllerProjects = requestControllerProjects
+        self.upsertControllerProject = upsertControllerProject
+        self.recordControllerReviewRun = recordControllerReviewRun
+        self.validateDaemonBinary = validateDaemonBinary
+    }
+
     static func live(fileManager: FileManager = .default) -> OpenBurnBarDaemonDependencies {
         OpenBurnBarDaemonDependencies(
             fileManager: fileManager,
@@ -146,6 +175,13 @@ struct OpenBurnBarDaemonDependencies: Sendable {
             },
             recordControllerReviewRun: { socketURL, run in
                 try OpenBurnBarDaemonSocketClient.recordControllerReviewRun(run, at: socketURL)
+            },
+            validateDaemonBinary: { url in
+                #if os(macOS)
+                try OpenBurnBarPrivilegedTrust.validateStaticCode(at: url)
+                #else
+                _ = url
+                #endif
             }
         )
     }
@@ -153,6 +189,7 @@ struct OpenBurnBarDaemonDependencies: Sendable {
 
 enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     case daemonBinaryUnavailable
+    case daemonBinarySignatureInvalid(path: String, reason: String)
     case daemonResourceBundleUnavailable(expectedPath: String)
     case launchctlFailed(String)
     case timedOutWaitingForHealth(logTail: String?, logFilePath: String)
@@ -165,6 +202,8 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
         switch self {
         case .daemonBinaryUnavailable:
             return "OpenBurnBarDaemon binary is not available in the current build products."
+        case let .daemonBinarySignatureInvalid(path, reason):
+            return "OpenBurnBarDaemon binary failed code-signature verification at \(path): \(reason)"
         case .daemonResourceBundleUnavailable(let expectedPath):
             return """
             OpenBurnBarDaemon resources are missing (OpenBurnBarCore_OpenBurnBarCore.bundle).

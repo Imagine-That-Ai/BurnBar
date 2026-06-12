@@ -123,10 +123,9 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         )
     }
 
-    /// (d) An existing PLAINTEXT database still opens without data loss. A plaintext
-    /// file is correctly detected as not-encrypted and re-opens via the plaintext
-    /// (nil-key) configuration, preserving its rows. This is the no-brick guarantee
-    /// for the millions of plaintext DBs that exist today.
+    /// (d) An existing PLAINTEXT database still opens through the explicit
+    /// encryption-disabled/tooling path. App startup with encryption enabled is
+    /// covered separately below and must fail closed until migration is implemented.
     func testExistingPlaintextDatabaseStillOpensWithoutDataLoss() throws {
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-plain-existing-\(UUID().uuidString).sqlite")
         defer {
@@ -148,7 +147,7 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
             "A plaintext SQLite file must be detected as not encrypted"
         )
 
-        // Re-open via the plaintext path (the no-brick fallback) and verify all rows survive.
+        // Re-open via the explicit plaintext path and verify all rows survive.
         let reopened = try DatabasePool(path: path, configuration: plainConfig)
         let (count, total) = try reopened.read { db -> (Int, Double) in
             let c = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM usage") ?? -1
@@ -158,6 +157,40 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertEqual(count, 2, "Existing plaintext rows must survive re-open")
         XCTAssertEqual(total, 4.0, accuracy: 0.0001, "Existing plaintext data must be intact")
         try reopened.close()
+    }
+
+    @MainActor
+    func testCoordinatorRefusesExistingPlaintextDatabaseWhenEncryptionEnabled() throws {
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-plain-refuse-\(UUID().uuidString).sqlite")
+        let defaults = UserDefaults.standard
+        let previousEncryptionDefault = defaults.object(forKey: "databaseEncryptionEnabled")
+        defer {
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
+            if let previousEncryptionDefault {
+                defaults.set(previousEncryptionDefault, forKey: "databaseEncryptionEnabled")
+            } else {
+                defaults.removeObject(forKey: "databaseEncryptionEnabled")
+            }
+        }
+
+        let plainConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
+        let plaintext = try DatabasePool(path: path, configuration: plainConfig)
+        try plaintext.write { db in
+            try db.execute(sql: "CREATE TABLE t (value TEXT)")
+            try db.execute(sql: "INSERT INTO t (value) VALUES ('plain')")
+        }
+        try plaintext.close()
+
+        defaults.set(true, forKey: "databaseEncryptionEnabled")
+        do {
+            let opened = try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
+            try opened.close()
+            XCTFail("Coordinator must refuse an existing plaintext database while encryption is enabled.")
+        } catch DatabaseEncryptionError.plaintextDatabaseRequiresMigration(let refusedPath) {
+            XCTAssertEqual(refusedPath, path)
+        } catch {
+            XCTFail("Expected plaintextDatabaseRequiresMigration, got \(error)")
+        }
     }
 
     func testMakeConfigurationWithoutKey_allowsPlainDatabase() throws {

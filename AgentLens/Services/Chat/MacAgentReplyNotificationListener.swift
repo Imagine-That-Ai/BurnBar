@@ -122,14 +122,42 @@ private enum MacAgentNotificationReplySealer {
 
     private static let decoder = JSONDecoder()
 
-    static func sealedReplyMap(replyText: String, keyData: Data, vaultKeyID: String) throws -> [String: Any] {
+    static func sealedReplyMap(
+        replyText: String,
+        uid: String,
+        replyID: String,
+        keyData: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
         let payload = try encoder.encode(MacAgentNotificationReplyPrivatePayload(replyText: replyText))
-        let sealed = try CloudVaultCrypto.sealPayload(payload, keyData: keyData, vaultKeyID: vaultKeyID)
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "agent_notification_replies",
+            docID: replyID,
+            field: "sealedReplyPayload"
+        )
+        let sealed = try CloudVaultCrypto.sealPayload(
+            payload,
+            keyData: keyData,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return CloudVaultCrypto.sealedPayloadDictionary(sealed)
     }
 
-    static func openReplyText(_ envelope: CloudVaultSealedPayload, keyData: Data) throws -> String {
-        let payload = try CloudVaultCrypto.openPayload(envelope, keyData: keyData)
+    static func openReplyText(
+        _ envelope: CloudVaultSealedPayload,
+        uid: String,
+        replyID: String,
+        keyData: Data
+    ) throws -> String {
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "agent_notification_replies",
+            docID: replyID,
+            field: "sealedReplyPayload"
+        )
+        let payload = try CloudVaultCrypto.openPayload(envelope, keyData: keyData, aadContext: aadContext)
         return try decoder.decode(MacAgentNotificationReplyPrivatePayload.self, from: payload).replyText
     }
 }
@@ -357,6 +385,8 @@ final class MacAgentReplyNotificationListener: NSObject {
                 "eventId": eventID,
                 "sealedReplyPayload": try MacAgentNotificationReplySealer.sealedReplyMap(
                     replyText: replyText,
+                    uid: uid,
+                    replyID: replyId,
                     keyData: key.keyData,
                     vaultKeyID: key.vaultKeyID
                 ),
@@ -413,7 +443,12 @@ final class MacAgentReplyNotificationListener: NSObject {
                 ) else {
                     throw CloudVaultAccessError.vaultKeyUnavailable
                 }
-                let replyText = try MacAgentNotificationReplySealer.openReplyText(command.sealedReplyPayload, keyData: key.keyData)
+                let replyText = try MacAgentNotificationReplySealer.openReplyText(
+                    command.sealedReplyPayload,
+                    uid: uid,
+                    replyID: command.id,
+                    keyData: key.keyData
+                )
                 await routeInlineReply(payload: command.payload, replyText: replyText, activate: false)
                 try await markReplyCommand(uid: uid, replyID: command.id, status: "sent", error: nil)
             } catch {

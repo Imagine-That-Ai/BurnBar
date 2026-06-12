@@ -444,6 +444,37 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         XCTAssertEqual(decoded.messages.map(\.text), ["Message 0", "Message 1"])
     }
 
+    func testCloudMirrorLegacyPayloadIsPathBoundAndRejectsRelocation() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let thread = Self.makeThread(id: "thread-path-bound", runtime: .pi, title: "Bound")
+        let encoded = try MobileChatFirestoreStore.encodeThreadForCloud(
+            thread,
+            uid: "user-path-bound",
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
+
+        let decoded = MobileChatFirestoreStore.decodeThread(
+            documentID: thread.id,
+            data: encoded,
+            uid: "user-path-bound",
+            vaultKey: key
+        )
+        XCTAssertEqual(decoded?.id, thread.id)
+        XCTAssertEqual(decoded?.title, "Bound")
+
+        XCTAssertNil(
+            MobileChatFirestoreStore.decodeThread(
+                documentID: "thread-relocated",
+                data: encoded,
+                uid: "user-path-bound",
+                vaultKey: key
+            ),
+            "CloudVault chat payloads must not open after being moved to another Firestore document."
+        )
+    }
+
     // MARK: - Helpers
 
     private static func makeThread(

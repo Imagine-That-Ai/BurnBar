@@ -57,6 +57,40 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(reason, .entitlementMissing)
     }
 
+    func testSharedMediaEntitlementMappingFailsClosedUntilMediaOrProMaxEntitlementIsActive() {
+        let free = MacMediaCapabilityGate.entitlementState(hostedMediaIsActive: false, tier: .free)
+        XCTAssertFalse(free.active)
+        XCTAssertFalse(free.fileTransfer)
+        XCTAssertFalse(free.screenShare)
+        XCTAssertFalse(free.videoCall)
+
+        let cloudOnly = MacMediaCapabilityGate.entitlementState(hostedMediaIsActive: false, tier: .cloud)
+        XCTAssertFalse(cloudOnly.active)
+
+        let mediaSKU = MacMediaCapabilityGate.entitlementState(hostedMediaIsActive: true, tier: .free)
+        XCTAssertTrue(mediaSKU.active)
+        XCTAssertTrue(mediaSKU.fileTransfer)
+        XCTAssertTrue(mediaSKU.screenShare)
+        XCTAssertTrue(mediaSKU.videoCall)
+
+        let proMax = MacMediaCapabilityGate.entitlementState(hostedMediaIsActive: false, tier: .pro)
+        XCTAssertTrue(proMax.active)
+    }
+
+    func testActiveSessionRegistryClampsCountsPerFeature() {
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+        XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .screenShare), 0)
+
+        MacMediaActiveSessionRegistry.shared.setCount(2, for: .screenShare)
+        MacMediaActiveSessionRegistry.shared.setCount(1, for: .fileTransfer)
+        XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .screenShare), 2)
+        XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .fileTransfer), 1)
+
+        MacMediaActiveSessionRegistry.shared.setCount(-10, for: .screenShare)
+        XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .screenShare), 0)
+        MacMediaActiveSessionRegistry.shared.resetForTesting()
+    }
+
     func testHardCapDeniesAllFeatures() async {
         let hardCap = MediaBudgetStatus(
             level: .hardCap,

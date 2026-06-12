@@ -113,6 +113,17 @@ jobs:
                 console.log('No high/critical vulnerabilities in extension.');
               " || (echo "::error::npm audit found high/critical vulnerabilities in extension" && exit 1)
 
+  remote-installer-policy:
+    name: Remote Installer Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+
+      - name: Reject curl-pipe-shell installers
+        run: scripts/ci/verify-no-remote-shell-installers.sh
+
   osv-scanner:
     name: OSV Scanner (open source vulnerabilities)
     runs-on: ubuntu-latest
@@ -127,3 +138,42 @@ jobs:
           scan-args: |-
             --lockfile=functions/package-lock.json
             --lockfile=extensions/openburnbar/package-lock.json
+
+  hosted-mcp-security-smoke:
+    name: Hosted MCP Security Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Build hosted MCP
+        run: |
+          npm ci --prefix services/hosted-mcp
+          npm --prefix services/hosted-mcp run build
+
+      - name: Start local hosted MCP
+        env:
+          MCP_TOKEN_HMAC_SECRET: ci-hosted-mcp-secret
+          MCP_CURSOR_HMAC_SECRET: ci-hosted-mcp-cursor-secret
+          PORT: "8080"
+        run: |
+          node services/hosted-mcp/lib/server.js > /tmp/hosted-mcp.log 2>&1 &
+          echo "$!" > /tmp/hosted-mcp.pid
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:8080/readyz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/hosted-mcp.log
+          exit 1
+
+      - name: Run hosted MCP adversarial smoke
+        env:
+          OPENBURNBAR_MCP_ENDPOINT: http://127.0.0.1:8080/mcp
+        run: scripts/test-hosted-mcp-security.sh

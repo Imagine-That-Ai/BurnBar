@@ -74,6 +74,44 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields();
     }
 
+    function validRootUserProfileWrite(userId) {
+      return ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "displayName",
+          "email",
+          "photoURL",
+          "avatarURL",
+          "createdAt",
+          "updatedAt",
+          "lastSeenAt",
+          "sourceDeviceId",
+          "deviceId",
+          "platform",
+          "appVersion",
+          "timezone",
+          "locale",
+          "settingsVersion",
+          "schemaVersion"
+        ])
+        && (!("uid" in request.resource.data) || request.resource.data.uid == userId)
+        && (!("displayName" in request.resource.data) || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 200))
+        && (!("email" in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 320))
+        && (!("photoURL" in request.resource.data) || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2000))
+        && (!("avatarURL" in request.resource.data) || (request.resource.data.avatarURL is string && request.resource.data.avatarURL.size() <= 2000))
+        && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp)
+        && (!("lastSeenAt" in request.resource.data) || request.resource.data.lastSeenAt is timestamp)
+        && (!("sourceDeviceId" in request.resource.data) || (request.resource.data.sourceDeviceId is string && request.resource.data.sourceDeviceId.size() <= 256))
+        && (!("deviceId" in request.resource.data) || (request.resource.data.deviceId is string && request.resource.data.deviceId.size() <= 256))
+        && (!("platform" in request.resource.data) || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80))
+        && (!("appVersion" in request.resource.data) || (request.resource.data.appVersion is string && request.resource.data.appVersion.size() <= 80))
+        && (!("timezone" in request.resource.data) || (request.resource.data.timezone is string && request.resource.data.timezone.size() <= 120))
+        && (!("locale" in request.resource.data) || (request.resource.data.locale is string && request.resource.data.locale.size() <= 40))
+        && (!("settingsVersion" in request.resource.data) || (request.resource.data.settingsVersion is int && request.resource.data.settingsVersion >= 1 && request.resource.data.settingsVersion <= 10000))
+        && (!("schemaVersion" in request.resource.data) || (request.resource.data.schemaVersion is int && request.resource.data.schemaVersion >= 1 && request.resource.data.schemaVersion <= 100));
+    }
+
     function validPixelClockConfig(pixelClock) {
       return pixelClock is map
         && pixelClock.keys().hasOnly([
@@ -1092,7 +1130,7 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if ownsUserNamespace(userId);
-      allow write: if ownsUserNamespace(userId) && requestWithinBasicLimits();
+      allow write: if validRootUserProfileWrite(userId);
     }
 
     // Usage rows seal the project name into `sealedProjectName` (with an opaque
@@ -2195,7 +2233,7 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
-	      allow delete: if ownsUserNamespace(userId);
+	      allow delete: if false;
 	    }
 
 	    match /users/{userId}/cloud_vault_rotation_jobs/{jobId} {
@@ -2204,15 +2242,18 @@ service cloud.firestore {
 	          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
 	            "status",
 	            "clientDeviceId",
-	            "documentRewrapComplete",
-	            "storageRewrapPending",
-	            "processedDocumentCount",
-	            "rewrappedDocumentCount",
-	            "changedFieldCount",
-	            "completedAt",
-	            "failedAt",
-	            "failureReason",
-	            "updatedAt"
+		            "documentRewrapComplete",
+		            "storageRewrapComplete",
+		            "storageRewrapPending",
+		            "processedDocumentCount",
+		            "rewrappedDocumentCount",
+		            "changedFieldCount",
+		            "processedStorageBlobCount",
+		            "rewrappedStorageBlobCount",
+		            "completedAt",
+		            "failedAt",
+		            "failureReason",
+		            "updatedAt"
 	          ])
 	          && (!("status" in request.resource.data) || request.resource.data.status in [
 	            "queued",
@@ -2226,12 +2267,13 @@ service cloud.firestore {
 	            request.resource.data.clientDeviceId is string
 	            && request.resource.data.clientDeviceId.size() > 0
 	            && request.resource.data.clientDeviceId.size() <= 128
-	          ))
-	          && (!("documentRewrapComplete" in request.resource.data) || request.resource.data.documentRewrapComplete is bool)
-	          && (!("storageRewrapPending" in request.resource.data) || request.resource.data.storageRewrapPending is bool)
-	          && (!("processedDocumentCount" in request.resource.data) || (
-	            request.resource.data.processedDocumentCount is int
-	            && request.resource.data.processedDocumentCount >= 0
+		          ))
+		          && (!("documentRewrapComplete" in request.resource.data) || request.resource.data.documentRewrapComplete is bool)
+		          && (!("storageRewrapComplete" in request.resource.data) || request.resource.data.storageRewrapComplete is bool)
+		          && (!("storageRewrapPending" in request.resource.data) || request.resource.data.storageRewrapPending is bool)
+		          && (!("processedDocumentCount" in request.resource.data) || (
+		            request.resource.data.processedDocumentCount is int
+		            && request.resource.data.processedDocumentCount >= 0
 	            && request.resource.data.processedDocumentCount <= 10000000
 	          ))
 	          && (!("rewrappedDocumentCount" in request.resource.data) || (
@@ -2240,13 +2282,23 @@ service cloud.firestore {
 	            && request.resource.data.rewrappedDocumentCount <= 10000000
 	          ))
 	          && (!("changedFieldCount" in request.resource.data) || (
-	            request.resource.data.changedFieldCount is int
-	            && request.resource.data.changedFieldCount >= 0
-	            && request.resource.data.changedFieldCount <= 10000000
-	          ))
-	          && (!("failureReason" in request.resource.data) || (
-	            request.resource.data.failureReason is string
-	            && request.resource.data.failureReason.size() <= 500
+		            request.resource.data.changedFieldCount is int
+		            && request.resource.data.changedFieldCount >= 0
+		            && request.resource.data.changedFieldCount <= 10000000
+		          ))
+		          && (!("processedStorageBlobCount" in request.resource.data) || (
+		            request.resource.data.processedStorageBlobCount is int
+		            && request.resource.data.processedStorageBlobCount >= 0
+		            && request.resource.data.processedStorageBlobCount <= 10000000
+		          ))
+		          && (!("rewrappedStorageBlobCount" in request.resource.data) || (
+		            request.resource.data.rewrappedStorageBlobCount is int
+		            && request.resource.data.rewrappedStorageBlobCount >= 0
+		            && request.resource.data.rewrappedStorageBlobCount <= 10000000
+		          ))
+		          && (!("failureReason" in request.resource.data) || (
+		            request.resource.data.failureReason is string
+		            && request.resource.data.failureReason.size() <= 500
 	          ));
 	      }
 
@@ -2262,11 +2314,12 @@ service cloud.firestore {
 	          ])
 	          && request.resource.data.domainID == checkpointId
 	          && request.resource.data.status in [
-	            "documents_pending_storage",
-	            "documents_complete",
-	            "storage_complete",
-	            "failed"
-	          ]
+		            "documents_pending_storage",
+		            "documents_complete",
+		            "storage_rewrapping",
+		            "storage_complete",
+		            "failed"
+		          ]
 	          && request.resource.data.scannedDocumentCount is int
 	          && request.resource.data.scannedDocumentCount >= 0
 	          && request.resource.data.scannedDocumentCount <= 10000000
@@ -2287,6 +2340,11 @@ service cloud.firestore {
 	        allow create, update: if validCloudVaultRotationCheckpoint(checkpointId);
 	        allow delete: if false;
 	      }
+	    }
+
+	    match /users/{userId}/cloud_vault_rotation_requirements/{requirementId} {
+	      allow read: if ownsUserNamespace(userId);
+	      allow create, update, delete: if false;
 	    }
 
     match /users/{userId}/devices/{deviceId} {

@@ -2,6 +2,8 @@ package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.media.MediaStreamClass
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
@@ -74,6 +76,58 @@ class PhoneControlSenderTest {
             publicKey = PhoneControlSigner.publicKey(privateSeed),
             lastSeenCounter = 0,
             nowMillis = 1_700_000_000_123L,
+        )
+    }
+
+    @Test
+    fun sendWritesSignedApprovalResponseBoundToPendingRequestHash() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val sender =
+            PhoneControlSender(
+                uid = "uid-1",
+                connectionId = "conn-1",
+                peerNodeId = "android-phone-1",
+                signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
+                counterStore = InMemoryPhoneControlCounterStore(),
+                nowMillis = { 1_700_000_000_123L },
+                frameSink = { frames += it },
+            )
+        val request =
+            HermesRealtimeRelayApprovalRequest(
+                approvalId = "approval-1",
+                runId = "run-1",
+                sessionId = "session-1",
+                toolKind = "browser.goto",
+                title = "Approve browser action",
+                message = "Open example.com",
+                actionSummary = "Open example.com",
+                requestedAt = 721_692_800.0,
+                trustMode = "manual",
+            )
+        val response =
+            HermesRealtimeRelayApprovalResponse(
+                approvalId = "approval-1",
+                decision = HermesRealtimeRelayApprovalResponse.Decision.APPROVE,
+                respondedBy = "android",
+                respondedAt = 721_692_810.0,
+            )
+
+        val signed = sender.send(approvalResponse = response, approvalRequest = request)
+
+        assertEquals(1, frames.size)
+        val frame = frames.single()
+        assertEquals(HermesRealtimeRelayFrameType.CONTROL_APPROVAL_RESPONSE, frame.type)
+        assertEquals("approval-1", frame.requestId)
+        assertEquals(MediaStreamClass.CONTROL_APPROVAL.raw, frame.control?.streamClass)
+        assertEquals("session-1", frame.control?.sessionId)
+        assertEquals("approval-1", frame.control?.approvalResponse?.approvalId)
+        assertEquals(PhoneControlSignerCanonical.approvalRequestHashHex(request), signed.requestHashBlake3)
+        assertNotNull(signed.authority)
+        assertEquals("android-phone-1", signed.authority?.peerNodeId)
+        assertEquals(1L, signed.authority?.counter)
+        assertEquals(
+            PhoneControlSignerCanonical.approvalResponseHashHex(signed.copy(authority = null)),
+            signed.authority?.intentHashBlake3,
         )
     }
 

@@ -122,12 +122,41 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         try validateCodeSignature(code)
     }
 
+    /// Validate a helper binary on disk before installing or launching it.
+    /// This closes the gap where launchd would execute a user-writable swapped
+    /// helper path even though live socket peers were signature-checked later.
+    public static func validateStaticCode(at url: URL) throws {
+        var staticCode: SecStaticCode?
+        let status = SecStaticCodeCreateWithPath(url as CFURL, SecCSFlags(rawValue: 0), &staticCode)
+        guard status == errSecSuccess, let staticCode else {
+            throw PrivilegedSocketTrustError.codeSignatureInvalid(status: status)
+        }
+        try validateStaticCode(staticCode)
+    }
+
     /// `requirementString` is injectable for tests only (the default is the
     /// production designated requirement): unit tests cannot mint a process
     /// signed with the first-party identity, so they exercise the
     /// static-code/flag plumbing against the Apple-signed test host instead.
     static func validateCodeSignature(
         _ code: SecCode,
+        requirementString: String = privilegedPeerDesignatedRequirement
+    ) throws {
+        // M-9: enforce hardened runtime + library validation programmatically —
+        // see `privilegedPeerDesignatedRequirement` for why these cannot live in
+        // the requirement string.
+        var staticCode: SecStaticCode?
+        let staticStatus = SecCodeCopyStaticCode(code, [], &staticCode)
+        guard staticStatus == errSecSuccess, let staticCode else {
+            throw PrivilegedSocketTrustError.codeSignatureInvalid(status: staticStatus)
+        }
+        try validateStaticCode(staticCode, requirementString: requirementString)
+    }
+
+    /// `requirementString` is injectable for tests only; production callers use
+    /// ``privilegedPeerDesignatedRequirement``.
+    static func validateStaticCode(
+        _ staticCode: SecStaticCode,
         requirementString: String = privilegedPeerDesignatedRequirement
     ) throws {
         var requirement: SecRequirement?
@@ -140,19 +169,11 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: requirementStatus)
         }
 
-        let validity = SecCodeCheckValidity(code, [], requirement)
+        let validity = SecStaticCodeCheckValidity(staticCode, [], requirement)
         guard validity == errSecSuccess else {
             throw PrivilegedSocketTrustError.codeSignatureInvalid(status: validity)
         }
 
-        // M-9: enforce hardened runtime + library validation programmatically —
-        // see `privilegedPeerDesignatedRequirement` for why these cannot live in
-        // the requirement string.
-        var staticCode: SecStaticCode?
-        let staticStatus = SecCodeCopyStaticCode(code, [], &staticCode)
-        guard staticStatus == errSecSuccess, let staticCode else {
-            throw PrivilegedSocketTrustError.codeSignatureInvalid(status: staticStatus)
-        }
         var infoCF: CFDictionary?
         let infoStatus = SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: 0), &infoCF)
         guard infoStatus == errSecSuccess,

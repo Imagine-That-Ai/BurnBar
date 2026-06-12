@@ -12,10 +12,16 @@ npm --prefix services/hosted-mcp test
 
 ```bash
 export GOOGLE_CLOUD_PROJECT=burnbar
-firebase functions:secrets:set REMOTE_MCP_TOKEN_HMAC_SECRET
+firebase functions:secrets:set REMOTE_MCP_TOKEN_HMAC_SECRET # legacy transition only
 
-# Optional: add/rotate the same verifier secret for Cloud Run before deploy.
+# Production token signing should use Ed25519:
+# - Functions grant issuer / hosted refresh signer: REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64
+# - Cloud Run verifier: MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64
+# Values are base64-encoded PEM. If MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 is set,
+# Cloud Run refuses legacy HMAC access tokens unless MCP_ALLOW_LEGACY_HMAC_TOKENS=true.
 export REMOTE_MCP_TOKEN_HMAC_SECRET=...
+export REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64=...
+export MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64=...
 ./scripts/deploy-hosted-mcp.sh
 ```
 
@@ -23,10 +29,9 @@ Hermes realtime relay (separate sidecar): [`scripts/deploy-hermes-relay.sh`](../
 
 The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, gates on
 `/healthz` (override with `MCP_HEALTH_PATH=/readyz` when checking branded DNS), and
-sets the resource audience to `https://mcp.burnbar.ai/mcp`. The signing
-secret must live in Secret Manager as `REMOTE_MCP_TOKEN_HMAC_SECRET`; Cloud
-Functions reads it through `defineSecret(...)`, and Cloud Run receives it via
-`--set-secrets`, not as a plaintext revision environment variable.
+sets the resource audience to `https://mcp.burnbar.ai/mcp`. HMAC signing is a
+legacy transition path; Ed25519 signing is the production target so the resource
+server can verify with a public key and refuse shared-secret tokens by default.
 
 ## Domain Mapping
 

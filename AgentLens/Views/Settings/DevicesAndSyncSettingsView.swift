@@ -260,6 +260,29 @@ struct TrustedDevicesDetailView: View {
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
                         }
                         .buttonStyle(.plain)
+                        .help("Dismiss error")
+                        .accessibilityLabel("Dismiss error")
+                    }
+                    .padding(DesignSystem.Spacing.md)
+                }
+            }
+            if let status = deviceTrust.lastStatusMessage {
+                GlassCard {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "key.horizontal.fill")
+                            .foregroundStyle(DesignSystem.Colors.warning)
+                        Text(status)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button { deviceTrust.clearLastStatus() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Dismiss Cloud Vault rotation notice")
+                        .accessibilityLabel("Dismiss Cloud Vault rotation notice")
                     }
                     .padding(DesignSystem.Spacing.md)
                 }
@@ -613,10 +636,7 @@ final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
         destinationDeviceID: String,
         onStage: @escaping @MainActor (MacExportStage) -> Void
     ) async {
-        onStage(.encrypting)
-        onStage(.uploading)
-        onStage(.waitingReadback)
-        onStage(.done)
+        onStage(.failed(message: "Mac credential export is not available until the encrypted producer is implemented. No credential was read, uploaded, or granted."))
     }
 
     func revoke(grantID: String) async throws {}
@@ -716,7 +736,7 @@ struct MacTrustedDevice: Identifiable, Equatable {
 protocol MacDeviceTrustGateway: AnyObject {
     func trustedDevices() async throws -> [MacTrustedDevice]
     func approve(deviceID: String) async throws
-    func revoke(deviceID: String) async throws
+    func revoke(deviceID: String) async throws -> ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult
 }
 
 @MainActor
@@ -786,9 +806,12 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
         )
     }
 
-    func revoke(deviceID: String) async throws {
+    func revoke(deviceID: String) async throws -> ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult {
         guard uid != nil else { throw MacDeviceTrustError.notAuthenticated }
-        try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(deviceId: deviceID)
+        return try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(
+            deviceId: deviceID,
+            rotatingDeviceId: deviceId
+        )
     }
 }
 
@@ -807,6 +830,7 @@ final class DeviceTrustViewModel {
     private(set) var trustedDevices: [MacTrustedDevice] = []
     private(set) var isLoading = false
     private(set) var lastErrorMessage: String?
+    private(set) var lastStatusMessage: String?
 
     init(gateway: MacDeviceTrustGateway = MacLiveDeviceTrustGateway()) {
         self.gateway = gateway
@@ -830,6 +854,7 @@ final class DeviceTrustViewModel {
     func approve(deviceID: String) async {
         do {
             try await gateway.approve(deviceID: deviceID)
+            lastStatusMessage = nil
             await load()
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -838,7 +863,21 @@ final class DeviceTrustViewModel {
 
     func revoke(deviceID: String) async {
         do {
-            try await gateway.revoke(deviceID: deviceID)
+            let result = try await gateway.revoke(deviceID: deviceID)
+            lastErrorMessage = nil
+            if result.cloudVaultRotationCompleted {
+                let documents = Self.countLabel(result.cloudVaultRotationRewrappedDocuments, singular: "document", plural: "documents")
+                let blobs = Self.countLabel(result.cloudVaultRotationRewrappedStorageBlobs, singular: "encrypted blob", plural: "encrypted blobs")
+                lastStatusMessage = "Device revoked. Cloud Vault rotated and rewrapped \(documents) and \(blobs). Job: \(result.cloudVaultRotationJobId ?? "complete")."
+            } else if let rotationFailure = result.cloudVaultRotationFailureMessage {
+                lastStatusMessage = "Device revoked. Cloud Vault rotation still needs attention: \(rotationFailure)"
+            } else if result.cloudVaultRotationRequired {
+                lastStatusMessage = "Device revoked. Cloud Vault rotation is queued before the revoked device's cached key is considered fully retired. Requirement: \(result.cloudVaultRotationRequirementId ?? "pending")."
+            } else if let blocked = result.cloudVaultRotationBlockedReason, blocked != "no_active_cloud_vault_state" {
+                lastStatusMessage = "Device revoked, but Cloud Vault rotation could not be scheduled: \(blocked)."
+            } else {
+                lastStatusMessage = nil
+            }
             await load()
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -847,6 +886,10 @@ final class DeviceTrustViewModel {
 
     func clearLastError() {
         lastErrorMessage = nil
+    }
+
+    func clearLastStatus() {
+        lastStatusMessage = nil
     }
 
     static func deduplicatedDevices(_ devices: [MacTrustedDevice]) -> [MacTrustedDevice] {
@@ -875,6 +918,10 @@ final class DeviceTrustViewModel {
             }
             return lhs.id < rhs.id
         }
+    }
+
+    private static func countLabel(_ count: Int, singular: String, plural: String) -> String {
+        "\(count) \(count == 1 ? singular : plural)"
     }
 
     private static func physicalDeviceKey(for device: MacTrustedDevice) -> String {

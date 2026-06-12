@@ -42,15 +42,18 @@ enum MacCloudTier: Int, Comparable, CaseIterable {
 final class MacCloudEntitlementStore: ObservableObject {
     @Published private(set) var isActive: Bool = false
     @Published private(set) var hostedComputerUseIsActive: Bool = false
+    @Published private(set) var hostedMediaIsActive: Bool = false
     /// True when the member holds the BurnBar Ultra entitlement (server-resolved
     /// `burnbar_ultra` doc). Ultra ⇒ Pro ⇒ Cloud, so use `currentTier` for
     /// hierarchy decisions and this flag only for the literal Ultra check.
     @Published private(set) var isUltraActive: Bool = false
     @Published private(set) var expirationDate: Date?
     @Published private(set) var hostedComputerUseExpirationDate: Date?
+    @Published private(set) var hostedMediaExpirationDate: Date?
     @Published private(set) var ultraExpirationDate: Date?
     @Published private(set) var purchaseDate: Date?
     @Published private(set) var hostedComputerUsePurchaseDate: Date?
+    @Published private(set) var hostedMediaPurchaseDate: Date?
     @Published private(set) var ultraPurchaseDate: Date?
     @Published private(set) var error: String?
 
@@ -58,6 +61,7 @@ final class MacCloudEntitlementStore: ObservableObject {
 
     private var listener: ListenerRegistration?
     private var computerUseListener: ListenerRegistration?
+    private var mediaListener: ListenerRegistration?
     private var proMaxListener: ListenerRegistration?
     private var ultraListener: ListenerRegistration?
     private nonisolated(unsafe) var authHandle: AuthStateDidChangeListenerHandle?
@@ -90,6 +94,7 @@ final class MacCloudEntitlementStore: ObservableObject {
     deinit {
         listener?.remove()
         computerUseListener?.remove()
+        mediaListener?.remove()
         proMaxListener?.remove()
         ultraListener?.remove()
         if let authHandle {
@@ -118,6 +123,8 @@ final class MacCloudEntitlementStore: ObservableObject {
         listener = nil
         computerUseListener?.remove()
         computerUseListener = nil
+        mediaListener?.remove()
+        mediaListener = nil
         proMaxListener?.remove()
         proMaxListener = nil
         ultraListener?.remove()
@@ -125,12 +132,15 @@ final class MacCloudEntitlementStore: ObservableObject {
         guard let uid else {
             isActive = false
             hostedComputerUseIsActive = false
+            hostedMediaIsActive = false
             isUltraActive = false
             expirationDate = nil
             hostedComputerUseExpirationDate = nil
+            hostedMediaExpirationDate = nil
             ultraExpirationDate = nil
             purchaseDate = nil
             hostedComputerUsePurchaseDate = nil
+            hostedMediaPurchaseDate = nil
             ultraPurchaseDate = nil
             hostedComputerUseState = (false, nil, nil)
             proMaxComputerUseState = (false, nil, nil)
@@ -175,6 +185,27 @@ final class MacCloudEntitlementStore: ObservableObject {
                         return
                     }
                     self.applyHostedComputerUse(data: data)
+                }
+            }
+        mediaListener = entitlements
+            .document("hosted_media_sync")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.error = error.localizedDescription
+                        return
+                    }
+                    guard let data = snapshot?.data(), snapshot?.exists == true else {
+                        self.hostedMediaIsActive = false
+                        self.hostedMediaExpirationDate = nil
+                        self.hostedMediaPurchaseDate = nil
+                        return
+                    }
+                    let state = self.activeEntitlementState(data: data)
+                    self.hostedMediaIsActive = state.isActive
+                    self.hostedMediaExpirationDate = state.expiresAt
+                    self.hostedMediaPurchaseDate = state.purchase
                 }
             }
         proMaxListener = entitlements

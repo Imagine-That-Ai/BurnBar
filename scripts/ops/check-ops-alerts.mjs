@@ -22,6 +22,7 @@ if (failing.length > 0) {
       duplicateCount: policy.duplicateCount,
       enabled: policy.enabled,
       notificationChannelCount: (policy.notificationChannels || []).length,
+      liveNotificationChannelCount: policy.liveNotificationChannelCount || 0,
       missingMetricTypes: policy.missingMetricTypes,
     }, null, 2));
   }

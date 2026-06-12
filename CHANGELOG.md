@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security - Cure53 remediation sweep (2026-06-12)
+
+- Fail-closed local data protection across macOS, iOS, and Android: encrypted database startup now refuses existing plaintext stores when encryption is enabled, mobile enables complete file protection and screenshot protection, Android remote-unlock secrets require biometric-gated Keystore keys, and the legacy provider continuity vault is scrubbed instead of reused.
+- Hardened Computer Use and hosted automation paths: daemon installs validate the bundled binary statically before copy/launch, Browser/AX tool output and focus transcripts are wrapped as untrusted model data, browser targets deny local/private/metadata/blocked URLs, Remote Config kill switches fail closed, and media sessions stop when entitlement or active-session admission is revoked.
+- Bound more Cloud Vault payloads to Firestore paths with AEAD AAD for conversation sync, mobile chat history, CLI mission requests/states/events, and notification replies, while documenting the remaining same-path replay boundary in the security claims register.
+- Tightened cloud/backend controls: Firestore owner profiles and Cloud Vault wrapper paths are write-constrained, trust revocation now records required vault rotation for surviving trusted devices, Sentry scrubs request/env/context/breadcrumb data before send, hosted MCP prefers Ed25519 access tokens with legacy HMAC explicitly gated, and MCP desktop tokens default to Keychain-only storage.
+- Added durable operator gates for the review package: Firestore disaster-recovery verification, live GitHub governance checks, hosted MCP security smoke, Java/Kotlin CodeQL, mutable remote shell installer detection, supply-chain workflow hardening, ops-alert channel validation, and updated docs/runbooks/claim boundaries.
+
 ### Performance — deferred round-2 fixes (2026-06-10)
 
 The eight findings deferred from the 2026-06-09 sweep (Apple platforms), each with regression tests:

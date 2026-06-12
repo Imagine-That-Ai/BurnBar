@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -175,8 +176,8 @@ final class MacFileTransferService: ObservableObject {
             throw Failure.fileMissing(fileURL)
         }
 
-        inFlightCount += 1
-        defer { inFlightCount -= 1 }
+        incrementFileTransferCount()
+        defer { decrementFileTransferCount() }
 
         let publish: MediaFileTransferService.PublishResult
         do {
@@ -362,14 +363,15 @@ final class MacFileTransferService: ObservableObject {
             return
         }
 
-        inFlightCount += 1
-        defer { inFlightCount -= 1 }
+        incrementFileTransferCount()
+        defer { decrementFileTransferCount() }
 
         var status: HermesRealtimeRelayMediaAck.Status = .received
         var reason: String?
 
         do {
-            _ = try await service.fetch(ticketText: ticket, manifest: manifest)
+            let result = try await service.fetch(ticketText: ticket, manifest: manifest)
+            try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)
             lastReceivedManifestID = manifest.manifestId
         } catch let serviceError as MediaFileTransferService.ServiceError {
             status = .rejected
@@ -397,6 +399,48 @@ final class MacFileTransferService: ObservableObject {
             )
         )
         try? await ackSender(ackFrame)
+    }
+
+    private func incrementFileTransferCount() {
+        inFlightCount += 1
+        MacMediaActiveSessionRegistry.shared.setCount(inFlightCount, for: .fileTransfer)
+    }
+
+    private func decrementFileTransferCount() {
+        inFlightCount = max(0, inFlightCount - 1)
+        MacMediaActiveSessionRegistry.shared.setCount(inFlightCount, for: .fileTransfer)
+    }
+
+    private static func applyInboundQuarantine(
+        to url: URL,
+        manifest: HermesRealtimeRelayAttachmentManifest
+    ) throws {
+        let timestampHex = String(Int(Date().timeIntervalSince1970), radix: 16)
+        let origin = quarantineSafeToken(manifest.peerDeviceId ?? manifest.manifestId)
+        let value = "0081;\(timestampHex);OpenBurnBar;\(origin)"
+        let data = Data(value.utf8)
+        let result = data.withUnsafeBytes { rawBuffer in
+            setxattr(
+                url.path,
+                "com.apple.quarantine",
+                rawBuffer.baseAddress,
+                data.count,
+                0,
+                0
+            )
+        }
+        guard result == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    private static func quarantineSafeToken(_ raw: String) -> String {
+        let filtered = raw.unicodeScalars.map { scalar -> String in
+            CharacterSet.alphanumerics.contains(scalar) || scalar.value == 0x2d || scalar.value == 0x5f
+                ? String(scalar)
+                : "_"
+        }.joined()
+        return String(filtered.prefix(80))
     }
 }
 

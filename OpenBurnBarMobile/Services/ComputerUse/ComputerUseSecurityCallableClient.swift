@@ -132,7 +132,9 @@ enum ComputerUseSecurityCallableClient {
         approverDeviceId: String
     ) async throws -> [String: Any] {
         let userRef = Firestore.firestore().collection("users").document(uid)
-        let platform = UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS"
+        let platform = await MainActor.run {
+            UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS"
+        }
         let approverIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(
             uid: uid,
             deviceId: approverDeviceId

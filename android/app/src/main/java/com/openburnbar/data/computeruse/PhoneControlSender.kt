@@ -3,6 +3,8 @@ package com.openburnbar.data.computeruse
 import com.openburnbar.data.media.MediaStreamClass
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentContextTarget
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
@@ -128,6 +130,44 @@ class PhoneControlSender(
                 HermesRealtimeRelayControlPayload(
                     streamClass = "control.agent.grant",
                     agentGrantRequest = signedWire,
+                ),
+            )
+        frameSink(frame)
+        return signedWire
+    }
+
+    suspend fun send(
+        approvalResponse: HermesRealtimeRelayApprovalResponse,
+        approvalRequest: HermesRealtimeRelayApprovalRequest,
+    ): HermesRealtimeRelayApprovalResponse {
+        val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
+        val responseWithRequestHash =
+            approvalResponse.copy(
+                requestHashBlake3 = PhoneControlSignerCanonical.approvalRequestHashHex(approvalRequest),
+                authority = null,
+            )
+        val counter = counterStore.nextCounter(peerNodeId)
+        val timestampMillis = nowMillis()
+        val authority =
+            PhoneControlSignerSign.signApprovalResponse(
+                response = responseWithRequestHash,
+                peerNodeId = peerNodeId,
+                counter = counter,
+                timestampMillis = timestampMillis,
+                identity = identity,
+            ).withAttestationDigest()
+        val signedWire = responseWithRequestHash.copy(authority = authority.toRelayAuthority())
+        val frame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_APPROVAL_RESPONSE,
+                uid = uid,
+                connectionId = connectionId,
+                requestId = signedWire.approvalId,
+                control =
+                HermesRealtimeRelayControlPayload(
+                    streamClass = MediaStreamClass.CONTROL_APPROVAL.raw,
+                    sessionId = approvalRequest.sessionId,
+                    approvalResponse = signedWire,
                 ),
             )
         frameSink(frame)
