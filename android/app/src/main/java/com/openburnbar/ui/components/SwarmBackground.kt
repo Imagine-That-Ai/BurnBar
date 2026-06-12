@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // generated-by: scripts/generate-swarm-background (bitmap coordinate tables)
 
 package com.openburnbar.ui.components
@@ -155,7 +154,6 @@ fun SwarmBackground(
         Canvas(modifier = Modifier.fillMaxSize()) {
             // `version` read inside an enclosing snapshot — read once so Canvas
             // recomposes each frame.
-            @Suppress("UNUSED_VARIABLE")
             val tick = version
 
             simulation.ensureBounds(size)
@@ -1077,7 +1075,7 @@ internal class SwarmSimulation(
                 "path-1", "target-1" -> blaze.copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
                 "path-2", "target-2" -> amber.copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
                 "path-3", "target-3" -> ember.copy(alpha = (opacity * 1.5f).coerceAtMost(1f))
-                else -> blaze.copy(alpha = (opacity * 0.35f).coerceAtMost(1f))
+                else -> accent.copy(alpha = (opacity * 0.35f).coerceAtMost(1f))
             }
         }
         return when {

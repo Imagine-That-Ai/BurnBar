@@ -1,9 +1,10 @@
-@file:Suppress("ThrowsCount")
 // Callable wiring maps Firebase/subscription failures to typed domain errors.
 
 package com.openburnbar.data.insights.services
 
 import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.functions.HttpsCallableReference
+import com.google.firebase.functions.HttpsCallableResult
 import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightBriefingAnswer
@@ -19,9 +20,10 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-private const val VAL_280 = 280
-private const val VAL_3 = 3
-private const val VAL_4 = 4
+private const val PROMPT_PREVIEW_MAX_CHARS = 280
+private const val MAX_BRIEFING_CITATIONS = 3
+private const val MAX_FINDING_BULLETS = 3
+private const val MAX_BRIEFING_BULLETS = 4
 
 internal data class HostedCallableResponse(
     val envelope: String,
@@ -47,38 +49,13 @@ internal suspend fun invokeHostedInsightCallable(
             "platform" to "android",
             "modelID" to modelID,
             "instruction" to hostedInstructionWireString(request.instruction),
-            "promptPreview" to request.prompt.take(VAL_280),
+            "promptPreview" to request.prompt.take(PROMPT_PREVIEW_MAX_CHARS),
             "request" to hostedJsonElementToNative(requestJSON),
         )
-    val callable =
-        try {
-            functionsProvider().getHttpsCallable(callableName)
-        } catch (t: BurnBarProSubscriptionRequiredException) {
-            throw IllegalStateException(
-                "BurnBar Hosted callable unavailable: Firebase Functions not initialized (${t.message ?: t.javaClass.simpleName}).",
-                t,
-            )
-        }
-    val httpsResult =
-        try {
-            callable.call(payload).await()
-        } catch (t: BurnBarProSubscriptionRequiredException) {
-            if (AndroidBurnBarHostedInsightGateway.isSubscriptionRequired(t)) {
-                throw BurnBarProSubscriptionRequiredException(
-                    productID = AndroidBurnBarHostedInsightGateway.extractProductID(t),
-                    cause = t,
-                )
-            }
-            throw IllegalStateException(
-                "BurnBar Hosted callable failed: ${t.message ?: t.javaClass.simpleName}",
-                t,
-            )
-        }
-    val rawData = httpsResult.getData() ?: error("BurnBar Hosted callable returned an empty payload.")
-    val resultMap = rawData as? Map<*, *> ?: error("BurnBar Hosted callable returned a non-object payload.")
-    val envelope =
-        (resultMap["envelope"] as? String)?.takeIf { it.isNotBlank() }
-            ?: error("BurnBar Hosted callable response missing or empty 'envelope'.")
+    val callable = hostedCallable(functionsProvider, callableName)
+    val httpsResult = callHostedInsight(callable, payload)
+    val resultMap = hostedResultMap(httpsResult)
+    val envelope = hostedEnvelope(resultMap)
     return HostedCallableResponse(
         envelope = envelope,
         resolvedModelSlug = (resultMap["modelSlug"] as? String)?.takeIf { it.isNotBlank() } ?: modelID,
@@ -88,6 +65,47 @@ internal suspend fun invokeHostedInsightCallable(
         tokenUsage = hostedParseTokenUsage(resultMap["tokenUsage"], modelID, providerKey),
     )
 }
+
+private fun hostedCallable(
+    functionsProvider: () -> FirebaseFunctions,
+    callableName: String,
+): HttpsCallableReference =
+    try {
+        functionsProvider().getHttpsCallable(callableName)
+    } catch (t: BurnBarProSubscriptionRequiredException) {
+        throw IllegalStateException(
+            "BurnBar Hosted callable unavailable: Firebase Functions not initialized (${t.message ?: t.javaClass.simpleName}).",
+            t,
+        )
+    }
+
+private suspend fun callHostedInsight(
+    callable: HttpsCallableReference,
+    payload: Map<String, Any?>,
+): HttpsCallableResult =
+    try {
+        callable.call(payload).await()
+    } catch (t: BurnBarProSubscriptionRequiredException) {
+        if (AndroidBurnBarHostedInsightGateway.isSubscriptionRequired(t)) {
+            throw BurnBarProSubscriptionRequiredException(
+                productID = AndroidBurnBarHostedInsightGateway.extractProductID(t),
+                cause = t,
+            )
+        }
+        throw IllegalStateException(
+            "BurnBar Hosted callable failed: ${t.message ?: t.javaClass.simpleName}",
+            t,
+        )
+    }
+
+private fun hostedResultMap(httpsResult: HttpsCallableResult): Map<*, *> {
+    val rawData = httpsResult.getData() ?: error("BurnBar Hosted callable returned an empty payload.")
+    return rawData as? Map<*, *> ?: error("BurnBar Hosted callable returned a non-object payload.")
+}
+
+private fun hostedEnvelope(resultMap: Map<*, *>): String =
+    (resultMap["envelope"] as? String)?.takeIf { it.isNotBlank() }
+        ?: error("BurnBar Hosted callable response missing or empty 'envelope'.")
 
 internal fun hydrateHostedInsightResult(
     request: InsightAnalysisRequest,
@@ -124,7 +142,7 @@ internal fun attachHostedFollowUpBriefing(
                 question = request.prompt,
                 answer = hostedComposeAnswerBody(stamped),
                 bullets = hostedComposeGroundedPoints(stamped),
-                citations = stamped.citations.take(VAL_3),
+                citations = stamped.citations.take(MAX_BRIEFING_CITATIONS),
                 source = InsightBriefingAnswer.Source.HOSTED_FALLBACK,
                 modelDisplayName = resolvedDisplayName,
                 isFallback = false,
@@ -146,10 +164,10 @@ private fun hostedComposeAnswerBody(result: InsightAnalysisResult): String = bui
 }.joinToString(" ")
 
 private fun hostedComposeGroundedPoints(result: InsightAnalysisResult): List<String> = (
-    result.findings.take(VAL_3).map { it.title } +
+    result.findings.take(MAX_FINDING_BULLETS).map { it.title } +
         result.anomalies.take(2).map { "Spike: ${it.title}" } +
         result.recommendations.take(2).map { "Action: ${it.title}" }
-    ).take(VAL_4)
+    ).take(MAX_BRIEFING_BULLETS)
 
 private fun hostedParseEgressTier(raw: String?): InsightEgressTier? {
     if (raw.isNullOrBlank()) return null

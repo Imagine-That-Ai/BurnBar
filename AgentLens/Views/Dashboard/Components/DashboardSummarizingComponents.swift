@@ -13,7 +13,6 @@ struct AnimatedMiningPickView: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 
-    // swiftlint:disable line_length
     private static let html = """
     <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
     <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%;}svg{display:block;width:100%;height:100%;}</style>

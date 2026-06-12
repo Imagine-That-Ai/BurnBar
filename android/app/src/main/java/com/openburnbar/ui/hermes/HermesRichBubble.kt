@@ -33,7 +33,6 @@ import com.openburnbar.ui.theme.AuroraColors
 //   3. A single `Text(buildAnnotatedString)` renders the whole bubble so
 //      prose flows naturally and chips never break mid-line.
 //
-@Suppress("UnusedParameter")
 @Composable
 fun HermesRichBubble(
     text: String,
@@ -48,12 +47,12 @@ fun HermesRichBubble(
 ) {
     val runs = remember(text) { HermesAtomParser.parse(text) }
     val inlineContent =
-        remember(text, baseSize) {
+        remember(text, baseSize, onAtomTap) {
             buildInlineContentMap(runs, baseSize, onAtomTap)
         }
     val annotated =
-        remember(text, mentionColor, codeColor, baseColor) {
-            buildAnnotated(runs, mentionColor, codeColor, baseColor)
+        remember(text, mentionColor, codeColor, codeBackground, baseColor, isStreaming) {
+            buildAnnotated(runs, mentionColor, codeColor, codeBackground, baseColor, isStreaming)
         }
     Text(
         text = annotated,
@@ -82,7 +81,14 @@ fun HermesRichBubble(text: String, onAtomClick: (String, String) -> Unit, modifi
     )
 }
 
-private fun buildAnnotated(runs: List<HermesAtomRun>, mentionColor: Color, codeColor: Color, baseColor: Color): AnnotatedString = buildAnnotatedString {
+private fun buildAnnotated(
+    runs: List<HermesAtomRun>,
+    mentionColor: Color,
+    codeColor: Color,
+    codeBackground: Color,
+    baseColor: Color,
+    isStreaming: Boolean,
+): AnnotatedString = buildAnnotatedString {
     for ((index, run) in runs.withIndex()) {
         when (run) {
             is HermesAtomRun.Text -> {
@@ -104,6 +110,7 @@ private fun buildAnnotated(runs: List<HermesAtomRun>, mentionColor: Color, codeC
                 withStyle(
                     SpanStyle(
                         color = codeColor,
+                        background = codeBackground,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Medium,
                     ),
@@ -114,6 +121,11 @@ private fun buildAnnotated(runs: List<HermesAtomRun>, mentionColor: Color, codeC
             is HermesAtomRun.Atom -> {
                 appendInlineContent("atom-$index", run.label)
             }
+        }
+    }
+    if (isStreaming) {
+        withStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold)) {
+            append(" ▍")
         }
     }
 }

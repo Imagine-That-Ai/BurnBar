@@ -16,8 +16,9 @@ import com.openburnbar.data.missions.MobileMissionConsoleHost
 import java.lang.IllegalStateException
 import kotlinx.coroutines.tasks.await
 
-private const val VAL_10000000000_L = 10_000_000_000L
-private const val VAL_200 = 200
+// Raw numeric timestamps below this are epoch seconds (true through year 2286); at or above, already millis.
+private const val EPOCH_SECONDS_CUTOFF = 10_000_000_000L
+private const val CLI_SESSION_FETCH_LIMIT = 200
 
 data class CLIAgentToolUse(
     val id: String,
@@ -142,7 +143,7 @@ class ThreadInboxStore private constructor(
                     .document(uid)
                     .collection("cli_sessions")
                     .orderBy("updatedAt", Query.Direction.DESCENDING)
-                    .limit(VAL_200.toLong())
+                    .limit(CLI_SESSION_FETCH_LIMIT.toLong())
                     .get()
                     .await()
 
@@ -232,7 +233,6 @@ class ThreadInboxStore private constructor(
      * Mac-written field (transcript, tokenUsage, endedAt, resume handle, …)
      * survives the rename losslessly.
      */
-    @Suppress("ReturnCount")
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     private suspend fun resealSessionWithCustomTitle(
         uid: String,
@@ -355,7 +355,6 @@ class ThreadInboxStore private constructor(
      * payload fails to decode, or the agent token isn't recognised — the same
      * fail-soft contract the plaintext branch and the iOS reader use.
      */
-    @Suppress("ReturnCount")
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     private fun parseSealedCLISession(
         data: Map<String, Any>,
@@ -469,7 +468,7 @@ class ThreadInboxStore private constructor(
     private fun epochMillis(raw: Any?): Long? = when (raw) {
         is Timestamp -> raw.toDate().time
         is java.util.Date -> raw.time
-        is Number -> raw.toLong().let { if (it < VAL_10000000000_L) it * 1000L else it }
+        is Number -> raw.toLong().let { if (it < EPOCH_SECONDS_CUTOFF) it * 1000L else it }
         is String -> runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrNull()
         else -> null
     }

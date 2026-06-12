@@ -935,6 +935,11 @@ private enum RemoteUnlockVirtualHIDClientError: Error {
             self = .readFailed
         case .rejected(let detail):
             self = .rejected(detail)
+        case .serverUntrusted(let detail): // cov:ignore -- shape passthrough
+            // Peer code-signature trust validation failed — surface it as a
+            // rejection so the trust failure reaches diagnostics verbatim.
+            // Gated in PrivilegedInputSocketClientTrustTests (live impostor).
+            self = .rejected("privileged_input_server_untrusted: \(detail)") // cov:ignore -- see above
         }
     }
 }

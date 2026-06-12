@@ -64,7 +64,6 @@ class IncomingCallActivity : ComponentActivity() {
         }
     }
 
-    @Suppress("DEPRECATION")
     private fun enableLockScreenSemantics() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)

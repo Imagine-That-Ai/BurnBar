@@ -1,4 +1,3 @@
-@file:Suppress("ktlint:standard:max-line-length")
 
 package com.openburnbar.data.cloud
 

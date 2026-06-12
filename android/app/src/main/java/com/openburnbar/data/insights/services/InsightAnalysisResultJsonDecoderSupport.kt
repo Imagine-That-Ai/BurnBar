@@ -327,7 +327,7 @@ private fun insightJsonDefaultBinding(kind: InsightWidgetKind): com.openburnbar.
         com.openburnbar.data.insights.InsightDataBinding.Ranking(
             "cost",
             com.openburnbar.data.insights.InsightWidgetSpec.Dimension.MODEL,
-            INSIGHT_SIMHASH_BAND_SIZE,
+            INSIGHT_DEFAULT_RANKING_LIMIT,
             InsightTimeWindow.Last7d,
         )
     InsightWidgetKind.TIME_SERIES_LINE, InsightWidgetKind.TIME_SERIES_AREA, InsightWidgetKind.STREAM_GRAPH ->

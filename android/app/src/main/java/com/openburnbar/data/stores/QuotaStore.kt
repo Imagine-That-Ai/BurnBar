@@ -3,7 +3,6 @@ package com.openburnbar.data.stores
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.AgentProvider
@@ -12,6 +11,7 @@ import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.isExplicitlyStale
 import com.openburnbar.data.models.isStale
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,8 +23,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-private const val VAL_15 = 15
-private const val VAL_60 = 60
+private const val AUTO_REFRESH_PERIOD_MINUTES = 15
+private const val SECONDS_PER_MINUTE = 60
 
 class QuotaStore(
     application: Application,
@@ -63,8 +63,11 @@ class QuotaStore(
                 _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
                 _accounts.value = repo.fetchProviderAccounts()
                 refreshStaleCloudQuotaIfPossible()
-            } catch (e: FirebaseFunctionsException) {
-                _error.value = e.message
+                _error.value = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = e.message ?: e::class.simpleName
             } finally {
                 _isLoading.value = false
             }
@@ -79,8 +82,10 @@ class QuotaStore(
                 _accounts.value = repo.fetchProviderAccounts()
                 refreshStaleCloudQuotaIfPossible()
                 _error.value = null
-            } catch (e: FirebaseFunctionsException) {
-                _error.value = e.message
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = e.message ?: e::class.simpleName
             } finally {
                 _isLoading.value = false
             }
@@ -122,7 +127,7 @@ class QuotaStore(
         automaticRefreshJob =
             viewModelScope.launch {
                 while (true) {
-                    delay(VAL_15 * VAL_60 * 1000L)
+                    delay(AUTO_REFRESH_PERIOD_MINUTES * SECONDS_PER_MINUTE * 1000L)
                     refreshStaleCloudQuotaIfPossible(maxRefreshes = 10)
                 }
             }

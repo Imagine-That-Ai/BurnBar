@@ -1,5 +1,5 @@
 import { decryptSearchResultJson } from "./decrypt.js";
-import { readAccessToken } from "./oauth.js";
+import { readAccessToken, readRefreshToken, writeAccessToken, writeRefreshToken } from "./oauth.js";
 import {
   prepareKnowledgeRequest,
   decryptKnowledgeContent,
@@ -25,6 +25,58 @@ export function validatedMcpEndpoint(endpoint: string): URL {
   if (url.protocol === "https:" && process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT === "true") return url;
   if (url.protocol === "http:" && isLoopbackHost(url.hostname)) return url;
   throw new Error("OpenBurnBar MCP endpoint must be https://mcp.burnbar.ai, an explicitly allowed custom HTTPS endpoint, or loopback HTTP for local development.");
+}
+
+/**
+ * Exchange the stored (expired) access token + durable refresh token for a fresh
+ * 15-minute access token at the resource server's RFC 6749 token endpoint. Rotates
+ * the stored refresh token. Returns the new access token, or undefined if refresh
+ * is impossible (no refresh token, or the grant was revoked / expired).
+ */
+async function refreshAccessToken(target: URL, expiredAccessToken: string): Promise<string | undefined> {
+  const refreshToken = readRefreshToken();
+  if (!refreshToken) return undefined;
+  const tokenUrl = new URL("/oauth/token", target.origin);
+  let res: Response;
+  try {
+    res = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        access_token: expiredAccessToken
+      })
+    });
+  } catch {
+    return undefined;
+  }
+  if (!res.ok) return undefined;
+  let payload: { access_token?: unknown; refresh_token?: unknown };
+  try {
+    payload = await res.json() as { access_token?: unknown; refresh_token?: unknown };
+  } catch {
+    return undefined;
+  }
+  if (typeof payload.access_token !== "string" || payload.access_token.length === 0) return undefined;
+  writeAccessToken(payload.access_token);
+  if (typeof payload.refresh_token === "string" && payload.refresh_token.length > 0) {
+    writeRefreshToken(payload.refresh_token);
+  }
+  return payload.access_token;
+}
+
+async function postMcp(target: URL, token: string, body: string): Promise<Response> {
+  return fetch(target, {
+    method: "POST",
+    headers: {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "authorization": `Bearer ${token}`,
+      "MCP-Protocol-Version": PROTOCOL_VERSION
+    },
+    body
+  });
 }
 
 export async function forwardMcpMessage(message: unknown, endpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT): Promise<unknown> {
@@ -58,16 +110,28 @@ export async function forwardMcpMessage(message: unknown, endpoint = process.env
       }
     };
   }
-  const res = await fetch(target, {
-    method: "POST",
-    headers: {
-      "accept": "application/json, text/event-stream",
-      "content-type": "application/json",
-      "authorization": `Bearer ${token}`,
-      "MCP-Protocol-Version": PROTOCOL_VERSION
-    },
-    body: JSON.stringify(outgoing)
-  });
+  const requestBody = JSON.stringify(outgoing);
+  let activeToken = token;
+  let res = await postMcp(target, activeToken, requestBody);
+  // Access tokens live 15 minutes; on a 401 transparently re-mint via the refresh
+  // token and retry once, so long-running agents never hard-fail on expiry.
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken(target, activeToken);
+    if (refreshed) {
+      activeToken = refreshed;
+      res = await postMcp(target, activeToken, requestBody);
+    }
+  }
+  if (res.status === 401) {
+    return {
+      jsonrpc: "2.0",
+      id: (message as { id?: unknown })?.id ?? null,
+      error: {
+        code: -32001,
+        message: "OpenBurnBar MCP session expired and could not be refreshed. Re-link with `openburnbar mcp login`."
+      }
+    };
+  }
   const json = await res.json() as Record<string, unknown>;
   // Present Pensieve search as a natural-language `query` tool to the agent.
   rewriteToolsListForKnowledge(json);

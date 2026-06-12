@@ -86,8 +86,7 @@ class AccountStore(
         fetchConnections()
     }
 
-    @Suppress("UnusedParameter")
-    fun refreshProviderAccount(account: ProviderAccount) {
+    fun refreshProviderAccount() {
         fetchConnections()
     }
 

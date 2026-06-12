@@ -15,7 +15,9 @@ Stable `event` field names for log-based SLOs, alerts, and incident correlation.
 | `scheduled_job_failed` | ERROR | Callable error spike (aggregate) | [oncall.md](../runbooks/oncall.md) |
 | `computer_use_budget_evaluated` | INFO | — | [computer-use-budget.md](../runbooks/computer-use-budget.md) |
 | `computer_use_budget_evaluate_failed` | ERROR | — | [computer-use-budget.md](../runbooks/computer-use-budget.md) |
-| `rollup.rebuild_failed` | ERROR | Firestore read spike | [RUNBOOK.md](../RUNBOOK.md) |
+| `rollup.rebuild_failed` | ERROR | OpenBurnBar Rollup rebuild breaker open | [RUNBOOK.md](../RUNBOOK.md) |
+| `rollup.full_rebuild_circuit_open` | WARNING | OpenBurnBar Rollup rebuild breaker open | [RUNBOOK.md](../RUNBOOK.md) |
+| `rollup.delta_drain_capped` | WARNING | OpenBurnBar Rollup delta drain capped | [RUNBOOK.md](../RUNBOOK.md) |
 
 Hosted MCP and billing events: [REMOTE_MCP_RUNBOOK.md](../REMOTE_MCP_RUNBOOK.md), [functions/scripts/ops-alert-policy-definitions.mjs](../../functions/scripts/ops-alert-policy-definitions.mjs).
 

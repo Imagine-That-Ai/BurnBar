@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar
 
@@ -73,4 +71,33 @@ class QuotaStoreTest {
         advanceUntilIdle()
         assertEquals(100.0, store.snapshots.value.first().percentageRemaining, 0.01)
     }
+
+    @Test
+    fun `load surfaces Firestore permission errors instead of crashing main dispatcher`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        coEvery { mockRepo.fetchQuotaSnapshots() } throws firestorePermissionDenied()
+
+        val store = QuotaStore(mockRepo)
+        store.load()
+        advanceUntilIdle()
+
+        assertEquals("Missing or insufficient permissions.", store.error.value)
+        assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
+    }
+
+    @Test
+    fun `refresh surfaces Firestore permission errors instead of crashing main dispatcher`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        coEvery { mockRepo.fetchQuotaSnapshots() } throws firestorePermissionDenied()
+
+        val store = QuotaStore(mockRepo)
+        store.refresh()
+        advanceUntilIdle()
+
+        assertEquals("Missing or insufficient permissions.", store.error.value)
+        assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
+    }
+
+    private fun firestorePermissionDenied(): RuntimeException =
+        RuntimeException("Missing or insufficient permissions.")
 }

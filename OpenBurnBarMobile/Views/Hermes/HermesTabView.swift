@@ -1042,7 +1042,7 @@ private struct ConversationRow: View {
     private var modelChip: some View {
         HStack(spacing: 5) {
             HermesLiveGlyph(size: 12, isLive: false)
-            Text(session.model?.nilIfBlank ?? "hermes")
+            Text(FriendlyModelName.format(session.model?.nilIfBlank ?? "Hermes"))
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
                 .lineLimit(1)
@@ -1296,6 +1296,7 @@ struct HermesChatView: View {
     @AppStorage("chatViewMode") private var chatViewMode: ChatViewMode = .agent
     @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
     @State private var showPretextPlayground = false
+    @State private var showThinkingStylePicker = false
     @State private var atomRouter = HermesAtomRouter()
     @State private var pendingAttachments: [HermesAttachment] = []
     @State private var attachmentImportError: String?
@@ -1355,8 +1356,11 @@ struct HermesChatView: View {
                             }
                             if service.isStreaming {
                                 HStack {
-                                    MercuryThinkingIndicator()
-                                        .padding(.leading, 8)
+                                    HermesThinkingSpinner(
+                                        provider: activeProvider,
+                                        modelName: service.selectedModelID ?? service.selectedConnection.advertisedModel
+                                    )
+                                    .padding(.leading, 8)
                                     Spacer()
                                 }
                                 .id("thinking")
@@ -1408,7 +1412,12 @@ struct HermesChatView: View {
             || atomRouter.pending != nil {
             return .obscured
         }
-        return .prominent
+        // `.subtle`, not `.prominent`: the chat reads like ChatGPT — calm
+        // canvas, content first. It also resolves to the `subtleLive` swarm
+        // plan (15 fps cap, ~45% particles), so the murmuration's shape
+        // formation stops competing with message rendering for the main
+        // thread's frame budget.
+        return .subtle
     }
 
     var body: some View {
@@ -1419,12 +1428,16 @@ struct HermesChatView: View {
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .padding(.bottom, service.hasPendingRelaySuggestion ? 8 : 0)
 
-                runtimeRail
-                    .padding(.bottom, 8)
+                if showsRuntimeRail {
+                    runtimeRail
+                        .padding(.bottom, 8)
+                }
 
                 chatContent
 
-                if service.messages.isEmpty || input.isEmpty {
+                // Suggestions are an empty-state affordance only — once the
+                // conversation starts, the composer stands alone (ChatGPT-style).
+                if service.messages.isEmpty {
                     promptCarousel
                         .padding(.bottom, 4)
                 }
@@ -1527,6 +1540,12 @@ struct HermesChatView: View {
         .sheet(isPresented: $showPretextPlayground) {
             PretextPlayground()
         }
+        .sheet(isPresented: $showThinkingStylePicker) {
+            HermesThinkingStylePickerSheet(
+                provider: activeProvider,
+                modelName: service.selectedModelID ?? service.selectedConnection.advertisedModel
+            )
+        }
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: chatFileImporterTypes,
@@ -1624,11 +1643,22 @@ struct HermesChatView: View {
 
     @ToolbarContentBuilder
     private var chatToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            HStack(spacing: 8) {
-                MobileChatViewModePicker(chatViewMode: $chatViewMode)
-                chatOptionsMenu
+        // ChatGPT-style centered title: "Hermes · <model> ⌄" opens the model
+        // picker. Replaces the session-ID title and the rail's two-line
+        // "Switch model" chip.
+        ToolbarItem(placement: .principal) {
+            Button {
+                presentModelPicker()
+            } label: {
+                modelSelectorChip
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Switch model")
+            .accessibilityHint("Opens the model picker.")
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            chatOptionsMenu
         }
 
         ToolbarItemGroup(placement: .keyboard) {
@@ -1651,6 +1681,16 @@ struct HermesChatView: View {
             }
 
             Section {
+                Picker("View", selection: $chatViewMode) {
+                    ForEach(ChatViewMode.allCases) { mode in
+                        Label(mode.displayName, systemImage: mode.icon)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+
+            Section {
                 Button {
                     permissionGrantThreadID = service.ensureDesktopGrantThreadID()
                 } label: {
@@ -1665,6 +1705,7 @@ struct HermesChatView: View {
                     showRuntimeSheet = true
                 } label: {
                     Label("Runtime", systemImage: "slider.horizontal.3")
+                    Text("\(service.profiles.count) profiles · \(service.jobs.count) jobs")
                 }
                 Button {
                     showSetupWizard = true
@@ -1679,6 +1720,11 @@ struct HermesChatView: View {
                 }
                 Toggle(isOn: $usePretextRendering) {
                     Label("Rich text (bold · mentions · code)", systemImage: "text.alignleft")
+                }
+                Button {
+                    showThinkingStylePicker = true
+                } label: {
+                    Label("Thinking Style", systemImage: "circle.dotted")
                 }
                 Button {
                     showPretextPlayground = true
@@ -1701,8 +1747,22 @@ struct HermesChatView: View {
                 }
             }
         } label: {
-            ProviderStatusGlobeView(provider: activeProvider, isReachable: effectiveHermesReachable)
+            Image(systemName: "ellipsis")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .frame(width: 32, height: 32)
+                .contentShape(Circle())
+                // Quiet by default; a small dot only when something is wrong.
+                .overlay(alignment: .topTrailing) {
+                    if !effectiveHermesReachable {
+                        Circle()
+                            .fill(MobileTheme.error)
+                            .frame(width: 7, height: 7)
+                            .offset(x: -2, y: 4)
+                    }
+                }
         }
+        .accessibilityLabel(effectiveHermesReachable ? "Chat options" : "Chat options. Hermes unreachable.")
     }
 
     private var permissionGrantSheetPresented: Binding<Bool> {
@@ -1977,6 +2037,17 @@ struct HermesChatView: View {
         }
     }
 
+    /// The quiet session strip under the nav bar. Renders only when there is
+    /// something worth saying beyond a fresh local chat — the gateway privacy
+    /// state, this conversation's token burn, or a resumed session. Model
+    /// switching lives in the navigation title now (ChatGPT-style) and the
+    /// profile/job counts moved into the options menu's Runtime row.
+    private var showsRuntimeRail: Bool {
+        gatewayPrivacyState != nil
+            || service.currentConversationTokenBurn > 0
+            || service.selectedSessionID != nil
+    }
+
     private var runtimeRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -1986,18 +2057,9 @@ struct HermesChatView: View {
                         showGatewayPrivacySheet = true
                     }
                 }
-                Button {
-                    presentModelPicker()
-                } label: {
-                    modelSelectorChip
+                if service.currentConversationTokenBurn > 0 {
+                    runtimeChip(icon: "flame.fill", label: "\(service.currentConversationTokenBurn.formatted()) tokens")
                 }
-                .buttonStyle(.plain)
-                Button {
-                    showRuntimeSheet = true
-                } label: {
-                    runtimeChip(icon: "wrench.and.screwdriver", label: "\(service.profiles.count) profiles · \(service.jobs.count) jobs")
-                }
-                runtimeChip(icon: "flame.fill", label: "\(service.currentConversationTokenBurn.formatted()) tokens")
                 if let selectedSessionID = service.selectedSessionID {
                     runtimeChip(icon: "bubble.left.and.bubble.right", label: "Resuming \(service.sessionTitle(for: selectedSessionID))")
                 }
@@ -2007,73 +2069,67 @@ struct HermesChatView: View {
     }
 
     private func runtimeChip(icon: String, label: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 11, weight: .semibold))
             Text(label)
                 .lineLimit(1)
                 .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
+                .fontWeight(.medium)
         }
-        .foregroundStyle(MobileTheme.hermesAureate)
+        .foregroundStyle(MobileTheme.Colors.textSecondary)
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Capsule().fill(MobileTheme.hermesAureate.opacity(0.1)))
-        .overlay(Capsule().stroke(MobileTheme.hermesAureate.opacity(0.24), lineWidth: 0.5))
+        .padding(.vertical, 5)
+        .background(Capsule().fill(MobileTheme.Colors.surface.opacity(0.6)))
     }
 
+    /// ChatGPT-style centered title content: "Hermes <model> ⌄". Rendered
+    /// inside the principal toolbar button — no capsule chrome.
     private var modelSelectorChip: some View {
         let option = service.selectedModelOption
             ?? gatewayStore.runtimeModelOptions.first(where: { $0.modelID == service.selectedModelID })
         let fallbackModel = service.selectedModelID ?? gatewayStore.runtimeModelId ?? service.selectedConnection.advertisedModel
-        let label = option?.displayName ?? fallbackModel ?? "Choose model"
-        let provider = option?.agentProvider ?? hermesAgentProvider(for: fallbackModel ?? "hermes")
-        return HStack(spacing: 6) {
-            UnifiedProviderLogoView(provider: provider, size: 18, useFallbackColor: true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label)
-                    .lineLimit(1)
-                    .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-                Text("Switch model")
-                    .lineLimit(1)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-            }
-            Image(systemName: "chevron.down")
-                .font(.system(size: 12, weight: .bold))
+        let label = FriendlyModelName.format(option?.displayName ?? fallbackModel ?? "Choose model")
+        return HStack(spacing: 5) {
+            Text("Hermes")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+            Text(label)
+                .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(MobileTheme.Colors.textMuted)
         }
-        .foregroundStyle(MobileTheme.Colors.textPrimary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Capsule().fill(MobileTheme.Colors.surfaceElevated.opacity(0.72)))
-        .overlay(Capsule().stroke(MobileTheme.hermesAureate.opacity(0.35), lineWidth: 0.7))
+        .frame(maxWidth: 230)
     }
 
     // MARK: - Welcome
 
     private var welcomeBlock: some View {
-        AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.heroCorner) {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                HStack(spacing: 12) {
-                    HermesLiveGlyph(size: 42, isLive: service.isStreaming)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Hermes")
-                            .font(MobileTheme.Typography.title)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("Your AI fleet's runtime co-pilot")
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    }
-                    Spacer()
-                }
-                Text("Ask questions about today's burn, project breakdowns, quota pressure, or session details. Responses use your live OpenBurnBar data as context.")
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                contextChips
-            }
+        VStack(spacing: MobileTheme.Spacing.sm) {
+            HermesLiveGlyph(size: 52, isLive: service.isStreaming)
+                .padding(.bottom, MobileTheme.Spacing.xs)
+            Text("How can Hermes help?")
+                .font(MobileTheme.Typography.title)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+            Text("Ask about today's burn, project breakdowns, quota pressure, or session details. Answers use your live OpenBurnBar data.")
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+            contextChips
+                .padding(.top, MobileTheme.Spacing.sm)
+            Text("Tip: /wiki <project> queries Project Memory snapshots.")
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .padding(.top, MobileTheme.Spacing.xs)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 72)
+        .padding(.bottom, MobileTheme.Spacing.lg)
     }
 
     @ViewBuilder
@@ -2088,58 +2144,51 @@ struct HermesChatView: View {
     }
 
     private func contextChip(icon: String, label: String, value: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
-            Text(label).font(MobileTheme.Typography.tiny)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+            Text(label)
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
             Text(value)
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
         }
-        .foregroundStyle(MobileTheme.hermesAureate)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(
-            Capsule().fill(MobileTheme.hermesAureate.opacity(0.12))
-        )
-        .overlay(
-            Capsule().stroke(MobileTheme.hermesAureate.opacity(0.3), lineWidth: 0.5)
-        )
+        .padding(.horizontal, 11)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(MobileTheme.Colors.surface.opacity(0.7)))
+        .overlay(Capsule().stroke(MobileTheme.Colors.border.opacity(0.3), lineWidth: 0.5))
     }
 
     // MARK: - Prompt Carousel
 
     private var promptCarousel: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(prompts, id: \.self) { prompt in
-                        Button {
-                            input = prompt
-                            send()
-                        } label: {
-                            Text(prompt)
-                                .font(MobileTheme.Typography.tiny)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .foregroundStyle(MobileTheme.hermesAureate)
-                                .background(
-                                    Capsule().fill(MobileTheme.hermesAureate.opacity(0.12))
-                                )
-                                .overlay(
-                                    Capsule().stroke(MobileTheme.hermesAureate.opacity(0.35), lineWidth: 0.5)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(service.isStreaming)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(prompts, id: \.self) { prompt in
+                    Button {
+                        input = prompt
+                        send()
+                    } label: {
+                        Text(prompt)
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule().fill(MobileTheme.Colors.surface.opacity(0.8))
+                            )
+                            .overlay(
+                                Capsule().stroke(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5)
+                            )
                     }
+                    .buttonStyle(.plain)
+                    .disabled(service.isStreaming)
                 }
-                .padding(.horizontal, AuroraDesign.Layout.cardInset)
             }
-            Text("Tip: use `/wiki <project>` to query Project Memory snapshots from Hermes.")
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .padding(.horizontal, AuroraDesign.Layout.cardInset)
+            .padding(.horizontal, AuroraDesign.Layout.cardInset)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .opacity(service.isStreaming ? 0.45 : 1)
@@ -2165,13 +2214,19 @@ struct HermesChatView: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        // One glass layer, ChatGPT pill shape. `.compact` keeps the Liquid
+        // Glass refraction (native `glassEffect` on iOS 26, material fallback
+        // earlier) without the mercury-foil edge — chrome stays quiet, the
+        // glass does the talking. Buttons and field sit directly on the glass;
+        // no nested fills (nothing under glass).
+        HStack(alignment: .bottom, spacing: 6) {
             attachmentButton
             field
             sendButton
         }
-        .padding(10)
-        .auroraGlass(.hermes, cornerRadius: 18)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .auroraGlass(.compact, cornerRadius: 26)
     }
 
     private var attachmentButton: some View {
@@ -2197,18 +2252,11 @@ struct HermesChatView: View {
                 Label("Files", systemImage: "folder")
             }
         } label: {
-            ZStack {
-                Circle()
-                    .fill(MobileTheme.Colors.surface.opacity(0.7))
-                    .frame(width: 38, height: 38)
-                    .overlay(
-                        Circle()
-                            .stroke(MobileTheme.Colors.border.opacity(0.45), lineWidth: 0.5)
-                    )
-                Image(systemName: "paperclip")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(service.isStreaming ? MobileTheme.Colors.textMuted : MobileTheme.hermesAureate)
-            }
+            Image(systemName: "plus")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(service.isStreaming ? MobileTheme.Colors.textMuted : MobileTheme.Colors.textSecondary)
+                .frame(width: 34, height: 34)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(service.isStreaming)
@@ -2216,25 +2264,14 @@ struct HermesChatView: View {
     }
 
     private var field: some View {
-        TextField("Ask Hermes… (/wiki <project>)", text: $input, axis: .vertical)
+        TextField("Ask Hermes…", text: $input, axis: .vertical)
             .font(MobileTheme.Typography.body)
             .focused($inputFocused)
             .submitLabel(.send)
             .onSubmit(send)
             .lineLimit(1...5)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(MobileTheme.Colors.surface.opacity(0.7))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(
-                                inputFocused ? MobileTheme.hermesAureate : MobileTheme.Colors.border.opacity(0.4),
-                                lineWidth: inputFocused ? 1 : 0.5
-                            )
-                    )
-            )
+            .padding(.horizontal, 4)
+            .padding(.vertical, 8)
             // Catch return-key inserts on multi-line text fields where
             // `.onSubmit` can be unreliable, and treat them as send.
             .onChange(of: input) { oldValue, newValue in
@@ -2264,14 +2301,14 @@ struct HermesChatView: View {
             ZStack {
                 Circle()
                     .fill(sendDisabled
-                          ? AnyShapeStyle(MobileTheme.Colors.surface.opacity(0.6))
-                          : AnyShapeStyle(AuroraDesign.Gradients.mercuryFoil))
-                    .frame(width: 38, height: 38)
-                    .shadow(color: MobileTheme.hermesAureate.opacity(sendDisabled ? 0 : 0.4), radius: 10)
+                          ? AnyShapeStyle(MobileTheme.Colors.surfaceElevated.opacity(0.8))
+                          : AnyShapeStyle(MobileTheme.Colors.textPrimary))
+                    .frame(width: 32, height: 32)
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(sendDisabled ? MobileTheme.Colors.textMuted : .white)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(sendDisabled ? MobileTheme.Colors.textMuted : MobileTheme.Colors.background)
             }
+            .frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)
         .disabled(sendDisabled)
@@ -2980,9 +3017,11 @@ struct HermesGatewayModelPickerSheet: View {
     }
 
     private var currentModelText: String {
-        service.selectedModelID
-            ?? gatewayStore.runtimeModelId
-            ?? "Hermes default"
+        FriendlyModelName.format(
+            service.selectedModelID
+                ?? gatewayStore.runtimeModelId
+                ?? "Hermes default"
+        )
     }
 
     var body: some View {
@@ -3489,7 +3528,7 @@ struct HermesModelPickerRow: View {
                 HStack(spacing: 12) {
                     UnifiedProviderLogoView(provider: option.agentProvider, size: 30, useFallbackColor: true)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(option.displayName)
+                        Text(FriendlyModelName.format(option.displayName))
                             .font(MobileTheme.Typography.body)
                             .fontWeight(.semibold)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
@@ -3718,15 +3757,11 @@ struct HermesMessageBubble: View {
         Text(message.text)
             .font(MobileTheme.Typography.body)
             .foregroundStyle(MobileTheme.Colors.textPrimary)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(
                 userBubbleShape
-                    .fill(MobileTheme.Colors.surfaceElevated.opacity(0.85))
-            )
-            .overlay(
-                userBubbleShape
-                    .stroke(MobileTheme.chatUserStroke, lineWidth: 1)
+                    .fill(MobileTheme.Colors.surfaceElevated)
             )
     }
 
@@ -3734,7 +3769,6 @@ struct HermesMessageBubble: View {
     private var assistantStack: some View {
         VStack(alignment: .leading, spacing: 4) {
             modelBadge
-                .padding(.leading, 6)
 
             if message.outcome != .normal {
                 outcomeBadge
@@ -3743,23 +3777,23 @@ struct HermesMessageBubble: View {
             }
 
             if !message.text.isEmpty || message.toolCalls.isEmpty {
-                assistantTextBody
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        assistantBubbleShape
-                            .fill(bubbleFill)
-                    )
-                    .overlay(
-                        assistantBubbleShape
-                            .stroke(bubbleStroke, lineWidth: bubbleStrokeWidth)
-                    )
-                    .overlay {
-                        if !message.isError && message.outcome == .normal && !message.isStreaming {
-                            MercuryShimmerOverlay()
-                                .clipShape(assistantBubbleShape)
-                        }
-                    }
+                if rendersPlainAssistantBody {
+                    // ChatGPT-style: normal assistant turns are plain text on
+                    // the backdrop — no bubble chrome, no shimmer sweep. The
+                    // old per-bubble repeat-forever shimmer also fought the
+                    // swarm canvas for the main-thread frame budget, which
+                    // read as visible jank while the swarm formed shapes.
+                    assistantTextBody
+                        .padding(.vertical, 2)
+                } else {
+                    // Non-normal outcomes (errors, refusals, length caps…)
+                    // keep a tinted container so they read as different.
+                    assistantTextBody
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(assistantBubbleShape.fill(bubbleFill))
+                        .overlay(assistantBubbleShape.stroke(bubbleStroke, lineWidth: bubbleStrokeWidth))
+                }
             }
 
             if let onRetry, message.outcome.supportsRetry {
@@ -3840,18 +3874,18 @@ struct HermesMessageBubble: View {
             HermesLiveGlyph(size: 16, isLive: message.isStreaming)
             Text(modelBadgeText)
                 .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
+                .fontWeight(.medium)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .foregroundStyle(MobileTheme.hermesAureate)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(modelBadgeAccessibilityLabel)
     }
 
     private var modelBadgeText: String {
-        let requested = message.requestedModelID?.nilIfBlank
-        let response = message.responseModelID?.nilIfBlank
+        let requested = message.requestedModelID?.nilIfBlank.map(FriendlyModelName.format)
+        let response = message.responseModelID?.nilIfBlank.map(FriendlyModelName.format)
 
         if message.serverRoutedToDifferentModel,
            let requested,
@@ -3865,21 +3899,21 @@ struct HermesMessageBubble: View {
             return "via Hermes · \(requested) (requested)"
         }
         if let fallback = message.modelName?.nilIfBlank {
-            return "via Hermes · \(fallback) (requested)"
+            return "via Hermes · \(FriendlyModelName.format(fallback)) (requested)"
         }
         return "via Hermes"
     }
 
     private var modelBadgeAccessibilityLabel: String {
         if message.serverRoutedToDifferentModel,
-           let requested = message.requestedModelID?.nilIfBlank,
-           let response = message.responseModelID?.nilIfBlank {
+           let requested = message.requestedModelID?.nilIfBlank.map(FriendlyModelName.format),
+           let response = message.responseModelID?.nilIfBlank.map(FriendlyModelName.format) {
             return "Hermes routed: requested \(requested), server ran \(response)."
         }
-        if let response = message.responseModelID?.nilIfBlank {
+        if let response = message.responseModelID?.nilIfBlank.map(FriendlyModelName.format) {
             return "Hermes ran model \(response)."
         }
-        if let requested = message.requestedModelID?.nilIfBlank {
+        if let requested = message.requestedModelID?.nilIfBlank.map(FriendlyModelName.format) {
             return "Hermes was requested \(requested). Server did not confirm the model."
         }
         return "Hermes assistant message."
@@ -4064,6 +4098,13 @@ struct HermesMessageBubble: View {
         }
     }
 
+    /// Normal (non-error, non-flagged) assistant turns render as plain text
+    /// on the backdrop; containers are reserved for outcomes that need to
+    /// read differently (errors, refusals, length caps…).
+    private var rendersPlainAssistantBody: Bool {
+        !message.isError && message.outcome == .normal
+    }
+
     /// Bubble background tint, keyed off `outcome`. Refusals and the
     /// reasoning-channel fallback get a soft tinted background so the
     /// user sees they're not reading a normal answer; hard errors get
@@ -4173,28 +4214,12 @@ struct HermesMessageBubble: View {
         .accessibilityHint("Re-sends your last message to Hermes.")
     }
 
-    private var userBubbleShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            cornerRadii: RectangleCornerRadii(
-                topLeading: 18,
-                bottomLeading: 18,
-                bottomTrailing: 6,
-                topTrailing: 18
-            ),
-            style: .continuous
-        )
+    private var userBubbleShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
     }
 
-    private var assistantBubbleShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            cornerRadii: RectangleCornerRadii(
-                topLeading: 18,
-                bottomLeading: 6,
-                bottomTrailing: 18,
-                topTrailing: 18
-            ),
-            style: .continuous
-        )
+    private var assistantBubbleShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
     }
 }
 

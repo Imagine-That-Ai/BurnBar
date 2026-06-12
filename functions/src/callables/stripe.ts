@@ -50,6 +50,24 @@ type StripeWebhookReservation = "reserved" | "processed" | "processing";
 
 const STRIPE_WEBHOOK_EVENT_LEASE_MS = 10 * 60 * 1000;
 
+/**
+ * Retention for `stripe_webhook_events` ledger docs (LB-5): long enough to
+ * keep the dedupe/ordering ledger useful for incident forensics and Stripe's
+ * multi-day redelivery window, short enough that the collection cannot grow
+ * unboundedly with billing traffic.
+ */
+const STRIPE_WEBHOOK_EVENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * TTL anchor written on EVERY `stripe_webhook_events` ledger write: Stripe
+ * event time + 90 days. The Firestore TTL policy on the `expireAt` field is
+ * applied via ops tooling (gcloud firestore fields ttls update), not in code;
+ * docs merely become eligible for deletion once the policy exists.
+ */
+function stripeWebhookEventExpireAt(event: Stripe.Event): Timestamp {
+  return Timestamp.fromMillis(event.created * 1000 + STRIPE_WEBHOOK_EVENT_RETENTION_MS);
+}
+
 function optionalChoice<T extends string>(raw: unknown, allowed: readonly T[], fieldName: string): T | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   if (typeof raw !== "string" || !allowed.includes(raw as T)) {
@@ -147,7 +165,8 @@ function stripeWebhookEventRef(eventID: string) {
   return db.doc(`stripe_webhook_events/${eventID.replaceAll("/", "_")}`);
 }
 
-async function reserveStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebhookReservation> {
+/** Exported for tests (stripeWebhookOrdering.test.ts). */
+export async function reserveStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebhookReservation> {
   const ref = stripeWebhookEventRef(event.id);
   const nowMillis = Date.now();
   return db.runTransaction(async (transaction) => {
@@ -176,6 +195,7 @@ async function reserveStripeWebhookEvent(event: Stripe.Event): Promise<StripeWeb
         processingStartedAt: Timestamp.fromMillis(nowMillis),
         leaseExpiresAt: Timestamp.fromMillis(nowMillis + STRIPE_WEBHOOK_EVENT_LEASE_MS),
         updatedAt: Timestamp.fromMillis(nowMillis),
+        expireAt: stripeWebhookEventExpireAt(event),
         schemaVersion: 1,
       },
       { merge: true },
@@ -184,26 +204,30 @@ async function reserveStripeWebhookEvent(event: Stripe.Event): Promise<StripeWeb
   });
 }
 
-async function markStripeWebhookEventProcessed(event: Stripe.Event): Promise<void> {
+/** Exported for tests (stripeWebhookOrdering.test.ts). */
+export async function markStripeWebhookEventProcessed(event: Stripe.Event): Promise<void> {
   await stripeWebhookEventRef(event.id).set(
     {
       status: "processed",
       processedAt: Timestamp.now(),
       leaseExpiresAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
+      expireAt: stripeWebhookEventExpireAt(event),
       schemaVersion: 1,
     },
     { merge: true },
   );
 }
 
-async function markStripeWebhookEventFailed(event: Stripe.Event, error: unknown): Promise<void> {
+/** Exported for tests (stripeWebhookOrdering.test.ts). */
+export async function markStripeWebhookEventFailed(event: Stripe.Event, error: unknown): Promise<void> {
   await stripeWebhookEventRef(event.id).set(
     stripUndefinedObject({
       status: "failed",
       failedAt: Timestamp.now(),
       leaseExpiresAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
+      expireAt: stripeWebhookEventExpireAt(event),
       error: error instanceof Error ? error.message : String(error),
       schemaVersion: 1,
     }),
@@ -578,13 +602,42 @@ export const stripeBurnBarProWebhook = onRequest(
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded":
           if (isStripeCheckoutSession(event.data.object)) {
-            await applyStripeCheckoutSession(stripe, event.data.object);
+            // The event context sets the entitlement's ordering watermark
+            // (LB-5): the checkout path re-fetches the subscription fresh,
+            // so the written state is at least as new as event.created.
+            await applyStripeCheckoutSession(stripe, event.data.object, {
+              eventID: event.id,
+              eventCreatedMillis: event.created * 1000,
+            });
           }
           break;
         case "customer.subscription.created":
         case "customer.subscription.updated":
+          if (isStripeSubscription(event.data.object)) {
+            // Re-fetch instead of writing the event's point-in-time snapshot
+            // (LB-5): event.created has only second granularity, so two
+            // different subscription events landing in the same second
+            // cannot be ordered by timestamp. Writing Stripe's CURRENT state
+            // makes whichever tied event applies first authoritative, and
+            // the sourceEventID tie-break in
+            // paidEntitlementWriteWouldRewindSourceEvent safely rejects the
+            // other. A failed retrieve fails the webhook so Stripe
+            // redelivers rather than letting a stale snapshot through.
+            const snapshotID = event.data.object.id;
+            const subscription = await stripeWithResilience("subscriptions.retrieve.webhook", () =>
+              stripe.subscriptions.retrieve(snapshotID),
+            );
+            await applyStripeSubscription(stripe, subscription, undefined, {
+              eventID: event.id,
+              eventCreatedMillis: event.created * 1000,
+            });
+          }
+          break;
         case "customer.subscription.deleted":
           if (isStripeSubscription(event.data.object)) {
+            // No re-fetch here: `canceled` is terminal, so the deletion
+            // snapshot IS the current state (and a retrieve can fail after
+            // the Stripe customer itself is deleted).
             await applyStripeSubscription(stripe, event.data.object, undefined, {
               eventID: event.id,
               eventCreatedMillis: event.created * 1000,

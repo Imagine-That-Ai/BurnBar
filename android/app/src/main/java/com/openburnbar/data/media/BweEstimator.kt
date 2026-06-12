@@ -65,7 +65,6 @@ class BweEstimator(
         currentBitsPerSecond = if (idx < 0) sortedSteps.last() else sortedSteps[min(sortedSteps.size - 1, idx + 1)]
     }
 
-    @Suppress("unused")
     fun gccDecayConstant(rttMillis: Int): Double = (1.0 - MILLIS).pow(rttMillis.toDouble() / 1000.0)
 
     companion object {

@@ -93,7 +93,7 @@ struct AgentLiveStageChatPuck: View {
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
                 if hermesService.isStreaming {
-                    MercuryThinkingIndicator()
+                    HermesThinkingSpinner()
                         .frame(height: 8)
                         .scaleEffect(0.45)
                         .padding(.top, -8)
@@ -157,7 +157,7 @@ struct AgentLiveStageChatPuck: View {
                 .font(.system(size: 12.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
             if hermesService.isStreaming {
-                MercuryThinkingIndicator()
+                HermesThinkingSpinner()
                     .scaleEffect(0.5)
                     .frame(height: 8)
             }

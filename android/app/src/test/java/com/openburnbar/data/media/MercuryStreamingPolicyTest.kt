@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar.data.media
 
@@ -9,9 +7,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-
-private const val VAL_1236 = 1_236
-private const val VAL_3 = 3
 
 class MercuryStreamingPolicyTest {
     @Test
@@ -45,7 +40,7 @@ class MercuryStreamingPolicyTest {
         assertEquals(MercuryVideoCodec.HEVC, route.codec)
         assertEquals(MercuryMediaFrameWireVersion.V2, route.wireVersion)
         assertEquals(MercuryVideoCodec.HEVC, route.stats.codec)
-        assertEquals(VAL_1236, route.datagramPayloadBudgetBytes)
+        assertEquals(1_236, route.datagramPayloadBudgetBytes)
     }
 
     @Test
@@ -108,7 +103,7 @@ class MercuryStreamingPolicyTest {
                 minimumPromotionSamples = 3,
             )
 
-        repeat(VAL_3) { index ->
+        repeat(3) { index ->
             shadow.observe(
                 MercuryBweShadowSample(
                     timestampMillis = index.toULong(),

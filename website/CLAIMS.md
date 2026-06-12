@@ -163,17 +163,17 @@ treats Kimi as exact, which matches the running code.
 | Claim                                                          | Source                                                                                           |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | "By default, OpenBurnBar collects nothing"                     | `docs/PRIVACY.md:21`, verbatim                                                                   |
-| Local SQLite path                                              | `docs/THREAT_MODEL.md:128`, `SECURITY_PRIVACY_REVIEW.md:116`                                     |
+| Local SQLite path                                              | `docs/THREAT_MODEL.md:128`, `docs/reviews/SECURITY_PRIVACY_REVIEW.md:116`                                     |
 | Daemon UNIX socket                                             | `docs/THREAT_MODEL.md:48,55`                                                                     |
 | Keychain `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`        | `SECURITY.md:33-35`                                                                              |
 | Firebase metadata-only default sync                            | `docs/PRIVACY.md:24-34`                                                                          |
 | Chat-message + session-log backup gated on `hosted_quota_sync` | `docs/PRIVACY.md:38`                                                                             |
-| iCloud container `iCloud.com.openburnbar.app`                  | `SECURITY_PRIVACY_REVIEW.md:133`, `docs/PRIVACY.md:42-44`                                        |
+| iCloud container `iCloud.com.openburnbar.app`                  | `docs/reviews/SECURITY_PRIVACY_REVIEW.md:133`, `docs/PRIVACY.md:42-44`                                        |
 | App Check enforced at Firestore                                | `docs/FIREBASE_APP_CHECK_ENFORCEMENT.md:3-7`                                                     |
 | Hosted credential secrets in Google Cloud Secret Manager       | `docs/PRIVACY.md:48`, `docs/HOSTED_QUOTA_SYNC.md:140-145`                                        |
 | Three trust-zone architecture diagram                          | Synthesized from `docs/THREAT_MODEL.md:48-156` + `docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md:5-26` |
 | Account deletion paths                                         | `docs/PRIVACY.md:87-92`                                                                          |
-| Sentry diagnostic seed                                         | `SECURITY_PRIVACY_REVIEW.md:180`. **[verify]** matches shipping build                            |
+| Sentry diagnostic seed                                         | `docs/reviews/SECURITY_PRIVACY_REVIEW.md:180`. **[verify]** matches shipping build                            |
 
 ---
 
@@ -188,10 +188,10 @@ treats Kimi as exact, which matches the running code.
 | Releases signed + notarized + stapled                                                         | `docs/RELEASE_MACOS.md:42-55`                                                                                                                                                          |
 | Per-release SBOM + checksums + provenance JSON                                                | `docs/RELEASE_MACOS.md:43-83`                                                                                                                                                          |
 | **Known limit:** direct-download macOS app is not sandboxed; Mac App Store build is sandboxed | `docs/THREAT_MODEL.md:113-124`, `docs/RELEASE_MACOS.md`                                                                                                                                |
-| **Known limit:** Provider API calls aren't certificate-pinned                                 | `SECURITY_PRIVACY_REVIEW.md:94`                                                                                                                                                        |
+| **Known limit:** Provider API calls aren't certificate-pinned                                 | `docs/reviews/SECURITY_PRIVACY_REVIEW.md:94`                                                                                                                                                        |
 | **Known limit:** Cursor connector tunnel routes through Cloudflare                            | `docs/THREAT_MODEL.md:152-156`                                                                                                                                                         |
-| **Known limit:** HTTP gateway is loopback-only by default                                     | `SECURITY_PRIVACY_REVIEW.md:99-101` flags non-loopback bind as a risk. **[verify]** the shipping default is loopback-only                                                              |
-| **Known limit:** Encryption-key recovery file                                                 | `SECURITY.md:35` describes the SOTA design; `SECURITY_PRIVACY_REVIEW.md:55-57` still flags the legacy recovery file. **[verify]** which is current in the shipping build before launch |
+| **Known limit:** HTTP gateway is loopback-only by default                                     | `docs/reviews/SECURITY_PRIVACY_REVIEW.md:99-101` flags non-loopback bind as a risk. **[verify]** the shipping default is loopback-only                                                              |
+| **Known limit:** Encryption-key recovery file                                                 | `SECURITY.md:35` describes the SOTA design; `docs/reviews/SECURITY_PRIVACY_REVIEW.md:55-57` still flags the legacy recovery file. **[verify]** which is current in the shipping build before launch |
 
 ---
 
@@ -228,7 +228,7 @@ These are the recurring **[verify]** flags above, collected:
 2. **iOS launch status.** Until Apple approves, the site copy says "in App Store review." When approved, set `SITE.iosStatus = "available on iPhone & iPad"` in `src/data/site.ts`.
 3. **Store price tiers.** Site advertises Cloud at $7.99/month or $79/year, Cloud Pro at $24.99/month or $249/year, and both top-ups at $4.99. Confirm Apple, Play, and Stripe live products match; if stores set different local prices, decide whether to footnote.
 4. **Marketing version.** `SITE.macReleaseLatest` / `SITE.macReleaseFile` now target `v1.0`; verify the GitHub release asset exists before deployment.
-5. **Sentry / encryption-key recovery / HTTP-gateway TLS** — `SECURITY_PRIVACY_REVIEW.md` notes a few items the team intended to fix. Re-read against the current shipping build before publishing the security page.
+5. **Sentry / encryption-key recovery / HTTP-gateway TLS** — `docs/reviews/SECURITY_PRIVACY_REVIEW.md` notes a few items the team intended to fix. Re-read against the current shipping build before publishing the security page.
 6. **Trademark clearance for "OpenBurnBar"** is listed as a TODO in `docs/OSS_LAUNCH_CHECKLIST.md:108`. The site uses the name everywhere, so confirm clearance before going public.
 7. **Team plan copy** — kept off the page until built.
 8. **Floo activation state.** The `/floo` page and the surfaces matrix say "Built · rolling out." Confirm which Floo capabilities (screen view, control, file transfer, calls, remote unlock) are flag-live in the shipping build before any "available now" framing. Activation gates: `docs/runbooks/media-rollout-status.md`.

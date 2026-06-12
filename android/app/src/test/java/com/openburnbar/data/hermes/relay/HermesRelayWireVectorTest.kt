@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar.data.hermes.relay
 
@@ -21,9 +19,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-
-private const val VAL_32 = 32
-private const val VAL_65 = 65
 
 /**
  * Cross-platform wire-format contract test. Pins the Android relay
@@ -196,7 +191,7 @@ class HermesRelayWireVectorTest {
      */
     private fun recipientPrivateKey(): PrivateKey {
         val raw = java.util.Base64.getDecoder().decode(fixture.getString("recipientPrivateKey"))
-        assertEquals("recipient private key must be 32 bytes", VAL_32, raw.size)
+        assertEquals("recipient private key must be 32 bytes", 32, raw.size)
         val s = java.math.BigInteger(1, raw)
         val params =
             AlgorithmParameters.getInstance("EC").apply {
@@ -212,7 +207,7 @@ class HermesRelayWireVectorTest {
             HermesRelayCryptoEc.decodeUncompressedPublicKey(expectedPub)
                 as? java.security.interfaces.ECPublicKey
                 ?: error("Expected EC public key from decoded bytes")
-        assertEquals(VAL_65, expectedPub.size)
+        assertEquals(65, expectedPub.size)
         assertTrue("derived pub matches encoded shape", derived.w != null)
         // ECPoint round-trip sanity.
         val pubFromSpec =

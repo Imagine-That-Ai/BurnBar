@@ -3337,3 +3337,46 @@ enum SwarmLogoShape {
 public extension Notification.Name {
     static let cycleSwarmShapeRequested = Notification.Name("com.openburnbar.swarm.cycleSwarmShapeRequested")
 }
+
+// MARK: - Glyph Sampler Facade
+
+/// One dot of a provider glyph formation: a normalized position plus the
+/// logo's sampled brand color at that spot (nil for synthesized fallbacks).
+public struct SwarmGlyphPoint: Sendable {
+    public let position: CGPoint
+    public let brandColor: RGBA?
+
+    public init(position: CGPoint, brandColor: RGBA?) {
+        self.position = position
+        self.brandColor = brandColor
+    }
+}
+
+/// Mini swarm surfaces (e.g. the chat thinking indicator) form the same
+/// provider brand glyphs as the backdrop murmuration through this facade.
+public enum SwarmGlyphSampler {
+    @MainActor private static var cache: [AgentProvider: [SwarmGlyphPoint]] = [:]
+
+    /// Centered point cloud of the provider's brand glyph, normalized to
+    /// roughly [-1, 1] on the longer axis with y growing downward (SwiftUI
+    /// Canvas space). Render targets as `center + position * radius`, exactly
+    /// like the backdrop's logo formations. Sampling rasterizes the bundled
+    /// logo once per provider and caches the result.
+    @MainActor
+    public static func glyphPoints(for provider: AgentProvider, maxPoints: Int = 90) -> [SwarmGlyphPoint] {
+        if let cached = cache[provider] { return cached }
+        let sampled = SwarmSimulation.normalizedGlyphPoints(for: provider, maxPoints: maxPoints)
+        cache[provider] = sampled
+        return sampled
+    }
+}
+
+extension SwarmSimulation {
+    /// Same-file access to the private logo samplers for `SwarmGlyphSampler`.
+    static func normalizedGlyphPoints(for provider: AgentProvider, maxPoints: Int) -> [SwarmGlyphPoint] {
+        let raw = logoPoints(for: provider, fallback: fallbackLogoPoints(for: provider))
+        return evenlyDownsample(raw, maxCount: maxPoints).map {
+            SwarmGlyphPoint(position: $0.point, brandColor: $0.logoColor)
+        }
+    }
+}

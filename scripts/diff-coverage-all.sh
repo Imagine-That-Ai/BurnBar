@@ -4,8 +4,15 @@
 # Usage:
 #   diff-coverage-all.sh <base-ref>
 #
-# Runs surface-specific gates when matching files changed.
+# Runs surface-specific gates when matching files changed; surfaces with no
+# changed files are skipped, so e.g. Swift-only PRs never pay Android costs.
 # Does NOT early-exit with 100% when only one surface changed.
+#
+# Environment passthrough (consumed by scripts/diff-coverage.sh):
+#   COVERAGE_THRESHOLD    minimum diff coverage percent (default 80)
+#   DIFF_COVERAGE_SCOPE   all|app|packages — which Swift partition this lane
+#                         is allowed to judge (see diff-coverage.sh header)
+#   DIFF_COVERAGE_OUTPUT  optional path for the Swift verdict JSON
 
 set -euo pipefail
 
@@ -23,26 +30,16 @@ ts_changed="$(git diff --name-only "$base_ref" HEAD -- 'functions/src/**/*.ts' '
 echo "=== OpenBurnBar diff coverage (base: $base_ref, threshold: ${threshold}%) ==="
 
 if [[ -n "$swift_changed" ]]; then
-    echo "--- Swift ---"
+    echo "--- Swift (scope: ${DIFF_COVERAGE_SCOPE:-all}) ---"
+    # diff-coverage.sh owns Swift evidence resolution: it extracts per-line
+    # maps from the app xcresult and/or SwiftPM package coverage as its scope
+    # requires, and fails closed when the evidence its scope needs is absent.
+    cov_json=""
     if [[ -f "$repo_root/openburnbar-coverage.json" ]]; then
         cov_json="$repo_root/openburnbar-coverage.json"
-    elif [[ -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]]; then
-        cov_json="$TMPDIR/openburnbar-coverage-all-swift.json"
-        "$repo_root/scripts/extract-coverage.sh" "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$cov_json"
-    else
-        echo "::error::Swift files changed but no coverage artifact found." >&2
-        failed=1
-        cov_json=""
     fi
-    if [[ -n "${cov_json:-}" ]]; then
-        lines_json=""
-        if [[ -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]]; then
-            lines_json="$TMPDIR/openburnbar-coverage-all-lines.json"
-            "$repo_root/scripts/extract-coverage-lines.sh" "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json" 2>/dev/null || lines_json=""
-        fi
-        if ! COVERAGE_THRESHOLD="$threshold" "$repo_root/scripts/diff-coverage.sh" "$base_ref" "$cov_json" "${lines_json:-}"; then
-            failed=1
-        fi
+    if ! COVERAGE_THRESHOLD="$threshold" "$repo_root/scripts/diff-coverage.sh" "$base_ref" "$cov_json"; then
+        failed=1
     fi
 else
     echo "--- Swift: no changes, skipped ---"
@@ -50,8 +47,18 @@ fi
 
 if [[ -n "$kotlin_changed" ]]; then
     echo "--- Kotlin (Android) ---"
-    if ! "$repo_root/scripts/diff-coverage-android.sh" "$base_ref"; then
-        failed=1
+    jacoco_xml="$repo_root/android/app/build/reports/jacoco/testDebugUnitTest/jacocoTestReport.xml"
+    if [[ -f "$jacoco_xml" ]]; then
+        if ! "$repo_root/scripts/diff-coverage-android.sh" "$base_ref"; then
+            failed=1
+        fi
+    else
+        # Lane partition (CG-1): a lane that cannot see is not allowed to
+        # judge. The Android harness job runs the unit tests, generates the
+        # JaCoCo report, and gates Kotlin diffs with real line evidence; this
+        # aggregate (App XCTest) has no Android build and would only have
+        # test-file PRESENCE — which is never evidence.
+        echo "::notice::Kotlin diff present but no JaCoCo report in this lane — gated by the Android job with real line evidence."
     fi
 else
     echo "--- Kotlin: no changes, skipped ---"

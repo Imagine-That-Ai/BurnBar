@@ -17,10 +17,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val SECONDS = 120
-private const val VAL_0_2 = 0.2
-private const val VAL_1400 = 1400
-private const val VAL_15 = 15
+private const val READ_TIMEOUT_SECONDS = 120
+private const val CONNECT_TIMEOUT_SECONDS = 15
+private const val ANALYSIS_TEMPERATURE = 0.2
+private const val ANALYSIS_MAX_TOKENS = 1400
 
 class AndroidInsightCredentialStore(context: Context) {
     private val prefs = context.getSharedPreferences("insights_provider_credentials", Context.MODE_PRIVATE)
@@ -84,8 +84,8 @@ class OpenAICompatibleInsightAnalysisGateway(
     override val models: List<InsightModelTag>,
     private val client: OkHttpClient =
         OkHttpClient.Builder()
-            .connectTimeout(VAL_15.toLong(), TimeUnit.SECONDS)
-            .readTimeout(SECONDS.toLong(), TimeUnit.SECONDS)
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
             .build(),
     private val maxTokens: Int = 1400,
 ) : InsightAnalysisModelGateway {
@@ -94,7 +94,7 @@ class OpenAICompatibleInsightAnalysisGateway(
         val body =
             JSONObject().apply {
                 put("model", request.selectedModel.modelID)
-                put("temperature", VAL_0_2)
+                put("temperature", ANALYSIS_TEMPERATURE)
                 put("max_tokens", maxTokens)
                 put("response_format", JSONObject().put("type", "json_object"))
                 put(
@@ -159,8 +159,8 @@ class AnthropicInsightAnalysisGateway(
         ),
     private val client: OkHttpClient =
         OkHttpClient.Builder()
-            .connectTimeout(VAL_15.toLong(), TimeUnit.SECONDS)
-            .readTimeout(SECONDS.toLong(), TimeUnit.SECONDS)
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
             .build(),
 ) : InsightAnalysisModelGateway {
     override val providerKey: String = "anthropic"
@@ -171,8 +171,8 @@ class AnthropicInsightAnalysisGateway(
         val body =
             JSONObject().apply {
                 put("model", request.selectedModel.modelID)
-                put("max_tokens", VAL_1400)
-                put("temperature", VAL_0_2)
+                put("max_tokens", ANALYSIS_MAX_TOKENS)
+                put("temperature", ANALYSIS_TEMPERATURE)
                 put("system", analysisSystemPrompt(request))
                 put(
                     "messages",

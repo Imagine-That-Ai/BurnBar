@@ -33,7 +33,6 @@ object MediaFrameSealSession {
      * Phone side: wrap a fresh session secret for the Mac and derive the
      * local frame key.
      */
-    @Suppress("LongParameterList")
     fun establish(
         uid: String,
         connectionId: String,
@@ -81,7 +80,6 @@ object MediaFrameSealSession {
      * mirror keeps the Kotlin lifecycle whole and pins the contract in unit
      * tests.)
      */
-    @Suppress("LongParameterList")
     fun open(
         envelope: HermesRealtimeRelayControlSealKeyEnvelope,
         uid: String,

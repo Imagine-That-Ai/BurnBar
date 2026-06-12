@@ -20,7 +20,6 @@ import com.openburnbar.ui.theme.AuroraColors
 // Inline rollback affordance — three quick actions (whole session / last
 // action / per-file) plus the latest snapshot description.
 
-@Suppress("UnusedParameter")
 @Composable
 internal fun RollbackCardView(sessionID: String, snapshots: List<RollbackSnapshot>, onSubmit: (RollbackScope) -> Unit, modifier: Modifier = Modifier) {
     var pickerOpen by remember { mutableStateOf(false) }
@@ -38,6 +37,7 @@ internal fun RollbackCardView(sessionID: String, snapshots: List<RollbackSnapsho
             .border(0.5.dp, AuroraColors.whimsy.copy(alpha = 0.30f), RoundedCornerShape(10.dp)),
     ) {
         RollbackCardContent(
+            sessionID = sessionID,
             snapshots = snapshots,
             newest = newest,
             onSubmit = onSubmit,

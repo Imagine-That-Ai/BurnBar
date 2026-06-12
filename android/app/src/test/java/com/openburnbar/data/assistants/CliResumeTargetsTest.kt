@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; the
 // 47/48-char truncation boundary is literal by design.
 
 package com.openburnbar.data.assistants

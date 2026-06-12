@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-private const val VAL_6 = 6
+// AudioTrack playback buffer holds this many frameDurationMs PCM frames.
+private const val PLAYBACK_BUFFER_FRAME_CAPACITY = 6
 
 /**
  * Android-side Opus → PCM decode + playback path. 1:1 port of
@@ -61,7 +62,7 @@ class AudioReceivePipeline(
                 val frameSamples = sampleRateHz * frameDurationMs / 1000
                 val frameBytes = frameSamples * 2
                 val minBuffer = AudioTrack.getMinBufferSize(sampleRateHz, channelConfig, encoding)
-                val bufferSize = maxOf(minBuffer, frameBytes * VAL_6)
+                val bufferSize = maxOf(minBuffer, frameBytes * PLAYBACK_BUFFER_FRAME_CAPACITY)
 
                 val track =
                     AudioTrack.Builder()
@@ -136,9 +137,7 @@ class AudioReceivePipeline(
         }
     }
 
-    @Suppress("unused")
     val activeBufferSize: Int get() = jitterBuffer.size
 
-    @Suppress("unused")
     val streamType: Int = AudioManager.STREAM_VOICE_CALL
 }

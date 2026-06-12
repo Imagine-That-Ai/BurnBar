@@ -18,10 +18,8 @@ import com.openburnbar.data.models.QuotaBucket
 import com.openburnbar.data.stores.QuotaPreferences
 import com.openburnbar.data.stores.QuotaStore
 
-@Suppress("UnusedParameter")
 @Composable
 fun QuotaCustomizationScreen(
-    router: SettingsRouter,
     onBack: () -> Unit,
     quotaStore: QuotaStore = viewModel(),
 ) {

@@ -8,8 +8,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private const val VAL_5678_L = 5678L
-
 class PairedMacIdentityTest {
     @Test
     fun pairedMacIdentityUsesConnectionScopedURIAndStatus() {
@@ -28,7 +26,7 @@ class PairedMacIdentityTest {
         assertEquals("device://paired-mac/relay-123", identity.id)
         assertEquals("Alberto's Mac Studio", identity.displayName)
         assertEquals(AgentAvailability.ONLINE, identity.availability)
-        assertEquals(VAL_5678_L, identity.lastRefreshedAtEpoch)
+        assertEquals(5678L, identity.lastRefreshedAtEpoch)
         assertTrue(identity.tagline.orEmpty().contains("control"))
     }
 

@@ -47,7 +47,7 @@ fi
 IFS=',' read -r -a subtrees <<< "$subtrees_csv"
 actual_hash="$(
   git -C "$src" ls-tree -r "$pinned_commit" --name-only -- "${subtrees[@]}" \
-    | grep '\.py$' | sort \
+    | grep '\.py$' | LC_ALL=C sort \
     | while read -r f; do
         printf '%s ' "$f"
         git -C "$src" cat-file blob "${pinned_commit}:${f}" | shasum -a 256 | cut -d' ' -f1
@@ -95,3 +95,38 @@ if [[ "$pending" == "1" ]]; then
     exit 1
   fi
 fi
+
+# 4) EXECUTING-RUNTIME check: steps 1–3 prove the pinned COMMIT matches the
+#    reviewed source, but HermesRuntimeLauncher executes the checkout's WORKING
+#    TREE. A checkout sitting on a different commit (or carrying local edits to
+#    the vendored subtrees) is running code the attestation does not cover —
+#    the exact gap the 2026-06-11 diligence review flagged ("the only copy of
+#    the runtime actually executing is whatever sits in ~/.hermes"). Recompute
+#    the hash over the working tree and require it to match the manifest.
+#    Set ALLOW_RUNTIME_DRIFT=1 only for deliberate local development against an
+#    unreviewed runtime (never in CI).
+working_tree_hash="$(
+  cd "$src" && \
+  git ls-files --cached --others --exclude-standard -- "${subtrees[@]}" \
+    | grep '\.py$' | LC_ALL=C sort \
+    | while read -r f; do
+        [[ -f "$f" ]] || continue
+        printf '%s ' "$f"
+        shasum -a 256 "$f" | cut -d' ' -f1
+      done \
+    | shasum -a 256 | cut -d' ' -f1
+)"
+if [[ "$working_tree_hash" != "$expected_hash" ]]; then
+  echo "ERROR: the runtime working tree at $src does not match the attested source." >&2
+  echo "  manifest    : $expected_hash" >&2
+  echo "  working tree: $working_tree_hash" >&2
+  echo "The agent that would EXECUTE differs from the reviewed pin (wrong commit" >&2
+  echo "checked out, or local edits under: ${subtrees_csv})." >&2
+  echo "Fix: git -C $src checkout $pinned_commit (and clear local edits)." >&2
+  if [[ "${ALLOW_RUNTIME_DRIFT:-0}" == "1" ]]; then
+    echo "ALLOW_RUNTIME_DRIFT=1 set — proceeding under explicit local override." >&2
+  else
+    exit 1
+  fi
+fi
+echo "OK: executing runtime working tree matches attested source"

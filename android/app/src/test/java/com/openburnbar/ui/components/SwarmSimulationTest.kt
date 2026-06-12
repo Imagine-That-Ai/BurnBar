@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // UI unit-test fixture literals (sizes, millis, colors); extraction adds noise without reuse.
 
 package com.openburnbar.ui.components

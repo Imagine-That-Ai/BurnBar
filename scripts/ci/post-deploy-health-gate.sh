@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 # Post-deploy gate for Cloud Functions (production).
+#
+# Two independent signals (diligence 2026-06-11: conflating them made the
+# nightly synthetic read "prod DOWN" for a compliance-metadata gap while both
+# endpoints returned healthy 200s, guaranteeing red monitoring):
+#   1. AVAILABILITY — status fields on healthLive/healthReady. Always fatal.
+#   2. COMPLIANCE  — AGPL sourceMetadata in the health bodies. Fatal when
+#      HEALTH_GATE_REQUIRE_SOURCE_METADATA=1 (the default, correct for
+#      post-deploy lanes where the new code must serve it); a loud warning
+#      when 0 (synthetic monitoring lanes, until the metadata-serving deploy
+#      reaches prod — flip those lanes to 1 right after).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -12,6 +22,8 @@ LAST_HTTP_CODE=""
 LAST_URL=""
 LAST_BODY_SNIPPET=""
 EXPECTED_SOURCE_URL="${OPENBURNBAR_CORRESPONDING_SOURCE_URL:-https://burnbar.ai/legal/source}"
+REQUIRE_SOURCE_METADATA="${HEALTH_GATE_REQUIRE_SOURCE_METADATA:-1}"
+SOURCE_METADATA_WARNINGS=0
 
 source_metadata_ok() {
   local body_file="$1"
@@ -52,8 +64,23 @@ curl_health() {
         elif [[ "$expect_field" == '.status == "ready"' ]] && grep -q '"status"[[:space:]]*:[[:space:]]*"ready"' "$body_file"; then
           ok=true
         fi
-        if [[ "$ok" == true ]] && source_metadata_ok "$body_file"; then
-          echo "OK ${label} (attempt ${attempt})"
+        if [[ "$ok" == true ]]; then
+          if source_metadata_ok "$body_file"; then
+            echo "OK ${label} (attempt ${attempt})"
+          elif [[ "$REQUIRE_SOURCE_METADATA" != "1" ]]; then
+            # Availability is healthy; compliance metadata is missing. Loud,
+            # not red: a metadata gap must never be indistinguishable from an
+            # outage in the monitoring lanes.
+            echo "::warning title=AGPL source metadata missing::${label} is healthy but does not serve AGPL sourceMetadata yet (deploy pending). Flip HEALTH_GATE_REQUIRE_SOURCE_METADATA=1 once the metadata-serving functions deploy reaches prod."
+            SOURCE_METADATA_WARNINGS=$((SOURCE_METADATA_WARNINGS + 1))
+            echo "OK ${label} — availability only (attempt ${attempt})"
+          else
+            LAST_BODY_SNIPPET="$(head -c 256 "$body_file" 2>/dev/null || true)"
+            echo "waiting for ${label} ${url} (healthy but missing AGPL sourceMetadata, attempt ${attempt}/${RETRIES})..." >&2
+            sleep "$SLEEP_SEC"
+            attempt=$((attempt + 1))
+            continue
+          fi
           cat "$body_file"
           if [[ -n "$snapshot_path" ]]; then
             cp "$body_file" "$snapshot_path"
@@ -107,4 +134,8 @@ if [[ -n "${DEPLOY_HEALTH_JSON:-}" ]]; then
   echo "Wrote ${DEPLOY_HEALTH_JSON}"
 fi
 
-echo "PASS: post-deploy health gate"
+if [[ "$SOURCE_METADATA_WARNINGS" -gt 0 ]]; then
+  echo "PASS: post-deploy health gate (availability only — ${SOURCE_METADATA_WARNINGS} surface(s) missing AGPL sourceMetadata, see warnings)"
+else
+  echo "PASS: post-deploy health gate"
+fi

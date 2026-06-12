@@ -11,11 +11,12 @@ import androidx.core.app.NotificationCompat
 import com.openburnbar.MainActivity
 import com.openburnbar.data.db.BudgetRuleEntity
 
-private const val VAL_24 = 24
-private const val VAL_30 = 30
-private const val VAL_365 = 365
-private const val VAL_60 = 60
-private const val VAL_7 = 7
+private const val HOURS_PER_DAY = 24
+private const val DAYS_PER_MONTH = 30
+private const val DAYS_PER_YEAR = 365
+private const val MINUTES_PER_HOUR = 60
+private const val SECONDS_PER_MINUTE = 60
+private const val DAYS_PER_WEEK = 7
 
 class BudgetNotificationCenter(private val context: Context) {
     companion object {
@@ -49,10 +50,10 @@ class BudgetNotificationCenter(private val context: Context) {
 
         val periodDurationMs =
             when (rule.period) {
-                "day" -> VAL_24 * VAL_60 * VAL_60 * 1000L
-                "week" -> VAL_7 * VAL_24 * VAL_60 * VAL_60 * 1000L
-                "month" -> VAL_30 * VAL_24 * VAL_60 * VAL_60 * 1000L
-                else -> VAL_365 * VAL_24 * VAL_60 * VAL_60 * 1000L
+                "day" -> HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * 1000L
+                "week" -> DAYS_PER_WEEK * HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * 1000L
+                "month" -> DAYS_PER_MONTH * HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * 1000L
+                else -> DAYS_PER_YEAR * HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * 1000L
             }
 
         if (now - lastWarningTime < periodDurationMs) {

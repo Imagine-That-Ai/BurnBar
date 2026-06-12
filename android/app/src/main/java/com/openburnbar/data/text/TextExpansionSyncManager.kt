@@ -20,8 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-private const val VAL_5 = 5
-private const val VAL_500 = 500
+private const val REMOTE_SNIPPET_FETCH_LIMIT = 500
 
 class TextExpansionSyncManager(
     private val context: Context,
@@ -127,7 +126,7 @@ class TextExpansionSyncManager(
             firestore.collection("users")
                 .document(uid)
                 .collection("text_snippets")
-                .limit(VAL_500.toLong())
+                .limit(REMOTE_SNIPPET_FETCH_LIMIT.toLong())
                 .get()
                 .await()
 

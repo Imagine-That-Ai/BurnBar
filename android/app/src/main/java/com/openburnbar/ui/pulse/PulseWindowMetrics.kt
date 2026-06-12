@@ -13,13 +13,11 @@ data class PulseWindowMetrics(
     val requestValue: Int,
 )
 
-@Suppress("UnusedParameter")
 fun pulseWindowMetrics(
     scope: PulseTimelineScope,
     rollups: UsageRollups,
     recentUsages: List<TokenUsage>,
     nowMillis: Long = System.currentTimeMillis(),
-    zoneId: ZoneId = ZoneId.systemDefault(),
 ): PulseWindowMetrics {
     return when (scope) {
         PulseTimelineScope.MINUTE ->

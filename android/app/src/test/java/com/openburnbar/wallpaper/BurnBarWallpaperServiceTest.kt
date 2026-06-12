@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; ARGB
 // masks and token counts are literal by design.
 
 package com.openburnbar.wallpaper
