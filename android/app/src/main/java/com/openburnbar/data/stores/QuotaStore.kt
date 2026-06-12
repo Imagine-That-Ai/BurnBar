@@ -3,6 +3,7 @@ package com.openburnbar.data.stores
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.AgentProvider
@@ -66,7 +67,7 @@ class QuotaStore(
                 _error.value = null
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message ?: e::class.simpleName
             } finally {
                 _isLoading.value = false
@@ -84,7 +85,7 @@ class QuotaStore(
                 _error.value = null
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 _error.value = e.message ?: e::class.simpleName
             } finally {
                 _isLoading.value = false

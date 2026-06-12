@@ -2,6 +2,7 @@
 package com.openburnbar
 
 import android.app.Application
+import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.stores.QuotaStore
@@ -98,6 +99,8 @@ class QuotaStoreTest {
         assertEquals(emptyList<ProviderQuotaSnapshot>(), store.snapshots.value)
     }
 
-    private fun firestorePermissionDenied(): RuntimeException =
-        RuntimeException("Missing or insufficient permissions.")
+    private fun firestorePermissionDenied(): FirebaseException =
+        mockk {
+            every { message } returns "Missing or insufficient permissions."
+        }
 }
