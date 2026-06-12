@@ -21,7 +21,10 @@
     {
       "label": "Local workspace packages use package-relative file: paths",
       "packages": ["**"],
-      "dependencies": ["@openburnbar/signal-envelope-contracts"],
+      "dependencies": [
+        "@openburnbar/entitlements",
+        "@openburnbar/signal-envelope-contracts"
+      ],
       "specifierTypes": ["file"],
       "isIgnored": true
     },
