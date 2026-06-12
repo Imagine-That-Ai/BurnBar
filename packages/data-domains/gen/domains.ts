@@ -518,6 +518,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "cloud_vault_state",
       "cloud_vault_key_wrappers",
       "cloud_vault_rotation_jobs",
+      "cloud_vault_rotation_requirements",
       "escrow_devices",
       "escrow_public_keys",
       "signal_identity_public_keys",

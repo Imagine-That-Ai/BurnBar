@@ -573,6 +573,7 @@ jobs:
           # security release so the in-app updater re-prompts past "Later".
           OPENBURNBAR_RELEASE_CRITICAL: ${{ (github.event_name == 'workflow_dispatch' && inputs.critical) && '1' || '0' }}
         run: |
+          # shellcheck disable=SC2153 # ZIP_PATH is supplied by the step env above.
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Contents/Info.plist")"
           BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PATH/Contents/Info.plist")"
