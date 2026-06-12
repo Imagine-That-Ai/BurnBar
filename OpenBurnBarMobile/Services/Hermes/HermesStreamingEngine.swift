@@ -1,6 +1,48 @@
 import Foundation
 import OpenBurnBarCore
 
+/// Coordinator surface the streaming orchestration needs from
+/// `HermesService`. The engine drives the full send pipeline (request
+/// body, direct/relay/desktop-agent transports, the tool-use loop, and
+/// stream-error rendering) while every piece of conversation/runtime
+/// state it touches stays owned by the service and is reached through
+/// this protocol — the same "engine logic, service state" split as the
+/// init-injected effect closures.
+@MainActor
+protocol HermesStreamingCoordinating: AnyObject {
+    var messages: [HermesChatMessage] { get set }
+    var isStreaming: Bool { get set }
+    var isReachable: Bool { get set }
+    var lastError: String? { get set }
+    var selectedConnection: HermesConnectionRecord { get }
+    var selectedSessionID: String? { get }
+    var selectedModelID: String? { get }
+    var modelOptions: [HermesRuntimeModelOption] { get }
+    var toolCatalog: MobileToolCatalog { get }
+    var toolUseIterationCap: Int { get }
+    var urlSession: URLSession { get }
+    var relayTransport: HermesRelayTransporting { get }
+    var remoteRelayChatCompletionTimeout: TimeInterval { get }
+    var runtimeGeneration: Int { get }
+    var activeRequestedModelID: String? { get }
+    var activeModelName: String? { get }
+    func activeModelIDForRequest() throws -> String
+    func makeRequest(path: String, timeout: TimeInterval) throws -> URLRequest
+    func relayPayload(
+        operation: HermesRelayOperation,
+        method: String,
+        path: String?,
+        sessionID: String?,
+        body: Data?,
+        connection: HermesConnectionRecord?
+    ) -> HermesRelayPayload
+    func refreshRelayDiscoveryBeforeLocalSendIfNeeded() async
+    func loadModels(generation: Int) async
+    func persistCurrentThread()
+    func shouldRunToolUseIteration(for message: HermesChatMessage) -> Bool
+    func executeToolCalls(for message: inout HermesChatMessage) async -> [MobileToolExecutionResult]
+}
+
 /// SSE / streaming framing engine for the Hermes chat surface.
 ///
 /// Owns the per-stream `HermesOpenAICompatibleStreamParser` (the canonical
@@ -532,5 +574,445 @@ final class HermesStreamingEngine {
 
     private func boolValue(_ value: Any?) -> Bool? {
         HermesWireValueParsing.boolValue(value)
+    }
+
+    // MARK: - Streaming orchestration (moved verbatim from HermesService)
+    //
+    // The whole send pipeline lives here: transport selection between
+    // direct HTTP / Mac relay / desktop-agent relay, SSE consumption,
+    // post-stream finalization, the tool-use loop (capped by
+    // `coordinator.toolUseIterationCap`), and stream-error rendering.
+    // All service state is reached via `HermesStreamingCoordinating`.
+
+    func streamCompletion(coordinator: HermesStreamingCoordinating, context: String?, iteration: Int = 0) async throws {
+        if iteration == 0 {
+            await coordinator.refreshRelayDiscoveryBeforeLocalSendIfNeeded()
+        }
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamCompletion selected=\(coordinator.selectedConnection.id) mode=\(coordinator.selectedConnection.mode.rawValue) requestedModel=\(coordinator.activeRequestedModelID ?? "nil") modelOptions=\(coordinator.modelOptions.count)")
+        #endif
+        if coordinator.selectedConnection.mode == .relayLink {
+            try await streamRelayCompletion(coordinator: coordinator, context: context, iteration: iteration)
+            return
+        }
+
+        let body = try completionRequestBody(coordinator: coordinator, context: context)
+        var request = try coordinator.makeRequest(path: "/v1/chat/completions", timeout: 60)
+        request.httpMethod = "POST"
+        request.httpBody = body
+
+        let (stream, response) = try await coordinator.urlSession.bytes(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw HermesServiceError.invalidResponse
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw HermesServiceError.httpStatus(code: httpResponse.statusCode)
+        }
+
+        coordinator.isReachable = true
+
+        var assistantMessage = HermesChatMessage(
+            role: .assistant,
+            text: "",
+            requestedModelID: coordinator.activeRequestedModelID,
+            modelName: coordinator.activeModelName,
+            isStreaming: true,
+            responseStartedAt: Date()
+        )
+        beginStream()
+        coordinator.messages.append(assistantMessage)
+
+        var eventLines: [String] = []
+        do {
+            for try await line in stream.lines {
+                guard !Task.isCancelled else { break }
+                for event in Self.consumeSSELine(line, eventLines: &eventLines) {
+                    processSSEPayload(event, into: &assistantMessage)
+                }
+            }
+        } catch {
+            // The streaming engine's commit throttle can hold back up
+            // to ~80ms of streamed text; flush the staged message before
+            // rethrowing so the partial bubble keeps everything that arrived.
+            if let index = coordinator.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                coordinator.messages[index] = assistantMessage
+            }
+            throw error
+        }
+        if !eventLines.isEmpty {
+            processSSEPayload(eventLines.joined(separator: "\n"), into: &assistantMessage)
+        }
+
+        assistantMessage.isStreaming = false
+        assistantMessage.toolCalls = assistantMessage.toolCalls.map {
+            HermesToolCall(
+                id: $0.id,
+                name: $0.name,
+                status: "done",
+                arguments: $0.arguments,
+                detail: $0.detail ?? Self.summarizeToolArguments($0.arguments)
+            )
+        }
+        if assistantMessage.text.isEmpty && assistantMessage.toolCalls.isEmpty {
+            let fallback = HermesChatMessage.emptyResponseFallback(
+                refusal: assistantMessage.streamedRefusal,
+                reasoning: assistantMessage.streamedReasoning,
+                finishReason: assistantMessage.lastFinishReason
+            )
+            assistantMessage.text = fallback.text
+            assistantMessage.isError = fallback.isError
+            assistantMessage.outcome = fallback.outcome
+        }
+        assistantMessage.finalizeResponseMetrics()
+        if let index = coordinator.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+            coordinator.messages[index] = assistantMessage
+        }
+        try await runToolUseIterationIfNeeded(coordinator: coordinator, after: assistantMessage, context: context, iteration: iteration)
+    }
+
+    private func completionRequestBody(coordinator: HermesStreamingCoordinating, context: String?) throws -> Data {
+        let model = try coordinator.activeModelIDForRequest()
+
+        // Build encoder messages from history. We load attachment bytes for
+        // each user message that carries attachments so the encoder can emit
+        // image_url / input_audio parts inline.
+        let workspaceURL = HermesAttachmentWorkspace.attachmentsRootIfReady
+        let encoderMessages: [HermesAttachmentEncoder.Message] = coordinator.messages.compactMap { message in
+            let content = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Tool replies have an empty `text` only when something went
+            // wrong upstream; keep them out of the wire payload. Assistant
+            // turns with tool_calls but no text are valid and must be
+            // replayed so the model sees its own prior calls.
+            let hasReplayableToolCalls = message.role == .assistant
+                && !message.toolCalls.isEmpty
+            guard !message.isError,
+                  message.role != .system,
+                  hasReplayableToolCalls
+                    || message.role == .tool
+                    || !(content.isEmpty && message.attachments.isEmpty) else {
+                return nil
+            }
+            let role: HermesAttachmentEncoder.Message.Role
+            switch message.role {
+            case .user: role = .user
+            case .assistant: role = .assistant
+            case .system: return nil
+            case .tool: role = .tool
+            }
+            var bytesByID: [String: Data] = [:]
+            if message.role == .user, !message.attachments.isEmpty, let workspaceURL {
+                for attachment in message.attachments {
+                    if let data = HermesAttachmentWorkspace.loadBytes(
+                        for: attachment,
+                        in: workspaceURL
+                    ) {
+                        bytesByID[attachment.id] = data
+                    }
+                }
+            }
+            let replayCalls: [HermesAttachmentEncoder.Message.ReplayToolCall]
+            if hasReplayableToolCalls {
+                replayCalls = message.toolCalls.map { call in
+                    HermesAttachmentEncoder.Message.ReplayToolCall(
+                        id: call.id,
+                        name: call.name,
+                        arguments: call.arguments
+                    )
+                }
+            } else {
+                replayCalls = []
+            }
+            return HermesAttachmentEncoder.Message(
+                role: role,
+                text: message.text,
+                attachments: message.attachments,
+                attachmentBytes: bytesByID,
+                assistantToolCalls: replayCalls,
+                toolCallID: message.toolCallID
+            )
+        }
+
+        // Compose the canonical Hermes system prompt: atom directive +
+        // dashboard context. The directive lives in OpenBurnBarCore and is
+        // shared with the macOS app so atom emission stays consistent
+        // across platforms.
+        let trimmedContext = context?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dashboardContext = (trimmedContext?.isEmpty ?? true) ? nil : trimmedContext
+        let promptBuilder = HermesSystemPromptBuilder(
+            dashboardContext: dashboardContext,
+            includesAtomDirective: true
+        )
+        let systemPrompt = promptBuilder.build()
+        let workspaceForRefs = workspaceURL
+        let requestMessages = HermesAttachmentEncoder.encodeMessages(
+            systemPrompt: systemPrompt,
+            messages: encoderMessages,
+            capabilities: backendCapabilities(coordinator: coordinator, for: model),
+            workspaceAbsolutePath: { att in
+                guard let workspaceForRefs else { return att.workspaceRelativePath }
+                return workspaceForRefs.appendingPathComponent(att.workspaceRelativePath).path
+            }
+        )
+
+        var payload: [String: Any] = [
+            "model": model,
+            "messages": requestMessages,
+            "stream": true
+        ]
+        payload["stream_options"] = [
+            "include_usage": true
+        ]
+        // Advertise on-device tools so the model can navigate the app, read
+        // session metadata, and answer "are you online?" honestly. Empty
+        // arrays are deliberately omitted — some upstream gateways
+        // reject `tools: []` as malformed.
+        let toolsArray = coordinator.toolCatalog.toolsWireArray()
+        if !toolsArray.isEmpty {
+            payload["tools"] = toolsArray
+            // Default tool choice; left as a string for max compatibility
+            // (a `{type, function}` object trips up some older relays).
+            payload["tool_choice"] = "auto"
+        }
+        if let sessionID = coordinator.selectedSessionID {
+            payload["session_id"] = sessionID
+        }
+        return try JSONSerialization.data(withJSONObject: payload)
+    }
+
+    /// Capability hints used by the encoder. Defaults to vision-on,
+    /// audio-off; refined when we learn more from `/v1/models`.
+    private func backendCapabilities(coordinator: HermesStreamingCoordinating, for modelID: String) -> HermesBackendCapabilities {
+        coordinator.modelOptions.first { $0.modelID.caseInsensitiveCompare(modelID) == .orderedSame }?
+            .backendCapabilities
+            ?? HermesBackendCapabilities.default
+    }
+
+    private func streamRelayCompletion(coordinator: HermesStreamingCoordinating, context: String?, iteration: Int = 0) async throws {
+        await ensureRelayModelCatalogLoadedBeforeSend(coordinator: coordinator)
+        if iteration == 0, shouldUseDesktopAgentRelay(coordinator: coordinator) {
+            try await streamDesktopAgentRelayCompletion(coordinator: coordinator, context: context)
+            return
+        }
+        let body = try completionRequestBody(coordinator: coordinator, context: context)
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamRelayCompletion start connection=\(coordinator.selectedConnection.id) requestedModel=\(coordinator.activeRequestedModelID ?? "nil") bodyBytes=\(body.count)")
+        #endif
+        coordinator.isReachable = true
+
+        var assistantMessage = HermesChatMessage(
+            role: .assistant,
+            text: "",
+            requestedModelID: coordinator.activeRequestedModelID,
+            modelName: coordinator.activeModelName,
+            isStreaming: true,
+            responseStartedAt: Date()
+        )
+        beginStream()
+        coordinator.messages.append(assistantMessage)
+
+        do {
+            try await coordinator.relayTransport.sendStreaming(
+                coordinator.relayPayload(operation: .chatCompletions, method: "POST", path: "/v1/chat/completions", sessionID: nil, body: body, connection: nil),
+                timeout: coordinator.remoteRelayChatCompletionTimeout
+            ) { event in
+                self.processSSEPayload(event, into: &assistantMessage)
+            }
+        } catch {
+            // The streaming engine's commit throttle can hold back up
+            // to ~80ms of streamed text; flush the staged message before
+            // rethrowing so the partial bubble keeps everything that arrived.
+            if let index = coordinator.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                coordinator.messages[index] = assistantMessage
+            }
+            throw error
+        }
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamRelayCompletion finished connection=\(coordinator.selectedConnection.id)")
+        #endif
+
+        assistantMessage.isStreaming = false
+        assistantMessage.toolCalls = assistantMessage.toolCalls.map {
+            HermesToolCall(
+                id: $0.id,
+                name: $0.name,
+                status: "done",
+                arguments: $0.arguments,
+                detail: $0.detail ?? Self.summarizeToolArguments($0.arguments)
+            )
+        }
+        if assistantMessage.text.isEmpty && assistantMessage.toolCalls.isEmpty {
+            let fallback = HermesChatMessage.emptyResponseFallback(
+                refusal: assistantMessage.streamedRefusal,
+                reasoning: assistantMessage.streamedReasoning,
+                finishReason: assistantMessage.lastFinishReason
+            )
+            assistantMessage.text = fallback.text
+            assistantMessage.isError = fallback.isError
+            assistantMessage.outcome = fallback.outcome
+        }
+        assistantMessage.finalizeResponseMetrics()
+        if let index = coordinator.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+            coordinator.messages[index] = assistantMessage
+        }
+        try await runToolUseIterationIfNeeded(coordinator: coordinator, after: assistantMessage, context: context, iteration: iteration)
+    }
+
+    private func shouldUseDesktopAgentRelay(coordinator: HermesStreamingCoordinating) -> Bool {
+        guard coordinator.selectedConnection.mode == .relayLink,
+              let threadID = coordinator.selectedSessionID else { return false }
+        return MobileAgentPermissionGrantController.shared.optimisticGrant(
+            runtimeID: .hermes,
+            threadID: threadID
+        ) != nil
+    }
+
+    private func streamDesktopAgentRelayCompletion(coordinator: HermesStreamingCoordinating, context: String?) async throws {
+        guard let threadID = coordinator.selectedSessionID else {
+            throw HermesServiceError.relayUnavailable("Create a chat thread before granting desktop permissions.")
+        }
+        let prompt = coordinator.messages.last(where: { $0.role == .user })?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !prompt.isEmpty else {
+            throw HermesServiceError.relayUnavailable("Desktop agent relay needs a text prompt.")
+        }
+        let modelID = try coordinator.activeModelIDForRequest()
+        var assistantMessage = HermesChatMessage(
+            role: .assistant,
+            text: "",
+            requestedModelID: coordinator.activeRequestedModelID,
+            modelName: coordinator.activeModelName,
+            isStreaming: true,
+            responseStartedAt: Date()
+        )
+        coordinator.messages.append(assistantMessage)
+
+        try await CLIAgentRelayChatTransport.shared.stream(
+            runtimeID: .hermes,
+            threadID: threadID,
+            prompt: prompt,
+            title: HermesConversationStateStore.derivedTitle(from: coordinator.messages),
+            modelID: modelID,
+            parentSessionID: nil,
+            resumeAction: "continue",
+            onEvent: { event in
+                if let text = event.text {
+                    assistantMessage.text = text
+                    SystemPermissionTextClassifier.shared.observeAssistantText(
+                        text,
+                        threadID: threadID,
+                        toolCallId: assistantMessage.id
+                    )
+                }
+                if let modelID = event.modelID {
+                    assistantMessage.modelName = modelID
+                }
+                assistantMessage.isError = event.isError
+                if event.isTerminal {
+                    assistantMessage.isStreaming = false
+                }
+                if let index = coordinator.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                    coordinator.messages[index] = assistantMessage
+                }
+            }
+        )
+        assistantMessage.isStreaming = false
+        if assistantMessage.text.isEmpty {
+            assistantMessage.text = "The Mac relay completed without returning text."
+        }
+        assistantMessage.finalizeResponseMetrics()
+        if let index = coordinator.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+            coordinator.messages[index] = assistantMessage
+        }
+        coordinator.isStreaming = false
+    }
+
+    private func ensureRelayModelCatalogLoadedBeforeSend(coordinator: HermesStreamingCoordinating) async {
+        guard coordinator.selectedConnection.mode == .relayLink, coordinator.modelOptions.isEmpty else { return }
+        if coordinator.selectedModelID?.nilIfBlank != nil {
+            return
+        }
+        await coordinator.loadModels(generation: coordinator.runtimeGeneration)
+    }
+
+    /// Shared post-stream step: if the assistant turn produced tool
+    /// calls that the on-device catalog can execute, run them, append
+    /// the matching `role: .tool` reply messages, and re-stream so the
+    /// model can produce a final natural-language reply incorporating
+    /// the results. Iteration cap protects against infinite tool loops.
+    private func runToolUseIterationIfNeeded(
+        coordinator: HermesStreamingCoordinating,
+        after message: HermesChatMessage,
+        context: String?,
+        iteration: Int
+    ) async throws {
+        guard coordinator.shouldRunToolUseIteration(for: message) else {
+            coordinator.isStreaming = false
+            return
+        }
+        guard iteration < coordinator.toolUseIterationCap else {
+            // Cap exceeded — leave the pills as "done" but stop looping.
+            coordinator.isStreaming = false
+            return
+        }
+
+        var mutableMessage = message
+        await coordinator.executeToolCalls(for: &mutableMessage)
+        // `executeToolCalls` already appended the tool reply messages
+        // and rewrote `messages` with updated call statuses. Persist
+        // the running thread so iOS history reflects the in-flight
+        // tool exchange (useful when the app is backgrounded mid-loop).
+        coordinator.persistCurrentThread()
+
+        // Re-enter — the next iteration sees the tool replies via the
+        // `completionRequestBody` encoder and emits a follow-up turn.
+        try await streamCompletion(coordinator: coordinator, context: context, iteration: iteration + 1)
+    }
+
+
+    func handleStreamError(_ error: Error, coordinator: HermesStreamingCoordinating) {
+        coordinator.isStreaming = false
+        coordinator.isReachable = false
+
+        let displayText: String
+        if let hermesError = error as? HermesServiceError {
+            displayText = hermesError.localizedDescription
+        } else if let firestoreError = error as? FirestoreError {
+            switch firestoreError {
+            case .firebaseUnavailable:
+                displayText = "Firebase is not configured for this build, so Remote Relay is unavailable."
+            case .notAuthenticated:
+                displayText = "Sign in with the same OpenBurnBar account on this iPhone/iPad to use Remote Relay."
+            case .decodingFailed(let message):
+                displayText = message
+            }
+        } else if let urlError = error as? URLError {
+            if urlError.code == .cannotConnectToHost || urlError.code == .notConnectedToInternet {
+                if coordinator.selectedConnection.mode == .relayLink {
+                    displayText = "Remote Hermes relay is offline. Keep OpenBurnBar running on your Mac, signed in to this account, with Hermes reachable there."
+                } else {
+                    displayText = "Hermes is not reachable. Use a Remote Relay connection when your iPhone is away from your home network, or make sure both devices are on the same network."
+                }
+            } else {
+                displayText = "Connection error: \(urlError.localizedDescription)"
+            }
+        } else {
+            displayText = "Connection error: \(error.localizedDescription)"
+        }
+
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamError selected=\(coordinator.selectedConnection.id) mode=\(coordinator.selectedConnection.mode.rawValue) error=\(error.localizedDescription) display=\(displayText)")
+        #endif
+
+        let errorMessage = HermesChatMessage(
+            role: .assistant,
+            text: displayText,
+            isError: true
+        )
+        if let index = coordinator.messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming && $0.text.isEmpty && $0.toolCalls.isEmpty }) {
+            coordinator.messages[index] = errorMessage
+        } else {
+            coordinator.messages.append(errorMessage)
+        }
+        coordinator.lastError = displayText
     }
 }
