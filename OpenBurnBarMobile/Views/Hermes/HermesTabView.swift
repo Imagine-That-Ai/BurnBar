@@ -4355,15 +4355,6 @@ private struct BreathingDot: ViewModifier {
     }
 }
 
-// MARK: - String helpers
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-}
-
 // MARK: - Dynamic Status Widget
 
 private struct HermesDynamicStatusWidget: View {

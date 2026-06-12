@@ -2781,13 +2781,6 @@ private struct OpenAIModel: Decodable {
     }
 }
 
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-}
-
 // MARK: - Tool Use Loop Support
 //
 // Surfaces the `MobileToolCatalog` to the chat view + executes any tool
