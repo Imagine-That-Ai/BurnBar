@@ -16,6 +16,11 @@ is never acceptable.
   not redefined. **Changing a gate's definition in the same PR the gate is
   failing on is prohibited** — gate changes ship in their own PR, with the
   rationale in the PR description, and apply to the *next* change.
+- Live governance proof is not a screenshot or memory. Run
+  `bash scripts/ops/verify-github-governance.sh` before any release or
+  commercial launch gate; it reads GitHub's branch-protection and environment
+  APIs and fails if admin enforcement, review/check requirements, PR bypass
+  allowances, or release/production environment protection drift.
 
 ## When a solo merge is acceptable
 

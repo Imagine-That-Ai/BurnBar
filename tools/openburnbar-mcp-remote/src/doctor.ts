@@ -6,7 +6,9 @@ export async function doctor(): Promise<number> {
   checks.push({
     name: "token",
     ok: Boolean(readAccessToken()),
-    detail: readAccessToken() ? "Access token found outside client config." : "No access token found in Keychain, fallback store, or OPENBURNBAR_MCP_ACCESS_TOKEN."
+    detail: readAccessToken()
+      ? "Access token found outside client config."
+      : "No access token found in macOS Keychain. Plaintext env/file token sources require OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE=true and are for tests or disposable CI only."
   });
   const endpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT;
   try {

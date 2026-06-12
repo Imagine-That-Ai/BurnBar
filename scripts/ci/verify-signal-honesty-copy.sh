@@ -50,6 +50,10 @@ const BANNED = [
   "searches without reading",
   "search without reading", // singular form — caught e.g. "runs ANN search without reading"
   "signal-quality privacy",
+  "semantic memory is private from us",
+  "semantic search is private from us",
+  "server cannot infer semantic",
+  "server cannot infer memory",
   "revocation immediately makes old data safe",
 ];
 
@@ -64,7 +68,7 @@ const ROOTS = ["website/src", "functions/src", "packages", "docs", "AgentLens", 
 // are the console build artifacts and stay excluded. (Remediation R3/R8.)
 const EXCLUDE_DIR = /(^|\/)(node_modules|dist|build|gen|__snapshots__|out|\.next)(\/|$)|(^|\/)(packages\/[^/]+|functions)\/lib(\/|$)/;
 const EXCLUDE_FILE =
-  /(docs\/signalification\/|SOTA_REMEDIATION|signal-honesty-allowlist|verify-signal-honesty-copy|HERMES_GATEWAY_E2EE_REMEDIATION)/;
+  /(docs\/signalification\/|docs\/security\/BurnBar-threat-model\.md|SOTA_REMEDIATION|SECURITY_CLAIMS_REGISTER|signal-honesty-allowlist|verify-signal-honesty-copy|HERMES_GATEWAY_E2EE_REMEDIATION)/;
 const SCAN_EXT = /\.(ts|tsx|astro|md|mdx|json|swift|kt|xml|strings)$/;
 
 const hits = new Map(); // key -> { count, firstLine, file, phrase }

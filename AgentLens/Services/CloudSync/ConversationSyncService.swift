@@ -55,7 +55,13 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             for record in unsynced {
                 let docId = "\(deviceId)_\(record.id)"
                 let docRef = collectionRef.document(docId)
-                var data = try Self.encodeConversation(record, deviceId: deviceId, vaultKey: vaultKey)
+                var data = try Self.encodeConversation(
+                    record,
+                    uid: uid,
+                    deviceId: deviceId,
+                    docId: docId,
+                    vaultKey: vaultKey
+                )
                 // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM sealedPayload
                 // is the FLOOR and is already in `data`; the additive Signal envelope is
                 // BEST-EFFORT and gated by the conversations_chat sealingScheme. On ANY seal
@@ -122,7 +128,9 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
 
     static func encodeConversation(
         _ record: ConversationRecord,
+        uid: String,
         deviceId: String,
+        docId: String,
         vaultKey: CloudVaultResolvedKey
     ) throws -> [String: Any] {
         var data: [String: Any] = [
@@ -139,7 +147,12 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             "contentSealed": true,
             "sealedSchemaVersion": ConversationCloudSealer.sealedSchemaVersion,
             "vaultKeyID": vaultKey.vaultKeyID,
-            "sealedPayload": try ConversationCloudSealer.seal(ConversationCloudPrivatePayload(record: record), key: vaultKey)
+            "sealedPayload": try ConversationCloudSealer.seal(
+                ConversationCloudPrivatePayload(record: record),
+                key: vaultKey,
+                uid: uid,
+                docId: docId
+            )
         ]
         ConversationCloudSealer.plaintextFieldDeletes.forEach { data[$0.key] = $0.value }
         // Tombstone propagation (B-DATA-2): a non-nil `deletedAt` tells every

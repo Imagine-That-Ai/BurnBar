@@ -1143,8 +1143,7 @@ jobs:
           VERSION: ${{ needs.build-and-release.outputs.version }}
         run: |
           set -euo pipefail
-          # Install Sentry CLI
-          curl -sL https://sentry.io/get-cli/ | bash
+          npm install --global @sentry/cli@2.42.2
 
           RELEASE_NAME="openburnbar@${VERSION}"
 

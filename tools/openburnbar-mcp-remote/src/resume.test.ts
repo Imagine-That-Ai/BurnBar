@@ -100,7 +100,9 @@ test("resume CLI sends local opaque query hashes for fuzzy OBB Resume", async ()
   let capturedArgs: Record<string, unknown> | undefined;
   let capturedTool: string | undefined;
   const previousAllowCustomEndpoint = process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT;
+  const previousAllowInsecureTokenSource = process.env.OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE;
   process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT = "true";
+  process.env.OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE = "true";
   globalThis.fetch = (async (_url, init) => {
     const body = JSON.parse(String(init?.body)) as {
       params?: { name?: string; arguments?: Record<string, unknown> };
@@ -149,6 +151,11 @@ test("resume CLI sends local opaque query hashes for fuzzy OBB Resume", async ()
       delete process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT;
     } else {
       process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT = previousAllowCustomEndpoint;
+    }
+    if (previousAllowInsecureTokenSource === undefined) {
+      delete process.env.OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE;
+    } else {
+      process.env.OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE = previousAllowInsecureTokenSource;
     }
   }
 });

@@ -11,12 +11,14 @@ on:
       - "scripts/build-iroh-android-aar.sh"
       - ".github/workflows/build-iroh-android-aar.yml"
       - "android/openburnbar-iroh-relay/**"
+      - "Vendor/openburnbar-iroh.aar"
   pull_request:
     paths:
       - "crates/openburnbar-iroh/**"
       - "scripts/build-iroh-android-aar.sh"
       - ".github/workflows/build-iroh-android-aar.yml"
       - "android/openburnbar-iroh-relay/**"
+      - "Vendor/openburnbar-iroh.aar"
   workflow_dispatch:
 
 concurrency:
@@ -96,6 +98,17 @@ jobs:
           IROH_BUILD_PROFILE: release
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+
+      - name: Verify committed AAR parity
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- \
+            Vendor/openburnbar-iroh.aar \
+            android/openburnbar-iroh-relay/src/main/java/uniffi/openburnbar_iroh \
+            || {
+              echo "::error::Committed openburnbar-iroh AAR/Kotlin bindings do not match a clean source rebuild.";
+              exit 1;
+            }
 
       - name: Inspect AAR
         run: |

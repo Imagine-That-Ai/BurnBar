@@ -355,6 +355,7 @@ final class MercuryRouter: ObservableObject {
         if activeControlViewerID == nil {
             activeControlViewerID = viewer.viewerID
         }
+        publishActiveMirrorViewerCount()
         updateLegacyActiveSessionPointer()
         setStreamingPhaseIfNeeded()
     }
@@ -387,6 +388,7 @@ final class MercuryRouter: ObservableObject {
             updateLegacyActiveSessionPointer()
             setStreamingPhaseIfNeeded()
         }
+        publishActiveMirrorViewerCount()
         return viewer
     }
 
@@ -404,6 +406,11 @@ final class MercuryRouter: ObservableObject {
         activeControlViewerID = nil
         activeSelectedDisplayID = nil
         clearActiveSessionState()
+        publishActiveMirrorViewerCount()
+    }
+
+    private func publishActiveMirrorViewerCount() {
+        MacMediaActiveSessionRegistry.shared.setCount(activeMirrorViewers.count, for: .screenShare)
     }
 
     private func broadcastMirrorAck(

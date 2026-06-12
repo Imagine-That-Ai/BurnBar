@@ -116,9 +116,25 @@ enum ConversationCloudSealer {
         JSONDecoder()
     }
 
-    static func seal(_ payload: ConversationCloudPrivatePayload, key: CloudVaultResolvedKey) throws -> [String: Any] {
+    static func seal(
+        _ payload: ConversationCloudPrivatePayload,
+        key: CloudVaultResolvedKey,
+        uid: String,
+        docId: String
+    ) throws -> [String: Any] {
         let encoded = try encoder.encode(payload)
-        let sealed = try CloudVaultCrypto.sealPayload(encoded, keyData: key.keyData, vaultKeyID: key.vaultKeyID)
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "conversations",
+            docID: docId,
+            field: "sealedPayload"
+        )
+        let sealed = try CloudVaultCrypto.sealPayload(
+            encoded,
+            keyData: key.keyData,
+            vaultKeyID: key.vaultKeyID,
+            aadContext: aadContext
+        )
         return CloudVaultCrypto.sealedPayloadDictionary(sealed)
     }
 
@@ -168,8 +184,25 @@ enum ConversationCloudSealer {
             }
         }
         guard let keyData,
-              let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]),
-              let payloadData = try? CloudVaultCrypto.openPayload(envelope, keyData: keyData) else {
+              let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) else {
+            return nil
+        }
+        let aadContext: CloudVaultAADContext?
+        if let uid, let docId {
+            aadContext = try? CloudVaultAADContext(
+                uid: uid,
+                collection: "conversations",
+                docID: docId,
+                field: "sealedPayload"
+            )
+        } else {
+            aadContext = nil
+        }
+        guard let payloadData = try? CloudVaultCrypto.openPayload(
+            envelope,
+            keyData: keyData,
+            aadContext: aadContext
+        ) else {
             return nil
         }
         return try? decoder.decode(ConversationCloudPrivatePayload.self, from: payloadData)

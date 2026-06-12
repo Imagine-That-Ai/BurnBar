@@ -20,6 +20,7 @@
 
 const readline = require('readline');
 const path = require('path');
+const net = require('net');
 
 let chromium;
 try {
@@ -46,6 +47,113 @@ let browser = null;
 let context = null;
 let page = null;
 
+function parseIPv4Part(raw) {
+  if (!raw) return null;
+  const lower = String(raw).toLowerCase();
+  let radix = 10;
+  let digits = lower;
+  if (lower.startsWith('0x')) {
+    radix = 16;
+    digits = lower.slice(2);
+  } else if (lower.length > 1 && lower.startsWith('0')) {
+    radix = 8;
+    digits = lower.slice(1);
+  }
+  if (!digits) return 0;
+  const pattern = radix === 16 ? /^[0-9a-f]+$/ : (radix === 8 ? /^[0-7]+$/ : /^[0-9]+$/);
+  if (!pattern.test(digits)) return null;
+  const value = Number.parseInt(digits, radix);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+function ipv4Bytes(host) {
+  const parts = String(host).split('.');
+  if (parts.length < 1 || parts.length > 4) return null;
+  const values = parts.map(parseIPv4Part);
+  if (values.some((value) => value === null)) return null;
+  if (values.length === 1) {
+    const value = values[0];
+    if (value > 0xffffffff) return null;
+    return [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+  }
+  if (values.length === 2) {
+    if (values[0] > 0xff || values[1] > 0x00ffffff) return null;
+    return [values[0], (values[1] >>> 16) & 0xff, (values[1] >>> 8) & 0xff, values[1] & 0xff];
+  }
+  if (values.length === 3) {
+    if (values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff) return null;
+    return [values[0], values[1], (values[2] >>> 8) & 0xff, values[2] & 0xff];
+  }
+  if (values.some((value) => value > 0xff)) return null;
+  return values;
+}
+
+function isBlockedIPv4(bytes) {
+  if (!bytes || bytes.length !== 4) return true;
+  const [first, second] = bytes;
+  if (first === 0 || first === 10 || first === 127) return true;
+  if (first === 100 && second >= 64 && second <= 127) return true;
+  if (first === 169 && second === 254) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 192 && second === 168) return true;
+  if (first === 198 && (second === 18 || second === 19)) return true;
+  if (first >= 224) return true;
+  return bytes.every((byte) => byte === 255);
+}
+
+function firstIPv6Hextet(host) {
+  const match = /^([0-9a-f]{1,4})/i.exec(host);
+  return match ? Number.parseInt(match[1], 16) : null;
+}
+
+function isBlockedIPv6(host) {
+  const normalized = host.toLowerCase();
+  if (normalized === '::' || normalized === '::1') return true;
+  const embeddedIPv4 = normalized.match(/(?:^|:)(\d+|0x[0-9a-f]+|0[0-7]+(?:\.(?:\d+|0x[0-9a-f]+|0[0-7]+)){0,3})$/i);
+  if (embeddedIPv4) {
+    const embedded = ipv4Bytes(embeddedIPv4[1]);
+    if (embedded && isBlockedIPv4(embedded)) return true;
+  }
+  const first = firstIPv6Hextet(normalized);
+  if (first === null) return false;
+  if ((first & 0xffc0) === 0xfe80) return true;
+  if ((first & 0xfe00) === 0xfc00) return true;
+  return (first & 0xff00) === 0xff00;
+}
+
+function isBlockedBrowserURL(rawValue, { allowData = false } = {}) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawValue || '').trim());
+  } catch {
+    return true;
+  }
+  const protocol = parsed.protocol.toLowerCase();
+  if (allowData && protocol === 'data:') return false;
+  if (protocol === 'about:' || protocol === 'blob:') return false;
+  if (protocol !== 'http:' && protocol !== 'https:') return true;
+  const host = parsed.hostname.replace(/^\[/, '').replace(/\]$/, '').replace(/\.$/, '').toLowerCase();
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === 'metadata' || host === 'metadata.google.internal' || host.endsWith('.metadata.google.internal')) return true;
+  const ipv4 = ipv4Bytes(host);
+  if (ipv4) return isBlockedIPv4(ipv4);
+  if (net.isIP(host) === 6) return isBlockedIPv6(host);
+  return false;
+}
+
+async function installNetworkGuard(ctx) {
+  await ctx.route('**/*', async (route) => {
+    const url = route.request().url();
+    if (isBlockedBrowserURL(url, { allowData: true })) {
+      console.error(`[playwright-bridge] blocked browser target: ${url}`);
+      await route.abort('blockedbyclient');
+      return;
+    }
+    await route.continue();
+  });
+}
+
 async function ensurePage() {
   if (page) return page;
   const launchOpts = { headless };
@@ -57,6 +165,7 @@ async function ensurePage() {
     browser = await chromium.launch(launchOpts);
     context = await browser.newContext();
   }
+  await installNetworkGuard(context);
   page = await context.newPage();
   return page;
 }
@@ -81,6 +190,9 @@ async function dispatch(method, params) {
       return { kind: 'fill', selector: params.selector, charCount: (params.text || '').length };
     }
     case 'goto': {
+      if (isBlockedBrowserURL(params.url, { allowData: true })) {
+        throw new Error(`blocked browser target: ${params.url}`);
+      }
       const resp = await p.goto(params.url, { timeout, waitUntil: 'domcontentloaded' });
       return {
         kind: 'goto',

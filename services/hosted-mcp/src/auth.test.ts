@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { generateKeyPairSync } from "node:crypto";
 import { MCP_PROTOCOL_VERSION, MCP_RESOURCE } from "./config.js";
-import { mintDevelopmentToken, verifyBearerToken } from "./auth.js";
+import { mintDevelopmentToken, mintEd25519Token, verifyBearerToken } from "./auth.js";
 import { signCursor, verifyCursor } from "./cursors.js";
 import { requireActiveRemoteMcpClient } from "./entitlements.js";
 import { handleMcpRequest } from "./mcp.js";
@@ -46,6 +47,53 @@ test("verifies HMAC bearer token claims and rejects wrong audience", () => {
     jti: "jti-3"
   }, "unit-secret");
   assert.throws(() => verifyBearerToken(`Bearer ${unsafeClient}`), /client ID/);
+});
+
+test("verifies Ed25519 bearer tokens and disables legacy HMAC when public key is configured", () => {
+  const previousPublic = process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;
+  const previousPrivate = process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64;
+  const previousLegacy = process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
+  const previousHmac = process.env.MCP_TOKEN_HMAC_SECRET;
+  try {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 = Buffer.from(
+      publicKey.export({ type: "spki", format: "pem" }).toString(),
+      "utf8",
+    ).toString("base64");
+    process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 = Buffer.from(
+      privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+      "utf8",
+    ).toString("base64");
+    process.env.MCP_TOKEN_HMAC_SECRET = "legacy-secret";
+    delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
+
+    const claims = {
+      sub: "user-ed",
+      aud: MCP_RESOURCE,
+      client_id: "client-ed",
+      scopes: ["search:read"],
+      entitlement_family: "burnbar_pro" as const,
+      grant_mode: "local_decrypt_shim" as const,
+      exp: Math.floor(Date.now() / 1000) + 60,
+      jti: "jti-ed"
+    };
+    const edToken = mintEd25519Token(claims);
+    assert.equal(verifyBearerToken(`Bearer ${edToken}`).sub, "user-ed");
+
+    const hmacToken = mintDevelopmentToken({ ...claims, jti: "jti-hmac" }, "legacy-secret");
+    assert.throws(() => verifyBearerToken(`Bearer ${hmacToken}`), /Legacy HMAC/);
+    process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = "true";
+    assert.equal(verifyBearerToken(`Bearer ${hmacToken}`).jti, "jti-hmac");
+  } finally {
+    if (previousPublic === undefined) delete process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;
+    else process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 = previousPublic;
+    if (previousPrivate === undefined) delete process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64;
+    else process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 = previousPrivate;
+    if (previousLegacy === undefined) delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
+    else process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = previousLegacy;
+    if (previousHmac === undefined) delete process.env.MCP_TOKEN_HMAC_SECRET;
+    else process.env.MCP_TOKEN_HMAC_SECRET = previousHmac;
+  }
 });
 
 test("cursor signing rejects tampering and scope mismatch", () => {

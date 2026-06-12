@@ -15,11 +15,16 @@
 
 import * as Sentry from "@sentry/node";
 import type { ErrorEvent, EventHint, Breadcrumb } from "@sentry/core";
+import { createHash } from "node:crypto";
 import { logInfo } from "./logging.js";
 
 const dsn = process.env.SENTRY_DSN;
 const release = process.env.FUNCTION_VERSION ?? "unknown";
 const environment = process.env.SENTRY_ENVIRONMENT ?? "development";
+const REDACTED = "[REDACTED]";
+const SENSITIVE_KEY_PATTERN =
+  /(?:authorization|cookie|set-cookie|token|secret|password|passphrase|api[-_]?key|credential|private[-_]?key|session|dsn)/i;
+const REQUEST_BODY_KEY_PATTERN = /^(?:body|rawBody|requestBody|requestData|data|payload)$/i;
 
 if (dsn) {
   Sentry.init({
@@ -31,8 +36,10 @@ if (dsn) {
     // 100% in non-production environments for debugging visibility.
     tracesSampleRate: environment === "production" ? 0.1 : 1.0,
 
-    // Attach breadcrumbs from console output (scrubbed by our logging.ts layer).
-    integrations: [Sentry.extraErrorDataIntegration({ depth: 5 }), Sentry.requestDataIntegration()],
+    // Attach extra error fields but never request bodies/headers. The
+    // beforeSend sanitizer below is the final guard for copied extras.
+    integrations: [Sentry.extraErrorDataIntegration({ depth: 5 })],
+    sendDefaultPii: false,
 
     // Filter events that are noise rather than actionable bugs.
     beforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
@@ -45,13 +52,13 @@ if (dsn) {
       ) {
         return null;
       }
-      return event;
+      return sanitizeSentryEvent(event);
     },
 
     // Breadcrumb scrubbing: remove auth tokens from URL breadcrumbs.
     beforeBreadcrumb(breadcrumb: Breadcrumb) {
       if (breadcrumb.data?.url && typeof breadcrumb.data.url === "string") {
-        breadcrumb.data.url = breadcrumb.data.url.replace(/([?&](?:token|key|secret))=[^&]+/gi, "$1=[REDACTED]");
+        breadcrumb.data.url = redactURLSecrets(breadcrumb.data.url);
       }
       return breadcrumb;
     },
@@ -70,6 +77,78 @@ if (dsn) {
  */
 export function sentryStatus(): { enabled: boolean; environment: string } {
   return { enabled: Boolean(dsn), environment };
+}
+
+export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
+  if (event.request) {
+    const request = event.request as ErrorEvent["request"] & Record<string, unknown>;
+    request.url = typeof request.url === "string" ? redactURLSecrets(request.url) : request.url;
+    delete request.data;
+    delete request.cookies;
+    delete request.env;
+    delete request.query_string;
+    if (request.headers && isRecord(request.headers)) {
+      request.headers = sanitizeHeaders(request.headers);
+    }
+  }
+
+  if (event.extra) {
+    event.extra = sanitizeSentryValue(event.extra) as ErrorEvent["extra"];
+  }
+  if (event.contexts) {
+    event.contexts = sanitizeSentryValue(event.contexts) as ErrorEvent["contexts"];
+  }
+  if (event.breadcrumbs) {
+    event.breadcrumbs = event.breadcrumbs.map((breadcrumb) => {
+      if (breadcrumb.data) {
+        breadcrumb.data = sanitizeSentryValue(breadcrumb.data) as Breadcrumb["data"];
+      }
+      return breadcrumb;
+    });
+  }
+
+  return event;
+}
+
+function sanitizeHeaders(headers: Record<string, unknown>) {
+  const sanitized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    sanitized[key] = SENSITIVE_KEY_PATTERN.test(key) ? REDACTED : String(value);
+  }
+  return sanitized;
+}
+
+function sanitizeSentryValue(value: unknown, depth = 0): unknown {
+  if (depth > 8) {
+    return "[MaxDepth]";
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeSentryValue(entry, depth + 1));
+  }
+  if (!isRecord(value)) {
+    return typeof value === "string" ? redactURLSecrets(value) : value;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (SENSITIVE_KEY_PATTERN.test(key) || REQUEST_BODY_KEY_PATTERN.test(key)) {
+      sanitized[key] = REDACTED;
+    } else {
+      sanitized[key] = sanitizeSentryValue(child, depth + 1);
+    }
+  }
+  return sanitized;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function redactURLSecrets(value: string): string {
+  return value.replace(
+    /([?&](?:token|key|secret|password|code|credential|access_token|refresh_token|id_token|api_key))=[^&#]+/gi,
+    `$1=${REDACTED}`
+  );
 }
 
 /**
@@ -95,10 +174,12 @@ export function captureException(err: unknown, context?: Record<string, unknown>
  */
 export function setSentryUser(uid: string): void {
   if (!dsn) return;
-  // Use a prefix-truncated UID — Firebase UIDs are random 28-char tokens,
-  // not reversible from 8 chars. For stronger anonymization, substitute
-  // with a server-side SHA-256 hash when needed.
-  Sentry.setUser({ id: `uid:${uid.slice(0, 8)}` });
+  Sentry.setUser({ id: sentryUserIdForUID(uid) });
+}
+
+export function sentryUserIdForUID(uid: string): string {
+  const digest = createHash("sha256").update(uid, "utf8").digest("hex").slice(0, 16);
+  return `uid:${digest}`;
 }
 
 /**

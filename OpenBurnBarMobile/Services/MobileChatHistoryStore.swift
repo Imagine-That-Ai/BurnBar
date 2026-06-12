@@ -605,10 +605,17 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
         let cloudThread = Self.threadForCloud(thread)
         let payloadData = try Self.cloudPayloadEncoder.encode(cloudThread)
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "mobile_assistant_chats",
+            docID: thread.id,
+            field: "sealedPayload"
+        )
         let sealedPayload = try CloudVaultCrypto.sealPayload(
             payloadData,
             keyData: resolvedKey.keyData,
-            vaultKeyID: resolvedKey.vaultKeyID
+            vaultKeyID: resolvedKey.vaultKeyID,
+            aadContext: aadContext
         )
         var payload: [String: Any] = [
             "id": thread.id,
@@ -660,10 +667,26 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         try await Self.collection(for: db, uid: uid).document(thread.id).setData(payload, merge: false)
     }
 
-    static func encodeThreadForCloud(_ thread: MobileChatThread, vaultKey: Data, vaultKeyID: String) throws -> [String: Any] {
+    static func encodeThreadForCloud(
+        _ thread: MobileChatThread,
+        uid: String,
+        vaultKey: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
         let cloudThread = threadForCloud(thread)
         let payloadData = try cloudPayloadEncoder.encode(cloudThread)
-        let sealedPayload = try CloudVaultCrypto.sealPayload(payloadData, keyData: vaultKey, vaultKeyID: vaultKeyID)
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "mobile_assistant_chats",
+            docID: thread.id,
+            field: "sealedPayload"
+        )
+        let sealedPayload = try CloudVaultCrypto.sealPayload(
+            payloadData,
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return [
             "id": thread.id,
             "runtime": thread.runtime,
@@ -856,7 +879,18 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
                 return nil
             }
             do {
-                let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey)
+                let aadContext: CloudVaultAADContext?
+                if let uid {
+                    aadContext = try? CloudVaultAADContext(
+                        uid: uid,
+                        collection: "mobile_assistant_chats",
+                        docID: documentID,
+                        field: "sealedPayload"
+                    )
+                } else {
+                    aadContext = nil
+                }
+                let payload = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: aadContext)
                 return try cloudPayloadDecoder.decode(MobileChatThread.self, from: payload)
             } catch {
                 return nil
