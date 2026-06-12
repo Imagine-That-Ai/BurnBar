@@ -44,8 +44,13 @@ enum class IrohRelayRole(val raw: String) {
  * into the existing `HermesServiceError.RelayUnavailable` envelope so
  * downstream code paths do not have to learn an iroh-specific taxonomy.
  */
-sealed class IrohRelayTransportError(message: String) : RuntimeException(message) {
+sealed class IrohRelayTransportError(message: String, cause: Throwable? = null) : RuntimeException(message, cause) {
     object EndpointNotReady : IrohRelayTransportError("Iroh endpoint is not ready.")
+
+    data class PairingRejected(
+        val detail: String,
+        val source: Throwable? = null,
+    ) : IrohRelayTransportError("Iroh pairing rejected: $detail", source)
 
     data class NodeIdUnreachable(val nodeId: String) : IrohRelayTransportError("Iroh node is unreachable: $nodeId.")
 

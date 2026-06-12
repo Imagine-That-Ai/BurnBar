@@ -116,6 +116,29 @@ class HermesCompositeRelayTransportTest {
     }
 
     @Test
+    fun streaming_chat_falls_back_to_firestore_when_iroh_pairing_is_rejected() = runTest {
+        val iroh = mockk<HermesRelayTransporting>()
+        val firestore = mockk<HermesRelayTransporting>()
+        coEvery { iroh.sendStreaming(payload, any(), any()) } throws IrohRelayTransportError.PairingRejected("pairing record expired")
+        coEvery { firestore.sendStreaming(payload, any(), any()) } answers {
+            val cb = thirdArg<suspend (String) -> Unit>()
+            kotlinx.coroutines.runBlocking { cb("via-firestore") }
+        }
+
+        val composite =
+            HermesCompositeRelayTransport(
+                iroh = iroh,
+                firestoreFallback = firestore,
+            )
+        val received = mutableListOf<String>()
+        composite.sendStreaming(payload, 100) { received.add(it) }
+
+        assertEquals(listOf("via-firestore"), received)
+        coVerify(exactly = 1) { iroh.sendStreaming(payload, 100, any()) }
+        coVerify(exactly = 1) { firestore.sendStreaming(payload, 100, any()) }
+    }
+
+    @Test
     fun streaming_cli_agent_chat_falls_back_to_firestore_after_iroh_transport_error() = runTest {
         val cliPayload =
             payload.copy(
