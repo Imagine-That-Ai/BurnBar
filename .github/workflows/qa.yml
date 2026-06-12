@@ -103,6 +103,22 @@ jobs:
         # the "Honest conclusion" step below re-asserts the real outcome.
         continue-on-error: true
         timeout-minutes: 20
+        # Minimum-scoped secret set (diligence H26): this step shells out to a
+        # third-party CLI, so it now receives ONLY the credentials functional QA
+        # actually needs and nothing else.
+        #   - FACTORY_API_KEY: the droid CLI's own auth (the sibling
+        #     droid-wiki-refresh.yml proves the CLI runs with this key alone;
+        #     docs/FACTORY_DROID_ROUTING.md sanitizes the env to just this).
+        #   - FIREBASE_*: build/run the app under App Check (these two also gate
+        #     INTERNAL_RUN's HAS_FIREBASE_SECRETS above).
+        #   - QA_FIREBASE_*: the dedicated QA Auth account the qa skill signs in
+        #     with (tools/qa/README.md).
+        #   - ANTHROPIC_API_KEY: one model provider so agent/Hermes QA flows run.
+        # Deliberately NOT in scope (removed to shrink the curl-CLI blast radius):
+        # the alternate provider keys (OPENAI/OPENROUTER/ZAI/Z_AI/MINIMAX), the
+        # provider GitHub PAT, the Factory session creds (BEARER/COOKIE), the
+        # backend API_SERVER_KEY, and the Sentry DSN. If a future QA flow needs
+        # one of these, add it back narrowly with a note on why.
         env:
           CI: true
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
@@ -111,16 +127,6 @@ jobs:
           QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}
           QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.OPENBURNBAR_PROVIDER_GITHUB_TOKEN }}
-          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
-          Z_AI_API_KEY: ${{ secrets.Z_AI_API_KEY }}
-          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-          FACTORY_BEARER_TOKEN: ${{ secrets.FACTORY_BEARER_TOKEN }}
-          FACTORY_COOKIE_HEADER: ${{ secrets.FACTORY_COOKIE_HEADER }}
-          API_SERVER_KEY: ${{ secrets.API_SERVER_KEY }}
-          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
         run: |
           mkdir -p qa-results
           droid exec --auto high "You are running in a non-interactive CI environment. There is NO human available. Do NOT use AskUser, do NOT wait for confirmations, do NOT pause for input. Run the qa skill for OpenBurnBar against the checked-out branch. This workflow is optional/informational. Write the final report to qa-results/report.md and put artifacts under qa-results/." 2>&1 | tee qa-results/qa-output.txt

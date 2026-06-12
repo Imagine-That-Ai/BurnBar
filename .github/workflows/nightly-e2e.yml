@@ -68,22 +68,18 @@ jobs:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: bash ./scripts/ci/inject-firebase-config-android.sh
 
-      - name: Note Android instrumented smokes status
-        if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED != 'true'
-        # The gating repo variable has never existed, so these steps skipped
-        # silently on every run — dead code that read as coverage (diligence
-        # 2026-06-10/11). Loud-but-not-red until the emulator lane is
-        # validated on macOS runners: set the ANDROID_E2E_ENABLED repo
-        # variable to 'true' to arm it deliberately.
-        run: echo "::warning title=Android E2E disabled::Android instrumented smokes are OFF (ANDROID_E2E_ENABLED repo variable unset). They have never run in CI."
-
-      - name: Android instrumented smoke (optional)
-        if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED == 'true'
-        run: ./scripts/e2e/android-iroh-chat.sh
-
-      - name: Android Mercury call instrumented smoke (optional)
-        if: env.HAS_ANDROID_SECRETS == 'true' && vars.ANDROID_E2E_ENABLED == 'true'
-        run: ./scripts/e2e/android-mercury-call.sh
+      # Android instrumented E2E is an HONEST, EXPLICIT GAP, not coverage.
+      # The previous ANDROID_E2E_ENABLED-gated steps were dead code: the repo
+      # variable never existed, so the smokes skipped silently on every run
+      # while reading as coverage (diligence 2026-06-10/11; tech-debt H9). The
+      # dead steps and their unset var are deleted here so the gap is visible.
+      # The scripts still exist (scripts/e2e/android-iroh-chat.sh,
+      # android-mercury-call.sh); arming them needs a validated emulator lane on
+      # macOS runners (boot + budget) — tracked as a follow-up, not silently
+      # gated behind an unset variable.
+      - name: Android instrumented E2E gap (explicit)
+        if: env.HAS_ANDROID_SECRETS == 'true'
+        run: echo "::warning title=Android instrumented E2E not run::Android instrumented smokes are an explicit gap in this lane — they have never run in CI. Arming them requires a validated macOS emulator lane (see scripts/e2e/android-*.sh)."
 
   # ── Privileged-socket red-team gate (P0-6) ──────────────────────────────
   # Boots the real virtual-HID bridge as root on a live socket and proves an
@@ -116,7 +112,11 @@ jobs:
           target: 'https://burnbar.ai'
           rules_file_name: '.github/zap-rules.tsv'
           cmd_options: '-a -j'
-          fail_action: false
+          # fail_action ON: the curated .github/zap-rules.tsv triages expected
+          # findings to IGNORE/WARN so a real new alert fails the lane instead
+          # of being silently buried (tech-debt H9). Same rules file the
+          # ops-confidence website scan already fails on.
+          fail_action: true
           artifact_name: 'zap-website-report'
 
   dast-functions:
@@ -143,8 +143,14 @@ jobs:
         with:
           target: 'functions/openapi.yaml'
           format: openapi
+          rules_file_name: '.github/zap-rules.tsv'
           cmd_options: '-a -j'
-          fail_action: false
+          # fail_action ON with the same curated rules file: expected Firebase
+          # Functions findings (CORS, missing CSP on APIs, etc.) are triaged to
+          # IGNORE/WARN, so a genuine new API alert fails the lane (tech-debt
+          # H9). If the emulator never serves the spec the scan errors loudly
+          # rather than passing blind.
+          fail_action: true
           artifact_name: 'zap-functions-report'
 
   commercial-launch-gate:
@@ -176,73 +182,32 @@ jobs:
     needs: [prod-health-synthetic, nightly-tests, privileged-socket-redteam, dast-website, dast-functions, commercial-launch-gate]
     if: always() && contains(needs.*.result, 'failure')
     steps:
-      - name: Open nightly failure issue
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - name: Record nightly failure (per-lane dedupe; comment, never silent-skip)
+        uses: ./.github/actions/ops-failure-issue
         with:
-          script: |
-            const title = `Nightly E2E launch gate failed (${context.runId})`;
-            const results = ${{ toJSON(needs) }};
-            const body = [
-              'The scheduled OpenBurnBar E2E/DAST/health launch gate failed.',
-              '',
-              `Workflow: ${context.workflow}`,
-              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              '',
-              'Job results:',
-              '```json',
-              JSON.stringify(results, null, 2),
-              '```'
-            ].join('\n');
-            const existing = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'P0 - Critical,area: infra',
-              per_page: 20,
-            });
-            if (!existing.data.some((issue) => issue.title.startsWith('Nightly E2E launch gate failed'))) {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels: ['P0 - Critical', 'area: infra'],
-              });
-            }
+          mode: open
+          lane: nightly-e2e
+          title-prefix: Nightly E2E launch gate failed
+          summary: The scheduled OpenBurnBar E2E/DAST/health launch gate failed.
+          details: |
+            Job results:
+            ```json
+            ${{ toJSON(needs) }}
+            ```
 
   close-resolved-issue:
     runs-on: ubuntu-latest
     needs: [prod-health-synthetic, nightly-tests, privileged-socket-redteam, dast-website, dast-functions, commercial-launch-gate]
-    # Close-on-green: the failure-issue job dedupes on an open issue with the
-    # same title prefix, so a STALE open issue would silently suppress alerts
-    # for future, distinct failures (diligence 2026-06-11). A fully green run
-    # closes the standing issue and re-arms the alarm.
+    # Close-on-green re-arms the alarm: the shared action dedupes on a per-lane
+    # `lane:nightly-e2e` label (not a title prefix shared across workflows), so a
+    # STALE open issue from another lane can never suppress this lane's alerts.
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     steps:
-      - name: Close resolved failure issues
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - name: Close resolved nightly failure issue
+        uses: ./.github/actions/ops-failure-issue
         with:
-          script: |
-            const prefix = 'Nightly E2E launch gate failed';
-            const open = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'P0 - Critical,area: infra',
-              per_page: 50,
-            });
-            for (const issue of open.data) {
-              if (!issue.title.startsWith(prefix)) continue;
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                body: `Resolved by green run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              });
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                state: 'closed',
-              });
-            }
+          mode: close
+          lane: nightly-e2e
+          title-prefix: Nightly E2E launch gate failed
