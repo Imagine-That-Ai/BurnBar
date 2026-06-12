@@ -117,6 +117,13 @@ android {
                 .get()
         manifestPlaceholders["sentryDsn"] = sentryDsn
         manifestPlaceholders["sentryEnvironment"] = if (sentryDsn.isNotEmpty()) "production" else "development"
+
+        ndk {
+            // Android 16 KB page-size devices are 64-bit-first. Keep the APK's
+            // native surface on the modern Play-supported ABIs and avoid
+            // bundling stale 32-bit JNI slices from transitive AARs.
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     buildTypes {
@@ -156,6 +163,10 @@ android {
                     "META-INF/NOTICE",
                     "META-INF/NOTICE.md"
                 )
+            // org.signal:libsignal-android carries host-side macOS dylibs as
+            // Java resources. Android cannot load Mach-O dylibs, and shipping
+            // them bloats the APK with non-runtime/test native artifacts.
+            excludes += setOf("*.dylib", "**/*.dylib")
         }
         jniLibs {
             // Vendor/openburnbar-iroh.aar ships the same cdylib under two names per ABI;
@@ -163,6 +174,10 @@ android {
             // System.loadLibrary), so drop the byte-identical libuniffi_ duplicate
             // (~41.6MB across the four ABIs in a fat APK).
             excludes += "**/libuniffi_openburnbar_iroh.so"
+            // Signal's AAR includes this optional JNI testing companion. The
+            // production app does not call testing APIs, and Signal documents
+            // this file as safe to exclude when those APIs are unused.
+            excludes += "**/libsignal_jni_testing.so"
         }
     }
 

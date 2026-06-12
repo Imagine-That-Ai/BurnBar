@@ -40,10 +40,10 @@ jobs:
           # The release preflight's provenance gate requires corresponding-source
           # files inside Vendor/libsignal (a submodule). Without this, every tag
           # deploy fails on "Vendor/libsignal/LICENSE missing" — the wedge that
-          # blocked v1.0.2 (diligence 2026-06-11 NB-2). release.yml inits the
-          # same submodule at its own build step; this keeps the two lanes
-          # consistent.
-          submodules: true
+          # blocked v1.0.2 (diligence 2026-06-11 NB-2 / C8). release.yml and
+          # license-posture.yml init the same submodule recursively; this keeps
+          # all provenance lanes consistent.
+          submodules: recursive
 
       - name: Resolve release tag
         id: tag
@@ -58,6 +58,14 @@ jobs:
             exit 1
           fi
           git checkout "$TAG"
+          # C8: checkout-time `submodules: recursive` initializes submodules at
+          # the dispatch ref's gitlink. After `git checkout "$TAG"` the gitlink
+          # points at the tag's pinned SHA, but the working tree still holds the
+          # dispatch ref's submodule contents — so the provenance preflight reads
+          # Vendor/libsignal at the wrong commit (or empty). Re-sync the working
+          # tree to the tag's gitlink so the manifest's Vendor/libsignal files
+          # resolve to the released commit.
+          git submodule update --init --recursive
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "dry_run=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}" >> "$GITHUB_OUTPUT"
 
@@ -117,6 +125,12 @@ jobs:
           FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}
           OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}
           OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
+          # H13: Sentry ingest DSN for the functions project. DSNs are
+          # low-sensitivity (write-only ingest endpoints, not credentials), but
+          # are not public product IDs, so the value lives in an Actions secret
+          # rather than the committed .env.burnbar.production. SENTRY_ENVIRONMENT
+          # is the committed static "production" value from the prod config.
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN_FUNCTIONS }}
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           ENV_FILE="functions/.env.burnbar"
@@ -131,13 +145,26 @@ jobs:
             exit 1
           fi
 
+          # H13: Sentry must be provisioned for production functions, or the
+          # crash-reporting surface ships dark. Fail closed at deploy time (not
+          # just at the post-deploy health gate) so a missing/cleared DSN secret
+          # is caught before traffic shifts.
+          if [[ -z "${SENTRY_DSN:-}" ]]; then
+            echo "::error::Missing SENTRY_DSN — refusing to deploy production functions with crash reporting disabled. Set the SENTRY_DSN_FUNCTIONS Actions secret (production environment)."
+            exit 1
+          fi
+
           # Per-deploy dynamic values are not committed; append them on top of
-          # the reviewed static config.
+          # the reviewed static config. SENTRY_DSN is an Actions secret (not
+          # committed). SENTRY_ENVIRONMENT is provisioned through the same env
+          # writer so functions/src/sentry.ts tags production events correctly.
           {
             cat "$PROD_CONFIG"
             echo ""
             echo "FUNCTION_VERSION=${TAG}"
             echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
+            echo "SENTRY_DSN=${SENTRY_DSN}"
+            echo "SENTRY_ENVIRONMENT=production"
           } > "$ENV_FILE"
           export FUNCTION_VERSION="$TAG"
 
@@ -164,6 +191,12 @@ jobs:
           FUNCTIONS_REGION: us-central1
           DEPLOY_HEALTH_JSON: deploy-health.json
           DEPLOY_TAG: ${{ steps.tag.outputs.tag }}
+          # H13: on a real production deploy (not a dry run), the runtime config
+          # the deploy step wrote MUST enable Sentry, or crash reporting ships
+          # dark. The gate fails closed when this is 1; dry runs leave it 0 so
+          # the no-deploy lane is not permanently red.
+          HEALTH_GATE_REQUIRE_SENTRY: ${{ steps.tag.outputs.dry_run == 'true' && '0' || '1' }}
+          FUNCTIONS_RUNTIME_ENV_FILE: functions/.env.burnbar
         run: |
           # shellcheck source=scripts/ops/resolve-functions-base-url.sh
           source scripts/ops/resolve-functions-base-url.sh
