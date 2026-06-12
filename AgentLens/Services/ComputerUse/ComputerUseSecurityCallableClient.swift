@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
@@ -27,12 +28,22 @@ enum ComputerUseSecurityCallableClient {
         Functions.functions(region: "us-central1")
     }
 
+    private static var signedInUser: User? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser
+    }
+
+    private static func requireSignedInUser() throws -> User {
+        guard let user = signedInUser, user.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        return user
+    }
+
     /// Binds the signed-in user's Auth custom claims to the current App Check app id.
     /// Call after sign-in when cloud sync is enabled and before high-risk CU actions.
     static func bindAppCheckAttestation() async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
-            throw ClientError.notAuthenticated
-        }
+        _ = try requireSignedInUser()
         _ = try await functions.httpsCallable("bindAppCheckAttestation").call([:])
         try await refreshAuthClaimsAfterBind()
     }
@@ -40,9 +51,7 @@ enum ComputerUseSecurityCallableClient {
     /// Fetch a single-use, short-lived nonce to attach to a high-risk action,
     /// providing replay resistance on top of the 30-day attestation binding.
     static func issueHighRiskActionNonce() async throws -> String {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
-            throw ClientError.notAuthenticated
-        }
+        _ = try requireSignedInUser()
         let result = try await functions.httpsCallable("issueHighRiskActionNonce").call([:])
         guard let dict = result.data as? [String: Any], let nonce = dict["nonce"] as? String, !nonce.isEmpty else {
             throw ClientError.invalidResponse("Could not obtain a high-risk action nonce.")
@@ -59,9 +68,7 @@ enum ComputerUseSecurityCallableClient {
         publicKeyFingerprint: String? = nil,
         keyVersion: Int? = nil
     ) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
-            throw ClientError.notAuthenticated
-        }
+        _ = try requireSignedInUser()
         let nonce = try await issueHighRiskActionNonce()
         var payload: [String: Any] = [
             "deviceId": deviceId,
@@ -82,17 +89,13 @@ enum ComputerUseSecurityCallableClient {
 
     /// Forces an ID token refresh so `obb_app_check` custom claims propagate before high-risk callables.
     private static func refreshAuthClaimsAfterBind() async throws {
-        guard let user = Auth.auth().currentUser else {
-            throw ClientError.notAuthenticated
-        }
+        let user = try requireSignedInUser()
         _ = try await user.getIDTokenResult(forcingRefresh: true)
     }
 
     /// Elevates an escrow device to `trusted` via the server-only callable (Firestore rules block client writes).
     static func approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = nil) async throws {
-        guard let uid = Auth.auth().currentUser?.uid, Auth.auth().currentUser?.isAnonymous == false else {
-            throw ClientError.notAuthenticated
-        }
+        let uid = try requireSignedInUser().uid
         let resolvedApproverDeviceId = approverDeviceId?.isEmpty == false ? approverDeviceId! : deviceId
         let trustChain = try await buildTrustChainProof(
             uid: uid,
@@ -175,9 +178,7 @@ enum ComputerUseSecurityCallableClient {
 
     /// Revokes escrow device trust and active grants server-side.
     static func revokeEscrowDeviceTrust(deviceId: String) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
-            throw ClientError.notAuthenticated
-        }
+        _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
@@ -194,9 +195,7 @@ enum ComputerUseSecurityCallableClient {
         roleId: String = "host",
         publicKeyBase64: String
     ) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
-            throw ClientError.notAuthenticated
-        }
+        _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("publishIrohPairingPublicKey").call([
@@ -211,9 +210,7 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func publishIrohPairingRecord(deviceId: String, record: IrohPairingRecord) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
-            throw ClientError.notAuthenticated
-        }
+        _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         var payload: [String: Any] = [
@@ -236,9 +233,7 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func revokeIrohPairingRecord(deviceId: String, connectionId: String) async throws {
-        guard Auth.auth().currentUser?.isAnonymous == false else {
-            throw ClientError.notAuthenticated
-        }
+        _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeIrohPairingRecord").call([
