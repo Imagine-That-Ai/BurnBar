@@ -124,6 +124,21 @@ jobs:
       - name: Reject curl-pipe-shell installers
         run: scripts/ci/verify-no-remote-shell-installers.sh
 
+  signal-activation-parity:
+    name: Signal Activation Parity (fail-closed default)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+
+      # Enforces SECURITY.md's claim that all Signal at-rest levers stay at the fail-closed
+      # default (no production sealingScheme, empty gateway signal-version set, no committed RC
+      # flag flips). Previously this script ran in zero workflows, so the "enforced by CI" claim
+      # was untrue; this job makes it true.
+      - name: Verify no Signal lever is activated
+        run: scripts/ci/verify-signal-activation-parity.sh
+
   osv-scanner:
     name: OSV Scanner (open source vulnerabilities)
     runs-on: ubuntu-latest
