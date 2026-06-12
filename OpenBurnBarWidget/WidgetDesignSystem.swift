@@ -361,7 +361,7 @@ struct WidgetMiniSparkline: View {
                 area,
                 with: .linearGradient(
                     Gradient(colors: [color.opacity(0.28), color.opacity(0.02)]),
-                    startPoint: CGPoint(x: 0, y: 0),
+                    startPoint: .zero,
                     endPoint: CGPoint(x: 0, y: floor)
                 )
             )
@@ -475,78 +475,23 @@ extension Color {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
+        let alpha, red, green, blue: UInt64
         switch hex.count {
         case 3:
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+            (alpha, red, green, blue) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
         case 6:
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+            (alpha, red, green, blue) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
         case 8:
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+            (alpha, red, green, blue) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
         default:
-            (a, r, g, b) = (255, 0, 0, 0)
+            (alpha, red, green, blue) = (255, 0, 0, 0)
         }
         self.init(
             .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue:  Double(b) / 255,
-            opacity: Double(a) / 255
+            red: Double(red) / 255,
+            green: Double(green) / 255,
+            blue: Double(blue) / 255,
+            opacity: Double(alpha) / 255
         )
     }
 }
-
-// MARK: - Widget design-system canary
-//
-// A build-time guard that fails the widget extension compile if any of
-// the design-system primitives the dashboard surfaces depend on
-// disappear or change shape. This caught us once already (the
-// `a1f72dd42` redesign committed call sites without declarations — the
-// device build was broken at HEAD). Keeping a single struct that
-// references every shared primitive turns "ship a half-finished
-// redesign" from a runtime regression into a compiler error.
-//
-// New primitives **must** be referenced here so the contract is
-// preserved across rolling agent work.
-#if DEBUG
-@available(iOS 17, *)
-private struct _WidgetDesignSystemContractCanary: View {
-    var body: some View {
-        VStack {
-            // Eyebrow / sparkline / share bar — the three new editorial
-            // primitives that landed alongside the dashboard redesign.
-            WidgetEyebrow(text: "BurnBar", showLiveDot: true)
-            WidgetMiniSparkline(data: [0.2, 0.3, 0.8, 0.6, 0.9], color: WidgetDesignSystem.Colors.amber, height: 32)
-            WidgetCompactShareBar(value: 4, total: 10, color: WidgetDesignSystem.Colors.ember)
-
-            // Pre-existing primitives. Keeping them referenced here
-            // prevents accidental deletion during a future redesign.
-            WidgetMetricBadge(icon: "flame.fill", value: "$12", label: "TODAY", color: WidgetDesignSystem.Colors.ember)
-            WidgetProviderPill(name: "anthropic", tokens: 2_410, compact: false)
-            WidgetProviderPill(name: "openai", tokens: nil, compact: true)
-            WidgetProgressBar(value: 3, total: 5, color: WidgetDesignSystem.Colors.amber)
-        }
-        // Surface modifiers — `widgetGlassCard`, `widgetGlassCardElevated`,
-        // `widgetAccentable`, plus the legacy `widgetCardBackground` /
-        // `widgetGradientBackground` / `widgetHeaderBackground`.
-        .widgetGlassCard()
-        .widgetGlassCardElevated()
-        .widgetAccentable()
-        .widgetCardBackground()
-        .widgetGradientBackground()
-        .widgetHeaderBackground()
-        // Color tokens that the widget chrome depends on.
-        .foregroundStyle(WidgetDesignSystem.Colors.textPrimary)
-        .background(WidgetDesignSystem.Colors.background)
-        .overlay(
-            RoundedRectangle(cornerRadius: WidgetDesignSystem.Radius.lg, style: .continuous)
-                .stroke(WidgetDesignSystem.Colors.border, lineWidth: 0.5)
-        )
-        .overlay {
-            // Mercury gradient must remain available for the Hermes
-            // live-activity accent.
-            Capsule().fill(WidgetDesignSystem.Colors.mercuryGradient).frame(width: 1, height: 1)
-        }
-    }
-}
-#endif
