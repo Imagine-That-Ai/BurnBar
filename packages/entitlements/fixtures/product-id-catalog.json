@@ -1,0 +1,33 @@
+{
+  "description": "Canonical OpenBurnBar entitlement product-ID catalog. Byte-for-byte the compiled-in fallbacks of functions/src/config.ts and the SHIPPED App Store / Google Play SKUs. Any product-ID drift between this fixture, the catalog module, and functions/src/config.ts fails the contract test in src/index.test.ts.",
+  "apple": {
+    "hostedQuota": "com.openburnbar.hostedQuotaSync.cloud.monthly",
+    "proMonthly": "com.openburnbar.pro.monthly",
+    "proAnnual": "com.openburnbar.pro.annual",
+    "proMaxMonthly": "com.openburnbar.proMax.v2.monthly",
+    "proMaxAnnual": "com.openburnbar.proMax.annual",
+    "ultraMonthly": "com.openburnbar.ultra.monthly",
+    "ultraAnnual": "com.openburnbar.ultra.annual.v2"
+  },
+  "googlePlay": {
+    "proMonthly": "com.openburnbar.pro.monthly",
+    "proAnnual": "com.openburnbar.pro.annual",
+    "cloudProMonthly": "com.openburnbar.promax.v2.monthly",
+    "cloudProAnnual": "com.openburnbar.promax.annual",
+    "ultraMonthly": "com.openburnbar.ultra.monthly",
+    "ultraAnnual": "com.openburnbar.ultra.annual"
+  },
+  "cloudProAliases": [
+    "com.openburnbar.proMax.v2.monthly",
+    "com.openburnbar.proMax.annual",
+    "com.openburnbar.promax.v2.monthly",
+    "com.openburnbar.promax.annual",
+    "com.openburnbar.proMax.bundle.monthly"
+  ],
+  "entitlementDocIds": {
+    "pro": "burnbar_pro",
+    "proMax": "burnbar_pro_max",
+    "ultra": "burnbar_ultra",
+    "hostedQuotaSync": "hosted_quota_sync"
+  }
+}

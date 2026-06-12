@@ -10,6 +10,11 @@ import type { Firestore } from "firebase-admin/firestore";
 import { createHash, randomBytes } from "node:crypto";
 import Stripe from "stripe";
 
+import {
+  entitlementExpiryMillis as sharedEntitlementExpiryMillis,
+  isActiveEntitlement,
+  type EntitlementCatalog,
+} from "@openburnbar/entitlements";
 import { getConfig } from "../config.js";
 import { stripeWithResilience } from "../resilienceHelpers.js";
 import { storeCredential } from "../secrets.js";
@@ -780,58 +785,43 @@ export async function assertActiveBurnBarUltraEntitlement(uid: string): Promise<
   throw new HttpsError("permission-denied", "BurnBar Ultra is required for this capability.");
 }
 
-const BURNBAR_CLOUD_PRO_PRODUCT_ALIASES = new Set([
-  "com.openburnbar.proMax.v2.monthly",
-  "com.openburnbar.proMax.annual",
-  "com.openburnbar.promax.v2.monthly",
-  "com.openburnbar.promax.annual",
-  "com.openburnbar.proMax.bundle.monthly",
-]);
+/**
+ * Builds the {@link EntitlementCatalog} the shared predicate matches against from
+ * this backend's resolved config. The product IDs are env / remote-config overridable
+ * (see `functions/src/config.ts`), so the catalog is resolved per call rather than
+ * frozen at import; the shared package's `DEFAULT_ENTITLEMENT_CATALOG` carries the
+ * same compiled-in fallbacks for callers without overrides.
+ */
+function entitlementCatalogFromConfig(): EntitlementCatalog {
+  const cfg = getConfig();
+  return {
+    hostedQuotaProductID: cfg.hostedQuotaProductID,
+    burnBarProProductID: cfg.burnBarProProductID,
+    burnBarProAnnualProductID: cfg.burnBarProAnnualProductID,
+    burnBarProMaxProductID: cfg.burnBarProMaxProductID,
+    burnBarProMaxAnnualProductID: cfg.burnBarProMaxAnnualProductID,
+    burnBarUltraProductID: cfg.burnBarUltraProductID,
+    burnBarUltraAnnualProductID: cfg.burnBarUltraAnnualProductID,
+    googlePlaySubscriptionProductID: cfg.googlePlaySubscriptionProductID,
+    googlePlayCloudMonthlyProductID: cfg.googlePlayCloudMonthlyProductID,
+    googlePlayCloudAnnualProductID: cfg.googlePlayCloudAnnualProductID,
+    googlePlayCloudProMonthlyProductID: cfg.googlePlayCloudProMonthlyProductID,
+    googlePlayCloudProAnnualProductID: cfg.googlePlayCloudProAnnualProductID,
+    googlePlayUltraMonthlyProductID: cfg.googlePlayUltraMonthlyProductID,
+    googlePlayUltraAnnualProductID: cfg.googlePlayUltraAnnualProductID,
+  };
+}
 
 export function isActiveHostedQuotaEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  if (raw.productID !== getConfig().hostedQuotaProductID) return false;
-  const expiry = entitlementExpiryMillis(raw);
-  return Number.isFinite(expiry) && expiry > Date.now();
+  return isActiveEntitlement(raw, "hostedQuota", { catalog: entitlementCatalogFromConfig() });
 }
 
 export function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  const productID = typeof raw.productID === "string" ? raw.productID : "";
-  if (
-    productID !== getConfig().hostedQuotaProductID &&
-    productID !== getConfig().burnBarProProductID &&
-    productID !== getConfig().burnBarProAnnualProductID &&
-    productID !== getConfig().burnBarProMaxProductID &&
-    productID !== getConfig().burnBarProMaxAnnualProductID &&
-    productID !== getConfig().googlePlaySubscriptionProductID &&
-    productID !== getConfig().googlePlayCloudMonthlyProductID &&
-    productID !== getConfig().googlePlayCloudAnnualProductID &&
-    productID !== getConfig().googlePlayCloudProMonthlyProductID &&
-    productID !== getConfig().googlePlayCloudProAnnualProductID &&
-    !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
-  ) {
-    return false;
-  }
-  const expiry = entitlementExpiryMillis(raw);
-  return Number.isFinite(expiry) && expiry > Date.now();
+  return isActiveEntitlement(raw, "premium", { catalog: entitlementCatalogFromConfig() });
 }
 
 export function isActiveBurnBarCloudProEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  const productID = typeof raw.productID === "string" ? raw.productID : "";
-  const cfg = getConfig();
-  if (
-    productID !== cfg.burnBarProMaxProductID &&
-    productID !== cfg.burnBarProMaxAnnualProductID &&
-    productID !== cfg.googlePlayCloudProMonthlyProductID &&
-    productID !== cfg.googlePlayCloudProAnnualProductID &&
-    !BURNBAR_CLOUD_PRO_PRODUCT_ALIASES.has(productID)
-  ) {
-    return false;
-  }
-  const expiry = entitlementExpiryMillis(raw);
-  return Number.isFinite(expiry) && expiry > Date.now();
+  return isActiveEntitlement(raw, "cloudPro", { catalog: entitlementCatalogFromConfig() });
 }
 
 /**
@@ -840,34 +830,18 @@ export function isActiveBurnBarCloudProEntitlement(raw: Record<string, unknown> 
  * different doc path). Accepts Apple + Google Play Ultra product ids.
  */
 export function isActiveBurnBarUltraEntitlement(raw: Record<string, unknown> | undefined): boolean {
-  if (!raw || raw.active !== true) return false;
-  const productID = typeof raw.productID === "string" ? raw.productID : "";
-  const cfg = getConfig();
-  if (
-    productID !== cfg.burnBarUltraProductID &&
-    productID !== cfg.burnBarUltraAnnualProductID &&
-    productID !== cfg.googlePlayUltraMonthlyProductID &&
-    productID !== cfg.googlePlayUltraAnnualProductID
-  ) {
-    return false;
-  }
-  const expiry = entitlementExpiryMillis(raw);
-  return Number.isFinite(expiry) && expiry > Date.now();
+  return isActiveEntitlement(raw, "ultra", { catalog: entitlementCatalogFromConfig() });
 }
 
+/**
+ * Resolves an entitlement document's expiry in epoch millis. Delegates to the shared
+ * @openburnbar/entitlements math; the one behavior difference preserved here is the
+ * legacy `0` sentinel (rather than the package's `NaN`) for an unparseable/missing
+ * expiry, since existing callers branch on `Number.isFinite(expiry) && expiry > now`.
+ */
 export function entitlementExpiryMillis(raw: Record<string, unknown>): number {
-  const expireAt = raw.expireAt;
-  if (expireAt instanceof Timestamp) {
-    return expireAt.toMillis();
-  }
-  if (isTimestampWithToMillis(expireAt)) {
-    return expireAt.toMillis();
-  }
-  if (raw.expiresAt) {
-    const parsed = Date.parse(String(raw.expiresAt));
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
+  const millis = sharedEntitlementExpiryMillis(raw);
+  return Number.isFinite(millis) ? millis : 0;
 }
 
 export function burnBarProFeatures(): Record<string, boolean> {
