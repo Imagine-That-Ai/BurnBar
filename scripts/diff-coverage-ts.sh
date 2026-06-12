@@ -19,12 +19,18 @@ if [[ -z "$changed" ]]; then
 fi
 
 # Produce real coverage for whichever packages have changed production TS.
-# (|| true: the functions package sets global coverage thresholds that exit
-# non-zero — this gate consumes the per-line JSON, not the global verdict.)
+# Deps are installed here when absent: this gate runs in lanes (e.g. the
+# macOS App XCTest job) that never npm ci these packages themselves, and a
+# silent vitest no-op would fail closed as missing evidence.
+# (|| true on the runs: the functions package sets global coverage
+# thresholds that exit non-zero — this gate consumes the per-line JSON,
+# not the global verdict.)
 if echo "$changed" | grep -q '^extensions/openburnbar/'; then
+    [[ -d "$repo_root/extensions/openburnbar/node_modules" ]] || npm ci --prefix "$repo_root/extensions/openburnbar"
     npm --prefix "$repo_root/extensions/openburnbar" run test:unit -- --coverage 2>/dev/null || true
 fi
 if echo "$changed" | grep -q '^functions/'; then
+    [[ -d "$repo_root/functions/node_modules" ]] || npm ci --prefix "$repo_root/functions"
     npm --prefix "$repo_root/functions" run test:unit:coverage >/dev/null 2>&1 || true
 fi
 
