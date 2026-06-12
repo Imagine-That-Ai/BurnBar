@@ -9,9 +9,7 @@
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import type {
   Provider,
-  ProviderConnectionDoc,
   ProviderAccountDoc,
-  ProviderAccountSecretRefDoc,
   QuotaSnapshotDoc,
   QuotaRefreshResult,
   QuotaBucket,
@@ -41,7 +39,6 @@ import {
   parseProviderConnectionDoc,
   parseQuotaBucket,
   recordOrUndefined,
-  stripUndefinedRecord,
 } from "./guards.js";
 
 /** Schema version for quota snapshot documents. */

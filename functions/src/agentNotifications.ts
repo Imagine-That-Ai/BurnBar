@@ -15,7 +15,6 @@ import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const REGION = FUNCTIONS_REGION;
 const EVENT_COLLECTION = "agent_notification_events";
-const REPLY_COLLECTION = "agent_notification_replies";
 const DEVICE_COLLECTION = "devices";
 const ACTIVE_TTL_MS = 90_000;
 const GENERIC_PREVIEW = "OpenBurnBar has a new agent reply.";
