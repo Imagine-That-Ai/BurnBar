@@ -9,6 +9,8 @@ import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
+import com.openburnbar.data.computeruse.RelaySenderKeyPublishRequest
+import java.security.KeyPair
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Date
@@ -19,12 +21,13 @@ import org.json.JSONObject
 
 class HermesRelayException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
+private const val X963_PUBLIC_KEY_BYTE_COUNT = 65
+
 /**
  * Operation rawValues recognised by the Mac (`HermesRelayOperation` in
  * `OpenBurnBarCore/SharedModels/HermesConnectionTypes.swift`).
  */
 object HermesRelayOperationName {
-    internal const val VAL_65 = 65
     const val CHAT_COMPLETIONS = "chatCompletions"
     const val CLI_AGENT_CHAT = "cliAgentChat"
     const val CLI_AGENT_MODEL_CATALOG = "cliAgentModelCatalog"
@@ -127,7 +130,7 @@ class HermesRelayClient(
     fun isUsable(): Boolean {
         val uid = auth.currentUser?.uid ?: return false
         if (uid.isBlank()) return false
-        return runCatching { keyStore.clientPublicKeyX963().size == HermesRelayOperationName.VAL_65 }.getOrDefault(false)
+        return runCatching { keyStore.clientPublicKeyX963().size == X963_PUBLIC_KEY_BYTE_COUNT }.getOrDefault(false)
     }
 
     suspend fun listConnections(): List<HermesRelayConnectionDescriptor> {
@@ -231,35 +234,69 @@ class HermesRelayClient(
         val timeoutMillis: Long,
     )
 
+    private data class RelayEnvelopeContext(val uid: String, val requestId: String, val now: Long, val expiresAt: Long)
+
+    private data class RelaySenderIdentity(
+        val keyPair: KeyPair,
+        val publicKeyBase64: String,
+        val deviceId: String,
+        val peerNodeId: String,
+        val keyId: String,
+    )
+
+    private data class SealedRelayEnvelopePayload(
+        val keyData: ByteArray,
+        val payloadCiphertextB64: String,
+        val wrapped: HermesRelayCrypto.RelayKeyWrapV3Wire,
+    )
+
     private suspend fun sendEnvelope(request: RelayEnvelopeRequest): RelayRequestHandle {
-        val connection = request.connection
-        val operation = request.operation
-        val method = request.method
-        val path = request.path
-        val body = request.body
-        val sessionId = request.sessionId
-        val timeoutMillis = request.timeoutMillis
+        ensureRelayConnectionCompatible(request.connection)
+        val context = relayEnvelopeContext(request.timeoutMillis)
+        val plaintext = relayRequestPlaintext(request)
+        val sender = publishRelaySenderIdentity(context.uid, context.now)
+        val senderCounter = keyStore.nextAuthenticatedSenderCounter(request.connection.id, sender.keyId)
+        val sealedPayload = sealRelayPayload(context, request, plaintext, sender, senderCounter)
+        writeRelayEnvelope(context, request, sender, senderCounter, sealedPayload)
+        return RelayRequestHandle(
+            uid = context.uid,
+            requestId = context.requestId,
+            connectionId = request.connection.id,
+            keyData = sealedPayload.keyData,
+        )
+    }
+
+    private fun relayEnvelopeContext(timeoutMillis: Long): RelayEnvelopeContext {
         val uid =
             auth.currentUser?.uid
                 ?: throw HermesRelayException("Iroh relay requires a signed-in Firebase user.")
-        val requestId = "relay_${UUID.randomUUID().toString().lowercase()}"
         val now = System.currentTimeMillis()
-        val expiresAt = HermesRelayTimeouts.expiresAtMillis(now, timeoutMillis)
+        return RelayEnvelopeContext(
+            uid = uid,
+            requestId = "relay_${UUID.randomUUID().toString().lowercase()}",
+            now = now,
+            expiresAt = HermesRelayTimeouts.expiresAtMillis(now, timeoutMillis),
+        )
+    }
+
+    private fun ensureRelayConnectionCompatible(connection: HermesRelayConnectionDescriptor) {
         if (connection.relayEncryption != HermesRelayCrypto.ALGORITHM_V3 ||
             connection.relayKeyVersion != HermesRelayCrypto.KEY_VERSION_V3
         ) {
             throw HermesRelayException("Update OpenBurnBar on your Mac before using authenticated Android relay control.")
         }
+    }
 
-        val keyData = HermesRelayCrypto.generateSymmetricKey()
-        val bodyString = if (body.isNotEmpty()) String(body, Charsets.UTF_8) else null
-        val plaintext =
-            JSONObject().apply {
-                put("path", path)
-                sessionId?.let { put("sessionId", it) }
-                bodyString?.let { put("body", it) }
-            }.toString().toByteArray(Charsets.UTF_8)
+    private fun relayRequestPlaintext(request: RelayEnvelopeRequest): ByteArray {
+        val bodyString = if (request.body.isNotEmpty()) String(request.body, Charsets.UTF_8) else null
+        return JSONObject().apply {
+            put("path", request.path)
+            request.sessionId?.let { put("sessionId", it) }
+            bodyString?.let { put("body", it) }
+        }.toString().toByteArray(Charsets.UTF_8)
+    }
 
+    private suspend fun publishRelaySenderIdentity(uid: String, now: Long): RelaySenderIdentity {
         val senderKeyPair = keyStore.loadOrCreateClientKeyPair()
         val senderPublicKeyX963 = keyStore.clientPublicKeyX963()
         val senderPublicKeyBase64 = Base64.encodeToString(senderPublicKeyX963, Base64.NO_WRAP)
@@ -275,74 +312,103 @@ class HermesRelayClient(
             firestore = firestore,
         )
         securityCallables.publishRelaySenderKey(
+            RelaySenderKeyPublishRequest(
+                deviceId = senderDeviceId,
+                peerNodeId = senderPeerNodeId,
+                keyId = keyId,
+                publicKeyBase64 = senderPublicKeyBase64,
+                relayKeyVersion = HermesRelayCrypto.KEY_VERSION_V3,
+                publishedAtMillis = now,
+                signalIdentityKeyId = signalIdentity.identityKeyId,
+                signalIdentityKeyVersion = signalIdentity.keyVersion,
+                signalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(signalIdentity.publicKeyData),
+            ),
+        )
+        return RelaySenderIdentity(
+            keyPair = senderKeyPair,
+            publicKeyBase64 = senderPublicKeyBase64,
             deviceId = senderDeviceId,
             peerNodeId = senderPeerNodeId,
             keyId = keyId,
-            publicKeyBase64 = senderPublicKeyBase64,
-            relayKeyVersion = HermesRelayCrypto.KEY_VERSION_V3,
-            publishedAtMillis = now,
-            signalIdentityKeyId = signalIdentity.identityKeyId,
-            signalIdentityKeyVersion = signalIdentity.keyVersion,
-            signalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(signalIdentity.publicKeyData),
         )
-        val senderCounter = keyStore.nextAuthenticatedSenderCounter(connection.id, keyId)
+    }
+
+    private fun sealRelayPayload(
+        context: RelayEnvelopeContext,
+        request: RelayEnvelopeRequest,
+        plaintext: ByteArray,
+        sender: RelaySenderIdentity,
+        senderCounter: Long,
+    ): SealedRelayEnvelopePayload {
         val requestAad =
             HermesRelayCrypto.authenticatedRequestAAD(
-                uid = uid,
-                connectionId = connection.id,
-                requestId = requestId,
-                operation = operation,
-                senderDeviceId = senderDeviceId,
-                senderPeerNodeId = senderPeerNodeId,
+                uid = context.uid,
+                connectionId = request.connection.id,
+                requestId = context.requestId,
+                operation = request.operation,
+                senderDeviceId = sender.deviceId,
+                senderPeerNodeId = sender.peerNodeId,
                 senderCounter = senderCounter,
-                keyId = keyId,
+                keyId = sender.keyId,
             )
         val keyAad =
             HermesRelayCrypto.authenticatedKeyAAD(
-                uid = uid,
-                connectionId = connection.id,
-                requestId = requestId,
-                operation = operation,
-                senderDeviceId = senderDeviceId,
-                senderPeerNodeId = senderPeerNodeId,
+                uid = context.uid,
+                connectionId = request.connection.id,
+                requestId = context.requestId,
+                operation = request.operation,
+                senderDeviceId = sender.deviceId,
+                senderPeerNodeId = sender.peerNodeId,
                 senderCounter = senderCounter,
-                keyId = keyId,
+                keyId = sender.keyId,
             )
-        val relayPubBytes = Base64.decode(connection.relayPublicKey, Base64.NO_WRAP)
+        val keyData = HermesRelayCrypto.generateSymmetricKey()
+        val relayPubBytes = Base64.decode(request.connection.relayPublicKey, Base64.NO_WRAP)
         val payloadCiphertextB64 = HermesRelayCrypto.sealToBase64(plaintext, keyData, requestAad)
-        val wrapped = HermesRelayCrypto.wrapSymmetricKeyV3(keyData, relayPubBytes, senderKeyPair.private, keyAad)
+        val wrapped = HermesRelayCrypto.wrapSymmetricKeyV3(keyData, relayPubBytes, sender.keyPair.private, keyAad)
+        return SealedRelayEnvelopePayload(
+            keyData = keyData,
+            payloadCiphertextB64 = payloadCiphertextB64,
+            wrapped = wrapped,
+        )
+    }
 
+    private suspend fun writeRelayEnvelope(
+        context: RelayEnvelopeContext,
+        request: RelayEnvelopeRequest,
+        sender: RelaySenderIdentity,
+        senderCounter: Long,
+        sealedPayload: SealedRelayEnvelopePayload,
+    ) {
         val envelope =
             mapOf(
-                "id" to requestId,
-                "connectionId" to connection.id,
-                "operation" to operation,
-                "method" to method.uppercase(),
+                "id" to context.requestId,
+                "connectionId" to request.connection.id,
+                "operation" to request.operation,
+                "method" to request.method.uppercase(),
                 "status" to "pending",
-                "payloadCiphertext" to payloadCiphertextB64,
-                "enc" to wrapped.enc,
-                "wrappedKey" to wrapped.wrappedKey,
+                "payloadCiphertext" to sealedPayload.payloadCiphertextB64,
+                "enc" to sealedPayload.wrapped.enc,
+                "wrappedKey" to sealedPayload.wrapped.wrappedKey,
                 "relayEncryption" to HermesRelayCrypto.ALGORITHM_V3,
                 "relayKeyVersion" to HermesRelayCrypto.KEY_VERSION_V3,
-                "senderPublicKey" to senderPublicKeyBase64,
-                "senderDeviceId" to senderDeviceId,
-                "senderPeerNodeId" to senderPeerNodeId,
+                "senderPublicKey" to sender.publicKeyBase64,
+                "senderDeviceId" to sender.deviceId,
+                "senderPeerNodeId" to sender.peerNodeId,
                 "senderCounter" to senderCounter,
-                "keyId" to keyId,
+                "keyId" to sender.keyId,
                 "chunkCount" to 0,
-                "createdAt" to ISO8601.format(Instant.ofEpochMilli(now)),
-                "updatedAt" to ISO8601.format(Instant.ofEpochMilli(now)),
-                "expiresAt" to ISO8601.format(Instant.ofEpochMilli(expiresAt)),
-                "expireAt" to Timestamp(Date(expiresAt)),
+                "createdAt" to ISO8601.format(Instant.ofEpochMilli(context.now)),
+                "updatedAt" to ISO8601.format(Instant.ofEpochMilli(context.now)),
+                "expiresAt" to ISO8601.format(Instant.ofEpochMilli(context.expiresAt)),
+                "expireAt" to Timestamp(Date(context.expiresAt)),
                 "schemaVersion" to 2,
             )
 
-        firestore.collection("users").document(uid)
-            .collection("hermes_relay_requests").document(requestId)
+        firestore.collection("users").document(context.uid)
+            .collection("hermes_relay_requests").document(context.requestId)
             .set(envelope)
             .await()
-
-        return RelayRequestHandle(uid = uid, requestId = requestId, connectionId = connection.id, keyData = keyData)
     }
 
     private fun relaySenderKeyId(publicKeyX963: ByteArray): String =

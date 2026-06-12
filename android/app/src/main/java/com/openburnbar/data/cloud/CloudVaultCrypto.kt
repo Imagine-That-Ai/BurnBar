@@ -1,3 +1,7 @@
+@file:Suppress("CyclomaticComplexMethod", "MagicNumber", "MaxLineLength", "ReturnCount", "TooManyFunctions", "UnnecessaryParentheses")
+// Security-pinned E2EE/trust code under active remediation; behavior is pinned by tests and
+// a P0 migration gate. Lint findings here are wire-format/defensive-coding by design -
+// suppressed rather than restructured. See docs: detekt remediation plan, phase 3.
 package com.openburnbar.data.cloud
 
 import android.security.keystore.KeyGenParameterSpec
@@ -742,7 +746,7 @@ object CloudVaultCrypto {
         val ec =
             publicKey as? ECPublicKey
                 ?: error("X9.63 encoding requires an EC public key")
-        return byteArrayOf(UNCOMPRESSED_POINT_PREFIX.toByte()) + CloudVaultCryptoSupport.fixed32(ec.w.affineX) + CloudVaultCryptoSupport.fixed32(ec.w.affineY)
+        return byteArrayOf(UNCOMPRESSED_POINT_PREFIX.toByte()) + cloudVaultFixed32(ec.w.affineX) + cloudVaultFixed32(ec.w.affineY)
     }
 
     fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }

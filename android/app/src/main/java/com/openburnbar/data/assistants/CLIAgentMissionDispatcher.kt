@@ -25,7 +25,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private const val VAL_3 = 3
+private const val MISSION_REQUEST_SCHEMA_VERSION = 3
 
 /** Data-domain id whose sealingScheme gates at-rest Signal sealing for CLI missions. */
 private const val SIGNAL_CLI_DOMAIN = "conversations_chat"
@@ -225,13 +225,7 @@ class CLIAgentMissionDispatcher(
             auth.currentUser?.uid
                 ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
         val trimmedPrompt = prompt.trim()
-        val validationMessage =
-            when {
-                runtimeTokens.size < 2 -> "Fan-out dispatch needs at least 2 runtimes."
-                trimmedPrompt.isBlank() -> "Mission prompt was empty."
-                else -> null
-            }
-        if (validationMessage != null) throw DispatchException(validationMessage)
+        validateFanOutDispatch(runtimeTokens, trimmedPrompt)
 
         val plan = planFanOutDispatch(title, prompt, runtimeTokens)
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
@@ -285,6 +279,16 @@ class CLIAgentMissionDispatcher(
         return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
     }
 
+    private fun validateFanOutDispatch(runtimeTokens: List<String>, trimmedPrompt: String) {
+        val validationMessage =
+            when {
+                runtimeTokens.size < 2 -> "Fan-out dispatch needs at least 2 runtimes."
+                trimmedPrompt.isBlank() -> "Mission prompt was empty."
+                else -> null
+            }
+        if (validationMessage != null) throw DispatchException(validationMessage)
+    }
+
     data class FanOutDispatchResult(
         val groupID: String,
         val childMissionIDs: List<String>,
@@ -317,27 +321,25 @@ class CLIAgentMissionDispatcher(
         val id = UUID.randomUUID().toString()
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
         val signalContext = resolveSignalContext(uid = uid, docId = id)
+        val payloadInput =
+            CLIMissionPayloadInput(
+                core = CLIMissionPayloadCore(id = id, title = title, prompt = trimmedPrompt, missionKind = missionKind),
+                execution = CLIMissionPayloadExecution(requestedRuntime, targetProject, depth, approvalMode, requestedModelID),
+                permissions = CLIMissionPayloadPermissions(commandsAllowed, fileEditsAllowed),
+                metadata =
+                    CLIMissionPayloadMetadata(
+                        clientThreadID,
+                        parentSessionID,
+                        resumeAction,
+                        sourceSkillID,
+                        sourceSurface,
+                        parentHermesThreadID,
+                    ),
+                experience = CLIMissionPayloadExperience(deliveryMode, presentationMode),
+            )
         val payload =
             CLIAgentMissionRequestPayloadFactory.buildSealed(
-                id = id,
-                title = title,
-                prompt = trimmedPrompt,
-                missionKind = missionKind,
-                requestedRuntime = requestedRuntime,
-                targetProject = targetProject,
-                depth = depth,
-                approvalMode = approvalMode,
-                commandsAllowed = commandsAllowed,
-                fileEditsAllowed = fileEditsAllowed,
-                requestedModelID = requestedModelID,
-                clientThreadID = clientThreadID,
-                parentSessionID = parentSessionID,
-                resumeAction = resumeAction,
-                sourceSkillID = sourceSkillID,
-                sourceSurface = sourceSurface,
-                deliveryMode = deliveryMode,
-                parentHermesThreadID = parentHermesThreadID,
-                presentationMode = presentationMode,
+                input = payloadInput,
                 key = resolvedKey,
                 signal = signalContext,
             )
@@ -562,63 +564,72 @@ data class AgentImportJobSnapshot(
         get() = status == "completed" || status == "failed"
 }
 
+internal typealias CLIMissionPayloadInput = CLIAgentMissionRequestPayloadFactory.PayloadInput
+internal typealias CLIMissionPayloadCore = CLIAgentMissionRequestPayloadFactory.Core
+internal typealias CLIMissionPayloadExecution = CLIAgentMissionRequestPayloadFactory.Execution
+internal typealias CLIMissionPayloadPermissions = CLIAgentMissionRequestPayloadFactory.Permissions
+internal typealias CLIMissionPayloadMetadata = CLIAgentMissionRequestPayloadFactory.Metadata
+internal typealias CLIMissionPayloadExperience = CLIAgentMissionRequestPayloadFactory.Experience
+
 object CLIAgentMissionRequestPayloadFactory {
-    @Suppress("LongParameterList")
+    data class Core(
+        val id: String,
+        val title: String,
+        val prompt: String,
+        val missionKind: String,
+    )
+
+    data class Execution(
+        val requestedRuntime: String,
+        val targetProject: String?,
+        val depth: String,
+        val approvalMode: String,
+        val requestedModelID: String? = null,
+    )
+
+    data class Permissions(
+        val commandsAllowed: Boolean,
+        val fileEditsAllowed: Boolean,
+    )
+
+    data class Metadata(
+        val clientThreadID: String? = null,
+        val parentSessionID: String? = null,
+        val resumeAction: String? = null,
+        val sourceSkillID: String? = null,
+        val sourceSurface: String? = null,
+        val parentHermesThreadID: String? = null,
+    )
+
+    data class Experience(
+        val deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
+        val presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+    )
+
+    data class PayloadInput(
+        val core: Core,
+        val execution: Execution,
+        val permissions: Permissions,
+        val metadata: Metadata = Metadata(),
+        val experience: Experience = Experience(),
+        val now: Instant = Instant.now(),
+    )
+
     fun buildSealed(
-        id: String,
-        title: String,
-        prompt: String,
-        missionKind: String,
-        requestedRuntime: String,
-        targetProject: String?,
-        depth: String,
-        approvalMode: String,
-        commandsAllowed: Boolean,
-        fileEditsAllowed: Boolean,
-        requestedModelID: String? = null,
-        clientThreadID: String? = null,
-        parentSessionID: String? = null,
-        resumeAction: String? = null,
-        sourceSkillID: String? = null,
-        sourceSurface: String? = null,
-        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
-        parentHermesThreadID: String? = null,
-        presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+        input: PayloadInput,
         key: AndroidCloudVaultResolvedKey,
-        now: Instant = Instant.now(),
         signal: CLISignalSealContext? = null,
     ): Map<String, Any> {
-        val legacy =
-            build(
-                id = id,
-                title = title,
-                prompt = prompt,
-                missionKind = missionKind,
-                requestedRuntime = requestedRuntime,
-                targetProject = targetProject,
-                depth = depth,
-                approvalMode = approvalMode,
-                commandsAllowed = commandsAllowed,
-                fileEditsAllowed = fileEditsAllowed,
-                requestedModelID = requestedModelID,
-                clientThreadID = clientThreadID,
-                parentSessionID = parentSessionID,
-                resumeAction = resumeAction,
-                sourceSkillID = sourceSkillID,
-                sourceSurface = sourceSurface,
-                deliveryMode = deliveryMode,
-                parentHermesThreadID = parentHermesThreadID,
-                presentationMode = presentationMode,
-                now = now,
-            )
-        val isChat = missionKind.trim().equals("chat", ignoreCase = true)
+        val legacy = build(input)
+        val core = input.core
+        val isChat = core.missionKind.trim().equals("chat", ignoreCase = true)
         return applySealedPrivatePayload(
             payload = legacy,
             privatePayload =
                 AndroidMissionPrivatePayload(
-                    title = title.trim().ifBlank { if (isChat) "New chat" else "Insights mission" },
-                    prompt = prompt.trim(),
-                    targetProject = targetProject?.trim()?.takeIf { it.isNotEmpty() },
+                    title = core.title.trim().ifBlank { if (isChat) "New chat" else "Insights mission" },
+                    prompt = core.prompt.trim(),
+                    targetProject = input.execution.targetProject?.trim()?.takeIf { it.isNotEmpty() },
                     liveSummary =
                         if (isChat) {
                             "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it."
@@ -649,47 +660,30 @@ object CLIAgentMissionRequestPayloadFactory {
             key = key,
         )
 
-    @Suppress("LongParameterList")
-    fun build(
-        id: String,
-        title: String,
-        prompt: String,
-        missionKind: String,
-        requestedRuntime: String,
-        targetProject: String?,
-        depth: String,
-        approvalMode: String,
-        commandsAllowed: Boolean,
-        fileEditsAllowed: Boolean,
-        requestedModelID: String? = null,
-        clientThreadID: String? = null,
-        parentSessionID: String? = null,
-        resumeAction: String? = null,
-        sourceSkillID: String? = null,
-        sourceSurface: String? = null,
-        deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
-        parentHermesThreadID: String? = null,
-        presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
-        now: Instant = Instant.now(),
-    ): Map<String, Any> {
-        val isChat = missionKind.trim().equals("chat", ignoreCase = true)
+    fun build(input: PayloadInput): Map<String, Any> {
+        val core = input.core
+        val execution = input.execution
+        val permissions = input.permissions
+        val metadata = input.metadata
+        val experience = input.experience
+        val isChat = core.missionKind.trim().equals("chat", ignoreCase = true)
         val baseSource = if (isChat) "android-chat" else "android-insights"
         return buildMap {
-            put("id", id)
-            put("title", title.trim().ifBlank { if (isChat) "New chat" else "Insights mission" })
-            put("prompt", prompt.trim())
-            put("missionKind", missionKind)
-            put("requestedRuntime", requestedRuntime)
-            requestedModelID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("requestedModelID", it) }
-            put("targetProject", targetProject.orEmpty().trim())
-            put("depth", depth)
-            put("approvalMode", approvalMode)
-            put("commandsAllowed", commandsAllowed)
-            put("fileEditsAllowed", fileEditsAllowed)
+            put("id", core.id)
+            put("title", core.title.trim().ifBlank { if (isChat) "New chat" else "Insights mission" })
+            put("prompt", core.prompt.trim())
+            put("missionKind", core.missionKind)
+            put("requestedRuntime", execution.requestedRuntime)
+            execution.requestedModelID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("requestedModelID", it) }
+            put("targetProject", execution.targetProject.orEmpty().trim())
+            put("depth", execution.depth)
+            put("approvalMode", execution.approvalMode)
+            put("commandsAllowed", permissions.commandsAllowed)
+            put("fileEditsAllowed", permissions.fileEditsAllowed)
             put("source", baseSource)
-            put("sourceSurface", sourceSurface?.trim()?.takeIf { it.isNotEmpty() } ?: baseSource)
-            put("deliveryMode", deliveryMode.wire)
-            put("presentationMode", presentationMode.wire)
+            put("sourceSurface", metadata.sourceSurface?.trim()?.takeIf { it.isNotEmpty() } ?: baseSource)
+            put("deliveryMode", experience.deliveryMode.wire)
+            put("presentationMode", experience.presentationMode.wire)
             put("status", "pending")
             put(
                 "liveSummary",
@@ -699,14 +693,14 @@ object CLIAgentMissionRequestPayloadFactory {
                     "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it."
                 },
             )
-            put("createdAt", now.toString())
+            put("createdAt", input.now.toString())
             put("updatedAt", FieldValue.serverTimestamp())
-            put("schemaVersion", VAL_3)
-            sourceSkillID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("sourceSkillID", it) }
-            clientThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("clientThreadID", it) }
-            parentHermesThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentHermesThreadID", it) }
-            parentSessionID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentSessionID", it) }
-            resumeAction?.trim()?.takeIf { it.isNotEmpty() }?.let { put("resumeAction", it) }
+            put("schemaVersion", MISSION_REQUEST_SCHEMA_VERSION)
+            metadata.sourceSkillID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("sourceSkillID", it) }
+            metadata.clientThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("clientThreadID", it) }
+            metadata.parentHermesThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentHermesThreadID", it) }
+            metadata.parentSessionID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentSessionID", it) }
+            metadata.resumeAction?.trim()?.takeIf { it.isNotEmpty() }?.let { put("resumeAction", it) }
         }
     }
 
@@ -799,13 +793,15 @@ object CLIAgentMissionRequestPayloadFactory {
             // seal above). Gated: signalEnvelopeMapIfEnabled returns null when the domain
             // gate is off, so this is inert in production until the flip.
             AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
-                domainID = SIGNAL_CLI_DOMAIN,
-                uid = signal.uid,
-                collection = signal.collection,
-                docId = signal.docId,
-                plaintext = missionCloudJson.encodeToString(privatePayload).toByteArray(Charsets.UTF_8),
-                localIdentity = signal.localIdentity,
-                otherRecipients = signal.otherRecipients,
+                AndroidCloudVaultSignalPayloads.SignalEnvelopeMapRequest(
+                    domainID = SIGNAL_CLI_DOMAIN,
+                    uid = signal.uid,
+                    collection = signal.collection,
+                    docId = signal.docId,
+                    plaintext = missionCloudJson.encodeToString(privatePayload).toByteArray(Charsets.UTF_8),
+                    localIdentity = signal.localIdentity,
+                    otherRecipients = signal.otherRecipients,
+                ),
             )?.let { sealed["signalEnvelope"] = it }
         }
         return sealed
@@ -961,18 +957,11 @@ private fun DocumentSnapshot.toMissionSnapshot(
     val missionDocId = getString("id") ?: fallbackID
     // Signal-first open of the request private payload (item 3), legacy AES-GCM fallback on
     // any failure (gate off / identity unavailable / malformed / relocated) — matches iOS.
-    val requestPrivate =
-        openSignalMissionPayload(uid, missionDocId, signalIdentity)
-            ?: openMissionPayload(get("sealedPayload"), vaultKey)
+    val requestPrivate = requestPrivatePayload(uid, missionDocId, signalIdentity, vaultKey)
     val statePrivate = openMissionPayload(get("sealedStatePayload"), vaultKey)
-    val title = requestPrivate?.title ?: getString("title") ?: return null
+    val title = missionSnapshotTitle(requestPrivate) ?: return null
     val status = getString("status") ?: return null
-    val rawEvents = get("events") as? List<*> ?: emptyList<Any>()
-    val events =
-        eventOverride ?: rawEvents.mapNotNull { raw ->
-            val map = raw as? Map<*, *> ?: return@mapNotNull null
-            map.toMissionEvent(vaultKey)
-        }
+    val events = eventOverride ?: missionSnapshotEvents(vaultKey)
     return CLIAgentMissionSnapshot(
         id = getString("id") ?: fallbackID,
         title = title,
@@ -982,22 +971,58 @@ private fun DocumentSnapshot.toMissionSnapshot(
         selectedRuntime = getString("selectedRuntime"),
         selectedRuntimeName = getString("selectedRuntimeName"),
         selectedModelID = getString("selectedModelID")?.trim()?.takeIf { it.isNotEmpty() },
-        targetProject = (requestPrivate?.targetProject ?: getString("targetProject"))?.trim()?.takeIf { it.isNotEmpty() },
+        targetProject = missionSnapshotTargetProject(requestPrivate),
         sourceSkillID = getString("sourceSkillID")?.trim()?.takeIf { it.isNotEmpty() },
         sourceSurface = getString("sourceSurface")?.trim()?.takeIf { it.isNotEmpty() },
         deliveryMode = SkillRunDeliveryMode.fromWire(getString("deliveryMode")),
         parentHermesThreadID = getString("parentHermesThreadID")?.trim()?.takeIf { it.isNotEmpty() },
-        liveSummary = statePrivate?.liveSummary ?: requestPrivate?.liveSummary ?: getString("liveSummary"),
-        resultPreview = statePrivate?.resultPreview ?: requestPrivate?.resultPreview ?: getString("resultPreview"),
-        errorMessage = statePrivate?.errorMessage ?: requestPrivate?.errorMessage ?: getString("errorMessage"),
+        liveSummary = missionSnapshotText(statePrivate, requestPrivate, "liveSummary"),
+        resultPreview = missionSnapshotText(statePrivate, requestPrivate, "resultPreview"),
+        errorMessage = missionSnapshotText(statePrivate, requestPrivate, "errorMessage"),
         sessionID = getString("sessionId"),
         approvalRequestId = getString("approvalRequestId"),
         approvalStatus = getString("approvalStatus"),
-        approvalTitle = statePrivate?.approvalTitle ?: requestPrivate?.approvalTitle ?: getString("approvalTitle"),
-        approvalMessage = statePrivate?.approvalMessage ?: requestPrivate?.approvalMessage ?: getString("approvalMessage"),
+        approvalTitle = missionSnapshotText(statePrivate, requestPrivate, "approvalTitle"),
+        approvalMessage = missionSnapshotText(statePrivate, requestPrivate, "approvalMessage"),
         events = events.sortedWith(compareBy<CLIAgentMissionEvent> { it.sequence }.thenBy { it.timestamp }),
         createdAt = getString("createdAt")?.let { runCatching { Instant.parse(it) }.getOrNull() },
     )
+}
+
+private fun DocumentSnapshot.requestPrivatePayload(
+    uid: String?,
+    missionDocId: String,
+    signalIdentity: AndroidSignalIdentityKeypair?,
+    vaultKey: ByteArray?,
+): AndroidMissionPrivatePayload? =
+    openSignalMissionPayload(uid, missionDocId, signalIdentity)
+        ?: openMissionPayload(get("sealedPayload"), vaultKey)
+
+private fun DocumentSnapshot.missionSnapshotTitle(requestPrivate: AndroidMissionPrivatePayload?): String? =
+    requestPrivate?.title ?: getString("title")
+
+private fun DocumentSnapshot.missionSnapshotEvents(vaultKey: ByteArray?): List<CLIAgentMissionEvent> {
+    val rawEvents = get("events") as? List<*> ?: emptyList<Any>()
+    return rawEvents.mapNotNull { raw ->
+        val map = raw as? Map<*, *> ?: return@mapNotNull null
+        map.toMissionEvent(vaultKey)
+    }
+}
+
+private fun DocumentSnapshot.missionSnapshotTargetProject(requestPrivate: AndroidMissionPrivatePayload?): String? =
+    (requestPrivate?.targetProject ?: getString("targetProject"))?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun DocumentSnapshot.missionSnapshotText(
+    statePrivate: AndroidMissionPrivatePayload?,
+    requestPrivate: AndroidMissionPrivatePayload?,
+    field: String,
+): String? = when (field) {
+    "liveSummary" -> statePrivate?.liveSummary ?: requestPrivate?.liveSummary ?: getString(field)
+    "resultPreview" -> statePrivate?.resultPreview ?: requestPrivate?.resultPreview ?: getString(field)
+    "errorMessage" -> statePrivate?.errorMessage ?: requestPrivate?.errorMessage ?: getString(field)
+    "approvalTitle" -> statePrivate?.approvalTitle ?: requestPrivate?.approvalTitle ?: getString(field)
+    "approvalMessage" -> statePrivate?.approvalMessage ?: requestPrivate?.approvalMessage ?: getString(field)
+    else -> getString(field)
 }
 
 private fun DocumentSnapshot.toMissionEvent(vaultKey: ByteArray? = null): CLIAgentMissionEvent? = data?.toMissionEvent(vaultKey)

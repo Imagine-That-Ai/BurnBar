@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -46,7 +45,9 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.components.AuroraNavDestination
 import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.HapticBus
+import com.openburnbar.ui.components.liquidGlassSurface
 import com.openburnbar.ui.theme.AuroraColors
+import com.openburnbar.ui.theme.AuroraShadowSpec
 
 internal val AuroraTrayPillHeight = 60.dp
 internal val AuroraTrayIconSize = 22.dp
@@ -101,53 +102,85 @@ internal fun AuroraTabItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Box {
-                AuroraNavIcon(
-                    destination = destination,
-                    size = AuroraTrayIconSize.value.toInt(),
-                    isSelected = isSelected,
-                    userDisplayName = userDisplayName,
-                    userPhotoUrl = userPhotoUrl,
-                )
-
-                Box(
-                    modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 6.dp, y = (-2).dp),
-                ) {
-                    AuroraTabCloudIndicator(cloudIndicator = cloudIndicator)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = destination.trayLabel,
-                color = if (isSelected) destination.accent else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 9.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
+            AuroraTabIconStack(
+                destination = destination,
+                isSelected = isSelected,
+                userDisplayName = userDisplayName,
+                userPhotoUrl = userPhotoUrl,
+                cloudIndicator = cloudIndicator,
             )
-
+            Spacer(modifier = Modifier.height(4.dp))
+            AuroraTabLabel(destination = destination, isSelected = isSelected)
             Spacer(modifier = Modifier.height(2.dp))
-
-            Box(
-                modifier =
-                Modifier
-                    .width(if (isSelected) 16.dp else 4.dp)
-                    .height(3.dp)
-                    .graphicsLayer {
-                        scaleX = dotScale
-                        alpha = dotAlpha
-                    }
-                    .clip(CircleShape)
-                    .background(destination.accent),
+            AuroraTabSelectionDot(
+                isSelected = isSelected,
+                accent = destination.accent,
+                dotScale = dotScale,
+                dotAlpha = dotAlpha,
             )
         }
     }
+}
+
+@Composable
+private fun AuroraTabIconStack(
+    destination: AuroraNavDestination,
+    isSelected: Boolean,
+    userDisplayName: String?,
+    userPhotoUrl: String?,
+    cloudIndicator: CloudIndicator,
+) {
+    Box {
+        AuroraNavIcon(
+            destination = destination,
+            size = AuroraTrayIconSize.value.toInt(),
+            isSelected = isSelected,
+            userDisplayName = userDisplayName,
+            userPhotoUrl = userPhotoUrl,
+        )
+        Box(
+            modifier =
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 6.dp, y = (-2).dp),
+        ) {
+            AuroraTabCloudIndicator(cloudIndicator = cloudIndicator)
+        }
+    }
+}
+
+@Composable
+private fun AuroraTabLabel(destination: AuroraNavDestination, isSelected: Boolean) {
+    Text(
+        text = destination.trayLabel,
+        color = if (isSelected) destination.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 9.sp,
+        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun AuroraTabSelectionDot(
+    isSelected: Boolean,
+    accent: Color,
+    dotScale: Float,
+    dotAlpha: Float,
+) {
+    Box(
+        modifier =
+        Modifier
+            .width(if (isSelected) 16.dp else 4.dp)
+            .height(3.dp)
+            .graphicsLayer {
+                scaleX = dotScale
+                alpha = dotAlpha
+            }
+            .clip(CircleShape)
+            .background(accent),
+    )
 }
 
 @Composable
@@ -183,26 +216,22 @@ private fun Modifier.auroraTrayPillChrome(isDark: Boolean): Modifier =
     composed {
         this
             .height(AuroraTrayPillHeight)
-            .clip(RoundedCornerShape(AuroraTrayPillHeight))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
-            .background(
+            .liquidGlassSurface(
+                shape = RoundedCornerShape(AuroraTrayPillHeight),
+                washBrush =
                 Brush.linearGradient(
-                colors =
-                listOf(
-                    AuroraColors.ember.copy(alpha = if (isDark) 0.07f else 0.04f),
-                    Color.Transparent,
-                    AuroraColors.amber.copy(alpha = if (isDark) 0.05f else 0.03f),
+                    colors =
+                    listOf(
+                        AuroraColors.ember.copy(alpha = if (isDark) 0.07f else 0.04f),
+                        Color.Transparent,
+                        AuroraColors.amber.copy(alpha = if (isDark) 0.05f else 0.03f),
+                    ),
+                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
                 ),
-                start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
-            ),
-        )
-        .shadow(
-            elevation = 10.dp,
-            shape = RoundedCornerShape(AuroraTrayPillHeight),
-            ambientColor = Color.Black.copy(alpha = 0.18f),
-            spotColor = Color.Black.copy(alpha = 0.18f),
-        )
+                shadow = AuroraShadowSpec(elevation = 10.dp, spotAlpha = 0.18f),
+                isDark = isDark,
+            )
     }
 
 private fun Modifier.auroraTrayPillDragGesture(

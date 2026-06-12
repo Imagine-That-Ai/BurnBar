@@ -9,7 +9,6 @@ import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.cloud.AndroidEscrowDeviceRegistry
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.util.Date

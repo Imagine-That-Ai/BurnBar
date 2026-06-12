@@ -290,6 +290,32 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(service.restoreRequests.count, 0)
     }
 
+    func testRefreshUsesServerSeededUltraDirectEntitlementForMembershipBadge() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 4_102_444_799)
+        let service = FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)
+        let directReader = FakeHostedQuotaDirectReader(
+            response: .burnBarUltra(active: true, expiresAt: expiresAt)
+        )
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: service,
+            directReader: directReader,
+            isSignedIn: { true }
+        )
+
+        try await store.refreshEntitlement()
+
+        XCTAssertTrue(store.isActive)
+        XCTAssertTrue(store.isActivePro)
+        XCTAssertTrue(store.isActiveUltra)
+        XCTAssertEqual(store.cloudTier, .ultra)
+        XCTAssertEqual(store.activeProductID, burnBarUltraProductID)
+        XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertEqual(directReader.fetchCount, 1)
+        XCTAssertEqual(service.restoreRequests.count, 0)
+    }
+
     func testRefreshIgnoresSandboxDirectEntitlementWhenRuntimeRejectsEnvironment() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
@@ -453,6 +479,68 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         session.disableDialogs = true
         session.clearTransactions()
         return session
+    }
+
+    // MARK: - Annual value framing (store sheet price math)
+
+    func testMonthlyEquivalentDisplayPriceFallsBackToCatalogPrices() {
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)
+        )
+        func plan(_ id: String) -> OpenBurnBarStoreProduct {
+            OpenBurnBarProductCatalog.subscriptions.first { $0.id == id }!
+        }
+
+        // No StoreKit products loaded → catalog fallback math.
+        XCTAssertEqual(
+            store.monthlyEquivalentDisplayPrice(for: plan(OpenBurnBarProductCatalog.cloudAnnualProductID)),
+            "$6.58"
+        )
+        XCTAssertEqual(
+            store.monthlyEquivalentDisplayPrice(for: plan(OpenBurnBarProductCatalog.cloudProAnnualProductID)),
+            "$20.75"
+        )
+        XCTAssertEqual(
+            store.monthlyEquivalentDisplayPrice(for: plan(OpenBurnBarProductCatalog.cloudUltraAnnualProductID)),
+            "$49.92"
+        )
+        // Monthly plans never show an equivalence line.
+        XCTAssertNil(
+            store.monthlyEquivalentDisplayPrice(for: plan(OpenBurnBarProductCatalog.cloudProMonthlyProductID))
+        )
+    }
+
+    func testAnnualFreeMonthsDerivedFromCatalogFallbackPrices() {
+        let store = makeHostedQuotaSubscriptionStore(
+            functions: FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)
+        )
+        func plan(_ id: String) -> OpenBurnBarStoreProduct {
+            OpenBurnBarProductCatalog.subscriptions.first { $0.id == id }!
+        }
+
+        // Every current SKU pair hands back two whole months on annual:
+        // $79 vs $7.99×12, $249 vs $24.99×12, $599 vs $59.99×12.
+        XCTAssertEqual(
+            store.annualFreeMonths(
+                monthly: plan(OpenBurnBarProductCatalog.cloudMonthlyProductID),
+                annual: plan(OpenBurnBarProductCatalog.cloudAnnualProductID)
+            ),
+            2
+        )
+        XCTAssertEqual(
+            store.annualFreeMonths(
+                monthly: plan(OpenBurnBarProductCatalog.cloudProMonthlyProductID),
+                annual: plan(OpenBurnBarProductCatalog.cloudProAnnualProductID)
+            ),
+            2
+        )
+        XCTAssertEqual(
+            store.annualFreeMonths(
+                monthly: plan(OpenBurnBarProductCatalog.cloudUltraMonthlyProductID),
+                annual: plan(OpenBurnBarProductCatalog.cloudUltraAnnualProductID)
+            ),
+            2
+        )
     }
 
     private func makeHostedQuotaSubscriptionStore(

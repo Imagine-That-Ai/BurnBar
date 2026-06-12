@@ -43,15 +43,30 @@ struct MercuryRecentTransfersCard: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial.opacity(0.65))
-                    .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 1))
-            )
+            .background(emptyStateBackground)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("No transfers yet")
         } else {
             populatedCard
+        }
+    }
+
+    /// Empty-pill plate: pure Liquid Glass on iOS 26 — glass must sample the
+    /// real background, so the 0.65-opacity material never rides under the
+    /// glass shape. iOS 17–25 keeps the original material + hairline stroke
+    /// byte-identical (the opacity-modified material is richer than the plain
+    /// `liquidGlassSurface` fallback, hence the inline branch).
+    @ViewBuilder
+    private var emptyStateBackground: some View {
+        if #available(iOS 26, *) {
+            Capsule()
+                .fill(Color.clear)
+                .glassEffect(.regular, in: Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 1))
+        } else {
+            Capsule()
+                .fill(.ultraThinMaterial.opacity(0.65))
+                .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 1))
         }
     }
 
@@ -76,13 +91,13 @@ struct MercuryRecentTransfersCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
+        // Passive card plate → Liquid Glass on iOS 26 (pure glass, nothing
+        // under it), .ultraThinMaterial on iOS 17–25. The hairline stroke
+        // rides on top of the glass shape in both worlds.
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
         .quickLookPreview($quickLookURL)
         .accessibilityElement(children: .contain)

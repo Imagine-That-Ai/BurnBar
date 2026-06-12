@@ -32,9 +32,19 @@ struct ChatMinimizedPill: View {
             }
             .padding(.horizontal, DesignSystem.Spacing.md).padding(.vertical, DesignSystem.Spacing.sm)
             .background {
-                ZStack {
-                    Capsule(style: .continuous).fill(.ultraThinMaterial)
-                    Capsule(style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.55))
+                // Inline branch: the pre-26 look is an opacity-tweaked material
+                // stack the shape-level adapter fallback can't reproduce. On 26+
+                // a faint surface wash rides on interactive glass (nothing sits
+                // under glass).
+                if #available(macOS 26, *) {
+                    Capsule(style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.18))
+                        .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+                } else {
+                    ZStack {
+                        Capsule(style: .continuous).fill(.ultraThinMaterial)
+                        Capsule(style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.55))
+                    }
                 }
             }
             .clipShape(Capsule(style: .continuous))

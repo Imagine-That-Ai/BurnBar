@@ -146,26 +146,38 @@ struct CloudWhisperStrip: View {
 
     @ViewBuilder
     private var stripBackdrop: some View {
-        ZStack {
-            Rectangle().fill(.ultraThinMaterial)
-            Rectangle().fill(
-                LinearGradient(
-                    colors: entitlement.isActive
-                        ? [
-                            DesignSystem.Colors.ember.opacity(0.30),
-                            DesignSystem.Colors.amber.opacity(0.24),
-                            DesignSystem.Colors.blaze.opacity(0.20),
-                            DesignSystem.Colors.whimsy.opacity(0.14)
-                        ]
-                        : [
-                            DesignSystem.Colors.ember.opacity(0.08),
-                            DesignSystem.Colors.amber.opacity(0.06),
-                            .clear
-                        ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+        // Inline branch: on 26+ the brand wash rides on real Liquid Glass (no
+        // material underneath); pre-26 keeps the material + gradient stack.
+        // The 22pt icon chip above stays on material — chips inside a glass
+        // plate keep material/tint, never a second glass layer.
+        if #available(macOS 26, *) {
+            Rectangle()
+                .fill(stripGradient)
+                .glassEffect(.regular, in: .rect)
+        } else {
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill(stripGradient)
+            }
         }
+    }
+
+    private var stripGradient: LinearGradient {
+        LinearGradient(
+            colors: entitlement.isActive
+                ? [
+                    DesignSystem.Colors.ember.opacity(0.30),
+                    DesignSystem.Colors.amber.opacity(0.24),
+                    DesignSystem.Colors.blaze.opacity(0.20),
+                    DesignSystem.Colors.whimsy.opacity(0.14)
+                ]
+                : [
+                    DesignSystem.Colors.ember.opacity(0.08),
+                    DesignSystem.Colors.amber.opacity(0.06),
+                    .clear
+                ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 }

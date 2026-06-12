@@ -3,7 +3,7 @@ import Foundation
 import Security
 
 /// `SOL_LOCAL` / `LOCAL_PEERTOKEN` — peer audit token at UNIX socket accept time.
-private let localPeerTokenOption: Int32 = 0x102
+private let localPeerTokenOption: Int32 = 0x006
 
 public enum PrivilegedPeerAuthenticationFailure: Error, Equatable, Sendable {
     case peerIdentityUnavailable

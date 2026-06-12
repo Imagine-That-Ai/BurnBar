@@ -24,10 +24,12 @@ extension HostedQuotaSubscriptionStore {
         set { UltraTierBridge.shared.tier = newValue }
     }
 
-    /// True when the member holds the BurnBar Ultra entitlement (server-resolved
-    /// tier == "ultra"). Falls back to `false` when the tier has not been read.
+    /// True when the member holds the BurnBar Ultra entitlement. Prefer the
+    /// server-resolved data tier when available, but also accept the active
+    /// product ID so server-seeded Ultra grants render correctly before Data
+    /// Vault has performed its separate usage read.
     var isActiveUltra: Bool {
-        resolvedDataTier == "ultra"
+        resolvedDataTier == "ultra" || hasActiveUltraStoreKitProduct
     }
 
     /// True when the member can use Pensieve at all (Cloud Pro or Ultra). Prefers

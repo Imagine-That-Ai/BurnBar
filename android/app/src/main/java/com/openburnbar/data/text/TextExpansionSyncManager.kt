@@ -210,28 +210,6 @@ class TextExpansionSyncManager(
         dao.upsert(merged)
     }
 
-    private suspend fun unlockVaultKey(uid: String, keypair: AndroidCloudVaultDeviceKeypair): ByteArray? {
-        val snapshot =
-            firestore.collection("users")
-                .document(uid)
-                .collection("cloud_vault_key_wrappers")
-                .whereEqualTo("targetDeviceId", keypair.deviceId)
-                .whereEqualTo("status", "active")
-                .limit(VAL_5.toLong())
-                .get()
-                .await()
-
-        return snapshot.documents.firstNotNullOfOrNull { document ->
-            val wrapped = document.getString("wrappedVaultKey")
-            val version = document.getLong("keyVersion")?.toInt()
-            if (wrapped != null && version == keypair.keyVersion) {
-                runCatching { keypair.decryptWrappedVaultKey(wrapped) }.getOrNull()
-            } else {
-                null
-            }
-        }
-    }
-
     private fun Map<*, *>.toSealedText(): CloudVaultSealedText {
         return CloudVaultSealedText(
             algorithm = this["algorithm"] as? String ?: "AES-256-GCM",

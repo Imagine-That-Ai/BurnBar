@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Mach service and install paths for the minimal privileged input-execution leaf (WS1).
@@ -7,4 +8,8 @@ public enum PrivilegedInputXPCConstants: Sendable {
     public static let installPath =
         "/Library/Application Support/OpenBurnBar/RemoteUnlock/openburnbar-privileged-input-execution"
     public static let launchDaemonPlistPath = "/Library/LaunchDaemons/\(launchDaemonLabel).plist"
+
+    public static func userSessionSocketPath(uid: uid_t = getuid()) -> String {
+        "/tmp/openburnbar-privileged-input-execution-\(uid).sock"
+    }
 }

@@ -10,10 +10,11 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { createHash, createPublicKey, randomBytes, verify as verifySignature } from "node:crypto";
 
 import { db } from "../adminRuntime.js";
-import { enforceHighRiskComputerUseCallable, enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
+import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
+import { requireTrustedDeviceActionProof } from "./computerUseSecurity.js";
 import {
   bearerTokenFromAuthorizationHeader,
   canonicalHermesGatewayUserCode,
@@ -2474,16 +2475,35 @@ export const respondHermesGatewayApproval = onCall(
   },
   wrapCallableHandler(
     "respondHermesGatewayApproval",
-    async (request: CallableRequest<{ approvalId?: unknown; approve?: unknown; deviceId?: unknown }>) => {
+    async (
+      request: CallableRequest<{
+        approvalId?: unknown;
+        approve?: unknown;
+        deviceId?: unknown;
+        nonce?: unknown;
+        actionProof?: unknown;
+      }>,
+    ) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before responding to an oversight request.");
-      enforceHighRiskComputerUseCallable(request, uid);
+      const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
+      await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
       const approvalId = boundedTrimmedString(request.data.approvalId, "approvalId", 160, true);
       const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
       if (typeof request.data.approve !== "boolean") {
         throw new HttpsError("invalid-argument", "approve must be a boolean.");
       }
       const approve = request.data.approve;
+      await requireTrustedDeviceActionProof({
+        uid,
+        deviceId,
+        actionKind: "hermes_gateway_approval",
+        subjectId: approvalId,
+        approve,
+        nonce,
+        proofRaw: request.data.actionProof,
+        allowedPlatforms: NATIVE_ESCROW_PLATFORMS,
+      });
 
       const approvalRef = db.doc(`users/${uid}/hermes_gateway_approvals/${approvalId}`);
       const deviceRef = db.doc(`users/${uid}/escrow_devices/${deviceId}`);

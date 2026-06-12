@@ -459,7 +459,10 @@ struct AgentReplyNotificationBannerView: View {
                 .accessibilityLabel("Dismiss reply notification")
             }
             .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .liquidGlassInteractive(
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous),
+                fallback: .regularMaterial
+            )
             .shadow(color: .black.opacity(0.16), radius: 24, x: 0, y: 12)
             .padding(.horizontal, 16)
             .padding(.top, 12)

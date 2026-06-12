@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 
-const { pushAndroidFcm } = await import("../lib/fcmAndroidSender.js");
+const {
+  MAX_FCM_RETRY_ATTEMPTS,
+  nextFcmRetryDelayMs,
+  processStuckFcmPush,
+  pushAndroidFcm,
+  sweepStuckFcmPushes,
+} = await import("../lib/fcmAndroidSender.js");
 const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voipPush.js");
 
 // ---------------------------------------------------------------------------
@@ -67,6 +73,119 @@ const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voi
   });
   assert.equal(result.status, "retry");
   assert.equal(result.errorCode, "messaging/server-unavailable");
+}
+
+// ---------------------------------------------------------------------------
+// stuck FCM retry sweeper — bounded exponential retry and terminal outcomes
+// ---------------------------------------------------------------------------
+{
+  assert.equal(nextFcmRetryDelayMs(1), 30_000);
+  assert.equal(nextFcmRetryDelayMs(2), 60_000);
+  assert.equal(nextFcmRetryDelayMs(999), 15 * 60_000);
+}
+
+{
+  const now = new Date("2026-06-11T12:00:00.000Z");
+  const doc = makeFakeSnapshot("fcm-success", {
+    status: "pending",
+    fcmToken: "token-success",
+    payload: { type: "media_incoming_call", connection_id: "conn-1", ignored: 42 },
+    attemptCount: 2,
+  });
+  const pushed = [];
+  const outcome = await processStuckFcmPush(
+    doc,
+    async (args) => {
+      pushed.push(args);
+      return { status: "sent", messageId: "message-123" };
+    },
+    now
+  );
+  assert.equal(outcome, "sent");
+  assert.equal(pushed.length, 1);
+  assert.deepEqual(pushed[0].data, { type: "media_incoming_call", connection_id: "conn-1" });
+  assert.deepEqual(doc.updates[0], {
+    status: "sent",
+    deliveredAt: doc.updates[0].deliveredAt,
+    fcmMessageId: "message-123",
+  });
+  assert.equal(doc.updates[0].deliveredAt.toMillis(), now.getTime());
+}
+
+{
+  const now = new Date("2026-06-11T12:01:00.000Z");
+  const doc = makeFakeSnapshot("fcm-retry", {
+    status: "pending",
+    fcmToken: "token-retry",
+    payload: { type: "media_incoming_call" },
+    attemptCount: 2,
+  });
+  const outcome = await processStuckFcmPush(
+    doc,
+    async () => ({ status: "retry", errorCode: "messaging/server-unavailable", reason: "server unavailable" }),
+    now
+  );
+  assert.equal(outcome, "rescheduled");
+  assert.equal(doc.updates[0].status, "pending");
+  assert.equal(doc.updates[0].attemptCount, 3);
+  assert.equal(doc.updates[0].lastAttemptAt.toMillis(), now.getTime());
+  assert.equal(doc.updates[0].retryAt.toMillis(), now.getTime() + nextFcmRetryDelayMs(3));
+}
+
+{
+  const now = new Date("2026-06-11T12:02:00.000Z");
+  const doc = makeFakeSnapshot("fcm-exhausted", {
+    status: "pending",
+    fcmToken: "token-exhausted",
+    payload: { type: "media_incoming_call" },
+    attemptCount: MAX_FCM_RETRY_ATTEMPTS - 1,
+  });
+  const outcome = await processStuckFcmPush(
+    doc,
+    async () => ({ status: "retry", errorCode: "messaging/quota-exceeded", reason: "quota" }),
+    now
+  );
+  assert.equal(outcome, "rejected");
+  assert.equal(doc.updates[0].status, "rejected");
+  assert.equal(doc.updates[0].attemptCount, MAX_FCM_RETRY_ATTEMPTS);
+  assert.equal(doc.updates[0].errorCode, "messaging/quota-exceeded");
+}
+
+{
+  const now = new Date("2026-06-11T12:03:00.000Z");
+  const doc = makeFakeSnapshot("fcm-missing-token", {
+    status: "pending",
+    payload: { type: "media_incoming_call" },
+  });
+  const outcome = await processStuckFcmPush(
+    doc,
+    async () => {
+      throw new Error("should not push without a token");
+    },
+    now
+  );
+  assert.equal(outcome, "rejected");
+  assert.equal(doc.updates[0].status, "rejected");
+  assert.equal(doc.updates[0].reason, "missing fcmToken");
+}
+
+{
+  const now = new Date("2026-06-11T12:04:00.000Z");
+  const docs = [
+    makeFakeSnapshot("fcm-sweep-sent", {
+      status: "pending",
+      fcmToken: "token-a",
+      payload: { type: "media_incoming_call" },
+    }),
+    makeFakeSnapshot("fcm-sweep-skip", {
+      status: "sent",
+      fcmToken: "token-b",
+      payload: { type: "media_incoming_call" },
+    }),
+  ];
+  const db = makeFakeCollectionGroupDb(docs);
+  const tally = await sweepStuckFcmPushes(db, async () => ({ status: "sent", messageId: "ok" }), now);
+  assert.deepEqual(tally, { sent: 1, rejected: 0, rescheduled: 0, skipped: 1 });
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +314,47 @@ const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voi
 }
 
 console.log("Android FCM sender + fan-out resolver ok");
+
+function makeFakeSnapshot(id, initialData) {
+  const data = { ...initialData };
+  const updates = [];
+  return {
+    id,
+    updates,
+    data: () => data,
+    ref: {
+      path: `fcm_outbound/${id}`,
+      async update(update) {
+        updates.push(update);
+        Object.assign(data, update);
+      },
+    },
+  };
+}
+
+function makeFakeCollectionGroupDb(docs) {
+  const query = {
+    where() {
+      return query;
+    },
+    orderBy() {
+      return query;
+    },
+    limit(limit) {
+      assert.equal(limit, 50);
+      return query;
+    },
+    async get() {
+      return { docs };
+    },
+  };
+  return {
+    collectionGroup(name) {
+      assert.equal(name, "fcm_outbound");
+      return query;
+    },
+  };
+}
 
 function makeFakeFirestore(docs) {
   return {

@@ -22,7 +22,7 @@ struct OpenBurnBarVirtualHIDBridgeMain {
         signal(SIGPIPE, SIG_IGN)
         do {
             let socketPath = argumentValue("--socket") ?? defaultSocketPath
-            let xpcClient = PrivilegedInputXPCClient()
+            let xpcClient = PrivilegedInputXPCClient(userSessionSocketPath: nil)
             let server = try VirtualHIDBridgeSocketAdapter(socketPath: socketPath, xpcClient: xpcClient)
             try server.run()
         } catch {
@@ -170,7 +170,7 @@ private final class VirtualHIDBridgeSocketAdapter {
                 peerAuditToken: peerToken,
                 capabilityToken: legacy.capabilityToken
             )
-            let response = try xpcClient.perform(envelope)
+            let response = try performInput(envelope)
             try write(
                 BridgeResponse(ok: response.ok, version: bridgeVersion, error: response.error),
                 to: client
@@ -182,11 +182,26 @@ private final class VirtualHIDBridgeSocketAdapter {
         }
     }
 
+    private func performInput(_ envelope: PrivilegedInputDispatchEnvelope) throws -> PrivilegedInputDispatchResponse {
+        if let consoleUser = resolveConsoleUser() {
+            do {
+                return try PrivilegedInputSocketClient(
+                    socketPath: PrivilegedInputXPCConstants.userSessionSocketPath(uid: consoleUser.uid)
+                ).perform(envelope)
+            } catch PrivilegedInputXPCClient.ClientError.rejected(let detail) {
+                throw PrivilegedInputXPCClient.ClientError.rejected(detail)
+            } catch {
+                bridgeLog("user helper socket unavailable detail=\(String(describing: error)); falling back to xpc")
+            }
+        }
+        return try xpcClient.perform(envelope)
+    }
+
     private func peerAuditTokenData(socketFD: Int32) throws -> Data {
         var token = audit_token_t()
         var length = socklen_t(MemoryLayout<audit_token_t>.size)
         let status = withUnsafeMutablePointer(to: &token) { pointer in
-            getsockopt(socketFD, SOL_LOCAL, 0x102, pointer, &length)
+                getsockopt(socketFD, SOL_LOCAL, 0x006, pointer, &length)
         }
         guard status == 0, length == socklen_t(MemoryLayout<audit_token_t>.size) else {
             throw BridgeError.peerIdentityUnavailable

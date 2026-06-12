@@ -6,6 +6,7 @@ import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
+import com.openburnbar.data.computeruse.RelaySenderKeyPublishRequest
 import java.security.PrivateKey
 import kotlinx.coroutines.tasks.await
 
@@ -70,15 +71,17 @@ internal object RelaySealSenderIdentity {
             firestore = firestore,
         )
         securityCallables.publishRelaySenderKey(
-            deviceId = senderDeviceId,
-            peerNodeId = senderDeviceId,
-            keyId = keyId,
-            publicKeyBase64 = HermesRelayCryptoSupport.base64NoWrap(senderPublicKeyX963),
-            relayKeyVersion = HermesRelayCrypto.KEY_VERSION_V3,
-            publishedAtMillis = System.currentTimeMillis(),
-            signalIdentityKeyId = signalIdentity.identityKeyId,
-            signalIdentityKeyVersion = signalIdentity.keyVersion,
-            signalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(signalIdentity.publicKeyData),
+            RelaySenderKeyPublishRequest(
+                deviceId = senderDeviceId,
+                peerNodeId = senderDeviceId,
+                keyId = keyId,
+                publicKeyBase64 = HermesRelayCryptoSupport.base64NoWrap(senderPublicKeyX963),
+                relayKeyVersion = HermesRelayCrypto.KEY_VERSION_V3,
+                publishedAtMillis = System.currentTimeMillis(),
+                signalIdentityKeyId = signalIdentity.identityKeyId,
+                signalIdentityKeyVersion = signalIdentity.keyVersion,
+                signalIdentityPublicKeyFingerprint = CloudVaultCrypto.sha256Base64(signalIdentity.publicKeyData),
+            ),
         )
         return Prepared(
             senderDeviceId = senderDeviceId,

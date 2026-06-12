@@ -51,6 +51,14 @@ struct IdentityHero: View {
                 .rotationEffect(.degrees(haloRotation))
                 .shadow(color: MobileTheme.ember.opacity(0.55), radius: 18)
 
+            // Material plate behind the avatar. Intentionally NOT
+            // .liquidGlassSurface: this disc is a descendant of
+            // AuroraGlassCard, whose iOS 26 background is itself
+            // .glassEffect, and Liquid Glass cannot sample other Liquid
+            // Glass (see Theme/LiquidGlass.swift) — a nested glassEffect
+            // would sample the scroll backdrop behind the card and render
+            // as a hole punched through it. The card glass already carries
+            // the Liquid Glass identity for this surface on iOS 26.
             Circle()
                 .fill(.ultraThinMaterial)
                 .frame(width: 92, height: 92)

@@ -90,7 +90,8 @@ struct ChartStudioFloatingButton: View {
                     .opacity(pulse ? 0.95 : 0.6)
 
                 Circle()
-                    .fill(.ultraThinMaterial)
+                    .fill(.clear)
+                    .liquidGlassInteractive(in: .circle)
                     .overlay(
                         Circle()
                             .stroke(
