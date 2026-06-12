@@ -47,7 +47,7 @@ struct InsightSmallView: View {
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)
             HStack(spacing: 4) {
-                if let snap = snap {
+                if let snap {
                     RingProgressView(
                         progress: min(1, snap.spendCurrent / max(1, snap.spendTarget)),
                         color: .orange
@@ -84,11 +84,16 @@ struct InsightMediumView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let snap = snap {
+            if let snap {
                 VStack(spacing: 6) {
                     RingRow(label: "Spend", value: snap.spendCurrent, target: snap.spendTarget, color: .orange)
                     RingRow(label: "Cache", value: snap.cacheCurrent, target: snap.cacheTarget, color: .green)
-                    RingRow(label: "Sessions", value: Double(snap.sessionsCurrent), target: Double(snap.sessionsTarget), color: .blue)
+                    RingRow(
+                        label: "Sessions",
+                        value: Double(snap.sessionsCurrent),
+                        target: Double(snap.sessionsTarget),
+                        color: .blue
+                    )
                 }
                 .frame(width: 100)
             }
@@ -113,7 +118,7 @@ struct InsightLargeView: View {
                 .lineLimit(2)
                 .foregroundStyle(.primary)
 
-            if let snap = snap {
+            if let snap {
                 HStack(spacing: 16) {
                     VStack(spacing: 8) {
                         RingProgressView(progress: min(1, snap.spendCurrent / max(1, snap.spendTarget)), color: .orange)
@@ -128,8 +133,11 @@ struct InsightLargeView: View {
                             .font(.caption)
                     }
                     VStack(spacing: 8) {
-                        RingProgressView(progress: min(1, Double(snap.sessionsCurrent) / max(1, Double(snap.sessionsTarget))), color: .blue)
-                            .frame(height: 60)
+                        RingProgressView(
+                            progress: min(1, Double(snap.sessionsCurrent) / max(1, Double(snap.sessionsTarget))),
+                            color: .blue
+                        )
+                        .frame(height: 60)
                         Text("\(snap.sessionsCurrent)")
                             .font(.caption)
                     }
@@ -151,7 +159,7 @@ struct InsightRectangularView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if let snap = snap {
+            if let snap {
                 RingProgressView(progress: min(1, snap.spendCurrent / max(1, snap.spendTarget)), color: .orange)
                     .frame(width: 24, height: 24)
                 VStack(alignment: .leading, spacing: 2) {
@@ -173,7 +181,7 @@ struct InsightCircularView: View {
     var snap: InsightVerdictWidgetSnapshot?
 
     var body: some View {
-        if let snap = snap {
+        if let snap {
             RingProgressView(progress: min(1, snap.spendCurrent / max(1, snap.spendTarget)), color: .orange)
         } else {
             Image(systemName: "sparkles")
@@ -185,7 +193,7 @@ struct InsightInlineView: View {
     var snap: InsightVerdictWidgetSnapshot?
 
     var body: some View {
-        if let snap = snap {
+        if let snap {
             Text("\(snap.windowLabel): $\(String(format: "%.2f", snap.spendCurrent))")
         } else {
             Text("BurnBar Insights")
