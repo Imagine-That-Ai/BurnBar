@@ -10,13 +10,35 @@ store-distribution, hosted-gateway, and Signal/libsignal/SPQR questions.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 
 APPROVED_STATUS = "approved"
+
+# Pinned external-counsel signing key. The approval signature is verified
+# against THIS key — never against a public key named by the evidence JSON,
+# because that would let any committer ship their own key alongside a forged
+# approval. We pin the SHA-256 fingerprint of the DER-encoded SubjectPublicKeyInfo
+# (i.e. `openssl pkey -pubin -outform DER | sha256sum`) so the key bytes can live
+# in the repo and rotate via reviewable diff, while a swapped key fails the gate.
+#
+# TODO(legal): replace the sentinel below with the real counsel key fingerprint
+# the first time counsel issues a signed approval. Until then this gate is
+# fail-closed for the release/deploy preflight (it cannot be exercised on a
+# per-PR lane); a release simply cannot claim a signed approval until the real
+# key is pinned here. That is the intended one-time, reviewable unlock — not a
+# permanently-red gate, and emphatically not a green-while-blind one.
+COUNSEL_PUBLIC_KEY_SHA256 = (
+    "REPLACE_WITH_PINNED_COUNSEL_PUBLIC_KEY_SHA256_FINGERPRINT"
+)
+COUNSEL_KEY_PLACEHOLDER = "REPLACE_WITH_PINNED_COUNSEL_PUBLIC_KEY_SHA256_FINGERPRINT"
+SUPPORTED_SIGNATURE_FORMATS = {"openssl-sha256-rsa", "openssl-sha256-ecdsa"}
 REQUIRED_SCOPE = {
     "AGPL-3.0-only product license",
     "Signal/libsignal/SPQR product dependency",
@@ -91,6 +113,113 @@ def _string_list(value: Any, path: str) -> tuple[list[str], list[str]]:
         else:
             items.append(item)
     return items, errors
+
+
+def _resolve_repo_path(repo_root: Path, rel: str) -> Path | None:
+    """Resolve a repo-relative path, rejecting absolute/parent-escape values."""
+    candidate = Path(rel)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        return None
+    return repo_root / candidate
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _public_key_fingerprint(public_key_path: Path) -> str | None:
+    """SHA-256 over the DER SubjectPublicKeyInfo of the supplied public key.
+
+    Returns None when openssl cannot parse the file as a public key, so a bogus
+    key file fails the pin comparison rather than silently matching.
+    """
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        return None
+    try:
+        result = subprocess.run(
+            [openssl, "pkey", "-pubin", "-in", str(public_key_path), "-outform", "DER"],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0 or not result.stdout:
+        return None
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
+def _verify_detached_signature(
+    *, document_path: Path, signature_path: Path, public_key_path: Path, signature_format: str
+) -> bool:
+    """Verify a detached signature over the document using openssl + the key file.
+
+    The key is the on-disk public key (already pinned by fingerprint by the
+    caller). openssl returns non-zero on any tamper, so this is fail-closed.
+    """
+    if signature_format not in SUPPORTED_SIGNATURE_FORMATS:
+        return False
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        return False
+    digest = "sha256"
+    try:
+        result = subprocess.run(
+            [
+                openssl,
+                "dgst",
+                f"-{digest}",
+                "-verify",
+                str(public_key_path),
+                "-signature",
+                str(signature_path),
+                str(document_path),
+            ],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
+
+
+def _approval_diff_touches_public_key(repo_root: Path, public_key_rel: str) -> bool | None:
+    """True when publicKeyPath was added/modified in the same commit as the approval.
+
+    A signed approval whose trust anchor (the public key) is introduced or
+    rewritten in the very same change is self-certifying: the attacker brings
+    their own key. We reject that. Returns None when git history is unavailable
+    (e.g. shallow/no-git checkout) so the caller can fail closed.
+    """
+    git = shutil.which("git")
+    if git is None:
+        return None
+    try:
+        head = subprocess.run(
+            [git, "-C", str(repo_root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if head.returncode != 0:
+            return None
+        changed = subprocess.run(
+            [git, "-C", str(repo_root), "diff", "--name-only", "HEAD~1", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if changed.returncode != 0:
+            # No parent commit (root commit) — treat as introduced-in-this-diff.
+            return True
+    except OSError:
+        return None
+    touched = {line.strip() for line in changed.stdout.splitlines() if line.strip()}
+    return public_key_rel in touched
 
 
 def validate_legal_release_review(
@@ -170,16 +299,104 @@ def validate_legal_release_review(
                 len(document_sha) != 64 or any(char not in "0123456789abcdefABCDEF" for char in document_sha)
             ):
                 errors.append("approval.documentSha256 must be a 64-character hex SHA-256")
-            if repo_root is not None:
-                for key in ("documentPath", "signaturePath", "publicKeyPath"):
-                    value = approval.get(key)
-                    if not isinstance(value, str) or not value.strip():
-                        continue
-                    path = Path(value)
-                    if path.is_absolute() or ".." in path.parts:
-                        errors.append(f"approval.{key} must be repo-relative")
-                    elif not (repo_root / path).is_file():
-                        errors.append(f"approval.{key} path does not exist: {value}")
+
+            signature_format = approval.get("signatureFormat")
+            if (
+                isinstance(signature_format, str)
+                and signature_format.strip()
+                and signature_format not in SUPPORTED_SIGNATURE_FORMATS
+            ):
+                errors.append(
+                    "approval.signatureFormat must be one of: "
+                    + ", ".join(sorted(SUPPORTED_SIGNATURE_FORMATS))
+                )
+
+            # Cryptographic verification runs whenever a release claims approval,
+            # NOT only when a repo_root is threaded in. The release preflight
+            # calls validate_legal_release_review(require_approved=True) without a
+            # repo_root, so gating crypto on `repo_root is not None` would let a
+            # forged approval pass the one gate that actually matters. Resolve
+            # against the supplied root or the current working directory.
+            verify_root = repo_root if repo_root is not None else Path.cwd()
+            path_rels: dict[str, str] = {}
+            resolved: dict[str, Path] = {}
+            for key in ("documentPath", "signaturePath", "publicKeyPath"):
+                value = approval.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                candidate = _resolve_repo_path(verify_root, value)
+                if candidate is None:
+                    errors.append(f"approval.{key} must be repo-relative")
+                    continue
+                path_rels[key] = value
+                if not candidate.is_file():
+                    errors.append(f"approval.{key} path does not exist: {value}")
+                    continue
+                resolved[key] = candidate
+
+            have_all_paths = {"documentPath", "signaturePath", "publicKeyPath"}.issubset(resolved)
+
+            # 1. Document integrity: the named document must hash to the claimed SHA-256.
+            if "documentPath" in resolved and isinstance(document_sha, str) and document_sha.strip():
+                actual_sha = _sha256_file(resolved["documentPath"])
+                if actual_sha.lower() != document_sha.lower():
+                    errors.append(
+                        "approval.documentSha256 does not match the SHA-256 of "
+                        f"{path_rels['documentPath']} (computed {actual_sha})"
+                    )
+
+            # 2. The public key must match the PINNED counsel fingerprint — never
+            #    a key trusted on the evidence's say-so.
+            pinned_key_ok = False
+            if COUNSEL_PUBLIC_KEY_SHA256 == COUNSEL_KEY_PLACEHOLDER:
+                errors.append(
+                    "counsel signing key is not pinned: set COUNSEL_PUBLIC_KEY_SHA256 in "
+                    "scripts/ci/check_agpl_legal_release_review.py to the real counsel public-key "
+                    "fingerprint before claiming a signed approval"
+                )
+            elif "publicKeyPath" in resolved:
+                fingerprint = _public_key_fingerprint(resolved["publicKeyPath"])
+                if fingerprint is None:
+                    errors.append(
+                        f"approval.publicKeyPath is not a readable public key: {path_rels['publicKeyPath']}"
+                    )
+                elif fingerprint.lower() != COUNSEL_PUBLIC_KEY_SHA256.lower():
+                    errors.append(
+                        "approval.publicKeyPath does not match the pinned counsel signing key "
+                        f"(fingerprint {fingerprint})"
+                    )
+                else:
+                    pinned_key_ok = True
+
+            # 3. The detached signature must verify over the document under the pinned key.
+            if have_all_paths and pinned_key_ok:
+                if not _verify_detached_signature(
+                    document_path=resolved["documentPath"],
+                    signature_path=resolved["signaturePath"],
+                    public_key_path=resolved["publicKeyPath"],
+                    signature_format=str(signature_format),
+                ):
+                    errors.append(
+                        "approval signature failed verification: the detached signature at "
+                        f"{path_rels['signaturePath']} does not validate over {path_rels['documentPath']} "
+                        "under the pinned counsel key"
+                    )
+
+            # 4. Reject self-certifying approvals: the trust anchor (public key)
+            #    must not be introduced or modified in the same diff as the approval.
+            if "publicKeyPath" in path_rels:
+                touched = _approval_diff_touches_public_key(verify_root, path_rels["publicKeyPath"])
+                if touched is None:
+                    errors.append(
+                        "approval.publicKeyPath provenance is unverifiable (git history unavailable); "
+                        "cannot confirm the counsel key was not introduced alongside this approval"
+                    )
+                elif touched:
+                    errors.append(
+                        "approval.publicKeyPath was added or modified in the same commit as this "
+                        "approval; the counsel signing key must be pinned in a prior, separately "
+                        "reviewed change"
+                    )
 
     return errors
 
