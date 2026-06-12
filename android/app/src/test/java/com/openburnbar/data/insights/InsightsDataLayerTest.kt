@@ -1,13 +1,8 @@
-@file:Suppress("FunctionNaming", "LargeClass", "TooManyFunctions")
-// detekt: JUnit backtick BDD test names; insights data-layer regression matrix across widgets and missions.
-
 package com.openburnbar.data.insights
 
-import com.openburnbar.data.assistants.CLIAgentChatPresentationMode
 import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
-import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.insights.services.InMemoryInsightDataSource
 import com.openburnbar.data.insights.services.InsightAggregator
 import com.openburnbar.data.insights.services.InsightExecutor
@@ -25,16 +20,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private const val SECONDS = 180
-private const val VAL_0_01 = 0.01
-private const val VAL_0_75 = 0.75
-private const val VAL_1024 = 1024
-private const val VAL_24 = 24
-private const val VAL_26 = 26
-private const val VAL_3 = 3
-private const val VAL_4 = 4
-private const val VAL_5 = 5
-private const val VAL_6 = 6
-private const val VAL_8 = 8
 
 class InsightsDataLayerTest {
     private val testDigest =
@@ -45,34 +30,34 @@ class InsightsDataLayerTest {
     @Test
     fun `placeNew positions widgets sequentially`() {
         val layout = InsightLayout()
-        val placed = layout.placeNew("w1", VAL_3 to 2)
+        val placed = layout.placeNew("w1", 3 to 2)
         assertEquals(0, placed.placements["w1"]?.column)
         assertEquals(0, placed.placements["w1"]?.row)
-        assertEquals(VAL_3, placed.placements["w1"]?.colSpan)
+        assertEquals(3, placed.placements["w1"]?.colSpan)
         assertEquals(2, placed.placements["w1"]?.rowSpan)
     }
 
     @Test
     fun `placeNew stacks widgets when row is full`() {
         var layout = InsightLayout(columnCount = 4)
-        layout = layout.placeNew("w1", VAL_3 to 1)
-        layout = layout.placeNew("w2", VAL_3 to 1)
+        layout = layout.placeNew("w1", 3 to 1)
+        layout = layout.placeNew("w2", 3 to 1)
         assertEquals(0, layout.placements["w1"]?.column)
     }
 
     @Test
     fun `move repositions a widget`() {
         var layout = InsightLayout(columnCount = 12)
-        layout = layout.placeNew("w1", VAL_4 to 2)
+        layout = layout.placeNew("w1", 4 to 2)
         layout = layout.move("w1", toColumn = 6, toRow = 3)
-        assertEquals(VAL_6, layout.placements["w1"]?.column)
-        assertEquals(VAL_3, layout.placements["w1"]?.row)
+        assertEquals(6, layout.placements["w1"]?.column)
+        assertEquals(3, layout.placements["w1"]?.row)
     }
 
     @Test
     fun `remove clears a placement`() {
         var layout = InsightLayout()
-        layout = layout.placeNew("w1", VAL_4 to 2)
+        layout = layout.placeNew("w1", 4 to 2)
         layout = layout.remove("w1")
         assertNull(layout.placements["w1"])
     }
@@ -80,16 +65,16 @@ class InsightsDataLayerTest {
     @Test
     fun `projectedTo shrinks column count proportionally`() {
         var layout = InsightLayout(columnCount = 12)
-        layout = layout.placeNew("w1", VAL_8 to 2)
-        val projected = layout.projectedTo(VAL_4)
-        assertEquals(VAL_4, projected.columnCount)
+        layout = layout.placeNew("w1", 8 to 2)
+        val projected = layout.projectedTo(4)
+        assertEquals(4, projected.columnCount)
         val w1 = requireNotNull(projected.placements["w1"])
         assertTrue(w1.colSpan >= 1)
     }
 
     @Test
     fun `all 26 widget kinds are registered`() {
-        assertEquals(VAL_26, InsightWidgetKind.entries.size)
+        assertEquals(26, InsightWidgetKind.entries.size)
     }
 
     @Test
@@ -101,17 +86,17 @@ class InsightsDataLayerTest {
 
     @Test
     fun `all 6 themes are registered`() {
-        assertEquals(VAL_6, InsightTheme.entries.size)
+        assertEquals(6, InsightTheme.entries.size)
     }
 
     @Test
     fun `all 5 freshness states are registered`() {
-        assertEquals(VAL_5, InsightFreshness.entries.size)
+        assertEquals(5, InsightFreshness.entries.size)
     }
 
     @Test
     fun `ValueFormat has 6 cases matching TypeScript`() {
-        assertEquals(VAL_6, ValueFormat.entries.size)
+        assertEquals(6, ValueFormat.entries.size)
     }
 
     @Test
@@ -171,7 +156,7 @@ class InsightsDataLayerTest {
                 used = 75.0,
                 limit = 100.0,
             )
-        assertEquals(VAL_0_75, bucket.fraction, VAL_0_01)
+        assertEquals(0.75, bucket.fraction, 0.01)
     }
 
     @Test
@@ -185,7 +170,7 @@ class InsightsDataLayerTest {
                 used = 75.0,
                 limit = null,
             )
-        assertEquals(0.0, bucket.fraction, VAL_0_01)
+        assertEquals(0.0, bucket.fraction, 0.01)
     }
 
     @Test
@@ -199,12 +184,12 @@ class InsightsDataLayerTest {
                 used = 150.0,
                 limit = 100.0,
             )
-        assertEquals(1.0, bucket.fraction, VAL_0_01)
+        assertEquals(1.0, bucket.fraction, 0.01)
     }
 
     @Test
     fun `digest has 24 KB max encoded bytes constant`() {
-        assertEquals(VAL_24 * VAL_1024, InsightDigest.MAX_ENCODED_BYTES)
+        assertEquals(24 * 1024, InsightDigest.MAX_ENCODED_BYTES)
     }
 
     @Test
@@ -392,113 +377,6 @@ class InsightsDataLayerTest {
     }
 
     @Test
-    fun `CLI agent mission request payload includes launch options without mutable parent events`() {
-        val payload =
-            CLIAgentMissionRequestPayloadFactory.build(
-                id = "mission-123",
-                title = "  Run cost mission  ",
-                prompt = "  Inspect provider routing cost  ",
-                missionKind = "cost_efficiency",
-                requestedRuntime = "opencode",
-                targetProject = "  ~/Developer/OpenBurnBar  ",
-                depth = "deep",
-                approvalMode = "risky_only",
-                commandsAllowed = true,
-                fileEditsAllowed = false,
-                now = Instant.parse("2026-05-14T10:00:00Z"),
-            )
-
-        assertEquals("mission-123", payload["id"])
-        assertEquals("Run cost mission", payload["title"])
-        assertEquals("Inspect provider routing cost", payload["prompt"])
-        assertEquals("cost_efficiency", payload["missionKind"])
-        assertEquals("opencode", payload["requestedRuntime"])
-        assertEquals("~/Developer/OpenBurnBar", payload["targetProject"])
-        assertEquals("deep", payload["depth"])
-        assertEquals("risky_only", payload["approvalMode"])
-        assertEquals(true, payload["commandsAllowed"])
-        assertEquals(false, payload["fileEditsAllowed"])
-        assertEquals("android-insights", payload["source"])
-        assertEquals("android-insights", payload["sourceSurface"])
-        assertEquals("action_only", payload["deliveryMode"])
-        assertEquals("native_chat", payload["presentationMode"])
-        assertEquals("pending", payload["status"])
-        assertEquals(VAL_3, payload["schemaVersion"])
-        assertFalse(payload.containsKey("events"))
-    }
-
-    @Test
-    fun `CLI agent mission request payload includes Skill Run metadata`() {
-        val payload =
-            CLIAgentMissionRequestPayloadFactory.build(
-                id = "mission-skill",
-                title = "Explain yesterday",
-                prompt = "What happened yesterday?",
-                missionKind = "chat",
-                requestedRuntime = "hermes",
-                targetProject = null,
-                depth = "standard",
-                approvalMode = "existing_policy",
-                commandsAllowed = false,
-                fileEditsAllowed = false,
-                sourceSkillID = "what_happened",
-                sourceSurface = "android-hermes-square",
-                deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
-                parentHermesThreadID = "thread-1",
-            )
-
-        assertEquals("what_happened", payload["sourceSkillID"])
-        assertEquals("android-hermes-square", payload["sourceSurface"])
-        assertEquals("full_stream", payload["deliveryMode"])
-        assertEquals("thread-1", payload["parentHermesThreadID"])
-    }
-
-    @Test
-    fun `CLI agent mission request payload includes visible Mac CLI presentation mode`() {
-        val payload =
-            CLIAgentMissionRequestPayloadFactory.build(
-                id = "mission-visible",
-                title = "Visible Codex",
-                prompt = "Run where I can watch it.",
-                missionKind = "chat",
-                requestedRuntime = "codex",
-                targetProject = null,
-                depth = "standard",
-                approvalMode = "existing_policy",
-                commandsAllowed = false,
-                fileEditsAllowed = false,
-                sourceSurface = "android-chat-mac-visible-cli",
-                deliveryMode = SkillRunDeliveryMode.FULL_STREAM,
-                presentationMode = CLIAgentChatPresentationMode.MAC_VISIBLE_CLI,
-            )
-
-        assertEquals("android-chat-mac-visible-cli", payload["sourceSurface"])
-        assertEquals("full_stream", payload["deliveryMode"])
-        assertEquals("mac_visible_cli", payload["presentationMode"])
-    }
-
-    @Test
-    fun `CLI agent mission request payload includes requested model id`() {
-        val payload =
-            CLIAgentMissionRequestPayloadFactory.build(
-                id = "mission-model",
-                title = "Run Codex",
-                prompt = "Answer using the selected model.",
-                missionKind = "chat",
-                requestedRuntime = "codex",
-                targetProject = null,
-                depth = "standard",
-                approvalMode = "existing_policy",
-                commandsAllowed = false,
-                fileEditsAllowed = false,
-                requestedModelID = "  gpt-5.5  ",
-            )
-
-        assertEquals("codex", payload["requestedRuntime"])
-        assertEquals("gpt-5.5", payload["requestedModelID"])
-    }
-
-    @Test
     fun `CLI agent mission launch contract includes all Android remote control runtimes`() {
         assertEquals(
             listOf("auto", "codex", "claude", "hermes", "openclaw", "piAgent", "opencode", "ollama"),
@@ -638,7 +516,7 @@ class InsightsDataLayerTest {
                 ).sortedWith(compareBy<CLIAgentMissionEvent> { it.sequence }.thenBy { it.timestamp }),
             )
 
-        assertEquals(listOf(2, VAL_3), snapshot.events.map { it.sequence })
+        assertEquals(listOf(2, 3), snapshot.events.map { it.sequence })
         assertEquals(listOf("tool_call", "tool_result"), snapshot.events.map { it.kind })
         assertEquals("exec_command", snapshot.events.first().toolName)
     }

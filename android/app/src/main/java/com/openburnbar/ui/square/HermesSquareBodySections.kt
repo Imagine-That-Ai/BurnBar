@@ -28,8 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.openburnbar.ui.theme.AuroraColors
 
-
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HermesSquareTopBar(state: HermesSquareUiState, actions: HermesSquareUiActions) {
@@ -183,4 +181,3 @@ private fun LazyListScope.hermesSquareConversationItems(state: HermesSquareUiSta
         DiscoverEntry(onTap = { actions.setShowDiscover(true) }, modifier = Modifier.padding(horizontal = 16.dp))
     }
 }
-

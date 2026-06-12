@@ -79,7 +79,7 @@ const describeMatch = (content, match) => {
 
 for (const file of htmlFiles) {
   const html = readFileSync(file, "utf8");
-  for (const tag of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+  for (const tag of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
     const [, attrs, body] = tag;
     if (/\bsrc\s*=/i.test(attrs)) continue; // external tags handled above
     if (/\btype\s*=\s*["'][^"']*json[^"']*["']/i.test(attrs)) continue; // JSON-LD etc. cannot execute

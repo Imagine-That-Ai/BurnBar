@@ -190,6 +190,9 @@ jobs:
           END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "ktlint: $((END - START))ms — no violations found" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Lint Kotlin (detekt)
+        run: cd android && ./gradlew :app:detekt --no-daemon
+
       - name: Run Android unit tests
         run: ./scripts/test-openburnbar-android.sh
 

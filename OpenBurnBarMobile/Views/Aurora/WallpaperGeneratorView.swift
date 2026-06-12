@@ -321,7 +321,9 @@ struct WallpaperGeneratorView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial.opacity(0.7), in: Capsule())
+        .wallpaperLiquidGlass(in: Capsule()) {
+            $0.background(.ultraThinMaterial.opacity(0.7), in: Capsule())
+        }
         .foregroundStyle(effectiveStyle.isDark ? .white.opacity(0.7) : .black.opacity(0.5))
         .opacity(tapHintOpacity)
         .padding(.bottom, 8)
@@ -376,7 +378,7 @@ struct WallpaperGeneratorView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
+                .liquidGlassInteractive(in: Capsule())
                 .foregroundStyle(effectiveStyle.isDark ? .white : .black)
             }
         }
@@ -400,7 +402,9 @@ struct WallpaperGeneratorView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial.opacity(0.6), in: Capsule())
+            .wallpaperLiquidGlass(in: Capsule()) {
+                $0.background(.ultraThinMaterial.opacity(0.6), in: Capsule())
+            }
             .padding(.bottom, 12)
         }
     }
@@ -416,31 +420,36 @@ struct WallpaperGeneratorView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            HStack(spacing: 12) {
-                // Toggle options
+            // Glass cannot sample other glass — the toggle circles and the
+            // Still pill share one sampling container on iOS 26. Pre-26 the
+            // container passes content through unchanged.
+            LiquidGlassGroup(spacing: 12) {
                 HStack(spacing: 12) {
-                    toggleButton(
-                        icon: "clock.fill",
-                        isOn: $showClock,
-                        label: "Clock"
-                    )
-                    toggleButton(
-                        icon: "tag.fill",
-                        isOn: $showProviderLabels,
-                        label: "Labels"
-                    )
-                    toggleButton(
-                        icon: "slider.horizontal.3",
-                        isOn: $showProviderGlyphCustomizer,
-                        label: "Provider glyphs"
-                    )
+                    // Toggle options
+                    HStack(spacing: 12) {
+                        toggleButton(
+                            icon: "clock.fill",
+                            isOn: $showClock,
+                            label: "Clock"
+                        )
+                        toggleButton(
+                            icon: "tag.fill",
+                            isOn: $showProviderLabels,
+                            label: "Labels"
+                        )
+                        toggleButton(
+                            icon: "slider.horizontal.3",
+                            isOn: $showProviderGlyphCustomizer,
+                            label: "Provider glyphs"
+                        )
+                    }
+
+                    Spacer()
+
+                    // Dual save buttons
+                    saveStillButton
+                    saveLiveButton
                 }
-
-                Spacer()
-
-                // Dual save buttons
-                saveStillButton
-                saveLiveButton
             }
         }
         .padding(.bottom, 30)
@@ -467,7 +476,7 @@ struct WallpaperGeneratorView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(.ultraThinMaterial, in: Capsule())
+            .liquidGlassInteractive(in: Capsule())
             .foregroundStyle(effectiveStyle.isDark ? .white : .black)
         }
         .disabled(isSavingStill || isSavingLive)
@@ -537,7 +546,7 @@ struct WallpaperGeneratorView: View {
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
 
@@ -594,7 +603,9 @@ struct WallpaperGeneratorView: View {
             .padding(.bottom, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(.ultraThinMaterial)
+        .wallpaperLiquidGlass(in: Rectangle()) {
+            $0.background(.ultraThinMaterial)
+        }
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(effectiveStyle.isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.08))
@@ -755,20 +766,35 @@ struct WallpaperGeneratorView: View {
                 isOn.wrappedValue.toggle()
             }
         } label: {
-            Image(systemName: icon)
+            let core = Image(systemName: icon)
                 .font(.system(size: 14))
                 .frame(width: 36, height: 36)
-                .background(
-                    isOn.wrappedValue
-                        ? AnyShapeStyle(.ultraThinMaterial)
-                        : AnyShapeStyle(Color.white.opacity(0.1))
-                    , in: Circle()
-                )
-                .foregroundStyle(
-                    isOn.wrappedValue
-                        ? (effectiveStyle.isDark ? Color.white : Color.black)
-                        : Color.gray
-                )
+
+            Group {
+                if #available(iOS 26, *) {
+                    // Interactive glass sampling the live swarm — nothing is
+                    // drawn under the glass; the on-state rides as a soft
+                    // white tint ON the glass shape.
+                    core.glassEffect(
+                        isOn.wrappedValue
+                            ? .regular.tint(Color.white.opacity(0.3)).interactive()
+                            : .regular.interactive(),
+                        in: Circle()
+                    )
+                } else {
+                    core.background(
+                        isOn.wrappedValue
+                            ? AnyShapeStyle(.ultraThinMaterial)
+                            : AnyShapeStyle(Color.white.opacity(0.1))
+                        , in: Circle()
+                    )
+                }
+            }
+            .foregroundStyle(
+                isOn.wrappedValue
+                    ? (effectiveStyle.isDark ? Color.white : Color.black)
+                    : Color.gray
+            )
         }
         .accessibilityLabel(label)
         .accessibilityAddTraits(isOn.wrappedValue ? .isSelected : [])
@@ -1437,6 +1463,28 @@ struct SaveResultSheet: View {
             UIApplication.shared.open(url)
         }
         dismiss()
+    }
+}
+
+// MARK: - Liquid Glass helper (file-scoped)
+
+private extension View {
+    /// iOS 26 Liquid Glass for surfaces whose legacy styling the shared
+    /// adapters in `Theme/LiquidGlass.swift` cannot reproduce exactly
+    /// (opacity-tweaked materials, shapeless backgrounds). On iOS 26 the
+    /// glass samples the live swarm directly — nothing is drawn underneath
+    /// it; on earlier systems the original background runs byte-identical
+    /// via the `legacy` closure.
+    @ViewBuilder
+    func wallpaperLiquidGlass<Legacy: View>(
+        in shape: some Shape,
+        legacy: (Self) -> Legacy
+    ) -> some View {
+        if #available(iOS 26, *) {
+            self.glassEffect(.regular, in: shape)
+        } else {
+            legacy(self)
+        }
     }
 }
 

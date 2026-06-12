@@ -9,7 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.openburnbar.data.models.TokenUsage
-import com.openburnbar.data.models.UsageDisplayMode
 import com.openburnbar.data.models.UsageRollups
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraRadius
@@ -25,10 +24,4 @@ fun VelocityForecastCard(rollups: UsageRollups, liveUsages: List<TokenUsage> = e
     ) {
         VelocityForecastCardBody(state = state)
     }
-}
-
-@Composable
-fun VelocityForecastCard(todayValue: Double, trailingValue: Double, @Suppress("UNUSED_PARAMETER") displayMode: UsageDisplayMode) {
-    val rollups = remember(todayValue, trailingValue) { UsageRollups(today = todayValue, sevenDays = trailingValue) }
-    VelocityForecastCard(rollups = rollups, liveUsages = emptyList())
 }

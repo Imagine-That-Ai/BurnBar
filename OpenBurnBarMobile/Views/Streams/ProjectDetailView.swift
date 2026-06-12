@@ -234,13 +234,13 @@ struct ProjectDetailView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(
+                        // Material, not glass: these rows sit inside the parent
+                        // AuroraGlassCard's iOS 26 glass, and glass cannot
+                        // sample other glass.
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(MobileTheme.Colors.border.opacity(0.32), lineWidth: 0.6)
-                                )
+                                .stroke(MobileTheme.Colors.border.opacity(0.32), lineWidth: 0.6)
                         )
                     }
 
@@ -408,13 +408,10 @@ private struct StatPill: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5)
-                )
+                .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5)
         )
     }
 }
@@ -456,13 +453,12 @@ private struct MobileProjectMemoryVisualCard: View {
         }
         .padding(10)
         .frame(width: 186, alignment: .leading)
-        .background(
+        // Material, not glass: this card renders inside projectMemoryCard's
+        // AuroraGlassCard iOS 26 glass, and glass cannot sample other glass.
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(MobileTheme.Colors.border.opacity(0.34), lineWidth: 0.6)
-                )
+                .stroke(MobileTheme.Colors.border.opacity(0.34), lineWidth: 0.6)
         )
     }
 }

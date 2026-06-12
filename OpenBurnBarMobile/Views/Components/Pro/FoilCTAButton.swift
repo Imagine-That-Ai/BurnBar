@@ -21,6 +21,7 @@ struct FoilCTAButton: View {
     let action: () -> Void
 
     @State private var isPressed = false
+    @State private var glowBreathe = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
 
@@ -48,9 +49,21 @@ struct FoilCTAButton: View {
                     .stroke(ProTheme.Membership.ctaEdge, lineWidth: 1.2)
             )
             .scaleEffect(isPressed ? 0.98 : 1.0)
-            .shadow(color: ProTheme.Membership.ctaGlow.opacity(0.38), radius: 18, y: 8)
+            // The glow breathes slowly — the one living cue that this is THE
+            // button. Static at its resting value under reduce-motion.
+            .shadow(
+                color: ProTheme.Membership.ctaGlow.opacity(glowBreathe ? 0.55 : 0.32),
+                radius: glowBreathe ? 24 : 15,
+                y: 8
+            )
         }
         .buttonStyle(.plain)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 3.6).repeatForever(autoreverses: true)) {
+                glowBreathe = true
+            }
+        }
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in if !isPressed { isPressed = true } }

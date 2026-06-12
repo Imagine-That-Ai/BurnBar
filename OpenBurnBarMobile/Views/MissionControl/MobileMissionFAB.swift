@@ -133,12 +133,9 @@ struct MobileMissionFAB: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule().stroke(UnifiedDesignSystem.Colors.amber.opacity(0.40), lineWidth: 0.6)
-                )
+        .liquidGlassSurface(in: Capsule())
+        .overlay(
+            Capsule().stroke(UnifiedDesignSystem.Colors.amber.opacity(0.40), lineWidth: 0.6)
         )
         .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
         .accessibilityLabel(reason.displayMessage)
@@ -185,13 +182,10 @@ struct MobileMissionFAB: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(
+        .liquidGlassSurface(in: Capsule())
+        .overlay(
             Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule()
-                        .stroke(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.5), lineWidth: 0.5)
-                )
+                .stroke(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.5), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 3)
     }
@@ -220,11 +214,12 @@ struct MobileMissionFAB: View {
                         .blur(radius: 6)
                 }
 
-                // Main disc
+                // Main disc — interactive Liquid Glass on iOS 26, material below.
                 ZStack {
                     Circle()
-                        .fill(.ultraThinMaterial)
+                        .fill(.clear)
                         .frame(width: fabSize, height: fabSize)
+                        .liquidGlassInteractive(in: .circle)
                         .shadow(
                             color: state.isActive
                                 ? state.accent.opacity(0.25)
@@ -369,11 +364,26 @@ struct MobileMissionFAB: View {
                         .opacity(0.85)
                 }
                 // Visible disc — 16pt, breath ±10% scale when idle.
-                Circle()
-                    .fill(state.accent.opacity(hasPendingApproval ? 0.85 : 0.62))
-                    .frame(width: 16, height: 16)
-                    .scaleEffect(reduceMotion ? 1.0 : (glowPulse ? 1.06 : 0.96))
-                    .shadow(color: state.accent.opacity(hasPendingApproval ? 0.50 : 0.30), radius: 8, x: 0, y: 2)
+                // Tinted interactive glass on iOS 26; plain accent fill below.
+                Group {
+                    if #available(iOS 26.0, *) {
+                        Circle()
+                            .fill(.clear)
+                            .frame(width: 16, height: 16)
+                            .glassEffect(
+                                .regular
+                                    .tint(state.accent.opacity(hasPendingApproval ? 0.85 : 0.62))
+                                    .interactive(),
+                                in: .circle
+                            )
+                    } else {
+                        Circle()
+                            .fill(state.accent.opacity(hasPendingApproval ? 0.85 : 0.62))
+                            .frame(width: 16, height: 16)
+                    }
+                }
+                .scaleEffect(reduceMotion ? 1.0 : (glowPulse ? 1.06 : 0.96))
+                .shadow(color: state.accent.opacity(hasPendingApproval ? 0.50 : 0.30), radius: 8, x: 0, y: 2)
             }
             // 32pt tap target — comfortably thumb-sized on every device.
             .frame(width: 32, height: 32)

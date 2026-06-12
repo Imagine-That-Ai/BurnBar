@@ -33,6 +33,8 @@ internal class HermesServiceRuntimeSupport(
     private val modelState: HermesRuntimeModelState,
     private val probeState: HermesRuntimeProbeState,
 ) {
+    @Suppress("InstanceOfCheckForException", "TooGenericExceptionCaught")
+    // Coroutine-safe catch: CancellationException must propagate; a split catch would trip RethrowCaughtException.
     suspend fun probeSelectedRuntime(endpointOverride: String? = null) {
         val selected = selectedConnection()
 

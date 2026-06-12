@@ -58,23 +58,47 @@ struct ProviderAuroraAvatar: View {
     @ViewBuilder
     private var glassDisc: some View {
         let inset: CGFloat = max(6, size * 0.14)
-        Circle()
-            .fill(.ultraThinMaterial)
-            .overlay(
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.55),
-                                accent.opacity(0.35)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.5
+        if #available(iOS 26.0, *) {
+            // Liquid Glass: the disc is pure glass sampling the real backdrop —
+            // a material fill underneath would block the refraction and read as
+            // frosted plastic. The avatar's personality survives as a faint
+            // white→accent wash riding ON the glass shape.
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.10),
+                            Color.clear,
+                            accent.opacity(0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
+                )
+                .glassEffect(.regular, in: .circle)
+                .overlay(discStroke)
+                .padding(inset)
+        } else {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .overlay(discStroke)
+                .padding(inset)
+        }
+    }
+
+    private var discStroke: some View {
+        Circle()
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.55),
+                        accent.opacity(0.35)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 0.5
             )
-            .padding(inset)
     }
 
     private var logo: some View {

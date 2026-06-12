@@ -400,7 +400,7 @@ internal data class ComposerBarCallbacks(
 @Composable
 internal fun ComposerBar(state: ComposerBarState, callbacks: ComposerBarCallbacks) {
     val accent = Color(state.provider.brandColor)
-    val toolbarBrush = Brush.linearGradient(toolbarGradientColors(state.runtime, accent))
+    val toolbarBrush = Brush.linearGradient(toolbarGradientColors(state.runtime))
     val glassStrokeBrush = Brush.linearGradient(AuroraGradients.glassStroke)
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         ComposerToolbarRow(state = state, callbacks = callbacks, accent = accent, toolbarBrush = toolbarBrush)
@@ -656,7 +656,7 @@ internal fun ToolbarIconButton(
     }
 }
 
-internal fun toolbarGradientColors(runtime: AssistantRuntimeID, accent: Color): List<Color> = when (runtime) {
+internal fun toolbarGradientColors(runtime: AssistantRuntimeID): List<Color> = when (runtime) {
     AssistantRuntimeID.HERMES -> AuroraGradients.mercuryFoil
     AssistantRuntimeID.PI -> AuroraGradients.piGradient
     AssistantRuntimeID.CODEX -> listOf(Color(0xFF1ABC9C), Color(0xFF2ECC71), Color(0xFF7EE8C4))
@@ -667,7 +667,6 @@ internal fun toolbarGradientColors(runtime: AssistantRuntimeID, accent: Color): 
     AssistantRuntimeID.ANTIGRAVITY -> listOf(Color(0xFF6C63FF), Color(0xFF8F8AFF), Color(0xFFC4B5FD))
     AssistantRuntimeID.GROK -> listOf(Color(0xFF111827), Color(0xFF0EA5E9), Color(0xFF67E8F9))
     AssistantRuntimeID.CURSOR_AGENT -> listOf(Color(0xFF0F172A), Color(0xFF64748B), Color(0xFFCBD5E1))
-    else -> listOf(accent, accent.copy(alpha = 0.72f), accent)
 }
 
 @Composable
@@ -732,4 +731,3 @@ internal fun SendButton(enabled: Boolean, accent: Color, isSending: Boolean, onC
         }
     }
 }
-

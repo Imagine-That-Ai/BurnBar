@@ -659,6 +659,13 @@ final class HermesService {
     }
     private var visibleCLIObservation: CLIAgentMissionObservation?
     private var streamEventParser = HermesOpenAICompatibleStreamParser()
+    /// Last time a streaming text delta was committed to `messages`.
+    /// `appendVisibleContent` throttles those commits so per-token SSE
+    /// events don't invalidate every `@Observable` reader; structural
+    /// events and end-of-stream finalization still commit immediately.
+    private var lastStreamCommit = ContinuousClock.now
+    /// Minimum spacing between throttled streaming text commits.
+    private static let streamCommitInterval: Duration = .milliseconds(80)
     private let selectedConnectionDefaultsKey = HermesRuntimeStore.selectedConnectionDefaultsKey
     private let selectedModelDefaultsKey = HermesRuntimeStore.selectedModelDefaultsKey
     private let favoriteModelsDefaultsKey = HermesRuntimeStore.favoriteModelsDefaultsKey
@@ -1996,11 +2003,21 @@ final class HermesService {
         messages.append(assistantMessage)
 
         var eventLines: [String] = []
-        for try await line in stream.lines {
-            guard !Task.isCancelled else { break }
-            for event in Self.consumeSSELine(line, eventLines: &eventLines) {
-                processSSEPayload(event, into: &assistantMessage)
+        do {
+            for try await line in stream.lines {
+                guard !Task.isCancelled else { break }
+                for event in Self.consumeSSELine(line, eventLines: &eventLines) {
+                    processSSEPayload(event, into: &assistantMessage)
+                }
             }
+        } catch {
+            // The commit throttle in `appendVisibleContent` can hold back up
+            // to ~80ms of streamed text; flush the staged message before
+            // rethrowing so the partial bubble keeps everything that arrived.
+            if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                messages[index] = assistantMessage
+            }
+            throw error
         }
         if !eventLines.isEmpty {
             processSSEPayload(eventLines.joined(separator: "\n"), into: &assistantMessage)
@@ -2173,11 +2190,21 @@ final class HermesService {
         streamEventParser = HermesOpenAICompatibleStreamParser()
         messages.append(assistantMessage)
 
-        try await relayTransport.sendStreaming(
-            relayPayload(operation: .chatCompletions, method: "POST", path: "/v1/chat/completions", body: body),
-            timeout: remoteRelayChatCompletionTimeout
-        ) { event in
-            self.processSSEPayload(event, into: &assistantMessage)
+        do {
+            try await relayTransport.sendStreaming(
+                relayPayload(operation: .chatCompletions, method: "POST", path: "/v1/chat/completions", body: body),
+                timeout: remoteRelayChatCompletionTimeout
+            ) { event in
+                self.processSSEPayload(event, into: &assistantMessage)
+            }
+        } catch {
+            // The commit throttle in `appendVisibleContent` can hold back up
+            // to ~80ms of streamed text; flush the staged message before
+            // rethrowing so the partial bubble keeps everything that arrived.
+            if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                messages[index] = assistantMessage
+            }
+            throw error
         }
         #if DEBUG
         print("OpenBurnBarMobile Hermes E2E streamRelayCompletion finished connection=\(selectedConnection.id)")
@@ -2655,11 +2682,21 @@ final class HermesService {
     private func appendVisibleContent(_ content: String, to message: inout HermesChatMessage) {
         guard !content.isEmpty else { return }
         message.markFirstResponseChunk()
+        let isFirstChunk = message.text.isEmpty
         if message.text.isEmpty || content.hasPrefix(message.text) {
             message.text = content
         } else if content != message.text {
             message.text += content
         }
+        // Per-token commits invalidate every `@Observable` reader of
+        // `messages`, so text deltas commit at most every ~80ms. The first
+        // chunk commits immediately (the bubble appears instantly); the
+        // staged copy keeps accumulating either way, and structural events
+        // plus the end-of-stream finalize commit unconditionally, so no
+        // trailing text is ever lost.
+        let now = ContinuousClock.now
+        guard isFirstChunk || now - lastStreamCommit >= Self.streamCommitInterval else { return }
+        lastStreamCommit = now
         if let index = messages.firstIndex(where: { $0.id == message.id }) {
             messages[index] = message
         }

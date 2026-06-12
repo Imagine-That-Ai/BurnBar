@@ -73,11 +73,12 @@ import com.openburnbar.data.square.ThreadInboxStore
 @Composable
 fun HermesSquareScreen(
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
-    @Suppress("UNUSED_PARAMETER") onOpenBrandZone: (String) -> Unit = {},
+    onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {},
 ) {
     HermesSquareScreenContent(
         onOpenLegacyRuntime = onOpenLegacyRuntime,
+        onOpenBrandZone = onOpenBrandZone,
         onOpenPairedMac = onOpenPairedMac,
     )
 }

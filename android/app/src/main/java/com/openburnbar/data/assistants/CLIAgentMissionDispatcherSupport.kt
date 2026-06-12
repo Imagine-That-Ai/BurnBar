@@ -1,5 +1,3 @@
-@file:Suppress("MatchingDeclarationName")
-
 package com.openburnbar.data.assistants
 
 import com.google.firebase.firestore.FirebaseFirestore
@@ -98,23 +96,27 @@ internal fun fanOutGroupPayload(
 internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest) {
     request.runtimeTokens.forEachIndexed { index, runtimeToken ->
         val missionID = request.plan.childMissionIDs[index]
+        val payloadInput =
+            CLIMissionPayloadInput(
+                core = CLIMissionPayloadCore(missionID, "${request.plan.trimmedTitle} · $runtimeToken", request.plan.trimmedPrompt, request.missionKind),
+                execution = CLIMissionPayloadExecution(
+                    requestedRuntime = runtimeToken,
+                    targetProject = request.targetProject,
+                    depth = request.depth,
+                    approvalMode = request.approvalMode,
+                    requestedModelID = request.requestedModelIDsByRuntime[runtimeToken]?.trim()?.takeIf { it.isNotEmpty() },
+                ),
+                permissions = CLIMissionPayloadPermissions(request.commandsAllowed, request.fileEditsAllowed),
+                metadata = CLIMissionPayloadMetadata(
+                    sourceSkillID = request.sourceSkillID,
+                    sourceSurface = request.sourceSurface,
+                    parentHermesThreadID = request.parentHermesThreadID,
+                ),
+                experience = CLIMissionPayloadExperience(deliveryMode = request.deliveryMode),
+            )
         val childPayload =
             CLIAgentMissionRequestPayloadFactory.buildSealed(
-                id = missionID,
-                title = "${request.plan.trimmedTitle} · $runtimeToken",
-                prompt = request.plan.trimmedPrompt,
-                missionKind = request.missionKind,
-                requestedRuntime = runtimeToken,
-                targetProject = request.targetProject,
-                depth = request.depth,
-                approvalMode = request.approvalMode,
-                commandsAllowed = request.commandsAllowed,
-                fileEditsAllowed = request.fileEditsAllowed,
-                requestedModelID = request.requestedModelIDsByRuntime[runtimeToken]?.trim()?.takeIf { it.isNotEmpty() },
-                sourceSkillID = request.sourceSkillID,
-                sourceSurface = request.sourceSurface,
-                deliveryMode = request.deliveryMode,
-                parentHermesThreadID = request.parentHermesThreadID,
+                input = payloadInput,
                 key = request.key,
                 signal =
                     request.signalIdentity?.let { identity ->

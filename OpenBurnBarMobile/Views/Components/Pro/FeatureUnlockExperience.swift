@@ -85,55 +85,115 @@ enum TierPricing {
 /// and the one-liner beneath. Reused by the sheet and the full-screen veil.
 struct FeatureUnlockHero: View {
     let feature: GatedFeature
-    var crestSize: CGFloat = 120
+    var crestSize: CGFloat = 124
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathe = false
+    @State private var orbit = false
 
     private var tier: CloudTier { feature.requiredTier }
 
     var body: some View {
-        VStack(spacing: MobileTheme.Spacing.md) {
+        VStack(spacing: MobileTheme.Spacing.lg) {
             heroCrest
             TierLockBadge(tier: tier, style: .pill)
             VStack(spacing: MobileTheme.Spacing.sm) {
                 Text(feature.publicName)
-                    .font(ProTheme.Typography.titleSerif)
+                    .font(ProTheme.Typography.displaySerif)
                     .foregroundStyle(ProTheme.Palette.mercury)
+                    .shadow(color: ProTheme.Palette.aureate.opacity(0.35), radius: 16)
                     .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.7)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(feature.oneLineBenefit)
                     .font(MobileTheme.Typography.body)
-                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.74))
+                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.78))
                     .multilineTextAlignment(.center)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, MobileTheme.Spacing.sm)
         }
         .frame(maxWidth: .infinity)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 4.4).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+            withAnimation(.linear(duration: 18).repeatForever(autoreverses: false)) {
+                orbit = true
+            }
+        }
     }
 
-    // The required tier's iridescent crest, glowing — the hero variant of the
-    // store-card aura. The feature's SF Symbol floats inside as a quiet anchor.
+    // The required tier's crest as a crafted object: a breathing iridescent
+    // halo, a slow orbiting holo ring, the glowing store-card aura, and the
+    // crest art clipped into a foil-rimmed minted tile with the feature's
+    // glyph set into a small badge at its corner. Reduce-motion → static.
     private var heroCrest: some View {
         ZStack {
+            // Breathing per-tier halo.
+            Circle()
+                .fill(tier.holoGradient)
+                .frame(width: crestSize * 1.5, height: crestSize * 1.5)
+                .blur(radius: 40)
+                .opacity(breathe ? 0.50 : 0.26)
+                .scaleEffect(breathe ? 1.10 : 0.94)
+
+            // Slow orbiting iridescent ring.
+            Circle()
+                .stroke(
+                    AngularGradient(colors: tier.holoStops + [tier.holoStops[0]], center: .center),
+                    lineWidth: 1.2
+                )
+                .frame(width: crestSize * 1.3, height: crestSize * 1.3)
+                .blur(radius: 0.6)
+                .opacity(0.75)
+                .rotationEffect(.degrees(orbit ? 360 : 0))
+
             HolographicCrestAura(
                 crestImageName: tier.crestAssetName,
                 gradient: tier.holoGradient,
                 intensity: .hero
             )
+
+            // Living dust — tier-colored sparks rising around the crest.
+            HoloSparksOverlay(colors: tier.holoStops)
+
+            // The crest tile — clipped and foil-rimmed so the artwork reads
+            // as a minted object, not a pasted image. A periodic specular
+            // glint sweeps the tile like light across a coin face.
             Image(tier.crestAssetName)
                 .resizable()
                 .renderingMode(.original)
                 .scaledToFit()
-                .frame(width: crestSize * 0.62, height: crestSize * 0.62)
-                .shadow(color: ProTheme.Palette.aureate.opacity(0.40), radius: 10, y: 3)
-            Image(systemName: feature.iconSystemName)
-                .font(.system(size: crestSize * 0.18, weight: .semibold))
-                .foregroundStyle(ProTheme.Palette.mercury)
-                .shadow(color: .black.opacity(0.5), radius: 4, y: 1)
-                .accessibilityHidden(true)
+                .frame(width: crestSize * 0.78, height: crestSize * 0.78)
+                .clipShape(RoundedRectangle(cornerRadius: crestSize * 0.17, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: crestSize * 0.17, style: .continuous)
+                        .stroke(ProTheme.Membership.foilEdge, lineWidth: 1)
+                )
+                .overlay(
+                    HoloSheenSweep(tint: .white, period: 5.4, bandOpacity: 0.35)
+                        .clipShape(RoundedRectangle(cornerRadius: crestSize * 0.17, style: .continuous))
+                )
+                .shadow(color: .black.opacity(0.45), radius: 18, y: 10)
+                .shadow(color: ProTheme.Palette.aureate.opacity(0.35), radius: 12, y: 3)
+                .overlay(alignment: .bottomTrailing) {
+                    ZStack {
+                        Circle().fill(ProTheme.Palette.obsidianElevated)
+                        Circle().stroke(ProTheme.Membership.foilEdge, lineWidth: 0.8)
+                        Image(systemName: feature.iconSystemName)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(ProTheme.Palette.aureate)
+                    }
+                    .frame(width: 32, height: 32)
+                    .offset(x: 8, y: 8)
+                    .accessibilityHidden(true)
+                }
+                .offset(y: breathe ? -2 : 2)
         }
-        .frame(width: crestSize, height: crestSize)
+        .frame(width: crestSize * 1.6, height: crestSize * 1.6)
     }
 }
 
@@ -143,21 +203,39 @@ struct FeatureUnlockHero: View {
 struct FeatureUnlockBenefits: View {
     let feature: GatedFeature
 
+    private var tier: CloudTier { feature.requiredTier }
+
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-            Text("WHAT YOU'LL UNLOCK")
-                .font(MobileTheme.Typography.tiny)
-                .fontWeight(.bold)
-                .tracking(2.0)
-                .foregroundStyle(ProTheme.Palette.mercury.opacity(0.55))
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                Text("WHAT YOU'LL UNLOCK")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.bold)
+                    .tracking(2.0)
+                    .foregroundStyle(ProTheme.Membership.foilLeaf)
+                    .fixedSize()
+                ProTheme.Membership.foilEdge
+                    .frame(height: 1)
+                    .mask(
+                        LinearGradient(
+                            colors: [.white, .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .opacity(0.6)
+                    .accessibilityHidden(true)
+            }
 
-            ForEach(Array(feature.benefitBullets.enumerated()), id: \.offset) { _, bullet in
+            ForEach(Array(feature.benefitBullets.enumerated()), id: \.offset) { index, bullet in
                 HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(ProTheme.Palette.aureate.opacity(0.16))
+                            .fill(tier.holoGradient)
+                            .opacity(0.18)
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(ProTheme.Palette.aureate.opacity(0.30), lineWidth: 0.75)
+                            .stroke(tier.holoGradient, lineWidth: 0.8)
+                            .opacity(0.55)
                         Image(systemName: "checkmark")
                             .font(.system(size: 12, weight: .heavy))
                             .foregroundStyle(ProTheme.Palette.aureate)
@@ -166,12 +244,24 @@ struct FeatureUnlockBenefits: View {
                     Text(bullet)
                         .font(MobileTheme.Typography.body)
                         .foregroundStyle(ProTheme.Palette.mercury.opacity(0.92))
+                        .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .staggeredEntrance(delay: 0.10 + Double(index) * 0.07)
             }
         }
+        .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous)
+                .fill(ProTheme.Palette.obsidianElevated.opacity(0.62))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous)
+                .stroke(ProTheme.Membership.foilEdge, lineWidth: 0.7)
+                .opacity(0.55)
+        )
     }
 }
 
@@ -186,26 +276,35 @@ struct FeatureUnlockFooter: View {
     var onDismiss: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: MobileTheme.Spacing.sm) {
-            VStack(spacing: 2) {
-                Text(tier.availabilityLine)
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.66))
-                if let priceLine {
-                    Text(priceLine)
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.46))
-                }
+        VStack(spacing: MobileTheme.Spacing.md) {
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                hairline(fadeOut: false)
+                Text(tier.availabilityLine.uppercased())
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.bold)
+                    .tracking(1.8)
+                    .foregroundStyle(ProTheme.Membership.foilLeaf)
+                    .fixedSize()
+                hairline(fadeOut: true)
             }
 
             FoilCTAButton(
                 title: tier.unlockCTALabel,
+                subtitle: priceLine,
                 icon: "sparkles",
-                fillWidth: false,
                 action: onUnlock
             )
             .frame(maxWidth: 360)
+
+            // Trust whisper — the two facts that dissolve purchase anxiety,
+            // both verbatim from the Apple billing disclosure.
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                Label("Billed by Apple", systemImage: "apple.logo")
+                Text("·")
+                Label("Cancel anytime", systemImage: "checkmark.shield")
+            }
+            .font(MobileTheme.Typography.tiny)
+            .foregroundStyle(ProTheme.Palette.mercury.opacity(0.52))
 
             if let onDismiss {
                 Button("Maybe later", action: onDismiss)
@@ -216,6 +315,21 @@ struct FeatureUnlockFooter: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// A one-point foil hairline that fades toward (or away from) the kicker.
+    private func hairline(fadeOut: Bool) -> some View {
+        ProTheme.Membership.foilEdge
+            .frame(height: 1)
+            .mask(
+                LinearGradient(
+                    colors: fadeOut ? [.white, .clear] : [.clear, .white],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .opacity(0.7)
+            .accessibilityHidden(true)
     }
 }
 
@@ -267,6 +381,20 @@ struct FeatureUnlockSheet: View {
             ProTheme.Palette.darkAuroraRibbon
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
+            // Per-tier iridescent wash behind the hero so the unlock moment
+            // carries the required tier's color signature.
+            RadialGradient(
+                colors: [
+                    (feature.requiredTier.holoStops.first ?? ProTheme.Palette.aureate).opacity(0.18),
+                    Color.clear
+                ],
+                center: UnitPoint(x: 0.5, y: 0.12),
+                startRadius: 0,
+                endRadius: 440
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
             if !reduceMotion {
                 MercuryShimmerOverlay()
                     .blendMode(.plusLighter)
@@ -349,6 +477,16 @@ struct TierLockBadge: View {
         .padding(.vertical, style == .pill ? 6 : 4)
         .background(chipBackground)
         .overlay(chipBorder)
+        // Periodic specular glint — the chip reads as minted foil, not a
+        // static label. Self-gates on reduce-motion.
+        .overlay(
+            HoloSheenSweep(
+                tint: ProTheme.Membership.foilHighlight,
+                period: 5.6,
+                bandOpacity: 0.5
+            )
+            .clipShape(Capsule(style: .continuous))
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Available on \(tier.membershipName)")
     }

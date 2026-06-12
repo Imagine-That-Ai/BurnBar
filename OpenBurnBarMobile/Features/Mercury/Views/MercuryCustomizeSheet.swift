@@ -120,13 +120,12 @@ struct MercuryCustomizeSheet: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
+        // Passive glass plate (iOS 26) with the original ultra-thin material
+        // on iOS 17–25; the hairline stroke rides on top in both worlds.
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
 

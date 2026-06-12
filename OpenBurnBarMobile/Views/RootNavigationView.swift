@@ -141,6 +141,11 @@ struct RootNavigationView: View {
             if useWebsiteBackground {
                 AuroraBackdrop(density: .subtle)
             } else {
+                // Intentionally NOT Liquid Glass: this is the rearmost base
+                // fill of the sidebar column (the counterpart of the Aurora
+                // backdrop above), not floating chrome — glass here would
+                // have no content behind it to sample and would sit under
+                // the footer pill's glass.
                 Rectangle().fill(.clear).background(.regularMaterial)
             }
             List {
@@ -258,6 +263,33 @@ struct RootNavigationView: View {
     }
 
     private var sidebarFooter: some View {
+        Group {
+            if #available(iOS 26, *) {
+                // Liquid Glass: no bar plate. The sync pill carries its own
+                // glass (`.auroraGlass`) and the Hermes button keeps its opaque
+                // mercury-foil identity — a material here would sit UNDER the
+                // pill's glassEffect and block it from sampling the sidebar
+                // list scrolling beneath.
+                sidebarFooterContent
+            } else {
+                sidebarFooterContent
+                    .background(.ultraThinMaterial)
+            }
+        }
+        .sheet(isPresented: $showHermesSheet) {
+            NavigationStack {
+                HermesChatView(service: hermesService, route: .new)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showHermesSheet = false }
+                        }
+                    }
+            }
+            .presentationDetents([.large])
+        }
+    }
+
+    private var sidebarFooterContent: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 Circle()
@@ -294,18 +326,6 @@ struct RootNavigationView: View {
             .buttonStyle(.aurora(.hermes, fullWidth: true))
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
-        }
-        .background(.ultraThinMaterial)
-        .sheet(isPresented: $showHermesSheet) {
-            NavigationStack {
-                HermesChatView(service: hermesService, route: .new)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showHermesSheet = false }
-                        }
-                    }
-            }
-            .presentationDetents([.large])
         }
     }
 

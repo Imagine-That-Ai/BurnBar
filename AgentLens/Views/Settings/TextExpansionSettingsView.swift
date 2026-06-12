@@ -115,8 +115,7 @@ struct TextExpansionSettingsView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
+                    .liquidGlassSurface(in: Capsule())
                     .overlay(
                         Capsule()
                             .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)

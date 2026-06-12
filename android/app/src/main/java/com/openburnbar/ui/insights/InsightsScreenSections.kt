@@ -8,7 +8,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -66,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -77,6 +77,7 @@ import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
 import com.openburnbar.data.insights.verdict.InsightVerdict
+import com.openburnbar.ui.components.liquidGlassSurface
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -691,30 +692,25 @@ internal fun InsightsComposerBar(isLoading: Boolean, onAsk: (String) -> Unit) {
         modifier =
         Modifier
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBars),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-        tonalElevation = 6.dp,
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .liquidGlassSurface(
+                shape = RectangleShape,
+                wash = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f),
+            ),
+        color = Color.Transparent,
+        tonalElevation = 0.dp,
     ) {
-        Column {
-            Box(
-                modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(0.5.dp)
-                    .background(MaterialTheme.colorScheme.outlineVariant),
-            )
-            InsightsComposerInputRow(
-                prompt = prompt,
-                isLoading = isLoading,
-                ember = ember,
-                onPromptChange = { prompt = it },
-                onSubmit = {
-                    val question = prompt
-                    prompt = ""
-                    onAsk(question)
-                },
-            )
-        }
+        InsightsComposerInputRow(
+            prompt = prompt,
+            isLoading = isLoading,
+            ember = ember,
+            onPromptChange = { prompt = it },
+            onSubmit = {
+                val question = prompt
+                prompt = ""
+                onAsk(question)
+            },
+        )
     }
 }
 

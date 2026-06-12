@@ -59,12 +59,18 @@ struct AuroraButtonStyle: ButtonStyle {
                 .fill(MobileTheme.primaryGradient)
                 .opacity(isPressed ? 0.92 : 1.0)
         case .secondary:
-            Capsule(style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .fill(MobileTheme.Colors.surface.opacity(isPressed ? 0.4 : 0.6))
-                )
+            if #available(iOS 26, *) {
+                Capsule(style: .continuous)
+                    .fill(Color.clear)
+                    .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+            } else {
+                Capsule(style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .fill(MobileTheme.Colors.surface.opacity(isPressed ? 0.4 : 0.6))
+                    )
+            }
         case .ghost:
             Capsule(style: .continuous)
                 .fill(MobileTheme.ember.opacity(isPressed ? 0.18 : 0.10))

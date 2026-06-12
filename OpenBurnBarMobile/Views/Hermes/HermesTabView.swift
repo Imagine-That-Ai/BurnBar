@@ -1379,9 +1379,9 @@ struct HermesChatView: View {
                 }
                 .onChange(of: service.messages.last?.text.count ?? 0) { _, _ in
                     if let last = service.messages.last, last.isStreaming {
-                        withAnimation(AuroraDesign.Motion.auroraSpring) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
+                        // Plain scroll: a spring per streamed chunk stacks
+                        // interrupted animations and burns the frame budget.
+                        proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
                 .onChange(of: service.isStreaming) { _, streaming in
@@ -1462,6 +1462,9 @@ struct HermesChatView: View {
                     }
             }
         }
+        // Tells the swarm background (inside AuroraBackdrop) to throttle its
+        // frame rate while a reply streams — see WebsiteBackgroundView.
+        .environment(\.hermesStreamingActive, service.isStreaming)
         .onChange(of: inputFocused) { _, focused in
             NotificationCenter.default.post(
                 name: .hermesKeyboardFocusChanged,
@@ -3662,6 +3665,10 @@ struct HermesMessageBubble: View {
             insertion: .move(edge: .bottom).combined(with: .opacity),
             removal: .opacity
         ))
+        .onAppear { refreshSourceLinks() }
+        .onChange(of: message.isStreaming) { _, streaming in
+            if !streaming { refreshSourceLinks() }
+        }
         }
     }
 
@@ -3748,7 +3755,7 @@ struct HermesMessageBubble: View {
                             .stroke(bubbleStroke, lineWidth: bubbleStrokeWidth)
                     )
                     .overlay {
-                        if !message.isError && message.outcome == .normal {
+                        if !message.isError && message.outcome == .normal && !message.isStreaming {
                             MercuryShimmerOverlay()
                                 .clipShape(assistantBubbleShape)
                         }
@@ -3935,9 +3942,18 @@ struct HermesMessageBubble: View {
             && message.generationDurationSource == .bufferedWallClock
     }
 
-    private var sourceLinks: [HermesSourceLink] {
-        guard !isUser, !message.text.isEmpty else { return [] }
-        return HermesSourceLinkExtractor.extract(from: message.text)
+    /// Cached source-link extraction. The regex walk over the full message
+    /// text is too expensive to re-run on every body evaluation, so we
+    /// extract once when the bubble appears and again when streaming
+    /// completes; history bubbles (never streamed) keep the onAppear result.
+    @State private var sourceLinks: [HermesSourceLink] = []
+
+    private func refreshSourceLinks() {
+        guard !isUser, !message.text.isEmpty, !message.isStreaming else {
+            sourceLinks = []
+            return
+        }
+        sourceLinks = HermesSourceLinkExtractor.extract(from: message.text)
     }
 
     private var sourceLinksFooter: some View {
@@ -4013,14 +4029,15 @@ struct HermesMessageBubble: View {
     /// Routes to either pretext rich rendering or plain native `Text` based on
     /// the user's preference and whether the message is in an error state.
     /// Error messages use plain Text because the contract is "render exactly
-    /// what the server returned"; normal assistant text uses the atom-aware
-    /// renderer both during and after streaming.
+    /// what the server returned"; streaming text uses the cheap attributed
+    /// fallback (rich layout re-measures the bubble on every chunk) and the
+    /// atom-aware renderer takes over once the stream completes.
     @ViewBuilder
     private var assistantTextBody: some View {
-        if usePretextRendering, !message.isError {
+        if usePretextRendering, !message.isError, !message.isStreaming {
             HermesRichBubble(
                 text: HermesSourceLinkExtractor.collapseExternalLinksForDisplay(
-                    in: message.text + (message.isStreaming ? "▍" : "")
+                    in: message.text
                 ),
                 baseColor: MobileTheme.Colors.textPrimary,
                 mentionColor: MobileTheme.hermesAureate,
@@ -4037,7 +4054,9 @@ struct HermesMessageBubble: View {
             Text(
                 message.isError
                     ? AttributedString(message.text)
-                    : HermesInlineMarkdown.attributedString(message.text)
+                    : HermesInlineMarkdown.attributedString(
+                        message.text + (message.isStreaming ? "▍" : "")
+                    )
             )
                 .font(MobileTheme.Typography.body)
                 .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)

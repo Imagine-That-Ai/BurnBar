@@ -38,13 +38,15 @@ class AndroidCloudVaultSignalPayloadsTest {
 
             val map =
                 AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
-                    domainID = "conversations_chat",
-                    uid = "user-1",
-                    collection = "mobile_assistant_chats",
-                    docId = "thread-1",
-                    plaintext = plaintext,
-                    localIdentity = local,
-                    otherRecipients = listOf(peer.asRecipient()),
+                    AndroidCloudVaultSignalPayloads.SignalEnvelopeMapRequest(
+                        domainID = "conversations_chat",
+                        uid = "user-1",
+                        collection = "mobile_assistant_chats",
+                        docId = "thread-1",
+                        plaintext = plaintext,
+                        localIdentity = local,
+                        otherRecipients = listOf(peer.asRecipient()),
+                    ),
                 )
             assertNotNull(map)
 
@@ -83,13 +85,15 @@ class AndroidCloudVaultSignalPayloadsTest {
             val local = AndroidSignalIdentityKeypair.generate("device-a", 1)
             assertNull(
                 AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
-                    domainID = "conversations_chat",
-                    uid = "u",
-                    collection = "mobile_assistant_chats",
-                    docId = "t",
-                    plaintext = "x".toByteArray(),
-                    localIdentity = local,
-                    otherRecipients = emptyList(),
+                    AndroidCloudVaultSignalPayloads.SignalEnvelopeMapRequest(
+                        domainID = "conversations_chat",
+                        uid = "u",
+                        collection = "mobile_assistant_chats",
+                        docId = "t",
+                        plaintext = "x".toByteArray(),
+                        localIdentity = local,
+                        otherRecipients = emptyList(),
+                    ),
                 ),
             )
         } finally {
@@ -104,13 +108,15 @@ class AndroidCloudVaultSignalPayloadsTest {
             val local = AndroidSignalIdentityKeypair.generate("device-a", 1)
             val map =
                 AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
-                    domainID = "conversations_chat",
-                    uid = "user-1",
-                    collection = "mobile_assistant_chats",
-                    docId = "thread-1",
-                    plaintext = "secret".toByteArray(),
-                    localIdentity = local,
-                    otherRecipients = emptyList(),
+                    AndroidCloudVaultSignalPayloads.SignalEnvelopeMapRequest(
+                        domainID = "conversations_chat",
+                        uid = "user-1",
+                        collection = "mobile_assistant_chats",
+                        docId = "thread-1",
+                        plaintext = "secret".toByteArray(),
+                        localIdentity = local,
+                        otherRecipients = emptyList(),
+                    ),
                 ) ?: error("expected a Signal envelope")
             val data = mapOf<String, Any?>("signalEnvelope" to map)
             // A different docId is a relocation — the binding guard must reject it.

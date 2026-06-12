@@ -37,12 +37,22 @@ struct GlassCard<Content: View>: View {
         content
             .padding(MobileTheme.Spacing.lg)
             .background(
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(MobileTheme.Colors.surface)
-                    .overlay(
+                Group {
+                    if #available(iOS 26, *) {
+                        // Real glass on iOS 26; the pre-26 look was always a
+                        // solid surface fill (never material), so keep it.
                         RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                            .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
-                    )
+                            .fill(Color.clear)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
+                    } else {
+                        RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                            .fill(MobileTheme.Colors.surface)
+                    }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                        .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
+                )
             )
     }
 }

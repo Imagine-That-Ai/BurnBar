@@ -54,30 +54,49 @@ struct ConnectedDevicesRow: View {
 
     private var deviceChips: some View {
         let visible = Array(devices.prefix(4))
-        return HStack(spacing: -8) {
-            ForEach(visible) { device in
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 30, height: 30)
-                    Circle()
-                        .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5)
-                        .frame(width: 30, height: 30)
-                    Image(systemName: deviceIcon(device))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(deviceColor(device))
+        // The chips overlap (spacing -8), so on iOS 26 they must share one
+        // GlassEffectContainer — glass cannot sample other glass. Pre-26 the
+        // group passes content through unchanged.
+        return LiquidGlassGroup {
+            HStack(spacing: -8) {
+                ForEach(visible) { device in
+                    ZStack {
+                        // Passive glass badge. On iOS 26 the disc is pure
+                        // Liquid Glass (no fill underneath, so it samples the
+                        // real background); on iOS 17–25 the adapter falls
+                        // back to the same ultra-thin material this chip
+                        // always used.
+                        Circle()
+                            .fill(Color.clear)
+                            .frame(width: 30, height: 30)
+                            .liquidGlassSurface(in: .circle)
+                        Circle()
+                            .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5)
+                            .frame(width: 30, height: 30)
+                        Image(systemName: deviceIcon(device))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(deviceColor(device))
+                    }
                 }
+                overflowChip
             }
-            if devices.count > 4 {
-                ZStack {
-                    Circle()
-                        .fill(MobileTheme.Colors.surface)
-                        .frame(width: 30, height: 30)
-                    Text("+\(devices.count - 4)")
-                        .font(MobileTheme.Typography.tiny)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                }
+        }
+    }
+
+    /// Opaque "+N" overflow count badge. Deliberately NOT glass: it carries a
+    /// text readout that overlaps the chip stack, and the opaque surface fill
+    /// keeps the count legible over the chips beneath it.
+    @ViewBuilder
+    private var overflowChip: some View {
+        if devices.count > 4 {
+            ZStack {
+                Circle()
+                    .fill(MobileTheme.Colors.surface)
+                    .frame(width: 30, height: 30)
+                Text("+\(devices.count - 4)")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
             }
         }
     }

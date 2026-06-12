@@ -232,12 +232,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
-          packages: "platforms;android-35 build-tools;35.0.0"
+          packages: "platforms;android-35 build-tools;36.0.0"
 
       - name: Inject Android Firebase config
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          OPENBURNBAR_ANDROID_FIREBASE_STRICT: "1"
         run: bash ./scripts/ci/inject-firebase-config-android.sh
+
+      - name: Verify Android Firebase release config
+        run: node ./scripts/ci/verify-android-firebase-release-config.mjs --strict-release
 
       - name: Inject Android Sentry config
         env:

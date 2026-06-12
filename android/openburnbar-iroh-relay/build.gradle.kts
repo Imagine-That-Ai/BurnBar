@@ -15,7 +15,6 @@
 // Firestore fallback.
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("org.jlleitschuh.gradle.ktlint")
 }
@@ -35,10 +34,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "21"
-    }
-
     buildFeatures {
         buildConfig = false
     }
@@ -47,15 +42,9 @@ android {
         lintConfig = file("lint.xml")
     }
 
-    sourceSets {
-        named("main") {
-            // The UniFFI-generated Kotlin bindings land under
-            // src/main/java/uniffi/openburnbar_iroh/ from
-            // scripts/build-iroh-android-aar.sh. Standard layout — no
-            // explicit override required, but kept here for clarity.
-            java.srcDir("src/main/java")
-        }
-    }
+    // The UniFFI-generated Kotlin bindings land under the standard
+    // src/main/java/uniffi/openburnbar_iroh/ path from
+    // scripts/build-iroh-android-aar.sh.
 }
 
 dependencies {

@@ -2,6 +2,7 @@ package com.openburnbar.data.hermes
 
 import android.content.Context
 import android.net.Uri
+import java.io.InputStream
 import java.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
@@ -77,13 +78,24 @@ object HermesAttachmentEncoder {
             return runCatching {
                 val file = java.io.File(path)
                 if (file.length() > HermesAttachmentLimits.MAX_INLINE_BYTES) {
-                    file.inputStream().use { it.readNBytes(HermesAttachmentLimits.MAX_INLINE_BYTES.toInt()) }
+                    file.inputStream().use { it.readAtMost(HermesAttachmentLimits.MAX_INLINE_BYTES.toInt()) }
                 } else {
                     file.readBytes()
                 }
             }.getOrNull()
         }
         return null
+    }
+
+    private fun InputStream.readAtMost(maxBytes: Int): ByteArray {
+        val bytes = ByteArray(maxBytes)
+        var offset = 0
+        while (offset < maxBytes) {
+            val read = read(bytes, offset, maxBytes - offset)
+            if (read <= 0) break
+            offset += read
+        }
+        return if (offset == bytes.size) bytes else bytes.copyOf(offset)
     }
 
     private fun decodeBodyForText(bytes: ByteArray, mimeType: String): String {

@@ -108,10 +108,7 @@ struct ChartStudioView: View {
                     }
                 }
 
-                inputBar
-                    .padding(.horizontal, MobileTheme.Spacing.lg)
-                    .padding(.vertical, MobileTheme.Spacing.md)
-                    .background(.ultraThinMaterial)
+                composerBar
             }
         }
         .onDisappear {
@@ -496,6 +493,30 @@ struct ChartStudioView: View {
     }
 
     // MARK: - Input Bar
+
+    /// Outer composer container. On iOS 26 the bar is a passive Liquid Glass
+    /// plate (rounded rect matching the bar's current footprint — 26pt is
+    /// concentric with the 14pt inner field at its 12pt vertical inset) so the
+    /// Aurora backdrop refracts straight through it; the TextField keeps its
+    /// own inner fill, riding ON the glass. Pre-26 keeps the original
+    /// full-width `.ultraThinMaterial` bar byte-for-byte — an inline branch
+    /// rather than `.liquidGlassSurface` because the plain `.background`
+    /// bleeds into the bottom safe area by default, which the adapter's
+    /// shape-based fallback would not reproduce.
+    @ViewBuilder
+    private var composerBar: some View {
+        if #available(iOS 26, *) {
+            inputBar
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+                .padding(.vertical, MobileTheme.Spacing.md)
+                .glassEffect(.regular, in: .rect(cornerRadius: 26, style: .continuous))
+        } else {
+            inputBar
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+                .padding(.vertical, MobileTheme.Spacing.md)
+                .background(.ultraThinMaterial)
+        }
+    }
 
     private var inputBar: some View {
         HStack(spacing: MobileTheme.Spacing.sm) {
