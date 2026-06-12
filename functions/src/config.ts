@@ -8,6 +8,7 @@
 import type { EnvConfig } from "./types.js";
 import { readFirebaseFunctionsConfig } from "./firebaseRuntime.js";
 import { isRecord, stringValue } from "./guards.js";
+import { logWarn } from "./logging.js";
 
 function configBucket(cfg: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = cfg[key];
@@ -95,10 +96,13 @@ function buildConfig(): EnvConfig {
   // If an operator EXPLICITLY disables the nonce defense in production, surface it
   // loudly — this is now an opt-out of a secure default, not the default itself.
   if (looksProd && enforceAppCheck && !requireHighRiskNonce) {
-    console.warn(
-      `[security] High-risk single-use nonce replay defense has been EXPLICITLY DISABLED for production project "${projectId}". ` +
+    logWarn({
+      event: "security.high_risk_nonce_replay_defense_disabled",
+      project_id: projectId,
+      message:
+        `[security] High-risk single-use nonce replay defense has been EXPLICITLY DISABLED for production project "${projectId}". ` +
         "This opts out of the secure default. Re-enable by unsetting REQUIRE_HIGH_RISK_NONCE / openburnbar.require_high_risk_nonce.",
-    );
+    });
   }
 
   return {

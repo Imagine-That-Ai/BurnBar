@@ -15,7 +15,6 @@ import type {
   ProviderAccountSecretRefDoc,
   ProviderAccountStorageScope,
   ProviderConnectionDoc,
-  ProviderID,
   QuotaBucket,
   RollupJobDoc,
   UsageEventDoc,

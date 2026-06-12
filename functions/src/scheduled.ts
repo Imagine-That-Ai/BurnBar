@@ -28,7 +28,6 @@ import { runQuotaRefreshSweep } from "./quotaRefreshSweep.js";
 import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
 import { buildAndPersistRouterRundown } from "./routerRundown.js";
 import { anchorAuditHeads } from "./callables/auditLog.js";
-import type { Provider } from "./types.js";
 import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
 import { logError } from "./logging.js";
 import { runScheduledJob, scheduledFirestore } from "./scheduledOps.js";

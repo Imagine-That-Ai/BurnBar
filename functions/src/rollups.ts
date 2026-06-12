@@ -15,7 +15,6 @@ import type {
   ProviderAccountSummary,
   ModelSummary,
   DeviceSummary,
-  RollupJobDoc,
 } from "./types.js";
 import {
   errorMessage,
@@ -39,14 +38,6 @@ const COUNTER_SCHEMA_VERSION = 1;
 /** Window keys in ascending granularity order. */
 const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
 export type WindowKey = (typeof WINDOW_KEYS)[number];
-
-type RollupEvent = {
-  event: UsageEventDoc;
-  date: Date;
-  tokens: number;
-  cost?: number;
-  model?: string;
-};
 
 export type UsageCounterContribution = {
   logicalKey: string;
@@ -264,51 +255,6 @@ function logicalUsageKey(ev: UsageEventDoc, date: Date, metrics: { tokens: numbe
   return [provider, sessionId, deviceId, accountId, startedAt, tokenBucketKey(ev, metrics)].join("|");
 }
 
-function preferRollupEvent(candidate: RollupEvent, existing: RollupEvent): boolean {
-  const candidateProvenance = provenanceRank(candidate.event);
-  const existingProvenance = provenanceRank(existing.event);
-  if (candidateProvenance !== existingProvenance) {
-    return candidateProvenance > existingProvenance;
-  }
-
-  const candidateUpdatedAt = eventUpdatedMillis(candidate.event);
-  const existingUpdatedAt = eventUpdatedMillis(existing.event);
-  if (candidateUpdatedAt !== existingUpdatedAt) {
-    return candidateUpdatedAt > existingUpdatedAt;
-  }
-
-  const candidateModel = modelRank(candidate.model);
-  const existingModel = modelRank(existing.model);
-  if (candidateModel !== existingModel) {
-    return candidateModel > existingModel;
-  }
-
-  const candidateCost = candidate.cost ?? 0;
-  const existingCost = existing.cost ?? 0;
-  if (candidateCost !== existingCost) {
-    return candidateCost < existingCost;
-  }
-
-  return true;
-}
-
-function dedupeUsageEvents(events: RollupEvent[]): RollupEvent[] {
-  const deduped = new Map<string, RollupEvent>();
-
-  for (const entry of events) {
-    const key = logicalUsageKey(entry.event, entry.date, {
-      tokens: entry.tokens,
-      cost: entry.cost,
-    });
-    const existing = deduped.get(key);
-    if (!existing || preferRollupEvent(entry, existing)) {
-      deduped.set(key, entry);
-    }
-  }
-
-  return Array.from(deduped.values());
-}
-
 function stripUndefined(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => stripUndefined(item));
@@ -381,30 +327,6 @@ function eventProviderID(ev: UsageEventDoc): string {
 
 function accountSummaryKey(ev: UsageEventDoc): string {
   return ev.providerAccountID ?? `${eventProviderID(ev)}:unattributed`;
-}
-
-function windowPredicate(key: WindowKey, now: Date): (date: Date) => boolean {
-  const nowTs = now.getTime();
-  switch (key) {
-    case "today": {
-      const today = toUtcDate(now);
-      return (date: Date) => toUtcDate(date) === today;
-    }
-    case "7d": {
-      const cutoff7 = nowTs - 7 * 24 * 60 * 60 * 1000;
-      return (date: Date) => date.getTime() >= cutoff7;
-    }
-    case "30d": {
-      const cutoff30 = nowTs - 30 * 24 * 60 * 60 * 1000;
-      return (date: Date) => date.getTime() >= cutoff30;
-    }
-    case "90d": {
-      const cutoff90 = nowTs - 90 * 24 * 60 * 60 * 1000;
-      return (date: Date) => date.getTime() >= cutoff90;
-    }
-    case "all_time":
-      return () => true;
-  }
 }
 
 function usageContribution(ev: UsageEventDoc | undefined, candidateKey = ""): UsageCounterCandidate | undefined {
