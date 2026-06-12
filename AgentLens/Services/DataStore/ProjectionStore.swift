@@ -165,6 +165,38 @@ final class ProjectionStore: Sendable {
         }
     }
 
+    /// Reaps terminal projection jobs whose work is done and will never be re-leased.
+    ///
+    /// The work queue only ever reads `queued`/`failed`/`leased`/`running` rows, so once a job
+    /// reaches `completed` or `canceled` it is dead weight: it bloats the table, the
+    /// `projection_jobs_poll_idx`/`projection_jobs_source_lookup_idx` indexes, and every
+    /// migration backup forever (the audit measured 176,247 of 176,386 rows — 99.9% — dead).
+    /// We keep a short grace horizon so recently-finished rows remain inspectable for
+    /// idempotency/debugging, then delete anything older.
+    ///
+    /// - Parameters:
+    ///   - olderThan: Only reap terminal rows last updated before this cutoff.
+    ///   - now: Injected clock for deterministic testing (defaults to wall time).
+    /// - Returns: The number of rows actually removed.
+    @discardableResult
+    func reapTerminalProjectionJobs(olderThan cutoff: Date, now: Date = Date()) throws -> Int {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                DELETE FROM projection_jobs
+                WHERE status IN (?, ?)
+                  AND COALESCE(completedAt, updatedAt) <= ?
+                """,
+                arguments: [
+                    ProjectionJobStatus.completed.rawValue,
+                    ProjectionJobStatus.canceled.rawValue,
+                    cutoff,
+                ]
+            )
+            return try Int.fetchOne(db, sql: "SELECT changes()") ?? 0
+        }
+    }
+
     func leaseNextJob(leaseOwner: String, leaseExpiresAt: Date, now: Date) throws -> ProjectionJobRecord? {
         try dbQueue.write { db in
             guard let row = try Row.fetchOne(

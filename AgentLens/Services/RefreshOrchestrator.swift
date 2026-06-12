@@ -63,7 +63,21 @@ actor RefreshOrchestrator {
     }
 
     func runRetentionPurgeIfNeeded() async {
-        // Retention purge not configured in current SettingsManager; no-op.
+        // No user-facing retention window is configured in SettingsManager yet, so we apply a
+        // conservative built-in policy: reap terminal projection jobs (completed/canceled) that
+        // the work queue will never re-read. Without this the table grows unbounded — the data
+        // lifecycle audit measured 176,247 of 176,386 rows (99.9%) dead.
+        // config TODO: when SettingsManager gains a retention window, also bound usage/conversation
+        // history here and let the window override `terminalJobRetention`.
+        let cutoff = Date().addingTimeInterval(-ProjectionWorkerPolicy.terminalJobRetention)
+        do {
+            let reaped = try dataStore.reapTerminalProjectionJobs(olderThan: cutoff)
+            if reaped > 0 {
+                AppLogger.dataStore.info("Retention purge reaped \(reaped) terminal projection job(s).")
+            }
+        } catch {
+            AppLogger.dataStore.silentFailure("Retention purge of terminal projection jobs failed", error: error)
+        }
     }
 
     func runScheduledBackfillIfNeeded(parsers: [AgentProvider: any LogParser]) async {
