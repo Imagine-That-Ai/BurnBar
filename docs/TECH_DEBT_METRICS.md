@@ -19,7 +19,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Unsafe cast budget (`budgets/unsafe-cast-baseline.json`) | 140 | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3615 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 22 | stable (re-export) | — |
-| `functions/src/types/legacy.ts` LOC | 3278 | shrinking (TypeSpec migration) | — |
+| `functions/src/types/legacy.ts` LOC | 3158 | shrinking (TypeSpec migration) | — |
 | `functions/src/index.ts` LOC | 180 | modularize | — |
 | `import SwiftUI` in Services/ + DataStore/ | 20 | ≤ 3 | 0 |
 
