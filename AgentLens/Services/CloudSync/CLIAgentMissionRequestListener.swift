@@ -90,7 +90,7 @@ private enum CLIAgentMissionCloudSealer {
         do {
             let aadContext: CloudVaultAADContext?
             if let uid, let requestID {
-                aadContext = try? missionAADContext(uid: uid, requestID: requestID, field: field)
+                aadContext = try missionAADContext(uid: uid, requestID: requestID, field: field)
             } else {
                 aadContext = nil
             }

@@ -539,9 +539,13 @@ final class AgentToolBroker: @unchecked Sendable {
     }
 
     private static func jsonString(from value: Any) -> String {
-        if JSONSerialization.isValidJSONObject(value),
-           let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) {
-            return String(decoding: data, as: UTF8.self)
+        if JSONSerialization.isValidJSONObject(value) {
+            do {
+                let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+                return String(decoding: data, as: UTF8.self)
+            } catch {
+                return String(describing: value)
+            }
         }
         if value is NSNull {
             return "null"

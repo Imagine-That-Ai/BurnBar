@@ -392,15 +392,21 @@ enum ComputerUseSecurityCallableClient {
                 vaultGeneration: nextVaultGeneration
             )
             return RevocationCloudVaultRotationResult(jobId: jobId, progress: progress)
-        } catch {
-            try? await userRef.collection("cloud_vault_rotation_jobs").document(jobId).setData([
-                "status": "failed",
-                "failureReason": String(error.localizedDescription.prefix(500)),
-                "failedAt": FieldValue.serverTimestamp(),
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+        } catch let rewrapError {
+            do {
+                try await userRef.collection("cloud_vault_rotation_jobs").document(jobId).setData([
+                    "status": "failed",
+                    "failureReason": String(rewrapError.localizedDescription.prefix(500)),
+                    "failedAt": FieldValue.serverTimestamp(),
+                    "updatedAt": FieldValue.serverTimestamp()
+                ], merge: true)
+            } catch let statusWriteError {
+                // The caller still receives the local rewrap failure below; this best-effort
+                // status write must not mask the actionable rotation error.
+                _ = statusWriteError.localizedDescription
+            }
             throw ClientError.invalidResponse(
-                "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: \(error.localizedDescription)"
+                "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: \(rewrapError.localizedDescription)"
             )
         }
     }
