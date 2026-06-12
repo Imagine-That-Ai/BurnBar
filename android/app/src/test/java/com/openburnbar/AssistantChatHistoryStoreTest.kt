@@ -1,25 +1,35 @@
 
 package com.openburnbar
 
+import android.content.ContextWrapper
 import com.openburnbar.data.assistants.AssistantChatCloudMirror
+import com.openburnbar.data.assistants.AssistantChatFileLocalStore
 import com.openburnbar.data.assistants.AssistantChatHistorySnapshot
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.assistants.AssistantChatLocalStore
 import com.openburnbar.data.assistants.AssistantChatMessage
 import com.openburnbar.data.assistants.AssistantChatThread
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistantChatHistoryStoreTest {
+    @get:Rule
+    val tempFolder = TemporaryFolder()
+
     @Test
     fun `upsert persists to local store`() = runTest {
         val local = InMemoryLocalStore()
@@ -140,6 +150,96 @@ class AssistantChatHistoryStoreTest {
     }
 
     @Test
+    fun `file local store saves partitioned thread files and reloads from disk digests`() {
+        val filesDir = tempFolder.newFolder("assistant-files")
+        val local = AssistantChatFileLocalStore(FilesDirContext(filesDir))
+        val unsafeThread = makeThread("thread/unsafe?", "pi", "Unsafe")
+        val safeThread = makeThread("thread-safe", "hermes", "Safe")
+        val snapshot =
+            AssistantChatHistorySnapshot(
+                threads = listOf(unsafeThread, safeThread),
+                tombstones = mapOf("gone" to 123L),
+            )
+        local.setActivePartition("user/with/slashes")
+
+        local.save(snapshot)
+        local.save(snapshot)
+
+        val partitionDir = File(filesDir, "assistant-chat-history/partition-user-with-slashes")
+        val unsafeThreadFile =
+            File(partitionDir, "thread-${AssistantChatFileLocalStore.sanitizeThreadFileComponent(unsafeThread.id)}.json")
+        val safeThreadFile =
+            File(partitionDir, "thread-${AssistantChatFileLocalStore.sanitizeThreadFileComponent(safeThread.id)}.json")
+        assertTrue(File(partitionDir, "index.json").isFile)
+        assertTrue(unsafeThreadFile.isFile)
+        assertTrue(safeThreadFile.isFile)
+
+        val reloaded = AssistantChatFileLocalStore(FilesDirContext(filesDir))
+        reloaded.setActivePartition("user/with/slashes")
+        reloaded.save(snapshot.copy(threads = listOf(unsafeThread.copy(title = "Updated"))))
+
+        assertFalse("stale thread body should be deleted", safeThreadFile.exists())
+        val loaded = reloaded.load()
+        assertEquals(listOf("Updated"), loaded.threads.map { it.title })
+        assertEquals(123L, loaded.tombstones["gone"])
+    }
+
+    @Test
+    fun `file local store migrates legacy envelope into indexed thread files`() {
+        val filesDir = tempFolder.newFolder("legacy-envelope")
+        val root = File(filesDir, "assistant-chat-history").apply { mkdirs() }
+        val legacy = File(root, "assistant-chat-history-local.json")
+        val thread = makeThread("legacy-thread", "pi", "Legacy")
+        legacy.writeText(diskJson.encodeToString(AssistantChatHistorySnapshot(threads = listOf(thread), tombstones = mapOf("old" to 456L))))
+
+        val loaded = AssistantChatFileLocalStore(FilesDirContext(filesDir)).load()
+
+        assertEquals(listOf("legacy-thread"), loaded.threads.map { it.id })
+        assertEquals(456L, loaded.tombstones["old"])
+        assertFalse("legacy file should be consumed after migration", legacy.exists())
+        assertTrue(File(root, "partition-local/index.json").isFile)
+    }
+
+    @Test
+    fun `file local store migrates legacy bare thread array`() {
+        val filesDir = tempFolder.newFolder("legacy-array")
+        val root = File(filesDir, "assistant-chat-history").apply { mkdirs() }
+        val legacy = File(root, "assistant-chat-history-local.json")
+        legacy.writeText(diskJson.encodeToString(listOf(makeThread("legacy-array-thread", "hermes", "Legacy Array"))))
+
+        val loaded = AssistantChatFileLocalStore(FilesDirContext(filesDir)).load()
+
+        assertEquals(listOf("legacy-array-thread"), loaded.threads.map { it.id })
+        assertFalse(legacy.exists())
+    }
+
+    @Test
+    fun `file local store drops stale legacy file when index exists`() {
+        val filesDir = tempFolder.newFolder("stale-legacy")
+        val local = AssistantChatFileLocalStore(FilesDirContext(filesDir))
+        local.save(AssistantChatHistorySnapshot(threads = listOf(makeThread("indexed", "pi", "Indexed"))))
+        val legacy = File(filesDir, "assistant-chat-history/assistant-chat-history-local.json").apply { writeText("stale") }
+
+        val loaded = AssistantChatFileLocalStore(FilesDirContext(filesDir)).load()
+
+        assertEquals(listOf("indexed"), loaded.threads.map { it.id })
+        assertFalse("stale legacy file should be deleted once index exists", legacy.exists())
+    }
+
+    @Test
+    fun `file local store recovers safe thread files when index is missing`() {
+        val filesDir = tempFolder.newFolder("scan-index")
+        val local = AssistantChatFileLocalStore(FilesDirContext(filesDir))
+        local.save(AssistantChatHistorySnapshot(threads = listOf(makeThread("safe-thread", "pi", "Safe"))))
+        val index = File(filesDir, "assistant-chat-history/partition-local/index.json")
+        assertTrue(index.delete())
+
+        val loaded = AssistantChatFileLocalStore(FilesDirContext(filesDir)).load()
+
+        assertEquals(listOf("safe-thread"), loaded.threads.map { it.id })
+    }
+
+    @Test
     fun `merge keeps newest updatedAt`() {
         val older = 100L
         val newer = 200L
@@ -153,6 +253,12 @@ class AssistantChatHistoryStoreTest {
     }
 
     // MARK: - helpers
+
+    private val diskJson =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
 
     private fun makeThread(id: String, runtime: String, title: String): AssistantChatThread {
         val now = System.currentTimeMillis()
@@ -175,6 +281,10 @@ class AssistantChatHistoryStoreTest {
             ),
         )
     }
+}
+
+private class FilesDirContext(private val files: File) : ContextWrapper(null) {
+    override fun getFilesDir(): File = files
 }
 
 private class InMemoryLocalStore : AssistantChatLocalStore {
