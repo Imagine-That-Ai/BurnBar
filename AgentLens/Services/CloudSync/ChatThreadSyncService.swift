@@ -19,9 +19,11 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
-    private(set) var isSyncing = false
-    private(set) var lastSyncError: String?
-    private(set) var lastSyncDate: Date?
+    private let state = Locked(CloudSyncDomainState())
+
+    var isSyncing: Bool { state.read().isSyncing }
+    var lastSyncError: String? { state.read().lastSyncError }
+    var lastSyncDate: Date? { state.read().lastSyncDate }
 
     init(
         context: CloudSyncContext,
@@ -45,16 +47,15 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
               gate.account.isCloudSyncEnabled,
               let uid = gate.account.uid else { return }
 
-        isSyncing = true
-        lastSyncError = nil
+        state.beginSyncing()
 
-        defer { isSyncing = false }
+        defer { state.endSyncing() }
 
         do {
             progress?.setPhase(.chatThreads, operation: "Loading chat threads…")
             let threads = try context.dataStore.fetchChatThreadSummaries(limit: 500)
             guard !threads.isEmpty else {
-                lastSyncDate = Date()
+                state.withLock { $0.lastSyncDate = Date() }
                 return
             }
 
@@ -163,11 +164,13 @@ final class ChatThreadSyncService: CloudSyncDomain, @unchecked Sendable {
             ) {
                 try await batch.commit()
             }
-            lastSyncDate = Date()
-            lastSyncError = nil
+            state.withLock {
+                $0.lastSyncDate = Date()
+                $0.lastSyncError = nil
+            }
         } catch {
             progress?.fail(error.localizedDescription)
-            lastSyncError = error.localizedDescription
+            state.withLock { $0.lastSyncError = error.localizedDescription }
         }
     }
 
