@@ -63,11 +63,13 @@ import kotlinx.coroutines.CoroutineScope
 @Composable
 internal fun HermesSquareScreenContent(
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
+    onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {},
 ) {
     val (state, actions) =
         rememberHermesSquareUiState(
             onOpenLegacyRuntime = onOpenLegacyRuntime,
+            onOpenBrandZone = onOpenBrandZone,
             onOpenPairedMac = onOpenPairedMac,
         )
     HermesSquareScaffold(
@@ -402,8 +404,14 @@ private fun buildHermesSquareNavigationHandlers(
     core: HermesSquareServiceCore,
     overlay: HermesSquareOverlayFields,
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit,
+    onOpenBrandZone: (String) -> Unit,
     onOpenPairedMac: (String) -> Unit,
 ): Triple<(HermesSquareHit) -> Unit, (ThreadInboxItem) -> Unit, (String) -> Unit> {
+    fun openBrandZone(uri: String) {
+        overlay.showBrandZoneURI = uri
+        onOpenBrandZone(uri)
+    }
+
     val onSearchHitTap: (HermesSquareHit) -> Unit = { hit ->
         when (hit.kind) {
             HermesSquareHit.Kind.AGENT -> {
@@ -412,7 +420,7 @@ private fun buildHermesSquareNavigationHandlers(
                 if (runtime != null && (runtime == AssistantRuntimeID.HERMES || runtime == AssistantRuntimeID.PI)) {
                     onOpenLegacyRuntime(runtime, null)
                 } else {
-                    overlay.showBrandZoneURI = hit.id
+                    openBrandZone(hit.id)
                 }
             }
             HermesSquareHit.Kind.THREAD -> {
@@ -433,7 +441,7 @@ private fun buildHermesSquareNavigationHandlers(
         when {
             cliSession != null -> overlay.selectedCliSession = cliSession
             runtime != null -> onOpenLegacyRuntime(runtime, item.id)
-            else -> overlay.showBrandZoneURI = item.agentURI
+            else -> openBrandZone(item.agentURI)
         }
     }
     val onPinnedTap: (String) -> Unit = { uri ->
@@ -441,7 +449,7 @@ private fun buildHermesSquareNavigationHandlers(
         when {
             uri.startsWith(AgentIdentity.PAIRED_MAC_URI_PREFIX) -> onOpenPairedMac(uri.removePrefix(AgentIdentity.PAIRED_MAC_URI_PREFIX))
             runtime != null -> onOpenLegacyRuntime(runtime, null)
-            else -> overlay.showBrandZoneURI = uri
+            else -> openBrandZone(uri)
         }
     }
     return Triple(onSearchHitTap, onThreadTap, onPinnedTap)
@@ -549,6 +557,7 @@ private fun buildHermesSquareUiActions(
 @Composable
 internal fun rememberHermesSquareUiState(
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit,
+    onOpenBrandZone: (String) -> Unit,
     onOpenPairedMac: (String) -> Unit,
 ): Pair<HermesSquareUiState, HermesSquareUiActions> {
     val core = rememberHermesSquareServiceCore()
@@ -556,7 +565,7 @@ internal fun rememberHermesSquareUiState(
     val overlay = rememberHermesSquareOverlayFields()
     val derived = rememberHermesSquareDerivedData(core, overlay)
     HermesSquareUiRuntimeEffects(core, pinned, overlay)
-    val navigation = buildHermesSquareNavigationHandlers(core, overlay, onOpenLegacyRuntime, onOpenPairedMac)
+    val navigation = buildHermesSquareNavigationHandlers(core, overlay, onOpenLegacyRuntime, onOpenBrandZone, onOpenPairedMac)
     return buildHermesSquareUiState(core, pinned, overlay, derived) to
         buildHermesSquareUiActions(core, pinned, overlay, derived, navigation)
 }

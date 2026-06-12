@@ -50,7 +50,6 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
 
-
 @Composable
 internal fun JigglingProviderRow(model: JigglingProviderRowModel) {
     val infiniteTransition = rememberInfiniteTransition(label = "shake")

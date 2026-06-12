@@ -138,7 +138,7 @@ private object FirestoreQuotaBucketValues {
     ): Double? {
         val canDeriveRemainingFromUsed =
             remaining == null && unit == "percent" && used != null && limitValue > 0.0
-        return if (canDeriveRemainingFromUsed && used != null) {
+        return if (canDeriveRemainingFromUsed) {
             maxOf(0.0, (limit ?: 100.0) - used)
         } else {
             remaining
@@ -152,7 +152,7 @@ private object FirestoreQuotaBucketValues {
         limit: Double?,
     ): Double? {
         val canDeriveUsedFromRemaining = used == null && remaining != null && limitValue > 0.0
-        return if (canDeriveUsedFromRemaining && remaining != null) {
+        return if (canDeriveUsedFromRemaining) {
             maxOf(0.0, (limit ?: 100.0) - remaining)
         } else {
             used

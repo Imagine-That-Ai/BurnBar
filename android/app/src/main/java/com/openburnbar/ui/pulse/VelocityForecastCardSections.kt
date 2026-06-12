@@ -29,7 +29,6 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.util.Formatting
 
-
 internal fun computeVelocityForecastState(rollups: UsageRollups, liveUsages: List<TokenUsage>): VelocityForecastState {
     val calendar = java.util.Calendar.getInstance()
     val hour =
