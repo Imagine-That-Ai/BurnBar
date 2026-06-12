@@ -1,4 +1,5 @@
 import XCTest
+import CoreMedia
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 #endif
@@ -76,6 +77,7 @@ final class MediaSessionCoordinatorTests: XCTestCase {
 
     func testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry() async throws {
         var starts = 0
+        var encoders: [RecordingVideoEncoder] = []
         let coordinator = MediaSessionCoordinator(
             capabilityGate: AlwaysAllowMediaCapabilityGate(),
             screenCaptureFactory: { _, _ in
@@ -84,6 +86,11 @@ final class MediaSessionCoordinatorTests: XCTestCase {
                     return FailingScreenCaptureSession()
                 }
                 return RecordingScreenCaptureSession()
+            },
+            videoEncoderFactory: { _, _ in
+                let encoder = RecordingVideoEncoder()
+                encoders.append(encoder)
+                return encoder
             }
         )
 
@@ -106,8 +113,13 @@ final class MediaSessionCoordinatorTests: XCTestCase {
             sink: RecordingMediaSink()
         )
         XCTAssertEqual(coordinator.phase, .active(feature: .screenShare))
+        XCTAssertEqual(encoders.count, 2)
+        XCTAssertTrue(encoders[0].didStop)
+        XCTAssertTrue(encoders[1].didStart)
+        XCTAssertFalse(encoders[1].didStop)
 
         await coordinator.stop()
+        XCTAssertTrue(encoders[1].didStop)
     }
 }
 
@@ -130,6 +142,37 @@ private final class RecordingScreenCaptureSession: ScreenCaptureSession {
     }
 
     func stop() async {
+        didStop = true
+    }
+}
+
+@MainActor
+private final class RecordingVideoEncoder: VideoEncoding {
+    private(set) var didStart = false
+    private(set) var didStop = false
+    private(set) var targetBitrates: [Int] = []
+    private(set) var acknowledgedLongTermReferenceTokens: [UInt64] = []
+    private(set) var didRequestLongTermReferenceRefresh = false
+
+    func start() throws {
+        didStart = true
+    }
+
+    func setTargetBitsPerSecond(_ bps: Int) throws {
+        targetBitrates.append(bps)
+    }
+
+    func encode(sampleBuffer: CMSampleBuffer) async throws {}
+
+    func requestLongTermReferenceRefresh() {
+        didRequestLongTermReferenceRefresh = true
+    }
+
+    func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64) {
+        acknowledgedLongTermReferenceTokens.append(tokenValue)
+    }
+
+    func stop() {
         didStop = true
     }
 }

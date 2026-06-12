@@ -1910,19 +1910,13 @@ final class AccountManagerTests: XCTestCase {
     }
 
     func test_googleAuthPresentationWindow_returnsVisibleWindow() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
+        let window = VisiblePresentationTestWindow()
         window.title = "Google Sign-In Presentation Test"
-        window.orderFront(nil)
-        defer { window.close() }
 
         let resolvedWindow = AccountManager.googleAuthPresentationWindowForTesting(from: window)
 
         XCTAssertIdentical(resolvedWindow, window)
+        XCTAssertFalse(window.didOrderFront)
     }
 
     // MARK: - Shared auth keychain-recovery wrapper
@@ -2035,5 +2029,25 @@ final class AccountManagerTests: XCTestCase {
             AccountManager.userFacingAuthErrorMessageForTesting(error),
             "The password is invalid."
         )
+    }
+}
+
+private final class VisiblePresentationTestWindow: NSWindow {
+    private(set) var didOrderFront = false
+
+    override var isVisible: Bool { true }
+    override var isMiniaturized: Bool { false }
+
+    init() {
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+    }
+
+    override func makeKeyAndOrderFront(_ sender: Any?) {
+        didOrderFront = true
     }
 }
