@@ -1,5 +1,95 @@
 import Foundation
 @preconcurrency import FirebaseFunctions
+import OpenBurnBarCore
+
+// MARK: - Conversation Search DTOs
+// Moved verbatim from `FunctionsRepository.swift` (tech-debt finding-67) so
+// the conversation-search domain owns its response models alongside the
+// callables that decode them.
+
+struct StreamSearchHit: Identifiable, Decodable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let snippet: String
+    let score: Double
+    let usage: TokenUsage
+}
+
+struct CloudConversationSearchHit: Identifiable, Decodable, Hashable, Sendable {
+    let id: String
+    let chunkID: String
+    let documentID: String
+    let sourceKind: String
+    let sourceID: String
+    let provider: String?
+    let sealedTitle: CloudVaultSealedText
+    let sealedSnippet: CloudVaultSealedText
+    let sealedBodyPreview: CloudVaultSealedText?
+    let storagePath: String
+    let bodyHash: String
+    let bodyHashVersion: Int?
+    let score: Double
+    let tokenScore: Double?
+    let semanticScore: Double?
+    let matchKind: String?
+    let tokenHashVersion: Int?
+    let semanticHashVersion: Int?
+    let indexVersion: Int?
+}
+
+/// Server-computed dashboard rollups for the conversation cockpit: exact count, cost, and token
+/// sums over the *filtered* set (not just the loaded page). `nil` when the matching Firestore
+/// aggregate index is still building, in which case the cockpit shows page rows without KPIs.
+struct ConversationQueryAggregates: Decodable, Hashable, Sendable {
+    let count: Int
+    let totalCostUSD: Double
+    let totalTokens: Int
+}
+
+/// One encrypted session-log manifest as returned by `queryConversations`. Server-visible facets
+/// are operational metadata (provider/model/tokens/cost/timing/device/source); text-like fields
+/// such as project names, paths, titles, previews, and bodies stay sealed or hash-only. Numeric
+/// facets are optional so manifests written before the facet backfill still decode.
+struct ConversationFacetRow: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let provider: String?
+    let projectName: String?
+    let sourceType: String?
+    let deviceId: String?
+    let model: String?
+    let facetSchemaVersion: Int?
+    let messageCount: Int?
+    let userWordCount: Int?
+    let assistantWordCount: Int?
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cacheCreationTokens: Int?
+    let cacheReadTokens: Int?
+    let totalTokens: Int?
+    let costUSD: Double?
+    let workingDirectory: String?
+    let toolTags: [String]?
+    let durationSeconds: Int?
+    let sealedTitle: CloudVaultSealedText?
+    let sealedBodyPreview: CloudVaultSealedText?
+    let storagePath: String?
+    let bodyHash: String?
+    let bodyHashVersion: Int?
+    let startTime: Date?
+    let endTime: Date?
+    let updatedAt: Date?
+}
+
+/// Decoded response of the `queryConversations` callable: a page of facet rows, an opaque
+/// pagination cursor (`nil` when exhausted), the effective sort applied by the server, and the
+/// optional filtered-set aggregates.
+struct ConversationQueryResponse: Decodable, Sendable {
+    let rows: [ConversationFacetRow]
+    let nextCursor: String?
+    let sort: String?
+    let direction: String?
+    let aggregates: ConversationQueryAggregates?
+}
 
 // MARK: - Conversation Search Servicing
 

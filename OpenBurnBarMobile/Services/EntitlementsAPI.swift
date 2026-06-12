@@ -151,3 +151,20 @@ final class EntitlementsAPI: HostedQuotaEntitlementServicing {
         return formatter
     }()
 }
+
+// MARK: - Apple-verified hosted quota entitlement DTO
+
+/// Trust-narrow snapshot of the server's `HostedQuotaEntitlementDoc`. The
+/// canonical Firestore document at `users/{uid}/entitlements/hosted_quota_sync`
+/// remains the source of truth; the iOS surface only consumes the fields it
+/// renders so we don't accidentally treat client-side state as authoritative.
+struct HostedQuotaEntitlementResponse: Equatable, Sendable {
+    let active: Bool
+    let productID: String
+    let transactionID: String?
+    let originalTransactionID: String?
+    let environment: String?
+    let expiresAt: Date?
+    let revokedAt: Date?
+    let revocationReason: Int?
+}
