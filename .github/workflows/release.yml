@@ -20,6 +20,11 @@ on:
         required: false
         type: boolean
         default: false
+      promote:
+        description: "Promote this release to GitHub 'latest' (repoints the update feed). Ignored for -prerelease tags."
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -47,6 +52,7 @@ jobs:
       zip_path: ${{ steps.zip.outputs.zip_path }}
       zip_name: ${{ steps.zip.outputs.zip_name }}
       version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     env:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
       HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
@@ -69,8 +75,14 @@ jobs:
             TAG_NAME="${GITHUB_REF_NAME}"
           fi
 
-          if [[ ! "$TAG_NAME" =~ ^v[0-9a-zA-Z._-]+$ ]]; then
-            echo "::error::Invalid tag format: $TAG_NAME"
+          # SemVer release grammar: vMAJOR.MINOR.PATCH with an optional
+          # -prerelease and/or +build suffix (e.g. v1.0.2, v1.1.0-beta.3).
+          # The previous pattern (^v[0-9a-zA-Z._-]+$) accepted arbitrary
+          # strings like "vfoo" and is not safe to drive --latest promotion.
+          # MAJOR is capped at three digits (0-999) so year-shaped calver tags
+          # (v2026.*) are rejected — H19 declares v1.0.x the canonical line.
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]{1,3}\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid tag format: $TAG_NAME (expected vMAJOR.MINOR.PATCH[-prerelease][+build], MAJOR 0-999)"
             exit 1
           fi
 
@@ -79,8 +91,20 @@ jobs:
             exit 1
           fi
 
-          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+          # Prerelease status is derived strictly from the tag: a hyphen in the
+          # version (the SemVer prerelease delimiter) marks it. The publish job
+          # NEVER repoints "latest" for a prerelease, regardless of inputs.
+          if [[ "$TAG_NAME" == *-* ]]; then
+            IS_PRERELEASE=true
+          else
+            IS_PRERELEASE=false
+          fi
+
+          {
+            echo "tag_name=$TAG_NAME"
+            echo "version=${TAG_NAME#v}"
+            echo "is_prerelease=$IS_PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check out release tag
         env:
@@ -1021,6 +1045,12 @@ jobs:
           VERSION: ${{ needs.build-and-release.outputs.version }}
           DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
           ZIP_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.zip_name }}
+          # Prerelease status is derived from the tag (set in build-and-release).
+          IS_PRERELEASE: ${{ needs.build-and-release.outputs.is_prerelease }}
+          # 'latest' (which atomically repoints the in-app update feed) is opt-in:
+          # only an explicit workflow_dispatch promote=true sets it, and never
+          # for a prerelease tag.
+          PROMOTE: ${{ github.event_name == 'workflow_dispatch' && inputs.promote && 'true' || 'false' }}
         run: |
           # Checksums, SBOM, and metadata are also downloaded via merge-multiple.
           # `find -print -quit` is shellcheck-clean (SC2012) and quoted to handle spaces (SC2086).
@@ -1067,15 +1097,39 @@ jobs:
           [[ -n "$SOURCE_SHA256_PATH" && -f "$SOURCE_SHA256_PATH" ]] && ASSETS+=("$SOURCE_SHA256_PATH")
           [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")
 
+          # Decide prerelease + latest flags up front. A prerelease (-beta etc.)
+          # tag is ALWAYS published as a prerelease and NEVER repoints "latest",
+          # regardless of the promote input — promoting a beta to "latest"
+          # atomically repoints the fleet's update feed onto a beta, which is the
+          # exact failure this guard exists to prevent (H15).
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            PRERELEASE_FLAG="--prerelease"
+            LATEST_FLAG="--latest=false"
+            if [[ "$PROMOTE" == "true" ]]; then
+              echo "::warning::promote=true ignored for prerelease tag v${VERSION} — prereleases never become 'latest'."
+            fi
+            echo "Publishing v${VERSION} as a PRERELEASE (update feed not repointed)."
+          else
+            PRERELEASE_FLAG="--prerelease=false"
+            if [[ "$PROMOTE" == "true" ]]; then
+              LATEST_FLAG="--latest"
+              echo "Publishing v${VERSION} and PROMOTING to 'latest' (update feed repointed)."
+            else
+              LATEST_FLAG="--latest=false"
+              echo "Publishing v${VERSION} as a stable release WITHOUT promotion (use workflow_dispatch promote=true to set 'latest')."
+            fi
+          fi
+
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
-            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" --prerelease=false --latest
+            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" "$PRERELEASE_FLAG" "$LATEST_FLAG"
           else
             gh release create "v${VERSION}" \
               "${ASSETS[@]}" \
               --title "OpenBurnBar $VERSION" \
               --verify-tag \
-              --latest \
+              "$PRERELEASE_FLAG" \
+              "$LATEST_FLAG" \
               --notes-file "$NOTES_FILE"
           fi
 
