@@ -17,7 +17,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-private const val VAL_32 = 32
+/** Size of the raw iroh endpoint secret (Curve25519 seed) persisted by the key store. */
+private const val IROH_SECRET_KEY_BYTES = 32
 
 /**
  * Per-app-install persistent client key store for the Hermes encrypted
@@ -70,14 +71,14 @@ class HermesRelayKeyStore(context: Context) {
      */
     fun irohSecretKeyMaterial(): IrohSecretKeyMaterial {
         val raw =
-            loadWrapped(KEY_WRAPPED_IROH_MATERIAL, KEY_IROH_WRAP_IV, expectedBytes = VAL_32)
+            loadWrapped(KEY_WRAPPED_IROH_MATERIAL, KEY_IROH_WRAP_IV, expectedBytes = IROH_SECRET_KEY_BYTES)
                 ?: migrateLegacyIrohKeyMaterial()
                 ?: generateIrohSecretAndStore()
         return IrohSecretKeyMaterial(raw)
     }
 
     private fun generateIrohSecretAndStore(): ByteArray {
-        val bytes = ByteArray(VAL_32).also { SecureRandom().nextBytes(it) }
+        val bytes = ByteArray(IROH_SECRET_KEY_BYTES).also { SecureRandom().nextBytes(it) }
         saveWrapped(KEY_WRAPPED_IROH_MATERIAL, KEY_IROH_WRAP_IV, bytes)
         return bytes
     }
@@ -124,7 +125,7 @@ class HermesRelayKeyStore(context: Context) {
         val raw =
             runCatching {
                 Base64.decode(legacy, Base64.NO_WRAP).also {
-                    require(it.size == VAL_32) { "iroh secret length != 32" }
+                    require(it.size == IROH_SECRET_KEY_BYTES) { "iroh secret length != 32" }
                 }
             }.getOrNull() ?: return null
         saveWrapped(KEY_WRAPPED_IROH_MATERIAL, KEY_IROH_WRAP_IV, raw)
@@ -179,7 +180,7 @@ class HermesRelayKeyStore(context: Context) {
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(VAL_256)
+                .setKeySize(AES_WRAPPING_KEY_BITS)
                 .build()
         generator.init(spec)
         return generator.generateKey()
@@ -188,7 +189,8 @@ class HermesRelayKeyStore(context: Context) {
     private fun keystore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
     companion object {
-        private const val VAL_256 = 256
+        /** Key size, in bits, of the Android Keystore AES-GCM key that wraps stored secrets. */
+        private const val AES_WRAPPING_KEY_BITS = 256
         private const val PREFS_NAME = "hermes_relay_keys"
         private const val KEY_PRIVATE_PKCS8 = "************************"
         private const val KEY_PUBLIC_X963 = "**********************"

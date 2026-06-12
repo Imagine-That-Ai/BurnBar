@@ -53,6 +53,27 @@ High-impact control paths are fail-closed:
 - **Cloud Vault revocation**: revoking a device is not considered complete until a surviving trusted device rotates the vault key, verifies the survivor trust chains, rewraps survivor wrappers, removes revoked wrappers, re-seals document envelopes, re-seals session-log Storage blobs, and rekeys the hosted search index. The server coordinates the job but never receives vault keys or plaintext.
 - **Signal/libsignal claims**: production activation remains blocked unless local gates, external crypto review, legal/store approval, and physical-device E2E evidence are all green. Until then, Signal paths are wired/readiness-gated, not marketed as live production coverage.
 
+## Accepted Risks (deliberate design calls)
+
+These are decisions, not oversights — recorded so external reviewers read them
+as such (each has a trigger that would revisit it):
+
+- **Single region (us-central1), single Redis** for the realtime relay and
+  functions. Accepted while the user base is overwhelmingly US-based and
+  pre-launch; revisit when sustained non-US traffic appears or relay p95
+  cross-region latency becomes user-visible.
+- **Single production Firebase project** (no staging environment). Tag-gated
+  functions deploys, emulator-tested rules with a CI deploy + drift gate, and
+  sub-minute revision rollback are the compensating controls; a staging
+  project is the planned next step once a second operator exists.
+- **Fake-SSE polling fallback** on some hosted surfaces instead of true
+  server-sent streams. Bounded staleness traded for serverless simplicity.
+- **Avatar images readable cross-tenant** (public-read avatars collection).
+  Avatars are explicitly non-sensitive by policy; nothing else shares that
+  rule shape.
+- **Solo-operator process**: merge/control compensations are codified in
+  [docs/SOLO_OPERATOR_POLICY.md](docs/SOLO_OPERATOR_POLICY.md).
+
 ## Known Limitations
 
 - **Cost estimates**: Cost calculations use public pricing lists and do not reflect actual invoices. Do not use for financial reconciliation.

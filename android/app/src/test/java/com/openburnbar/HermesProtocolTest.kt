@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "TooManyFunctions")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; one test per wire helper.
 
 package com.openburnbar
 

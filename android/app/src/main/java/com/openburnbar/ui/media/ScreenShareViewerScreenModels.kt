@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.media
@@ -584,7 +583,6 @@ internal data class ScreenShareViewerScreenInputs(
     val controlStatus: String? = null,
 )
 
-@Suppress("LongParameterList")
 internal fun screenShareViewerScreenParams(
     pipeline: VideoReceivePipeline,
     lastPeerHeartbeatAtMillis: Long,

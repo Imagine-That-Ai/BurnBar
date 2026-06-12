@@ -34,8 +34,7 @@ internal object InsightExecutorExtendedBindings {
         )
     }
 
-    @Suppress("UnusedParameter")
-    fun executeAnomaly(binding: InsightDataBinding.Anomaly, digest: InsightDigest): InsightWidgetData.AnomalyTable {
+    fun executeAnomaly(digest: InsightDigest): InsightWidgetData.AnomalyTable {
         val rows =
             digest.anomalies.map { a ->
                 InsightWidgetData.AnomalyTable.Row(id = a.id, occurredAt = a.occurredAt, label = a.label, detail = a.detail, score = a.score)
@@ -91,8 +90,7 @@ internal object InsightExecutorExtendedBindings {
         )
     }
 
-    @Suppress("UnusedParameter")
-    fun executeSankey(binding: InsightDataBinding.Sankey, digest: InsightDigest): InsightWidgetData.Sankey {
+    fun executeSankey(digest: InsightDigest): InsightWidgetData.Sankey {
         val providerNodes = digest.providers.map { InsightWidgetData.Sankey.Node(id = it.id, label = it.displayName) }
         val modelNodes = digest.models.take(SANKEY_MODEL_LIMIT).map { InsightWidgetData.Sankey.Node(id = it.id, label = it.id) }
         val links = digest.models.map { m ->
@@ -101,8 +99,7 @@ internal object InsightExecutorExtendedBindings {
         return InsightWidgetData.Sankey(nodes = providerNodes + modelNodes, links = links)
     }
 
-    @Suppress("UnusedParameter")
-    fun executeRadar(binding: InsightDataBinding.Radar, digest: InsightDigest): InsightWidgetData.Radar {
+    fun executeRadar(digest: InsightDigest): InsightWidgetData.Radar {
         val axes = listOf("Cost", "Tokens", "Sessions", "Cache Hit Rate", "Efficiency")
         val series =
             digest.providers.map { p ->

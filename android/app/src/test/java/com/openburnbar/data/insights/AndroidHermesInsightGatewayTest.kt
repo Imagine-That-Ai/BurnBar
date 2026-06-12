@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar.data.insights
 
@@ -26,19 +24,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-
-private const val VAL_0_00001 = 0.00001
-private const val VAL_0_0042 = 0.0042
-private const val VAL_0_0051 = 0.0051
-private const val VAL_1027 = 1_027
-private const val VAL_1200 = 1_200
-private const val VAL_1920 = 1_920
-private const val VAL_200 = 200
-private const val VAL_2006 = 2_006
-private const val VAL_300 = 300
-private const val VAL_3900 = 3_900
-private const val VAL_4200 = 4_200
-private const val VAL_86 = 86
 
 /**
  * Covers the Hermes Insights gateway end-to-end against an in-memory
@@ -67,9 +52,9 @@ class AndroidHermesInsightGatewayTest {
         val result = gateway.analyze(request)
         assertEquals("hermes", result.modelTag.providerKey)
         assertNotNull(result.tokenUsage)
-        assertEquals(VAL_4200, result.tokenUsage?.inputTokens)
-        assertEquals(VAL_1027, result.tokenUsage?.outputTokens)
-        assertEquals(VAL_0_0042, result.tokenUsage?.estimatedCostUSD ?: 0.0, VAL_0_00001)
+        assertEquals(4_200, result.tokenUsage?.inputTokens)
+        assertEquals(1_027, result.tokenUsage?.outputTokens)
+        assertEquals(0.0042, result.tokenUsage?.estimatedCostUSD ?: 0.0, 0.00001)
         assertTrue(result.findings.isNotEmpty())
     }
 
@@ -89,19 +74,19 @@ class AndroidHermesInsightGatewayTest {
                 put(
                     "usage",
                     JSONObject()
-                        .put("prompt_tokens", VAL_2006)
-                        .put("completion_tokens", VAL_300)
-                        .put("prompt_tokens_details", JSONObject().put("cached_tokens", VAL_1920))
-                        .put("estimated_cost_usd", VAL_0_0042),
+                        .put("prompt_tokens", 2_006)
+                        .put("completion_tokens", 300)
+                        .put("prompt_tokens_details", JSONObject().put("cached_tokens", 1_920))
+                        .put("estimated_cost_usd", 0.0042),
                 )
             }.toString()
         val (gateway, _) = makeGateway(body = body)
 
         val result = gateway.analyze(followUpRequest("Why did cost spike?"))
 
-        assertEquals(VAL_86, result.tokenUsage?.inputTokens)
-        assertEquals(VAL_300, result.tokenUsage?.outputTokens)
-        assertEquals(VAL_1920, result.tokenUsage?.cacheReadTokens)
+        assertEquals(86, result.tokenUsage?.inputTokens)
+        assertEquals(300, result.tokenUsage?.outputTokens)
+        assertEquals(1_920, result.tokenUsage?.cacheReadTokens)
     }
 
     @Test
@@ -141,9 +126,9 @@ class AndroidHermesInsightGatewayTest {
         val deltas = chunks.filterIsInstance<HermesInsightChunk.Delta>().map { it.text }
         assertEquals(listOf("Hermes routed ", "two long Claude turns ", "→ cost +\$0.42."), deltas)
         val usage = requireNotNull(chunks.filterIsInstance<HermesInsightChunk.Usage>().firstOrNull()?.usage)
-        assertEquals(VAL_3900, usage.inputTokens)
-        assertEquals(VAL_1200, usage.outputTokens)
-        assertEquals(VAL_0_0051, usage.estimatedCostUSD, VAL_0_00001)
+        assertEquals(3_900, usage.inputTokens)
+        assertEquals(1_200, usage.outputTokens)
+        assertEquals(0.0051, usage.estimatedCostUSD, 0.00001)
         val completed = requireNotNull(chunks.filterIsInstance<HermesInsightChunk.Completed>().firstOrNull())
         assertTrue(completed.fullAnswer.startsWith("Hermes routed two long Claude turns"))
     }
@@ -214,7 +199,7 @@ class AndroidHermesInsightGatewayTest {
         Response.Builder()
             .request(chain.request())
             .protocol(Protocol.HTTP_1_1)
-            .code(VAL_200)
+            .code(200)
             .message("OK")
             .header("Content-Type", contentType)
             .body(body.toResponseBody(contentType.toMediaType()))

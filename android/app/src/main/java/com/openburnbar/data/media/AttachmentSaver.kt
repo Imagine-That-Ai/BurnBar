@@ -141,7 +141,6 @@ class AttachmentSaver(
             else -> false
         }
 
-        @Suppress("unused")
         fun externalPicturesRoot(): File = Environment.getExternalStoragePublicDirectory(
             Environment.DIRECTORY_PICTURES,
         )

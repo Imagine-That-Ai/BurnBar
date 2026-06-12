@@ -1,4 +1,3 @@
-@file:Suppress("FunctionNaming")
 
 package com.openburnbar.data.hermes.relay
 

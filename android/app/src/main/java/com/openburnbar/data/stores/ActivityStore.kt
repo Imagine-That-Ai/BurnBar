@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
-private const val VAL_250 = 250
+private const val SEARCH_DEBOUNCE_MS = 250
 
 class ActivityStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
@@ -114,7 +114,7 @@ class ActivityStore(
         searchJob =
             viewModelScope.launch {
                 try {
-                    kotlinx.coroutines.delay(VAL_250.toLong())
+                    kotlinx.coroutines.delay(SEARCH_DEBOUNCE_MS.toLong())
                     if (lastSearchQuery != trimmed) return@launch
                     _cloudSearchHits.value = cloudSearchService().search(trimmed)
                 } catch (_: Exception) {

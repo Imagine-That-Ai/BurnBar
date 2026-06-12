@@ -6,7 +6,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelo
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 import java.security.SecureRandom
 
-private const val VAL_32 = 32
+private const val ED25519_SEED_BYTES = 32
 
 /**
  * Android mirror of `ComputerUsePhoneControlSigner`.
@@ -21,10 +21,10 @@ private const val VAL_32 = 32
 object PhoneControlSigner {
     private val random = SecureRandom()
 
-    fun newPrivateKeySeed(): ByteArray = ByteArray(VAL_32).also { random.nextBytes(it) }
+    fun newPrivateKeySeed(): ByteArray = ByteArray(ED25519_SEED_BYTES).also { random.nextBytes(it) }
 
     fun publicKey(privateKeySeed: ByteArray): ByteArray {
-        require(privateKeySeed.size == VAL_32) { "Ed25519 private key seed must be 32 bytes" }
+        require(privateKeySeed.size == ED25519_SEED_BYTES) { "Ed25519 private key seed must be 32 bytes" }
         return KeyPair.newKeyPairFromSeed(privateKeySeed).publicKey
     }
 

@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.hermes
@@ -8,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -38,14 +38,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
 
-@Suppress("UnusedParameter")
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun ConversationListView(
@@ -53,11 +51,14 @@ fun ConversationListView(
     onStartChat: (String) -> Unit,
     onOpenLibrary: () -> Unit = {},
     onOpenSetup: () -> Unit = {},
-    hermesService: HermesService,
 ) {
     Scaffold(
         topBar = {
-            ConversationListTopBar(onOpenLibrary = onOpenLibrary, onOpenSetup = onOpenSetup)
+            ConversationListTopBar(
+                isConnected = isConnected,
+                onOpenLibrary = onOpenLibrary,
+                onOpenSetup = onOpenSetup,
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -77,9 +78,23 @@ fun ConversationListView(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ConversationListTopBar(onOpenLibrary: () -> Unit, onOpenSetup: () -> Unit) {
+private fun ConversationListTopBar(isConnected: Boolean, onOpenLibrary: () -> Unit, onOpenSetup: () -> Unit) {
     CenterAlignedTopAppBar(
-        title = { Text("Hermes") },
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Hermes")
+                Box(
+                    modifier =
+                    Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (isConnected) AuroraColors.hermesMercury else MaterialTheme.colorScheme.error),
+                )
+            }
+        },
         actions = {
             IconButton(onClick = onOpenLibrary) {
                 Icon(Icons.Filled.History, contentDescription = "Library")

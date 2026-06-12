@@ -10,15 +10,31 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getMessaging, type Message } from "firebase-admin/messaging";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import * as logger from "firebase-functions/logger";
 import { errorCode, isRecord } from "./guards.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const REGION = FUNCTIONS_REGION;
 const EVENT_COLLECTION = "agent_notification_events";
-const REPLY_COLLECTION = "agent_notification_replies";
 const DEVICE_COLLECTION = "devices";
 const ACTIVE_TTL_MS = 90_000;
 const GENERIC_PREVIEW = "OpenBurnBar has a new agent reply.";
+/**
+ * A `pending` event older than this is considered stuck (the create-trigger
+ * fan-out aborted or partially failed). The sweeper retries it. 2 minutes is
+ * long enough that the inline fan-out from the document trigger has settled but
+ * short enough that a recovered push plane delivers quickly.
+ */
+const STUCK_EVENT_GRACE_MS = 2 * 60_000;
+/**
+ * Stop retrying after this many attempts and seal the event `fanout_failed` so a
+ * permanently-undeliverable event becomes operator-visible instead of churning
+ * the sweeper forever.
+ */
+export const MAX_AGENT_FANOUT_ATTEMPTS = 8;
+/** Max stuck events handled per scheduled tick. */
+const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
 
 export type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
 
@@ -315,20 +331,21 @@ export async function fanoutAgentReplyEvent(args: {
   eventId: string;
   firestore?: FirebaseFirestore.Firestore;
   messaging?: Pick<ReturnType<typeof getMessaging>, "send">;
-}): Promise<{ sent: number; suppressed: number; rejected: number }> {
+}): Promise<{ sent: number; suppressed: number; rejected: number; failed: number }> {
   const firestore = args.firestore ?? getFirestore();
   const messaging = args.messaging ?? getMessaging();
   const eventRef = firestore.collection("users").doc(args.uid).collection(EVENT_COLLECTION).doc(args.eventId);
   const eventSnap = await eventRef.get();
-  if (!eventSnap.exists) return { sent: 0, suppressed: 0, rejected: 0 };
+  if (!eventSnap.exists) return { sent: 0, suppressed: 0, rejected: 0, failed: 0 };
   const event = parseNotificationEvent(eventSnap.data());
-  if (!event) return { sent: 0, suppressed: 0, rejected: 0 };
-  if (event.status !== "pending") return { sent: 0, suppressed: 0, rejected: 0 };
+  if (!event) return { sent: 0, suppressed: 0, rejected: 0, failed: 0 };
+  if (event.status !== "pending") return { sent: 0, suppressed: 0, rejected: 0, failed: 0 };
 
   const devices = await firestore.collection("users").doc(args.uid).collection(DEVICE_COLLECTION).get();
   let sent = 0;
   let suppressed = 0;
   let rejected = 0;
+  let failed = 0;
   const nowMillis = Date.now();
 
   for (const doc of devices.docs) {
@@ -358,23 +375,133 @@ export async function fanoutAgentReplyEvent(args: {
           { merge: true },
         );
       } else {
-        throw err;
+        // Per-device error capture: a transient/unhandled send error on ONE
+        // device must NOT abort the whole fan-out (the previous `throw err`
+        // left the event permanently `pending`, so a single down APNs/FCM
+        // path or one bad device wedged notifications for every other device —
+        // and the open APNs gate guarantees this error on day one). Record the
+        // reason on the device doc and continue; the sweeper retries the event
+        // while it stays unsent.
+        failed += 1;
+        await doc.ref
+          .set(
+            {
+              lastPushErrorAtMillis: nowMillis,
+              lastPushErrorReason: String(code ?? "unknown"),
+              updated_at_millis: nowMillis,
+            },
+            { merge: true },
+          )
+          .catch(() => undefined);
       }
     }
   }
 
+  // Leave the event `pending` (so the sweeper retries) whenever a device
+  // errored without being delivered, suppressed, or rejected; otherwise mark it
+  // complete. This is what makes the stuck-event sweeper reachable.
+  const status: AgentReplyNotificationEvent["status"] = failed > 0 ? "pending" : "fanout_complete";
   await eventRef.set(
     {
-      status: "fanout_complete",
+      status,
       updatedAt: Timestamp.now(),
       updatedAtMillis: Date.now(),
       fanoutAttemptCount: (event.fanoutAttemptCount ?? 0) + 1,
-      fanout: { sent, suppressed, rejected },
+      fanout: { sent, suppressed, rejected, failed },
     },
     { merge: true },
   );
-  return { sent, suppressed, rejected };
+  return { sent, suppressed, rejected, failed };
 }
+
+export type StuckEventOutcome = "retried" | "delivered" | "failed_sealed" | "skipped";
+
+/**
+ * Sweep `agent_notification_events` left `pending` past the grace window and
+ * re-run their fan-out. Mirrors `retryStuckFcmPushes` / `retryStuckVoIPPushes`:
+ * the create-trigger fan-out runs once, so any transient error (now captured
+ * per-device rather than thrown) leaves the event `pending` and only this
+ * durable sweeper recovers it. Re-running `fanoutAgentReplyEvent` is safe —
+ * it no-ops on non-`pending` events and FCM delivery is idempotent on
+ * `event_id` via the Android `collapseKey` + client-side dedupe.
+ */
+export async function sweepStuckAgentReplyEvents(args: {
+  firestore?: FirebaseFirestore.Firestore;
+  messaging?: Pick<ReturnType<typeof getMessaging>, "send">;
+  now?: number;
+}): Promise<Record<StuckEventOutcome, number>> {
+  const firestore = args.firestore ?? getFirestore();
+  const messaging = args.messaging ?? getMessaging();
+  const nowMillis = args.now ?? Date.now();
+  const cutoff = nowMillis - STUCK_EVENT_GRACE_MS;
+
+  const snapshot = await firestore
+    .collectionGroup(EVENT_COLLECTION)
+    .where("status", "==", "pending")
+    .where("updatedAtMillis", "<=", cutoff)
+    .orderBy("updatedAtMillis", "asc")
+    .limit(AGENT_FANOUT_SWEEP_BATCH_LIMIT)
+    .get();
+
+  const tally: Record<StuckEventOutcome, number> = {
+    retried: 0,
+    delivered: 0,
+    failed_sealed: 0,
+    skipped: 0,
+  };
+
+  for (const doc of snapshot.docs) {
+    const event = parseNotificationEvent(doc.data());
+    if (!event) {
+      tally.skipped += 1;
+      continue;
+    }
+    if ((event.fanoutAttemptCount ?? 0) >= MAX_AGENT_FANOUT_ATTEMPTS) {
+      await doc.ref
+        .set(
+          {
+            status: "fanout_failed",
+            updatedAt: Timestamp.now(),
+            updatedAtMillis: Date.now(),
+          },
+          { merge: true },
+        )
+        .catch(() => undefined);
+      tally.failed_sealed += 1;
+      continue;
+    }
+    try {
+      const result = await fanoutAgentReplyEvent({
+        uid: event.uid,
+        eventId: event.id,
+        firestore,
+        messaging,
+      });
+      tally[result.sent > 0 ? "delivered" : "retried"] += 1;
+    } catch (err) {
+      tally.skipped += 1;
+      logger.error("sweepStuckAgentReplyEvents: failed to process event", {
+        documentPath: doc.ref.path,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return tally;
+}
+
+export const retryStuckAgentReplyEvents = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    region: REGION,
+  },
+  async () => {
+    const tally = await sweepStuckAgentReplyEvents({});
+    if (tally.retried || tally.delivered || tally.failed_sealed || tally.skipped) {
+      logger.info("retryStuckAgentReplyEvents swept stuck agent-reply events", tally);
+    }
+  },
+);
 
 export const onCliSessionAgentReplyNotification = onDocumentWritten(
   {

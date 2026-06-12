@@ -23,9 +23,9 @@ import com.openburnbar.ui.widget.BurnBarMediumWidget
 import com.openburnbar.ui.widget.BurnBarSmallWidget
 import java.util.concurrent.TimeUnit
 
-private const val VAL_15 = 15
-private const val VAL_3 = 3
-private const val VAL_7 = 7
+private const val SYNC_PERIOD_MINUTES = 15
+private const val WIDGET_TOP_LIST_SIZE = 3
+private const val SPARKLINE_DAY_COUNT = 7
 
 /**
  * Hydrates the widget snapshot from Firestore on a 15-minute cadence (the
@@ -61,7 +61,7 @@ class BurnBarWidgetSyncWorker(
         val topProviders =
             rollups.providerSummaries
                 .sortedByDescending { it.totalTokens }
-                .take(VAL_3)
+                .take(WIDGET_TOP_LIST_SIZE)
         val names =
             topProviders.map { p ->
                 AgentProvider.fromKey(p.provider)?.displayName ?: p.provider
@@ -70,12 +70,12 @@ class BurnBarWidgetSyncWorker(
         val models =
             rollups.modelSummaries
                 .sortedByDescending { it.totalCost }
-                .take(VAL_3)
+                .take(WIDGET_TOP_LIST_SIZE)
                 .map { it.accountLabel.ifBlank { it.provider } }
         val daily =
             rollups.dailyPoints.entries
                 .sortedBy { it.key }
-                .takeLast(VAL_7)
+                .takeLast(SPARKLINE_DAY_COUNT)
                 .map { it.value }
         return BurnBarWidgetSnapshot(
             heroTotalCost = rollups.today,
@@ -98,7 +98,7 @@ class BurnBarWidgetSyncWorker(
         fun enqueuePeriodic(context: Context) {
             val request =
                 PeriodicWorkRequestBuilder<BurnBarWidgetSyncWorker>(
-                    VAL_15.toLong(),
+                    SYNC_PERIOD_MINUTES.toLong(),
                     TimeUnit.MINUTES,
                 )
                     .setConstraints(

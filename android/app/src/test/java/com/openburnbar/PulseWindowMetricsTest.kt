@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar
 
@@ -35,7 +33,7 @@ class PulseWindowMetricsTest {
 
         val minute = pulseWindowMetrics(PulseTimelineScope.MINUTE, rollups, usages, now)
         val hour = pulseWindowMetrics(PulseTimelineScope.HOUR, rollups, usages, now)
-        val day = pulseWindowMetrics(PulseTimelineScope.DAY, rollups, usages, now, ZoneId.of("UTC"))
+        val day = pulseWindowMetrics(PulseTimelineScope.DAY, rollups, usages, now)
 
         assertEquals(1.25, minute.value, 0.001)
         assertEquals(125L, minute.tokenValue)
@@ -64,7 +62,7 @@ class PulseWindowMetricsTest {
                 TokenUsage(id = "inside", costUsd = 2.0, totalTokens = 200, startTime = now - 7L * 60L * 60L * 1_000L),
             )
 
-        val day = pulseWindowMetrics(PulseTimelineScope.DAY, rollups, usages, now, zone)
+        val day = pulseWindowMetrics(PulseTimelineScope.DAY, rollups, usages, now)
 
         assertEquals(2.0, day.value, 0.001)
         assertEquals(200L, day.tokenValue)

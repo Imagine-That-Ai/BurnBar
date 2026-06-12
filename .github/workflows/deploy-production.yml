@@ -34,9 +34,16 @@ jobs:
       HAS_GCP_SA_KEY: ${{ secrets.GCP_SA_KEY != '' }}
       HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
+          # The release preflight's provenance gate requires corresponding-source
+          # files inside Vendor/libsignal (a submodule). Without this, every tag
+          # deploy fails on "Vendor/libsignal/LICENSE missing" — the wedge that
+          # blocked v1.0.2 (diligence 2026-06-11 NB-2). release.yml inits the
+          # same submodule at its own build step; this keeps the two lanes
+          # consistent.
+          submodules: true
 
       - name: Resolve release tag
         id: tag
@@ -54,7 +61,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "dry_run=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -113,55 +120,25 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           ENV_FILE="functions/.env.burnbar"
-          touch "$ENV_FILE"
-          for key in FUNCTION_VERSION OPENBURNBAR_SOURCE_COMMIT OPENBURNBAR_CORRESPONDING_SOURCE_URL OPENBURNBAR_OTS_VERIFY_URL OPENBURNBAR_OTS_VERIFY_AUDIENCE OPENBURNBAR_OTS_STAMP_URL APNS_VOIP_TOPIC APNS_HOST APP_STORE_APPLE_APP_ID APP_STORE_BUNDLE_ID APP_STORE_ENV ENFORCE_APP_CHECK HOSTED_QUOTA_DAILY_REFRESH_LIMIT HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT HOSTED_QUOTA_PRODUCT_ID HOSTED_QUOTA_RUNNER_URL BURNBAR_PRO_PRODUCT_ID BURNBAR_PRO_ANNUAL_PRODUCT_ID BURNBAR_PRO_MAX_PRODUCT_ID BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID BURNBAR_ULTRA_PRODUCT_ID BURNBAR_ULTRA_ANNUAL_PRODUCT_ID AGENT_CONTROL_100_ACTIONS_PRODUCT_ID FLOO_RELAY_50GB_PRODUCT_ID GOOGLE_PLAY_PACKAGE_NAME GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID GOOGLE_PLAY_ULTRA_MONTHLY_PRODUCT_ID GOOGLE_PLAY_ULTRA_ANNUAL_PRODUCT_ID GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID STRIPE_BURNBAR_PRO_PRICE_ID STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID STRIPE_FLOO_RELAY_50GB_PRICE_ID; do
-            grep -v "^${key}=" "$ENV_FILE" > "${ENV_FILE}.tmp" || true
-            mv "${ENV_FILE}.tmp" "$ENV_FILE"
-          done
+          PROD_CONFIG="functions/.env.burnbar.production"
+
+          # H14: production runtime config is the committed, reviewed
+          # functions/.env.burnbar.production (non-secret public IDs/URLs).
+          # Both this deploy lane and scripts/rollback.sh source the SAME file,
+          # so a deploy and a rollback can never disagree or ship empty config.
+          if [[ ! -f "$PROD_CONFIG" ]]; then
+            echo "::error::Missing $PROD_CONFIG — refusing to deploy with empty runtime config."
+            exit 1
+          fi
+
+          # Per-deploy dynamic values are not committed; append them on top of
+          # the reviewed static config.
           {
+            cat "$PROD_CONFIG"
+            echo ""
             echo "FUNCTION_VERSION=${TAG}"
             echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
-            echo "OPENBURNBAR_CORRESPONDING_SOURCE_URL=${OPENBURNBAR_CORRESPONDING_SOURCE_URL}"
-            printf '%s\n' \
-              'OPENBURNBAR_OTS_VERIFY_URL=https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/verify' \
-              'OPENBURNBAR_OTS_VERIFY_AUDIENCE=https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app' \
-              'OPENBURNBAR_OTS_STAMP_URL=https://openburnbar-ots-verifier-cjrjb5ckqq-uc.a.run.app/stamp' \
-              'APNS_VOIP_TOPIC=com.openburnbar.mobile.voip' \
-              'APNS_HOST=https://api.push.apple.com' \
-              'APP_STORE_APPLE_APP_ID=6766366964' \
-              'APP_STORE_BUNDLE_ID=com.openburnbar.app' \
-              'APP_STORE_ENV=Production' \
-              'ENFORCE_APP_CHECK=true' \
-              'HOSTED_QUOTA_DAILY_REFRESH_LIMIT=30' \
-              'HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT=300' \
-              'HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.cloud.monthly' \
-              'HOSTED_QUOTA_RUNNER_URL=https://openburnbar-quota-runner-cjrjb5ckqq-uc.a.run.app' \
-              'BURNBAR_PRO_PRODUCT_ID=com.openburnbar.pro.monthly' \
-              'BURNBAR_PRO_ANNUAL_PRODUCT_ID=com.openburnbar.pro.annual' \
-              'BURNBAR_PRO_MAX_PRODUCT_ID=com.openburnbar.proMax.v2.monthly' \
-              'BURNBAR_PRO_MAX_ANNUAL_PRODUCT_ID=com.openburnbar.proMax.annual' \
-              'BURNBAR_ULTRA_PRODUCT_ID=com.openburnbar.ultra.monthly' \
-              'BURNBAR_ULTRA_ANNUAL_PRODUCT_ID=com.openburnbar.ultra.annual.v2' \
-              'AGENT_CONTROL_100_ACTIONS_PRODUCT_ID=com.openburnbar.agentControl.actions100' \
-              'FLOO_RELAY_50GB_PRODUCT_ID=com.openburnbar.floo.relay50gb' \
-              'GOOGLE_PLAY_PACKAGE_NAME=com.openburnbar' \
-              'GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID=com.openburnbar.pro.monthly' \
-              'GOOGLE_PLAY_CLOUD_MONTHLY_PRODUCT_ID=com.openburnbar.pro.monthly' \
-              'GOOGLE_PLAY_CLOUD_ANNUAL_PRODUCT_ID=com.openburnbar.pro.annual' \
-              'GOOGLE_PLAY_CLOUD_PRO_MONTHLY_PRODUCT_ID=com.openburnbar.promax.v2.monthly' \
-              'GOOGLE_PLAY_CLOUD_PRO_ANNUAL_PRODUCT_ID=com.openburnbar.promax.annual' \
-              'GOOGLE_PLAY_ULTRA_MONTHLY_PRODUCT_ID=com.openburnbar.ultra.monthly' \
-              'GOOGLE_PLAY_ULTRA_ANNUAL_PRODUCT_ID=com.openburnbar.ultra.annual' \
-              'GOOGLE_PLAY_AGENT_CONTROL_100_ACTIONS_PRODUCT_ID=com.openburnbar.agentcontrol.actions100' \
-              'GOOGLE_PLAY_FLOO_RELAY_50GB_PRODUCT_ID=com.openburnbar.floo.relay50gb' \
-              'STRIPE_BURNBAR_PRO_PRICE_ID=price_1TcsUfCFamvUJU7yjeIJ5f79' \
-              'STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID=price_1TcsUfCFamvUJU7yjeIJ5f79' \
-              'STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID=price_1TcsUgCFamvUJU7yRbS0YWKu' \
-              'STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID=price_1TcsUgCFamvUJU7yRISgcK5V' \
-              'STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID=price_1TcsUhCFamvUJU7yq6Q25meT' \
-              'STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID=price_1TcsUiCFamvUJU7yVBRaOV4p' \
-              'STRIPE_FLOO_RELAY_50GB_PRICE_ID=price_1TcsUiCFamvUJU7yT9Zl8E0f'
-          } >> "$ENV_FILE"
+          } > "$ENV_FILE"
           export FUNCTION_VERSION="$TAG"
 
           firebase_args=(--only functions --project burnbar --non-interactive --force)

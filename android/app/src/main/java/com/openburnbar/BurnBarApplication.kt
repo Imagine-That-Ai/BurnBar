@@ -146,8 +146,32 @@ class BurnBarApplication : Application() {
         // the source-aware reader; this makes the override reachable). iOS
         // does this in MobileMediaBudgetStatusStore.
         com.openburnbar.data.computeruse.RemoteConfigBootstrap.activate()
+        // Signal at-rest activation: AND the registry scheme with a per-domain
+        // Remote Config kill switch (`signal_at_rest_<id>_enabled`), mirroring
+        // iOS `MobileCloudVaultSignalPayloads.signalSealingIsEnabled`. Source-aware
+        // and DEFAULT-OFF: a STATIC value (no remote value fetched, no in-app
+        // default registered) resolves false, so the producer path only emits
+        // Signal envelopes once an operator explicitly flips the flag true. Any
+        // Firebase failure also resolves false — Android stays fail-closed.
+        com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads.signalAtRestActivationProvider = { domainID ->
+            runCatching {
+                val value = com.google.firebase.remoteconfig.FirebaseRemoteConfig.getInstance()
+                    .getValue("signal_at_rest_${domainID}_enabled")
+                if (value.source == com.google.firebase.remoteconfig.FirebaseRemoteConfig.VALUE_SOURCE_STATIC) {
+                    false
+                } else {
+                    value.asBoolean()
+                }
+            }.getOrDefault(false)
+        }
+        // Crashlytics consent defaults ON: with the previous `false` default no
+        // setting ever wrote `crashlytics_enabled`, so collection stayed
+        // permanently disabled and Android crash reporting was dark. Default-on
+        // mirrors the macOS/iOS posture (crash reporting active for distribution
+        // builds); a user who opts out via the diagnostics toggle persists
+        // `false` and that choice is honored on every subsequent launch.
         val crashlyticsEnabled = getSharedPreferences("burnbar.diagnostics", MODE_PRIVATE)
-            .getBoolean("crashlytics_enabled", false)
+            .getBoolean("crashlytics_enabled", true)
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(crashlyticsEnabled)
         // Widget snapshot: hydrate from disk + schedule the 15-min refresh.
         BurnBarWidgetSnapshotStore.bind(this)

@@ -18,6 +18,18 @@ on:
   merge_group:
     branches: [main]
     types: [checks_requested]
+  # Post-merge re-verification: merges land via direct admin merge (no merge
+  # queue), so the merge_group trigger never fires — without this, privileged
+  # computer-use changes reached main with no loopback re-run (diligence
+  # 2026-06-11: "the post-merge gate never runs post-merge").
+  push:
+    branches: [main]
+    paths:
+      - "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/**"
+      - "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/**"
+      - "OpenBurnBarDaemon/Resources/PlaywrightBridge/**"
+      - ".github/workflows/computer-use-loopback-test.yml"
   workflow_dispatch:
 
 jobs:

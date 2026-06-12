@@ -8,9 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private const val MILLIS = 42L
-private const val VAL_44 = 44
-private const val VAL_88 = 88
-
 class ComputerUseWatchReducerTest {
     @Test
     fun approvalResponseClearsPendingAndAppendsAuditRow() {
@@ -55,13 +52,13 @@ class ComputerUseWatchReducerTest {
             MediaFrame(
                 kind = MediaFrame.Kind.VIDEO_NAL,
                 flags = MediaFrame.Flags.HAS_CURSOR_METADATA,
-                cursor = MediaFrame.CursorMetadata(VAL_44.toShort(), VAL_88.toShort()),
+                cursor = MediaFrame.CursorMetadata(44.toShort(), 88.toShort()),
             )
 
         reducer.ingestFrame(frame, receivedAtMillis = 42L)
 
         assertEquals(frame, reducer.state.value.currentFrame)
-        assertEquals(MediaFrame.CursorMetadata(VAL_44.toShort(), VAL_88.toShort()), reducer.state.value.currentFrame?.cursor)
+        assertEquals(MediaFrame.CursorMetadata(44.toShort(), 88.toShort()), reducer.state.value.currentFrame?.cursor)
         assertEquals(MILLIS, reducer.state.value.lastFrameReceivedAtMillis)
     }
 

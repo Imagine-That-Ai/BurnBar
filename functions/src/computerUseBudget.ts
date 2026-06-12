@@ -17,7 +17,7 @@
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getRemoteConfig } from "firebase-admin/remote-config";
-import type { ComputerUseBudgetStatusDoc, ComputerUseSessionDailyRollupDoc } from "./types.js";
+import type { ComputerUseBudgetStatusDoc } from "./types.js";
 import { syncKillSwitchForBudgetLevel } from "./computerUseRemoteConfig.js";
 import { numberField } from "./guards.js";
 import { logError, logInfo } from "./logging.js";
@@ -52,7 +52,7 @@ async function loadBudgetTunings(): Promise<BudgetTunings> {
       softCapUSD: soft ?? SOFT_CAP_USD,
       hardCapUSD: hard ?? HARD_CAP_USD,
     };
-  } catch (_e) {
+  } catch {
     return { softCapUSD: SOFT_CAP_USD, hardCapUSD: HARD_CAP_USD };
   }
 }

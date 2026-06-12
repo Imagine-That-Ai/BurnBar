@@ -22,9 +22,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val VAL_0_2 = 0.2
-private const val VAL_0_3 = 0.3
-private const val VAL_15 = 15
+private const val ANALYSIS_TEMPERATURE = 0.2
+private const val FOLLOW_UP_TEMPERATURE = 0.3
+private const val CONNECT_TIMEOUT_SECONDS = 15
 
 /**
  * Token + cost report produced by a Hermes Insights turn. Mirrors the
@@ -224,7 +224,7 @@ class AndroidHermesInsightAnalysisGateway(
                 put("model", request.selectedModel.modelID)
                 put(
                     "temperature",
-                    if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) VAL_0_3 else VAL_0_2,
+                    if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) FOLLOW_UP_TEMPERATURE else ANALYSIS_TEMPERATURE,
                 )
                 put("max_tokens", maxTokens)
                 put("stream", streaming)
@@ -309,7 +309,7 @@ class AndroidHermesInsightAnalysisGateway(
 
     companion object {
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(VAL_15.toLong(), TimeUnit.SECONDS)
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
             // No read timeout on streams — SSE chunks may be silent for
             // long stretches when the upstream model is reasoning.
             .readTimeout(0L, TimeUnit.MILLISECONDS)

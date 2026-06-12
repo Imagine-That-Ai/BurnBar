@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { HttpsError } from "firebase-functions/v2/https";
 
 import type { HermesConnectionDoc, HermesConnectionMode, HermesPairingDoc } from "./types.js";
-import { isRecord, recordOrUndefined } from "./guards.js";
+import { recordOrUndefined } from "./guards.js";
 
 export function randomPairingCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

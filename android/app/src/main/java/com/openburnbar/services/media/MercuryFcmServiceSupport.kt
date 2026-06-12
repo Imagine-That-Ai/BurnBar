@@ -76,7 +76,14 @@ internal fun MercuryFcmService.postAgentReplyNotification(data: Map<String, Stri
     val eventId = data["event_id"] ?: return
     try {
         NotificationManagerCompat.from(this).notify(eventId.hashCode(), notification)
-    } catch (_: SecurityException) {
-        // Missing POST_NOTIFICATIONS permission — fall through silently.
+    } catch (error: SecurityException) {
+        // Missing POST_NOTIFICATIONS permission — log it and persist the real
+        // (revoked) permission state so the cloud fan-out stops targeting this
+        // device instead of marking dropped pushes "sent".
+        android.util.Log.w(
+            "BurnBar",
+            "agent_reply_notification_post_denied event=$eventId reason=${error.message}",
+        )
+        AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = false)
     }
 }

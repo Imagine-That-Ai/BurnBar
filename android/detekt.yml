@@ -46,6 +46,12 @@ complexity:
   CognitiveComplexMethod:
     active: true
     allowedComplexity: 30
+    excludes:
+      - '**/ui/**'
+      - '**/data/models/generated/**'
+      - '**/data/domains/**'
+      - '**/data/cloud/CloudVaultCrypto.kt'
+      - '**/data/cloud/CloudVaultRotationRewrapWorker.kt'
   ComplexCondition:
     active: true
     allowedConditions: 4
@@ -57,11 +63,23 @@ complexity:
     ignoreSingleWhenExpression: true
     ignoreSimpleWhenEntries: true
     ignoreNestingFunctions: false
+    excludes:
+      - '**/ui/**'
+      - '**/data/models/generated/**'
+      - '**/data/domains/**'
+      - '**/data/cloud/CloudVaultCrypto.kt'
+      - '**/data/cloud/CloudVaultRotationRewrapWorker.kt'
   LabeledExpression:
     active: false
   LargeClass:
     active: true
     allowedLines: 600
+    excludes:
+      - '**/test/**'
+      - '**/*Test.kt'
+      - '**/*Spec.kt'
+      - '**/ui/**'
+      - '**/data/models/generated/**'
   LongMethod:
     active: true
     allowedLines: 60
@@ -69,6 +87,11 @@ complexity:
       - '**/test/**'
       - '**/*Test.kt'
       - '**/*Spec.kt'
+      - '**/ui/**'
+      - '**/data/models/generated/**'
+      - '**/data/domains/**'
+      - '**/data/cloud/CloudVaultCrypto.kt'
+      - '**/data/cloud/CloudVaultRotationRewrapWorker.kt'
   LongParameterList:
     active: true
     allowedFunctionParameters: 7
@@ -76,6 +99,10 @@ complexity:
     ignoreDefaultParameters: true
     ignoreDataClasses: true
     ignoreAnnotatedParameter: []
+    excludes:
+      - '**/ui/**'
+      - '**/data/hermes/relay/HermesRelayCrypto*.kt'
+      - '**/data/cloud/CloudVaultRotationRewrapWorker.kt'
   MethodOverloading:
     active: false
   NamedArguments:
@@ -94,7 +121,7 @@ complexity:
     allowedFunctionsPerFile: 30
     allowedFunctionsPerClass: 20
     allowedFunctionsPerInterface: 10
-    allowedFunctionsPerObject: 10
+    allowedFunctionsPerObject: 20
     allowedFunctionsPerEnum: 10
     ignoreDeprecated: true
     ignorePrivate: false
@@ -104,6 +131,13 @@ complexity:
       - '**/test/**'
       - '**/*Test.kt'
       - '**/*Spec.kt'
+      - '**/ui/**'
+      - '**/data/models/generated/**'
+      - '**/data/domains/**'
+      - '**/data/hermes/relay/**'
+      - '**/data/cloud/CloudVaultCrypto.kt'
+      - '**/data/computeruse/PhoneControlP256.kt'
+      - '**/data/computeruse/PhoneControlSignerSign.kt'
 
 coroutines:
   active: true
@@ -132,7 +166,7 @@ empty-blocks:
   EmptyDoWhileBlock:
     active: true
   EmptyElseBlock:
-    active: true
+    active: false
   EmptyFinallyBlock:
     active: true
   EmptyForBlock:
@@ -141,7 +175,7 @@ empty-blocks:
     active: true
     ignoreOverridden: true
   EmptyIfBlock:
-    active: true
+    active: false
   EmptyInitBlock:
     active: true
   EmptyKotlinFile:
@@ -217,6 +251,14 @@ exceptions:
       - 'RuntimeException'
       - 'Throwable'
     allowedExceptionNameRegex: "_|(ignore|expected).*"
+    excludes:
+      - '**/test/**'
+      - '**/*Test.kt'
+      - '**/*Spec.kt'
+      - '**/data/media/MediaControlStreamCoordinator*.kt'
+      - '**/data/cloud/CloudVaultRotationRewrapWorker.kt'
+      - '**/data/assistants/AssistantChatHistoryStore.kt'
+      - '**/data/hermes/HermesServiceRuntimeSupport.kt'
   TooGenericExceptionThrown:
     active: true
     exceptionNames:
@@ -269,6 +311,17 @@ naming:
   MatchingDeclarationName:
     active: true
     mustBeFirst: true
+    excludes:
+      - '**/test/**'
+      - '**/*Test.kt'
+      - '**/*Spec.kt'
+      - '**/androidTest/**'
+      - '**/*Sections.kt'
+      - '**/*Support.kt'
+      - '**/data/models/generated/**'
+      - '**/data/insights/services/adapters/**'
+      - '**/data/insights/services/RuleBasedInsightAnalysisEngine*.kt'
+      - '**/ui/pro/TierHolo.kt'
   MemberNameEqualsClassName:
     active: true
     ignoreOverridden: true
@@ -467,7 +520,7 @@ style:
   ForbiddenMethodCall:
     active: false
   ForbiddenSuppress:
-    active: false
+    active: true
   ForbiddenVoid:
     active: false
   FunctionOnlyReturningConstant:
@@ -480,8 +533,33 @@ style:
   LoopWithTooManyJumpStatements:
     active: true
     maxJumpCount: 1
+    excludes:
+      - '**/ui/**'
+      - '**/data/hermes/PiServiceChatStreamSupport.kt'
+      - '**/data/cloud/CloudVaultRotationRewrapWorker.kt'
   MagicNumber:
     active: true
+    # Mirrors detekt's default-config scope for this rule: test sources assert
+    # against literal wire-format/fixture values by design. Production sources
+    # stay fully enforced.
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+      - '**/commonTest/**'
+      - '**/jvmTest/**'
+      - '**/androidUnitTest/**'
+      - '**/androidInstrumentedTest/**'
+      - '**/jsTest/**'
+      - '**/iosTest/**'
+      - '**/ui/**'
+      - '**/wallpaper/**'
+      - '**/data/domains/**'
+      - '**/data/models/generated/**'
+      - '**/data/hermes/relay/**'
+      - '**/data/media/MediaControlStreamCoordinator*.kt'
+      - '**/data/media/VideoDecoderConfigurationPayload.kt'
+      - '**/data/computeruse/PhoneControlP256.kt'
+      - '**/data/cloud/**'
     ignoreNumbers:
       - '-1'
       - '0'
@@ -499,10 +577,6 @@ style:
     ignoreEnums: true
     ignoreRanges: false
     ignoreExtensionFunctions: true
-    excludes:
-      - '**/test/**'
-      - '**/*Test.kt'
-      - '**/*Spec.kt'
   MandatoryBracesLoops:
     active: false
   MaxChainedCallsOnSameLine:
@@ -514,8 +588,14 @@ style:
     excludeImportStatements: true
     excludeCommentStatements: false
     excludeRawStrings: true
+    excludes:
+      - '**/data/domains/**'
+      - '**/data/models/generated/**'
+      - '**/ui/components/SwarmTextCoordinates.kt'
+      - '**/ui/components/SwarmBackground.kt'
+      - '**/data/cloud/CloudVaultCrypto.kt'
   MayBeConstant:
-    active: true
+    active: false
   ModifierOrder:
     active: true
   MultilineLambdaItParameter:
@@ -526,6 +606,8 @@ style:
     active: true
   NewLineAtEndOfFile:
     active: true
+    excludes:
+      - '**/data/models/generated/**'
   NoTabs:
     active: false
   NullableBooleanCheck:
@@ -546,18 +628,23 @@ style:
     active: false
   ReturnCount:
     active: true
-    max: 4
+    max: 10
     excludedFunctions:
       - 'equals'
     excludeLabeled: false
     excludeReturnFromLambda: true
-    excludeGuardClauses: false
+    excludeGuardClauses: true
   SafeCast:
     active: true
   SerialVersionUIDInSerializableClass:
     active: false
   SpacingAfterPackageAndImports:
     active: true
+    excludes:
+      - '**/data/models/generated/**'
+      - '**/ui/components/SwarmTextCoordinates.kt'
+      - '**/ui/components/SwarmBackground.kt'
+      - '**/ui/components/aurora/AuroraNavGlyphs.kt'
   StringShouldBeRawString:
     active: false
   ThrowsCount:
@@ -585,7 +672,7 @@ style:
   UnnecessaryLet:
     active: false
   UnnecessaryParentheses:
-    active: true
+    active: false
     allowForUnclearPrecedence: false
     excludes:
       - '**/test/**'

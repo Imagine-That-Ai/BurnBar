@@ -1,0 +1,52 @@
+name: Rust Remote Engine
+
+# crates/burnbar-remote is the gen-2 remote-control engine (ADR'd, in-tree).
+# Until this workflow existed it was built by NO CI — shadow architecture
+# rotting silently (diligence 2026-06-10 §8 / 2026-06-11 follow-through).
+# This lane keeps it honest: it compiles, its tests pass, clippy is clean at
+# -D warnings, and formatting is canonical, on every change to the crates.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "crates/burnbar-remote/**"
+      - ".github/workflows/rust-remote-engine.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/burnbar-remote/**"
+      - ".github/workflows/rust-remote-engine.yml"
+
+concurrency:
+  group: rust-remote-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: crates/burnbar-remote
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      # rust-toolchain.toml drives the version; rustup respects it.
+      - name: Install pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: crates/burnbar-remote
+
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace

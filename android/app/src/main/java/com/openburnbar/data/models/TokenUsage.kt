@@ -9,9 +9,9 @@ private const val PERCENT_SCALE = 1_000_000_000
 private const val PERCENT_SCALE_2 = 1_000_000_000.0
 private const val PERCENT_SCALE_3 = 1_000_000
 private const val PERCENT_SCALE_4 = 1_000_000.0
-private const val VAL_12 = 12
 private const val TOOL_BUCKET_PRIORITY = 2
 private const val LIMIT_BUCKET_PRIORITY = 3
+private const val QUOTA_SNAPSHOT_STALENESS_HOURS = 12
 
 /**
  * Mirrors the Firestore `UsageEventDoc` from Cloud Functions types.ts.
@@ -346,7 +346,6 @@ val QuotaBucket.displayRemainingFraction: Double?
  * with the advanced reset countdown. The `now`-parameterised form keeps this
  * deterministic for tests.
  */
-@Suppress("ReturnCount")
 // Sequential guard clauses; single-exit rewrite obscures the precedence order.
 fun QuotaBucket.displayRemainingFractionAsOf(now: java.time.Instant): Double? {
     if (elapsedWindowReset(now) != null) return 1.0
@@ -504,7 +503,6 @@ val QuotaBucket.progressFraction: Double
  * frozen snapshot still carries — the fix for "the 5h clock reset but the bar
  * stayed full." The `now`-parameterised form keeps this deterministic for tests.
  */
-@Suppress("ReturnCount")
 // Sequential guard clauses; single-exit rewrite obscures the precedence order.
 fun QuotaBucket.progressFractionAsOf(now: java.time.Instant): Double {
     if (elapsedWindowReset(now) != null) return 0.0
@@ -683,7 +681,7 @@ fun ProviderQuotaSnapshot.isStale(now: java.time.Instant = java.time.Instant.now
         return true
     }
     val age = java.time.Duration.between(fetched, now)
-    val stale = age > java.time.Duration.ofHours(VAL_12.toLong())
+    val stale = age > java.time.Duration.ofHours(QUOTA_SNAPSHOT_STALENESS_HOURS.toLong())
     if (stale) {
         android.util.Log.d(
             "QuotaStale",

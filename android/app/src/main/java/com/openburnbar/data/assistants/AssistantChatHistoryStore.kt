@@ -36,8 +36,8 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private const val VAL_200 = 200
-private const val VAL_600 = 600
+private const val CLOUD_THREAD_FETCH_LIMIT = 200
+private const val CLOUD_MIRROR_DEBOUNCE_MS = 600
 
 /** Data-domain id whose sealingScheme gates at-rest Signal sealing for chat + CLI. */
 private const val SIGNAL_CHAT_DOMAIN = "conversations_chat"
@@ -327,13 +327,12 @@ class AssistantChatHistoryStore internal constructor(
         }.onFailure { Log.e(tag, "Failed to save chat history", it) }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     // Cloud-mirror coroutine converts any producer/Firestore failure into _lastSyncError.
     private fun scheduleCloudMirror(thread: AssistantChatThread, immediate: Boolean = false) {
         val cloud = cloud ?: return
         val job =
             scope.launch {
-                if (!immediate) delay(VAL_600.toLong())
+                if (!immediate) delay(CLOUD_MIRROR_DEBOUNCE_MS.toLong())
                 try {
                     cloud.upsert(thread)
                     synchronized(pendingMirrorsLock) { pendingMirrors.remove(thread.id) }
@@ -552,7 +551,7 @@ internal class AssistantChatFirestoreMirror(
         val snapshot =
             collection(uid)
                 .orderBy("updatedAt", Query.Direction.DESCENDING)
-                .limit(VAL_200.toLong())
+                .limit(CLOUD_THREAD_FETCH_LIMIT.toLong())
                 .get()
                 .await()
         return snapshot.documents.mapNotNull { document ->
@@ -560,7 +559,6 @@ internal class AssistantChatFirestoreMirror(
         }
     }
 
-    @Suppress("ReturnCount")
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     internal fun decodeThread(
         documentID: String,

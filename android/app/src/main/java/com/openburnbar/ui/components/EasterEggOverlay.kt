@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Canvas/particle field math (velocities, gravity, alpha curves, dp/px literals);
 // token-per-line extraction would obscure the physics, so values stay inline.
 
@@ -237,7 +236,7 @@ fun EasterEggOverlay(controller: EasterEggController, modifier: Modifier = Modif
         if (boundaryEpoch == 0) return@LaunchedEffect
         if (reduceMotion) return@LaunchedEffect // spec §6: no boundary pop under reduce-motion
         val bundle = withContext(Dispatchers.Default) { assets.bundle(providerGlyphs) }
-        engine.startBoundary(controller.queuedBoundarySide, bundle)
+        engine.startBoundary(controller.queuedBoundarySide)
         running = true
     }
 
@@ -262,7 +261,6 @@ fun EasterEggOverlay(controller: EasterEggController, modifier: Modifier = Modif
     // the layout/draw tree, no frames pumping).
     if (running) {
         Canvas(modifier = modifier.fillMaxSize()) {
-            @Suppress("UNUSED_VARIABLE")
             val tick = version // read so the Canvas repaints each frame
             engine.draw(this)
         }
@@ -438,7 +436,7 @@ private class FxEngine {
         aliveCache = true
     }
 
-    fun startBoundary(side: EdgeSide, bundle: EggBundle) {
+    fun startBoundary(side: EdgeSide) {
         if (reduceMotion) return
         // Defer the actual spawn to the first tick where we know w/h; stash intent.
         pendingPop = side
@@ -921,9 +919,8 @@ private fun drawToken(scope: DrawScope, x: Double, y: Double, r: Double, gold: B
 /**
  * Overshoot ease (spec §7): defined for parity with the web engine. The storm/rain/
  * boundary paths use spring + ballistic integration directly and don't call it, so it is
- * kept `@Suppress("unused")` rather than deleted to mirror the reference implementation.
+ * kept the reference implementation hook rather than deleted it.
  */
-@Suppress("unused")
 private fun easeOutBack(x: Double): Double {
     val c1 = 1.70158
     val c3 = c1 + 1.0

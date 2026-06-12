@@ -26,24 +26,36 @@ data class InsightDigestBuildInput(
 )
 
 object InsightDigestBuilder {
-    private const val VAL_10 = 10
-    private const val VAL_12 = 12
-    private const val VAL_14 = 14
-    private const val VAL_16 = 16
-    private const val VAL_18 = 18
-    private const val VAL_24 = 24
-    private const val VAL_24_0 = 24.0
-    private const val VAL_3 = 3
-    private const val VAL_30 = 30
-    private const val VAL_36 = 36
-    private const val VAL_365 = 365
-    private const val VAL_4 = 4
-    private const val VAL_45 = 45
-    private const val VAL_6 = 6
-    private const val VAL_60 = 60
-    private const val VAL_7 = 7
-    private const val VAL_8 = 8
-    private const val VAL_90 = 90
+    // Calendar units shared by window intervals and daily-history caps.
+    private const val HOURS_PER_DAY = 24
+    private const val HOURS_PER_DAY_DOUBLE = 24.0
+    private const val DAYS_PER_WEEK = 7
+    private const val DAYS_PER_FORTNIGHT = 14
+    private const val DAYS_PER_MONTH = 30
+    private const val DAYS_PER_MONTH_AND_HALF = 45
+    private const val DAYS_PER_TWO_MONTHS = 60
+    private const val DAYS_PER_QUARTER = 90
+    private const val DAYS_PER_YEAR = 365
+
+    // Section caps for a full-size digest.
+    private const val MAX_PROVIDER_SNAPSHOTS = 12
+    private const val MAX_MODEL_SNAPSHOTS = 16
+    private const val MAX_QUOTA_SNAPSHOTS = 16
+    private const val MAX_MODEL_BENCHMARKS = 36
+
+    // Candidate section caps tried widest-to-narrowest while shrinking to the byte budget.
+    private const val SHRINK_CAP_WIDEST = 12
+    private const val SHRINK_CAP_WIDE = 10
+    private const val SHRINK_CAP_MEDIUM = 8
+    private const val SHRINK_CAP_NARROW = 6
+    private const val SHRINK_CAP_NARROWEST = 4
+    private const val SHRUNK_BENCHMARK_LIMIT = 18
+    private const val SHRUNK_ANOMALY_LIMIT = 6
+
+    // Last-resort caps when progressive shrinking still exceeds the budget.
+    private const val LAST_RESORT_SNAPSHOT_LIMIT = 3
+    private const val LAST_RESORT_BENCHMARK_LIMIT = 6
+
     private const val MAX_ENCODED_BYTES = InsightDigest.MAX_ENCODED_BYTES
     private const val HASH_ALGORITHM = "SHA-256"
 
@@ -71,16 +83,16 @@ object InsightDigestBuilder {
                 windowEnd = windowInterval.second,
                 rowCount = totals.sessionCount,
                 totals = totals,
-                providers = providers.sortedByDescending { it.costUSD }.take(VAL_12),
-                models = models.sortedByDescending { it.costUSD }.take(VAL_16),
+                providers = providers.sortedByDescending { it.costUSD }.take(MAX_PROVIDER_SNAPSHOTS),
+                models = models.sortedByDescending { it.costUSD }.take(MAX_MODEL_SNAPSHOTS),
                 projects = projects,
                 devices = emptyList(), // Android doesn't sync device data
-                daily = daily.takeLast(VAL_90),
+                daily = daily.takeLast(DAYS_PER_QUARTER),
                 hourly = computeHourly(daily),
                 useCaseHistogram = emptyList(), // Requires local macOS session data
                 agentFocusSignals = emptyList(), // Requires local macOS session data
                 modelFocusSignals = emptyList(), // Requires local macOS session data
-                quotaSnapshots = quotaSnapshots.take(VAL_16),
+                quotaSnapshots = quotaSnapshots.take(MAX_QUOTA_SNAPSHOTS),
                 operatingActions = emptyList(), // macOS-only
                 summaryRunsLog = emptyList(), // macOS-only
                 modelBenchmarks =
@@ -91,7 +103,7 @@ object InsightDigestBuilder {
                             .thenBy { it.rank ?: Int.MAX_VALUE }
                             .thenBy { it.modelID },
                     )
-                    .take(VAL_36),
+                    .take(MAX_MODEL_BENCHMARKS),
                 anomalies = anomalies,
                 glossary = InsightTaxonomy.DEFAULT,
             )
@@ -123,14 +135,14 @@ object InsightDigestBuilder {
 
         candidate =
             digest.copy(
-                providers = digest.providers.take(VAL_3),
-                models = digest.models.take(VAL_3),
+                providers = digest.providers.take(LAST_RESORT_SNAPSHOT_LIMIT),
+                models = digest.models.take(LAST_RESORT_SNAPSHOT_LIMIT),
                 projects = emptyList(),
                 devices = emptyList(),
-                daily = digest.daily.takeLast(VAL_7),
-                hourly = computeHourly(digest.daily.takeLast(VAL_7)),
+                daily = digest.daily.takeLast(DAYS_PER_WEEK),
+                hourly = computeHourly(digest.daily.takeLast(DAYS_PER_WEEK)),
                 quotaSnapshots = emptyList(),
-                modelBenchmarks = digest.modelBenchmarks.take(VAL_6),
+                modelBenchmarks = digest.modelBenchmarks.take(LAST_RESORT_BENCHMARK_LIMIT),
                 anomalies = emptyList(),
                 glossary = InsightTaxonomy(),
             )
@@ -157,10 +169,10 @@ object InsightDigestBuilder {
     private data class ShrinkLimits(val daily: Int, val provider: Int, val model: Int, val quota: Int)
 
     private fun shrinkLimitCombinations(): List<ShrinkLimits> {
-        val dailyLimits = listOf(VAL_60, VAL_45, VAL_30, VAL_14, VAL_7)
-        val providerLimits = listOf(VAL_10, VAL_8, VAL_6, VAL_4)
-        val modelLimits = listOf(VAL_12, VAL_10, VAL_8, VAL_6, VAL_4)
-        val quotaLimits = listOf(VAL_12, VAL_8, VAL_4, 0)
+        val dailyLimits = listOf(DAYS_PER_TWO_MONTHS, DAYS_PER_MONTH_AND_HALF, DAYS_PER_MONTH, DAYS_PER_FORTNIGHT, DAYS_PER_WEEK)
+        val providerLimits = listOf(SHRINK_CAP_WIDE, SHRINK_CAP_MEDIUM, SHRINK_CAP_NARROW, SHRINK_CAP_NARROWEST)
+        val modelLimits = listOf(SHRINK_CAP_WIDEST, SHRINK_CAP_WIDE, SHRINK_CAP_MEDIUM, SHRINK_CAP_NARROW, SHRINK_CAP_NARROWEST)
+        val quotaLimits = listOf(SHRINK_CAP_WIDEST, SHRINK_CAP_MEDIUM, SHRINK_CAP_NARROWEST, 0)
         return dailyLimits.flatMap { dailyLimit ->
             providerLimits.flatMap { providerLimit ->
                 modelLimits.flatMap { modelLimit ->
@@ -186,16 +198,16 @@ object InsightDigestBuilder {
             daily = trimmedDaily,
             hourly = computeHourly(trimmedDaily),
             quotaSnapshots = digest.quotaSnapshots.take(quotaLimit),
-            modelBenchmarks = digest.modelBenchmarks.take(VAL_18),
-            anomalies = digest.anomalies.take(VAL_6),
+            modelBenchmarks = digest.modelBenchmarks.take(SHRUNK_BENCHMARK_LIMIT),
+            anomalies = digest.anomalies.take(SHRUNK_ANOMALY_LIMIT),
         )
     }
 
     private fun computeHourly(daily: List<InsightDigest.DailyPoint>): List<Int> {
-        val buckets = MutableList(VAL_24) { 0 }
+        val buckets = MutableList(HOURS_PER_DAY) { 0 }
         for (point in daily) {
-            val hourEstimate = point.sessionCount / VAL_24_0.toInt().coerceAtLeast(0)
-            for (h in 0 until VAL_24) {
+            val hourEstimate = point.sessionCount / HOURS_PER_DAY_DOUBLE.toInt().coerceAtLeast(0)
+            for (h in 0 until HOURS_PER_DAY) {
                 buckets[h] += hourEstimate
             }
         }
@@ -213,11 +225,11 @@ object InsightDigestBuilder {
         val start: java.time.Instant =
             when (this) {
                 is InsightTimeWindow.Today -> now.minus(java.time.Duration.ofDays(1))
-                is InsightTimeWindow.Last24h -> now.minus(java.time.Duration.ofHours(VAL_24.toLong()))
-                is InsightTimeWindow.Last7d -> now.minus(java.time.Duration.ofDays(VAL_7.toLong()))
-                is InsightTimeWindow.Last30d -> now.minus(java.time.Duration.ofDays(VAL_30.toLong()))
-                is InsightTimeWindow.Last90d -> now.minus(java.time.Duration.ofDays(VAL_90.toLong()))
-                is InsightTimeWindow.Last365d -> now.minus(java.time.Duration.ofDays(VAL_365.toLong()))
+                is InsightTimeWindow.Last24h -> now.minus(java.time.Duration.ofHours(HOURS_PER_DAY.toLong()))
+                is InsightTimeWindow.Last7d -> now.minus(java.time.Duration.ofDays(DAYS_PER_WEEK.toLong()))
+                is InsightTimeWindow.Last30d -> now.minus(java.time.Duration.ofDays(DAYS_PER_MONTH.toLong()))
+                is InsightTimeWindow.Last90d -> now.minus(java.time.Duration.ofDays(DAYS_PER_QUARTER.toLong()))
+                is InsightTimeWindow.Last365d -> now.minus(java.time.Duration.ofDays(DAYS_PER_YEAR.toLong()))
                 is InsightTimeWindow.AllTime -> java.time.Instant.EPOCH
                 is InsightTimeWindow.Custom -> return this.start to this.end
             }

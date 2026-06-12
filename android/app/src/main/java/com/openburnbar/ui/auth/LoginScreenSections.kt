@@ -1,5 +1,7 @@
 package com.openburnbar.ui.auth
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -671,14 +673,33 @@ internal fun LoginScreenRoot(
     onDismissError: () -> Unit,
 ) {
     val focus = LocalFocusManager.current
+    val context = LocalContext.current
     var emailExpanded by remember { mutableStateOf(false) }
     var emailMode by remember { mutableStateOf(EmailMode.SignIn) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var inFlightProvider by remember { mutableStateOf<LoginProvider?>(null) }
     var appeared by remember { mutableStateOf(false) }
+    val needsLegacyGoogleFallback by userStore.needsLegacyGoogleFallback.collectAsState()
+    val legacyGoogleLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            inFlightProvider = LoginProvider.Google
+            userStore.handleGoogleSignInResult(result.data)
+        }
 
     LaunchedEffect(Unit) { appeared = true }
+
+    LaunchedEffect(needsLegacyGoogleFallback) {
+        if (!needsLegacyGoogleFallback) return@LaunchedEffect
+        val fallbackIntent = userStore.getGoogleSignInIntent(context)
+        userStore.consumeLegacyGoogleFallback()
+        if (fallbackIntent == null) {
+            inFlightProvider = null
+        } else {
+            inFlightProvider = LoginProvider.Google
+            legacyGoogleLauncher.launch(fallbackIntent)
+        }
+    }
 
     LoginScreenGoogleAuthEffects(
         isSigningIn = isSigningIn,

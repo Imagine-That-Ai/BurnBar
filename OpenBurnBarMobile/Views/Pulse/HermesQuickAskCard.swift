@@ -93,7 +93,7 @@ struct HermesQuickAskCard: View {
                     }
                 }
                 if service.isStreaming {
-                    MercuryThinkingIndicator()
+                    HermesThinkingSpinner()
                         .padding(.leading, 26)
                 }
             }

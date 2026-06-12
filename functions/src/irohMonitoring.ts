@@ -10,7 +10,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import type { IrohTransportAuditEventDoc, IrohTransportDailyRollupDoc } from "./types.js";
-import { isRecord, numberField, recordField, stringField } from "./guards.js";
+import { numberField, recordField, stringField } from "./guards.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const IROH_ROLLUP_SCHEMA_VERSION = 1;

@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.insights
@@ -517,8 +516,6 @@ private fun InsightsBriefCanvasGrid(model: InsightsBriefTabModel, actions: Insig
                     canvas = canvas,
                     selectedWidgetId = model.selectedWidgetId,
                     onSelect = actions.onSelectWidget,
-                    onMove = { _, _, _ -> },
-                    onConfigure = actions.onSelectWidget,
                     onCitationTap = { actions.onAsk(citationPrompt(it)) },
                 )
             }

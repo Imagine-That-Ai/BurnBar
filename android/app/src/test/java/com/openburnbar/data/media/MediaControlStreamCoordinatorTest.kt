@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "LargeClass", "TooManyFunctions")
-// detekt: JUnit backtick BDD test names; Mercury media.control table-driven integration matrix.
 
 package com.openburnbar.data.media
 
@@ -34,13 +32,6 @@ private const val MILLIS_2 = 64
 private const val MILLIS_3 = 1024
 private const val MILLIS_4 = 0x61
 private const val UNCOMPRESSED_POINT_PREFIX = 0x04
-private const val VAL_0X05 = 0x05
-private const val VAL_0X06 = 0x06
-private const val VAL_100000 = 100_000
-private const val VAL_3 = 3
-private const val VAL_42_L = 42L
-private const val VAL_700000 = 700_000
-
 class MediaControlStreamCoordinatorTest {
     @Test
     fun requestMirror_sendsSwiftCompatibleMirrorRequestFrameAfterClassify() = runTest {
@@ -184,7 +175,7 @@ class MediaControlStreamCoordinatorTest {
         assertEquals("viewer-android-1", coordinator.lastMirrorAck.value?.viewerId)
         assertEquals("watcher", coordinator.lastMirrorAck.value?.viewerRole)
         assertEquals(2, coordinator.lastMirrorAck.value?.viewerCount)
-        assertEquals(VAL_3, coordinator.lastMirrorAck.value?.maxViewers)
+        assertEquals(3, coordinator.lastMirrorAck.value?.maxViewers)
         assertEquals("viewer-ios-1", coordinator.lastMirrorAck.value?.controlOwnerViewerId)
     }
 
@@ -696,7 +687,7 @@ class MediaControlStreamCoordinatorTest {
         val encoded =
             MediaPacketCodec(maxPayloadBytes = MediaFrameV2Codec.DEFAULT_MAX_PAYLOAD_BYTES)
                 .encode(source)
-        val chunkSize = VAL_100000
+        val chunkSize = 100_000
         val chunks = encoded.asList().chunked(chunkSize).map { it.toByteArray() }
 
         coordinator.start(uid = "uid-1", connectionID = "conn-1")
@@ -751,7 +742,7 @@ class MediaControlStreamCoordinatorTest {
                     codec = "hevc",
                     longTermReferenceToken = MediaFrameV2LongTermReferenceToken(value = 42L),
                 ).encode(),
-                payload = byteArrayOf(UNCOMPRESSED_POINT_PREFIX.toByte(), VAL_0X05.toByte(), VAL_0X06.toByte()),
+                payload = byteArrayOf(UNCOMPRESSED_POINT_PREFIX.toByte(), 0x05.toByte(), 0x06.toByte()),
             )
 
         coordinator.start(uid = "uid-1", connectionID = "conn-1")
@@ -793,10 +784,10 @@ class MediaControlStreamCoordinatorTest {
                 frameIndex = 34u,
                 presentationTimestampMillis = 56uL,
                 metadata = byteArrayOf(0x01, 0x02),
-                payload = ByteArray(VAL_700000) { 0x7A.toByte() },
+                payload = ByteArray(700_000) { 0x7A.toByte() },
             )
         val encoded = MediaFrameV2Codec().encode(source, MercuryMediaFrameWireVersion.V2)
-        val chunkSize = VAL_100000
+        val chunkSize = 100_000
         val chunks = encoded.asList().chunked(chunkSize).map { it.toByteArray() }
 
         coordinator.start(uid = "uid-1", connectionID = "conn-1")
@@ -894,7 +885,7 @@ class MediaControlStreamCoordinatorTest {
         assertEquals("conn-1", ack.connectionId)
         assertEquals("mirror-1", ack.requestId)
         assertEquals("mirror-1", ack.media?.longTermReferenceAck?.requestId)
-        assertEquals(VAL_42_L, ack.media?.longTermReferenceAck?.tokenValue)
+        assertEquals(42L, ack.media?.longTermReferenceAck?.tokenValue)
         assertNotNull(ack.media?.longTermReferenceAck?.decodedAt)
     }
 

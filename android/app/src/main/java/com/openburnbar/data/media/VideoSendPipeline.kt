@@ -21,8 +21,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-private const val VAL_20000 = 20_000
-private const val VAL_3 = 3
+private const val DEQUEUE_TIMEOUT_MICROS = 20_000
+
+// Moderate thermal pressure throttles to 2/3 bitrate: initialBitrate * 2 / divisor.
+private const val MODERATE_THERMAL_BITRATE_DIVISOR = 3
 
 /**
  * Android-side video send pipeline for Phase 5 calls. 1:1 port of the
@@ -182,7 +184,7 @@ class VideoSendPipeline(
         val info = MediaCodec.BufferInfo()
         try {
             while (true) {
-                val outIndex = codec.dequeueOutputBuffer(info, VAL_20000.toLong())
+                val outIndex = codec.dequeueOutputBuffer(info, DEQUEUE_TIMEOUT_MICROS.toLong())
                 when {
                     outIndex >= 0 -> {
                         val out: ByteBuffer = codec.getOutputBuffer(outIndex) ?: continue
@@ -247,7 +249,7 @@ class VideoSendPipeline(
                             onCallTermination()
                         }
                         status >= PowerManager.THERMAL_STATUS_SEVERE -> setBitrate(initialBitrate / 2)
-                        status >= PowerManager.THERMAL_STATUS_MODERATE -> setBitrate(initialBitrate * 2 / VAL_3)
+                        status >= PowerManager.THERMAL_STATUS_MODERATE -> setBitrate(initialBitrate * 2 / MODERATE_THERMAL_BITRATE_DIVISOR)
                         else -> setBitrate(initialBitrate)
                     }
                 }

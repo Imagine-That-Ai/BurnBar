@@ -1,0 +1,10 @@
+{
+  "total": 174,
+  "agentLens": 106,
+  "core": 27,
+  "daemon": 13,
+  "mobile": 28,
+  "scope": "AgentLens + OpenBurnBarCore/Sources + OpenBurnBarDaemon/Sources + OpenBurnBarMobile production Swift (tests/mocks/fixtures/build products excluded)",
+  "generatedAt": "2026-06-12T04:35:42Z",
+  "note": "@unchecked Sendable annotations in OpenBurnBar production code. CI fails on increase; ratchet down and regenerate when removed."
+}

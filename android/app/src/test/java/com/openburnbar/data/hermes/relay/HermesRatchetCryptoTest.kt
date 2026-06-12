@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber", "TooGenericExceptionCaught")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; crypto
 // negatives catch broad exceptions to assert the exact rejection class.
 
 package com.openburnbar.data.hermes.relay

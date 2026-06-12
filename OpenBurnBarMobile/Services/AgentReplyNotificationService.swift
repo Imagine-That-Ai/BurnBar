@@ -209,14 +209,34 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         Task { await persistDeviceState() }
     }
 
+    /// The live system notification-authorization state for this install.
+    /// `.authorized` and `.provisional` both deliver an alert/banner; every
+    /// other status (`.denied`, `.notDetermined`, `.ephemeral`) means a push
+    /// would be suppressed by the OS, so the cloud fan-out should not target it.
+    private static func notificationsAuthorized() async -> Bool {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func persistDeviceState() async {
         guard FirebaseAppAvailable.isConfigured,
               let uid = Auth.auth().currentUser?.uid else { return }
+        // Report the REAL notification-permission state — never a hardcoded
+        // `true`. When the user has denied (or not yet granted) authorization,
+        // the cloud fan-out (`shouldSuppressForDevice`) must skip this device
+        // instead of marking a silently-dropped push "sent". `.authorized` and
+        // `.provisional` both deliver banners; anything else means no UI lands.
+        let notificationsEnabled = await Self.notificationsAuthorized()
         var payload: [String: Any] = [
             "deviceId": deviceID,
             "platform": "ios",
             "appLifecycle": appLifecycle,
-            "agentNotificationsEnabled": true,
+            "agentNotificationsEnabled": notificationsEnabled,
             "lastSeenAtMillis": Int64(Date().timeIntervalSince1970 * 1000),
             "updated_at_millis": Int64(Date().timeIntervalSince1970 * 1000),
         ]

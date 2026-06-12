@@ -14,7 +14,7 @@ internal fun buildInsightEvidenceIndex(digest: InsightDigest): List<InsightEvide
 }
 
 private fun appendProviderEvidence(out: MutableList<InsightEvidence>, digest: InsightDigest) {
-    digest.providers.take(INSIGHT_SIMHASH_BAND_SIZE).forEach { provider ->
+    digest.providers.take(INSIGHT_EVIDENCE_ROWS_PER_SOURCE).forEach { provider ->
         val citation = InsightCitation("provider:${provider.id}", InsightCitation.Kind.Agent(provider.id), provider.displayName)
         out.add(
             InsightEvidence(
@@ -29,7 +29,7 @@ private fun appendProviderEvidence(out: MutableList<InsightEvidence>, digest: In
 }
 
 private fun appendModelEvidence(out: MutableList<InsightEvidence>, digest: InsightDigest) {
-    digest.models.take(INSIGHT_SIMHASH_BAND_SIZE).forEach { model ->
+    digest.models.take(INSIGHT_EVIDENCE_ROWS_PER_SOURCE).forEach { model ->
         val citation = InsightCitation("model:${model.id}", InsightCitation.Kind.Model(model.id), model.id)
         out.add(
             InsightEvidence(
@@ -44,7 +44,7 @@ private fun appendModelEvidence(out: MutableList<InsightEvidence>, digest: Insig
 }
 
 private fun appendBenchmarkEvidence(out: MutableList<InsightEvidence>, digest: InsightDigest) {
-    digest.modelBenchmarks.take(INSIGHT_VAL_12).forEach { benchmark ->
+    digest.modelBenchmarks.take(INSIGHT_BENCHMARK_EVIDENCE_LIMIT).forEach { benchmark ->
         val label = "${benchmark.attribution ?: benchmark.source} ${benchmark.taskCategory} · ${benchmark.modelID}"
         val citation =
             InsightCitation(
@@ -73,7 +73,7 @@ private fun appendBenchmarkEvidence(out: MutableList<InsightEvidence>, digest: I
 }
 
 private fun appendQuotaEvidence(out: MutableList<InsightEvidence>, digest: InsightDigest) {
-    digest.quotaSnapshots.take(INSIGHT_SIMHASH_BAND_SIZE).forEach { quota ->
+    digest.quotaSnapshots.take(INSIGHT_EVIDENCE_ROWS_PER_SOURCE).forEach { quota ->
         val citation =
             InsightCitation("quota:${quota.id}", InsightCitation.Kind.Quota(quota.providerID, quota.bucketName), "${quota.providerID} ${quota.bucketName}")
         out.add(

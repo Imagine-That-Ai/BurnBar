@@ -5,6 +5,7 @@ import { verifyBearerToken } from "./auth.js";
 import { firestore } from "./entitlements.js";
 import { HttpError, jsonRpcError } from "./errors.js";
 import { handleMcpRequest } from "./mcp.js";
+import { handleRefreshTokenGrant, type RefreshFirestore } from "./oauthToken.js";
 import { authorizationServerMetadata, protectedResourceMetadata } from "./oauthMetadata.js";
 import { logError, logInfo, logWarn } from "./logging.js";
 import { writeAuditEvent } from "./audit.js";
@@ -26,6 +27,51 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   }
   if (chunks.length === 0) throw new HttpError(400, "Missing JSON-RPC request body.", "missing_body");
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function readRawBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buf.length;
+    if (size > MAX_REQUEST_BYTES) throw new HttpError(413, "Token request body is too large.", "request_too_large");
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/**
+ * Parse an OAuth token request body. Accepts both application/json and the
+ * RFC 6749 application/x-www-form-urlencoded form. Returns the fields the
+ * refresh grant needs without throwing on unknown keys.
+ */
+function parseTokenRequest(raw: string, contentType: string | undefined): {
+  grantType?: string;
+  refreshToken?: string;
+  accessToken?: string;
+} {
+  const lower = (contentType ?? "").toLowerCase();
+  const pick = (record: Record<string, unknown>) => ({
+    grantType: typeof record.grant_type === "string" ? record.grant_type : undefined,
+    refreshToken: typeof record.refresh_token === "string" ? record.refresh_token : undefined,
+    accessToken: typeof record.access_token === "string" ? record.access_token : undefined,
+  });
+  if (lower.includes("application/x-www-form-urlencoded")) {
+    const params = new URLSearchParams(raw);
+    return pick(Object.fromEntries(params.entries()));
+  }
+  if (!raw.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(400, "Token request body must be valid JSON or form-encoded.", "invalid_request");
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new HttpError(400, "Token request body must be an object.", "invalid_request");
+  }
+  return pick(parsed as Record<string, unknown>);
 }
 
 function validateOrigin(req: IncomingMessage): void {
@@ -56,6 +102,18 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   }
   if (url.pathname === "/.well-known/oauth-authorization-server") {
     sendJson(res, 200, authorizationServerMetadata());
+    return;
+  }
+  if (url.pathname === "/oauth/token") {
+    if (req.method !== "POST") {
+      res.writeHead(405, { allow: "POST" });
+      res.end();
+      return;
+    }
+    validateOrigin(req);
+    const fields = parseTokenRequest(await readRawBody(req), req.headers["content-type"]);
+    const tokenResponse = await handleRefreshTokenGrant(firestore() as unknown as RefreshFirestore, fields);
+    sendJson(res, 200, tokenResponse, { "cache-control": "no-store", pragma: "no-cache" });
     return;
   }
   if (url.pathname !== "/mcp") {

@@ -12,12 +12,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private const val VAL_0_0001 = 0.0001
-private const val VAL_2_5 = 2.5
-private const val VAL_24 = 24
-private const val VAL_3 = 3
-private const val VAL_3_5 = 3.5
-
 /**
  * Android-side smoke tests for the Kotlin rule engine port.
  *
@@ -56,7 +50,7 @@ class RuleBasedVerdictEngineTest {
         projects = emptyList(),
         devices = emptyList(),
         daily = dailyPoints(dailyCount),
-        hourly = List(VAL_24) { 0 },
+        hourly = List(24) { 0 },
         useCaseHistogram =
         listOf(
             InsightDigest.UseCaseBin(id = "refactor", count = 5, costUSD = 1.5),
@@ -75,7 +69,7 @@ class RuleBasedVerdictEngineTest {
             costUSD = 4.0,
             totalTokens = 8000,
             sessionCount = 2,
-            perProvider = mapOf("anthropic" to VAL_3_5),
+            perProvider = mapOf("anthropic" to 3.5),
         )
     }
 
@@ -128,7 +122,7 @@ class RuleBasedVerdictEngineTest {
     @Test
     fun producesExactlyThreeRingsInCanonicalOrder() {
         val v = engine.produce(digest = makeDigest(), window = VerdictWindow.today)
-        assertEquals(VAL_3, v.rings.size)
+        assertEquals(3, v.rings.size)
         assertEquals(
             listOf(VerdictRing.Identity.spend, VerdictRing.Identity.cache, VerdictRing.Identity.sessions),
             v.rings.map { it.identity },
@@ -139,7 +133,7 @@ class RuleBasedVerdictEngineTest {
     fun anomalyAtOrAboveZThresholdIsSurfaced() {
         val v = engine.produce(digest = makeDigest(anomalyZ = 2.5), window = VerdictWindow.today)
         val anomaly = requireNotNull(v.anomaly)
-        assertEquals(VAL_2_5, anomaly.zScore, VAL_0_0001)
+        assertEquals(2.5, anomaly.zScore, 0.0001)
         assertEquals(VerdictAcceptAction.Intent.investigate, anomaly.acceptAction?.intent)
     }
 

@@ -1,5 +1,3 @@
-@file:Suppress("TooManyFunctions")
-// detekt: table-driven policy matrix — one @Test per shouldOpen/shouldClose scenario plus fixture helpers.
 
 package com.openburnbar.ui.media
 

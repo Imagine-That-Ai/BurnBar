@@ -66,7 +66,7 @@ fun ProviderConnectionsView(showsDoneButton: Boolean = false, onNavigateBack: ()
                     selectedProvider = provider
                     showAddSheet = true
                 },
-                onRefresh = accountStore::refreshProviderAccount,
+                onRefresh = { _ -> accountStore.refreshProviderAccount() },
                 onDelete = accountStore::removeProviderAccount,
             ),
         )
