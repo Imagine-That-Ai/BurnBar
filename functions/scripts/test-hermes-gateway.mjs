@@ -421,8 +421,11 @@ assert.match(source, /if \(path === "\/approvals"\)/);
 assert.match(source, /async function handleArmApproval/);
 assert.match(source, /async function handleListApprovals/);
 // The agent's write scope arms a gate but can NEVER self-approve: resolution is a
-// signed-in callable bound to a trusted native escrow device + approvedByDeviceId.
-assert.match(source, /enforceHighRiskComputerUseCallable\(request, uid\)/);
+// signed-in callable bound to a trusted native escrow device + approvedByDeviceId,
+// hardened with a per-request nonce and a device-signed action proof (B1).
+assert.match(source, /enforceHighRiskComputerUseCallableWithNonce\(request, uid, nonce\)/);
+assert.match(source, /requireTrustedDeviceActionProof\(\{/);
+assert.match(source, /actionKind: "hermes_gateway_approval"/);
 assert.match(source, /trustState"\) !== "trusted"/);
 assert.match(source, /NATIVE_ESCROW_PLATFORMS\.has\(deviceSnap\.get\("platform"\)\)/);
 assert.match(source, /approvedByDeviceId: deviceId/);
