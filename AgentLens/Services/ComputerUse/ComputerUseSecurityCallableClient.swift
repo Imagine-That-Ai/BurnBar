@@ -400,11 +400,10 @@ enum ComputerUseSecurityCallableClient {
                     "failedAt": FieldValue.serverTimestamp(),
                     "updatedAt": FieldValue.serverTimestamp()
                 ], merge: true)
-            } catch {
-                throw ClientError.invalidResponse(
-                    "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: " +
-                        "\(rewrapError.localizedDescription). Failed to mark the job failed: \(error.localizedDescription)"
-                )
+            } catch let statusWriteError {
+                // The caller still receives the local rewrap failure below; this best-effort
+                // status write must not mask the actionable rotation error.
+                _ = statusWriteError.localizedDescription
             }
             throw ClientError.invalidResponse(
                 "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: \(rewrapError.localizedDescription)"
