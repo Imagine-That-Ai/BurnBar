@@ -132,6 +132,7 @@ export const pollCliLink = onRequest(
         res.status(200).json({
           status: "approved",
           accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
           expiresIn: data.expiresIn,
           clientId: data.clientId,
           scopes: data.scopes,
@@ -215,10 +216,13 @@ export const completeCliLink = onCall(
       audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.burnbar.ai/mcp",
     });
 
-    // Write resulting token and status to session doc
+    // Write resulting token and status to session doc. The refreshToken is
+    // persisted here and surfaced by pollCliLink exactly once so the CLI can
+    // store a durable credential and silently re-mint 15-minute access tokens.
     await sessionRef.update({
       status: "approved",
       accessToken: grantResult.accessToken,
+      refreshToken: grantResult.refreshToken,
       expiresIn: grantResult.expiresIn,
       clientId: grantResult.clientId,
       scopes: grantResult.scopes,
