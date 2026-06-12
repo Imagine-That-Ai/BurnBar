@@ -17,11 +17,11 @@ plugins {
     // minified release variant so the crash stacks Sentry receives (via the
     // io.sentry:sentry-android runtime SDK) are deobfuscated and readable.
     // Without this, every release crash report is an unreadable obfuscated
-    // trace. 5.x pairs with the sentry-android 8.x SDK. Declared with an inline
+    // trace. 6.x uses the AGP 9 DSL and pairs with the sentry-android 8.x SDK. Declared with an inline
     // version (not in the root plugins block) so the mapping-upload + native
     // gradle config stays scoped to :app. Upload is auth-token gated below so
     // local/offline builds without Sentry credentials still succeed.
-    id("io.sentry.android.gradle") version "5.9.0"
+    id("io.sentry.android.gradle") version "6.11.0"
     // Baseline-profile consumer: wires the :macrobenchmark producer so
     // `./gradlew :app:generateBaselineProfile` captures an app-specific
     // profile (library profiles for Compose/activity already ship via the
@@ -414,7 +414,7 @@ dependencies {
     // ANR detection, breadcrumbs, and release health metrics. Captures
     // errors via the sentry-issue-sync CI workflow → GitHub issues pipeline.
     // Gracefully no-ops when SENTRY_DSN meta-data value is empty.
-    implementation("io.sentry:sentry-android:8.13.2")
+    implementation("io.sentry:sentry-android:8.43.2")
     // Mercury Media — high-priority FCM data messages for incoming calls.
     implementation("com.google.firebase:firebase-messaging-ktx")
 
@@ -434,9 +434,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0")
     // Auth — Credential Manager is the single Google sign-in path; the
     // googleid bridge returns the ID token that Firebase Auth exchanges.
-    implementation("androidx.credentials:credentials:1.3.0")
-    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
-    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation("androidx.credentials:credentials:1.6.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
+    implementation("com.google.android.gms:play-services-auth:21.6.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
 
     // Google Play Billing for BurnBar Pro (Hosted Quota + hosted LLM + encrypted cloud search).
     implementation("com.android.billingclient:billing-ktx:8.3.0")
@@ -506,31 +507,6 @@ detekt {
     config.setFrom(files("$projectDir/../detekt.yml"))
 }
 
-tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
-    if (name.contains("test", ignoreCase = true)) {
-        enabled = false
-    } else {
-        exclude("**/SwarmTextCoordinates.kt")
-        exclude("**/SwarmBackground.kt")
-        exclude("**/DotConstellationBackground.kt")
-        // Same family as the swarm/constellation renderers above: a heavy Canvas +
-        // particle-physics file whose inline field math (gravity, easing, alpha
-        // curves) trips LongParameterList/complexity rules that don't fit per-frame
-        // draw code. Excluded to match its siblings, not to hide real smells.
-        exclude("**/EasterEggOverlay.kt")
-        exclude("**/AuroraTheme.kt")
-        exclude("**/AuroraNavGlyphs.kt")
-        exclude("**/renderers/**")
-        // Generated sources — synced byte-for-byte from /packages codegen output by
-        // syncGeneratedSources (below). Byte-parity is CI-enforced from the package side
-        // (schema-drift + control-center-foundations jobs in fast-feedback.yml), and the
-        // DataDomains.kt hand-edit incident (see comment above syncGeneratedSources)
-        // is exactly why local edits to satisfy lint are forbidden here.
-        exclude("**/data/models/generated/**")
-        exclude("**/data/domains/DataDomains.kt")
-    }
-}
-
 // Pull the latest committed generated sources from the monorepo's codegen
 // packages into the Android tree before every build, mirroring how Apple
 // consumes packages/data-domains/gen + packages/design-tokens/dist directly
@@ -593,10 +569,10 @@ tasks.named("preBuild") {
 // when :macrobenchmark joined the task graph; again via
 // :app:explodeCodeSourceBenchmarkRelease when projectHealth first ran).
 tasks.matching {
-        it.name.startsWith("runKtlintCheckOver") ||
+    it.name.startsWith("runKtlintCheckOver") ||
         it.name.startsWith("runKtlintFormatOver") ||
         it.name.startsWith("explode") ||
-        it is io.gitlab.arturbosch.detekt.Detekt
+        it is dev.detekt.gradle.Detekt
 }.configureEach {
     mustRunAfter("syncGeneratedSources")
 }

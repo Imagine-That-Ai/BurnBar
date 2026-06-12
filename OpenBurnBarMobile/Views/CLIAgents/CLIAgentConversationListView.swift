@@ -1102,6 +1102,7 @@ struct CLIAgentChatThreadView: View {
     @State private var showConnectionSheet = false
     @State private var showModelPicker = false
     @State private var showPermissionSheet = false
+    @State private var showThinkingStylePicker = false
     @FocusState private var inputFocused: Bool
 
     init(runtime: CLIAgentRuntime, route: CLIAgentChatRoute) {
@@ -1127,6 +1128,11 @@ struct CLIAgentChatThreadView: View {
                         showModelPicker = true
                     } label: {
                         Label("Switch model", systemImage: "cpu")
+                    }
+                    Button {
+                        showThinkingStylePicker = true
+                    } label: {
+                        Label("Thinking Style", systemImage: "circle.dotted")
                     }
                     Button {
                         showPermissionSheet = true
@@ -1170,6 +1176,9 @@ struct CLIAgentChatThreadView: View {
                 runtimeID: runtime.assistantRuntime,
                 threadID: chatService.threadID
             )
+        }
+        .sheet(isPresented: $showThinkingStylePicker) {
+            HermesThinkingStylePickerSheet(provider: runtime.agentProvider)
         }
         .task {
             historyStore.bootstrap()
@@ -1302,9 +1311,7 @@ struct CLIAgentChatThreadView: View {
         Group {
             if message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                chatService.isStreamingMessage(message.id) {
-                thinkingDots
-                    .padding(.horizontal, MobileTheme.Spacing.md)
-                    .padding(.vertical, MobileTheme.Spacing.sm)
+                thinkingIndicator
             } else {
                 // Assistant turns arrive as markdown — render inline
                 // emphasis instead of raw `**` markers. User and error
@@ -1331,15 +1338,11 @@ struct CLIAgentChatThreadView: View {
         )
     }
 
-    private var thinkingDots: some View {
-        HStack(spacing: 5) {
-            ForEach(0..<3, id: \.self) { idx in
-                Circle()
-                    .fill(accent.opacity(0.35 + Double(idx) * 0.18))
-                    .frame(width: 7, height: 7)
-            }
-        }
-        .accessibilityLabel("\(runtime.displayName) is responding")
+    /// The shared thinking spinner (user-chosen style/color/size). The
+    /// `provider` color choice resolves to this runtime's brand color.
+    private var thinkingIndicator: some View {
+        HermesThinkingSpinner(provider: runtime.agentProvider)
+            .accessibilityLabel("\(runtime.displayName) is responding")
     }
 
     private func toolCallStrip(_ toolCalls: [MobileChatToolCall]) -> some View {
@@ -1656,5 +1659,22 @@ private extension String {
 #Preview {
     NavigationStack {
         CLIAgentConversationListView(runtime: .codex)
+    }
+}
+
+private extension CLIAgentRuntime {
+    /// Brand identity feeding the shared thinking spinner's `provider`
+    /// color choice (and the style picker's live Provider swatch).
+    var agentProvider: AgentProvider {
+        switch self {
+        case .codex:       return .codex
+        case .claude:      return .claudeCode
+        case .openClaw:    return .openClaw
+        case .droid:       return .factory
+        case .forge:       return .forgeDev
+        case .antigravity: return .antigravity
+        case .grok:        return .xAI
+        case .cursorAgent: return .cursorAgent
+        }
     }
 }

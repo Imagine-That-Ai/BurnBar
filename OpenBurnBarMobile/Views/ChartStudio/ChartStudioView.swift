@@ -369,7 +369,7 @@ struct ChartStudioView: View {
     private var streamingView: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
             HStack(spacing: 8) {
-                MercuryThinkingIndicator()
+                HermesThinkingSpinner()
                 Text("Hermes is drawing your chart…")
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)

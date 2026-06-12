@@ -1,6 +1,5 @@
 package com.openburnbar.menubar
 
-import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
@@ -29,8 +28,6 @@ class MenuBarTileService : TileService() {
         }
     }
 
-    @Suppress("DEPRECATION")
-    @SuppressLint("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         super.onClick()
         val intent =
@@ -48,8 +45,8 @@ class MenuBarTileService : TileService() {
                 )
             startActivityAndCollapse(pi)
         } else {
-            // Older API path uses the deprecated Intent overload; suppression
-            // is intentional because the PendingIntent variant is API 34+.
+            // Older API path uses the deprecated Intent overload because the
+            // PendingIntent variant is API 34+.
             startActivityAndCollapse(intent)
         }
     }

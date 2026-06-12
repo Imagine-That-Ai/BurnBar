@@ -211,7 +211,6 @@ class AndroidInsightAnalysisEngine(
         )
     }
 
-    @Suppress("unused")
     @Deprecated(
         "Kept as a deprecated symbol for source compatibility with older test bundles. " +
             "Production callers should route through tryHostedThenLocalFallback to give the " +

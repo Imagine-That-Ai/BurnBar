@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber", "TooGenericExceptionCaught", "SwallowedException", "UseCheckOrError", "UseRequire")
 // Mercury media wire constants and defensive relay error handling; split from coordinator for detekt size limits.
 
 package com.openburnbar.data.media

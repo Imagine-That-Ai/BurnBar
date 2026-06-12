@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; DER tag
 // bytes and coordinate widths are literal by design.
 
 package com.openburnbar.data.computeruse

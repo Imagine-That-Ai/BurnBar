@@ -346,7 +346,6 @@ val QuotaBucket.displayRemainingFraction: Double?
  * with the advanced reset countdown. The `now`-parameterised form keeps this
  * deterministic for tests.
  */
-@Suppress("ReturnCount")
 // Sequential guard clauses; single-exit rewrite obscures the precedence order.
 fun QuotaBucket.displayRemainingFractionAsOf(now: java.time.Instant): Double? {
     if (elapsedWindowReset(now) != null) return 1.0
@@ -504,7 +503,6 @@ val QuotaBucket.progressFraction: Double
  * frozen snapshot still carries — the fix for "the 5h clock reset but the bar
  * stayed full." The `now`-parameterised form keeps this deterministic for tests.
  */
-@Suppress("ReturnCount")
 // Sequential guard clauses; single-exit rewrite obscures the precedence order.
 fun QuotaBucket.progressFractionAsOf(now: java.time.Instant): Double {
     if (elapsedWindowReset(now) != null) return 0.0

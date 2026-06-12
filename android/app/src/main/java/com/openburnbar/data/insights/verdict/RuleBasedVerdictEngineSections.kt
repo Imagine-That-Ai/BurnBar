@@ -1,4 +1,3 @@
-@file:Suppress("MatchingDeclarationName")
 
 package com.openburnbar.data.insights.verdict
 
@@ -156,12 +155,10 @@ private fun verdictTopModelKeyNumber(top: InsightDigest.ModelSnapshot): VerdictN
         unit = VerdictDelta.Unit.sessions,
     )
 
-@Suppress("UnusedParameter")
 internal fun buildVerdictBullets(
     thresholds: RuleBasedVerdictEngine.Thresholds,
     digest: InsightDigest,
     prior: InsightDigest?,
-    window: VerdictWindow,
 ): List<VerdictBullet> {
     val bullets = mutableListOf<VerdictBullet>()
     val priorTotals = prior?.totals

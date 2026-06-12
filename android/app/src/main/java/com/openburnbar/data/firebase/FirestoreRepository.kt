@@ -715,7 +715,6 @@ internal object CloudVaultSealedTextCodec {
             "tag" to envelope.tag,
         )
 
-    @Suppress("ReturnCount")
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     fun fromMap(raw: Map<*, *>?): CloudVaultSealedText? {
         if (raw == null) return null

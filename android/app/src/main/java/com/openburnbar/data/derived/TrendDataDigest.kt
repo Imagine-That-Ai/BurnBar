@@ -2,7 +2,6 @@ package com.openburnbar.data.derived
 
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.LLMModelBrand
-import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.RollupSummary
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.UsageDisplayMode
@@ -148,11 +147,9 @@ data class TrendDataDigest(
          * `recentUsages` should be sorted desc by timestamp — we never order
          * them ourselves so the caller's existing pagination semantics win.
          */
-        @Suppress("UnusedParameter")
         fun build(
             rollups: UsageRollups,
             recentUsages: List<TokenUsage>,
-            quotaSnapshots: List<ProviderQuotaSnapshot> = emptyList(),
             displayMode: UsageDisplayMode = UsageDisplayMode.CURRENCY,
             windowDescription: String = "last 30 days",
             now: Date = Date(),
@@ -183,7 +180,7 @@ data class TrendDataDigest(
             val models = buildModels(rollups.modelSummaries)
             val projects = buildProjects(recentUsages)
             val devices = buildDevices(recentUsages)
-            val daily = buildDailySeries(rollups.dailyPoints, recentUsages, now)
+            val daily = buildDailySeries(rollups.dailyPoints, recentUsages)
             val hourly = buildHourly(recentUsages, now)
             val sessions = buildSessions(recentUsages)
             val cache = trendDigestBuildCache(recentUsages)
@@ -309,8 +306,7 @@ data class TrendDataDigest(
                 .take(MAX_DEVICES)
         }
 
-        @Suppress("UnusedParameter")
-        private fun buildDailySeries(dailyPoints: Map<String, Double>, usages: List<TokenUsage>, now: Date): List<DailySeries> {
+        private fun buildDailySeries(dailyPoints: Map<String, Double>, usages: List<TokenUsage>): List<DailySeries> {
             // Group usages by day-of-timestamp in user's local TZ so the
             // x-axis lines up with what the user sees on the calendar.
             val cal = Calendar.getInstance()

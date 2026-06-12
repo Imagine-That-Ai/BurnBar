@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (alpha); token-per-line extraction obscures structure.
 
 package com.openburnbar.data.domains
@@ -99,7 +98,6 @@ object PensieveControlTokens {
         }
     }
 
-    @Suppress("ReturnCount")
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     private fun rgba(value: String): Color {
         val inner = value.substringAfter("(", "").substringBefore(")", "")

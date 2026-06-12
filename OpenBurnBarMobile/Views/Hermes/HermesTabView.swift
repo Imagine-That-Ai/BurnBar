@@ -1042,7 +1042,7 @@ private struct ConversationRow: View {
     private var modelChip: some View {
         HStack(spacing: 5) {
             HermesLiveGlyph(size: 12, isLive: false)
-            Text(session.model?.nilIfBlank ?? "hermes")
+            Text(FriendlyModelName.format(session.model?.nilIfBlank ?? "Hermes"))
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
                 .lineLimit(1)
@@ -1296,6 +1296,7 @@ struct HermesChatView: View {
     @AppStorage("chatViewMode") private var chatViewMode: ChatViewMode = .agent
     @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
     @State private var showPretextPlayground = false
+    @State private var showThinkingStylePicker = false
     @State private var atomRouter = HermesAtomRouter()
     @State private var pendingAttachments: [HermesAttachment] = []
     @State private var attachmentImportError: String?
@@ -1355,8 +1356,11 @@ struct HermesChatView: View {
                             }
                             if service.isStreaming {
                                 HStack {
-                                    MercuryThinkingIndicator()
-                                        .padding(.leading, 8)
+                                    HermesThinkingSpinner(
+                                        provider: activeProvider,
+                                        modelName: service.selectedModelID ?? service.selectedConnection.advertisedModel
+                                    )
+                                    .padding(.leading, 8)
                                     Spacer()
                                 }
                                 .id("thinking")
@@ -1536,6 +1540,12 @@ struct HermesChatView: View {
         .sheet(isPresented: $showPretextPlayground) {
             PretextPlayground()
         }
+        .sheet(isPresented: $showThinkingStylePicker) {
+            HermesThinkingStylePickerSheet(
+                provider: activeProvider,
+                modelName: service.selectedModelID ?? service.selectedConnection.advertisedModel
+            )
+        }
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: chatFileImporterTypes,
@@ -1710,6 +1720,11 @@ struct HermesChatView: View {
                 }
                 Toggle(isOn: $usePretextRendering) {
                     Label("Rich text (bold · mentions · code)", systemImage: "text.alignleft")
+                }
+                Button {
+                    showThinkingStylePicker = true
+                } label: {
+                    Label("Thinking Style", systemImage: "circle.dotted")
                 }
                 Button {
                     showPretextPlayground = true
@@ -2022,7 +2037,7 @@ struct HermesChatView: View {
         }
     }
 
-/// The quiet session strip under the nav bar. Renders only when there is
+    /// The quiet session strip under the nav bar. Renders only when there is
     /// something worth saying beyond a fresh local chat — the gateway privacy
     /// state, this conversation's token burn, or a resumed session. Model
     /// switching lives in the navigation title now (ChatGPT-style) and the
@@ -2032,6 +2047,7 @@ struct HermesChatView: View {
             || service.currentConversationTokenBurn > 0
             || service.selectedSessionID != nil
     }
+
     private var runtimeRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -2073,7 +2089,7 @@ struct HermesChatView: View {
         let option = service.selectedModelOption
             ?? gatewayStore.runtimeModelOptions.first(where: { $0.modelID == service.selectedModelID })
         let fallbackModel = service.selectedModelID ?? gatewayStore.runtimeModelId ?? service.selectedConnection.advertisedModel
-        let label = option?.displayName ?? fallbackModel ?? "Choose model"
+        let label = FriendlyModelName.format(option?.displayName ?? fallbackModel ?? "Choose model")
         return HStack(spacing: 5) {
             Text("Hermes")
                 .font(.system(size: 16, weight: .semibold))
@@ -2198,8 +2214,11 @@ struct HermesChatView: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        // One container, one hairline — ChatGPT-style pill. The field and
-        // buttons sit directly inside; no nested glass or inner field chrome.
+        // One glass layer, ChatGPT pill shape. `.compact` keeps the Liquid
+        // Glass refraction (native `glassEffect` on iOS 26, material fallback
+        // earlier) without the mercury-foil edge — chrome stays quiet, the
+        // glass does the talking. Buttons and field sit directly on the glass;
+        // no nested fills (nothing under glass).
         HStack(alignment: .bottom, spacing: 6) {
             attachmentButton
             field
@@ -2207,17 +2226,7 @@ struct HermesChatView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(MobileTheme.Colors.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(
-                    MobileTheme.Colors.border.opacity(inputFocused ? 0.7 : 0.35),
-                    lineWidth: 0.75
-                )
-        )
+        .auroraGlass(.compact, cornerRadius: 26)
     }
 
     private var attachmentButton: some View {
@@ -3008,9 +3017,11 @@ struct HermesGatewayModelPickerSheet: View {
     }
 
     private var currentModelText: String {
-        service.selectedModelID
-            ?? gatewayStore.runtimeModelId
-            ?? "Hermes default"
+        FriendlyModelName.format(
+            service.selectedModelID
+                ?? gatewayStore.runtimeModelId
+                ?? "Hermes default"
+        )
     }
 
     var body: some View {
@@ -3517,7 +3528,7 @@ struct HermesModelPickerRow: View {
                 HStack(spacing: 12) {
                     UnifiedProviderLogoView(provider: option.agentProvider, size: 30, useFallbackColor: true)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(option.displayName)
+                        Text(FriendlyModelName.format(option.displayName))
                             .font(MobileTheme.Typography.body)
                             .fontWeight(.semibold)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
@@ -3873,8 +3884,8 @@ struct HermesMessageBubble: View {
     }
 
     private var modelBadgeText: String {
-        let requested = message.requestedModelID?.nilIfBlank
-        let response = message.responseModelID?.nilIfBlank
+        let requested = message.requestedModelID?.nilIfBlank.map(FriendlyModelName.format)
+        let response = message.responseModelID?.nilIfBlank.map(FriendlyModelName.format)
 
         if message.serverRoutedToDifferentModel,
            let requested,
@@ -3888,21 +3899,21 @@ struct HermesMessageBubble: View {
             return "via Hermes · \(requested) (requested)"
         }
         if let fallback = message.modelName?.nilIfBlank {
-            return "via Hermes · \(fallback) (requested)"
+            return "via Hermes · \(FriendlyModelName.format(fallback)) (requested)"
         }
         return "via Hermes"
     }
 
     private var modelBadgeAccessibilityLabel: String {
         if message.serverRoutedToDifferentModel,
-           let requested = message.requestedModelID?.nilIfBlank,
-           let response = message.responseModelID?.nilIfBlank {
+           let requested = message.requestedModelID?.nilIfBlank.map(FriendlyModelName.format),
+           let response = message.responseModelID?.nilIfBlank.map(FriendlyModelName.format) {
             return "Hermes routed: requested \(requested), server ran \(response)."
         }
-        if let response = message.responseModelID?.nilIfBlank {
+        if let response = message.responseModelID?.nilIfBlank.map(FriendlyModelName.format) {
             return "Hermes ran model \(response)."
         }
-        if let requested = message.requestedModelID?.nilIfBlank {
+        if let requested = message.requestedModelID?.nilIfBlank.map(FriendlyModelName.format) {
             return "Hermes was requested \(requested). Server did not confirm the model."
         }
         return "Hermes assistant message."
@@ -4087,16 +4098,17 @@ struct HermesMessageBubble: View {
         }
     }
 
-    /// Bubble background tint, keyed off `outcome`. Refusals and the
-    /// reasoning-channel fallback get a soft tinted background so the
-    /// user sees they're not reading a normal answer; hard errors get
-    /// a faint red wash; everything else uses the standard surface.
-/// Normal (non-error, non-flagged) assistant turns render as plain text
+    /// Normal (non-error, non-flagged) assistant turns render as plain text
     /// on the backdrop; containers are reserved for outcomes that need to
     /// read differently (errors, refusals, length caps…).
     private var rendersPlainAssistantBody: Bool {
         !message.isError && message.outcome == .normal
     }
+
+    /// Bubble background tint, keyed off `outcome`. Refusals and the
+    /// reasoning-channel fallback get a soft tinted background so the
+    /// user sees they're not reading a normal answer; hard errors get
+    /// a faint red wash; everything else uses the standard surface.
     private var bubbleFill: AnyShapeStyle {
         switch message.outcome {
         case .normal:

@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; color
 // values are literal design tokens.
 
 package com.openburnbar.ui.settings

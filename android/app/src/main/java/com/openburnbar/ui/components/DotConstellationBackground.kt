@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose/Canvas literals (dp/alpha/sample steps); token-per-line extraction obscures the field math.
 
 package com.openburnbar.ui.components
@@ -108,7 +107,6 @@ fun DotConstellationBackground(modifier: Modifier = Modifier) {
             .background(if (isDark) Color(0xFF050508) else Color(0xFFF3EFE7)),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            @Suppress("UNUSED_VARIABLE")
             val tick = version // read so the Canvas recomposes each frame
             field.draw(
                 size = size,

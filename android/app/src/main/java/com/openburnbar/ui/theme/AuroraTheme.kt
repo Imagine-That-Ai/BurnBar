@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // generated-by: scripts/generate-aurora-theme (design-token color/spacing tables)
 
 package com.openburnbar.ui.theme
@@ -175,7 +174,6 @@ object AuroraColors {
      */
     fun updateColorsForPalette(
         palette: String,
-        isDark: Boolean,
         uiMode: UIMode = UIMode.STANDARD,
         appearance: AppAppearance = AppAppearance.AURORA,
     ) {
@@ -799,7 +797,11 @@ fun AuroraTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable
     val modeTheme = remember(uiMode, effectiveDark) { UIModeTheme(uiMode, effectiveDark) }
 
     remember(palette, effectiveDark, uiMode, appearance) {
-        AuroraColors.updateColorsForPalette(palette, effectiveDark, uiMode, appearance)
+        AuroraColors.updateColorsForPalette(
+            palette = palette,
+            uiMode = uiMode,
+            appearance = appearance,
+        )
         true
     }
 
@@ -871,24 +873,29 @@ fun AuroraTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable
 }
 
 // ── Model color helpers ──
+private val modelColorRules: List<Pair<List<String>, Color>> =
+    listOf(
+        listOf("claude", "anthropic") to Color(0xFFCC785C),
+        listOf("gpt", "openai", "chatgpt") to Color(0xFF00A67E),
+        listOf("gemini", "google") to Color(0xFF4285F4),
+        listOf("deepseek") to Color(0xFF6366F1),
+        listOf("kimi", "moonshot") to Color(0xFF6366F1),
+        listOf("minimax", "abab") to Color(0xFFF59E0B),
+        listOf("llama", "meta") to Color(0xFF0668E1),
+        listOf("mistral", "mixtral") to Color(0xFFFF7000),
+        listOf("qwen", "qwq") to Color(0xFF615EFF),
+        listOf("grok", "xai") to Color(0xFF1A1A1A),
+        listOf("cohere", "command") to Color(0xFF39594D),
+        listOf("perplexity", "sonar") to Color(0xFF20808D),
+        listOf("mlx", "apple") to Color(0xFFA2AAAD),
+        listOf("nova", "amazon", "bedrock") to Color(0xFFFF9900),
+        listOf("alibaba", "tongyi") to Color(0xFFFF6A00),
+        listOf("ollama") to Color(0xFF8B8589),
+    )
+
 fun colorForModel(modelName: String): Color {
     val key = modelName.lowercase()
-    if (key.contains("claude") || key.contains("anthropic")) return Color(0xFFCC785C)
-    if (key.contains("gpt") || key.contains("openai") || key.contains("chatgpt")) return Color(0xFF00A67E)
-    if (key.contains("gemini") || key.contains("google")) return Color(0xFF4285F4)
-    if (key.contains("deepseek")) return Color(0xFF6366F1)
-    if (key.contains("kimi") || key.contains("moonshot")) return Color(0xFF6366F1)
-    if (key.contains("minimax") || key.contains("abab")) return Color(0xFFF59E0B)
-    if (key.contains("llama") || key.contains("meta")) return Color(0xFF0668E1)
-    if (key.contains("mistral") || key.contains("mixtral")) return Color(0xFFFF7000)
-    if (key.contains("qwen") || key.contains("qwq")) return Color(0xFF615EFF)
-    if (key.contains("grok") || key.contains("xai")) return Color(0xFF1A1A1A)
-    if (key.contains("cohere") || key.contains("command")) return Color(0xFF39594D)
-    if (key.contains("perplexity") || key.contains("sonar")) return Color(0xFF20808D)
-    if (key.contains("mlx") || key.contains("apple")) return Color(0xFFA2AAAD)
-    if (key.contains("nova") || key.contains("amazon") || key.contains("bedrock")) return Color(0xFFFF9900)
-    if (key.contains("alibaba") || key.contains("tongyi")) return Color(0xFFFF6A00)
-    if (key.contains("ollama")) return Color(0xFF8B8589)
+    modelColorRules.firstOrNull { (tokens, _) -> tokens.any { token -> key.contains(token) } }?.let { return it.second }
 
     val palette =
         listOf(
@@ -898,5 +905,5 @@ fun colorForModel(modelName: String): Color {
         )
     var hash = 5381L
     key.forEach { byte -> hash = ((hash shl 5) + hash) + byte.code.toLong() }
-    return Color(palette[(hash % palette.size).toInt()])
+    return Color(palette[Math.floorMod(hash, palette.size.toLong()).toInt()])
 }

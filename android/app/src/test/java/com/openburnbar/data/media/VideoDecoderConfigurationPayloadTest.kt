@@ -1,5 +1,3 @@
-@file:Suppress("MagicNumber")
-// detekt: test fixtures use literal wire-format / timeout values.
 
 package com.openburnbar.data.media
 

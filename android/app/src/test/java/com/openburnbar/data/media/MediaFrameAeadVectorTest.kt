@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming", "MagicNumber")
-// detekt: JUnit backtick BDD test names intentionally contain spaces; KAT
 // tweak offsets and byte flips are literal by design.
 
 package com.openburnbar.data.media
