@@ -1,5 +1,29 @@
-/** Hermes Gateway platform adapter Firestore contracts. */
+/**
+ * Hermes Gateway platform adapter Firestore contracts.
+ *
+ * Canonical with the Cloud Functions runtime registry
+ * (functions/src/hermesGateway.ts) and, for the signal-envelope sub-models,
+ * with @openburnbar/signal-envelope-contracts. The emitted TypeScript
+ * (functions/src/types/generated/hermes-gateway.ts) is pinned to both by
+ * tools/schema-sync/check-tsp-canon.mjs (tsp <-> emitted TS) and by the
+ * compile-time Equals assertions in functions/src/types/generatedParity.ts
+ * (emitted TS <-> runtime types).
+ */
 namespace OpenBurnBar.Firestore.HermesGateway;
+
+alias HermesGatewayScope = "hermes.gateway.read" | "hermes.gateway.write" | "hermes.gateway.manage";
+alias HermesGatewayClientStatus = "active" | "revoked";
+alias HermesGatewayDestinationKind = "home" | "chat" | "thread";
+alias HermesGatewayEventKind = "message" | "model_switch";
+alias HermesGatewayMessageKind = "agent_message" | "typing";
+alias HermesGatewayAttachmentStatus = "pending_upload" | "uploaded" | "failed" | "expired" | "rejected";
+alias HermesGatewayOversightMode = "supervised" | "autonomous";
+alias HermesGatewayApprovalStatus = "waiting_for_approval" | "approved" | "rejected" | "expired";
+alias GatewaySignalEnvelopeMode = "transport" | "at-rest";
+alias GatewaySignalEnvelopeScope = "gateway" | "cloudvault";
+alias GatewaySignalRecipientKind = "device" | "escrow" | "recovery";
+alias GatewaySignalTransportScheme = "signal-doubleratchet-pqxdh-v1";
+alias GatewaySignalAtRestScheme = "signal-hpke-identity-seal-v1";
 
 model HermesGatewayModelOptionDoc {
   providerId: string;
@@ -42,40 +66,44 @@ model GatewaySignalCiphertextLayerDoc {
 
 model GatewaySignalBindingDoc {
   uid: string;
-  scope: string;
+  scope: GatewaySignalEnvelopeScope;
   clientId?: string;
   collection?: string;
   docId?: string;
   field?: string;
   slotId?: string;
-  mode: string;
+  mode: GatewaySignalEnvelopeMode;
   formatVersion: int32;
 }
 
-model GatewaySignalKeyDeliveryDoc {
-  scheme: string;
-  signalMessageType?: int32;
-  signalMessageB64?: string;
-  senderIdentityKeyId?: string;
-  ratchetEpochHint?: int32;
-  wraps?: GatewaySignalAtRestWrapDoc[];
-  contentKeyLength?: int32;
-}
-
 model GatewaySignalAtRestWrapDoc {
-  recipientKind: string;
+  recipientKind: GatewaySignalRecipientKind;
   recipientIdentityKeyId: string;
   recipientIdentityKeyB64: string;
   sealedContentKeyB64: string;
 }
 
+model GatewaySignalTransportKeyDeliveryDoc {
+  scheme: GatewaySignalTransportScheme;
+  signalMessageType: 2 | 3;
+  signalMessageB64: string;
+  senderIdentityKeyId: string;
+  ratchetEpochHint?: int32;
+}
+
+model GatewaySignalAtRestKeyDeliveryDoc {
+  scheme: GatewaySignalAtRestScheme;
+  wraps: GatewaySignalAtRestWrapDoc[];
+  contentKeyLength: 32;
+}
+
 model GatewaySignalEnvelopeDoc {
   signalEnvelopeFormatVersion: int32;
-  mode: string;
+  mode: GatewaySignalEnvelopeMode;
   relayKeyVersion?: int32;
-  relayEncryption: string;
+  relayEncryption: GatewaySignalTransportScheme | GatewaySignalAtRestScheme;
   ciphertextLayer: GatewaySignalCiphertextLayerDoc;
-  keyDelivery: GatewaySignalKeyDeliveryDoc;
+  keyDelivery: GatewaySignalTransportKeyDeliveryDoc | GatewaySignalAtRestKeyDeliveryDoc;
   binding: GatewaySignalBindingDoc;
 }
 
@@ -83,29 +111,25 @@ model HermesGatewayClientDoc {
   id: string;
   uid: string;
   displayName: string;
-  status: string;
+  status: HermesGatewayClientStatus;
   tokenHash: string;
   tokenPreview: string;
-  scopes: string[];
+  agentClientSigningPublicKeyBase64?: string;
+  agentClientSigningKeyId?: string;
+  popRequired?: boolean;
+  popVersion?: int32;
+  scopes: HermesGatewayScope[];
   homeDestinationId: string;
+  expiresAt?: string;
+  rotatedAt?: string;
   lastSeenAt?: string;
-  runtimeModelId?: string;
-  runtimeProviderId?: string;
-  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
-  runtimeUpdatedAt?: string;
-  agentVersion?: string;
-  pendingModelId?: string;
-  pendingModelRequestedAt?: string;
-  oversightMode?: string;
-  relayPublicKey?: string;
-  relayKeyVersion?: int32;
-  relayEncryption?: string;
   agentRelayPublicKey?: string;
   agentRelayKeyVersion?: int32;
   agentRelayEncryption?: string;
   agentSupportsRelayEnvelopeVersions?: int32[];
   agentPreferredRelayEnvelopeVersion?: int32;
   agentSupportsHpkeV3?: boolean;
+  agentSupportsSignalEnvelope?: boolean;
   agentPlatform?: string;
   agentAppBuild?: string;
   phoneRelayPublicKey?: string;
@@ -114,6 +138,7 @@ model HermesGatewayClientDoc {
   phoneSupportsRelayEnvelopeVersions?: int32[];
   phonePreferredRelayEnvelopeVersion?: int32;
   phoneSupportsHpkeV3?: boolean;
+  phoneSupportsSignalEnvelope?: boolean;
   phonePlatform?: string;
   phoneAppBuild?: string;
   agentRatchetIdentityPublicKey?: string;
@@ -132,7 +157,16 @@ model HermesGatewayClientDoc {
   supportsRelayEnvelopeVersions?: int32[];
   preferredRelayEnvelopeVersion?: int32;
   supportsHpkeV3?: boolean;
+  supportsSignalEnvelope?: boolean;
   relayCapable?: boolean;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
+  agentVersion?: string;
+  pendingModelId?: string;
+  pendingModelRequestedAt?: string;
+  oversightMode?: HermesGatewayOversightMode;
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -146,7 +180,7 @@ model HermesGatewayApprovalDoc {
   actionId: string;
   toolName?: string;
   summary: string;
-  status: string;
+  status: HermesGatewayApprovalStatus;
   requestedAt: string;
   expiresAt: string;
   respondedAt?: string;
@@ -157,8 +191,8 @@ model HermesGatewayApprovalDoc {
 model HermesGatewayDestinationDoc {
   id: string;
   displayName: string;
-  kind: string;
-  status: string;
+  kind: HermesGatewayDestinationKind;
+  status: "active" | "archived";
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -168,7 +202,7 @@ model HermesGatewayDestinationDoc {
 model HermesGatewayEventDoc {
   id: string;
   sequence: int32;
-  kind: string;
+  kind: HermesGatewayEventKind;
   destinationId: string;
   targetClientId?: string;
   threadId?: string;
@@ -187,15 +221,15 @@ model HermesGatewayEventDoc {
 model HermesGatewayMessageDoc {
   id: string;
   clientId: string;
-  kind: string;
+  kind: HermesGatewayMessageKind;
   destinationId: string;
   threadId?: string;
   replyToEventId?: string;
   text?: string;
-  attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   signalEnvelope?: GatewaySignalEnvelopeDoc;
+  attachmentIds: string[];
   createdAt: string;
   schemaVersion: int32;
 }
@@ -205,15 +239,19 @@ model HermesGatewayAttachmentManifestDoc {
   clientId: string;
   destinationId?: string;
   fileName?: string;
-  contentType?: string;
-  byteCount?: int32;
-  storagePath?: string;
-  bodyStoragePath?: string;
-  status?: string;
+  contentType: string;
+  byteCount: int32;
+  storagePath: string;
+  status: HermesGatewayAttachmentStatus;
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
+  uploadedAt?: string;
+  finalizedAt?: string;
+  sha256?: string;
+  storageGeneration?: string;
   schemaVersion: int32;
 }

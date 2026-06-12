@@ -72,15 +72,21 @@ import {
   serializeHermesGatewayTypingDoc,
   shouldCoalesceHermesGatewayLastSeen,
   tokenPreview,
-  type GatewayRelayEnvelopeDoc,
-  type GatewayRatchetEnvelopeDoc,
-  type GatewaySignalEnvelopeDoc,
-  type HermesGatewayApprovalDoc,
-  type HermesGatewayAttachmentManifestDoc,
-  type HermesGatewayClientDoc,
   type HermesGatewayScope,
   type HermesGatewayRelayEnvelopeCapabilities,
 } from "../hermesGateway.js";
+// Gateway Firestore document types come from the schema-sync generated canon
+// (tools/schema-sync/typespec/domains/hermes-gateway.tsp). They are pinned
+// type-identical to the runtime registry in ../hermesGateway.ts by
+// ../types/generatedParity.ts, so helpers from either module interoperate.
+import type {
+  GatewayRelayEnvelopeDoc,
+  GatewayRatchetEnvelopeDoc,
+  GatewaySignalEnvelopeDoc,
+  HermesGatewayApprovalDoc,
+  HermesGatewayAttachmentManifestDoc,
+  HermesGatewayClientDoc,
+} from "../types/generated/hermes-gateway.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 import {
   assertCallableApprovalNotLocked,
@@ -1820,9 +1826,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
           throw new HttpsError("invalid-argument", message);
         },
       );
-      const phoneCapabilities = phoneRelay
-        ? sanitizeGatewayRelayEnvelopeCapabilities(requestData)
-        : undefined;
+      const phoneCapabilities = phoneRelay ? sanitizeGatewayRelayEnvelopeCapabilities(requestData) : undefined;
       const phoneRatchet = parseRatchetPrekeyBundle(requestData, "phone", (message) => {
         throw new HttpsError("invalid-argument", message);
       });
@@ -1841,20 +1845,20 @@ export const approveHermesGatewayDeviceGrant = onCall(
       const session = recordOrUndefined(sessions.docs[0].data());
       if (!session) throw new HttpsError("failed-precondition", "Hermes Gateway pairing session is invalid.");
       const expiresAt = session.expiresAt instanceof Timestamp ? session.expiresAt.toMillis() : 0;
-	      if (expiresAt <= Date.now()) {
-	        await sessionRef.set({ status: "expired", updatedAt: Timestamp.now() }, { merge: true });
-	        throw new HttpsError("deadline-exceeded", "Hermes Gateway pairing code has expired.");
-	      }
-	      const agentClientSigningPublicKey = requireCallableGatewayClientSigningPublicKey(
-	        session.agentClientSigningPublicKeyBase64,
-	      );
-	      const agentClientSigningPublicKeyBase64 = agentClientSigningPublicKey.toString("base64");
-	      const agentClientSigningKeyId =
-	        typeof session.agentClientSigningKeyId === "string"
-	          ? session.agentClientSigningKeyId
-	          : sha256Hex(agentClientSigningPublicKeyBase64).slice(0, 32);
+      if (expiresAt <= Date.now()) {
+        await sessionRef.set({ status: "expired", updatedAt: Timestamp.now() }, { merge: true });
+        throw new HttpsError("deadline-exceeded", "Hermes Gateway pairing code has expired.");
+      }
+      const agentClientSigningPublicKey = requireCallableGatewayClientSigningPublicKey(
+        session.agentClientSigningPublicKeyBase64,
+      );
+      const agentClientSigningPublicKeyBase64 = agentClientSigningPublicKey.toString("base64");
+      const agentClientSigningKeyId =
+        typeof session.agentClientSigningKeyId === "string"
+          ? session.agentClientSigningKeyId
+          : sha256Hex(agentClientSigningPublicKeyBase64).slice(0, 32);
 
-	      // The agent published its relay public key at device/start; carry it onto
+      // The agent published its relay public key at device/start; carry it onto
       // the new client doc so the phone can wrap event bodies to it. The pair is
       // relay-capable only when BOTH keys are present.
       const agentRelayPublicKey = isGatewayRelayPublicKeyB64(session.agentRelayPublicKey);
@@ -1925,14 +1929,14 @@ export const approveHermesGatewayDeviceGrant = onCall(
         id: clientId,
         uid,
         displayName,
-	        status: "active",
-	        tokenHash,
-	        tokenPreview: tokenPreview(token),
-	        agentClientSigningPublicKeyBase64,
-	        agentClientSigningKeyId,
-	        popRequired: true,
+        status: "active",
+        tokenHash,
+        tokenPreview: tokenPreview(token),
+        agentClientSigningPublicKeyBase64,
+        agentClientSigningKeyId,
+        popRequired: true,
         popVersion: parseGatewayPopVersionCapability(session.popVersion),
-	        scopes,
+        scopes,
         homeDestinationId,
         expiresAt: tokenExpiresAt,
         agentRelayPublicKey,
@@ -2434,17 +2438,15 @@ export const setHermesGatewayOversightMode = onCall(
         enforceAuthAndAppCheck(request, uid);
       }
       const now = nowISO();
-      await db
-        .doc(`users/${uid}/hermes_gateway_clients/${clientId}`)
-        .set(
-          stripUndefinedObject({
-            oversightMode: mode,
-            oversightModeUpdatedAt: now,
-            oversightModeElevatedByDeviceId: elevatedByDeviceId,
-            updatedAt: now,
-          }),
-          { merge: true },
-        );
+      await db.doc(`users/${uid}/hermes_gateway_clients/${clientId}`).set(
+        stripUndefinedObject({
+          oversightMode: mode,
+          oversightModeUpdatedAt: now,
+          oversightModeElevatedByDeviceId: elevatedByDeviceId,
+          updatedAt: now,
+        }),
+        { merge: true },
+      );
       logInfo({
         event: "hermes_gateway.oversight_mode_set",
         client_id: clientId,

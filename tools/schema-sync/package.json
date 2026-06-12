@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "emit": "node emit/generate.mjs",
-    "check": "../schema-sync/check-drift.sh"
+    "check": "../schema-sync/check-drift.sh",
+    "check:canon": "node check-tsp-canon.mjs"
   },
   "devDependencies": {
     "@typespec/compiler": "^0.63.0",
