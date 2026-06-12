@@ -83,9 +83,9 @@ public struct InsightSessionLiveActivityView: View {
     }
 
     private var elapsedString: String {
-        let s = context.state.elapsedSeconds
-        let mins = s / 60
-        let secs = s % 60
+        let seconds = context.state.elapsedSeconds
+        let mins = seconds / 60
+        let secs = seconds % 60
         if mins > 0 {
             return "\(mins)m \(secs)s"
         }
