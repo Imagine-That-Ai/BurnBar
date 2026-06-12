@@ -8,10 +8,9 @@ import OpenBurnBarCore
 /// other backend domains. Implementations are byte-identical to their
 /// previous home in FunctionsRepository.swift; only access levels needed for
 /// the cross-file split were widened. The ratchet lane
-/// (`FunctionsRepository.sealGatewayEventRatchetPayload`) intentionally stays
-/// in FunctionsRepository.swift for now: the privacy plaintext scanner
-/// (scripts/privacy/scan-chat-cloud-plaintext.mjs) pins that symbol to that
-/// file, and gate changes must ride in their own PR.
+/// (`sealGatewayEventRatchetPayload`) lives here too; the privacy plaintext
+/// scanner (scripts/privacy/scan-chat-cloud-plaintext.mjs) pins that symbol —
+/// and the no-plaintext-payload bans — to this file.
 @MainActor
 enum GatewayEventSealer {
     nonisolated static func gatewayDestinationID(in payload: [String: Any]) -> String {
@@ -122,7 +121,7 @@ enum GatewayEventSealer {
         try validateExtraSealedFields(extraSealedFields)
 
         if targetClient.canRatchetToAgent {
-            try FunctionsRepository.sealGatewayEventRatchetPayload(
+            try sealGatewayEventRatchetPayload(
                 into: &payload,
                 text: text,
                 senderDisplayName: senderDisplayName,
@@ -226,5 +225,121 @@ enum GatewayEventSealer {
         // this wire field.
         payload["eventId"] = eventId
         payload["relayEnvelope"] = relayEnvelope
+    }
+
+    nonisolated static func sealGatewayEventRatchetPayload(
+        into payload: inout [String: Any],
+        text: String,
+        senderDisplayName: String,
+        threadId: String,
+        modelId: String?,
+        targetClient: HermesGatewayClientRecord,
+        uid: String,
+        pinStore: HermesGatewayAgentKeyPinStore,
+        kind: String? = nil,
+        extraSealedFields: [String: Any] = [:]
+    ) throws {
+        let localRelayKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
+        guard targetClient.isPairedWithThisDevice(relayPublicKeyBase64: localRelayKeypair.relayPublicKeyBase64) else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        guard targetClient.canSealToAgent,
+              let relayPublicKey = targetClient.relayPublicKey,
+              pinStore.verifyOrPin(agentPublicKeyBase64: relayPublicKey, uid: uid, clientId: targetClient.id).allowsSeal,
+              let agentIdentity = targetClient.agentRatchetIdentityPublicKey,
+              let agentSigning = targetClient.agentRatchetSigningPublicKey,
+              let agentSignedPreKey = targetClient.agentRatchetSignedPreKeyPublicKey,
+              let agentSignedPreKeyID = targetClient.agentRatchetSignedPreKeyId,
+              let agentSignature = targetClient.agentRatchetSignedPreKeySignature,
+              HermesGatewayRatchetChatLane.verifySignedPreKey(
+                signingPublicKeyBase64: agentSigning,
+                identityPublicKeyBase64: agentIdentity,
+                signedPreKeyPublicKeyBase64: agentSignedPreKey,
+                signedPreKeyID: agentSignedPreKeyID,
+                signatureBase64: agentSignature
+              )
+        else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        let local = try HermesGatewayRatchetPrekeyStore.loadOrCreatePrivateBundle()
+        guard local.identityPublicKeyBase64 == targetClient.phoneRatchetIdentityPublicKey,
+              local.signedPreKeyPublicKeyBase64 == targetClient.phoneRatchetSignedPreKeyPublicKey else {
+            throw FunctionsError.gatewayTargetMissingRelayKey
+        }
+
+        let destinationId = GatewayEventSealer.gatewayDestinationID(in: payload)
+        let eventId = "evt_\(UUID().uuidString.lowercased())"
+        let replayCounter = try GatewayEventSealer.nextGatewayEventReplayCounter(
+            uid: uid,
+            clientId: targetClient.id,
+            phoneRelayPublicKey: localRelayKeypair.relayPublicKeyBase64
+        )
+        var sealedPayload: [String: Any] = [
+            "text": text,
+            "destinationId": destinationId,
+            "replayCounter": replayCounter,
+            "senderDisplayName": senderDisplayName,
+            "threadId": threadId
+        ]
+        if let modelId, !modelId.isEmpty {
+            sealedPayload["modelId"] = modelId
+        }
+        if let k = kind, !k.isEmpty {
+            sealedPayload["kind"] = k
+        }
+        try GatewayEventSealer.applyExtraSealedFields(extraSealedFields, to: &sealedPayload)
+        let plaintext = try JSONSerialization.data(withJSONObject: sealedPayload)
+        let phoneDeviceID = try HermesGatewayRatchetChatLane.deviceID(prefix: "phone", identityPublicKeyBase64: local.identityPublicKeyBase64)
+        let agentDeviceID = try HermesGatewayRatchetChatLane.deviceID(prefix: "agent", identityPublicKeyBase64: agentIdentity)
+        var state: HermesRatchetSessionState
+        if let sessionID = try HermesGatewayRatchetSessionStore.loadCurrentChatSessionID(uid: uid, clientId: targetClient.id),
+           let existing = try HermesGatewayRatchetSessionStore.load(sessionID: sessionID) {
+            state = existing
+        } else {
+            let initialRatchet = HermesRatchetCrypto.generateKeyPair()
+            let sessionID = try HermesGatewayRatchetChatLane.sessionID(
+                uid: uid,
+                clientId: targetClient.id,
+                initiatorRole: .phone,
+                initiatorIdentityPublicKeyBase64: local.identityPublicKeyBase64,
+                responderIdentityPublicKeyBase64: agentIdentity,
+                initiatorSignedPreKeyPublicKeyBase64: local.signedPreKeyPublicKeyBase64,
+                responderSignedPreKeyPublicKeyBase64: agentSignedPreKey,
+                initiatorInitialRatchetPublicKeyBase64: initialRatchet.publicKeyBase64
+            )
+            let sharedSecret = try HermesGatewayRatchetChatLane.initiatorSharedSecret(
+                uid: uid,
+                clientId: targetClient.id,
+                initiatorRole: .phone,
+                localIdentityPrivateKeyBase64: local.identityPrivateKeyBase64,
+                localSignedPreKeyPublicKeyBase64: local.signedPreKeyPublicKeyBase64,
+                localInitialRatchetKeyPair: initialRatchet,
+                remoteIdentityPublicKeyBase64: agentIdentity,
+                remoteSignedPreKeyPublicKeyBase64: agentSignedPreKey
+            )
+            state = try HermesRatchetCrypto.initiatorState(
+                sessionID: sessionID,
+                localDeviceID: phoneDeviceID,
+                remoteDeviceID: agentDeviceID,
+                sharedSecret: sharedSecret,
+                remoteInitialRatchetPublicKeyBase64: agentSignedPreKey,
+                localInitialRatchetKeyPair: initialRatchet
+            )
+        }
+        let envelope = try HermesRatchetCrypto.encrypt(
+            plaintext: plaintext,
+            state: &state,
+            associatedData: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+        )
+        try HermesGatewayRatchetSessionStore.save(state)
+        try HermesGatewayRatchetSessionStore.saveCurrentChatSessionID(state.sessionID, uid: uid, clientId: targetClient.id)
+        let envelopeData = try JSONEncoder().encode(envelope)
+        guard let envelopeJSON = try JSONSerialization.jsonObject(with: envelopeData) as? [String: Any] else {
+            throw HermesRatchetError.invalidEnvelope
+        }
+        payload["eventId"] = eventId
+        payload["ratchetEnvelope"] = envelopeJSON
     }
 }
