@@ -523,6 +523,9 @@ struct HermesConversationListView: View {
 
     private func presentModelPicker() {
         showModelPicker = true
+        // Warm the gateway roster in the background so the sheet opens onto
+        // fresh model options instead of waiting for the next listener tick.
+        Task { await refreshGatewayForCurrentAuthState() }
     }
 
     @MainActor
@@ -1827,6 +1830,9 @@ struct HermesChatView: View {
 
     private func presentModelPicker() {
         showModelPicker = true
+        // Warm the gateway roster in the background so the sheet opens onto
+        // fresh model options instead of waiting for the next listener tick.
+        Task { await refreshGatewayForCurrentAuthState() }
     }
 
     @MainActor
@@ -3099,11 +3105,11 @@ struct HermesGatewayModelPickerSheet: View {
                             .stroke(MobileTheme.Colors.border.opacity(0.5), lineWidth: 0.7)
                     )
                     .onSubmit {
-                        Task { await switchModel(customModelID) }
+                        switchModel(customModelID)
                     }
 
                 Button {
-                    Task { await switchModel(customModelID) }
+                    switchModel(customModelID)
                 } label: {
                     Label(gatewayStore.isSwitchingModel ? "Switching" : "Switch Gateway Model", systemImage: "arrow.left.arrow.right.circle.fill")
                         .frame(maxWidth: .infinity)
@@ -3141,7 +3147,7 @@ struct HermesGatewayModelPickerSheet: View {
                             isSelected: service.selectedModelID == option.modelID || gatewayStore.runtimeModelId == option.modelID,
                             isFavorite: service.isFavoriteModel(option)
                         ) {
-                            Task { await switchModel(option.modelID) }
+                            switchModel(option.modelID)
                         } onToggleFavorite: {
                             service.toggleFavoriteModel(option)
                             HapticBus.toggle()
@@ -3153,21 +3159,28 @@ struct HermesGatewayModelPickerSheet: View {
     }
 
     @MainActor
-    private func switchModel(_ modelID: String) async {
+    private func switchModel(_ modelID: String) {
         let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let event = await gatewayStore.switchGatewayModel(
-            modelId: trimmed,
-            senderDisplayName: senderDisplayName,
-            threadId: threadId
-        )
-        guard event != nil else {
-            HapticBus.threshold()
-            return
-        }
+        // Optimistic: select + dismiss immediately. The sealed gateway
+        // enqueue is a Firestore round trip (E2EE seal + network) that used
+        // to block the tap for seconds; it now rides in the background. If
+        // the runtime ends up on a different model, the per-turn
+        // "asked X → got Y" honesty badge reports it, and the gateway
+        // store's notice surfaces enqueue failures.
         service.selectGatewayModelID(trimmed)
         HapticBus.primaryAction()
         dismiss()
+        let store = gatewayStore
+        let sender = senderDisplayName
+        let thread = threadId
+        Task {
+            await store.switchGatewayModel(
+                modelId: trimmed,
+                senderDisplayName: sender,
+                threadId: thread
+            )
+        }
     }
 }
 
