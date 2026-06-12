@@ -62,7 +62,7 @@ struct AuroraButtonStyle: ButtonStyle {
             if #available(iOS 26, *) {
                 Capsule(style: .continuous)
                     .fill(Color.clear)
-                    .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+                    .liquidGlassEffect(.regular.interactive(), in: Capsule(style: .continuous))
             } else {
                 Capsule(style: .continuous)
                     .fill(.ultraThinMaterial)

@@ -62,7 +62,7 @@ struct AuroraNavigationTray: View {
                 .clipShape(Capsule(style: .continuous))
                 .background(
                     warmTintCapsule
-                        .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+                        .liquidGlassEffect(.regular.interactive(), in: Capsule(style: .continuous))
                         .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
                 )
                 .overlay(
