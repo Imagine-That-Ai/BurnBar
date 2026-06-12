@@ -351,48 +351,7 @@ service cloud.firestore {
 
     function ownerWritableSessionLogManifest(userId) {
       return ownerWritableHostedCloudBackup(userId)
-        && request.resource.data.keys().hasOnly([
-          "id",
-          "deviceId",
-          "provider",
-          "sessionId",
-          "sourceType",
-          "inferredTaskTitle",
-          "bodyStorage",
-          "storagePath",
-          "sealedTitle",
-          "sealedBodyPreview",
-          "encryption",
-          "vaultKeyID",
-          "chunkCount",
-          "searchChunkCount",
-          "byteCount",
-          "encryptedByteCount",
-          "bodyHash",
-          "bodyHashVersion",
-          "chunkSize",
-          "chunkHashes",
-          "chunkHashVersion",
-          "chunkMetadataVersion",
-          "cloudSearchIndexVersion",
-          "cloudSearchIndexedAt",
-          "updatedAt",
-          "startTime",
-          "endTime",
-          "facetSchemaVersion",
-          "model",
-          "messageCount",
-          "userWordCount",
-          "assistantWordCount",
-          "inputTokens",
-          "outputTokens",
-          "cacheCreationTokens",
-          "cacheReadTokens",
-          "totalTokens",
-          "costUSD",
-          "toolTags",
-          "durationSeconds"
-        ])
+        && validSessionLogManifestKeys()
         && !("body" in request.resource.data)
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)
