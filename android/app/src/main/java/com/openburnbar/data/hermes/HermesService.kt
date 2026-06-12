@@ -26,7 +26,7 @@ import okhttp3.OkHttpClient
 import okhttp3.WebSocket
 import org.json.JSONObject
 
-private const val VAL_0_25 = 0.25
+private const val MIN_TOKENS_PER_SECOND_OBSERVATION_SECONDS = 0.25
 
 /** Truthful relay-capability flag for the iOS-parity surfaces. */
 enum class HermesRelayCapability {
@@ -333,7 +333,7 @@ class HermesService(
     fun tokensPerSecondGuarded(message: HermesMessage, observedSeconds: Double?): Double? {
         message.tokensPerSecond?.let { return it }
         val seconds = observedSeconds ?: return null
-        if (seconds < VAL_0_25) return null
+        if (seconds < MIN_TOKENS_PER_SECOND_OBSERVATION_SECONDS) return null
         return null
     }
 
@@ -401,7 +401,7 @@ fun HermesService.loadThread(id: String) = threadActions.loadThread(id)
 
 fun HermesService.deleteThread(id: String) = threadActions.deleteThread(id)
 
-fun HermesService.retryLastUserTurn(context: String? = null) = messageActions.retryLastUserTurn(context)
+fun HermesService.retryLastUserTurn() = messageActions.retryLastUserTurn()
 
 fun HermesService.selectConnection(connection: HermesConnectionRecord) = connectionActions.selectConnection(connection)
 

@@ -232,6 +232,8 @@ class ThreadInboxStore private constructor(
      * Mac-written field (transcript, tokenUsage, endedAt, resume handle, …)
      * survives the rename losslessly.
      */
+    @Suppress("ReturnCount")
+    // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     private suspend fun resealSessionWithCustomTitle(
         uid: String,
         docRef: com.google.firebase.firestore.DocumentReference,
@@ -353,6 +355,8 @@ class ThreadInboxStore private constructor(
      * payload fails to decode, or the agent token isn't recognised — the same
      * fail-soft contract the plaintext branch and the iOS reader use.
      */
+    @Suppress("ReturnCount")
+    // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     private fun parseSealedCLISession(
         data: Map<String, Any>,
         documentID: String,
@@ -400,7 +404,7 @@ class ThreadInboxStore private constructor(
             canForward = payload.resumeHandle?.canForward ?: true,
             customTitle = payload.customTitle?.ifBlank { null },
             labelColorHex = (payload.labelColorHex ?: data["labelColorHex"] as? String)?.ifBlank { null },
-            isPinned = payload.isPinned ?: (data["isPinned"] as? Boolean) ?: false,
+            isPinned = payload.isPinned ?: data["isPinned"] as? Boolean ?: false,
             priorityOrder = payload.priorityOrder ?: (data["priorityOrder"] as? Number)?.toInt(),
         )
     }

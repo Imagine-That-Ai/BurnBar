@@ -21,13 +21,10 @@ struct AgentLiveStageDrivingPill: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(
+        .liquidGlassSurface(in: Capsule())
+        .overlay(
             Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule()
-                        .stroke(MobileTheme.mercuryGradient, lineWidth: 1)
-                )
+                .stroke(MobileTheme.mercuryGradient, lineWidth: 1)
         )
         .opacity(isActive ? 1 : 0)
         .scaleEffect(isActive ? 1 : 0.92)
@@ -81,14 +78,7 @@ struct AgentLiveStageTelemetryCapsule: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(Color.black.opacity(0.55))
-                .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
-                )
-        )
+        .background(capsuleBackdrop)
         .task(id: shouldUpdateTicker) { await runTickerLoop() }
         .onChange(of: shouldUpdateTicker) { _, shouldUpdate in
             guard shouldUpdate else { return }
@@ -96,6 +86,30 @@ struct AgentLiveStageTelemetryCapsule: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Live mirror, \(elapsedString), \(actionsExecuted) actions, \(trustMode.rawValue) trust")
+    }
+
+    /// Passive Liquid Glass plate on iOS 26: glass samples the live stage
+    /// behind the badge, with a faint smoke wash riding ON the glass shape
+    /// so the monospaced readout stays legible over a bright mirror. The
+    /// pre-26 smoked capsule is preserved byte-for-byte.
+    @ViewBuilder
+    private var capsuleBackdrop: some View {
+        if #available(iOS 26, *) {
+            Capsule()
+                .fill(Color.black.opacity(0.3))
+                .glassEffect(.regular, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                )
+        } else {
+            Capsule()
+                .fill(Color.black.opacity(0.55))
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                )
+        }
     }
 
     private var shouldUpdateTicker: Bool {

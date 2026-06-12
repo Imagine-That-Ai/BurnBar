@@ -143,21 +143,7 @@ struct AgentLiveStageChatPuck: View {
             composer
         }
         .frame(width: 320, height: 420)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.black.opacity(0.55))
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(MobileTheme.mercuryGradient, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.45), radius: 22, y: 14)
+        .chatPanelChrome()
         .simultaneousGesture(dragGesture)
     }
 
@@ -357,6 +343,59 @@ struct AgentLiveStageChatPuck: View {
         ]
         let index = cycle.firstIndex(of: current) ?? 0
         return cycle[(index + 1) % cycle.count]
+    }
+}
+
+private extension View {
+    /// Expanded-panel chrome. On iOS 26 the panel is interactive Liquid
+    /// Glass tinted dark to keep the white chat text legible (no
+    /// `compositingGroup` — it would flatten the glass specular); older
+    /// systems keep the ultra-thin material + dark scrim stack. The mercury
+    /// stroke stays in both branches for brand continuity.
+    ///
+    /// Shadow note (iOS 26): `.shadow` on the un-composited hierarchy would
+    /// re-shadow every primitive (header text, bubbles, dividers, the 1pt
+    /// stroke) because `clipShape` does not composite, so the ambient depth
+    /// is rendered once on a dedicated silhouette layer behind the glass.
+    /// The silhouette background is appended *after* the clip so the shadow
+    /// spill is not clipped away; backgrounds render backmost, behind glass.
+    @ViewBuilder
+    func chatPanelChrome() -> some View {
+        if #available(iOS 26.0, *) {
+            self
+                .background(.clear)
+                .glassEffect(
+                    .regular.tint(Color.black.opacity(0.55)).interactive(),
+                    in: .rect(cornerRadius: 18)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(MobileTheme.mercuryGradient, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.black.opacity(0.001))
+                        .shadow(color: .black.opacity(0.45), radius: 22, y: 14)
+                )
+        } else {
+            self
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.black.opacity(0.55))
+                    }
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(MobileTheme.mercuryGradient, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .compositingGroup()
+                .shadow(color: .black.opacity(0.45), radius: 22, y: 14)
+        }
     }
 }
 #endif

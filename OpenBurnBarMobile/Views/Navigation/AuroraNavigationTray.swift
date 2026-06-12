@@ -42,6 +42,47 @@ struct AuroraNavigationTray: View {
         // (`pillHeight + bottomInset`); the parent decides where it sits.
         // Avoids an inner Spacer that would expand the tray to fill the
         // screen and visually swallow the underlying content.
+        pill
+            .padding(.bottom, pillBottomInset)
+            .padding(.horizontal, 32)
+            .gesture(swipeGesture)
+            .accessibilityElement(children: .contain)
+    }
+
+    /// The floating pill. On iOS 26 the body is true Liquid Glass: the warm
+    /// tint capsule rides directly on `.glassEffect` (no ultraThinMaterial
+    /// underneath — glass cannot sample through material) and the shadow
+    /// attaches to the glass capsule itself, because a `compositingGroup`
+    /// would flatten the glass specular. Older systems keep the original
+    /// material + tint stack.
+    @ViewBuilder
+    private var pill: some View {
+        if #available(iOS 26.0, *) {
+            tabRow
+                .clipShape(Capsule(style: .continuous))
+                .background(
+                    warmTintCapsule
+                        .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+                        .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(strokeGradient, lineWidth: 0.6)
+                )
+        } else {
+            tabRow
+                .background(pillBackground)
+                .clipShape(Capsule(style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(strokeGradient, lineWidth: 0.6)
+                )
+                .compositingGroup()
+                .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
+        }
+    }
+
+    private var tabRow: some View {
         HStack(spacing: 0) {
             ForEach(destinations) { dest in
                 AuroraTabItem(
@@ -82,43 +123,35 @@ struct AuroraNavigationTray: View {
         }
         .padding(.horizontal, pillSidePadding)
         .frame(height: pillHeight)
-        .background(pillBackground)
-        .clipShape(Capsule(style: .continuous))
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(strokeGradient, lineWidth: 0.6)
-        )
-        .compositingGroup()
-        .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
-        .padding(.bottom, pillBottomInset)
-        .padding(.horizontal, 32)
-        .gesture(swipeGesture)
-        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Background
 
+    /// Pre-iOS 26 fallback: translucent material so the underlying scroll
+    /// content shows through faintly — sells the "floating" effect.
     @ViewBuilder
     private var pillBackground: some View {
         ZStack {
-            // Translucent material so the underlying scroll content shows
-            // through faintly — sells the "floating" effect.
             Capsule(style: .continuous).fill(.ultraThinMaterial)
-
-            // Subtle warm tint
-            Capsule(style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            MobileTheme.ember.opacity(colorScheme == .dark ? 0.07 : 0.04),
-                            Color.clear,
-                            MobileTheme.amber.opacity(colorScheme == .dark ? 0.05 : 0.03)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            warmTintCapsule
         }
+    }
+
+    /// Subtle warm tint — the capsule body shared by both the Liquid Glass
+    /// branch and the material fallback.
+    private var warmTintCapsule: some View {
+        Capsule(style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        MobileTheme.ember.opacity(colorScheme == .dark ? 0.07 : 0.04),
+                        Color.clear,
+                        MobileTheme.amber.opacity(colorScheme == .dark ? 0.05 : 0.03)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
     }
 
     private var strokeGradient: LinearGradient {

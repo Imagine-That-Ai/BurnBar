@@ -108,6 +108,14 @@ struct CloudBillingPeriodToggle: View {
                         .background(
                             Capsule().fill(isSelected ? AnyShapeStyle(ProTheme.Membership.foilEdge) : AnyShapeStyle(ProTheme.Membership.foilLeaf.opacity(0.16)))
                         )
+                        .overlay(
+                            HoloSheenSweep(
+                                tint: ProTheme.Membership.foilHighlight,
+                                period: 6.4,
+                                bandOpacity: 0.5
+                            )
+                            .clipShape(Capsule(style: .continuous))
+                        )
                 }
             }
             .foregroundStyle(isSelected ? ProTheme.Membership.engraving : ProTheme.Membership.engravingMuted)
@@ -149,7 +157,9 @@ struct CloudTierLineup: View {
                     priceText: store.displayPrice(for: cloud),
                     tier: .cloud,
                     billingPeriod: billingPeriod,
-                    isPurchasing: store.isPurchasing
+                    isPurchasing: store.isPurchasing,
+                    monthlyEquivalentText: store.monthlyEquivalentDisplayPrice(for: cloud),
+                    annualFreeMonths: annualFreeMonths(title: "BurnBar Cloud")
                 ) {
                     Haptics.medium()
                     Task { await store.purchase(productID: cloud.id) }
@@ -162,7 +172,9 @@ struct CloudTierLineup: View {
                     priceText: store.displayPrice(for: pro),
                     tier: .pro,
                     billingPeriod: billingPeriod,
-                    isPurchasing: store.isPurchasing
+                    isPurchasing: store.isPurchasing,
+                    monthlyEquivalentText: store.monthlyEquivalentDisplayPrice(for: pro),
+                    annualFreeMonths: annualFreeMonths(title: "BurnBar Cloud Pro")
                 ) {
                     Haptics.medium()
                     Task { await store.purchase(productID: pro.id) }
@@ -178,7 +190,9 @@ struct CloudTierLineup: View {
                     priceText: store.displayPrice(for: ultra),
                     tier: .ultra,
                     billingPeriod: billingPeriod,
-                    isPurchasing: store.isPurchasing
+                    isPurchasing: store.isPurchasing,
+                    monthlyEquivalentText: store.monthlyEquivalentDisplayPrice(for: ultra),
+                    annualFreeMonths: annualFreeMonths(title: "BurnBar Cloud Ultra")
                 ) {
                     Haptics.medium()
                     Task { await store.purchase(productID: ultra.id) }
@@ -193,9 +207,56 @@ struct CloudTierLineup: View {
             $0.title == title && $0.cadence == billingPeriod.cadenceMatch
         }
     }
+
+    /// Whole months the annual plan hands back versus monthly billing, for
+    /// the "(N) MONTHS FREE" seal. `nil` outside the annual period or when
+    /// the saving comes to less than one month.
+    private func annualFreeMonths(title: String) -> Int? {
+        guard billingPeriod == .annual,
+              let monthly = OpenBurnBarProductCatalog.subscriptions.first(where: { $0.title == title && $0.cadence == "Monthly" }),
+              let annual = OpenBurnBarProductCatalog.subscriptions.first(where: { $0.title == title && $0.cadence == "Annual" })
+        else { return nil }
+        return store.annualFreeMonths(monthly: monthly, annual: annual)
+    }
 }
 
 // MARK: - Tier Card
+
+/// The tier card's living crest — the artwork floats gently on a breathing
+/// per-tier iridescent halo, so every card carries a quiet pulse of life
+/// without competing with its copy. Static under reduce-motion.
+private struct TierCrestEmblem: View {
+    let imageName: String
+    let gradient: LinearGradient
+    let accent: Color
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathe = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(gradient)
+                .frame(width: 58, height: 58)
+                .blur(radius: 16)
+                .opacity(breathe ? 0.42 : 0.20)
+            Image(imageName)
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .shadow(color: accent.opacity(0.45), radius: breathe ? 9 : 5, y: 2)
+                .offset(y: breathe ? -1.5 : 1.5)
+        }
+        .frame(width: 56, height: 56)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 3.8).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+        }
+    }
+}
 
 /// One delineated benefit row on a tier card — a meaningful glyph paired with
 /// its promise. The icon gives each benefit a distinct silhouette so the value
@@ -214,6 +275,10 @@ struct CloudTierCard: View {
     let tier: Tier
     let billingPeriod: CloudBillingPeriod
     let isPurchasing: Bool
+    /// "≈ $20.75" per-month equivalent, shown beneath an annual price.
+    var monthlyEquivalentText: String? = nil
+    /// Whole months effectively free vs monthly billing ("2 MONTHS FREE" seal).
+    var annualFreeMonths: Int? = nil
     let onSubscribe: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -245,6 +310,7 @@ struct CloudTierCard: View {
         .background(flagshipGlow)
         .membershipCard(strokeWidth: isFlagship ? 1.4 : 1.0)
         .overlay(holographicAccent)
+        .overlay(flagshipChromaticRim)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
         .accessibilityIdentifier("cloudStore.tier.\(plan.id)")
@@ -275,28 +341,46 @@ struct CloudTierCard: View {
             gradient: holoGradient,
             intensity: .card
         )
+        // Concentrate the ghost behind the header and fade it out before the
+        // benefit list so the copy never sits on a busy iridescent field.
+        .mask(
+            LinearGradient(
+                colors: [.white, .white.opacity(0.0)],
+                startPoint: .top,
+                endPoint: UnitPoint(x: 0.5, y: 0.66)
+            )
+        )
         .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
         .blendMode(.plusLighter)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 
-    /// Per-tier iridescent palette mirroring the website's `--holo-grad`.
-    private var holoGradient: LinearGradient {
-        let stops: [Color]
-        switch tier {
-        case .cloud:
-            // Warm ember.
-            stops = [Color(hex: "FFD56B"), Color(hex: "FF8A3D"), Color(hex: "FF5C8A"), Color(hex: "B06BFF")]
-        case .pro:
-            // Cool aqua.
-            stops = [Color(hex: "5EF0C9"), Color(hex: "38D6F3"), Color(hex: "4F8BFF"), Color(hex: "8EF0A8")]
-        case .ultra:
-            // Full-spectrum premium.
-            stops = [Color(hex: "FFD56B"), Color(hex: "7DD3FC"), Color(hex: "C084FC"), Color(hex: "5EEAD4"), Color(hex: "FF9EC7")]
+    /// A faint per-tier iridescent rim layered over the foil stroke — only the
+    /// power tiers wear it, so Pro and Ultra read as the chromatic flagships
+    /// at a glance.
+    @ViewBuilder
+    private var flagshipChromaticRim: some View {
+        if isFlagship {
+            RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous)
+                .stroke(holoGradient, lineWidth: 1.1)
+                .opacity(0.4)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
-        return LinearGradient(colors: stops, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
+
+    /// The shared `CloudTier` palette equivalent of this card's tier.
+    private var cloudTier: CloudTier {
+        switch tier {
+        case .cloud: return .cloud
+        case .pro:   return .pro
+        case .ultra: return .ultra
+        }
+    }
+
+    /// Per-tier iridescent palette mirroring the website's `--holo-grad`.
+    private var holoGradient: LinearGradient { cloudTier.holoGradient }
 
     private var crestImageName: String {
         switch tier {
@@ -316,12 +400,11 @@ struct CloudTierCard: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
-            Image(crestImageName)
-                .resizable()
-                .renderingMode(.original)
-                .scaledToFit()
-                .frame(width: 52, height: 52)
-                .shadow(color: ProTheme.Membership.foilLeaf.opacity(0.35), radius: 6, y: 2)
+            TierCrestEmblem(
+                imageName: crestImageName,
+                gradient: holoGradient,
+                accent: cloudTier.holoStops.first ?? ProTheme.Membership.foilLeaf
+            )
             VStack(alignment: .leading, spacing: 3) {
                 Text(plan.title.replacingOccurrences(of: "BurnBar ", with: ""))
                     .font(ProTheme.Typography.titleSerif)
@@ -351,24 +434,40 @@ struct CloudTierCard: View {
     }
 
     private var priceRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(priceText)
-                .font(.system(size: 34, weight: .heavy, design: .serif))
-                .foregroundStyle(ProTheme.Membership.engraving)
-                .overlay(
-                    ProTheme.Membership.foilEdge
-                        .mask(Text(priceText).font(.system(size: 34, weight: .heavy, design: .serif)))
-                        .opacity(0.45)
-                )
-            Text(billingPeriod.priceSuffix)
-                .font(MobileTheme.Typography.body)
-                .fontWeight(.semibold)
-                .foregroundStyle(ProTheme.Membership.engravingSoft)
-            Spacer(minLength: 0)
-            if billingPeriod == .annual {
-                MembershipSeal(text: "BEST VALUE")
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(priceText)
+                    .font(.system(size: 34, weight: .heavy, design: .serif))
+                    .foregroundStyle(ProTheme.Membership.engraving)
+                    .overlay(
+                        ProTheme.Membership.foilEdge
+                            .mask(Text(priceText).font(.system(size: 34, weight: .heavy, design: .serif)))
+                            .opacity(0.45)
+                    )
+                Text(billingPeriod.priceSuffix)
+                    .font(MobileTheme.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(ProTheme.Membership.engravingSoft)
+                Spacer(minLength: 0)
+                if billingPeriod == .annual {
+                    MembershipSeal(text: annualSealText)
+                }
+            }
+            if billingPeriod == .annual, let monthlyEquivalentText {
+                Text("≈ \(monthlyEquivalentText) / month, billed once a year")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(ProTheme.Membership.engravingSoft)
             }
         }
+    }
+
+    /// "2 MONTHS FREE" when the annual maths really hands back whole months;
+    /// the generic value seal otherwise. Derived from live or catalog prices —
+    /// never asserted.
+    private var annualSealText: String {
+        guard let annualFreeMonths else { return "BEST VALUE" }
+        return annualFreeMonths == 1 ? "1 MONTH FREE" : "\(annualFreeMonths) MONTHS FREE"
     }
 
     @ViewBuilder
@@ -437,24 +536,24 @@ struct CloudTierCard: View {
         case .cloud:
             return [
                 CloudTierBenefit(icon: "arrow.triangle.2.circlepath",
-                                 text: "Cross-device sync & encrypted history backup"),
+                                 text: "Every conversation synced & backed up, encrypted — ready on all your devices"),
                 CloudTierBenefit(icon: "magnifyingglass",
-                                 text: "Cloud search across every agent run"),
+                                 text: "Find any answer from weeks ago — cloud search across every run"),
                 CloudTierBenefit(icon: "newspaper.fill",
-                                 text: "Hosted Intelligence Brief fallback"),
+                                 text: "Your Intelligence Brief keeps arriving, even while your Mac sleeps"),
                 CloudTierBenefit(icon: "antenna.radiowaves.left.and.right",
-                                 text: "Hermes remote relay & Hosted Remote MCP")
+                                 text: "Hermes remote relay & Hosted Remote MCP, from anywhere")
             ]
         case .pro:
             return [
                 CloudTierBenefit(icon: "infinity",
                                  text: "Everything in BurnBar Cloud"),
                 CloudTierBenefit(icon: "laptopcomputer.and.iphone",
-                                 text: "Floo live phone-to-Mac control & calls"),
+                                 text: "Floo: see, touch, and run your Mac live from your phone — calls included"),
                 CloudTierBenefit(icon: "cpu.fill",
-                                 text: "Supervised Agent Control + 500 hosted actions"),
+                                 text: "Supervised Agent Control — every step in plain sight, 500 hosted actions"),
                 CloudTierBenefit(icon: "arrow.up.arrow.down",
-                                 text: "50 relay GB, file transfer & shared clipboard")
+                                 text: "Files & one shared clipboard across devices, plus 50 GB of Floo relay")
             ]
         case .ultra:
             return [
@@ -538,27 +637,114 @@ struct HolographicCrestAura: View {
     }
 }
 
+// MARK: - Holo Motion (shared)
+//
+// The two living-motion primitives of the membership world, reused by the
+// tier cards, the unlock hero, the lock badges, the foil seals, and the
+// member certificate:
+//
+//   • `HoloSheenSweep`   — a narrow specular band that sweeps the container
+//     on a slow loop; most of each cycle rests off-canvas so it reads as a
+//     periodic glint on minted metal, not a marquee.
+//   • `HoloSparksOverlay` — tiny tier-colored sparks drifting upward, the
+//     living dust around a crest or certificate. Canvas at 20 fps.
+//
+// Both self-gate on reduce-motion (sheen freezes off-canvas, sparks render
+// nothing), so callers can compose them freely.
+
+struct HoloSheenSweep: View {
+    var tint: Color = .white
+    var period: Double = 5.2
+    var bandOpacity: Double = 0.30
+
+    @State private var phase: CGFloat = -1.6
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GeometryReader { geo in
+            LinearGradient(
+                colors: [.clear, tint.opacity(bandOpacity), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: geo.size.width * 0.45, height: geo.size.height * 1.8)
+            .rotationEffect(.degrees(16))
+            .offset(x: phase * geo.size.width, y: -geo.size.height * 0.4)
+        }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: period).repeatForever(autoreverses: false)) {
+                phase = 1.6
+            }
+        }
+    }
+}
+
+struct HoloSparksOverlay: View {
+    let colors: [Color]
+    var count: Int = 10
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if reduceMotion || colors.isEmpty {
+            Color.clear
+                .allowsHitTesting(false)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { context in
+                Canvas { ctx, size in
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    for i in 0..<count {
+                        let seed = Double(i) * 1.618
+                        let phase = (t * 0.16 + seed).truncatingRemainder(dividingBy: 1.0)
+                        let drift = sin((t * 0.5) + seed * 7.3) * 0.04
+                        let x = size.width * (0.12 + ((sin(seed * 5.7) + 1) * 0.38) + drift)
+                        let y = size.height * (0.92 - 0.74 * phase)
+                        let radius = 1.0 + 0.8 * CGFloat((sin(seed * 9.1) + 1) / 2)
+                        ctx.opacity = (1.0 - phase) * 0.55
+                        let color = colors[i % colors.count]
+                        ctx.fill(
+                            Path(ellipseIn: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)),
+                            with: .color(color)
+                        )
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+}
+
 // MARK: - Tier holographic palette (shared)
 //
 // The per-tier iridescent `--holo-grad` mirrored from the marketing site,
 // exposed so the unlock experience renders the *required* tier's hero crest
 // with the exact same palette as that tier's store card.
 extension CloudTier {
-    /// Per-tier iridescent gradient mirroring the website's `--holo-grad`.
-    var holoGradient: LinearGradient {
-        let stops: [Color]
+    /// Per-tier iridescent stops mirroring the website's `--holo-grad`,
+    /// exposed individually so heroes and backdrop washes can pull a single
+    /// accent color from the tier's palette.
+    var holoStops: [Color] {
         switch self {
         case .none, .cloud:
             // Warm ember.
-            stops = [Color(hex: "FFD56B"), Color(hex: "FF8A3D"), Color(hex: "FF5C8A"), Color(hex: "B06BFF")]
+            return [Color(hex: "FFD56B"), Color(hex: "FF8A3D"), Color(hex: "FF5C8A"), Color(hex: "B06BFF")]
         case .pro:
             // Cool aqua.
-            stops = [Color(hex: "5EF0C9"), Color(hex: "38D6F3"), Color(hex: "4F8BFF"), Color(hex: "8EF0A8")]
+            return [Color(hex: "5EF0C9"), Color(hex: "38D6F3"), Color(hex: "4F8BFF"), Color(hex: "8EF0A8")]
         case .ultra:
             // Full-spectrum premium.
-            stops = [Color(hex: "FFD56B"), Color(hex: "7DD3FC"), Color(hex: "C084FC"), Color(hex: "5EEAD4"), Color(hex: "FF9EC7")]
+            return [Color(hex: "FFD56B"), Color(hex: "7DD3FC"), Color(hex: "C084FC"), Color(hex: "5EEAD4"), Color(hex: "FF9EC7")]
         }
-        return LinearGradient(colors: stops, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    /// Per-tier iridescent gradient mirroring the website's `--holo-grad`.
+    var holoGradient: LinearGradient {
+        LinearGradient(colors: holoStops, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     /// The store-facing membership name shown on chips and CTAs. For the

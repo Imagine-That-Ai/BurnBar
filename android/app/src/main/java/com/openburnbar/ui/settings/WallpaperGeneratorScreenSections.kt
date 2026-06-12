@@ -81,9 +81,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.components.AuroraBottomSheet
+import com.openburnbar.ui.components.LiquidGlassGroup
 import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.components.SwarmPace
 import com.openburnbar.ui.components.SwarmSimulation
+import com.openburnbar.ui.components.liquidGlassBackdrop
+import com.openburnbar.ui.components.liquidGlassInteractive
+import com.openburnbar.ui.components.liquidGlassSurface
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.wallpaper.BurnBarWallpaperService
 import java.io.OutputStream
@@ -249,7 +253,7 @@ internal fun WallpaperGeneratorScreenContent(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    LiquidGlassGroup(modifier = Modifier.fillMaxSize()) {
         WallpaperSwarmCanvasSection(
             selectedStyle = state.selectedStyle,
             simulation = state.simulation,
@@ -310,6 +314,7 @@ private fun WallpaperSwarmCanvasSection(
         modifier =
         Modifier
             .fillMaxSize()
+            .liquidGlassBackdrop()
             .background(selectedStyle.backgroundColor)
             .wallpaperSwarmPointerInput(pointerArgs),
     ) {
@@ -482,7 +487,8 @@ private fun WallpaperGeneratorTopBar(
         Surface(
             onClick = onOpenCustomizer,
             shape = RoundedCornerShape(999.dp),
-            color = Color.White.copy(alpha = 0.12f),
+            color = Color.Transparent,
+            modifier = Modifier.liquidGlassInteractive(shape = RoundedCornerShape(999.dp)),
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -561,8 +567,11 @@ private fun WallpaperTapHintChip(
 ) {
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = Color.White.copy(alpha = 0.08f),
-        modifier = Modifier.graphicsLayer(alpha = animatedHintAlpha),
+        color = Color.Transparent,
+        modifier =
+        Modifier
+            .graphicsLayer(alpha = animatedHintAlpha)
+            .liquidGlassSurface(shape = RoundedCornerShape(999.dp)),
     ) {
         Text(
             "Tap to explore · Hold to speed up",
@@ -589,7 +598,12 @@ private fun WallpaperGlyphCustomizerToggle(
     Surface(
         onClick = onToggle,
         shape = RoundedCornerShape(999.dp),
-        color = Color.White.copy(alpha = if (showGlyphCustomizer) 0.18f else 0.08f),
+        color = Color.Transparent,
+        modifier =
+        Modifier.liquidGlassInteractive(
+            tint = if (showGlyphCustomizer) Color.White else null,
+            shape = RoundedCornerShape(999.dp),
+        ),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -623,7 +637,8 @@ private fun WallpaperSaveStillButton(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(999.dp),
-        color = Color.White.copy(alpha = 0.12f),
+        color = Color.Transparent,
+        modifier = Modifier.liquidGlassInteractive(shape = RoundedCornerShape(999.dp)),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),

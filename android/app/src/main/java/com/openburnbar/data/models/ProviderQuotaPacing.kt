@@ -4,9 +4,12 @@ import com.openburnbar.data.stores.QuotaWindowKind
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
-import java.time.ZonedDateTime
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private val FIVE_HOUR_WINDOW: Duration = Duration.ofHours(5)
+private val SEVEN_DAY_WINDOW: Duration = Duration.ofDays(7)
+private val FALLBACK_MONTH: Duration = Duration.ofDays(30)
 
 enum class PaceSeverity {
     ON_PACE,
@@ -33,21 +36,21 @@ object PacingMath {
         zoneId: ZoneId = ZoneId.systemDefault()
     ): Duration? {
         return when (kind) {
-            QuotaWindowKind.FIVE_HOUR -> Duration.ofHours(5)
+            QuotaWindowKind.FIVE_HOUR -> FIVE_HOUR_WINDOW
             QuotaWindowKind.DAILY -> Duration.ofDays(1)
-            QuotaWindowKind.SEVEN_DAY -> Duration.ofDays(7)
+            QuotaWindowKind.SEVEN_DAY -> SEVEN_DAY_WINDOW
             QuotaWindowKind.MONTHLY -> {
                 try {
                     val zonedDateTime = resetsAt.atZone(zoneId)
                     val start = zonedDateTime.minusMonths(1)
                     val duration = Duration.between(start, zonedDateTime)
                     if (duration.isNegative || duration.isZero) {
-                        Duration.ofDays(30)
+                        FALLBACK_MONTH
                     } else {
                         duration
                     }
-                } catch (e: Exception) {
-                    Duration.ofDays(30)
+                } catch (ignored: Exception) {
+                    FALLBACK_MONTH
                 }
             }
             QuotaWindowKind.REQUEST, QuotaWindowKind.OTHER -> null

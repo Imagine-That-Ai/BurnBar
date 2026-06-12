@@ -93,8 +93,9 @@ struct StreamGraphScene: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6).fill(.ultraThinMaterial)
+                        .liquidGlassSurface(
+                            in: RoundedRectangle(cornerRadius: 6),
+                            fallback: .ultraThinMaterial
                         )
                     }
             }

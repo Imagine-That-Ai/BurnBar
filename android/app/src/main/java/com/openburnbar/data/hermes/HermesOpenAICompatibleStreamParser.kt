@@ -6,11 +6,66 @@ import com.openburnbar.irohrelay.HermesTokenUsageStats as RelayUsageStats
 import org.json.JSONArray
 import org.json.JSONObject
 
+private const val NANOS_PER_SECOND = 1_000_000_000
+private const val NANOS_PER_SECOND_D = 1_000_000_000.0
+private const val MILLIS_HEURISTIC_FLOOR = 10_000
+private val GENERATION_DURATION_FIELDS =
+    listOf(
+        "eval_duration",
+        "evalDuration",
+        "generation_duration",
+        "generationDuration",
+        "completion_duration",
+        "completionDuration",
+        "output_duration",
+        "outputDuration",
+        "generation_time",
+        "generationTime",
+    )
+private val TOTAL_DURATION_FIELDS =
+    listOf(
+        "total_duration",
+        "totalDuration",
+        "request_duration",
+        "requestDuration",
+        "elapsed_time",
+        "elapsedTime",
+        "duration",
+    )
+
 internal data class HermesStreamParseResult(
     val events: List<HermesStreamEvent>,
     val done: Boolean = false,
     val streamedText: Boolean = false,
 )
+
+private fun promptTokenCount(usage: JSONObject): Int? =
+    usage.optNullableInt("prompt_tokens")
+        ?: usage.optNullableInt("promptTokens")
+        ?: usage.optNullableInt("input_tokens")
+        ?: usage.optNullableInt("inputTokens")
+        ?: usage.optNullableInt("prompt_eval_count")
+        ?: usage.optNullableInt("promptEvalCount")
+
+private fun outputTokenCount(usage: JSONObject): Int? =
+    usage.optNullableInt("completion_tokens")
+        ?: usage.optNullableInt("completionTokens")
+        ?: usage.optNullableInt("output_tokens")
+        ?: usage.optNullableInt("outputTokens")
+        ?: usage.optNullableInt("eval_count")
+        ?: usage.optNullableInt("evalCount")
+
+private fun totalTokenCount(usage: JSONObject, promptTokens: Int?, outputTokens: Int?): Int? =
+    usage.optNullableInt("total_tokens")
+        ?: usage.optNullableInt("totalTokens")
+        ?: usage.optNullableInt("total_token_count")
+        ?: usage.optNullableInt("totalTokenCount")
+        ?: (promptTokens ?: 0).plus(outputTokens ?: 0).takeIf { it > 0 }
+
+private fun usageStatsMissing(vararg values: Any?): Boolean = values.all { it == null }
+
+private fun JSONObject.optNullableInt(key: String): Int? =
+    if (has(key) && !isNull(key)) optInt(key) else null
 
 internal class HermesOpenAICompatibleStreamParser {
     private data class PendingToolCall(
@@ -141,58 +196,12 @@ internal class HermesOpenAICompatibleStreamParser {
     }
 
     private fun tokenUsageStats(usage: JSONObject): RelayUsageStats? {
-        val promptTokens =
-            usage.optNullableInt("prompt_tokens")
-                ?: usage.optNullableInt("promptTokens")
-                ?: usage.optNullableInt("input_tokens")
-                ?: usage.optNullableInt("inputTokens")
-                ?: usage.optNullableInt("prompt_eval_count")
-                ?: usage.optNullableInt("promptEvalCount")
-        val outputTokens =
-            usage.optNullableInt("completion_tokens")
-                ?: usage.optNullableInt("completionTokens")
-                ?: usage.optNullableInt("output_tokens")
-                ?: usage.optNullableInt("outputTokens")
-                ?: usage.optNullableInt("eval_count")
-                ?: usage.optNullableInt("evalCount")
-        val totalTokens =
-            usage.optNullableInt("total_tokens")
-                ?: usage.optNullableInt("totalTokens")
-                ?: usage.optNullableInt("total_token_count")
-                ?: usage.optNullableInt("totalTokenCount")
-                ?: (promptTokens ?: 0).plus(outputTokens ?: 0).takeIf { it > 0 }
-        val generationDuration =
-            durationSecondsFromUsage(
-                usage,
-                listOf(
-                    "eval_duration",
-                    "evalDuration",
-                    "generation_duration",
-                    "generationDuration",
-                    "completion_duration",
-                    "completionDuration",
-                    "output_duration",
-                    "outputDuration",
-                    "generation_time",
-                    "generationTime",
-                ),
-            )
-        val totalDuration =
-            durationSecondsFromUsage(
-                usage,
-                listOf(
-                    "total_duration",
-                    "totalDuration",
-                    "request_duration",
-                    "requestDuration",
-                    "elapsed_time",
-                    "elapsedTime",
-                    "duration",
-                ),
-            )
-        if (promptTokens == null && outputTokens == null && totalTokens == null && generationDuration == null && totalDuration == null) {
-            return null
-        }
+        val promptTokens = promptTokenCount(usage)
+        val outputTokens = outputTokenCount(usage)
+        val totalTokens = totalTokenCount(usage, promptTokens, outputTokens)
+        val generationDuration = durationSecondsFromUsage(usage, GENERATION_DURATION_FIELDS)
+        val totalDuration = durationSecondsFromUsage(usage, TOTAL_DURATION_FIELDS)
+        if (usageStatsMissing(promptTokens, outputTokens, totalTokens, generationDuration, totalDuration)) return null
         return RelayUsageStats(
             promptTokens = promptTokens,
             outputTokens = outputTokens,
@@ -257,19 +266,24 @@ internal class HermesOpenAICompatibleStreamParser {
             ?: json.optString("message_error").takeIf { it.isNotEmpty() }
     }
 
-    private fun durationSecondsFromUsage(usage: JSONObject, keys: List<String>): Double? {
-        for (key in keys) {
-            if (!usage.has(key) || usage.isNull(key)) continue
-            val value = usage.optDouble(key, Double.NaN).takeIf { it.isFinite() && it > 0 } ?: continue
-            return when {
-                value >= 1_000_000_000 -> value / 1_000_000_000.0
-                value >= 10_000 -> value / 1_000.0
-                else -> value
-            }
-        }
-        return null
+    private fun durationSecondsFromUsage(usage: JSONObject, keys: List<String>): Double? =
+        keys.asSequence()
+            .mapNotNull { key -> durationSecondsForUsageKey(usage, key) }
+            .firstOrNull()
+
+    private fun durationSecondsForUsageKey(usage: JSONObject, key: String): Double? {
+        val value =
+            usage.takeIf { it.has(key) && !it.isNull(key) }
+                ?.optDouble(key, Double.NaN)
+                ?.takeIf { it.isFinite() && it > 0 }
+        return value?.let(::normalizedDurationSeconds)
     }
 
-    private fun JSONObject.optNullableInt(key: String): Int? =
-        if (has(key) && !isNull(key)) optInt(key) else null
+    private fun normalizedDurationSeconds(value: Double): Double =
+        when {
+            value >= NANOS_PER_SECOND -> value / NANOS_PER_SECOND_D
+            value >= MILLIS_HEURISTIC_FLOOR -> value / 1_000.0
+            else -> value
+        }
+
 }

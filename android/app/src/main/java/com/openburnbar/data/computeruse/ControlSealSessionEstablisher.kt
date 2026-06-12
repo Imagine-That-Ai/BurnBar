@@ -1,6 +1,5 @@
 package com.openburnbar.data.computeruse
 
-import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.openburnbar.data.hermes.relay.RelaySealSenderIdentity
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlSealKeyEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame

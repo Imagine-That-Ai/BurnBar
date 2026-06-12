@@ -29,13 +29,14 @@ struct SmartHubCastButton: View {
             }
             .padding(.horizontal, compact ? 12 : 14)
             .padding(.vertical, compact ? 8 : 10)
-            .background(
+            // Tappable control → interactive Liquid Glass on iOS 26 (pure
+            // glass, samples the real background); ultraThinMaterial pill on
+            // iOS 17–25. The state-colored stroke rides ON the glass shape —
+            // it carries the cast-state semantics (idle/casting/success/fail).
+            .liquidGlassInteractive(in: RoundedRectangle(cornerRadius: 999, style: .continuous))
+            .overlay(
                 RoundedRectangle(cornerRadius: 999, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 999, style: .continuous)
-                            .stroke(strokeColor, lineWidth: 1)
-                    )
+                    .stroke(strokeColor, lineWidth: 1)
             )
             .foregroundStyle(strokeColor)
         }

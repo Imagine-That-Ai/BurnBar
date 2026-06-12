@@ -23,6 +23,17 @@ import kotlinx.coroutines.tasks.await
  * pure seal/open below take recipients explicitly so they unit-test without Firestore.
  */
 object AndroidCloudVaultSignalPayloads {
+    data class SignalEnvelopeMapRequest(
+        val domainID: String,
+        val uid: String,
+        val collection: String,
+        val docId: String,
+        val field: String = "signalEnvelope",
+        val plaintext: ByteArray,
+        val localIdentity: AndroidSignalIdentityKeypair,
+        val otherRecipients: List<CloudVaultSignalRecipient>,
+    )
+
     /** Test-only deterministic gate override (domainID -> enabled?, null = no override). */
     internal var signalSealingOverrideProvider: ((String) -> Boolean?)? = null
 
@@ -48,20 +59,16 @@ object AndroidCloudVaultSignalPayloads {
      * local identity plus `otherRecipients` (every trusted device). Returns null when
      * the domain's Signal gate is OFF (caller keeps the legacy AES-GCM sealed payload).
      */
-    fun signalEnvelopeMapIfEnabled(
-        domainID: String,
-        uid: String,
-        collection: String,
-        docId: String,
-        field: String = "signalEnvelope",
-        plaintext: ByteArray,
-        localIdentity: AndroidSignalIdentityKeypair,
-        otherRecipients: List<CloudVaultSignalRecipient>,
-    ): Map<String, Any>? {
-        if (!signalSealingIsEnabled(domainID)) return null
-        val binding = CloudVaultSignalBinding(uid = uid, collection = collection, docId = docId, field = field)
-        val recipients = dedupeRecipients(localIdentity.asRecipient(), otherRecipients)
-        val envelope = CloudVaultCrypto.sealSignalPayload(plaintext, recipients, binding)
+    fun signalEnvelopeMapIfEnabled(request: SignalEnvelopeMapRequest): Map<String, Any>? {
+        if (!signalSealingIsEnabled(request.domainID)) return null
+        val binding = CloudVaultSignalBinding(
+            uid = request.uid,
+            collection = request.collection,
+            docId = request.docId,
+            field = request.field,
+        )
+        val recipients = dedupeRecipients(request.localIdentity.asRecipient(), request.otherRecipients)
+        val envelope = CloudVaultCrypto.sealSignalPayload(request.plaintext, recipients, binding)
         return CloudVaultCrypto.signalEnvelopeMap(envelope)
     }
 
@@ -82,11 +89,11 @@ object AndroidCloudVaultSignalPayloads {
         val raw = data[field] as? Map<*, *> ?: return null
         val envelope =
             CloudVaultCrypto.signalEnvelopeFromMap(raw)
-                ?: throw IllegalStateException("Signal envelope is invalid.")
+                ?: error("Signal envelope is invalid.")
         val expected =
             CloudVaultSignalBinding(uid = uid, collection = collection, docId = docId, field = bindingField ?: field)
         require(envelope.binding == expected) { "Signal envelope binding does not match the Firestore path." }
-        val identity = localIdentity ?: throw IllegalStateException("Signal identity is unavailable.")
+        val identity = localIdentity ?: error("Signal identity is unavailable.")
         return CloudVaultCrypto.openSignalPayload(
             envelope,
             recipientIdentityKeyId = identity.identityKeyId,

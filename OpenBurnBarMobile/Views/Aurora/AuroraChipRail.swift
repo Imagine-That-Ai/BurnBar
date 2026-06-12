@@ -36,13 +36,23 @@ struct AuroraChipRail<Item: Hashable & Identifiable>: View {
             .padding(.vertical, MobileTheme.Spacing.xs)
         }
         .background(
-            Capsule(style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
+            Group {
+                if #available(iOS 26, *) {
+                    // The rail is a passive container (the chips inside are the
+                    // tappable elements), so it gets plain — not interactive — glass.
                     Capsule(style: .continuous)
-                        .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5)
-                )
-                .padding(.horizontal, MobileTheme.Spacing.md)
+                        .fill(Color.clear)
+                        .glassEffect(.regular, in: Capsule(style: .continuous))
+                } else {
+                    Capsule(style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5)
+                        )
+                }
+            }
+            .padding(.horizontal, MobileTheme.Spacing.md)
         )
         .padding(.horizontal, MobileTheme.Spacing.md)
     }

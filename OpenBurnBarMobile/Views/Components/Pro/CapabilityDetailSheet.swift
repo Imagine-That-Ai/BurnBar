@@ -152,7 +152,7 @@ struct CapabilityDetailSheet: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                         .frame(width: 30, height: 30)
-                        .background(.ultraThinMaterial, in: Circle())
+                        .liquidGlassInteractive(in: .circle)
                 }
                 .accessibilityLabel("Close")
             }

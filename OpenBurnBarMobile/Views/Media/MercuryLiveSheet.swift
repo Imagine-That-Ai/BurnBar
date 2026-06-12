@@ -264,21 +264,26 @@ struct MercuryLiveSheet: View {
                 .padding(24)
             }
 
-            // Top-floating HUD Overlay Container
-            VStack {
-                if let lastError {
-                    floatingErrorHUD(message: lastError)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .padding(.top, 8)
-                }
+            // Top-floating HUD Overlay Container. Both glass banners can be
+            // visible at once, so they share one LiquidGlassGroup — on iOS 26
+            // grouped glass shapes must sample a single region (glass cannot
+            // sample other glass); on iOS 17–25 the group passes through.
+            LiquidGlassGroup {
+                VStack {
+                    if let lastError {
+                        floatingErrorHUD(message: lastError)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .padding(.top, 8)
+                    }
 
-                if let ack = lastAck {
-                    floatingAckHUD(for: ack)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .padding(.top, 8)
-                }
+                    if let ack = lastAck {
+                        floatingAckHUD(for: ack)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .padding(.top, 8)
+                    }
 
-                Spacer()
+                    Spacer()
+                }
             }
             .padding(.horizontal, 20)
             .animation(.spring(response: 0.38, dampingFraction: 0.78, blendDuration: 0), value: lastError)
@@ -518,6 +523,30 @@ struct MercuryLiveSheet: View {
         self.backgroundImage = image
     }
 
+    /// Shared plate behind the floating error/ack HUD banners. The banners
+    /// are HUD controls (tap ✕ to dismiss, drag up to dismiss), so on iOS 26
+    /// they render as interactive Liquid Glass with the status wash riding
+    /// directly on the glass shape — no material underneath, the glass must
+    /// sample the live sheet background. iOS 17–25 keeps the original
+    /// `.ultraThinMaterial` + wash stack unchanged.
+    @ViewBuilder
+    private func hudGlassBackground(wash: Color) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        if #available(iOS 26, *) {
+            shape
+                .fill(wash)
+                .glassEffect(.regular.interactive(), in: shape)
+        } else {
+            ZStack {
+                shape
+                    .fill(.ultraThinMaterial)
+
+                shape
+                    .fill(wash)
+            }
+        }
+    }
+
     @ViewBuilder
     private func floatingErrorHUD(message: String) -> some View {
         HStack(spacing: 12) {
@@ -558,15 +587,7 @@ struct MercuryLiveSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.ultraThinMaterial)
-
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.red.opacity(0.04))
-            }
-        )
+        .background(hudGlassBackground(wash: Color.red.opacity(0.04)))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(
@@ -677,15 +698,7 @@ struct MercuryLiveSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.ultraThinMaterial)
-
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(ackColor(for: ack).opacity(0.04))
-            }
-        )
+        .background(hudGlassBackground(wash: ackColor(for: ack).opacity(0.04)))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(ackGradient(for: ack), lineWidth: 1.5)

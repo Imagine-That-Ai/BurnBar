@@ -182,48 +182,63 @@ private fun ChatBubbleAgentSurface(
         modifier = Modifier.widthIn(max = 320.dp),
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            val displayText =
-                when {
-                    message.content.isEmpty() && message.isStreaming -> "…"
-                    message.isStreaming -> message.content + "▍"
-                    else -> message.content
-                }
-            if (!isUser && !message.isError) {
-                HermesRichBubble(
-                    text = displayText,
-                    isStreaming = message.isStreaming,
-                    baseSize = 15f,
-                    baseColor = MaterialTheme.colorScheme.onSurface,
-                )
-            } else {
-                Text(
-                    text = displayText,
-                    fontSize = 15.sp,
-                    color = if (message.isError) AuroraColors.error else MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 20.sp,
-                )
-            }
-            if (message.toolCalls.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                ChatBubbleToolCallStrip(toolCalls = message.toolCalls)
-            }
-            if (message.tokensPerSecond != null) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "${"%.1f".format(message.tokensPerSecond)} t/s",
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                )
-            }
-            permissionState.matchingItem?.let { item ->
-                Spacer(modifier = Modifier.height(8.dp))
-                com.openburnbar.ui.computeruse.SystemPermissionInlinePill(
-                    item = item,
-                    onTap = { permissionState.setPresentedItem(item) },
-                )
-            }
+            ChatBubbleMessageBody(message = message, isUser = isUser)
+            ChatBubbleMetadata(message = message, permissionState = permissionState)
         }
+    }
+}
+
+@Composable
+private fun ChatBubbleMessageBody(message: HermesMessage, isUser: Boolean) {
+    val displayText = chatBubbleDisplayText(message)
+    if (!isUser && !message.isError) {
+        HermesRichBubble(
+            text = displayText,
+            isStreaming = message.isStreaming,
+            baseSize = 15f,
+            baseColor = MaterialTheme.colorScheme.onSurface,
+        )
+    } else {
+        Text(
+            text = displayText,
+            fontSize = 15.sp,
+            color = if (message.isError) AuroraColors.error else MaterialTheme.colorScheme.onSurface,
+            lineHeight = 20.sp,
+        )
+    }
+}
+
+private fun chatBubbleDisplayText(message: HermesMessage): String =
+    when {
+        message.content.isEmpty() && message.isStreaming -> "…"
+        message.isStreaming -> message.content + "▍"
+        else -> message.content
+    }
+
+@Composable
+private fun ChatBubbleMetadata(
+    message: HermesMessage,
+    permissionState: ChatBubblePermissionState,
+) {
+    if (message.toolCalls.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(8.dp))
+        ChatBubbleToolCallStrip(toolCalls = message.toolCalls)
+    }
+    if (message.tokensPerSecond != null) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "${"%.1f".format(message.tokensPerSecond)} t/s",
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        )
+    }
+    permissionState.matchingItem?.let { item ->
+        Spacer(modifier = Modifier.height(8.dp))
+        com.openburnbar.ui.computeruse.SystemPermissionInlinePill(
+            item = item,
+            onTap = { permissionState.setPresentedItem(item) },
+        )
     }
 }
 
