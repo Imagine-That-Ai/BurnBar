@@ -502,7 +502,7 @@ struct CLIAgentConversationListView: View {
                     )
                 )
                 .frame(width: 56, height: 56)
-                .glassEffect(.regular.tint(accent).interactive(), in: .circle)
+                .liquidGlassEffect(.regular.tint(accent).interactive(), in: .circle)
                 .shadow(color: accent.opacity(0.35), radius: 12, y: 6)
         } else {
             Circle()
@@ -1384,7 +1384,7 @@ struct CLIAgentChatThreadView: View {
             composerBody
                 .background {
                     Color.clear
-                        .glassEffect(.regular, in: .rect)
+                        .liquidGlassEffect(.regular, in: .rect)
                         .ignoresSafeArea(.container, edges: .bottom)
                 }
         } else {

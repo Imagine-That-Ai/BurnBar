@@ -29,6 +29,43 @@ Files:
 - **Android below 31 / outside a group**: flat translucent stack (surface fill + sheen gradient + 0.75dp `glassStroke` edge) — same recipe as `auroraGlass`.
 - **Reduce Transparency (macOS `GlassCard`)** falls back to an opaque surface fill.
 
+### User-adjustable transparency (iOS + macOS)
+
+`LiquidGlassTransparency` (declared in both `Theme/LiquidGlass.swift` mirrors,
+shared UserDefaults key `liquidGlassTransparency`, Double −1…+1, default 0)
+lets the user bias every glass surface clearer or frostier:
+
+- **0 — System**: render exactly what the OS draws; iOS/macOS already honor
+  Accessibility → Reduce Transparency, so the default *is* the device setting.
+- **t > 0 — Clear**: 26+ plates switch `.regular` → `.clear` (a faint
+  ultra-thin "bridge" scrim fades out toward +1 so the slider feels
+  continuous); pre-26 the fallback material plate fades toward the backdrop
+  (never below ~0.22 so content stays legible).
+- **t < 0 — Frosted**: a `.thickMaterial` scrim (up to 0.9 opacity at −1)
+  slides between plate and content on every path.
+- **Reduce Transparency wins over Clear**: positive values resolve to 0 while
+  the accessibility flag is on; frostier still applies (it only adds opacity).
+
+Plumbing: the shared adapters read the preference via `@AppStorage` inside
+their `ViewModifier`s; one-off `#available(26)` call sites use
+`liquidGlassEffect(_:in:)` — a drop-in for SwiftUI's `glassEffect(_:in:)`
+that resolves the variant and scrim (`LiquidGlassStyle` mirrors the `Glass`
+fluent API). The pre-26 branches of the card systems (`auroraGlass`, Mercury
+`LiquidGlassButtonStyle`, macOS `GlassCard`/`GlassButton`) apply the same
+plate-opacity/frost-scrim math. Direct `glassEffect` calls are banned outside
+`Theme/LiquidGlass.swift` — route through the adapters or `liquidGlassEffect`.
+
+Settings UI: iOS `ThemeSettingsView` → "Liquid Glass" section (slider with
+live preview capsule, magnetic center detent, reset); macOS
+`AppearanceCorkboardSection` → "Liquid Glass Transparency" row. Both are
+registered in the settings-search manifests. Tests:
+`OpenBurnBarMobileTests/LiquidGlassTransparencyTests.swift` +
+`AgentLensTests/Active/LiquidGlassTransparencyTests.swift` (lockstep mirrors).
+
+**Android**: not yet wired — `LiquidGlass.kt` has no transparency preference.
+When porting, reuse the same mapping (plate opacity / frost scrim over the
+backdrop recording) keyed off a shared preference name.
+
 ### Invariants (all platforms)
 
 1. Exactly **one glass layer per visual cluster**; grouped elements share one sampling container.

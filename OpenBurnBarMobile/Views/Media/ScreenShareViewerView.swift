@@ -4268,7 +4268,7 @@ private extension View {
         if #available(iOS 26.0, *) {
             self
                 .background(.clear)
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+                .liquidGlassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
         } else {
             self
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))

@@ -163,16 +163,17 @@ class HermesIrohRelayTransport(
         }
     }
 
-    private suspend fun pairingVerificationFailure(uid: String, connectionId: String, err: Throwable): HermesRelayException {
+    private suspend fun pairingVerificationFailure(uid: String, connectionId: String, err: Throwable): IrohRelayTransportError {
+        val detail = err.message ?: err.javaClass.simpleName
         auditLogger.record(
             event = IrohTransportAuditEvent.PAIRING_REJECTED,
             uid = uid,
             connectionId = connectionId,
             transport = null,
             rttMillis = null,
-            detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(AUDIT_ERROR_DETAIL_MAX_CHARS)),
+            detail = mapOf("error" to detail.take(AUDIT_ERROR_DETAIL_MAX_CHARS)),
         )
-        return HermesRelayException("Could not verify iroh pairing record: ${err.message}", err)
+        return IrohRelayTransportError.PairingRejected(detail = detail, source = err)
     }
 
     private suspend fun connectVerifiedStream(

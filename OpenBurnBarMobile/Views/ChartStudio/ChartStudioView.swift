@@ -509,7 +509,7 @@ struct ChartStudioView: View {
             inputBar
                 .padding(.horizontal, MobileTheme.Spacing.lg)
                 .padding(.vertical, MobileTheme.Spacing.md)
-                .glassEffect(.regular, in: .rect(cornerRadius: 26, style: .continuous))
+                .liquidGlassEffect(.regular, in: .rect(cornerRadius: 26, style: .continuous))
         } else {
             inputBar
                 .padding(.horizontal, MobileTheme.Spacing.lg)

@@ -75,7 +75,7 @@ struct ProviderAuroraAvatar: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .glassEffect(.regular, in: .circle)
+                .liquidGlassEffect(.regular, in: .circle)
                 .overlay(discStroke)
                 .padding(inset)
         } else {

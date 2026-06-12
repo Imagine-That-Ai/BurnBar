@@ -52,6 +52,11 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                LiquidGlassTransparencyRow()
+                    .settingsAnchor(SettingsAnchor.appearanceGlassTransparency)
+
+                Divider().background(DesignSystem.Colors.border)
+
                 SettingsToggle(
                     title: "Show in Menu Bar",
                     subtitle: "Keep OpenBurnBar available as a menu-bar utility.",
@@ -608,5 +613,86 @@ private struct ApplyAndRestartRow: View {
         } message: {
             Text("OpenBurnBar will flush all pending settings and relaunch. Any unsaved changes in other panes will be preserved.")
         }
+    }
+}
+
+
+// MARK: - Liquid Glass transparency row
+
+/// Slider for `LiquidGlassTransparency`, mirroring the iOS control in
+/// `ThemeSettingsView`. Zero follows the system (including Reduce
+/// transparency); the surrounding `GlassCard` renders through the shared
+/// adapters, so the whole settings card live-previews the change as you drag.
+private struct LiquidGlassTransparencyRow: View {
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    /// Magnetic detent: snap to the system center when the thumb lands close.
+    private var sliderValue: Binding<Double> {
+        Binding(
+            get: { LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: false) },
+            set: { rawTransparency = abs($0) < 0.06 ? 0 : $0 }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "circle.bottomrighthalf.pattern.checkered")
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Liquid Glass Transparency")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(statusText)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer(minLength: DesignSystem.Spacing.md)
+
+                if rawTransparency != 0 {
+                    Button("Reset") { rawTransparency = 0 }
+                        .font(DesignSystem.Typography.tiny.weight(.semibold))
+                        .buttonStyle(.borderless)
+                        .tint(DesignSystem.Colors.ember)
+                }
+            }
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Text("Frosted")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                Slider(value: sliderValue, in: LiquidGlassTransparency.range)
+                    .tint(DesignSystem.Colors.ember)
+                    .accessibilityLabel("Glass transparency")
+                    .accessibilityValue(accessibilityDescription)
+
+                Text("Clear")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.leading, 32)
+        }
+    }
+
+    private var statusText: String {
+        if reduceTransparency && rawTransparency > 0 {
+            return "Reduce transparency is on in System Settings — glass stays frosted until it's turned off."
+        }
+        let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: false)
+        if t == 0 { return "Matching this Mac's appearance settings." }
+        let percent = Int((abs(t) * 100).rounded())
+        return t > 0 ? "\(percent)% clearer than system." : "\(percent)% frostier than system."
+    }
+
+    private var accessibilityDescription: String {
+        let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: false)
+        if t == 0 { return "System default" }
+        let percent = Int((abs(t) * 100).rounded())
+        return t > 0 ? "\(percent) percent clearer" : "\(percent) percent frostier"
     }
 }

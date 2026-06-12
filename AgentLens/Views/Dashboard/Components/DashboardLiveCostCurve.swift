@@ -71,7 +71,7 @@ struct DashboardLiveCostCurve: View {
             if #available(macOS 26, *) {
                 shape
                     .fill(accent.opacity(colorScheme == .dark ? 0.08 : 0.04))
-                    .glassEffect(.regular, in: shape)
+                    .liquidGlassEffect(.regular, in: shape)
             } else {
                 ZStack {
                     shape.fill(.ultraThinMaterial)
