@@ -453,23 +453,11 @@ extension HermesGatewayClientRecord {
     }
 
     private static func gatewayDate(from raw: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        return ISO8601DateFormatter().date(from: raw)
+        ParsePrimitives.gatewayDate(from: raw)
     }
 
     private static func string(_ raw: Any?) -> String? {
-        switch raw {
-        case let value as String where !value.isEmpty:
-            return value
-        case let value as NSString where value.length > 0:
-            return value as String
-        case let value as NSNumber:
-            return value.stringValue
-        default:
-            return nil
-        }
+        ParsePrimitives.string(raw)
     }
 
     private static func intArray(_ raw: Any?, fallback: [Int]) -> [Int] {
@@ -546,16 +534,7 @@ struct HermesGatewayModelOptionRecord: Decodable, Hashable, Sendable {
     }
 
     private static func string(_ raw: Any?) -> String? {
-        switch raw {
-        case let value as String where !value.isEmpty:
-            return value
-        case let value as NSString where value.length > 0:
-            return value as String
-        case let value as NSNumber:
-            return value.stringValue
-        default:
-            return nil
-        }
+        ParsePrimitives.string(raw)
     }
 
     private static func nonEmpty(_ raw: String?) -> String? {
@@ -690,23 +669,11 @@ extension HermesGatewayApprovalRecord {
     }
 
     private static func gatewayDate(from raw: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        return ISO8601DateFormatter().date(from: raw)
+        ParsePrimitives.gatewayDate(from: raw)
     }
 
     private static func string(_ raw: Any?) -> String? {
-        switch raw {
-        case let value as String where !value.isEmpty:
-            return value
-        case let value as NSString where value.length > 0:
-            return value as String
-        case let value as NSNumber:
-            return value.stringValue
-        default:
-            return nil
-        }
+        ParsePrimitives.string(raw)
     }
 }
 
@@ -1110,16 +1077,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     }
 
     static func string(_ raw: Any?) -> String? {
-        switch raw {
-        case let value as String where !value.isEmpty:
-            return value
-        case let value as NSString where value.length > 0:
-            return value as String
-        case let value as NSNumber:
-            return value.stringValue
-        default:
-            return nil
-        }
+        ParsePrimitives.string(raw)
     }
 
     static func dictionary(_ raw: Any?) -> [String: Any]? {
@@ -1414,10 +1372,7 @@ enum HermesGatewayMessageResolver {
     }
 
     private static func gatewayDate(from raw: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        return ISO8601DateFormatter().date(from: raw)
+        ParsePrimitives.gatewayDate(from: raw)
     }
 
     private static func matchesTarget(_ message: HermesGatewayMessageRecord, targetClientId: String?) -> Bool {
@@ -1494,6 +1449,50 @@ private struct FirebaseCallablePayload: @unchecked Sendable {
     }
 }
 
+/// Single source of truth for the primitive coercions that the untyped
+/// `[String: Any]` Firebase boundary needs all over this file.
+///
+/// Before this existed the same `string(_:)` switch was hand-copied into four
+/// model parsers and the `gatewayDate(from:)` ISO-8601 decode was copied into
+/// three more — each `gatewayDate` call also allocated two fresh
+/// `ISO8601DateFormatter`s. The formatters are expensive to build, so they are
+/// cached here once. The per-type `string`/`gatewayDate` helpers now forward to
+/// these so there is one behaviour to reason about and one place to fix.
+private enum ParsePrimitives {
+    /// Reused across every gateway-date parse. `ISO8601DateFormatter` is
+    /// thread-safe for `date(from:)`, so a single shared instance is safe even
+    /// though this file spans `@MainActor` and `Sendable` types.
+    private static let fractionalISO8601: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let plainISO8601 = ISO8601DateFormatter()
+
+    /// Coerce a JSON-bridged value into a non-empty `String`, tolerating the
+    /// `NSString`/`NSNumber` forms that Firebase callable payloads surface.
+    static func string(_ raw: Any?) -> String? {
+        switch raw {
+        case let value as String where !value.isEmpty:
+            return value
+        case let value as NSString where value.length > 0:
+            return value as String
+        case let value as NSNumber:
+            return value.stringValue
+        default:
+            return nil
+        }
+    }
+
+    /// Decode a gateway ISO-8601 timestamp, preferring fractional seconds and
+    /// falling back to whole-second form.
+    static func gatewayDate(from raw: String) -> Date? {
+        if let date = fractionalISO8601.date(from: raw) { return date }
+        return plainISO8601.date(from: raw)
+    }
+}
+
 private final class FirebaseCallableExecutor: @unchecked Sendable {
     private let callable: HTTPSCallable
 
@@ -1503,6 +1502,93 @@ private final class FirebaseCallableExecutor: @unchecked Sendable {
 
     func call(_ payload: FirebaseCallablePayload) async throws -> HTTPSCallableResult {
         try await callable.call(payload.rawValue)
+    }
+
+    /// Typed callable invocation that keeps the request `Encodable` and decodes
+    /// the response `Decodable` while preserving the failure context that a bare
+    /// `try? JSONDecoder().decode(...)` throws away.
+    ///
+    /// On a malformed response this surfaces the underlying `DecodingError`
+    /// (key path, type mismatch) through ``FunctionsError/responseDecodingFailed``
+    /// instead of collapsing it into an opaque ``FunctionsError/decodingFailed``.
+    func call<Req: Encodable, Res: Decodable>(_ request: Req) async throws -> Res {
+        let requestObject = try Self.encodeToJSONObject(request)
+        let result = try await call(FirebaseCallablePayload(requestObject))
+        return try Self.decodeResponse(Res.self, from: result.data)
+    }
+
+    /// Build the callable for `name`, then make the typed request above. Mirrors
+    /// the `functionsClient().httpsCallable(name)` + `.call(...)` boilerplate that
+    /// is repeated for every endpoint in this file.
+    static func call<Req: Encodable, Res: Decodable>(
+        _ name: String,
+        _ request: Req,
+        using functions: Functions
+    ) async throws -> Res {
+        try await FirebaseCallableExecutor(functions.httpsCallable(name)).call(request)
+    }
+
+    /// Encode an `Encodable` request into the JSON-object dictionary that the
+    /// callable payload bridge expects.
+    static func encodeToJSONObject<Req: Encodable>(_ request: Req) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(request)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw FunctionsError.responseDecodingFailed(
+                "Request \(Req.self) did not encode to a JSON object."
+            )
+        }
+        return object
+    }
+
+    /// Decode a callable's `result.data` into `Res`, surfacing `DecodingError`
+    /// context (rather than swallowing it) when the cloud response is malformed.
+    static func decodeResponse<Res: Decodable>(_ type: Res.Type, from raw: Any?) throws -> Res {
+        guard let object = raw as? [String: Any],
+              let sanitized = FirestoreRepository.shared.sanitizeForJSON(object) as? [String: Any] else {
+            throw FunctionsError.responseDecodingFailed(
+                "Cloud response for \(Res.self) was not a JSON object."
+            )
+        }
+        let jsonData: Data
+        do {
+            jsonData = try JSONSerialization.data(withJSONObject: sanitized)
+        } catch {
+            throw FunctionsError.responseDecodingFailed(
+                "Cloud response for \(Res.self) was not serializable: \(error)"
+            )
+        }
+        do {
+            return try JSONDecoder().decode(Res.self, from: jsonData)
+        } catch let decodingError as DecodingError {
+            throw FunctionsError.responseDecodingFailed(
+                Self.describe(decodingError, for: Res.self)
+            )
+        } catch {
+            throw FunctionsError.responseDecodingFailed(
+                "Failed to decode \(Res.self): \(error)"
+            )
+        }
+    }
+
+    /// Render a `DecodingError` into a stable, log-safe sentence that names the
+    /// failing key path and reason without leaking the decoded payload.
+    private static func describe<Res>(_ error: DecodingError, for type: Res.Type) -> String {
+        func path(_ context: DecodingError.Context) -> String {
+            let keys = context.codingPath.map(\.stringValue)
+            return keys.isEmpty ? "<root>" : keys.joined(separator: ".")
+        }
+        switch error {
+        case let .keyNotFound(key, context):
+            return "Decoding \(Res.self) failed: missing key '\(key.stringValue)' at \(path(context))."
+        case let .typeMismatch(expected, context):
+            return "Decoding \(Res.self) failed: type mismatch (expected \(expected)) at \(path(context))."
+        case let .valueNotFound(expected, context):
+            return "Decoding \(Res.self) failed: missing value (expected \(expected)) at \(path(context))."
+        case let .dataCorrupted(context):
+            return "Decoding \(Res.self) failed: corrupted data at \(path(context)) — \(context.debugDescription)"
+        @unknown default:
+            return "Decoding \(Res.self) failed: \(error)"
+        }
     }
 }
 
@@ -1648,13 +1734,11 @@ final class FunctionsRepository: HermesGatewayRepository {
             "credential": credential,
             "credentialKind": kind.rawValue
         ])
-        guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
-              let doc = try? JSONDecoder().decode(ProviderConnectionDoc.self, from: jsonData) else {
-            throw FunctionsError.decodingFailed
-        }
-        return doc
+        // Representative migration (WP2-TYPED-IOS): the response decode now flows
+        // through the shared helper, which surfaces `DecodingError` context via
+        // `FunctionsError.responseDecodingFailed` instead of the previous `try?`
+        // that silently collapsed every parse failure into `.decodingFailed`.
+        return try FirebaseCallableExecutor.decodeResponse(ProviderConnectionDoc.self, from: result.data)
     }
 
     func connectProviderAccount(
@@ -1789,15 +1873,17 @@ final class FunctionsRepository: HermesGatewayRepository {
     }
 
     func refreshProviderAccountQuota(accountID: String) async throws -> ProviderQuotaSnapshot {
-        let callable = try functionsClient().httpsCallable("refreshProviderAccountQuota")
-        let result = try await callable.call(["accountID": accountID])
-        guard let data = result.data as? [String: Any],
-              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
-              let snap = try? JSONDecoder().decode(ProviderQuotaSnapshot.self, from: jsonData) else {
-            throw FunctionsError.decodingFailed
-        }
-        return snap
+        // Representative migration to the typed callable helper (WP2-TYPED-IOS):
+        // request is `Encodable`, response is `Decodable`, and a malformed
+        // response surfaces `DecodingError` context instead of collapsing into an
+        // opaque `try?` failure. The encoded request `{accountID}` is byte-for-byte
+        // the same wire shape as the previous `["accountID": accountID]` dictionary.
+        struct Request: Encodable { let accountID: String }
+        return try await FirebaseCallableExecutor.call(
+            "refreshProviderAccountQuota",
+            Request(accountID: accountID),
+            using: functionsClient()
+        )
     }
 
     func connectHostedQuotaAccount(
@@ -3060,6 +3146,10 @@ private extension ProviderQuotaSnapshot {
 
 enum FunctionsError: Error, LocalizedError, Equatable {
     case decodingFailed
+    /// A typed callable response could not be decoded. The associated string
+    /// carries the underlying `DecodingError` context (failing key path / type)
+    /// so failures are diagnosable instead of being collapsed by `try?`.
+    case responseDecodingFailed(String)
     case firebaseUnavailable
     case gatewayTargetMissingRelayKey
     case gatewayRelayKeyChanged
@@ -3072,6 +3162,7 @@ enum FunctionsError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .decodingFailed: return "Failed to decode cloud function response."
+        case .responseDecodingFailed: return "Failed to decode cloud function response."
         case .firebaseUnavailable:
             return "BurnBar Cloud is still starting. Try again after sign-in finishes."
         case .gatewayTargetMissingRelayKey:
