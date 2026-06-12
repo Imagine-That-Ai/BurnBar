@@ -25,6 +25,10 @@ final class MediaSessionCoordinator: ObservableObject {
         ScreenCapturePipeline.Configuration,
         @escaping ScreenCapturePipeline.FrameHandler
     ) -> any ScreenCaptureSession
+    typealias VideoEncoderFactory = @MainActor @Sendable (
+        VideoEncoder.Configuration,
+        @escaping VideoEncoder.EncodedHandler
+    ) -> any VideoEncoding
 
     enum Phase: Equatable, Sendable {
         case idle
@@ -45,7 +49,8 @@ final class MediaSessionCoordinator: ObservableObject {
     private let capabilityGate: any MediaCapabilityGate
     private let screenCaptureFactory: ScreenCaptureSessionFactory
     private var screenCapture: (any ScreenCaptureSession)?
-    private var videoEncoder: VideoEncoder?
+    private let videoEncoderFactory: VideoEncoderFactory
+    private var videoEncoder: (any VideoEncoding)?
     private var bitrateController: BitrateController
     private var shadowBweController: MercuryShadowBweController
     private var streamSinks: [String: MediaStreamSink] = [:]
@@ -60,10 +65,14 @@ final class MediaSessionCoordinator: ObservableObject {
         defaultBitrateSteps: BitrateController.Steps = .screenShare,
         screenCaptureFactory: @escaping ScreenCaptureSessionFactory = { configuration, frameHandler in
             ScreenCapturePipeline(configuration: configuration, frameHandler: frameHandler)
+        },
+        videoEncoderFactory: @escaping VideoEncoderFactory = { configuration, onEncoded in
+            VideoEncoder(configuration: configuration, onEncoded: onEncoded)
         }
     ) {
         self.capabilityGate = capabilityGate
         self.screenCaptureFactory = screenCaptureFactory
+        self.videoEncoderFactory = videoEncoderFactory
         self.bitrateController = BitrateController(steps: defaultBitrateSteps)
         self.shadowBweController = MercuryShadowBweController(steps: defaultBitrateSteps)
     }
@@ -141,8 +150,8 @@ final class MediaSessionCoordinator: ObservableObject {
                 peerDeviceID: peerDeviceID
             )
             self.streamSinks = [sinkID: sink]
-            let encoder = VideoEncoder(
-                configuration: .init(
+            let encoder = videoEncoderFactory(
+                .init(
                     width: 1920,
                     height: 1080,
                     targetBitsPerSecond: bitrateController.currentBitsPerSecond,

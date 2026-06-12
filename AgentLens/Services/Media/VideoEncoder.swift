@@ -21,7 +21,17 @@ private final class SendableVideoSampleBuffer: @unchecked Sendable {
 /// GOP. Keyframe interval pinned at 2 s for fast recovery on stalled
 /// streams.
 @MainActor
-final class VideoEncoder {
+protocol VideoEncoding: AnyObject {
+    func start() throws
+    func setTargetBitsPerSecond(_ bps: Int) throws
+    func encode(sampleBuffer: CMSampleBuffer) async throws
+    func requestLongTermReferenceRefresh()
+    func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64)
+    func stop()
+}
+
+@MainActor
+final class VideoEncoder: VideoEncoding {
     enum Codec: String, Equatable, Sendable {
         case hevc
         case h264
