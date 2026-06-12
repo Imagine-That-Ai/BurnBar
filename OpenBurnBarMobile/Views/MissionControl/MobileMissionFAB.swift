@@ -370,7 +370,7 @@ struct MobileMissionFAB: View {
                         Circle()
                             .fill(.clear)
                             .frame(width: 16, height: 16)
-                            .glassEffect(
+                            .liquidGlassEffect(
                                 .regular
                                     .tint(state.accent.opacity(hasPendingApproval ? 0.85 : 0.62))
                                     .interactive(),

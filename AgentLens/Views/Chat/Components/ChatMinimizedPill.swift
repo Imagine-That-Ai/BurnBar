@@ -39,7 +39,7 @@ struct ChatMinimizedPill: View {
                 if #available(macOS 26, *) {
                     Capsule(style: .continuous)
                         .fill(DesignSystem.Colors.surface.opacity(0.18))
-                        .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+                        .liquidGlassEffect(.regular.interactive(), in: Capsule(style: .continuous))
                 } else {
                     ZStack {
                         Capsule(style: .continuous).fill(.ultraThinMaterial)

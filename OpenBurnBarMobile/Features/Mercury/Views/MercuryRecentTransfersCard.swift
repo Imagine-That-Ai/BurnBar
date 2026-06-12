@@ -61,7 +61,7 @@ struct MercuryRecentTransfersCard: View {
         if #available(iOS 26, *) {
             Capsule()
                 .fill(Color.clear)
-                .glassEffect(.regular, in: Capsule())
+                .liquidGlassEffect(.regular, in: Capsule())
                 .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 1))
         } else {
             Capsule()

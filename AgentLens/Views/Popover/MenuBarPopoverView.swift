@@ -973,6 +973,7 @@ struct GlassCard<Content: View>: View {
     @ViewBuilder let content: () -> Content
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
 
     @State private var isHovered = false
     @State private var isPressed = false
@@ -1066,14 +1067,21 @@ struct GlassCard<Content: View>: View {
             // of pure glass.
             shape
                 .fill(glassSheenGradient)
-                .glassEffect(
+                .liquidGlassEffect(
                     interactive ? .regular.interactive() : .regular,
                     in: shape
                 )
         } else {
+            // Pre-26 plate honors the glass transparency preference the same
+            // way the shared adapters do: the material fades toward the raw
+            // backdrop for "clearer", a thick frost scrim rises for "frostier".
+            let t = LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
             ZStack {
                 shape.fill(.ultraThinMaterial)
-                shape.fill(DesignSystem.Colors.surface.opacity(0.55))
+                    .opacity(LiquidGlassTransparency.fallbackPlateOpacity(t))
+                shape.fill(DesignSystem.Colors.surface.opacity(0.55 * LiquidGlassTransparency.fallbackPlateOpacity(t)))
+                shape.fill(.thickMaterial)
+                    .opacity(LiquidGlassTransparency.frostScrimOpacity(t))
                 shape.fill(glassSheenGradient)
             }
         }
@@ -1096,6 +1104,9 @@ struct GlassButton: View {
     let icon: String
     let style: Style
     let action: () -> Void
+
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var isHovered = false
     @State private var isPressed = false
@@ -1151,10 +1162,14 @@ struct GlassButton: View {
         if #available(macOS 26, *) {
             // Style wash rides on interactive glass; the material + neutral
             // surface base fills stay pre-26 only (nothing sits under glass).
-            styleWash.glassEffect(.regular.interactive(), in: shape)
+            styleWash.liquidGlassEffect(.regular.interactive(), in: shape)
         } else {
+            let t = LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
             ZStack {
                 shape.fill(.ultraThinMaterial)
+                    .opacity(LiquidGlassTransparency.fallbackPlateOpacity(t))
+                shape.fill(.thickMaterial)
+                    .opacity(LiquidGlassTransparency.frostScrimOpacity(t))
                 switch style {
                 case .prominent:
                     shape.fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))

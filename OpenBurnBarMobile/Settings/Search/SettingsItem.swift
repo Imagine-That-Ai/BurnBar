@@ -146,6 +146,7 @@ enum SettingsAnchor {
     static let quotaCustomization = "hub.appearance.quotaCustomization"
     static let usePremiumSOTAUX = "hub.appearance.usePremiumSOTAUX"
     static let useWebsiteBackground = "hub.appearance.useWebsiteBackground"
+    static let glassTransparency = "theme.glassTransparency"
     static let uiMode = "hub.uiMode"
     static let dailyBudget = "hub.budget.dailyBudget"
     static let costAlerts = "hub.budget.costAlerts"
