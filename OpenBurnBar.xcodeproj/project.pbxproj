@@ -523,6 +523,7 @@
 		4D632AE1E8F19E4086490619 /* MissionConsoleMacHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58F6AE82537DB7DB7A142F1 /* MissionConsoleMacHost.swift */; };
 		4DD27CA040ED9B857F9C2430 /* CLIAgentResumeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38AF2D5325F794CAC95937C1 /* CLIAgentResumeSheet.swift */; };
 		4DEDE5B0810CC4C4D3542D7A /* HomeAssistantClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9564B7760D72F6069B77624F /* HomeAssistantClient.swift */; };
+		4DFC877EABBC5199D258EE9C /* GatewayRouteLogging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94A0E375B72121D80271CA12 /* GatewayRouteLogging.swift */; };
 		4E05B58B0E9B1E964376F46F /* InlineAgentMirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 292B7587B70DBC8C1AD270AA /* InlineAgentMirrorView.swift */; };
 		4E15A8E659DF96A50448329B /* ConversationStore+CRUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D78C5F9442CF30C4FFD7A05 /* ConversationStore+CRUD.swift */; };
 		4E593A766ECEE606865E8994 /* SettingsRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 299ACA905DDAD0BB8E0CF360 /* SettingsRouter.swift */; };
@@ -750,6 +751,7 @@
 		73DFAD8C0459766EF977BA23 /* ProTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1BCD448A3667FB24FFEB9B2 /* ProTheme.swift */; };
 		740872D0E67EF6AD701E2FF8 /* FirestoreIrohPairingDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F13B8A74B91B6100B3033AEF /* FirestoreIrohPairingDirectory.swift */; };
 		74334077FFE7BAB69B42258C /* VibeProxyMigrationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53A2CB82CDFDE16ABB466842 /* VibeProxyMigrationServiceTests.swift */; };
+		743817D8CC04DD779244181A /* GatewayEventSealer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 953582D0F180C1975EBAFB84 /* GatewayEventSealer.swift */; };
 		7453FF89FC2629510F00229B /* WarpQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE5F53FF3C601686922B74C /* WarpQuotaAdapter.swift */; };
 		748BE121F6FBB5C84348FB51 /* MercuryMoodPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3CCC21A2228190ABAB0A57 /* MercuryMoodPreset.swift */; };
 		750188A4FD130FA7A8DE3CE3 /* FactoryDroidParserIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A824B975E510EBC86FAACC4B /* FactoryDroidParserIntegrationTests.swift */; };
@@ -961,6 +963,7 @@
 		9365F3BF87A49C28EE98FAEB /* CacheConstellationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 670B726840176877E51182BE /* CacheConstellationScene.swift */; };
 		936F501EFBF56E982AB99EED /* DashboardProjectSpendLaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3C2FB3F574C07FF79E1B37 /* DashboardProjectSpendLaneView.swift */; };
 		9386E4D1AD7C4BAAACAA81F1 /* DevicesAndSyncSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF2C963713055A8E4A34751 /* DevicesAndSyncSettingsView.swift */; };
+		940DD3F0E0CA7A231C15C94D /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C274EB418E086F07AEAD9BE /* AppServices.swift */; };
 		94376D6F32DD4963E2960FD8 /* HermesSquareRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A073A273133ED15E42551A /* HermesSquareRoot.swift */; };
 		94517151F589DFA401790F09 /* test_narrativeCard_withData.narrativeCard-light.png in Resources */ = {isa = PBXBuildFile; fileRef = 7771F7D3C409A7675F61423C /* test_narrativeCard_withData.narrativeCard-light.png */; };
 		94A2E9E8B3DAAACF2E6DA9D7 /* BurnBarModelAliasConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5064ABB1522656AE74226CA /* BurnBarModelAliasConfigStoreTests.swift */; };
@@ -2743,8 +2746,10 @@
 		9476124701CFC78FE9E6696C /* SwitcherOnboardingDoneStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherOnboardingDoneStep.swift; sourceTree = "<group>"; };
 		947AB0A3309882400E243978 /* CloudSyncHealthStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncHealthStoreTests.swift; sourceTree = "<group>"; };
 		949D7B894EA961CD2C0E4F93 /* SwitcherPopoverUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherPopoverUITests.swift; sourceTree = "<group>"; };
+		94A0E375B72121D80271CA12 /* GatewayRouteLogging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayRouteLogging.swift; sourceTree = "<group>"; };
 		94BC7D9B1F24CC35A218142D /* ProviderAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAvatar.swift; sourceTree = "<group>"; };
 		94D8D60DB083202AFCEAD619 /* ConversationSyncRoundTripTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSyncRoundTripTests.swift; sourceTree = "<group>"; };
+		953582D0F180C1975EBAFB84 /* GatewayEventSealer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEventSealer.swift; sourceTree = "<group>"; };
 		9561B798437FB856D7AD76B6 /* InsightBriefStartupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightBriefStartupTests.swift; sourceTree = "<group>"; };
 		9564B7760D72F6069B77624F /* HomeAssistantClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantClient.swift; sourceTree = "<group>"; };
 		95D69535FF1B751D91047638 /* SmartHubCastButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartHubCastButton.swift; sourceTree = "<group>"; };
@@ -2794,6 +2799,7 @@
 		9BB20EB48DFA90D2334CD879 /* UsageAggregationAndMoodBandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregationAndMoodBandTests.swift; sourceTree = "<group>"; };
 		9BE8799D6566A48FD78190F4 /* SkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonView.swift; sourceTree = "<group>"; };
 		9C26AD5DC23872C8E58D6AD7 /* DirectDownloadUpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectDownloadUpdateService.swift; sourceTree = "<group>"; };
+		9C274EB418E086F07AEAD9BE /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
 		9CB3F9CA349F8C9DA52B0FA5 /* ComputerUseAuditExportSignerProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseAuditExportSignerProviderTests.swift; sourceTree = "<group>"; };
 		9CC3C32451CCFA9E72801274 /* MenuBarPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopoverView.swift; sourceTree = "<group>"; };
 		9CDDBEA1D627E38E221DB3AC /* AppearanceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettings.swift; sourceTree = "<group>"; };
@@ -4584,6 +4590,7 @@
 			isa = PBXGroup;
 			children = (
 				8DDD78C272747496AD869A7B /* AppDelegate.swift */,
+				9C274EB418E086F07AEAD9BE /* AppServices.swift */,
 				B1679A53C4DAE3C1AB063BA1 /* AppStoreScreenshotMode.swift */,
 				D56D5FC7DD70CD8410C4D35D /* AuthGateView.swift */,
 				F58BB3C2B3AEF733DBAA940B /* MobileE2ERoute.swift */,
@@ -4773,6 +4780,7 @@
 				FAE3EA1123F6EAB51612F808 /* ClaudeInteractiveSessionExecutor.swift */,
 				92611A342A19126B17BFAF40 /* ConstantTimeCompare.swift */,
 				8B650A2E551C10D2EB1B576A /* FactoryDroidProviderExecutor.swift */,
+				94A0E375B72121D80271CA12 /* GatewayRouteLogging.swift */,
 				0DF4DEB38D109A639B28840E /* OpenBurnBarAgentLoopService.swift */,
 				E768921F82E927E8F4D20EB4 /* OpenBurnBarAnthropicProviderExecutor.swift */,
 				B14E673D1109A651C490AEEB /* OpenBurnBarBrowserToolService.swift */,
@@ -5581,6 +5589,7 @@
 				C6B0E29DDD7E3F60B7E4FEC1 /* CLIAgentRelayChatTransport.swift */,
 				C34286570B572FF9B5698DDD /* FirestoreRepository.swift */,
 				F454B90D2A36E9F120B9B5AF /* FunctionsRepository.swift */,
+				953582D0F180C1975EBAFB84 /* GatewayEventSealer.swift */,
 				D10CE8F9EB69B43ADBCED122 /* HapticBus.swift */,
 				18F8F153E5172FDC3A7302EE /* HermesAtomRouter.swift */,
 				20AFB35D29C67C8735F40FDB /* HermesAttachmentLoader.swift */,
@@ -7324,6 +7333,7 @@
 				071C68BC29E2DBE7CFF4D81A /* ConstantTimeCompare.swift in Sources */,
 				F1BDDFE1F96497262B9ED616 /* EventKitBridge.swift in Sources */,
 				1535E801B42CF21137EDC6E7 /* FactoryDroidProviderExecutor.swift in Sources */,
+				4DFC877EABBC5199D258EE9C /* GatewayRouteLogging.swift in Sources */,
 				7F7987C13468F347E073EF63 /* LocalNotificationBridge.swift in Sources */,
 				3EB4F281C68D777D744331A3 /* MissionControlError.swift in Sources */,
 				95AA8B8DA35B0F861CCFB879 /* MissionControlHelpers.swift in Sources */,
@@ -7624,6 +7634,7 @@
 				5D718AEFFF7CA412E180292B /* AppCheckAttestationMonitor.swift in Sources */,
 				9D41FA63035D371F3C45B3CD /* AppCustomization.swift in Sources */,
 				32749DDB386C2A8D5D1F4D80 /* AppDelegate.swift in Sources */,
+				940DD3F0E0CA7A231C15C94D /* AppServices.swift in Sources */,
 				075283369A7C96DBCA12836D /* AppStoreScreenshotMode.swift in Sources */,
 				149E915BB57B4C2ED0F0AB90 /* ApprovalInboxView.swift in Sources */,
 				A3BC4CDEEFEA40EB8B9EB1C8 /* ApprovalPolicyStore.swift in Sources */,
@@ -7742,6 +7753,7 @@
 				BB2C6CAD3B6C64FB36753498 /* FoilCTAButton.swift in Sources */,
 				CD5FAB90BEA15686BE9932AF /* FriendlyModelName.swift in Sources */,
 				2453F09ACB1F2688587A5E34 /* FunctionsRepository.swift in Sources */,
+				743817D8CC04DD779244181A /* GatewayEventSealer.swift in Sources */,
 				1EF92BCC38732A1D4F17934A /* HapticBus.swift in Sources */,
 				990575E1F1F6A4D0014A37B5 /* Haptics.swift in Sources */,
 				FA0BD6A388DFD65DAC7E7A71 /* HarnessModelBadge.swift in Sources */,
@@ -8950,11 +8962,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_699F9E03-6648-4AA5-A184-FE176D8DABBF" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_0580BA34-9756-4775-9C28-D668056C9FDD" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_220B38C3-86C8-403B-9781-2D0E20DA7D0E" /* OpenBurnBarCore */;
+			productRef = "TEMP_9D72523A-189A-457E-B33F-E52F324F1582" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -9002,7 +9014,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_CDA68FEC-6D56-4B0B-8FB4-653CB6FA3BD4" /* OpenBurnBarCore */;
+			productRef = "TEMP_D20ED4A0-FD3B-4BCF-B182-F2892B6D60A0" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -9016,15 +9028,15 @@
 		};
 		DBBC7D9022E764AE0DC6D4B4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_FF3542B2-38C9-43AF-9C00-0FE1CC435701" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_CC27B4A0-FFF0-458A-BC4A-3B5C89FB4CAF" /* OpenBurnBarComputerUseCore */;
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_FAE980DB-7ED7-4504-A05A-63E739250BA6" /* OpenBurnBarMedia */;
+			productRef = "TEMP_C287D227-6B6F-4068-9081-6A494F260093" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_9D8EBA57-08C5-4C0B-AA07-B944A7108CB2" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_59438F49-2D24-447E-8480-12915F248BAB" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -10110,29 +10122,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_220B38C3-86C8-403B-9781-2D0E20DA7D0E" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_699F9E03-6648-4AA5-A184-FE176D8DABBF" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_0580BA34-9756-4775-9C28-D668056C9FDD" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_9D8EBA57-08C5-4C0B-AA07-B944A7108CB2" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_59438F49-2D24-447E-8480-12915F248BAB" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_CDA68FEC-6D56-4B0B-8FB4-653CB6FA3BD4" /* OpenBurnBarCore */ = {
+		"TEMP_9D72523A-189A-457E-B33F-E52F324F1582" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		"TEMP_FAE980DB-7ED7-4504-A05A-63E739250BA6" /* OpenBurnBarMedia */ = {
+		"TEMP_C287D227-6B6F-4068-9081-6A494F260093" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_FF3542B2-38C9-43AF-9C00-0FE1CC435701" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_CC27B4A0-FFF0-458A-BC4A-3B5C89FB4CAF" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_D20ED4A0-FD3B-4BCF-B182-F2892B6D60A0" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
