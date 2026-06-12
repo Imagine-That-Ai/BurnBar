@@ -187,25 +187,27 @@ enum ConversationCloudSealer {
               let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) else {
             return nil
         }
-        let aadContext: CloudVaultAADContext?
-        if let uid, let docId {
-            aadContext = try? CloudVaultAADContext(
-                uid: uid,
-                collection: "conversations",
-                docID: docId,
-                field: "sealedPayload"
+        do {
+            let aadContext: CloudVaultAADContext?
+            if let uid, let docId {
+                aadContext = try CloudVaultAADContext(
+                    uid: uid,
+                    collection: "conversations",
+                    docID: docId,
+                    field: "sealedPayload"
+                )
+            } else {
+                aadContext = nil
+            }
+            let payloadData = try CloudVaultCrypto.openPayload(
+                envelope,
+                keyData: keyData,
+                aadContext: aadContext
             )
-        } else {
-            aadContext = nil
-        }
-        guard let payloadData = try? CloudVaultCrypto.openPayload(
-            envelope,
-            keyData: keyData,
-            aadContext: aadContext
-        ) else {
+            return try? decoder.decode(ConversationCloudPrivatePayload.self, from: payloadData)
+        } catch {
             return nil
         }
-        return try? decoder.decode(ConversationCloudPrivatePayload.self, from: payloadData)
     }
 
     static func capLastAssistantMessage(_ text: String) -> String {

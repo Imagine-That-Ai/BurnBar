@@ -318,7 +318,11 @@ final class MediaSessionCoordinator: ObservableObject {
         admissionMonitorTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: self.admissionRecheckIntervalNanoseconds)
+                do {
+                    try await Task.sleep(nanoseconds: self.admissionRecheckIntervalNanoseconds)
+                } catch {
+                    return
+                }
                 guard !Task.isCancelled else { return }
                 await self.recheckActiveAdmission()
             }

@@ -368,7 +368,7 @@ enum ComputerUseSecurityCallableClient {
             "survivorWrappers": survivorWrappers,
             "reason": "revocation_rewrap",
             "rotationRequirementId": requirementId,
-            "nonce": rotationNonce,
+            "nonce": rotationNonce
         ])
         guard let rotationDict = rotationResult.data as? [String: Any],
               rotationDict["ok"] as? Bool == true,
@@ -392,15 +392,22 @@ enum ComputerUseSecurityCallableClient {
                 vaultGeneration: nextVaultGeneration
             )
             return RevocationCloudVaultRotationResult(jobId: jobId, progress: progress)
-        } catch {
-            try? await userRef.collection("cloud_vault_rotation_jobs").document(jobId).setData([
-                "status": "failed",
-                "failureReason": String(error.localizedDescription.prefix(500)),
-                "failedAt": FieldValue.serverTimestamp(),
-                "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+        } catch let rewrapError {
+            do {
+                try await userRef.collection("cloud_vault_rotation_jobs").document(jobId).setData([
+                    "status": "failed",
+                    "failureReason": String(rewrapError.localizedDescription.prefix(500)),
+                    "failedAt": FieldValue.serverTimestamp(),
+                    "updatedAt": FieldValue.serverTimestamp()
+                ], merge: true)
+            } catch {
+                throw ClientError.invalidResponse(
+                    "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: " +
+                        "\(rewrapError.localizedDescription). Failed to mark the job failed: \(error.localizedDescription)"
+                )
+            }
             throw ClientError.invalidResponse(
-                "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: \(error.localizedDescription)"
+                "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: \(rewrapError.localizedDescription)"
             )
         }
     }
