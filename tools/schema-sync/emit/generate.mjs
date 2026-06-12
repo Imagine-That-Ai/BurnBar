@@ -1611,9 +1611,16 @@ for (const domain of manifest.domains) {
     mkdirSync(dirname(path), { recursive: true });
   }
 
-  writeFileSync(tsPath, emitTypeScript(domain.id, spec.models));
-  writeFileSync(swiftPath, emitSwift(domain.id, spec.models));
-  writeFileSync(kotlinPath, emitKotlin(domain.id, spec.models));
+  // Every emitted file carries exactly one trailing newline — SwiftLint
+  // (trailing_newline), ktlint, and eslint all enforce it on the tracked copies.
+  const withFinalNewline = (text) => {
+    // Collapse 2+ consecutive blank lines to one (SwiftLint vertical_whitespace).
+    const collapsed = text.replace(/\n{3,}/g, "\n\n");
+    return collapsed.endsWith("\n") ? collapsed : `${collapsed}\n`;
+  };
+  writeFileSync(tsPath, withFinalNewline(emitTypeScript(domain.id, spec.models)));
+  writeFileSync(swiftPath, withFinalNewline(emitSwift(domain.id, spec.models)));
+  writeFileSync(kotlinPath, withFinalNewline(emitKotlin(domain.id, spec.models)));
   console.log(`Emitted ${domain.id}: TS, Swift, Kotlin`);
 }
 

@@ -10,15 +10,15 @@ final class HermesSquareProviderBridgeTests: XCTestCase {
 
     func testBuiltInRuntimesResolveToTheirCanonicalProviders() {
         let cases: [(AssistantRuntimeID, AgentProvider)] = [
-            (.hermes,   .hermes),
-            (.pi,       .piAgent),
-            (.claude,   .claudeCode),
-            (.codex,    .codex),
+            (.hermes, .hermes),
+            (.pi, .piAgent),
+            (.claude, .claudeCode),
+            (.codex, .codex),
             (.openClaw, .openClaw),
-            (.droid,    .factory),
-            (.forge,    .forgeDev),
-            (.grok,     .xAI),
-            (.cursorAgent, .cursorAgent),
+            (.droid, .factory),
+            (.forge, .forgeDev),
+            (.grok, .xAI),
+            (.cursorAgent, .cursorAgent)
         ]
         for (runtime, expectedProvider) in cases {
             let identity = AgentIdentity.builtIn(runtime)

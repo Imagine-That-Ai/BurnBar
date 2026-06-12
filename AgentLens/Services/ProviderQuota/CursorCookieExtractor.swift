@@ -70,7 +70,7 @@ enum CursorCookieExtractor {
         (
             "~/Library/Application Support/Cursor Nightly/User/globalStorage/state.vscdb"
             as NSString
-        ).expandingTildeInPath,
+        ).expandingTildeInPath
     ]
 
     // MARK: - Public API

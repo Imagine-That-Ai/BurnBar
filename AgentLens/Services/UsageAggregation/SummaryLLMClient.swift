@@ -48,10 +48,10 @@ struct SummaryLLMClient: Sendable {
             "model": model,
             "messages": [
                 ["role": "system", "content": "Return strict JSON with keys title and summary."],
-                ["role": "user", "content": prompt],
+                ["role": "user", "content": prompt]
             ],
             "temperature": 0.1,
-            "max_tokens": maxOutputTokens,
+            "max_tokens": maxOutputTokens
         ]
         if model.trimmingCharacters(in: .whitespacesAndNewlines).localizedCaseInsensitiveContains("gpt-5.5") {
             body["reasoning_effort"] = "high"
@@ -116,8 +116,8 @@ struct SummaryLLMClient: Sendable {
             "stream": false,
             "options": [
                 "temperature": 0.1,
-                "num_predict": maxOutputTokens,
-            ],
+                "num_predict": maxOutputTokens
+            ]
         ]
 
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else {

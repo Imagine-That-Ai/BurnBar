@@ -123,13 +123,11 @@ public enum VoiceIntentResolver {
 
         // Open agent — "open Claude", "show me Codex".
         let openPrefixes = ["open ", "show me ", "switch to "]
-        for prefix in openPrefixes {
-            if lower.hasPrefix(prefix) {
-                let nameRaw = cleaned.dropFirst(prefix.count)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if let uri = installedAgentNames[nameRaw.lowercased()] {
-                    return .openAgent(agentURI: uri)
-                }
+        for prefix in openPrefixes where lower.hasPrefix(prefix) {
+            let nameRaw = cleaned.dropFirst(prefix.count)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let uri = installedAgentNames[nameRaw.lowercased()] {
+                return .openAgent(agentURI: uri)
             }
         }
 

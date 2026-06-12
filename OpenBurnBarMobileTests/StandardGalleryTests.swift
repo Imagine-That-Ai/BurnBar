@@ -10,14 +10,14 @@ final class StandardGalleryTests: XCTestCase {
 
         let providers: [RollupProviderSummary] = [
             .init(provider: "claudecode", providerID: ProviderID(rawValue: "claudecode"), totalRequests: 500, totalTokens: 4_200_000, totalCost: 92.10),
-            .init(provider: "codex",      providerID: ProviderID(rawValue: "codex"),      totalRequests: 220, totalTokens: 1_800_000, totalCost: 24.80),
-            .init(provider: "factory",    providerID: ProviderID(rawValue: "factory"),    totalRequests: 110, totalTokens: 900_000,   totalCost: 11.30),
-            .init(provider: "kimi",       providerID: ProviderID(rawValue: "kimi"),       totalRequests: 60,  totalTokens: 320_000,   totalCost: 3.20)
+            .init(provider: "codex", providerID: ProviderID(rawValue: "codex"), totalRequests: 220, totalTokens: 1_800_000, totalCost: 24.80),
+            .init(provider: "factory", providerID: ProviderID(rawValue: "factory"), totalRequests: 110, totalTokens: 900_000, totalCost: 11.30),
+            .init(provider: "kimi", providerID: ProviderID(rawValue: "kimi"), totalRequests: 60, totalTokens: 320_000, totalCost: 3.20)
         ]
         let models: [RollupModelSummary] = [
             .init(model: "claude-sonnet-4.5", provider: "claudecode", requests: 300, tokens: 2_500_000, cost: 60.0),
-            .init(model: "gpt-5.4-codex",     provider: "codex",      requests: 200, tokens: 1_700_000, cost: 22.0),
-            .init(model: "kimi-k3",           provider: "kimi",       requests: 50,  tokens: 290_000,   cost: 3.0)
+            .init(model: "gpt-5.4-codex", provider: "codex", requests: 200, tokens: 1_700_000, cost: 22.0),
+            .init(model: "kimi-k3", provider: "kimi", requests: 50, tokens: 290_000, cost: 3.0)
         ]
 
         let dailyPoints: [RollupDailyPoint] = (0..<14).map { i -> RollupDailyPoint in
@@ -46,8 +46,8 @@ final class StandardGalleryTests: XCTestCase {
 
         return TrendDataDigest.build(
             windowTotals: [
-                .today:      RollupTotals(requests: 60,  tokens: 350_000,   costUsd: 18.74),
-                .sevenDays:  RollupTotals(requests: 420, tokens: 2_700_000, costUsd: 131.40),
+                .today: RollupTotals(requests: 60, tokens: 350_000, costUsd: 18.74),
+                .sevenDays: RollupTotals(requests: 420, tokens: 2_700_000, costUsd: 131.40),
                 .thirtyDays: RollupTotals(requests: 1_900, tokens: 12_400_000, costUsd: 612.00)
             ],
             providerSummaries: providers,

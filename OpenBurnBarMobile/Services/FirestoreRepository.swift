@@ -338,7 +338,7 @@ final class FirestoreRepository {
         // uploads encoded that as `limit: 0`. The mobile display model needs a
         // positive denominator, so normalize percentage windows onto 0...100.
         if unit == "percent",
-           (limit == nil || limit == 0),
+           limit == nil || limit == 0,
            usedPercent != nil || remaining != nil {
             limit = 100
         }
@@ -467,10 +467,7 @@ final class FirestoreRepository {
             var pointsArray: [[String: Any]] = []
             for (dateStr, rawValue) in pointsDict {
                 let value: Double
-                if let d = rawValue as? Double { value = d }
-                else if let i = rawValue as? Int { value = Double(i) }
-                else if let n = rawValue as? NSNumber { value = n.doubleValue }
-                else { continue }
+                if let d = rawValue as? Double { value = d } else if let i = rawValue as? Int { value = Double(i) } else if let n = rawValue as? NSNumber { value = n.doubleValue } else { continue }
                 let date = formatter.date(from: dateStr) ?? Date()
                 pointsArray.append([
                     "id": dateStr,

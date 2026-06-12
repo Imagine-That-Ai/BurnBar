@@ -205,7 +205,7 @@ final class ScreenShareSmartZoomReducerTests: XCTestCase {
     func testOffsetForCenterClampsAtViewportEdge() {
         let viewportSize = CGSize(width: 1000, height: 1000)
         let offset = ScreenShareSmartZoomReducer.offsetForCenter(
-            centerInContent: CGPoint(x: 0, y: 0),
+            centerInContent: CGPoint.zero,
             scale: 2.0,
             viewportSize: viewportSize
         )

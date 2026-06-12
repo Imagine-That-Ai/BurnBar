@@ -558,7 +558,7 @@ struct MobileMissionFAB: View {
     private func state(for tile: MissionConsoleActiveTile) -> OrbState {
         let latest = host.snapshot.recentTicker.first { $0.missionID == tile.id }
 
-        var label: String? = nil
+        var label: String?
         var icon = "sparkles"
         var accent = UnifiedDesignSystem.Colors.amber
 

@@ -4,8 +4,8 @@ import GRDB
 @testable import OpenBurnBarCore
 
 final class XAIQuotaAdapterTests: XCTestCase {
-    var tempDirectoryURL: URL!
-    var fileManager: FileManager!
+    private var tempDirectoryURL: URL!
+    private var fileManager: FileManager!
 
     override func setUp() {
         super.setUp()
@@ -101,7 +101,7 @@ final class XAIQuotaAdapterTests: XCTestCase {
             now.addingTimeInterval(-60 * 60),
             now.addingTimeInterval(-90 * 60),
             // Out of window — must NOT count.
-            now.addingTimeInterval(-3 * 60 * 60),
+            now.addingTimeInterval(-3 * 60 * 60)
         ])
 
         let adapter = XAIQuotaAdapter()
@@ -238,8 +238,8 @@ final class XAIQuotaAdapterTests: XCTestCase {
 private final class XAIMockURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var responder: ((URLRequest) -> (HTTPURLResponse, Data))?
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         guard let responder = Self.responder else {

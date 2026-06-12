@@ -29,7 +29,8 @@ final class RemoteUnlockBlockerPresentationTests: XCTestCase {
     func test_everyCoveredBlockerResolvesToProductReadyCopy() {
         for blocker in coveredBlockers {
             guard let presentation = RemoteUnlockBlockerPresentationMap.presentation(forBlockers: [blocker]) else {
-                return XCTFail("Expected a presentation for \(blocker)")
+                XCTFail("Expected a presentation for \(blocker)")
+                return
             }
             assertProductSafe(presentation, blocker: blocker)
             // The raw identifier survives only as a diagnostic.
@@ -41,7 +42,8 @@ final class RemoteUnlockBlockerPresentationTests: XCTestCase {
         guard let presentation = RemoteUnlockBlockerPresentationMap.presentation(
             forBlockers: ["some_future_blocker_we_have_not_seen"]
         ) else {
-            return XCTFail("Expected a generic fallback presentation")
+            XCTFail("Expected a generic fallback presentation")
+            return
         }
         assertProductSafe(presentation, blocker: "some_future_blocker_we_have_not_seen")
         XCTAssertEqual(presentation.recommendedAction, .finishOnMac)

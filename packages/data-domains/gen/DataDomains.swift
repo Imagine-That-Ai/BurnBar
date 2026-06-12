@@ -161,7 +161,7 @@ public enum DataDomains {
             entitlementGate: nil, suspensionSurface: nil,
             cloudVaultRewrapStrategy: "document_envelopes",
             sealingScheme: nil
-        ),
+        )
     ]
     public static func domain(_ id: String) -> DataDomain? { all.first { $0.id == id } }
 }

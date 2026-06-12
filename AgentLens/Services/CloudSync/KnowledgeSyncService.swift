@@ -328,7 +328,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
             "sourceSlug": batch.sourceSlug,
             "slugHmac": batch.slugHmac,
             "embeddingModelVersion": batch.embeddingModelVersion,
-            "vectors": vectors,
+            "vectors": vectors
         ]
     }
 
@@ -348,7 +348,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
             "dedupHash": vector.dedupHash,
             "sourceKind": vector.sourceKind.rawValue,
             "chunkIndex": vector.chunkIndex,
-            "byteCount": vector.byteCount,
+            "byteCount": vector.byteCount
         ]
         if let signalEnvelope {
             encoded["signalEnvelope"] = signalEnvelope
@@ -457,7 +457,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
             "keyVersion": sealed.keyVersion,
             "nonce": sealed.nonce,
             "ciphertext": sealed.ciphertext,
-            "tag": sealed.tag,
+            "tag": sealed.tag
         ]
     }
 

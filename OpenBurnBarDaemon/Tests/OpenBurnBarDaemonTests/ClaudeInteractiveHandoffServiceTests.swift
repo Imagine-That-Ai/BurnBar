@@ -9,7 +9,7 @@ final class ClaudeInteractiveHandoffServiceTests: XCTestCase {
         let url = ClaudeInteractiveHandoffService.claudeProjectDirectory(for: "/Users/me/code/app")
         XCTAssertNotNil(url)
         XCTAssertEqual(url?.lastPathComponent, "-Users-me-code-app")
-        XCTAssertTrue(url?.path.hasSuffix(".claude/projects/-Users-me-code-app") == true)
+        XCTAssertEqual(url?.path.hasSuffix(".claude/projects/-Users-me-code-app"), true)
     }
 
     func test_claudeProjectDirectory_nilWorkingDirectory_returnsNil() {

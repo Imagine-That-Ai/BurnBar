@@ -12,7 +12,7 @@ import XCTest
 /// the iOS class so the substrate is locked down at the unit level
 /// before the iOS UI driver wires in.
 final class MediaPartnerSavePreferenceStoreTests: XCTestCase {
-    enum SavePreference: String, Equatable {
+    private enum SavePreference: String, Equatable {
         case askEachTime
         case photos
         case files
@@ -22,7 +22,7 @@ final class MediaPartnerSavePreferenceStoreTests: XCTestCase {
     /// kept here so the substrate contract is testable without linking
     /// the iOS app. If the iOS implementation drifts, this test fails
     /// loudly via the `assertContractMatches` test below.
-    final class Mirror {
+    private final class Mirror {
         private let defaults: UserDefaults
         private let prefix: String
 

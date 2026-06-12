@@ -68,8 +68,7 @@ final class MissionGroupObserver {
         var terminal = 0
         var awaitingApproval = 0
         for snap in childSnapshots.values {
-            if snap.isTerminal { terminal += 1 }
-            else if snap.isWaitingForApproval {
+            if snap.isTerminal { terminal += 1 } else if snap.isWaitingForApproval {
                 awaitingApproval += 1
                 live += 1
             } else { live += 1 }

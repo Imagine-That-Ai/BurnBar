@@ -7,12 +7,12 @@ final class BurnBarRunCreateMetadataTests: XCTestCase {
         let original = BurnBarRunCreateMetadata([
             "requiresApproval": .bool(true),
             "inputTokens": .number(12),
-            "missionExecution": .bool(false),
+            "missionExecution": .bool(false)
         ])
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(BurnBarRunCreateMetadata.self, from: data)
         XCTAssertEqual(decoded, original)
-        XCTAssertEqual(decoded.boolValue(forKey: "requiresApproval"), true)
+        XCTAssertTrue(decoded.boolValue(forKey: "requiresApproval") ?? false)
         XCTAssertEqual(decoded.intValue(forKey: "inputTokens"), 12)
     }
 

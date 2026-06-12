@@ -225,7 +225,6 @@ struct ProviderSummary: Identifiable, Hashable {
     }
 }
 
-
 // MARK: - Credential Summary
 
 /// Aggregated usage for a single provider credential (API key / account slot / OAuth identity).
@@ -278,7 +277,6 @@ struct CredentialSummary: Identifiable, Hashable {
         "\(provider.rawValue)#\(accountID ?? "default")"
     }
 }
-
 
 // MARK: - Project Spend Summary
 

@@ -360,7 +360,7 @@ final class HermesService {
     /// `MobileToolContext.atomNavigator` to whatever the chat surface
     /// installed without smuggling protocols through Swift's weak
     /// machinery.
-    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)? = nil
+    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)?
 
     // Relay candidate/eligibility decisions live in
     // `HermesTransportSelector`; these forwarders keep the API views and
@@ -717,7 +717,7 @@ final class HermesService {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Allow attachment-only messages (no text) so users can send a photo
         // and let the model describe / OCR it.
-        guard (!trimmed.isEmpty || !attachments.isEmpty), !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
 
         #if DEBUG
         print("OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
@@ -798,7 +798,7 @@ final class HermesService {
     /// `HermesConversationStateStore`.
     func sendVisibleCLIMessage(_ text: String, context: String? = nil, attachments: [HermesAttachment] = []) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!trimmed.isEmpty || !attachments.isEmpty), !isStreaming else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
 
         guard attachments.isEmpty else {
             conversation.rejectVisibleCLIAttachmentTurn(text: trimmed, attachments: attachments)

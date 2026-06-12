@@ -359,7 +359,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
 
         let semanticHealth = try XCTUnwrap(harness.retrievalHealthRecord(for: .semantic))
         let semanticDetails = try XCTUnwrap(decodeJSONDictionary(semanticHealth.detailsJSON))
-        XCTAssertEqual(boolValue(from: semanticDetails["fallbackToExact"]), false)
+        XCTAssertFalse(boolValue(from: semanticDetails["fallbackToExact"]) ?? true)
         XCTAssertLessThanOrEqual(intValue(from: semanticDetails["candidateCount"]) ?? Int.max, 24)
         XCTAssertNotNil(doubleValue(from: semanticDetails["annCandidateGenerationLatencyMs"]))
         XCTAssertNotNil(doubleValue(from: semanticDetails["exactRerankLatencyMs"]))

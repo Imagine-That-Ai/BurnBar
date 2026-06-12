@@ -19,14 +19,14 @@ import Foundation
 //   burnbar://runtime?profile=hermes
 
 /// Canonical scheme used for in-app navigation links emitted by Hermes.
-public let HermesAtomURLScheme = "burnbar"
+public let hermesAtomURLScheme = "burnbar"
 
 public enum HermesAtomURL {
 
     /// Encode a `HermesAtom` to its canonical `burnbar://` URL.
     public static func encode(_ atom: HermesAtom) -> URL {
         var components = URLComponents()
-        components.scheme = HermesAtomURLScheme
+        components.scheme = hermesAtomURLScheme
         switch atom {
         case .cost(let amount, let window):
             components.host = "burn"
@@ -69,14 +69,14 @@ public enum HermesAtomURL {
             components.queryItems = [URLQueryItem(name: "profile", value: profile)]
         }
         // URLComponents builds the right form even when host has no path.
-        return components.url ?? URL(string: "\(HermesAtomURLScheme)://unknown")!
+        return components.url ?? URL(string: "\(hermesAtomURLScheme)://unknown")!
     }
 
     /// Decode a `URL` back to a `HermesAtom`. Returns `nil` for any URL
     /// that's not a recognized burnbar:// atom — callers should fall back
     /// to rendering the link as plain text.
     public static func decode(_ url: URL) -> HermesAtom? {
-        guard url.scheme?.lowercased() == HermesAtomURLScheme else { return nil }
+        guard url.scheme?.lowercased() == hermesAtomURLScheme else { return nil }
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         let host = (components.host ?? "").lowercased()
         let params = Dictionary(

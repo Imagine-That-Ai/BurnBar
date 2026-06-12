@@ -85,7 +85,8 @@ final class RuleBasedVerdictEngineTests: XCTestCase {
             window: .today
         )
         guard let cache = v.rings.first(where: { $0.identity == .cache }) else {
-            return XCTFail("missing cache ring")
+            XCTFail("missing cache ring")
+            return
         }
         XCTAssertEqual(cache.current, 90, accuracy: 0.01)
     }

@@ -70,7 +70,7 @@ public extension MediaAnalyticsEvent {
             name: .sessionStarted,
             parameters: [
                 "feature": .string(feature.rawValue),
-                "streamClass": .string(streamClass.rawValue),
+                "streamClass": .string(streamClass.rawValue)
             ]
         )
     }
@@ -87,7 +87,7 @@ public extension MediaAnalyticsEvent {
             "feature": .string(feature.rawValue),
             "endReason": .string(endReason.rawValue),
             "durationBucket": .string(MediaTelemetryBucket.sessionDuration(durationSeconds)),
-            "freezeCountBucket": .string(MediaTelemetryBucket.freezeCount(freezeCount)),
+            "freezeCountBucket": .string(MediaTelemetryBucket.freezeCount(freezeCount))
         ]
         if let rtt = p95RoundTripMillis {
             parameters["p95RoundTripBucket"] = .string(MediaTelemetryBucket.roundTrip(rtt))
@@ -108,7 +108,7 @@ public extension MediaAnalyticsEvent {
             parameters: [
                 "sizeBucket": .string(MediaTelemetryBucket.transferSize(sizeBytes)),
                 "durationBucket": .string(MediaTelemetryBucket.sessionDuration(durationSeconds)),
-                "didResume": .bool(didResume),
+                "didResume": .bool(didResume)
             ]
         )
     }
@@ -121,7 +121,7 @@ public extension MediaAnalyticsEvent {
             name: .transferFailed,
             parameters: [
                 "sizeBucket": .string(MediaTelemetryBucket.transferSize(sizeBytes)),
-                "failureCode": .string(failureCode),
+                "failureCode": .string(failureCode)
             ]
         )
     }
@@ -134,7 +134,7 @@ public extension MediaAnalyticsEvent {
             name: .quotaDenied,
             parameters: [
                 "feature": .string(feature.rawValue),
-                "quotaReason": .string(reason.rawValue),
+                "quotaReason": .string(reason.rawValue)
             ]
         )
     }
@@ -149,7 +149,7 @@ public extension MediaAnalyticsEvent {
             parameters: [
                 "fromLevel": .string(from.rawValue),
                 "toLevel": .string(to.rawValue),
-                "projectedMonthEndUSDBucket": .string(budgetBucket(projectedMonthEndUSD)),
+                "projectedMonthEndUSDBucket": .string(budgetBucket(projectedMonthEndUSD))
             ]
         )
     }

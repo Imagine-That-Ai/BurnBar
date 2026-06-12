@@ -190,7 +190,7 @@ final class SignalEnvelopeAADTests: XCTestCase {
                 field: "f",
                 mode: .atRest,
                 formatVersion: 1
-            ),
+            )
         ]
         for binding in injections {
             XCTAssertThrowsError(try signalEnvelopeBindingToAAD(binding)) { error in

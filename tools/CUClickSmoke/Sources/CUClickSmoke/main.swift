@@ -290,7 +290,11 @@ func focusedWindowCenter(app: NSRunningApplication) -> (x: Int, y: Int)? {
         return nil
     }
 
-    let windowElement = window as! AXUIElement
+    guard CFGetTypeID(window) == AXUIElementGetTypeID() else {
+        FileHandle.standardError.write(Data("CUClickSmoke: focused window attribute is not an AXUIElement\n".utf8))
+        return nil
+    }
+    let windowElement = unsafeDowncast(window, to: AXUIElement.self)
     AXUIElementPerformAction(windowElement, kAXRaiseAction as CFString)
 
     var targetPosition = CGPoint(x: 120, y: 120)
@@ -312,10 +316,15 @@ func focusedWindowCenter(app: NSRunningApplication) -> (x: Int, y: Int)? {
         return nil
     }
 
+    guard CFGetTypeID(positionValue) == AXValueGetTypeID(),
+          CFGetTypeID(sizeValue) == AXValueGetTypeID() else {
+        FileHandle.standardError.write(Data("CUClickSmoke: window position/size attributes are not AXValues\n".utf8))
+        return nil
+    }
     var position = CGPoint.zero
     var size = CGSize.zero
-    guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
-          AXValueGetValue(sizeValue as! AXValue, .cgSize, &size) else {
+    guard AXValueGetValue(unsafeDowncast(positionValue, to: AXValue.self), .cgPoint, &position),
+          AXValueGetValue(unsafeDowncast(sizeValue, to: AXValue.self), .cgSize, &size) else {
         return nil
     }
     return (

@@ -559,7 +559,7 @@ struct DashboardQuickSwitchView: View {
     @ViewBuilder
     private var providerPulseSection: some View {
         let groups = Dictionary(grouping: profiles, by: providerDisplayName(for:))
-            .map { (provider, items) in
+            .map { provider, items in
                 (
                     provider: provider,
                     count: items.count,

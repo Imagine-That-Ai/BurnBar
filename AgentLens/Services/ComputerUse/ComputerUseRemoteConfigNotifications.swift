@@ -8,4 +8,3 @@ extension Notification.Name {
         "OpenBurnBarComputerUseRemoteConfigKillSwitchDidFire"
     )
 }
-

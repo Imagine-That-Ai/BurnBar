@@ -31,9 +31,9 @@ struct MenuBarPopoverView: View {
     @State private var isCastingSmartHub = false
     @State private var smartHubCastStatusMessage: String?
     @State private var resizingStartSize: CGSize?
-    @State private var hoveredSectionID: String? = nil
+    @State private var hoveredSectionID: String?
     @State private var intrinsicTraySectionHeights: [String: CGFloat] = [:]
-    @State private var activeTrayResizeSection: String? = nil
+    @State private var activeTrayResizeSection: String?
     @State private var activeTrayResizeStartHeight: CGFloat = 0
     @State private var isHoveringResizeHandle = false
     @State private var resizeHandleCursorPushed = false
@@ -246,7 +246,7 @@ struct MenuBarPopoverView: View {
                 await operatingLayer.refreshControllerRuntime()
                 // Auto-open chat view if Hermes is actively streaming or has an active conversation
                 if let ctrl = chatController,
-                   (ctrl.isStreaming || !ctrl.messages.isEmpty) {
+                   ctrl.isStreaming || !ctrl.messages.isEmpty {
                     hermesChatActive = true
                 }
             }
@@ -495,7 +495,6 @@ struct MenuBarPopoverView: View {
         return min(max(height, 500), maxHeight)
     }
 
-
     // MARK: - Per-section resize
 
     private var traySectionHeights: [String: CGFloat] {
@@ -616,10 +615,10 @@ struct MenuBarPopoverView: View {
                 }
                 .popoverTooltip("Import new and updated sessions from your agent log folders.")
 
-                GlassIconButton(action: {
+                GlassIconButton {
                     dismiss()
                     onOpenSettings()
-                }) {
+                } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -993,7 +992,7 @@ struct GlassCard<Content: View>: View {
                 colors: [
                     Color(hex: "F45B69").opacity(0.07),
                     Color.clear,
-                    Color(hex: "E86100").opacity(0.045),
+                    Color(hex: "E86100").opacity(0.045)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -1003,7 +1002,7 @@ struct GlassCard<Content: View>: View {
                 colors: [
                     Color.white.opacity(0.08),
                     Color.clear,
-                    DesignSystem.Colors.ember.opacity(0.02),
+                    DesignSystem.Colors.ember.opacity(0.02)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -1017,7 +1016,7 @@ struct GlassCard<Content: View>: View {
                 colors: [
                     Color(hex: "F45B69").opacity(0.22),
                     DesignSystem.Colors.border.opacity(0.55),
-                    Color(hex: "E86100").opacity(0.18),
+                    Color(hex: "E86100").opacity(0.18)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -1027,7 +1026,7 @@ struct GlassCard<Content: View>: View {
                 colors: [
                     Color.white.opacity(0.18),
                     DesignSystem.Colors.border.opacity(0.45),
-                    DesignSystem.Colors.border.opacity(0.25),
+                    DesignSystem.Colors.border.opacity(0.25)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -1334,7 +1333,6 @@ private enum PopoverTraySection: String, CaseIterable, Identifiable {
         }
     }
 }
-
 
 private struct ResizableTraySectionDivider: View {
     var showsLine: Bool

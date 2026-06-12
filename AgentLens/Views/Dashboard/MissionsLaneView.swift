@@ -16,8 +16,8 @@ struct MissionsLaneView: View {
     var onOpenSessionLogs: () -> Void
 
     @State private var stateFilter: MissionStateFilter = .all
-    @State private var projectFilter: String? = nil
-    @State private var expandedMissionID: String? = nil
+    @State private var projectFilter: String?
+    @State private var expandedMissionID: String?
     @State private var showingNewMissionSheet = false
     @State private var refreshing = false
     @State private var heroAppeared = false

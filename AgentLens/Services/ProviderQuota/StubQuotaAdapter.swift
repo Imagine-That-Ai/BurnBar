@@ -2,14 +2,14 @@ import Foundation
 
 // MARK: - Stub Quota Adapters
 
-/// Returns `.unavailable` for providers with no data source or not yet installed.
-/// Used for providers in the AgentProvider enum that either:
-/// - Have no public usage API (Gemini CLI)
-/// - Are not installed on this machine (Cline, Roo Code, Windsurf, etc.)
-/// - Have no discoverable data source (Goose, OpenClaw)
-///
-/// Each adapter detects whether the tool is installed and returns the appropriate
-/// status message with a link to how to enable tracking.
+// Returns `.unavailable` for providers with no data source or not yet installed.
+// Used for providers in the AgentProvider enum that either:
+// - Have no public usage API (Gemini CLI)
+// - Are not installed on this machine (Cline, Roo Code, Windsurf, etc.)
+// - Have no discoverable data source (Goose, OpenClaw)
+//
+// Each adapter detects whether the tool is installed and returns the appropriate
+// status message with a link to how to enable tracking.
 
 // MARK: - Cline
 
@@ -34,7 +34,7 @@ struct ClineQuotaAdapter: ProviderQuotaAdapter {
             "~/Library/Application Support/Code/User/globalStorage",
             "~/Library/Application Support/Cursor/User/globalStorage",
             "~/Library/Application Support/Code - Insiders/User/globalStorage",
-            "~/Library/Application Support/Windsurf - Next/User/globalStorage",
+            "~/Library/Application Support/Windsurf - Next/User/globalStorage"
         ]
         for base in paths {
             let expanded = (base as NSString).expandingTildeInPath
@@ -86,7 +86,7 @@ struct RooCodeQuotaAdapter: ProviderQuotaAdapter {
             "~/Library/Application Support/Code/User/globalStorage",
             "~/Library/Application Support/Cursor/User/globalStorage",
             "~/Library/Application Support/Code - Insiders/User/globalStorage",
-            "~/Library/Application Support/Windsurf - Next/User/globalStorage",
+            "~/Library/Application Support/Windsurf - Next/User/globalStorage"
         ]
         for base in paths {
             let expanded = (base as NSString).expandingTildeInPath

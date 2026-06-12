@@ -127,7 +127,7 @@ public enum ChromeProfileDiscovery {
         let fm = FileManager.default
         let storagePaths = [
             "\(profileDirectoryPath)/Local Storage/leveldb",
-            "\(profileDirectoryPath)/IndexedDB",
+            "\(profileDirectoryPath)/IndexedDB"
         ]
 
         let candidateFiles = storagePaths.flatMap { storagePath in
@@ -165,13 +165,12 @@ public enum ChromeProfileDiscovery {
         guard matched else { return nil }
 
         let bestLabel = candidateScores
-            .sorted { lhs, rhs in
+            .min { lhs, rhs in
                 if lhs.value == rhs.value {
                     return lhs.key < rhs.key
                 }
                 return lhs.value > rhs.value
-            }
-            .first?
+            }?
             .key
 
         return BrowserServiceIdentity(provider: provider, accountLabel: bestLabel)
@@ -266,7 +265,7 @@ public enum ChromeProfileDiscovery {
                 "amazonaws.com",
                 "example.com",
                 "example.org",
-                "example.net",
+                "example.net"
             ]
             return !excludedDomains.contains { lowercased.hasSuffix($0) }
         }
@@ -291,6 +290,5 @@ private extension BrowserServiceProvider {
         storageMarkers[0]
     }
 }
-
 
 #endif

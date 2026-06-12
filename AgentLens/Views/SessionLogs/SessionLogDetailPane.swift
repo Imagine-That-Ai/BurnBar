@@ -54,9 +54,9 @@ struct SessionLogDetailPane: View {
     var overrideBody: String?
     var jumpTarget: ConversationJumpTarget?
     /// Dominant model from `token_usage` (`sessionModelMap`); best for provider sessions.
-    var dominantModelKey: String? = nil
+    var dominantModelKey: String?
     /// When usage has no model row (e.g. CLI assistant + Hermes), use the live chat model id.
-    var preferredChatModelKey: String? = nil
+    var preferredChatModelKey: String?
 
     @State private var markdownBody = ""
     @State private var copyConfirmed = false

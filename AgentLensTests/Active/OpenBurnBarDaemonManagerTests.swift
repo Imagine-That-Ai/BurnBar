@@ -961,7 +961,6 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     }
 }
 
-
     private func makeRuntimePathsHarness(name: String) throws -> RuntimePathsHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("BurnBarDaemonManagerTests-\(name)-\(UUID().uuidString)", isDirectory: true)

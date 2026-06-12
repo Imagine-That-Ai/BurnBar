@@ -238,7 +238,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             "appLifecycle": appLifecycle,
             "agentNotificationsEnabled": notificationsEnabled,
             "lastSeenAtMillis": Int64(Date().timeIntervalSince1970 * 1000),
-            "updated_at_millis": Int64(Date().timeIntervalSince1970 * 1000),
+            "updated_at_millis": Int64(Date().timeIntervalSince1970 * 1000)
         ]
         if let fcmToken { payload["fcm_token"] = fcmToken }
         if let activeThreadID { payload["activeThreadId"] = activeThreadID }
@@ -312,7 +312,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
                 ),
                 "vaultKeyID": key.vaultKeyID,
                 "deviceId": deviceID,
-                "clientReplyId": "\(eventID)_\(deviceID)",
+                "clientReplyId": "\(eventID)_\(deviceID)"
             ])
         } catch {
             #if DEBUG

@@ -261,7 +261,7 @@ private var toolbarPillSurface: some View {
 struct GlassPicker<Option: Identifiable & Hashable>: View {
     @Binding var selection: Option
     let options: [Option]
-    var leadingSymbol: String? = nil
+    var leadingSymbol: String?
 
     var body: some View {
         Menu {
@@ -497,7 +497,7 @@ struct ToolbarPillButton<Label: View>: View {
 struct SessionPreviewRow: View {
     let usage: TokenUsage
     @Bindable var settingsManager: SettingsManager
-    var onTap: (() -> Void)? = nil
+    var onTap: (() -> Void)?
 
     private var theme: ProviderTheme { .theme(for: usage.provider) }
 

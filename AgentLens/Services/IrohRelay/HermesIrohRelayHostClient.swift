@@ -279,7 +279,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         rttMillis: nil,
                         detail: [
                             "reason": "inbound_peer_not_allowlisted",
-                            "remoteNodeId": stream.remotePeerNodeId ?? "unknown",
+                            "remoteNodeId": stream.remotePeerNodeId ?? "unknown"
                         ]
                     )
                     await stream.close()

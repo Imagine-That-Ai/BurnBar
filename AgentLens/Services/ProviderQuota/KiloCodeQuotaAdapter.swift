@@ -32,7 +32,7 @@ struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
         "Code",
         "Cursor",
         "Code - Insiders",
-        "Windsurf - Next",
+        "Windsurf - Next"
     ]
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {

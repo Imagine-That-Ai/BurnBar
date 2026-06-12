@@ -57,7 +57,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
             let semanticDoc = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == semanticConversation.id }),
             let semanticChunk = try store.fetchSearchChunks(documentID: semanticDoc.id).first
         else {
-            return XCTFail("Expected projected semantic conversation chunk.")
+            XCTFail("Expected projected semantic conversation chunk.")
+            return
         }
 
         let semanticProvider = StubSemanticCandidateProvider(
@@ -109,7 +110,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
             let artifactDoc = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == artifact.id }),
             let artifactChunk = try store.fetchSearchChunks(documentID: artifactDoc.id).first
         else {
-            return XCTFail("Expected projected artifact chunk for semantic rescue.")
+            XCTFail("Expected projected artifact chunk for semantic rescue.")
+            return
         }
 
         let semanticProvider = StubSemanticCandidateProvider(
@@ -918,4 +920,3 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
     }
 }
-

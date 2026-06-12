@@ -41,7 +41,7 @@ final class ThreadInboxStore {
 
     func bind(historyStore: MobileChatHistoryStore? = nil, missionHost: MobileMissionConsoleHost? = nil) {
         if let historyStore { self.historyStore = historyStore }
-        if let missionHost  { self.missionHost = missionHost }
+        if let missionHost { self.missionHost = missionHost }
     }
 
     func refresh() async {

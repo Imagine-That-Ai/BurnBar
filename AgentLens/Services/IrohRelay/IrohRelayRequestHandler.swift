@@ -235,8 +235,7 @@ final class IrohRelayRequestHandler: Sendable {
                 // Wrap the stream send in a Sendable closure so the
                 // dispatcher can ack without holding a reference to the
                 // stream object directly.
-                let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
-                    [stream] outboundFrame in
+                let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { [stream] outboundFrame in
                     try await stream.send(outboundFrame)
                 }
                 await mediaDispatcher(frame, ackSender)
@@ -261,8 +260,7 @@ final class IrohRelayRequestHandler: Sendable {
                  .remoteUnlockDenied,
                  .controlDenied:
                 guard let controlDispatcher else { continue }
-                let replySender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
-                    [stream] outboundFrame in
+                let replySender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { [stream] outboundFrame in
                     try await stream.send(outboundFrame)
                 }
                 await controlDispatcher(frame, replySender)
@@ -692,9 +690,8 @@ final class IrohRelayRequestHandler: Sendable {
         func processSSELine(_ line: String) async throws -> Bool {
             if Self.isSSEDoneLine(line) {
                 for event in Self.flushSSEEventLines(&eventLines) {
-                    if try await sendSSEEvent(event) {
-                        return true
-                    }
+                    guard try await sendSSEEvent(event) else { continue }
+                    return true
                 }
                 return true
             }

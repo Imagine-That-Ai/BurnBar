@@ -366,7 +366,7 @@ struct DeleteDomainSheet: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            FlowChips(items: domain.firestorePaths.prefix(8).map { $0 }, icon: "doc.fill", tint: PensieveTheme.waxCrimson)
+            FlowChips(items: Array(domain.firestorePaths.prefix(8)), icon: "doc.fill", tint: PensieveTheme.waxCrimson)
 
             if let outcome {
                 Label("Deleted \(outcome.firestoreDocs) records and \(outcome.storageObjects) files.", systemImage: "checkmark.seal.fill")

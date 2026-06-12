@@ -287,7 +287,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         let failed = try store.fetchProjectionJobs(statuses: [.failed], limit: 10)
         XCTAssertEqual(failed.count, 1)
         guard let failedJob = failed.first else {
-            return XCTFail("Expected one failed job record")
+            XCTFail("Expected one failed job record")
+            return
         }
         XCTAssertEqual(failedJob.id, "job-ready")
         XCTAssertEqual(failedJob.attempts, 1)
@@ -801,4 +802,3 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 }
-

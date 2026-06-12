@@ -50,13 +50,13 @@ public enum RemoteAccessCredentialWorkerLaunchPlan {
                 "\(consoleUserUID)",
                 "/bin/launchctl",
                 "bsexec",
-                "\(loginWindowPID)",
+                "\(loginWindowPID)"
             ] + workerArguments
         }
 
         return [
             "asuser",
-            "\(consoleUserUID)",
+            "\(consoleUserUID)"
         ] + workerArguments
     }
 }

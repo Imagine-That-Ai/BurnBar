@@ -24,7 +24,7 @@ struct KeyboardView: View {
     @State private var composeTrigger = "&&"
     @State private var composeBody = ""
     @State private var composeFocus: ComposeField = .trigger
-    @State private var composeError: String? = nil
+    @State private var composeError: String?
 
     // Repeat-delete state
     @State private var isDeletePressed = false
@@ -227,10 +227,10 @@ struct KeyboardView: View {
         isHighlighted: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: {
+        Button {
             KeyboardHaptics.specialKeyPress()
             action()
-        }) {
+        } label: {
             content
                 .foregroundColor(isHighlighted ? .white : textColor)
                 .frame(height: Metrics.keyHeight)
@@ -366,7 +366,6 @@ struct KeyboardView: View {
             }
     }
 
-
     // MARK: - Snippet Bar
 
     private var snippetBar: some View {
@@ -416,7 +415,7 @@ struct KeyboardView: View {
                     }
 
                     // Add snippet button
-                    Button(action: {
+                    Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             composeTrigger = "&&"
                             composeBody = ""
@@ -424,7 +423,7 @@ struct KeyboardView: View {
                             composeError = nil
                             isComposing = true
                         }
-                    }) {
+                    } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)

@@ -440,7 +440,7 @@ enum FlexibleQuotaBucketNormalizer {
                 score = 3
             } else if allowAffixFuzzyMatch,
                       keyLooksTemporal == requestLooksTemporal,
-                      (normalizedKey.hasSuffix(normalizedRequested) || normalizedKey.hasPrefix(normalizedRequested)) {
+                      normalizedKey.hasSuffix(normalizedRequested) || normalizedKey.hasPrefix(normalizedRequested) {
                 score = 2
             } else if allowContainFuzzyMatch,
                       keyLooksTemporal == requestLooksTemporal,

@@ -226,7 +226,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
         XCTAssertEqual(client.createdAt, createdAt)
         XCTAssertEqual(client.updatedAt, updatedAt)
-        XCTAssertTrue(client.lastSeenAt?.hasPrefix("2027-01-15T08:00:00") == true)
+        XCTAssertEqual(client.lastSeenAt?.hasPrefix("2027-01-15T08:00:00"), true)
     }
 
     func testHermesGatewayApprovalDecoderPreservesRatchetPublicMaterial() throws {
@@ -1417,7 +1417,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
             let payloadCiphertext = envelope["payloadCiphertext"] as? String,
             let wrappedKey = envelope["wrappedKey"] as? String
         else {
-            return XCTFail("Sealed model_switch is missing its envelope")
+            XCTFail("Sealed model_switch is missing its envelope")
+            return
         }
         // The phone stamps the v2 gateway wrap + its own gateway pubkey as sender.
         // Read it back from the envelope (the key actually used to seal).
@@ -1484,7 +1485,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
             let payloadCiphertext = envelope["payloadCiphertext"] as? String,
             let wrappedKey = envelope["wrappedKey"] as? String
         else {
-            return XCTFail("Sealed approval decision missing envelope")
+            XCTFail("Sealed approval decision missing envelope")
+            return
         }
 
         let phoneGatewayPub = try XCTUnwrap(envelope["senderPublicKey"] as? String)
@@ -1542,7 +1544,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
             let payloadCiphertext = envelope["payloadCiphertext"] as? String,
             let wrappedKey = envelope["wrappedKey"] as? String
         else {
-            return XCTFail("Sealed oversight mode missing envelope")
+            XCTFail("Sealed oversight mode missing envelope")
+            return
         }
 
         let phoneGatewayPub = try XCTUnwrap(envelope["senderPublicKey"] as? String)
@@ -2550,7 +2553,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
             XCTFail("Expected backendUnavailable")
         } catch {
             guard case iOSFileTransferService.Failure.backendUnavailable = error else {
-                return XCTFail("Expected backendUnavailable, got \(error)")
+                XCTFail("Expected backendUnavailable, got \(error)")
+                return
             }
         }
 
@@ -4467,7 +4471,8 @@ final class PhoneControlSigningIdentityStoreTests: XCTestCase {
         do {
             let identity = try store.signingIdentity(secureEnclaveEnabled: false)
             guard case .ed25519 = identity else {
-                return XCTFail("expected legacy ed25519 identity with the gate off")
+                XCTFail("expected legacy ed25519 identity with the gate off")
+                return
             }
             XCTAssertNil(identity.wireKeyKind)
             let legacyKey = try store.signingKey()
@@ -4640,4 +4645,3 @@ final class ControlSealSealingSinkTests: XCTestCase {
         XCTAssertNil(frames.first?.control)
     }
 }
-

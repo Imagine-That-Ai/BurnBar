@@ -154,7 +154,7 @@ struct ForgeQuotaAdapter: ProviderQuotaAdapter {
         // Read SQLite DB
         if FileManager.default.fileExists(atPath: Self.forgeDBPath) {
             var db: OpaquePointer?
-            if sqlite3_open(Self.forgeDBPath, &db) == SQLITE_OK, let db = db {
+            if sqlite3_open(Self.forgeDBPath, &db) == SQLITE_OK, let db {
                 defer { sqlite3_close(db) }
 
                 // Count conversations

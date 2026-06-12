@@ -1189,7 +1189,7 @@ struct ProviderPlanWizardView: View {
             let normalizedProfileID = normalizedQuotaIdentifier(profile.id)
             let normalizedProfileSourceIDs = Set([
                 "switcher-cli:\(account.cliType.rawValue):\(profile.id)",
-                "switcher:\(profile.id)",
+                "switcher:\(profile.id)"
             ].compactMap(normalizedQuotaIdentifier))
             return snapshots.first { snapshot in
                 normalizedQuotaIdentifier(snapshot.accountID) == normalizedProfileID
@@ -3472,7 +3472,7 @@ struct ProviderPlanWizardView: View {
             return
         }
 
-        guard !apiKey.isEmpty, (!method.storage.usesDaemonSlot || !label.isEmpty) else { return }
+        guard !apiKey.isEmpty, !method.storage.usesDaemonSlot || !label.isEmpty else { return }
         guard !method.validate(apiKey).isWarning else {
             saveError = method.validate(apiKey).message ?? "Enter a valid credential before saving."
             return
@@ -3640,35 +3640,55 @@ struct ProviderPlanWizardView: View {
         .padding(.top, DesignSystem.Spacing.xs)
     }
 
+    private struct MimoSlotMetadata {
+        let endpointProfileID: String?
+        let region: ProviderEndpointRegion?
+        let tokenPlanTier: MimoTokenPlanTier?
+        let tokenPlanBillingCycle: MimoTokenPlanBillingCycle?
+        let authMethodID: String?
+    }
+
     private func mimoSlotMetadata(
         for method: BurnBarProviderAuthMethod,
         providerID: String
-    ) -> (
-        endpointProfileID: String?,
-        region: ProviderEndpointRegion?,
-        tokenPlanTier: MimoTokenPlanTier?,
-        tokenPlanBillingCycle: MimoTokenPlanBillingCycle?,
-        authMethodID: String?
-    ) {
+    ) -> MimoSlotMetadata {
         guard providerID == "mimo" else {
-            return (nil, nil, nil, nil, nil)
+            return MimoSlotMetadata(
+                endpointProfileID: nil,
+                region: nil,
+                tokenPlanTier: nil,
+                tokenPlanBillingCycle: nil,
+                authMethodID: nil
+            )
         }
 
         switch method.id {
         case "mimo-token-plan":
             let profile = ProviderEndpointProfileRegistry.mimoTokenPlan(region: localMimoRegion)
-            return (
-                profile.id,
-                localMimoRegion,
-                localMimoTier,
-                localMimoBillingCycle,
-                method.id
+            return MimoSlotMetadata(
+                endpointProfileID: profile.id,
+                region: localMimoRegion,
+                tokenPlanTier: localMimoTier,
+                tokenPlanBillingCycle: localMimoBillingCycle,
+                authMethodID: method.id
             )
         case "mimo-payg":
             let profile = ProviderEndpointProfileRegistry.mimoPayg
-            return (profile.id, .global, nil, nil, method.id)
+            return MimoSlotMetadata(
+                endpointProfileID: profile.id,
+                region: .global,
+                tokenPlanTier: nil,
+                tokenPlanBillingCycle: nil,
+                authMethodID: method.id
+            )
         default:
-            return (nil, nil, nil, nil, method.id)
+            return MimoSlotMetadata(
+                endpointProfileID: nil,
+                region: nil,
+                tokenPlanTier: nil,
+                tokenPlanBillingCycle: nil,
+                authMethodID: method.id
+            )
         }
     }
 }

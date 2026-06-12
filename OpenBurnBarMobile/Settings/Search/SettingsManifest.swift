@@ -406,7 +406,7 @@ enum SettingsManifest {
             title: "Terms of service",
             subtitle: "Legal terms governing use of OpenBurnBar",
             keywords: ["terms", "legal", "service", "agreement"]
-        ),
+        )
     ]
 
     /// Reverse-index from anchor id to page route, used by destination views
@@ -458,7 +458,7 @@ enum SettingsManifest {
         SettingsAnchor.textExpansionRow,
         SettingsAnchor.aboutVersion,
         SettingsAnchor.aboutPrivacy,
-        SettingsAnchor.aboutTerms,
+        SettingsAnchor.aboutTerms
     ]).union(providerItems.map(\.anchorID))
 
     private static let providerItems: [SettingsItem] = {

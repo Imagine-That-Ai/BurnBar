@@ -83,7 +83,7 @@ public actor BurnBarDaemonServer {
         // both runtime availability AND provider credentials (since connectors are backed by
         // the same credential system).
         let resolvedToolingProxy = self.toolingProxy
-        let executionReadinessGate: BurnBarExecutionReadinessGate = { @Sendable mission, packet in
+        let executionReadinessGate: BurnBarExecutionReadinessGate = { @Sendable _, _ in
             // Check 1: Verify connector plane runtime is accessible
             // This also implicitly validates that provider credentials are accessible since
             // the connector plane is backed by the same secret store.
@@ -535,7 +535,6 @@ public actor BurnBarDaemonServer {
         let result = getsockopt(clientFileDescriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidSize)
         return result == 0 ? pid : nil
     }
-
 
     private static func handleClientConnection(
         server: BurnBarDaemonServer,

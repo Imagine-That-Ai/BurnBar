@@ -470,7 +470,7 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
     }
 
     var primaryBucket: ProviderQuotaBucket? {
-        buckets.map { $0.reconcilingElapsedWindow() }.sorted {
+        buckets.map { $0.reconcilingElapsedWindow() }.min {
             let lhsPriority = primaryBucketPriority(for: $0)
             let rhsPriority = primaryBucketPriority(for: $1)
             if lhsPriority != rhsPriority {
@@ -482,7 +482,7 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
                 return ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture)
             }
             return lhsRemaining < rhsRemaining
-        }.first
+        }
     }
 
     private func primaryBucketPriority(for bucket: ProviderQuotaBucket) -> Int {
@@ -604,7 +604,7 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
     }
 
     var primaryDisplayableBucket: ProviderQuotaBucket? {
-        displayableQuotaBuckets.sorted {
+        displayableQuotaBuckets.min {
             let lhsPriority = primaryBucketPriority(for: $0)
             let rhsPriority = primaryBucketPriority(for: $1)
             if lhsPriority != rhsPriority {
@@ -616,7 +616,7 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
                 return ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture)
             }
             return lhsRemaining < rhsRemaining
-        }.first
+        }
     }
 
     func filteringToDisplayableQuotaSignal() -> ProviderQuotaSnapshot? {
@@ -735,7 +735,6 @@ enum FactoryQuotaPlanTier: String, CaseIterable, Codable, Identifiable {
         }
     }
 }
-
 
 // MARK: - xAI / Grok plan tier
 //

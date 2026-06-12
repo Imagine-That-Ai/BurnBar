@@ -51,7 +51,8 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let gate = makeGate(entitlement: entitlement, usage: zeroUsage, budget: normalBudget, concurrent: 0)
         let result = await gate.check(feature: .videoCall, sessionDurationLimitSeconds: nil, sessionByteBudget: nil)
         guard case .denied(let reason) = result else {
-            return XCTFail("expected denied")
+            XCTFail("expected denied")
+            return
         }
         XCTAssertEqual(reason, .entitlementMissing)
     }
@@ -68,7 +69,8 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         for feature in [MediaStreamClass.Feature.fileTransfer, .screenShare, .videoCall] {
             let result = await gate.check(feature: feature, sessionDurationLimitSeconds: nil, sessionByteBudget: nil)
             guard case .denied(let reason) = result else {
-                return XCTFail("expected denied for \(feature)")
+                XCTFail("expected denied for \(feature)")
+                return
             }
             XCTAssertEqual(reason, .budgetHardCapReached, "feature \(feature)")
         }
@@ -99,7 +101,8 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let gate = makeGate(entitlement: happyEntitlement, usage: zeroUsage, budget: normalBudget, concurrent: 1)
         let result = await gate.check(feature: .videoCall, sessionDurationLimitSeconds: nil, sessionByteBudget: nil)
         guard case .denied(let reason) = result else {
-            return XCTFail("expected denied")
+            XCTFail("expected denied")
+            return
         }
         XCTAssertEqual(reason, .concurrentSessionCapReached)
     }
@@ -114,7 +117,8 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let gate = makeGate(entitlement: happyEntitlement, usage: zeroUsage, budget: normalBudget, concurrent: 3)
         let result = await gate.check(feature: .screenShare, sessionDurationLimitSeconds: nil, sessionByteBudget: nil)
         guard case .denied(let reason) = result else {
-            return XCTFail("expected denied")
+            XCTFail("expected denied")
+            return
         }
         XCTAssertEqual(reason, .concurrentSessionCapReached)
     }
@@ -138,7 +142,8 @@ final class MacMediaCapabilityGateTests: XCTestCase {
             sessionByteBudget: 1_000_000_000
         )
         guard case .denied(let reason) = result else {
-            return XCTFail("expected denied")
+            XCTFail("expected denied")
+            return
         }
         XCTAssertEqual(reason, .sessionCapReached)
     }

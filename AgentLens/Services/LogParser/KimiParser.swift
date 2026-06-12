@@ -144,7 +144,7 @@ final class KimiParser: LogParser, Sendable {
         let cacheCreationTokens: Int
         let cacheReadTokens: Int
 
-        if let wt = wireTokens, (wt.inputOther > 0 || wt.output > 0 || wt.inputCacheRead > 0 || wt.inputCacheCreation > 0) {
+        if let wt = wireTokens, wt.inputOther > 0 || wt.output > 0 || wt.inputCacheRead > 0 || wt.inputCacheCreation > 0 {
             inputTokens = wt.inputOther
             outputTokens = wt.output
             cacheCreationTokens = wt.inputCacheCreation
@@ -288,7 +288,7 @@ final class KimiParser: LogParser, Sendable {
             payload["model_id"],
             payload["modelId"],
             payload["model_name"],
-            payload["modelName"],
+            payload["modelName"]
         ]
 
         for candidate in candidates {

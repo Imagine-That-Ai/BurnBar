@@ -107,7 +107,7 @@ struct DatabaseWorkspaceSnapshot: Equatable, Sendable {
 
     // Freshness
     var lastRefresh: Date?
-    var snapshotBuiltAt: Date = Date()
+    var snapshotBuiltAt = Date()
     var contentVersion: String = ""
     var unavailableMetrics: Set<DatabaseWorkspaceMetric> = []
     var loadIssues: [DatabaseWorkspaceLoadIssue] = []
@@ -150,7 +150,7 @@ final class DatabaseWorkspaceSnapshotBuilder {
             metric: DatabaseWorkspaceMetric,
             context: String,
             assign: (T) -> Void,
-            _ work: () throws -> T
+            work: () throws -> T
         ) {
             do {
                 assign(try work())
@@ -189,100 +189,100 @@ final class DatabaseWorkspaceSnapshotBuilder {
         snap.indexingEnabled = indexingEnabled
 
         // Search/index coverage
-        capture(metric: .indexedDocuments, context: "document_count", assign: { snap.indexedDocuments = $0 }) {
+        capture(metric: .indexedDocuments, context: "document_count", assign: { snap.indexedDocuments = $0 }, work: {
             try dataStore.countSearchDocuments()
-        }
-        capture(metric: .indexedChunks, context: "chunk_count", assign: { snap.indexedChunks = $0 }) {
+        })
+        capture(metric: .indexedChunks, context: "chunk_count", assign: { snap.indexedChunks = $0 }, work: {
             try dataStore.countSearchChunks()
-        }
+        })
 
         // Conversations
-        capture(metric: .totalConversations, context: "conversation_count", assign: { snap.totalConversations = $0 }) {
+        capture(metric: .totalConversations, context: "conversation_count", assign: { snap.totalConversations = $0 }, work: {
             try dataStore.countConversations()
-        }
+        })
 
         // Source artifacts
-        capture(metric: .sourceArtifacts, context: "artifact_count", assign: { snap.sourceArtifacts = $0 }) {
+        capture(metric: .sourceArtifacts, context: "artifact_count", assign: { snap.sourceArtifacts = $0 }, work: {
             try dataStore.countSourceArtifacts()
-        }
+        })
 
         // Shared state
-        capture(metric: .sharedArtifacts, context: "shared_sync_count", assign: { snap.sharedArtifactCount = $0 }) {
+        capture(metric: .sharedArtifacts, context: "shared_sync_count", assign: { snap.sharedArtifactCount = $0 }, work: {
             try dataStore.countSharedArtifactSyncStates()
-        }
-        capture(metric: .sharedArtifacts, context: "shared_sync_synced", assign: { snap.syncedArtifactCount = $0 }) {
+        })
+        capture(metric: .sharedArtifacts, context: "shared_sync_synced", assign: { snap.syncedArtifactCount = $0 }, work: {
             try dataStore.countSharedArtifactSyncStates(statuses: [.synced])
-        }
-        capture(metric: .sharedArtifacts, context: "shared_sync_pending", assign: { snap.pendingArtifactCount = $0 }) {
+        })
+        capture(metric: .sharedArtifacts, context: "shared_sync_pending", assign: { snap.pendingArtifactCount = $0 }, work: {
             try dataStore.countSharedArtifactSyncStates(statuses: [.pendingUpload, .pendingPull])
-        }
-        capture(metric: .sharedArtifacts, context: "shared_sync_conflicted", assign: { snap.conflictedArtifactCount = $0 }) {
+        })
+        capture(metric: .sharedArtifacts, context: "shared_sync_conflicted", assign: { snap.conflictedArtifactCount = $0 }, work: {
             try dataStore.countSharedArtifactSyncStates(statuses: [.conflicted])
-        }
-        capture(metric: .sharedArtifacts, context: "shared_sync_failed", assign: { snap.failedArtifactCount = $0 }) {
+        })
+        capture(metric: .sharedArtifacts, context: "shared_sync_failed", assign: { snap.failedArtifactCount = $0 }, work: {
             try dataStore.countSharedArtifactSyncStates(statuses: [.failed])
-        }
-        capture(metric: .sharedArtifacts, context: "shared_sync_recent", assign: { snap.syncStates = $0 }) {
+        })
+        capture(metric: .sharedArtifacts, context: "shared_sync_recent", assign: { snap.syncStates = $0 }, work: {
             try dataStore.fetchSharedArtifactSyncStates(limit: 100)
-        }
-        capture(metric: .permissions, context: "permission_count", assign: { snap.permissionCount = $0 }) {
+        })
+        capture(metric: .permissions, context: "permission_count", assign: { snap.permissionCount = $0 }, work: {
             try dataStore.countSharedArtifactPermissions()
-        }
-        capture(metric: .permissions, context: "permission_recent", assign: { snap.permissions = $0 }) {
+        })
+        capture(metric: .permissions, context: "permission_recent", assign: { snap.permissions = $0 }, work: {
             try dataStore.fetchSharedArtifactPermissions(limit: 100)
-        }
-        capture(metric: .auditEvents, context: "audit_count", assign: { snap.auditEventCount = $0 }) {
+        })
+        capture(metric: .auditEvents, context: "audit_count", assign: { snap.auditEventCount = $0 }, work: {
             try dataStore.countSharedArtifactAuditEvents()
-        }
-        capture(metric: .auditEvents, context: "audit_recent", assign: { snap.auditEvents = $0 }) {
+        })
+        capture(metric: .auditEvents, context: "audit_recent", assign: { snap.auditEvents = $0 }, work: {
             try dataStore.fetchSharedArtifactAuditEvents(limit: 50)
-        }
+        })
 
         // System: projection jobs
-        capture(metric: .projectionJobs, context: "projection_recent", assign: { snap.projectionJobs = $0 }) {
+        capture(metric: .projectionJobs, context: "projection_recent", assign: { snap.projectionJobs = $0 }, work: {
             try dataStore.fetchProjectionJobs(
                 statuses: ProjectionJobStatus.allCases,
                 limit: 100
             )
-        }
-        capture(metric: .projectionJobs, context: "projection_total", assign: { snap.projectionJobCounts.total = $0 }) {
+        })
+        capture(metric: .projectionJobs, context: "projection_total", assign: { snap.projectionJobCounts.total = $0 }, work: {
             try dataStore.countProjectionJobs()
-        }
-        capture(metric: .projectionJobs, context: "projection_active", assign: { snap.projectionJobCounts.active = $0 }) {
+        })
+        capture(metric: .projectionJobs, context: "projection_active", assign: { snap.projectionJobCounts.active = $0 }, work: {
             try dataStore.countProjectionJobs(statuses: [.running, .leased])
-        }
-        capture(metric: .projectionJobs, context: "projection_queued", assign: { snap.projectionJobCounts.queued = $0 }) {
+        })
+        capture(metric: .projectionJobs, context: "projection_queued", assign: { snap.projectionJobCounts.queued = $0 }, work: {
             try dataStore.countProjectionJobs(statuses: [.queued])
-        }
-        capture(metric: .projectionJobs, context: "projection_failed", assign: { snap.projectionJobCounts.failed = $0 }) {
+        })
+        capture(metric: .projectionJobs, context: "projection_failed", assign: { snap.projectionJobCounts.failed = $0 }, work: {
             try dataStore.countProjectionJobs(statuses: [.failed])
-        }
+        })
 
         // System: retrieval health
-        capture(metric: .retrievalHealth, context: "retrieval_health", assign: { snap.retrievalHealth = $0 }) {
+        capture(metric: .retrievalHealth, context: "retrieval_health", assign: { snap.retrievalHealth = $0 }, work: {
             try dataStore.fetchRetrievalHealth()
-        }
+        })
         snap.retrievalSystemHealth = RetrievalHealthService(dataStore: dataStore).snapshot(
             indexingEnabled: settingsManager.conversationIndexingEnabled,
             sharedFeaturesAvailable: accountManager?.isSignedIn ?? false
         )
 
         // Embeddings
-        capture(metric: .embeddingModels, context: "embedding_models", assign: { snap.embeddingModelRecords = $0 }) {
+        capture(metric: .embeddingModels, context: "embedding_models", assign: { snap.embeddingModelRecords = $0 }, work: {
             try dataStore.fetchEmbeddingModels()
-        }
-        capture(metric: .embeddingModels, context: "embedding_model_count", assign: { snap.embeddingModels = $0 }) {
+        })
+        capture(metric: .embeddingModels, context: "embedding_model_count", assign: { snap.embeddingModels = $0 }, work: {
             try dataStore.countEmbeddingModels()
-        }
-        capture(metric: .embeddingVersions, context: "embedding_versions", assign: { snap.embeddingVersionRecords = $0 }) {
+        })
+        capture(metric: .embeddingVersions, context: "embedding_versions", assign: { snap.embeddingVersionRecords = $0 }, work: {
             try dataStore.fetchEmbeddingVersions()
-        }
-        capture(metric: .embeddingVersions, context: "embedding_version_count", assign: { snap.embeddingVersions = $0 }) {
+        })
+        capture(metric: .embeddingVersions, context: "embedding_version_count", assign: { snap.embeddingVersions = $0 }, work: {
             try dataStore.countEmbeddingVersions()
-        }
-        capture(metric: .embeddedChunks, context: "embedding_chunk_count", assign: { snap.embeddedChunks = $0 }) {
+        })
+        capture(metric: .embeddedChunks, context: "embedding_chunk_count", assign: { snap.embeddedChunks = $0 }, work: {
             try dataStore.countChunkEmbeddings()
-        }
+        })
 
         // Freshness
         snap.lastRefresh = dataStore.lastRefresh

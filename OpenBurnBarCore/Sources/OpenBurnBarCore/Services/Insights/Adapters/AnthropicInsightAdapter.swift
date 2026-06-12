@@ -283,11 +283,10 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
             throw InsightGatewayError.malformedResponse(modelID: modelTag.modelID, detail: "no JSON found")
         }
         var depth = 0
-        var endIndex: String.Index? = nil
+        var endIndex: String.Index?
         for idx in stripped[firstBrace...].indices {
             let c = stripped[idx]
-            if c == "{" { depth += 1 }
-            else if c == "}" {
+            if c == "{" { depth += 1 } else if c == "}" {
                 depth -= 1
                 if depth == 0 { endIndex = stripped.index(after: idx); break }
             }
@@ -409,12 +408,12 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
     }
 
     private func parseWindowFilter(_ raw: String?) -> InsightFilter? {
-        guard let raw = raw, let window = parseTimeWindow(raw) else { return nil }
+        guard let raw, let window = parseTimeWindow(raw) else { return nil }
         return InsightFilter(window: window)
     }
 
     private func parseTimeWindow(_ raw: String?) -> InsightTimeWindow? {
-        guard let raw = raw else { return nil }
+        guard let raw else { return nil }
         switch raw {
         case "today": return .today
         case "last24h": return .last24h

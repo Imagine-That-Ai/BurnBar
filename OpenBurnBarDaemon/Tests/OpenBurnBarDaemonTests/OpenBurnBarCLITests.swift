@@ -14,7 +14,7 @@ final class BurnBarCLITests: XCTestCase {
 
             XCTAssertEqual(result?.exitCode, EXIT_SUCCESS)
             XCTAssertEqual(result?.writesToStandardError, false)
-            XCTAssertTrue(result?.output.contains("openburnbar-cli <command>") == true)
+            XCTAssertEqual(result?.output.contains("openburnbar-cli <command>"), true)
         }
     }
 
@@ -26,8 +26,8 @@ final class BurnBarCLITests: XCTestCase {
 
         XCTAssertEqual(result?.exitCode, EXIT_FAILURE)
         XCTAssertEqual(result?.writesToStandardError, true)
-        XCTAssertTrue(result?.output.contains("Unsupported OpenBurnBar CLI command 'definitely-not-a-command'.") == true)
-        XCTAssertTrue(result?.output.contains("openburnbar-cli <command>") == true)
+        XCTAssertEqual(result?.output.contains("Unsupported OpenBurnBar CLI command 'definitely-not-a-command'."), true)
+        XCTAssertEqual(result?.output.contains("openburnbar-cli <command>"), true)
     }
 
     func testStartupPreflightAllowsKnownCommandsAndShellShimInvocations() {
@@ -163,7 +163,7 @@ final class BurnBarCLITests: XCTestCase {
         )
 
         XCTAssertEqual(result.exitCode, EXIT_FAILURE)
-        XCTAssertTrue(result.output?.contains("error: session_not_found") == true)
+        XCTAssertEqual(result.output?.contains("error: session_not_found"), true)
     }
 
     func testResumeSpawnModeFormatsSpawnedResponse() throws {

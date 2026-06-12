@@ -87,7 +87,7 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         await model.setEnabledFromToggle(true)
 
         XCTAssertTrue(model.enabled)
-        XCTAssertEqual(persistedEnabled, true)
+        XCTAssertTrue(persistedEnabled ?? false)
         XCTAssertEqual(model.lastRepairStatus?.phase, .working)
         XCTAssertEqual(model.operationState.lastSucceededKind, .repair)
         XCTAssertEqual(operations.refreshCount, 1)
@@ -106,7 +106,7 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         await model.setEnabledFromToggle(false)
 
         XCTAssertFalse(model.enabled)
-        XCTAssertEqual(persistedEnabled, false)
+        XCTAssertFalse(persistedEnabled ?? true)
         XCTAssertEqual(operations.stopCount, 1)
         XCTAssertEqual(model.operationState.lastSucceededKind, .stop)
     }

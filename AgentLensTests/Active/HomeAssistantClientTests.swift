@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class HomeAssistantClientTests: XCTestCase {
 
-    var session: URLSession!
+    private var session: URLSession!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -294,7 +294,7 @@ final class HomeAssistantStubURLProtocol: URLProtocol, @unchecked Sendable {
         set { handlerLock.write(newValue) }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool {
+    override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host?.contains("homeassistant") == true
             || request.url?.path.contains("/api/") == true
             || request.url?.path.contains("/api") == true
@@ -302,7 +302,7 @@ final class HomeAssistantStubURLProtocol: URLProtocol, @unchecked Sendable {
             || request.url?.absoluteString.contains("/api") == true
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
         request
     }
 

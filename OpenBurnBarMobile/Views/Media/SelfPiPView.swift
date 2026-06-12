@@ -69,7 +69,7 @@ struct SelfPiPView: View {
 
 @MainActor
 final class CallHUDState: ObservableObject {
-    @Published var startedAt: Date = Date()
+    @Published var startedAt = Date()
     @Published var isMicMuted: Bool = false
     @Published var isCameraMuted: Bool = false
     @Published var isSharingScreen: Bool = false

@@ -134,9 +134,8 @@ struct PixelClockFirmwareFlasher {
         let registry = (try? await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-l", "-w", "0"], timeout: 5)) ?? ""
         var devices: [String] = []
         for serialDevice in setupCandidateSerialDevices(usbRegistry: registry) {
-            if await isESP32SerialDevice(serialDevice) {
-                devices.append(serialDevice)
-            }
+            guard await isESP32SerialDevice(serialDevice) else { continue }
+            devices.append(serialDevice)
         }
         return devices
     }
@@ -464,7 +463,7 @@ struct PixelClockNetworkProvisioner {
                 throw ProvisionError.connectFailed("Wi-Fi is not available on this Mac.")
             }
             let networks = try interface.scanForNetworks(withName: ssid)
-            guard let network = networks.sorted(by: { $0.rssiValue > $1.rssiValue }).first else {
+            guard let network = networks.min(by: { $0.rssiValue > $1.rssiValue }) else {
                 throw ProvisionError.joinFailed(ssid)
             }
             try interface.associate(to: network, password: password)

@@ -1772,7 +1772,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         )
         store.persistSnapshots([.codex: providerRollup], accountSnapshots: [
             ProviderQuotaSnapshotStore.accountSnapshotKey(staleSwitcher): staleSwitcher,
-            ProviderQuotaSnapshotStore.accountSnapshotKey(staleLegacyProvider): staleLegacyProvider,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(staleLegacyProvider): staleLegacyProvider
         ])
 
         let configRoot = try makeTemporaryDirectory()
@@ -2371,7 +2371,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(fiveHour.usedValue?.rounded(), 1_000_000)
         XCTAssertEqual(fiveHour.limitValue, 20_000_000)
         XCTAssertEqual(fiveHour.usedPercent?.rounded(), 5)
-        XCTAssertEqual(fiveHour.isEstimated, false)
+        XCTAssertFalse(fiveHour.isEstimated)
 
         // 7-day bucket: (1M + 2M) / 20M = 15%
         let weekly = try XCTUnwrap(snapshot.weeklyBucket)
@@ -2442,7 +2442,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                       "Status should nudge users to confirm their plan tier — got: \(snapshot.statusMessage)")
 
         let monthly = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-30d" })
-        XCTAssertEqual(monthly.isEstimated, true)
+        XCTAssertTrue(monthly.isEstimated)
         XCTAssertEqual(monthly.limitValue, 20_000_000, "Inferred Pro cap")
         XCTAssertTrue(monthly.label.contains("inferred"))
     }
@@ -2506,7 +2506,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             XCTAssertEqual(bucket.limitValue, 100_000_000, "\(key) should anchor to Plus 100M cap")
             XCTAssertEqual(bucket.usedValue?.rounded(), 10_000_000)
             XCTAssertEqual(bucket.usedPercent?.rounded(), 10)
-            XCTAssertEqual(bucket.isEstimated, false, "\(key) is not estimated for confirmed Plus tier")
+            XCTAssertFalse(bucket.isEstimated, "\(key) is not estimated for confirmed Plus tier")
         }
 
         let monthly = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-30d" })
@@ -2815,12 +2815,12 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_factorySessionClassifier_normalizesCustomPrefixAndCloudSuffix() {
         let cases: [String: FactorySessionLane] = [
             "custom:kimi-k2.6-highspeed-3": .droidCore,
-            "custom:glm-5.1:cloud-0":       .droidCore,
-            "custom:Kimi-K2.6":             .droidCore,    // mixed case
-            "kimi-k2.6:cloud-7":            .droidCore,
-            "Kimi K2.6":                    .droidCore,    // display-name with spaces
-            "custom:claude-opus-4-7":       .standard,
-            "custom:gpt-5.5(xhigh)":        .standard
+            "custom:glm-5.1:cloud-0": .droidCore,
+            "custom:Kimi-K2.6": .droidCore,    // mixed case
+            "kimi-k2.6:cloud-7": .droidCore,
+            "Kimi K2.6": .droidCore,    // display-name with spaces
+            "custom:claude-opus-4-7": .standard,
+            "custom:gpt-5.5(xhigh)": .standard
         ]
         for (model, expected) in cases {
             XCTAssertEqual(
@@ -3107,7 +3107,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         store.persistSnapshots([.minimax: providerRollup], accountSnapshots: [
             ProviderQuotaSnapshotStore.accountSnapshotKey(work): work,
-            ProviderQuotaSnapshotStore.accountSnapshotKey(personal): personal,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(personal): personal
         ])
 
         let service = makeService(home: home, appSupportRoot: appSupport)
@@ -3143,7 +3143,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     resetsAt: nil,
                     unit: .percent,
                     isEstimated: false
-                ),
+                )
             ]
         )
         let otherAccount = ProviderQuotaSnapshot(
@@ -3169,12 +3169,12 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     resetsAt: nil,
                     unit: .percent,
                     isEstimated: false
-                ),
+                )
             ]
         )
 
         store.persistSnapshots([.codex: providerRollup], accountSnapshots: [
-            ProviderQuotaSnapshotStore.accountSnapshotKey(otherAccount): otherAccount,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(otherAccount): otherAccount
         ])
 
         let service = makeService(home: home, appSupportRoot: appSupport)
@@ -3215,7 +3215,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     resetsAt: nil,
                     unit: .percent,
                     isEstimated: false
-                ),
+                )
             ]
         )
         let personal = ProviderQuotaSnapshot(
@@ -3241,13 +3241,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     resetsAt: nil,
                     unit: .percent,
                     isEstimated: false
-                ),
+                )
             ]
         )
 
         store.persistSnapshots([.openAI: work], accountSnapshots: [
             ProviderQuotaSnapshotStore.accountSnapshotKey(work): work,
-            ProviderQuotaSnapshotStore.accountSnapshotKey(personal): personal,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(personal): personal
         ])
 
         let service = makeService(home: home, appSupportRoot: appSupport)
@@ -3300,7 +3300,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     resetsAt: nil,
                     unit: .percent,
                     isEstimated: false
-                ),
+                )
             ]
         )
         let providerSnapshot = ProviderQuotaSnapshot(
@@ -3322,7 +3322,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     resetsAt: nil,
                     unit: .percent,
                     isEstimated: false
-                ),
+                )
             ]
         )
 
@@ -3460,7 +3460,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                         lastQuotaRemainingPercent: nil,
                         lastQuotaResetsAt: nil,
                         lastStatusMessage: nil
-                    ),
+                    )
                 ]
             )
         ]
@@ -3566,7 +3566,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                         lastQuotaRemainingPercent: nil,
                         lastQuotaResetsAt: nil,
                         lastStatusMessage: nil
-                    ),
+                    )
                 ]
             )
         ]
@@ -3668,7 +3668,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                         lastQuotaRemainingPercent: nil,
                         lastQuotaResetsAt: nil,
                         lastStatusMessage: nil
-                    ),
+                    )
                 ]
             )
         ]
@@ -3679,7 +3679,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             providerRuntimeKeyStore: runtimeSecrets,
             environment: [
                 "OPENCODE_DB_PATH": opencodeDBURL.path,
-                "OPENCODE_GO_5H_LIMIT": "10",
+                "OPENCODE_GO_5H_LIMIT": "10"
             ],
             refreshProviders: [.openCode]
         )
@@ -3739,7 +3739,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                         lastQuotaRemainingPercent: nil,
                         lastQuotaResetsAt: nil,
                         lastStatusMessage: nil
-                    ),
+                    )
                 ]
             )
         ]
@@ -3862,7 +3862,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                         lastQuotaRemainingPercent: nil,
                         lastQuotaResetsAt: nil,
                         lastStatusMessage: nil
-                    ),
+                    )
                 ]
             )
         ]
@@ -3975,7 +3975,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                         lastQuotaRemainingPercent: nil,
                         lastQuotaResetsAt: nil,
                         lastStatusMessage: nil
-                    ),
+                    )
                 ]
             )
         ]
@@ -4043,7 +4043,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                         lastQuotaRemainingPercent: nil,
                         lastQuotaResetsAt: nil,
                         lastStatusMessage: nil
-                    ),
+                    )
                 ]
             )
         ]
@@ -4098,10 +4098,10 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let removed = try XCTUnwrap(accounts.first { $0.id == "minimax-personal" })
 
         XCTAssertEqual(work.status, .connected)
-        XCTAssertEqual(work.isDefault, true)
+        XCTAssertTrue(work.isDefault)
         XCTAssertEqual(removed.status, .deleted)
         XCTAssertEqual(removed.lastErrorCode, "credential_slot_removed")
-        XCTAssertEqual(removed.isDefault, false)
+        XCTAssertFalse(removed.isDefault)
     }
 
     func test_refreshIfNeeded_populatesRoutingStateFromFreshPersistedSnapshotsWithoutNetworkRefresh() async throws {
@@ -4843,7 +4843,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
                     resetsAt: nil,
                     unit: .percent,
                     isEstimated: false
-                ),
+                )
             ]
         )
 
@@ -5045,11 +5045,11 @@ private final class StubURLProtocol: URLProtocol {
         set { _requestHandler.write(newValue) }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool {
+    override static func canInit(with request: URLRequest) -> Bool {
         true
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
         request
     }
 
@@ -5130,7 +5130,7 @@ extension ProviderQuotaServiceTests {
         // Plan bucket — real numbers from the golden fixture
         let planBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "cursor-plan" }))
         XCTAssertEqual(planBucket.label, "Included usage")
-        XCTAssertEqual(planBucket.isEstimated, false)
+        XCTAssertFalse(planBucket.isEstimated)
         let planPct = try XCTUnwrap(planBucket.usedPercent)
         XCTAssertEqual(planPct, 24.04, accuracy: 0.01, "Plan usage % must match golden fixture")
 
@@ -5142,14 +5142,14 @@ extension ProviderQuotaServiceTests {
         // Auto + Composer bucket
         let autoBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "cursor-auto" }))
         XCTAssertEqual(autoBucket.label, "Auto + Composer")
-        XCTAssertEqual(autoBucket.isEstimated, false)
+        XCTAssertFalse(autoBucket.isEstimated)
         let autoPct = try XCTUnwrap(autoBucket.usedPercent)
         XCTAssertEqual(autoPct, 6.14, accuracy: 0.01)
 
         // API bucket
         let apiBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "cursor-api" }))
         XCTAssertEqual(apiBucket.label, "API usage")
-        XCTAssertEqual(apiBucket.isEstimated, false)
+        XCTAssertFalse(apiBucket.isEstimated)
         let apiPct = try XCTUnwrap(apiBucket.usedPercent)
         XCTAssertEqual(apiPct, 59.85, accuracy: 0.01)
 
@@ -5168,7 +5168,6 @@ extension ProviderQuotaServiceTests {
             XCTAssertEqual(odBucket.unit, .currency)
         }
     }
-
 
     func test_cursorRefresh_noAuth_returnsUnavailable() async throws {
         let home = try makeTemporaryDirectory()
@@ -5412,7 +5411,7 @@ extension ProviderQuotaServiceTests {
                         lastQuotaRemainingPercent: nil,
                         lastQuotaResetsAt: nil,
                         lastStatusMessage: nil
-                    ),
+                    )
                 ]
             )
         ]

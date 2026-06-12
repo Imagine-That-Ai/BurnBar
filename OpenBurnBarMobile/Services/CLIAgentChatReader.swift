@@ -212,13 +212,13 @@ final class CLIAgentChatReader {
         // No title change: only the non-private top-level metadata changed.
         // A targeted `merge:true` write keeps the sealed transcript untouched.
         var payload: [String: Any] = [:]
-        if let labelColorHex = labelColorHex {
+        if let labelColorHex {
             payload["labelColorHex"] = labelColorHex == "#NONE#" ? FieldValue.delete() : labelColorHex
         }
-        if let isPinned = isPinned {
+        if let isPinned {
             payload["isPinned"] = isPinned
         }
-        if let priorityOrder = priorityOrder {
+        if let priorityOrder {
             payload["priorityOrder"] = priorityOrder
         }
 
@@ -239,16 +239,16 @@ final class CLIAgentChatReader {
         priorityOrder: Int?
     ) -> CLIAgentSessionRecord {
         var updated = record
-        if let customTitle = customTitle {
+        if let customTitle {
             updated.customTitle = customTitle.isEmpty ? nil : customTitle
         }
-        if let labelColorHex = labelColorHex {
+        if let labelColorHex {
             updated.labelColorHex = labelColorHex == "#NONE#" ? nil : labelColorHex
         }
-        if let isPinned = isPinned {
+        if let isPinned {
             updated.isPinned = isPinned
         }
-        if let priorityOrder = priorityOrder {
+        if let priorityOrder {
             updated.priorityOrder = priorityOrder
         }
         return updated

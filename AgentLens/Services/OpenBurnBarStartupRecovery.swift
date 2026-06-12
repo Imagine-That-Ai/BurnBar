@@ -55,7 +55,7 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
             "Error: \(errorSummary)",
             "Details: \(technicalDetails)",
             "Support directory: \(supportDirectory.path)",
-            "Database: \(databaseURL.path)",
+            "Database: \(databaseURL.path)"
         ]
         if let archiveURL {
             lines.append("Recovery archive: \(archiveURL.path)")
