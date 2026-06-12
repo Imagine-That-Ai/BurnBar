@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - Liquid Glass (macOS 26+) adapters
@@ -230,6 +231,24 @@ extension View {
     func liquidGlassEffect(_ style: LiquidGlassStyle = .regular) -> some View {
         modifier(LiquidGlassEffectModifier(style: style, shape: Capsule()))
     }
+}
+
+// MARK: - Behind-window blend (macOS clarity payoff)
+
+/// Blurred desktop showing through the window — the macOS payoff for the
+/// "Clear" side of the transparency preference. Layer it at the very back of
+/// a window's backdrop and fade it in with the effective adjustment; at
+/// `t == 0` callers skip it entirely, so the default window stays opaque.
+struct LiquidGlassWindowBlend: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .underWindowBackground
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 // MARK: - Grouping container

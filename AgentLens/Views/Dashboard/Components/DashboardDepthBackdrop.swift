@@ -29,22 +29,25 @@ struct DashboardDepthBackdrop: View {
                 if settingsManager.useWebsiteBackground || settingsManager.useConstellationBackground {
                     // Let the dynamic swarm / constellation backdrop show
                     // through instead of stacking an opaque plate on top of it.
+                    // The tint washes stay off too: over the moving swarm their
+                    // straight edges read as two giant colored slabs instead of
+                    // ambient light (they are tuned for the flat plate below).
                     Color.clear
                 } else {
                     DesignSystem.Colors.background
+
+                    Rectangle()
+                        .fill(DesignSystem.Colors.ember.opacity(density == .full ? 0.055 : 0.035))
+                        .frame(width: max(w * 0.50, 420), height: h * 1.3)
+                        .rotationEffect(.degrees(-13))
+                        .offset(x: -w * 0.30, y: -h * 0.08)
+
+                    Rectangle()
+                        .fill(DesignSystem.Colors.whimsy.opacity(density == .full ? 0.045 : 0.025))
+                        .frame(width: max(w * 0.44, 360), height: h * 1.2)
+                        .rotationEffect(.degrees(17))
+                        .offset(x: w * 0.34, y: h * 0.10)
                 }
-
-                Rectangle()
-                    .fill(DesignSystem.Colors.ember.opacity(density == .full ? 0.055 : 0.035))
-                    .frame(width: max(w * 0.50, 420), height: h * 1.3)
-                    .rotationEffect(.degrees(-13))
-                    .offset(x: -w * 0.30, y: -h * 0.08)
-
-                Rectangle()
-                    .fill(DesignSystem.Colors.whimsy.opacity(density == .full ? 0.045 : 0.025))
-                    .frame(width: max(w * 0.44, 360), height: h * 1.2)
-                    .rotationEffect(.degrees(17))
-                    .offset(x: w * 0.34, y: h * 0.10)
             }
             .frame(width: w, height: h, alignment: .topLeading)
             .opacity(reduceTransparency ? 0.35 : 1.0)
