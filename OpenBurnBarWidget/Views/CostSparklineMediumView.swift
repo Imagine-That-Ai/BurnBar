@@ -103,10 +103,10 @@ struct TokenSparkline: View {
 
     var body: some View {
         GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            let stepX = w / CGFloat(max(normalized.count - 1, 1))
-            let safeH = h - 4
+            let width = geo.size.width
+            let height = geo.size.height
+            let stepX = width / CGFloat(max(normalized.count - 1, 1))
+            let safeH = height - 4
 
             // Grid lines
             VStack(spacing: 0) {
@@ -119,7 +119,7 @@ struct TokenSparkline: View {
             }
 
             // Area fill with soft gradient
-            areaPath(width: w, height: safeH, stepX: stepX)
+            areaPath(width: width, height: safeH, stepX: stepX)
                 .fill(
                     LinearGradient(
                         colors: [color.opacity(0.25), color.opacity(0.02)],
@@ -130,7 +130,7 @@ struct TokenSparkline: View {
                 .offset(y: 2)
 
             // Smooth line
-            smoothLinePath(width: w, height: safeH, stepX: stepX)
+            smoothLinePath(width: width, height: safeH, stepX: stepX)
                 .stroke(
                     color.opacity(0.9),
                     style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
@@ -139,7 +139,7 @@ struct TokenSparkline: View {
 
             // Glow on trailing dot
             if let last = normalized.last {
-                let lastX = w
+                let lastX = width
                 let lastY = safeH - (CGFloat(last) * safeH) + 2
 
                 Circle()
