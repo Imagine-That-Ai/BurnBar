@@ -4,7 +4,9 @@
  * Exposes:
  *   GET /healthCheck  → 200 { status: "ok", timestamp, version, uptime_ms, checks }
  *   GET /healthLive   → 200 { status: "alive" } — liveness probe for load balancers
- *   GET /healthReady  → 200/503 — readiness probe; 503 if Firestore unreachable
+ *   GET /healthReady  → 200/503 — readiness probe; 503 if Firestore unreachable.
+ *                       Body carries sentry: { enabled, environment } (H13) so
+ *                       the post-deploy gate can verify crash reporting is live.
  *
  * All three are public (no auth) and safe to hit from monitoring tools.
  * Usage: curl https://us-central1-<project>.cloudfunctions.net/healthCheck
@@ -15,6 +17,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { logInfo, logError } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { sourceMetadata } from "./sourceMetadata.js";
+import { sentryStatus } from "./sentry.js";
 
 const FUNCTION_VERSION = process.env.FUNCTION_VERSION ?? "unknown";
 
@@ -52,15 +55,20 @@ export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, inv
 export const healthReady = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
   async (_req, res) => {
+    // H13: surface whether crash reporting is actually enabled so the
+    // post-deploy gate can probe the live endpoint for sentry.enabled=true and
+    // fail closed when functions ship with SENTRY_DSN unset (shipping dark).
+    const sentry = sentryStatus();
     try {
       const latencyMs = await probeFirestore();
-      logInfo({ event: "health_ready_ok", latency_ms: latencyMs });
+      logInfo({ event: "health_ready_ok", latency_ms: latencyMs, sentry_enabled: sentry.enabled });
       res.status(200).json({
         status: "ready",
         timestamp: new Date().toISOString(),
         version: FUNCTION_VERSION,
         latency_ms: latencyMs,
         checks: { firestore: "ok" },
+        sentry,
         ...sourceMetadata(),
       });
     } catch (error) {
@@ -70,6 +78,7 @@ export const healthReady = onRequest(
         timestamp: new Date().toISOString(),
         version: FUNCTION_VERSION,
         checks: { firestore: "error" },
+        sentry,
         error: "Firestore connectivity check failed",
         ...sourceMetadata(),
       });
