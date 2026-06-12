@@ -21,6 +21,7 @@ struct WebsiteBackgroundView: View {
     @AppStorage(SwarmBackgroundPreferences.userDefaultsKey) private var prefsJSON: String = SwarmBackgroundPreferences.defaultJSON
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.mobileBackgroundVisibility) private var inheritedVisibility
+    @Environment(\.hermesStreamingActive) private var hermesStreamingActive
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var envMonitor = SwarmEnvironmentMonitor.shared
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -79,6 +80,7 @@ struct WebsiteBackgroundView: View {
                     isBrandTextEnabled: prefs.isBrandTextEnabled,
                     enableSwarmSparkles: false,
                     excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
+                    maxFrameRate: streamingThrottledFrameRate(nil),
                     rendersAsynchronously: true
                 )
                 .ignoresSafeArea()
@@ -137,7 +139,7 @@ struct WebsiteBackgroundView: View {
                 isBrandTextEnabled: prefs.isBrandTextEnabled,
                 enableSwarmSparkles: plan.allowsSparkles,
                 excludeBrandShapesFromSwarm: prefs.excludeBrandShapes,
-                maxFrameRate: plan.maxFrameRate,
+                maxFrameRate: streamingThrottledFrameRate(plan.maxFrameRate),
                 rendersAsynchronously: true
             )
             .ignoresSafeArea()
@@ -165,6 +167,15 @@ struct WebsiteBackgroundView: View {
 
     private func resolvedParticleCount(scale: Double) -> Int {
         max(96, Int(Double(SwarmCanvasView.adaptiveParticleCount) * scale))
+    }
+
+    /// While a Hermes reply is streaming, cap the swarm at ~20 fps so its
+    /// per-frame particle advance stops competing with the chat's streaming
+    /// text for the frame budget. A nil plan rate means "use the canvas
+    /// default" (60 fps), so streaming substitutes the cap directly.
+    private func streamingThrottledFrameRate(_ planRate: Double?) -> Double? {
+        guard hermesStreamingActive else { return planRate }
+        return min(planRate ?? 20, 20)
     }
 
     private var staticBackdrop: some View {

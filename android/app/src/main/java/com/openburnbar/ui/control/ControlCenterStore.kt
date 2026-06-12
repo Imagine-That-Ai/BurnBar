@@ -236,7 +236,7 @@ internal class ControlCenterStore(
                 val data = functions.verifyAuditLog()
                 _auditVerification.value =
                     AuditVerification(
-                        valid = (data["valid"] as? Boolean) ?: false,
+                        valid = data["valid"] as? Boolean ?: false,
                         brokenAt = (data["brokenAt"] as? Number)?.toLong(),
                     )
             } catch (e: FirebaseFunctionsException) {
@@ -250,7 +250,7 @@ internal class ControlCenterStore(
     // ── Decoders ──
     private fun decodeSnapshot(data: Map<String, Any>): ControlCenterSnapshot {
         val tier = DataTier.from(data["tier"] as? String)
-        val pensieve = (data["limits"].asStringAnyMap()?.get("pensieve")).asStringAnyMap()
+        val pensieve = data["limits"].asStringAnyMap()?.get("pensieve").asStringAnyMap()
         val limits =
             pensieve?.let {
                 PensieveLimits(
@@ -281,7 +281,7 @@ internal class ControlCenterStore(
             recoveryId = recoveryId,
             kind = map["kind"] as? String ?: "",
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: parseIsoMs(map["createdAt"]),
-            confirmed = (map["confirmed"] as? Boolean) ?: false,
+            confirmed = map["confirmed"] as? Boolean ?: false,
         )
     }
 

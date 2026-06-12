@@ -69,13 +69,10 @@ struct MercuryTraySection: View {
             }
         }
         .padding(12)
-        .background(
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(borderGradient, lineWidth: 0.75)
-                )
+                .strokeBorder(borderGradient, lineWidth: 0.75)
         )
         .fileImporter(
             isPresented: $isShowingFilePicker,

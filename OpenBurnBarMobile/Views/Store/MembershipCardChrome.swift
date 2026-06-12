@@ -193,6 +193,16 @@ struct MembershipSeal: View {
             Capsule(style: .continuous)
                 .stroke(ProTheme.Membership.foilLeaf.opacity(prominent ? 0 : 0.55), lineWidth: 0.8)
         )
+        // Periodic glint across the seal — minted foil, not a flat sticker.
+        // Self-gates on reduce-motion.
+        .overlay(
+            HoloSheenSweep(
+                tint: prominent ? Color.white : ProTheme.Membership.foilHighlight,
+                period: 6.2,
+                bandOpacity: prominent ? 0.45 : 0.35
+            )
+            .clipShape(Capsule(style: .continuous))
+        )
         .shadow(color: ProTheme.Membership.foilLeaf.opacity(prominent ? 0.35 : 0), radius: 8, y: 3)
     }
 }

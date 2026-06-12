@@ -54,7 +54,6 @@ import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.ThreadInboxItem
 import com.openburnbar.ui.theme.AuroraColors
 
-
 // MARK: - Active missions strip (Phase A placeholder)
 
 @Composable

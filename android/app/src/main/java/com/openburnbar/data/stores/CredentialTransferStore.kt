@@ -36,6 +36,8 @@ private object CredentialTransferConstants {
     const val SALT_LENGTH_BYTES = 16
     const val IV_LENGTH_BYTES = 12
     const val ENVELOPE_VERSION = "v1"
+    const val ENVELOPE_PART_COUNT = 4
+    const val ENCRYPTED_PART_INDEX = 3
 }
 
 internal object CredentialTransferCrypto {
@@ -78,12 +80,12 @@ internal object CredentialTransferCrypto {
 
     fun decryptPayload(ciphertext: String, code: String): String {
         val parts = ciphertext.split(".")
-        require(parts.size == 4 && parts[0] == CredentialTransferConstants.ENVELOPE_VERSION) {
+        require(parts.size == CredentialTransferConstants.ENVELOPE_PART_COUNT && parts[0] == CredentialTransferConstants.ENVELOPE_VERSION) {
             "Unsupported transfer payload"
         }
         val salt = decodeBase64Url(parts[1])
         val iv = decodeBase64Url(parts[2])
-        val encrypted = decodeBase64Url(parts[3])
+        val encrypted = decodeBase64Url(parts[CredentialTransferConstants.ENCRYPTED_PART_INDEX])
         require(salt.size == CredentialTransferConstants.SALT_LENGTH_BYTES) {
             "Invalid transfer payload"
         }

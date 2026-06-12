@@ -113,6 +113,8 @@ internal class PiServiceChatStreamSupport(
         return messageArray
     }
 
+    @Suppress("LoopWithTooManyJumpStatements")
+    // SSE loop: skip-fast per frame is the readable form.
     private fun consumeSseChatStream(source: okio.BufferedSource, assistantId: String) {
         while (!source.exhausted()) {
             val payload = HermesSseChunkReader.parseRelayLine(source.readUtf8Line() ?: continue) ?: continue

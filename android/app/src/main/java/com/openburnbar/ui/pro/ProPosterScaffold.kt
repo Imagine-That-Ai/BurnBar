@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+
 /**
  * Pro vocabulary — the cinematic stage. Obsidian base + descending darkened
  * aurora ribbon + soft upper-center halo + film grain. Mirrors iOS poster.

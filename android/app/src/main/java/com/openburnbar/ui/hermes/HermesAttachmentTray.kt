@@ -23,10 +23,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -183,7 +183,7 @@ private fun AttachmentChipPreview(isImage: Boolean, thumbnail: androidx.compose.
         )
     } else {
         Icon(
-            imageVector = if (isImage) Icons.Filled.Image else Icons.Filled.InsertDriveFile,
+            imageVector = if (isImage) Icons.Filled.Image else Icons.AutoMirrored.Filled.InsertDriveFile,
             contentDescription = null,
             modifier = Modifier.size(32.dp),
             tint = AuroraColors.hermesMercury,

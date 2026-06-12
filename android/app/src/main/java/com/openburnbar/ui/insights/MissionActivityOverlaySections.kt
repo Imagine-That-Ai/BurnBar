@@ -72,8 +72,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
+import com.openburnbar.ui.components.liquidGlassInteractive
+import com.openburnbar.ui.components.liquidGlassSurface
 import com.openburnbar.ui.media.SkillRunPiPActivity
 import com.openburnbar.ui.theme.AuroraColors
+import com.openburnbar.ui.theme.AuroraShadowSpec
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import kotlin.math.hypot
@@ -282,36 +285,30 @@ internal fun SkillRunLiveTile(
     var isDragging by remember { mutableStateOf(false) }
 
     Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        color = Color.Transparent,
         shape = RoundedCornerShape(18.dp),
-        shadowElevation = 14.dp,
+        shadowElevation = 0.dp,
         modifier =
         Modifier
             .padding(AuroraSpacing.lg.dp)
             .offset { tileOffset }
             .widthIn(max = 360.dp)
+            .liquidGlassSurface(
+                shape = RoundedCornerShape(18.dp),
+                wash = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                shadow = AuroraShadowSpec(elevation = 14.dp, spotAlpha = 0.18f),
+            )
             .border(1.dp, accent.copy(alpha = 0.72f), RoundedCornerShape(18.dp))
             .graphicsLayer {
                 scaleX = if (isDragging) 0.97f else 1f
                 scaleY = if (isDragging) 0.97f else 1f
                 alpha = if (isDragging) 0.82f else 1f
             }
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { isDragging = true },
-                    onDragEnd = {
-                        isDragging = false
-                        tileOffset = IntOffset.Zero
-                    },
-                    onDragCancel = {
-                        isDragging = false
-                        tileOffset = IntOffset.Zero
-                    },
-                ) { change, dragAmount ->
-                    change.consume()
-                    tileOffset += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
-                }
-            }
+            .skillRunTileDragGesture(
+                onDraggingChange = { isDragging = it },
+                onDragBy = { tileOffset += it },
+                onDragSettled = { tileOffset = IntOffset.Zero },
+            )
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onOpen() })
             },
@@ -326,6 +323,28 @@ internal fun SkillRunLiveTile(
         )
     }
 }
+
+private fun Modifier.skillRunTileDragGesture(
+    onDraggingChange: (Boolean) -> Unit,
+    onDragBy: (IntOffset) -> Unit,
+    onDragSettled: () -> Unit,
+): Modifier =
+    pointerInput(Unit) {
+        detectDragGestures(
+            onDragStart = { onDraggingChange(true) },
+            onDragEnd = {
+                onDraggingChange(false)
+                onDragSettled()
+            },
+            onDragCancel = {
+                onDraggingChange(false)
+                onDragSettled()
+            },
+        ) { change, dragAmount ->
+            change.consume()
+            onDragBy(IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt()))
+        }
+    }
 
 @Composable
 private fun SkillRunLiveTileContent(
@@ -594,7 +613,7 @@ private fun MissionLiveOrbDisc(
             modifier =
             Modifier
                 .size(orbSize)
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), CircleShape)
+                .liquidGlassInteractive(shape = CircleShape)
                 .border(
                     width = if (isActive) 1.5.dp else 0.8.dp,
                     color =
@@ -709,7 +728,7 @@ private fun MissionTerminalOrb(
                 modifier =
                 Modifier
                     .size(56.dp)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), CircleShape)
+                    .liquidGlassInteractive(shape = CircleShape)
                     .border(width = 1.5.dp, color = accent.copy(alpha = if (icon == Icons.Filled.CheckCircle) 0.6f else 0.75f), shape = CircleShape)
                     .graphicsLayer {
                         scaleX = if (isDragging) 0.92f else 1f
@@ -728,12 +747,7 @@ private fun TooltipPill() {
         verticalAlignment = Alignment.CenterVertically,
         modifier =
         Modifier
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f), CircleShape)
-            .border(
-                width = 0.5.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                shape = CircleShape,
-            )
+            .liquidGlassSurface(shape = CircleShape)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Icon(

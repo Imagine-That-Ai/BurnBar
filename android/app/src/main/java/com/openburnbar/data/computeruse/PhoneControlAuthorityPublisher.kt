@@ -110,10 +110,14 @@ class PhoneControlAuthorityPublisher(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val securityCallables: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
+    @Suppress("UnusedParameter")
+    // uid kept for cross-platform publisher API parity; callable derives identity server-side.
     suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) {
         securityCallables.publishPhoneControlAuthority(authority)
     }
 
+    @Suppress("UnusedParameter")
+    // uid kept for cross-platform publisher API parity; callable derives identity server-side.
     suspend fun publishAgentGrantAuthority(uid: String, sourceDeviceId: String, authority: PhoneControlAuthorityDoc) {
         securityCallables.publishAgentGrantAuthority(
             deviceId = sourceDeviceId,

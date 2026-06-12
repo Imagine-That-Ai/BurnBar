@@ -21,8 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -92,13 +92,17 @@ internal fun DomainDetailPane(
         item { RetentionCard(domain = domain) }
         item {
             DomainActions(
-                domain = domain,
-                locked = locked,
-                isDeleting = isDeleting,
-                isExporting = isExporting,
-                onExport = { store.export(domain.id) },
-                onDelete = { confirmDelete = true },
-                onAction = { action -> onDomainAction(domain, action) },
+                state = DomainActionsState(
+                    domain = domain,
+                    locked = locked,
+                    isDeleting = isDeleting,
+                    isExporting = isExporting,
+                ),
+                callbacks = DomainActionsCallbacks(
+                    onExport = { store.export(domain.id) },
+                    onDelete = { confirmDelete = true },
+                    onAction = { action -> onDomainAction(domain, action) },
+                ),
             )
         }
     }
@@ -163,16 +167,25 @@ private fun RetentionCard(domain: DataDomain) {
     }
 }
 
+private data class DomainActionsState(
+    val domain: DataDomain,
+    val locked: Boolean,
+    val isDeleting: Boolean,
+    val isExporting: Boolean,
+)
+
+private data class DomainActionsCallbacks(
+    val onExport: () -> Unit,
+    val onDelete: () -> Unit,
+    val onAction: (String) -> Unit,
+)
+
 @Composable
 private fun DomainActions(
-    domain: DataDomain,
-    locked: Boolean,
-    isDeleting: Boolean,
-    isExporting: Boolean,
-    onExport: () -> Unit,
-    onDelete: () -> Unit,
-    onAction: (String) -> Unit,
+    state: DomainActionsState,
+    callbacks: DomainActionsCallbacks,
 ) {
+    val domain = state.domain
     Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
         domain.actions.forEach { action ->
             when (action) {
@@ -180,38 +193,38 @@ private fun DomainActions(
                     ControlActionButton(
                         label = "Export ${domain.title}",
                         icon = Icons.Filled.Download,
-                        loading = isExporting,
-                        enabled = !locked && !isExporting,
-                        onClick = onExport,
+                        loading = state.isExporting,
+                        enabled = !state.locked && !state.isExporting,
+                        onClick = callbacks.onExport,
                     )
                 "delete" ->
                     ControlActionButton(
                         label = "Delete ${domain.title}",
                         icon = Icons.Outlined.DeleteOutline,
                         destructive = true,
-                        loading = isDeleting,
-                        enabled = !isDeleting,
-                        onClick = onDelete,
+                        loading = state.isDeleting,
+                        enabled = !state.isDeleting,
+                        onClick = callbacks.onDelete,
                     )
                 "view" ->
                     ControlActionButton(
                         label = "View in ${domain.title}",
-                        icon = Icons.Filled.OpenInNew,
-                        enabled = !locked,
-                        onClick = { onAction(action) },
+                        icon = Icons.AutoMirrored.Filled.OpenInNew,
+                        enabled = !state.locked,
+                        onClick = { callbacks.onAction(action) },
                     )
                 "verify" ->
                     ControlActionButton(
                         label = "Verify integrity",
-                        icon = Icons.Filled.OpenInNew,
-                        onClick = { onAction(action) },
+                        icon = Icons.AutoMirrored.Filled.OpenInNew,
+                        onClick = { callbacks.onAction(action) },
                     )
                 else ->
                     ControlActionButton(
                         label = actionLabel(action, domain),
-                        icon = Icons.Filled.OpenInNew,
-                        enabled = !locked,
-                        onClick = { onAction(action) },
+                        icon = Icons.AutoMirrored.Filled.OpenInNew,
+                        enabled = !state.locked,
+                        onClick = { callbacks.onAction(action) },
                     )
             }
         }
@@ -272,7 +285,7 @@ private fun LockedDomainNotice(domain: DataDomain, tier: DataTier, onUpgrade: ()
             )
             ControlActionButton(
                 label = "Manage your plan",
-                icon = Icons.Filled.OpenInNew,
+                icon = Icons.AutoMirrored.Filled.OpenInNew,
                 onClick = onUpgrade,
             )
         }

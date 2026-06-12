@@ -65,13 +65,19 @@ struct DashboardLiveCostCurve: View {
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(colorScheme == .dark ? 0.45 : 0.55))
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            // Inline branch: on 26+ the accent wash rides on real Liquid Glass
+            // (no material underneath); pre-26 keeps the hand-tuned stack.
+            let shape = RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            if #available(macOS 26, *) {
+                shape
                     .fill(accent.opacity(colorScheme == .dark ? 0.08 : 0.04))
+                    .glassEffect(.regular, in: shape)
+            } else {
+                ZStack {
+                    shape.fill(.ultraThinMaterial)
+                    shape.fill(DesignSystem.Colors.surface.opacity(colorScheme == .dark ? 0.45 : 0.55))
+                    shape.fill(accent.opacity(colorScheme == .dark ? 0.08 : 0.04))
+                }
             }
         }
         .overlay(

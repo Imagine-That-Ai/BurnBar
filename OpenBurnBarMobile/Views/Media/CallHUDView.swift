@@ -29,11 +29,16 @@ struct CallHUDView: View {
                     Spacer()
                 }
                 Spacer()
-                HStack(spacing: 16) {
-                    controlButton(systemImage: state.isMicMuted ? "mic.slash.fill" : "mic.fill", action: onMuteMic)
-                    controlButton(systemImage: state.isCameraMuted ? "video.slash.fill" : "video.fill", action: onMuteCamera)
-                    controlButton(systemImage: state.isSharingScreen ? "rectangle.on.rectangle.slash" : "rectangle.on.rectangle", action: onShareScreen)
-                    controlButton(systemImage: "phone.down.fill", tint: .red, action: onEnd)
+                // Grouped so the four glass circles share one sampling region
+                // on iOS 26 (glass cannot sample other glass); passes content
+                // through unchanged on iOS 17–25.
+                LiquidGlassGroup(spacing: 16) {
+                    HStack(spacing: 16) {
+                        controlButton(systemImage: state.isMicMuted ? "mic.slash.fill" : "mic.fill", action: onMuteMic)
+                        controlButton(systemImage: state.isCameraMuted ? "video.slash.fill" : "video.fill", action: onMuteCamera)
+                        controlButton(systemImage: state.isSharingScreen ? "rectangle.on.rectangle.slash" : "rectangle.on.rectangle", action: onShareScreen)
+                        controlButton(systemImage: "phone.down.fill", tint: .red, action: onEnd)
+                    }
                 }
                 .padding(.bottom, 32)
             }
@@ -49,8 +54,13 @@ struct CallHUDView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 56, height: 56)
-                .background(.ultraThinMaterial, in: Circle())
+                // Tappable HUD control over live call video → interactive
+                // Liquid Glass on iOS 26; identical .ultraThinMaterial circle
+                // on iOS 17–25. Meaning stays on the symbol tint (red = end),
+                // so the glass itself remains monochrome per the design
+                // language. No fill rides under the glass — it samples the
+                // live video behind it.
+                .liquidGlassCircleButton(diameter: 56)
         }
         .buttonStyle(.plain)
     }

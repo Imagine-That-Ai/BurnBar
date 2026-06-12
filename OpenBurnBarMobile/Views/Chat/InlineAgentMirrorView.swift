@@ -280,7 +280,7 @@ struct InlineAgentMirrorView: View {
                     }
                 }
                 .padding(8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5)
@@ -297,7 +297,7 @@ struct InlineAgentMirrorView: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                     .frame(width: 44, height: 36)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .liquidGlassInteractive(in: Capsule())
                     .overlay(Capsule().strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5))
             }
             .buttonStyle(.plain)

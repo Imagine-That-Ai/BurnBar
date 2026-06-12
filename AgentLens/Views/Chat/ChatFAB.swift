@@ -20,8 +20,7 @@ struct ChatFAB: View {
                         .opacity(hasNewInsights ? 0.22 : 0.16)
 
                     // Dark glass face
-                    Circle()
-                        .fill(DesignSystem.Colors.surfaceElevated)
+                    fabFace
                         .frame(width: 50, height: 50)
                         .overlay(
                             Circle()
@@ -48,6 +47,20 @@ struct ChatFAB: View {
         .animation(.spring(response: 0.42, dampingFraction: 0.72), value: appeared)
         .onAppear {
             appeared = true
+        }
+    }
+
+    /// Inline branch: pre-26 keeps the exact opaque surfaceElevated face; on
+    /// 26+ the FAB becomes interactive glass behind the gradient stroke.
+    @ViewBuilder
+    private var fabFace: some View {
+        if #available(macOS 26, *) {
+            Circle()
+                .fill(.clear)
+                .glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            Circle()
+                .fill(DesignSystem.Colors.surfaceElevated)
         }
     }
 }

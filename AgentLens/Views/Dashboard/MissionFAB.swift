@@ -27,8 +27,7 @@ struct MissionFAB: View {
             ZStack {
                 ambientGlow
 
-                Circle()
-                    .fill(DesignSystem.Colors.surfaceElevated)
+                fabDisc
                     .frame(width: diameter, height: diameter)
                     .overlay(
                         Circle()
@@ -57,6 +56,21 @@ struct MissionFAB: View {
     }
 
     // MARK: Decoration
+
+    /// Inline branch: pre-26 keeps the exact opaque surfaceElevated face; on
+    /// 26+ the orb becomes interactive glass (monochrome — state meaning stays
+    /// in the gauge, stroke, and glow).
+    @ViewBuilder
+    private var fabDisc: some View {
+        if #available(macOS 26, *) {
+            Circle()
+                .fill(.clear)
+                .glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            Circle()
+                .fill(DesignSystem.Colors.surfaceElevated)
+        }
+    }
 
     private var glowColor: Color {
         if !host.snapshot.health.daemonState.isLive { return DesignSystem.Colors.textMuted }

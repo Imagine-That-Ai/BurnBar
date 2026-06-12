@@ -1,7 +1,6 @@
 package com.openburnbar.data.stores
 
-import com.google.firebase.auth.OAuthProvider
-import com.google.firebase.auth.GoogleAuthProvider
+import android.content.Context
 import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
@@ -11,24 +10,22 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.OAuthProvider
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-
-private const val VAL_12501 = 12501
 
 data class AppUser(
     val uid: String = "",
@@ -45,18 +42,6 @@ data class AuthError(
 )
 
 class UserStore : ViewModel() {
-    companion object {
-        /**
-         * Web (type 3) OAuth client ID — same one Firebase Console →
-         * Authentication → Google has configured. Required by both the
-         * Credential Manager flow (`serverClientId`) and the legacy
-         * `GoogleSignIn.requestIdToken(...)` flow so Firebase Auth
-         * accepts the returned ID token.
-         */
-        const val WEB_CLIENT_ID =
-            "246956661961-o8alph2ucvteqdfrrdnf41m8dmm8r6d7.apps.googleusercontent.com"
-    }
-
     private val auth: FirebaseAuth = Firebase.auth
 
     private val _user = MutableStateFlow<AppUser>(AppUser())
@@ -84,43 +69,32 @@ class UserStore : ViewModel() {
     // ═══ Google ═══
 
     /**
-     * Signals to the UI when Credential Manager couldn't surface a Google
-     * credential (no Google account on device, Play Services missing, etc.).
-     * UI flips this true → launches the legacy intent flow → flips false.
-     */
-    private val _needsLegacyGoogleFallback = MutableStateFlow(false)
-    val needsLegacyGoogleFallback: StateFlow<Boolean> = _needsLegacyGoogleFallback.asStateFlow()
-
-    /**
      * Modern Credential Manager flow for "Sign in with Google". Replaces the
-     * deprecated `GoogleSignIn.getClient(...).signInIntent` activity-result
-     * dance with a single suspend call. Gives clearer error codes and avoids
-     * the most common DEVELOPER_ERROR (statusCode 10) confusion when no
-     * Google account is set up on the device.
-     *
-     * When no credential is available it flips [needsLegacyGoogleFallback]
-     * so the LoginScreen can launch the legacy account-picker intent via
-     * its own ActivityResultLauncher.
+     * deprecated `GoogleSignIn.getClient(...).signInIntent` activity-result dance
+     * with a single suspend call. The web client ID comes from the generated
+     * Firebase resource, so release builds cannot silently drift away from the
+     * shipped `google-services.json`.
      */
     fun signInWithGoogle(activity: android.app.Activity) {
         viewModelScope.launch {
             _isSigningIn.value = true
             _authError.value = null
             val credentialManager = CredentialManager.create(activity)
-            val request =
-                GetCredentialRequest.Builder()
-                    .addCredentialOption(
-                        GetGoogleIdOption.Builder()
-                            .setServerClientId(WEB_CLIENT_ID)
-                            .setFilterByAuthorizedAccounts(false)
-                            .setAutoSelectEnabled(false)
-                            .build(),
-                    )
-                    .addCredentialOption(
-                        GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID).build(),
-                    )
-                    .build()
             try {
+                val serverClientId = googleServerClientId(activity) ?: return@launch
+                val request =
+                    GetCredentialRequest.Builder()
+                        .addCredentialOption(
+                            GetGoogleIdOption.Builder()
+                                .setServerClientId(serverClientId)
+                                .setFilterByAuthorizedAccounts(false)
+                                .setAutoSelectEnabled(false)
+                                .build(),
+                        )
+                        .addCredentialOption(
+                            GetSignInWithGoogleOption.Builder(serverClientId).build(),
+                        )
+                        .build()
                 val response =
                     credentialManager.getCredential(
                         context = activity,
@@ -139,9 +113,10 @@ class UserStore : ViewModel() {
             } catch (_: GetCredentialCancellationException) {
                 // User dismissed picker — no error.
             } catch (_: NoCredentialException) {
-                // No account on device. Trigger legacy account-picker.
-                Log.d("BurnBar", "Credential Manager NoCredentialException — falling back to legacy flow")
-                _needsLegacyGoogleFallback.value = true
+                _authError.value =
+                    AuthError(
+                        "No Google account is available on this device. Add a Google account in Android Settings, then try again.",
+                    )
             } catch (e: GetCredentialException) {
                 _authError.value = AuthError(e.localizedMessage ?: "Google sign-in failed.")
                 Log.w("BurnBar", "Credential Manager Google sign-in failed", e)
@@ -154,44 +129,20 @@ class UserStore : ViewModel() {
         }
     }
 
-    /** Clear the legacy-fallback signal once the LoginScreen launches the intent. */
-    fun consumeLegacyGoogleFallback() {
-        _needsLegacyGoogleFallback.value = false
-    }
-
-    // ── Legacy Google Sign-In intent fallback ──
-
-    fun getGoogleSignInIntent(context: android.content.Context): android.content.Intent {
-        val gso =
-            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken(WEB_CLIENT_ID)
-                .requestEmail()
-                .build()
-        return GoogleSignIn.getClient(context, gso).signInIntent
-    }
-
-    fun handleGoogleSignInResult(data: android.content.Intent?) {
-        viewModelScope.launch {
-            _isSigningIn.value = true
-            _authError.value = null
-            try {
-                val account = GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException::class.java)
-                val cred = GoogleAuthProvider.getCredential(account.idToken, null)
-                auth.signInWithCredential(cred).await()
-            } catch (e: ApiException) {
-                if (e.statusCode != VAL_12501) {
-                    val msg =
-                        "Google sign-in failed (status ${e.statusCode}). " +
-                            "If this is a release build, register the upload key SHA-1 in Firebase Console."
-                    _authError.value = AuthError(msg)
-                    Log.w("BurnBar", msg, e)
-                }
-            } catch (e: FirebaseException) {
-                _authError.value = AuthError(e.localizedMessage ?: "Sign-in failed")
-                Log.w("BurnBar", "Google sign-in exception", e)
-            } finally {
-                _isSigningIn.value = false
+    private fun googleServerClientId(context: Context): String? {
+        val clientId = context.getString(R.string.default_web_client_id).trim()
+        return when {
+            clientId.isBlank() ||
+                clientId.contains("YOUR_", ignoreCase = true) ||
+                !clientId.endsWith(".apps.googleusercontent.com") -> {
+                val msg =
+                    "Google sign-in is not configured for this build. " +
+                        "Install a build generated with the BurnBar Firebase Android config."
+                _authError.value = AuthError(msg)
+                Log.w("BurnBar", msg)
+                null
             }
+            else -> clientId
         }
     }
 

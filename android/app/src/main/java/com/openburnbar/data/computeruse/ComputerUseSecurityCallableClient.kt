@@ -6,6 +6,18 @@ import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.tasks.await
 
+data class RelaySenderKeyPublishRequest(
+    val deviceId: String,
+    val peerNodeId: String,
+    val keyId: String,
+    val publicKeyBase64: String,
+    val relayKeyVersion: Int,
+    val publishedAtMillis: Long,
+    val signalIdentityKeyId: String,
+    val signalIdentityKeyVersion: Int,
+    val signalIdentityPublicKeyFingerprint: String,
+)
+
 /**
  * WS4 Android client for App Check attestation binding and escrow device trust callables.
  */
@@ -111,17 +123,7 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Phone-control authority publication failed.")
     }
 
-    suspend fun publishRelaySenderKey(
-        deviceId: String,
-        peerNodeId: String,
-        keyId: String,
-        publicKeyBase64: String,
-        relayKeyVersion: Int,
-        publishedAtMillis: Long,
-        signalIdentityKeyId: String,
-        signalIdentityKeyVersion: Int,
-        signalIdentityPublicKeyFingerprint: String,
-    ) {
+    suspend fun publishRelaySenderKey(request: RelaySenderKeyPublishRequest) {
         requireAuthenticatedUser()
         bindAppCheckAttestation()
         val nonce = issueHighRiskActionNonce()
@@ -129,15 +131,15 @@ class ComputerUseSecurityCallableClient(
             functions.getHttpsCallable("publishRelaySenderKey")
                 .call(
                     mapOf(
-                        "deviceId" to deviceId,
-                        "peerNodeId" to peerNodeId,
-                        "keyId" to keyId,
-                        "publicKeyBase64" to publicKeyBase64,
-                        "relayKeyVersion" to relayKeyVersion,
-                        "publishedAtMillis" to publishedAtMillis,
-                        "signalIdentityKeyId" to signalIdentityKeyId,
-                        "signalIdentityKeyVersion" to signalIdentityKeyVersion,
-                        "signalIdentityPublicKeyFingerprint" to signalIdentityPublicKeyFingerprint,
+                        "deviceId" to request.deviceId,
+                        "peerNodeId" to request.peerNodeId,
+                        "keyId" to request.keyId,
+                        "publicKeyBase64" to request.publicKeyBase64,
+                        "relayKeyVersion" to request.relayKeyVersion,
+                        "publishedAtMillis" to request.publishedAtMillis,
+                        "signalIdentityKeyId" to request.signalIdentityKeyId,
+                        "signalIdentityKeyVersion" to request.signalIdentityKeyVersion,
+                        "signalIdentityPublicKeyFingerprint" to request.signalIdentityPublicKeyFingerprint,
                         "nonce" to nonce,
                     ),
                 )

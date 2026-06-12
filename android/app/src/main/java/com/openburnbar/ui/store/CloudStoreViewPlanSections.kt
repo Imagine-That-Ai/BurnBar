@@ -32,14 +32,8 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -228,40 +222,6 @@ private fun cloudPaidTierSections(): CloudPaidTierSections {
 // never "end-to-end encrypted chat".
 // Crests follow the website's final swap: Cloud→cloud, Cloud Pro→pro (the
 // high-tech ring logo), Cloud Ultra→ultra (the provider-icon ring logo).
-
-internal fun cloudTierPresentation(): TierPlanPresentation =
-    TierPlanPresentation(
-        label = "Cloud",
-        title = "BurnBar Cloud",
-        summary = "Sync your quota, encrypted history, and agent memory across devices.",
-        drawableRes = R.drawable.cloud_tier_crest,
-        accent = CloudStorePal.ember,
-        featureChips = listOf("Quota sync", "History", "Memory"),
-        holo = TierHolo.CLOUD,
-    )
-
-internal fun cloudProTierPresentation(): TierPlanPresentation =
-    TierPlanPresentation(
-        label = "Cloud Pro",
-        title = "BurnBar Cloud Pro",
-        summary = "Use your Mac from your phone and let agents work under your grant.",
-        drawableRes = R.drawable.cloud_tier_crest_pro,
-        accent = CloudStorePal.whimsy,
-        featureChips = listOf("Floo", "Agent Control", "Relay"),
-        featured = true,
-        holo = TierHolo.PRO,
-    )
-
-internal fun cloudUltraTierPresentation(): TierPlanPresentation =
-    TierPlanPresentation(
-        label = "Cloud Ultra",
-        title = "BurnBar Cloud Ultra",
-        summary = "Everything in Cloud Pro, plus 10× agent memory — sealed on-device.",
-        drawableRes = R.drawable.cloud_tier_crest_ultra,
-        accent = CloudStorePal.aureate,
-        featureChips = listOf("10× memory", "Sealed", "Pro relay"),
-        holo = TierHolo.ULTRA,
-    )
 
 @Composable
 private fun CloudPaidTierColumn(

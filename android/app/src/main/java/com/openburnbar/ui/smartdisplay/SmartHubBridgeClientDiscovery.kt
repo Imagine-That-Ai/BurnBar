@@ -3,7 +3,7 @@ package com.openburnbar.ui.smartdisplay
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.os.Build
+import java.net.InetAddress
 
 private const val DISCOVERY_SERVICE_TYPE = "_http._tcp."
 
@@ -12,7 +12,6 @@ internal object SmartHubBridgeClientDiscovery {
     private var nsdListener: NsdManager.DiscoveryListener? = null
 
     fun start(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN) return
         stop()
         val manager = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return
         nsdManager = manager
@@ -33,26 +32,7 @@ internal object SmartHubBridgeClientDiscovery {
                     ) {
                         return
                     }
-                    manager.resolveService(
-                        serviceInfo,
-                        object : NsdManager.ResolveListener {
-                            override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) = Unit
-
-                            override fun onServiceResolved(resolved: NsdServiceInfo) {
-                                val host = resolved.host?.hostAddress.orEmpty()
-                                val id = if (host.isBlank()) resolved.serviceName else "$host:${resolved.port}"
-                                addOrUpdateDevice(
-                                    PixelClockDevice(
-                                        id = id,
-                                        name = resolved.serviceName,
-                                        host = host,
-                                        port = resolved.port,
-                                        reachable = true,
-                                    ),
-                                )
-                            }
-                        },
-                    )
+                    resolveFoundService(manager, serviceInfo)
                 }
 
                 override fun onServiceLost(serviceInfo: NsdServiceInfo?) {
@@ -85,6 +65,48 @@ internal object SmartHubBridgeClientDiscovery {
             // mDNS discovery is best-effort and can already be stopped by the platform.
         }
         nsdListener = null
+    }
+
+    private fun resolveFoundService(manager: NsdManager, serviceInfo: NsdServiceInfo) {
+        val listener =
+            object : NsdManager.ResolveListener {
+                override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) = Unit
+
+                override fun onServiceResolved(resolved: NsdServiceInfo) {
+                    addResolvedService(resolved)
+                }
+            }
+        try {
+            val method =
+                NsdManager::class.java.getMethod(
+                    "resolveService",
+                    NsdServiceInfo::class.java,
+                    NsdManager.ResolveListener::class.java,
+                )
+            method.invoke(manager, serviceInfo, listener)
+        } catch (_: Throwable) {
+            // Older-device mDNS discovery is best-effort.
+        }
+    }
+
+    private fun addResolvedService(resolved: NsdServiceInfo) {
+        val host = hostAddress(resolved)
+        val id = if (host.isBlank()) resolved.serviceName else "$host:${resolved.port}"
+        addOrUpdateDevice(
+            PixelClockDevice(
+                id = id,
+                name = resolved.serviceName,
+                host = host,
+                port = resolved.port,
+                reachable = true,
+            ),
+        )
+    }
+
+    private fun hostAddress(serviceInfo: NsdServiceInfo): String {
+        return runCatching {
+            NsdServiceInfo::class.java.getMethod("getHost").invoke(serviceInfo) as? InetAddress
+        }.getOrNull()?.hostAddress.orEmpty()
     }
 
     private fun addOrUpdateDevice(device: PixelClockDevice) {

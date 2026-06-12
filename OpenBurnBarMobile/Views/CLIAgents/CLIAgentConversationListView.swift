@@ -475,16 +475,7 @@ struct CLIAgentConversationListView: View {
             selectedRoute = .new(runtime: runtime)
         } label: {
             ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [accent, accent.opacity(0.62)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 56, height: 56)
-                    .shadow(color: accent.opacity(0.35), radius: 12, y: 6)
+                fabPlate
                 Image(systemName: "plus")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(.white)
@@ -492,6 +483,39 @@ struct CLIAgentConversationListView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Start new \(runtime.displayName) chat")
+    }
+
+    /// FAB plate. On iOS 26 the accent gradient becomes a translucent wash
+    /// riding ON interactive Liquid Glass — no opaque fill underneath, so the
+    /// glass samples the Aurora backdrop and the scrolling list behind it;
+    /// the accent survives as the glass tint plus the wash. iOS 17–25 keeps
+    /// the original opaque gradient byte-identical.
+    @ViewBuilder
+    private var fabPlate: some View {
+        if #available(iOS 26, *) {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [accent.opacity(0.48), accent.opacity(0.26)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 56, height: 56)
+                .glassEffect(.regular.tint(accent).interactive(), in: .circle)
+                .shadow(color: accent.opacity(0.35), radius: 12, y: 6)
+        } else {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [accent, accent.opacity(0.62)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 56, height: 56)
+                .shadow(color: accent.opacity(0.35), radius: 12, y: 6)
+        }
     }
 
     private var emptyCopy: String {
@@ -1344,7 +1368,29 @@ struct CLIAgentChatThreadView: View {
             .background(RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous).fill(MobileTheme.Colors.error.opacity(0.12)))
     }
 
+    /// Composer chrome. On iOS 26 the bar rides on pure Liquid Glass that
+    /// samples the Aurora backdrop (no material underneath — a fill would
+    /// block the refraction), extended under the home indicator exactly like
+    /// the edge-bleeding material it replaces. iOS 17–25 keeps the original
+    /// `.ultraThinMaterial` line byte-identical; the shared adapter is not
+    /// used here because a shape-scoped fallback background would lose the
+    /// default safe-area bleed of the plain material.
+    @ViewBuilder
     private var composer: some View {
+        if #available(iOS 26, *) {
+            composerBody
+                .background {
+                    Color.clear
+                        .glassEffect(.regular, in: .rect)
+                        .ignoresSafeArea(.container, edges: .bottom)
+                }
+        } else {
+            composerBody
+                .background(.ultraThinMaterial)
+        }
+    }
+
+    private var composerBody: some View {
         VStack(spacing: 8) {
             Picker("Session interface", selection: $presentationMode) {
                 ForEach(CLIAgentChatPresentationMode.allCases) { mode in
@@ -1381,7 +1427,6 @@ struct CLIAgentChatThreadView: View {
             }
         }
         .padding(MobileTheme.Spacing.md)
-        .background(.ultraThinMaterial)
     }
 
     private var canSend: Bool {

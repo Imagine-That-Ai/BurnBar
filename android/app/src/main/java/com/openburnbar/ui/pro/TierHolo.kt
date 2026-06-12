@@ -1,5 +1,5 @@
-@file:Suppress("MagicNumber")
-// Holographic gradient stops (hex color literals); token-per-line obscures the palette.
+@file:Suppress("MagicNumber", "MatchingDeclarationName")
+// Holographic gradient stops (hex color literals); token-per-line obscures the palette; shared-palette file deliberately named for the feature, not the first enum.
 
 package com.openburnbar.ui.pro
 
