@@ -191,6 +191,12 @@ jobs:
           FUNCTIONS_REGION: us-central1
           DEPLOY_HEALTH_JSON: deploy-health.json
           DEPLOY_TAG: ${{ steps.tag.outputs.tag }}
+          # H13: on a real production deploy (not a dry run), the runtime config
+          # the deploy step wrote MUST enable Sentry, or crash reporting ships
+          # dark. The gate fails closed when this is 1; dry runs leave it 0 so
+          # the no-deploy lane is not permanently red.
+          HEALTH_GATE_REQUIRE_SENTRY: ${{ steps.tag.outputs.dry_run == 'true' && '0' || '1' }}
+          FUNCTIONS_RUNTIME_ENV_FILE: functions/.env.burnbar
         run: |
           # shellcheck source=scripts/ops/resolve-functions-base-url.sh
           source scripts/ops/resolve-functions-base-url.sh

@@ -63,6 +63,16 @@ if (dsn) {
 }
 
 /**
+ * Health-surface snapshot of the Sentry configuration (H13). Lets health/probe
+ * endpoints report whether crash reporting is actually enabled so a missing
+ * SENTRY_DSN in production is caught by the post-deploy gate instead of going
+ * dark. Carries no secret: the DSN itself is never exposed, only its presence.
+ */
+export function sentryStatus(): { enabled: boolean; environment: string } {
+  return { enabled: Boolean(dsn), environment };
+}
+
+/**
  * Captures an exception in Sentry with additional context.
  * Safe to call even if Sentry is not initialized.
  */
