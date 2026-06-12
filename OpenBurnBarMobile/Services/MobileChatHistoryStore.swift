@@ -275,14 +275,41 @@ protocol MobileChatCloudMirroring: AnyObject {
 // MARK: - Local file persistence
 
 /// JSON-on-disk persistence under Application Support so chats survive cache
-/// eviction. One file per partition key (typically a Firebase uid, or `"local"`
-/// when signed out) keeps account data isolated on the device.
+/// eviction.
+///
+/// Storage layout (finding-178 — per-thread split): instead of one monolithic
+/// `mobile-chat-history-<partition>.json` rewritten in full on *every* chat turn
+/// (O(total history) per turn, single-file blast radius), each partition gets a
+/// directory holding:
+///
+///   * `index.json` — a compact metadata index (tombstones + a per-thread
+///     content digest used to skip unchanged writes). Small and cheap to render
+///     a conversation list from.
+///   * `thread-<sanitizedID>.json` — one compact file per thread body.
+///
+/// A `save(_:)` only rewrites the thread files whose body actually changed plus
+/// the index, so a streaming turn touches a single small file rather than the
+/// whole history. JSON is compact (no `.prettyPrinted` / `.sortedKeys`) to keep
+/// the bytes — and therefore the synchronous encode cost — minimal.
+///
+/// The protocol surface (`MobileChatLocalStoring`) is unchanged: `load()` still
+/// returns the full snapshot (callers list from it), and `save(_:)` still takes
+/// the full snapshot — we diff it against disk internally. A one-time idempotent
+/// migration explodes the legacy single-file snapshot into the new layout on the
+/// first `load()` (or `save()`) of a partition.
 final class MobileChatFileLocalStore: MobileChatLocalStoring {
     private let directory: URL
     private let fileManager: FileManager
     private let queue = DispatchQueue(label: "mobile-chat-history.local-store", qos: .utility)
     private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "MobileChatLocalStore")
     private var partitionKey: String = "local"
+
+    /// Per-partition cache of the last-written content digest for each thread id,
+    /// so a `save()` can skip rewriting thread bodies that did not change. Keyed
+    /// by partition so switching users never cross-contaminates. Reset lazily
+    /// from disk on the first access of a partition.
+    private var digestCache: [String: [String: Int]] = [:]
+    private var migratedPartitions: Set<String> = []
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -310,35 +337,200 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
 
     func load() throws -> MobileChatHistorySnapshot {
         try queue.sync {
-            let url = fileURL(for: partitionKey)
-            guard fileManager.fileExists(atPath: url.path) else { return MobileChatHistorySnapshot() }
-            let data = try Data(contentsOf: url)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            do {
-                return try decoder.decode(MobileChatHistorySnapshot.self, from: data)
-            } catch {
-                // Legacy file shape (a bare array of threads) — read it once
-                // and let the next save() upgrade the envelope.
-                let legacy = try decoder.decode([MobileChatThread].self, from: data)
-                return MobileChatHistorySnapshot(threads: legacy, tombstones: [:])
-            }
+            try migrateLegacyFileIfNeeded(for: partitionKey)
+            return try loadSnapshotLocked(for: partitionKey)
         }
     }
 
     func save(_ snapshot: MobileChatHistorySnapshot) throws {
         try queue.sync {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(snapshot)
-            let url = fileURL(for: partitionKey)
-            try data.write(to: url, options: [.atomic])
+            // Folding the legacy single-file snapshot in first keeps a save that
+            // runs before any load() idempotent and lossless.
+            try migrateLegacyFileIfNeeded(for: partitionKey)
+            try saveSnapshotLocked(snapshot, for: partitionKey)
         }
     }
 
-    private func fileURL(for partition: String) -> URL {
+    // MARK: - Locked helpers (must run on `queue`)
+
+    private func loadSnapshotLocked(for partition: String) throws -> MobileChatHistorySnapshot {
+        let dir = partitionDirectory(for: partition)
+        guard fileManager.fileExists(atPath: dir.path) else {
+            digestCache[partition] = [:]
+            return MobileChatHistorySnapshot()
+        }
+        let decoder = Self.makeDecoder()
+        let index = try loadIndexLocked(for: partition, decoder: decoder)
+
+        var threads: [MobileChatThread] = []
+        var digests: [String: Int] = [:]
+        threads.reserveCapacity(index.threadIDs.count)
+        for threadID in index.threadIDs {
+            let url = threadFileURL(for: partition, threadID: threadID)
+            guard let data = try? Data(contentsOf: url) else { continue }
+            guard let thread = try? decoder.decode(MobileChatThread.self, from: data) else { continue }
+            threads.append(thread)
+            digests[thread.id] = Self.digest(of: data)
+        }
+        digestCache[partition] = digests
+        return MobileChatHistorySnapshot(threads: threads, tombstones: index.tombstones)
+    }
+
+    private func saveSnapshotLocked(_ snapshot: MobileChatHistorySnapshot, for partition: String) throws {
+        let dir = partitionDirectory(for: partition)
+        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        let encoder = Self.makeEncoder()
+
+        var nextDigests: [String: Int] = [:]
+        let previousDigests = digestCache[partition] ?? loadDigestsFromDiskLocked(for: partition)
+        let liveIDs = Set(snapshot.threads.map(\.id))
+
+        // 1. Write only the thread bodies whose serialized content changed.
+        for thread in snapshot.threads {
+            let data = try encoder.encode(thread)
+            let digest = Self.digest(of: data)
+            nextDigests[thread.id] = digest
+            if previousDigests[thread.id] == digest,
+               fileManager.fileExists(atPath: threadFileURL(for: partition, threadID: thread.id).path) {
+                continue // Unchanged body already on disk — skip the rewrite.
+            }
+            try data.write(to: threadFileURL(for: partition, threadID: thread.id), options: [.atomic])
+        }
+
+        // 2. Remove thread files that are no longer part of the snapshot.
+        for staleID in previousDigests.keys where !liveIDs.contains(staleID) {
+            try? fileManager.removeItem(at: threadFileURL(for: partition, threadID: staleID))
+        }
+
+        // 3. Rewrite the small index (cheap regardless of history size).
+        let index = MobileChatHistoryIndex(
+            threadIDs: snapshot.threads.map(\.id),
+            tombstones: snapshot.tombstones
+        )
+        let indexData = try encoder.encode(index)
+        try indexData.write(to: indexFileURL(for: partition), options: [.atomic])
+
+        digestCache[partition] = nextDigests
+    }
+
+    private func loadIndexLocked(for partition: String, decoder: JSONDecoder) throws -> MobileChatHistoryIndex {
+        let url = indexFileURL(for: partition)
+        guard let data = try? Data(contentsOf: url) else {
+            // No index yet but the directory exists — recover by scanning the
+            // thread files present, so a partially migrated/corrupt partition
+            // still surfaces its threads instead of vanishing.
+            return MobileChatHistoryIndex(threadIDs: scanThreadIDsLocked(for: partition), tombstones: [:])
+        }
+        return try decoder.decode(MobileChatHistoryIndex.self, from: data)
+    }
+
+    private func loadDigestsFromDiskLocked(for partition: String) -> [String: Int] {
+        let dir = partitionDirectory(for: partition)
+        guard fileManager.fileExists(atPath: dir.path) else { return [:] }
+        var digests: [String: Int] = [:]
+        let ids = (try? loadIndexLocked(for: partition, decoder: Self.makeDecoder()).threadIDs)
+            ?? scanThreadIDsLocked(for: partition)
+        for threadID in ids {
+            if let data = try? Data(contentsOf: threadFileURL(for: partition, threadID: threadID)) {
+                digests[threadID] = Self.digest(of: data)
+            }
+        }
+        return digests
+    }
+
+    private func scanThreadIDsLocked(for partition: String) -> [String] {
+        let dir = partitionDirectory(for: partition)
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: dir.path) else { return [] }
+        return entries.compactMap { name in
+            guard name.hasPrefix("thread-"), name.hasSuffix(".json") else { return nil }
+            return String(name.dropFirst("thread-".count).dropLast(".json".count))
+        }
+    }
+
+    /// One-time idempotent migration: explode the legacy single-file snapshot
+    /// (`mobile-chat-history-<partition>.json`, either the envelope shape or a
+    /// bare thread array) into the per-thread directory layout. Safe to run
+    /// twice — once the legacy file is consumed it is deleted, and a partition
+    /// already migrated short-circuits. If the new layout already has an index,
+    /// the legacy file is treated as stale and removed without clobbering newer
+    /// per-thread writes.
+    private func migrateLegacyFileIfNeeded(for partition: String) throws {
+        guard !migratedPartitions.contains(partition) else { return }
+        defer { migratedPartitions.insert(partition) }
+
+        let legacyURL = legacyFileURL(for: partition)
+        guard fileManager.fileExists(atPath: legacyURL.path) else { return }
+
+        // If a per-thread index already exists, the new layout is authoritative.
+        // Drop the stale legacy file so re-running never resurrects old bodies.
+        if fileManager.fileExists(atPath: indexFileURL(for: partition).path) {
+            try? fileManager.removeItem(at: legacyURL)
+            return
+        }
+
+        let decoder = Self.makeDecoder()
+        let data = try Data(contentsOf: legacyURL)
+        let snapshot: MobileChatHistorySnapshot
+        if let envelope = try? decoder.decode(MobileChatHistorySnapshot.self, from: data) {
+            snapshot = envelope
+        } else if let legacyThreads = try? decoder.decode([MobileChatThread].self, from: data) {
+            snapshot = MobileChatHistorySnapshot(threads: legacyThreads, tombstones: [:])
+        } else {
+            // Unreadable legacy file: leave it in place rather than lose data,
+            // but don't block the partition from operating on the new layout.
+            digestCache[partition] = [:]
+            return
+        }
+
+        // Reset any partial state for this partition, then write the new layout.
+        digestCache[partition] = [:]
+        try saveSnapshotLocked(snapshot, for: partition)
+        // Consume the legacy file only after the new layout is durably written.
+        try? fileManager.removeItem(at: legacyURL)
+    }
+
+    // MARK: - Paths
+
+    private func partitionDirectory(for partition: String) -> URL {
+        directory.appendingPathComponent("mobile-chat-history-\(partition)", isDirectory: true)
+    }
+
+    private func indexFileURL(for partition: String) -> URL {
+        partitionDirectory(for: partition).appendingPathComponent("index.json")
+    }
+
+    private func threadFileURL(for partition: String, threadID: String) -> URL {
+        let safe = Self.sanitizeThreadFileComponent(threadID)
+        return partitionDirectory(for: partition).appendingPathComponent("thread-\(safe).json")
+    }
+
+    private func legacyFileURL(for partition: String) -> URL {
         directory.appendingPathComponent("mobile-chat-history-\(partition).json")
+    }
+
+    // MARK: - Encoding
+
+    private static func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        // Compact: drop prettyPrinted/sortedKeys to minimize bytes and the
+        // synchronous encode cost on the hot per-turn write path.
+        return encoder
+    }
+
+    private static func makeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    /// Stable content digest of serialized thread bytes. Used only to skip
+    /// rewriting unchanged thread bodies; collisions merely cost a redundant
+    /// write, never data loss (the snapshot is always the source of truth).
+    private static func digest(of data: Data) -> Int {
+        var hasher = Hasher()
+        hasher.combine(data)
+        return hasher.finalize()
     }
 
     static func sanitizePartitionKey(_ raw: String) -> String {
@@ -347,6 +539,31 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         let cleaned = String(scalars).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
         return cleaned.isEmpty ? "local" : cleaned
     }
+
+    /// Maps an arbitrary thread id to a filesystem-safe file component. Unlike
+    /// the partition key, thread ids must round-trip 1:1 on load via the index,
+    /// so we percent-escape disallowed characters rather than collapse them.
+    static func sanitizeThreadFileComponent(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        var out = ""
+        out.reserveCapacity(raw.count)
+        for scalar in raw.unicodeScalars {
+            if allowed.contains(scalar) {
+                out.unicodeScalars.append(scalar)
+            } else {
+                out += String(format: "_%04x", scalar.value)
+            }
+        }
+        return out.isEmpty ? "_thread" : out
+    }
+}
+
+/// Compact metadata index persisted alongside the per-thread body files. Holds
+/// only what the conversation list and offline-delete bookkeeping need, so it
+/// stays small even as history grows.
+private struct MobileChatHistoryIndex: Codable {
+    var threadIDs: [String]
+    var tombstones: [String: Date]
 }
 
 // MARK: - Firestore mirror
