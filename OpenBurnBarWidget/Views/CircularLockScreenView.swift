@@ -14,8 +14,8 @@ struct CircularLockScreenView: View {
     }
 
     var gaugeColor: Color {
-        guard let p = providerEnum else { return WidgetDesignSystem.Colors.amber }
-        return DesignSystemColors.primary(for: p)
+        guard let provider = providerEnum else { return WidgetDesignSystem.Colors.amber }
+        return DesignSystemColors.primary(for: provider)
     }
 
     /// Gauge fill is based on cost as a fraction of a $20 daily soft cap.
