@@ -25,6 +25,15 @@ enum ProjectionWorkerPolicy {
     /// Trim redundant queued conversation jobs when backlog explodes.
     static let backlogCompactionThreshold = 400
 
+    /// Grace horizon before terminal (`completed`/`canceled`) projection jobs are reaped.
+    /// The work queue never re-reads terminal rows, so they are pure dead weight that
+    /// bloats the table and its indexes forever (the audit measured 99.9% dead rows).
+    /// We keep one day so recently-finished rows stay inspectable for idempotency/debugging,
+    /// then delete them on the next refresh tick.
+    // config TODO: surface this as a user-tunable retention window in SettingsManager.
+    static let terminalJobRetention: TimeInterval = 24 * 60 * 60
+
+
     static func shouldContinueBacklogProcessing(afterCompletedPasses completedPasses: Int) -> Bool {
         completedPasses < maxContinuousBacklogPasses
     }
