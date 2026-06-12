@@ -15,8 +15,8 @@ All scripts are idempotent and safe to re-run.
 
 ## CI functional QA
 
-The GitHub `OpenBurnBar Functional QA` workflow invokes Droid with the checked-in
-`.factory/skills/qa/SKILL.md` skill. That skill delegates to:
+The GitHub `OpenBurnBar Functional QA` workflow invokes the deterministic
+checked-in runner directly:
 
 ```sh
 bash tools/qa/run-functional-qa.sh

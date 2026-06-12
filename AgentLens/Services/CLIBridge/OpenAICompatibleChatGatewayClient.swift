@@ -516,8 +516,12 @@ final class AgentToolBroker: @unchecked Sendable {
             object["succeeded"] = result.succeeded
             object["errorMessage"] = result.errorMessage
         }
-        let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
-            ?? Data("{}".utf8)
+        let data: Data
+        do {
+            data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        } catch {
+            data = Data("{}".utf8)
+        }
         let detail = response.denyReason ?? response.status.rawValue
         return AgentToolExecutionPayload(content: String(decoding: data, as: UTF8.self), detail: detail)
     }
@@ -539,9 +543,13 @@ final class AgentToolBroker: @unchecked Sendable {
     }
 
     private static func jsonString(from value: Any) -> String {
-        if JSONSerialization.isValidJSONObject(value),
-           let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) {
-            return String(decoding: data, as: UTF8.self)
+        if JSONSerialization.isValidJSONObject(value) {
+            do {
+                let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+                return String(decoding: data, as: UTF8.self)
+            } catch {
+                return String(describing: value)
+            }
         }
         if value is NSNull {
             return "null"
