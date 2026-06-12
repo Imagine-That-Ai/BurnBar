@@ -1,4 +1,5 @@
 import FirebaseAuth
+import FirebaseCore
 import Foundation
 import OpenBurnBarComputerUseCore
 import os
@@ -10,6 +11,7 @@ enum MobileAppCheckAttestationReader {
     private static let cachedDigest = OSAllocatedUnfairLock<String?>(initialState: nil)
 
     static func currentAttestationDigestForEnvelope() async -> String? {
+        guard FirebaseApp.app() != nil else { return nil }
         guard let user = Auth.auth().currentUser, !user.isAnonymous else { return nil }
         do {
             let result = try await user.getIDTokenResult(forcingRefresh: false)

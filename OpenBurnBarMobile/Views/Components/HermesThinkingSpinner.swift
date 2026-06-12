@@ -259,6 +259,31 @@ enum HermesThinkingSizeChoice: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Hermes Thinking Glyph
+
+/// Which brand mark(s) the Swarm style forms. `agent` is the runtime that
+/// owns the chat (Hermes, Claude Code, Codex…); `model` is the provider
+/// behind the routed model (MiniMax, OpenAI…); `both` alternates — one mark,
+/// back to dots, then the other.
+enum HermesThinkingGlyphChoice: String, CaseIterable, Identifiable {
+    case agent
+    case model
+    case both
+
+    static let storageKey = "hermesThinkingGlyph"
+    static let defaultChoice: HermesThinkingGlyphChoice = .agent
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .agent: return "Agent"
+        case .model: return "Model"
+        case .both:  return "Agent ⇄ Model"
+        }
+    }
+}
+
 // MARK: - Hermes Thinking Spinner
 
 /// The thinking indicator. Renders the user's chosen style/color/size
@@ -286,6 +311,8 @@ struct HermesThinkingSpinner: View {
     private var selectedSizeRaw: String = HermesThinkingSizeChoice.defaultChoice.rawValue
     @AppStorage(HermesThinkingColorChoice.customHexKey)
     private var customColorHex: String = "FF9F0A"
+    @AppStorage(HermesThinkingGlyphChoice.storageKey)
+    private var glyphChoiceRaw: String = HermesThinkingGlyphChoice.defaultChoice.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
@@ -314,11 +341,30 @@ struct HermesThinkingSpinner: View {
         sizeOverride ?? HermesThinkingSizeChoice(rawValue: selectedSizeRaw) ?? .defaultChoice
     }
 
+    /// The brand marks the Swarm style cycles through, per the user's glyph
+    /// choice. Falls back to the agent mark when no model is routed (or both
+    /// resolve to the same brand).
+    private var swarmGlyphProviders: [AgentProvider] {
+        let agent = provider ?? .hermes
+        let model: AgentProvider? = modelName.flatMap { name in
+            name.isEmpty ? nil : hermesAgentProvider(for: name)
+        }
+        switch HermesThinkingGlyphChoice(rawValue: glyphChoiceRaw) ?? .defaultChoice {
+        case .agent:
+            return [agent]
+        case .model:
+            return [model ?? agent]
+        case .both:
+            guard let model, model != agent else { return [agent] }
+            return [agent, model]
+        }
+    }
+
     var body: some View {
         Group {
             if style == .swarm {
                 SwarmDotsThinkingIndicator(
-                    glyphProvider: provider ?? .hermes,
+                    glyphProviders: swarmGlyphProviders,
                     scale: size.pointSize / HermesThinkingSizeChoice.medium.pointSize,
                     usesBrandGlyphColors: colorChoice == .subtle || colorChoice == .provider,
                     shading: { date in resolvedStyle(date: date) }
@@ -417,7 +463,9 @@ struct HermesThinkingSpinner: View {
 /// three reading dots — and back, forever. Same point clouds as the big swarm
 /// (`SwarmGlyphSampler`), same "form by swarm" motion language.
 private struct SwarmDotsThinkingIndicator: View {
-    let glyphProvider: AgentProvider
+    /// One or two brand marks; with two, each cycle returns to dots and then
+    /// forms the other mark (Agent ⇄ Model).
+    let glyphProviders: [AgentProvider]
     /// 1.0 at medium; scales the whole stage.
     let scale: CGFloat
     /// True for the "authentic" color treatments (Subtle/Provider): the glyph
@@ -429,7 +477,7 @@ private struct SwarmDotsThinkingIndicator: View {
     let shading: (Date) -> AnyShapeStyle
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var glyphPoints: [SwarmGlyphPoint] = []
+    @State private var glyphClouds: [[SwarmGlyphPoint]] = []
 
     /// Full cycle length. Phases: glyph hold -> scatter to dots -> dots hold
     /// -> scatter back.
@@ -450,15 +498,28 @@ private struct SwarmDotsThinkingIndicator: View {
         }
         .frame(width: stageSize.width, height: stageSize.height)
         .onAppear {
-            glyphPoints = SwarmGlyphSampler.glyphPoints(for: glyphProvider, maxPoints: 84)
+            glyphClouds = glyphProviders.map { SwarmGlyphSampler.glyphPoints(for: $0, maxPoints: 84) }
         }
-        .onChange(of: glyphProvider) { _, newProvider in
-            glyphPoints = SwarmGlyphSampler.glyphPoints(for: newProvider, maxPoints: 84)
+        .onChange(of: glyphProviders) { _, newProviders in
+            glyphClouds = newProviders.map { SwarmGlyphSampler.glyphPoints(for: $0, maxPoints: 84) }
         }
     }
 
     private func draw(in graphics: inout GraphicsContext, size: CGSize, date: Date) {
-        let points = glyphPoints.isEmpty ? Self.fallbackRing : glyphPoints
+        let clouds = glyphClouds.filter { !$0.isEmpty }
+        let t = date.timeIntervalSinceReferenceDate
+        let phase = t.truncatingRemainder(dividingBy: Self.period)
+        // With two marks, the end-of-cycle return targets the NEXT mark, so
+        // the swarm reads glyph A → dots → glyph B → dots → … continuously.
+        let cycle = Int((t / Self.period).rounded(.down))
+        let cloudIndex: Int
+        if clouds.count > 1 {
+            let active = ((cycle % clouds.count) + clouds.count) % clouds.count
+            cloudIndex = phase >= Self.dotsHoldEnd ? (active + 1) % clouds.count : active
+        } else {
+            cloudIndex = 0
+        }
+        let points = clouds.isEmpty ? Self.fallbackRing : clouds[cloudIndex]
         let count = points.count
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let glyphRadius = min(size.width, size.height) * 0.46
@@ -469,8 +530,6 @@ private struct SwarmDotsThinkingIndicator: View {
             center,
             CGPoint(x: center.x + dotSpread, y: center.y)
         ]
-        let t = date.timeIntervalSinceReferenceDate
-        let phase = t.truncatingRemainder(dividingBy: Self.period)
         let perCluster = Double((count + 2) / 3)
         let userStyle = shading(date)
 
@@ -591,6 +650,8 @@ struct HermesThinkingStylePickerSheet: View {
     private var selectedSizeRaw: String = HermesThinkingSizeChoice.defaultChoice.rawValue
     @AppStorage(HermesThinkingColorChoice.customHexKey)
     private var customColorHex: String = "FF9F0A"
+    @AppStorage(HermesThinkingGlyphChoice.storageKey)
+    private var glyphChoiceRaw: String = HermesThinkingGlyphChoice.defaultChoice.rawValue
     @State private var customPickerColor: Color = Color(hex: "FF9F0A")
     @Environment(\.dismiss) private var dismiss
 
@@ -611,6 +672,15 @@ struct HermesThinkingStylePickerSheet: View {
                         LazyVGrid(columns: styleColumns, spacing: 10) {
                             ForEach(HermesThinkingStyle.allCases) { style in
                                 styleCell(style)
+                            }
+                        }
+                    }
+                    if selectedStyleRaw == HermesThinkingStyle.swarm.rawValue {
+                        section("Glyph") {
+                            HStack(spacing: 10) {
+                                ForEach(HermesThinkingGlyphChoice.allCases) { choice in
+                                    glyphCell(choice)
+                                }
                             }
                         }
                     }
@@ -702,6 +772,55 @@ struct HermesThinkingStylePickerSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(style.displayName) thinking style")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    // MARK: Glyph cells
+
+    /// The model-side brand mark, derived the same way the spinner does it.
+    private var modelGlyphProvider: AgentProvider? {
+        modelName.flatMap { name in
+            name.isEmpty ? nil : hermesAgentProvider(for: name)
+        }
+    }
+
+    private func glyphCell(_ choice: HermesThinkingGlyphChoice) -> some View {
+        let isSelected = glyphChoiceRaw == choice.rawValue
+        let agent = provider ?? .hermes
+        return Button {
+            glyphChoiceRaw = choice.rawValue
+            Haptics.light()
+        } label: {
+            VStack(spacing: 5) {
+                HStack(spacing: 4) {
+                    switch choice {
+                    case .agent:
+                        UnifiedProviderLogoView(provider: agent, size: 22, useFallbackColor: true)
+                    case .model:
+                        UnifiedProviderLogoView(provider: modelGlyphProvider ?? agent, size: 22, useFallbackColor: true)
+                    case .both:
+                        UnifiedProviderLogoView(provider: agent, size: 18, useFallbackColor: true)
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                        UnifiedProviderLogoView(provider: modelGlyphProvider ?? agent, size: 18, useFallbackColor: true)
+                    }
+                }
+                .frame(height: 24)
+                Text(choice.displayName)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundStyle(isSelected ? MobileTheme.Colors.textPrimary : MobileTheme.Colors.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(selectionFill(isSelected, cornerRadius: 13))
+            .overlay(selectionStroke(isSelected, cornerRadius: 13))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(choice.displayName) swarm glyph")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 

@@ -59,10 +59,9 @@ dependencies {
     // primitive across our minSdk range.
     implementation("com.google.crypto.tink:tink-android:1.15.0")
 
-    // jna 5.14 satisfies the generated UniFFI Kotlin bindings' runtime
-    // requirement. The native Rust AAR is consumed by :app directly so this
-    // Android library can still build its own AAR under AGP 8.9+.
-    api("net.java.dev.jna:jna:5.14.0@aar")
+    // JNA 5.19.0 ships 16 KB page-size aligned native libjnidispatch slices.
+    // UniFFI's generated Kotlin bindings use JNA to load the Rust AAR.
+    api("net.java.dev.jna:jna:5.19.0@aar")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

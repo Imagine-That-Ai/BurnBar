@@ -1,0 +1,6 @@
+# Dev/test-only dependencies for tools/openburnbar-mcp.
+# Runtime deps live in requirements.txt; this file adds the test runner so
+# `pytest tests/` can run in CI (agent-tools-ci.yml) without polluting the
+# production MCP server install.
+-r requirements.txt
+pytest>=8.0.0

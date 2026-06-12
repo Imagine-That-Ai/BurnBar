@@ -125,12 +125,14 @@ export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
 log "using NDK at ${ANDROID_NDK_HOME}"
 
 ANDROID_16KB_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
-if [[ -n "${RUSTFLAGS:-}" ]]; then
-  export RUSTFLAGS="${RUSTFLAGS} ${ANDROID_16KB_RUSTFLAGS}"
-else
-  export RUSTFLAGS="${ANDROID_16KB_RUSTFLAGS}"
-fi
-log "using Rust linker flags for Android 16KB ELF alignment"
+android_rustflags() {
+  if [[ -n "${RUSTFLAGS:-}" ]]; then
+    printf '%s %s\n' "${RUSTFLAGS}" "${ANDROID_16KB_RUSTFLAGS}"
+  else
+    printf '%s\n' "${ANDROID_16KB_RUSTFLAGS}"
+  fi
+}
+log "using Rust linker flags for Android 16KB ELF alignment on cargo-ndk builds"
 
 # --- Rust targets --------------------------------------------------------------
 abi_to_rust_target() {
@@ -219,6 +221,7 @@ log "building openburnbar-iroh for ${ABIS[*]} (${PROFILE})"
 (
   cd "${CRATE_DIR}"
   ANDROID_NDK_HOME="${ANDROID_NDK_HOME}" \
+  RUSTFLAGS="$(android_rustflags)" \
   PATH="${HOME}/.cargo/bin:${PATH}" \
     "${CARGO_BIN}" ndk \
       "${CARGO_NDK_ARGS[@]}" \
@@ -244,6 +247,7 @@ if [[ "${PROFILE}" != "debug" ]]; then
   (
     cd "${CRATE_DIR}"
     ANDROID_NDK_HOME="${ANDROID_NDK_HOME}" \
+    RUSTFLAGS="$(android_rustflags)" \
     PATH="${HOME}/.cargo/bin:${PATH}" \
       "${CARGO_BIN}" ndk \
         -t "${BINDGEN_ABI}" \
@@ -270,6 +274,15 @@ if [[ ! -d "${BUILD_DIR}/kotlin-out/uniffi/openburnbar_iroh" ]]; then
   abort "uniffi-bindgen-kotlin did not produce uniffi/openburnbar_iroh/"
 fi
 cp -R "${BUILD_DIR}/kotlin-out/uniffi/openburnbar_iroh/." "${GENERATED_KT_DIR}/"
+find "${GENERATED_KT_DIR}" -name '*.kt' -type f | while IFS= read -r generated_file; do
+  sanitized_file="${generated_file}.sanitized"
+  awk '
+    /^@file:Suppress\(/ { next }
+    /^[[:space:]]*@Suppress\(/ { next }
+    { print }
+  ' "${generated_file}" > "${sanitized_file}"
+  mv "${sanitized_file}" "${generated_file}"
+done
 
 # --- Assemble the AAR ----------------------------------------------------------
 AAR_STAGING="${BUILD_DIR}/staging"
