@@ -52,7 +52,6 @@ internal fun HermesViewRoute(
                 },
                 onOpenLibrary = { ui.setShowSessionsLibrary(true) },
                 onOpenSetup = { ui.setShowHermesSettings(true) },
-                hermesService = hermesService,
             )
         else ->
             HermesViewActiveChatRoute(

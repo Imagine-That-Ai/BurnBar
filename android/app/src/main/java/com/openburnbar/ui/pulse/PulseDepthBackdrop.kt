@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.pulse
@@ -82,29 +81,7 @@ fun PulseDepthBackdrop(modifier: Modifier = Modifier) {
 
     val isDark = isSystemInDarkTheme()
     val reduceMotion = LocalAuroraReduceMotion.current
-    val phaseStep: State<Int> =
-        if (reduceMotion) {
-            // Reduce-motion renders one static frame at the rest phase.
-            remember { mutableIntStateOf(PULSE_DEPTH_REST_STEP) }
-        } else {
-            val transition = rememberInfiniteTransition(label = "pulse-depth")
-            val phase = transition.animateFloat(
-                initialValue = 0f,
-                targetValue = 1f,
-                animationSpec =
-                infiniteRepeatable(
-                    animation = tween(durationMillis = DRIFT_CYCLE_MILLIS, easing = LinearEasing),
-                    repeatMode = RepeatMode.Restart,
-                ),
-                label = "phase",
-            )
-            // Quantize at the observed-state level: the draw block reads only
-            // this derived Int, so it invalidates at most 30×/s instead of at
-            // display refresh for sub-pixel drift. (Rounding inside the draw
-            // lambda would NOT reduce cadence — the lambda re-executes on
-            // every snapshot write of the raw animated float.)
-            remember { derivedStateOf { pulseDepthQuantizedStep(phase.value) } }
-        }
+    val phaseStep = rememberPulseDepthPhaseStep(reduceMotion)
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
@@ -180,4 +157,23 @@ fun PulseDepthBackdrop(modifier: Modifier = Modifier) {
             intensity = if (isDark) 0.14f else 0.06f,
         )
     }
+}
+
+@Composable
+private fun rememberPulseDepthPhaseStep(reduceMotion: Boolean): State<Int> {
+    if (reduceMotion) {
+        return remember { mutableIntStateOf(PULSE_DEPTH_REST_STEP) }
+    }
+    val transition = rememberInfiniteTransition(label = "pulse-depth")
+    val phase = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec =
+        infiniteRepeatable(
+            animation = tween(durationMillis = DRIFT_CYCLE_MILLIS, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "phase",
+    )
+    return remember { derivedStateOf { pulseDepthQuantizedStep(phase.value) } }
 }

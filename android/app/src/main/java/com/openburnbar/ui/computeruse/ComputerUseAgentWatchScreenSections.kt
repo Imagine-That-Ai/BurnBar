@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.computeruse
@@ -57,6 +56,7 @@ import com.openburnbar.data.computeruse.ComputerUseTrustMode
 import com.openburnbar.data.computeruse.ComputerUseWatchState
 import com.openburnbar.data.hermes.HermesConnectionMode
 import com.openburnbar.data.hermes.HermesConnectionRecord
+import com.openburnbar.ui.components.liquidGlassSurface
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 
@@ -652,8 +652,14 @@ private fun SectionHeader(text: String) {
 @Composable
 private fun StatusStrip(state: ComputerUseWatchState, onDowngrade: (ComputerUseTrustMode) -> Unit) {
     Surface(
-        color = Color.Black.copy(alpha = 0.58f),
+        color = Color.Transparent,
         shape = RoundedCornerShape(18.dp),
+        modifier =
+        Modifier.liquidGlassSurface(
+            shape = RoundedCornerShape(18.dp),
+            wash = Color.Black.copy(alpha = 0.45f),
+            isDark = true,
+        ),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -698,8 +704,14 @@ private fun CursorDot(xFraction: Float, yFraction: Float, modifier: Modifier = M
 private fun TimelinePreview(entries: List<ComputerUseActionLogEntry>) {
     if (entries.isEmpty()) return
     Surface(
-        color = Color.Black.copy(alpha = 0.62f),
+        color = Color.Transparent,
         shape = RoundedCornerShape(18.dp),
+        modifier =
+        Modifier.liquidGlassSurface(
+            shape = RoundedCornerShape(18.dp),
+            wash = Color.Black.copy(alpha = 0.5f),
+            isDark = true,
+        ),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             entries.forEach { entry ->
@@ -717,8 +729,13 @@ private fun TimelinePreview(entries: List<ComputerUseActionLogEntry>) {
 @Composable
 private fun ApprovalRow(request: ComputerUseApprovalRequest, onApprove: () -> Unit, onReject: () -> Unit, onRejectAndHalt: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        color = Color.Transparent,
         shape = RoundedCornerShape(20.dp),
+        modifier =
+        Modifier.liquidGlassSurface(
+            shape = RoundedCornerShape(20.dp),
+            wash = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        ),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),

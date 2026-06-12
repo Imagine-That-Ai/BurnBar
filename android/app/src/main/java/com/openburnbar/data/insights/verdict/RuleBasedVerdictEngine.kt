@@ -15,8 +15,8 @@ import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private const val VAL_0_5 = 0.5
-private const val VAL_5 = 5
+private const val CHEAPER_MODEL_COST_RATIO = 0.5
+private const val RECOMMENDATION_MIN_SESSIONS = 5
 
 /**
  * Deterministic, no-LLM verdict producer.
@@ -60,7 +60,7 @@ class RuleBasedVerdictEngine(
     fun produce(digest: InsightDigest, window: VerdictWindow, priorDigest: InsightDigest? = null, now: Date = Date()): InsightVerdict {
         val rings = buildVerdictRings(thresholds, digest, priorDigest)
         val keyNumbers = buildVerdictKeyNumbers(digest, priorDigest)
-        val bullets = buildVerdictBullets(thresholds, digest, priorDigest, window)
+        val bullets = buildVerdictBullets(thresholds, digest, priorDigest)
         val anomaly = buildAnomaly(digest)
         val recommendation = buildRecommendation(digest)
         val dominantProvider = digest.providers.maxByOrNull { it.costUSD }?.id
@@ -131,7 +131,7 @@ class RuleBasedVerdictEngine(
         if (digest.daily.size < thresholds.recommendationMinDailyHistory) return null
         val candidate =
             digest.models
-                .filter { it.sessionCount >= VAL_5 && it.costUSD >= 1.0 }
+                .filter { it.sessionCount >= RECOMMENDATION_MIN_SESSIONS && it.costUSD >= 1.0 }
                 .maxByOrNull { it.costUSD }
         val cheaper =
             candidate?.let { top ->
@@ -139,7 +139,7 @@ class RuleBasedVerdictEngine(
                     .filter {
                         it.providerID == top.providerID &&
                             it.id != top.id &&
-                            it.avgCostPerSession < top.avgCostPerSession * VAL_0_5
+                            it.avgCostPerSession < top.avgCostPerSession * CHEAPER_MODEL_COST_RATIO
                     }
                     .minByOrNull { it.avgCostPerSession }
             }

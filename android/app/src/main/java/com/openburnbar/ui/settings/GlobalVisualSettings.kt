@@ -8,7 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.theme.AppAppearance
 import com.openburnbar.ui.theme.UIMode

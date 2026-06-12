@@ -22,7 +22,7 @@ struct OpenBurnBarVirtualHIDBridgeMain {
         signal(SIGPIPE, SIG_IGN)
         do {
             let socketPath = argumentValue("--socket") ?? defaultSocketPath
-            let xpcClient = PrivilegedInputXPCClient()
+            let xpcClient = PrivilegedInputXPCClient(userSessionSocketPath: nil)
             let server = try VirtualHIDBridgeSocketAdapter(socketPath: socketPath, xpcClient: xpcClient)
             try server.run()
         } catch {
@@ -170,7 +170,7 @@ private final class VirtualHIDBridgeSocketAdapter {
                 peerAuditToken: peerToken,
                 capabilityToken: legacy.capabilityToken
             )
-            let response = try xpcClient.perform(envelope)
+            let response = try performInput(envelope)
             try write(
                 BridgeResponse(ok: response.ok, version: bridgeVersion, error: response.error),
                 to: client
@@ -182,16 +182,35 @@ private final class VirtualHIDBridgeSocketAdapter {
         }
     }
 
-    private func peerAuditTokenData(socketFD: Int32) throws -> Data {
-        var token = audit_token_t()
-        var length = socklen_t(MemoryLayout<audit_token_t>.size)
-        let status = withUnsafeMutablePointer(to: &token) { pointer in
-            getsockopt(socketFD, SOL_LOCAL, 0x102, pointer, &length)
+    private func performInput(_ envelope: PrivilegedInputDispatchEnvelope) throws -> PrivilegedInputDispatchResponse {
+        if let consoleUser = resolveConsoleUser() {
+            do {
+                // Forwarding as root into the console user's session: the
+                // helper must prove it runs as that user AND carries the
+                // first-party signature before the envelope (which can hold
+                // the login password) is written.
+                return try PrivilegedInputSocketClient(
+                    socketPath: PrivilegedInputXPCConstants.userSessionSocketPath(uid: consoleUser.uid),
+                    expectedServerUID: consoleUser.uid
+                ).perform(envelope)
+            } catch PrivilegedInputXPCClient.ClientError.rejected(let detail) {
+                throw PrivilegedInputXPCClient.ClientError.rejected(detail)
+            } catch PrivilegedInputXPCClient.ClientError.serverUntrusted(let detail) {
+                bridgeLog("user helper socket failed server trust detail=\(detail)")
+                throw PrivilegedInputXPCClient.ClientError.serverUntrusted(detail)
+            } catch {
+                bridgeLog("user helper socket unavailable detail=\(String(describing: error)); falling back to xpc")
+            }
         }
-        guard status == 0, length == socklen_t(MemoryLayout<audit_token_t>.size) else {
+        return try xpcClient.perform(envelope)
+    }
+
+    private func peerAuditTokenData(socketFD: Int32) throws -> Data {
+        do {
+            return try OpenBurnBarPrivilegedTrust.peerAuditTokenData(socketFD: socketFD)
+        } catch {
             throw BridgeError.peerIdentityUnavailable
         }
-        return Data(bytes: &token, count: MemoryLayout<audit_token_t>.size)
     }
 
     private func bridgeErrorDetail(for error: Error) -> String {
@@ -206,6 +225,8 @@ private final class VirtualHIDBridgeSocketAdapter {
                 return BridgeError.requestFailed.rawValue
             case .rejected(let detail):
                 return detail
+            case .serverUntrusted:
+                return BridgeError.peerCodeSignatureInvalid.rawValue
             }
         }
         if let authFailure = error as? PrivilegedPeerAuthenticationFailure {

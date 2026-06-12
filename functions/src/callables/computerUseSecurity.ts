@@ -53,8 +53,21 @@ type CloudVaultDeviceTrustChainProof = {
   signature: string;
 };
 
+type TrustedDeviceActionProof = {
+  version: number;
+  algorithm: string;
+  deviceSignalIdentityKeyId: string;
+  deviceSignalIdentityPublicKeyFingerprint: string;
+  issuedAtMillis: number;
+  signature: string;
+};
+
 const CLOUD_VAULT_DEVICE_TRUST_CHAIN_VERSION = 1;
 const CLOUD_VAULT_DEVICE_TRUST_CHAIN_ALGORITHM = "signal-identity-xeddsa-v1";
+const TRUSTED_DEVICE_ACTION_PROOF_VERSION = 1;
+const TRUSTED_DEVICE_ACTION_PROOF_DOMAIN = "OpenBurnBar-TrustedDeviceAction-v1";
+const TRUSTED_DEVICE_ACTION_PROOF_MAX_AGE_MS = 5 * 60 * 1000;
+const TRUSTED_DEVICE_ACTION_PROOF_CLOCK_SKEW_MS = 30 * 1000;
 
 function isNativeEscrowPlatform(raw: unknown): raw is string {
   return typeof raw === "string" && ESCROW_PLATFORMS.has(raw);
@@ -136,6 +149,34 @@ function parseCloudVaultDeviceTrustChainProof(raw: unknown): CloudVaultDeviceTru
       true,
     ),
     signature: requireBase64Like(record.signature, "trustChain.signature", 64, 256),
+  };
+}
+
+function parseTrustedDeviceActionProof(raw: unknown): TrustedDeviceActionProof {
+  const record = recordOrUndefined(raw);
+  if (!record) {
+    throw new HttpsError("invalid-argument", "actionProof is required.");
+  }
+  const version =
+    boundedInteger(record.version, "actionProof.version", TRUSTED_DEVICE_ACTION_PROOF_VERSION, TRUSTED_DEVICE_ACTION_PROOF_VERSION, true) ??
+    TRUSTED_DEVICE_ACTION_PROOF_VERSION;
+  const algorithm = boundedTrimmedString(record.algorithm, "actionProof.algorithm", 80, true);
+  if (algorithm !== CLOUD_VAULT_DEVICE_TRUST_CHAIN_ALGORITHM) {
+    throw new HttpsError("invalid-argument", "actionProof.algorithm is unsupported.");
+  }
+  return {
+    version,
+    algorithm,
+    deviceSignalIdentityKeyId: boundedTrimmedString(record.deviceSignalIdentityKeyId, "actionProof.deviceSignalIdentityKeyId", 200, true),
+    deviceSignalIdentityPublicKeyFingerprint: boundedTrimmedString(
+      record.deviceSignalIdentityPublicKeyFingerprint,
+      "actionProof.deviceSignalIdentityPublicKeyFingerprint",
+      128,
+      true,
+    ),
+    issuedAtMillis:
+      boundedInteger(record.issuedAtMillis, "actionProof.issuedAtMillis", 0, Number.MAX_SAFE_INTEGER, true) ?? 0,
+    signature: requireBase64Like(record.signature, "actionProof.signature", 64, 256),
   };
 }
 
@@ -685,6 +726,137 @@ function verifyCloudVaultDeviceTrustChainSignature(args: {
   }
   const payload = buildCloudVaultDeviceTrustChainCanonicalBytes(args.canonicalFields);
   return verifyXEdDSACurve25519Signature(publicKey, payload, signature);
+}
+
+function buildTrustedDeviceActionCanonicalBytes(fields: {
+  uid: string;
+  deviceId: string;
+  actionKind: string;
+  subjectId: string;
+  approve: boolean;
+  nonce: string;
+  issuedAtMillis: number;
+  deviceSignalIdentityKeyId: string;
+  deviceSignalIdentityPublicKeyFingerprint: string;
+}): Buffer {
+  const segments = [
+    "uid",
+    fields.uid,
+    "deviceId",
+    fields.deviceId,
+    "actionKind",
+    fields.actionKind,
+    "subjectId",
+    fields.subjectId,
+    "approve",
+    fields.approve ? "true" : "false",
+    "nonce",
+    fields.nonce,
+    "issuedAtMillis",
+    `${fields.issuedAtMillis}`,
+    "deviceSignalIdentityKeyId",
+    fields.deviceSignalIdentityKeyId,
+    "deviceSignalIdentityPublicKeyFingerprint",
+    fields.deviceSignalIdentityPublicKeyFingerprint,
+  ];
+  let canonical = `${TRUSTED_DEVICE_ACTION_PROOF_DOMAIN}\n`;
+  for (const segment of segments) {
+    canonical += `${Buffer.byteLength(segment, "utf8")}:${segment}\n`;
+  }
+  return Buffer.from(canonical, "utf8");
+}
+
+function verifyTrustedDeviceActionSignature(args: {
+  publicKeyDataBase64: unknown;
+  signatureBase64: string;
+  canonicalFields: Parameters<typeof buildTrustedDeviceActionCanonicalBytes>[0];
+}): boolean {
+  if (typeof args.publicKeyDataBase64 !== "string") return false;
+  const trimmedKey = args.publicKeyDataBase64.trim();
+  if (!trimmedKey) return false;
+  const publicKey = Buffer.from(trimmedKey, "base64");
+  if (
+    publicKey.length !== SIGNAL_DJB_PUBLIC_KEY_BYTE_LENGTH ||
+    publicKey[0] !== ED25519_DJB_TYPE_BYTE ||
+    publicKey.toString("base64") !== normalizeBase64(trimmedKey)
+  ) {
+    return false;
+  }
+  const signature = Buffer.from(args.signatureBase64, "base64");
+  if (signature.length !== 64 || signature.toString("base64") !== normalizeBase64(args.signatureBase64)) {
+    return false;
+  }
+  const payload = buildTrustedDeviceActionCanonicalBytes(args.canonicalFields);
+  return verifyXEdDSACurve25519Signature(publicKey, payload, signature);
+}
+
+export async function requireTrustedDeviceActionProof(args: {
+  uid: string;
+  deviceId: string;
+  actionKind: string;
+  subjectId: string;
+  approve: boolean;
+  nonce: string;
+  proofRaw: unknown;
+  allowedPlatforms: ReadonlySet<string>;
+  nowMillis?: number;
+}): Promise<{ deviceId: string; platform: string; signalIdentityKeyId: string }> {
+  const proof = parseTrustedDeviceActionProof(args.proofRaw);
+  const nowMillis = args.nowMillis ?? Date.now();
+  if (
+    proof.issuedAtMillis < nowMillis - TRUSTED_DEVICE_ACTION_PROOF_MAX_AGE_MS ||
+    proof.issuedAtMillis > nowMillis + TRUSTED_DEVICE_ACTION_PROOF_CLOCK_SKEW_MS
+  ) {
+    throw new HttpsError("failed-precondition", "actionProof is expired or from the future.");
+  }
+
+  const device = await db.doc(`users/${args.uid}/escrow_devices/${args.deviceId}`).get();
+  const platform = device.exists ? device.get("platform") : undefined;
+  if (!device.exists || device.get("trustState") !== "trusted" || typeof platform !== "string" || !args.allowedPlatforms.has(platform)) {
+    throw new HttpsError("permission-denied", "This mutation requires a trusted device for the requested trust root.");
+  }
+  if (
+    device.get("approvedBySignalIdentityKeyId") !== proof.deviceSignalIdentityKeyId ||
+    device.get("approvedBySignalIdentityPublicKeyFingerprint") !== proof.deviceSignalIdentityPublicKeyFingerprint
+  ) {
+    throw new HttpsError("permission-denied", "actionProof is not bound to the trusted device identity.");
+  }
+
+  const identitySnap = await db.doc(`users/${args.uid}/signal_identity_public_keys/${proof.deviceSignalIdentityKeyId}`).get();
+  if (
+    !identitySnap.exists ||
+    identitySnap.get("deviceId") !== args.deviceId ||
+    identitySnap.get("identityKeyId") !== proof.deviceSignalIdentityKeyId ||
+    identitySnap.get("publicKeyFingerprint") !== proof.deviceSignalIdentityPublicKeyFingerprint
+  ) {
+    throw new HttpsError("permission-denied", "actionProof identity is not published for the trusted device.");
+  }
+  const identityKeyVersion = identitySnap.get("keyVersion");
+  const deviceKeyVersion = device.get("keyVersion");
+  if (typeof identityKeyVersion === "number" && typeof deviceKeyVersion === "number" && identityKeyVersion !== deviceKeyVersion) {
+    throw new HttpsError("permission-denied", "actionProof identity key version does not match the trusted device.");
+  }
+
+  const verified = verifyTrustedDeviceActionSignature({
+    publicKeyDataBase64: identitySnap.get("publicKeyData"),
+    signatureBase64: proof.signature,
+    canonicalFields: {
+      uid: args.uid,
+      deviceId: args.deviceId,
+      actionKind: args.actionKind,
+      subjectId: args.subjectId,
+      approve: args.approve,
+      nonce: args.nonce,
+      issuedAtMillis: proof.issuedAtMillis,
+      deviceSignalIdentityKeyId: proof.deviceSignalIdentityKeyId,
+      deviceSignalIdentityPublicKeyFingerprint: proof.deviceSignalIdentityPublicKeyFingerprint,
+    },
+  });
+  if (!verified) {
+    throw new HttpsError("permission-denied", "actionProof signature is invalid.");
+  }
+
+  return { deviceId: args.deviceId, platform, signalIdentityKeyId: proof.deviceSignalIdentityKeyId };
 }
 
 function grantPresetCapabilities(preset: string): string[] {
@@ -2108,17 +2280,36 @@ export const respondMissionApproval = onCall(
   },
   wrapCallableHandler(
     "respondMissionApproval",
-    async (request: CallableRequest<{ requestId?: unknown; approve?: unknown; deviceId?: unknown }>) => {
+    async (
+      request: CallableRequest<{
+        requestId?: unknown;
+        approve?: unknown;
+        deviceId?: unknown;
+        nonce?: unknown;
+        actionProof?: unknown;
+      }>,
+    ) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before responding to a mission approval.");
-      enforceHighRiskComputerUseCallable(request, uid);
+      const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
+      await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
 
-      const requestId = boundedTrimmedString(request.data.requestId, "requestId", 512, true);
-      const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
+      const requestId = boundedFirestoreDocumentId(request.data.requestId, "requestId", 160);
+      const deviceId = boundedFirestoreDocumentId(request.data.deviceId, "deviceId", 160);
       if (typeof request.data.approve !== "boolean") {
         throw new HttpsError("invalid-argument", "approve must be a boolean.");
       }
       const approve = request.data.approve;
+      await requireTrustedDeviceActionProof({
+        uid,
+        deviceId,
+        actionKind: "computer_use_mission_approval",
+        subjectId: requestId,
+        approve,
+        nonce,
+        proofRaw: request.data.actionProof,
+        allowedPlatforms: PHONE_CONTROL_ESCROW_PLATFORMS,
+      });
 
       const missionRef = db.doc(`users/${uid}/cli_agent_mission_requests/${requestId}`);
       const deviceRef = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
@@ -2193,8 +2384,12 @@ export const __testing__ = {
   verifyEd25519RawSignature,
   verifyPhoneControlAuthoritySignature,
   buildCloudVaultDeviceTrustChainCanonicalBytes,
+  buildTrustedDeviceActionCanonicalBytes,
   verifyXEdDSACurve25519Signature,
   verifyCloudVaultDeviceTrustChainSignature,
+  verifyTrustedDeviceActionSignature,
+  parseTrustedDeviceActionProof,
   montgomeryUToCompressedEdwards,
   CLOUD_VAULT_DEVICE_TRUST_CHAIN_DOMAIN,
+  TRUSTED_DEVICE_ACTION_PROOF_DOMAIN,
 };

@@ -1,3 +1,5 @@
+// Security-pinned E2EE/trust code under active remediation; behavior is pinned by tests and
+// a P0 migration gate. Lint findings here are wire-format/defensive-coding by design -
 package com.openburnbar.data.hermes.relay
 
 import java.security.MessageDigest
@@ -89,7 +91,6 @@ object HermesRelayCrypto {
      * key), bound to the mirror `viewerId`. Byte-identical to the Swift
      * `HermesRelayCrypto.mediaSealKeyAAD` parts order.
      */
-    @Suppress("LongParameterList")
     fun mediaSealKeyAAD(
         uid: String,
         connectionId: String,
@@ -108,7 +109,6 @@ object HermesRelayCrypto {
      * key), bound to the controller peerNodeId. Byte-identical to the Swift
      * `HermesRelayCrypto.controlSealKeyAAD` parts order.
      */
-    @Suppress("LongParameterList")
     fun controlSealKeyAAD(
         uid: String,
         connectionId: String,

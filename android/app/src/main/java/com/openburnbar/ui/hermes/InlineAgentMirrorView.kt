@@ -1,18 +1,43 @@
 package com.openburnbar.ui.hermes
 
+import android.content.Context
 import android.util.Log
 import android.view.SurfaceView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,15 +57,24 @@ import com.openburnbar.data.computeruse.PhoneControlIntent
 import com.openburnbar.data.computeruse.PhoneControlIntentKind
 import com.openburnbar.data.computeruse.PhoneControlSender
 import com.openburnbar.data.computeruse.PhoneControlSigningKeyStore
+import com.openburnbar.data.media.MediaControlStreamCoordinator
 import com.openburnbar.data.media.VideoReceivePipeline
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentTerminalRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
+import com.openburnbar.ui.components.liquidGlassSurface
 import com.openburnbar.ui.media.SurfaceCallback
 import com.openburnbar.ui.theme.AuroraColors
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private const val INLINE_MIRROR_DEFAULT_ASPECT_WIDTH = 16f
+private const val INLINE_MIRROR_DEFAULT_ASPECT_HEIGHT = 9f
+private const val INLINE_MIRROR_STATUS_DOT_SIZE_DP = 6
+private val INLINE_MIRROR_LIVE_STATUS_COLOR = Color(0xFF4CAF50)
 
 enum class InlineMirrorPhase {
     IDLE,
@@ -71,188 +105,255 @@ fun InlineAgentMirrorView(
         VideoReceivePipeline(
             onLongTermReferenceTokenDecoded = { token ->
                 requestID?.let { reqId ->
-                    coordinator?.sendLongTermReferenceAcknowledgement(
-                        token = token,
-                        requestID = reqId
-                    )
+                    coordinator?.sendLongTermReferenceAcknowledgement(token = token, requestID = reqId)
                 }
-            }
+            },
         )
     }
 
     val stats by pipeline.stats.collectAsState()
-    val aspectRatio = if (stats.widthPx > 0 && stats.heightPx > 0) {
+    val aspectRatio = inlineMirrorAspectRatio(stats)
+
+    var retryTrigger by remember { mutableStateOf(0) }
+    val stateCallbacks = InlineMirrorStateCallbacks({ phase = it }, { statusMessage = it }, { requestID = it }, { mirrorSessionID = it }, { phoneControlSender = it })
+
+    InlineMirrorConnectionLifecycle(
+        coordinator = coordinator,
+        runtime = runtime,
+        retryTrigger = retryTrigger,
+        coroutineScope = coroutineScope,
+        pipeline = pipeline,
+        callbacks = stateCallbacks,
+    )
+    InlineMirrorAckCollector(
+        context = context,
+        coordinator = coordinator,
+        requestID = requestID,
+        callbacks = stateCallbacks,
+    )
+    InlineMirrorPipelinePhaseEffect(pipeline = pipeline, callbacks = stateCallbacks)
+    InlineMirrorDisposeEffect(
+        coordinator = coordinator,
+        pipeline = pipeline,
+        coroutineScope = coroutineScope,
+        requestID = requestID,
+        mirrorSessionID = mirrorSessionID,
+    )
+
+    val uiState = InlineMirrorUiState(phase, statusMessage, aspectRatio, phoneControlSender != null)
+    val handlers = InlineMirrorHandlers(
+        onSendKey = { key, modifiers -> sendInlineMirrorKey(coroutineScope, phoneControlSender, key, modifiers) },
+        onRetry = { retryTrigger++ },
+    )
+    InlineMirrorContent(uiState, pipeline, coroutineScope, handlers, modifier)
+}
+
+private fun inlineMirrorAspectRatio(stats: VideoReceivePipeline.Stats): Float =
+    if (stats.widthPx > 0 && stats.heightPx > 0) {
         stats.widthPx.toFloat() / stats.heightPx.toFloat()
     } else {
-        16f / 9f
+        INLINE_MIRROR_DEFAULT_ASPECT_WIDTH / INLINE_MIRROR_DEFAULT_ASPECT_HEIGHT
     }
 
-    // Helper function to send control inputs
-    fun sendKey(key: String, modifiers: List<String> = emptyList()) {
-        val sender = phoneControlSender ?: return
-        coroutineScope.launch(Dispatchers.IO) {
-            runCatching {
-                sender.send(
-                    PhoneControlIntent(
-                        kind = PhoneControlIntentKind.SHORTCUT,
-                        key = key,
-                        modifiers = modifiers
-                    )
-                )
-            }.onFailure { e ->
-                Log.e("InlineMirror", "Failed to send shortcut key=$key error=${e.message}")
-            }
+private data class InlineMirrorStateCallbacks(
+    val onPhaseChange: (InlineMirrorPhase) -> Unit,
+    val onStatusMessageChange: (String) -> Unit,
+    val onRequestIDChange: (String?) -> Unit,
+    val onMirrorSessionIDChange: (String?) -> Unit,
+    val onPhoneControlSenderChange: (PhoneControlSender?) -> Unit,
+)
+
+private data class InlineMirrorUiState(
+    val phase: InlineMirrorPhase,
+    val statusMessage: String,
+    val aspectRatio: Float,
+    val phoneControlEnabled: Boolean,
+)
+
+private data class InlineMirrorHandlers(
+    val onSendKey: (String, List<String>) -> Unit,
+    val onRetry: () -> Unit,
+)
+
+private fun sendInlineMirrorKey(
+    coroutineScope: CoroutineScope,
+    phoneControlSender: PhoneControlSender?,
+    key: String,
+    modifiers: List<String> = emptyList(),
+) {
+    val sender = phoneControlSender ?: return
+    coroutineScope.launch(Dispatchers.IO) {
+        runCatching {
+            sender.send(
+                PhoneControlIntent(
+                    kind = PhoneControlIntentKind.SHORTCUT,
+                    key = key,
+                    modifiers = modifiers,
+                ),
+            )
+        }.onFailure { e ->
+            Log.e("InlineMirror", "Failed to send shortcut key=$key error=${e.message}")
         }
     }
+}
 
-    // Trigger retry
-    var retryTrigger by remember { mutableStateOf(0) }
-
-    // Mirror connection lifecycle
+@Composable
+private fun InlineMirrorConnectionLifecycle(
+    coordinator: MediaControlStreamCoordinator?,
+    runtime: String,
+    retryTrigger: Int,
+    coroutineScope: CoroutineScope,
+    pipeline: VideoReceivePipeline,
+    callbacks: InlineMirrorStateCallbacks,
+) {
     LaunchedEffect(coordinator, retryTrigger) {
         if (coordinator == null) {
-            phase = InlineMirrorPhase.ERROR
-            statusMessage = "No relay connection. Make sure your phone is paired."
+            callbacks.onPhaseChange(InlineMirrorPhase.ERROR)
+            callbacks.onStatusMessageChange("No relay connection. Make sure your phone is paired.")
             return@LaunchedEffect
         }
-
-        phase = InlineMirrorPhase.CONNECTING
-        statusMessage = "Connecting to Mac..."
-
+        callbacks.onPhaseChange(InlineMirrorPhase.CONNECTING)
+        callbacks.onStatusMessageChange("Connecting to Mac...")
         coroutineScope.launch {
-            try {
-                // 1. Ensure stream is responsive
-                val responsive = withContext(Dispatchers.IO) {
-                    coordinator.ensureResponsive(
-                        freshnessIntervalMillis = 5000,
-                        probeTimeoutMillis = 10000
-                    )
-                }
-
-                if (!responsive) {
-                    phase = InlineMirrorPhase.ERROR
-                    statusMessage = "Mac is unresponsive. Make sure BurnBar is running on your Mac."
-                    return@launch
-                }
-
-                // 2. Set up mirror frame handlers
-                coordinator.mirrorFrameHandler = { frame ->
-                    pipeline.ingest(frame)
-                }
-                coordinator.mirrorFrameV2Handler = { frameV2 ->
-                    pipeline.ingest(frameV2)
-                }
-
-                phase = InlineMirrorPhase.ASKING_MIRROR
-                statusMessage = "Asking Mac to share terminal..."
-
-                // 3. Send mirror request with runtime agent terminal info
-                val reqId = withContext(Dispatchers.IO) {
-                    val displayName = FirebaseAuth.getInstance().currentUser?.displayName
-                        ?.takeIf { it.isNotBlank() } ?: "Android"
-                    
-                    val agentTerminal = HermesRealtimeRelayAgentTerminalRequest(
-                        runtimeId = runtime,
-                        interactive = true
-                    )
-                    
-                    coordinator.requestMirror(
-                        requesterDisplayName = displayName,
-                        agentTerminal = agentTerminal
-                    )
-                }
-
-                requestID = reqId
-                phase = InlineMirrorPhase.WAITING_FOR_APPROVAL
-                statusMessage = "Accept the request on your Mac..."
-
-            } catch (e: Exception) {
+            runCatching {
+                requestInlineMirror(coordinator, runtime, pipeline, callbacks)
+            }.onFailure { e ->
                 Log.e("InlineMirror", "Failed to start mirror request: ${e.message}", e)
-                phase = InlineMirrorPhase.ERROR
-                statusMessage = e.message ?: "Connection error"
+                callbacks.onPhaseChange(InlineMirrorPhase.ERROR)
+                callbacks.onStatusMessageChange(e.message ?: "Connection error")
             }
         }
     }
+}
 
-    // Collect ACK and setup input sender
+private suspend fun requestInlineMirror(
+    coordinator: MediaControlStreamCoordinator,
+    runtime: String,
+    pipeline: VideoReceivePipeline,
+    callbacks: InlineMirrorStateCallbacks,
+) {
+    val responsive = withContext(Dispatchers.IO) {
+        coordinator.ensureResponsive(
+            freshnessIntervalMillis = 5000,
+            probeTimeoutMillis = 10000,
+        )
+    }
+    if (!responsive) {
+        callbacks.onPhaseChange(InlineMirrorPhase.ERROR)
+        callbacks.onStatusMessageChange("Mac is unresponsive. Make sure BurnBar is running on your Mac.")
+        return
+    }
+    coordinator.mirrorFrameHandler = { frame -> pipeline.ingest(frame) }
+    coordinator.mirrorFrameV2Handler = { frameV2 -> pipeline.ingest(frameV2) }
+    callbacks.onPhaseChange(InlineMirrorPhase.ASKING_MIRROR)
+    callbacks.onStatusMessageChange("Asking Mac to share terminal...")
+    val reqId = withContext(Dispatchers.IO) {
+        val displayName = FirebaseAuth.getInstance().currentUser?.displayName
+            ?.takeIf { it.isNotBlank() } ?: "Android"
+        coordinator.requestMirror(
+            requesterDisplayName = displayName,
+            agentTerminal = HermesRealtimeRelayAgentTerminalRequest(
+                runtimeId = runtime,
+                interactive = true,
+            ),
+        )
+    }
+    callbacks.onRequestIDChange(reqId)
+    callbacks.onPhaseChange(InlineMirrorPhase.WAITING_FOR_APPROVAL)
+    callbacks.onStatusMessageChange("Accept the request on your Mac...")
+}
+
+@Composable
+private fun InlineMirrorAckCollector(
+    context: Context,
+    coordinator: MediaControlStreamCoordinator?,
+    requestID: String?,
+    callbacks: InlineMirrorStateCallbacks,
+) {
     LaunchedEffect(coordinator, requestID) {
         if (coordinator == null || requestID == null) return@LaunchedEffect
         coordinator.lastMirrorAck.collectLatest { ack ->
-            if (ack != null && ack.requestId == requestID) {
-                val presentation = inlineMirrorAckPresentation(ack.decision, ack.detail)
-                phase = presentation.phase
-                statusMessage = presentation.statusMessage
-                if (ack.decision == HermesRealtimeRelayMirrorAck.Decision.ACCEPTED) {
-                    mirrorSessionID = ack.sessionId
-
-                    // Setup PhoneControlSender for interactive keyboard commands
-                    try {
-                        val activePair = coordinator.activePair.value
-                        if (activePair != null) {
-                            val keyStore = PhoneControlSigningKeyStore(context)
-                            val identity = keyStore.signingIdentity()
-                            val peerNodeId = keyStore.peerNodeId(identity)
-                            // F10: reuse the seal session a screen-share
-                            // classify established on this connection (the Mac
-                            // keys its open side by connection id) so inline
-                            // keystrokes ride sealed too. No session — flags
-                            // off or no prior classify — stays on the legacy
-                            // lane the Mac still accepts, byte-identical.
-                            val baseSink: suspend (com.openburnbar.irohrelay.HermesRealtimeRelayFrame) -> Unit =
-                                { frame -> coordinator.send(frame) }
-                            val sealSession = ControlSealSessionEstablisher.activeSession(activePair.connectionID)
-                            phoneControlSender = PhoneControlSender(
-                                uid = activePair.uid,
-                                connectionId = activePair.connectionID,
-                                peerNodeId = peerNodeId,
-                                signingIdentityProvider = { identity },
-                                counterStore = InMemoryPhoneControlCounterStore(),
-                                attestationDigestProvider = {
-                                    AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope()
-                                },
-                                frameSink = sealSession
-                                    ?.let { ControlSealSessionEstablisher.sealingFrameSink(baseSink, it) }
-                                    ?: baseSink
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Log.e("InlineMirror", "Failed to setup phone control sender: ${e.message}", e)
-                    }
+            if (ack == null || ack.requestId != requestID) return@collectLatest
+            val presentation = inlineMirrorAckPresentation(ack.decision, ack.detail)
+            callbacks.onPhaseChange(presentation.phase)
+            callbacks.onStatusMessageChange(presentation.statusMessage)
+            if (ack.decision == HermesRealtimeRelayMirrorAck.Decision.ACCEPTED) {
+                callbacks.onMirrorSessionIDChange(ack.sessionId)
+                runCatching {
+                    callbacks.onPhoneControlSenderChange(inlineMirrorPhoneControlSender(context, coordinator))
+                }.onFailure { e ->
+                    Log.e("InlineMirror", "Failed to setup phone control sender: ${e.message}", e)
                 }
             }
         }
     }
+}
 
-    // Listen to pipeline running phase
+private fun inlineMirrorPhoneControlSender(
+    context: Context,
+    coordinator: MediaControlStreamCoordinator,
+): PhoneControlSender? {
+    val activePair = coordinator.activePair.value ?: return null
+    val keyStore = PhoneControlSigningKeyStore(context)
+    val identity = keyStore.signingIdentity()
+    val peerNodeId = keyStore.peerNodeId(identity)
+    val baseSink: suspend (HermesRealtimeRelayFrame) -> Unit = { frame -> coordinator.send(frame) }
+    val sealSession = ControlSealSessionEstablisher.activeSession(activePair.connectionID)
+    return PhoneControlSender(
+        uid = activePair.uid,
+        connectionId = activePair.connectionID,
+        peerNodeId = peerNodeId,
+        signingIdentityProvider = { identity },
+        counterStore = InMemoryPhoneControlCounterStore(),
+        attestationDigestProvider = {
+            AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope()
+        },
+        frameSink = sealSession
+            ?.let { ControlSealSessionEstablisher.sealingFrameSink(baseSink, it) }
+            ?: baseSink,
+    )
+}
+
+@Composable
+private fun InlineMirrorPipelinePhaseEffect(
+    pipeline: VideoReceivePipeline,
+    callbacks: InlineMirrorStateCallbacks,
+) {
     LaunchedEffect(pipeline) {
         pipeline.phase.collectLatest { p ->
             if (p is VideoReceivePipeline.Phase.Running) {
-                phase = InlineMirrorPhase.LIVE
-                statusMessage = "Live"
+                callbacks.onPhaseChange(InlineMirrorPhase.LIVE)
+                callbacks.onStatusMessageChange("Live")
             } else if (p is VideoReceivePipeline.Phase.Failed) {
-                phase = InlineMirrorPhase.ERROR
-                statusMessage = p.reason
+                callbacks.onPhaseChange(InlineMirrorPhase.ERROR)
+                callbacks.onStatusMessageChange(p.reason)
             }
         }
     }
+}
 
-    // Clean up on dispose
+@Composable
+private fun InlineMirrorDisposeEffect(
+    coordinator: MediaControlStreamCoordinator?,
+    pipeline: VideoReceivePipeline,
+    coroutineScope: CoroutineScope,
+    requestID: String?,
+    mirrorSessionID: String?,
+) {
     DisposableEffect(Unit) {
         onDispose {
             coroutineScope.launch {
                 pipeline.stop()
-                val currentReqID = requestID
-                val currentSessionID = mirrorSessionID
                 if (coordinator != null) {
                     coordinator.mirrorFrameHandler = null
                     coordinator.mirrorFrameV2Handler = null
-                    if (currentReqID != null) {
+                    if (requestID != null) {
                         runCatching {
                             withContext(Dispatchers.IO) {
                                 coordinator.stopMirror(
-                                    requestID = currentReqID,
-                                    sessionID = currentSessionID,
-                                    reason = "inline_closed"
+                                    requestID = requestID,
+                                    sessionID = mirrorSessionID,
+                                    reason = "inline_closed",
                                 )
                             }
                         }
@@ -261,139 +362,209 @@ fun InlineAgentMirrorView(
             }
         }
     }
+}
 
+@Composable
+private fun InlineMirrorContent(
+    uiState: InlineMirrorUiState,
+    pipeline: VideoReceivePipeline,
+    coroutineScope: CoroutineScope,
+    handlers: InlineMirrorHandlers,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(Color.Black)
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
-        if (phase == InlineMirrorPhase.LIVE) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Live Stream Surface
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(aspectRatio)
-                ) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { ctx ->
-                            SurfaceView(ctx).apply {
-                                holder.addCallback(SurfaceCallback(pipeline = pipeline, scope = coroutineScope))
-                            }
-                        }
-                    )
-
-                    // Overlay live status chip
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.Black.copy(alpha = 0.6f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF4CAF50))
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "LIVE",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // Control buttons row at the bottom if controller is active
-                if (phoneControlSender != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF1E1E1E))
-                            .padding(vertical = 8.dp, horizontal = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TerminalButton(label = "esc", onClick = { sendKey("escape") })
-                        TerminalButton(label = "tab", onClick = { sendKey("tab") })
-                        TerminalButton(label = "⌃C", onClick = { sendKey("c", listOf("control")) })
-                        TerminalButton(label = "←", onClick = { sendKey("left") })
-                        TerminalButton(label = "↑", onClick = { sendKey("up") })
-                        TerminalButton(label = "↓", onClick = { sendKey("down") })
-                        TerminalButton(label = "→", onClick = { sendKey("right") })
-                        TerminalButton(label = "⏎", onClick = { sendKey("return") })
-                    }
-                }
-
-                // Security panic banner
-                Text(
-                    text = "Hold ⌃⌥⌘. on Mac to abort session",
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(bottom = 6.dp, top = 2.dp)
-                )
-            }
+        if (uiState.phase == InlineMirrorPhase.LIVE) {
+            InlineMirrorLiveContent(
+                uiState = uiState,
+                pipeline = pipeline,
+                coroutineScope = coroutineScope,
+                onSendKey = handlers.onSendKey,
+            )
         } else {
-            // Placeholder Connection / Status View
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Terminal,
-                    contentDescription = "Terminal View",
-                    tint = AuroraColors.ember,
-                    modifier = Modifier.size(48.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                if (phase == InlineMirrorPhase.ERROR) {
-                    Text(
-                        text = statusMessage,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = { retryTrigger++ },
-                        colors = ButtonDefaults.buttonColors(containerColor = AuroraColors.ember)
-                    ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Retry")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Retry Connection")
-                    }
-                } else {
-                    CircularProgressIndicator(
-                        color = AuroraColors.ember,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = statusMessage,
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-                }
-            }
+            InlineMirrorPlaceholder(
+                phase = uiState.phase,
+                statusMessage = uiState.statusMessage,
+                onRetry = handlers.onRetry,
+            )
         }
     }
+}
+
+@Composable
+private fun InlineMirrorLiveContent(
+    uiState: InlineMirrorUiState,
+    pipeline: VideoReceivePipeline,
+    coroutineScope: CoroutineScope,
+    onSendKey: (String, List<String>) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        InlineMirrorSurface(
+            aspectRatio = uiState.aspectRatio,
+            pipeline = pipeline,
+            coroutineScope = coroutineScope,
+        )
+        if (uiState.phoneControlEnabled) {
+            InlineMirrorControlsRow(onSendKey = onSendKey)
+        }
+        InlineMirrorPanicBanner()
+    }
+}
+
+@Composable
+private fun InlineMirrorSurface(
+    aspectRatio: Float,
+    pipeline: VideoReceivePipeline,
+    coroutineScope: CoroutineScope,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(aspectRatio),
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                SurfaceView(ctx).apply {
+                    holder.addCallback(SurfaceCallback(pipeline = pipeline, scope = coroutineScope))
+                }
+            },
+        )
+        InlineMirrorLiveStatusChip(modifier = Modifier.align(Alignment.TopEnd))
+    }
+}
+
+@Composable
+private fun InlineMirrorLiveStatusChip(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .padding(8.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.Black.copy(alpha = 0.6f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(INLINE_MIRROR_STATUS_DOT_SIZE_DP.dp)
+                .clip(CircleShape)
+                .background(INLINE_MIRROR_LIVE_STATUS_COLOR),
+        )
+        Spacer(modifier = Modifier.width(INLINE_MIRROR_STATUS_DOT_SIZE_DP.dp))
+        Text(
+            text = "LIVE",
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun InlineMirrorControlsRow(onSendKey: (String, List<String>) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlassSurface(
+                shape = RoundedCornerShape(12.dp),
+                wash = Color.Black.copy(alpha = 0.35f),
+                isDark = true,
+            )
+            .padding(vertical = 8.dp, horizontal = 6.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TerminalButton(label = "esc", onClick = { onSendKey("escape", emptyList()) })
+        TerminalButton(label = "tab", onClick = { onSendKey("tab", emptyList()) })
+        TerminalButton(label = "⌃C", onClick = { onSendKey("c", listOf("control")) })
+        TerminalButton(label = "←", onClick = { onSendKey("left", emptyList()) })
+        TerminalButton(label = "↑", onClick = { onSendKey("up", emptyList()) })
+        TerminalButton(label = "↓", onClick = { onSendKey("down", emptyList()) })
+        TerminalButton(label = "→", onClick = { onSendKey("right", emptyList()) })
+        TerminalButton(label = "⏎", onClick = { onSendKey("return", emptyList()) })
+    }
+}
+
+@Composable
+private fun InlineMirrorPanicBanner() {
+    Text(
+        text = "Hold ⌃⌥⌘. on Mac to abort session",
+        color = Color.White.copy(alpha = 0.5f),
+        fontSize = 10.sp,
+        modifier = Modifier.padding(bottom = 6.dp, top = 2.dp),
+    )
+}
+
+@Composable
+private fun InlineMirrorPlaceholder(
+    phase: InlineMirrorPhase,
+    statusMessage: String,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Terminal,
+            contentDescription = "Terminal View",
+            tint = AuroraColors.ember,
+            modifier = Modifier.size(48.dp),
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        if (phase == InlineMirrorPhase.ERROR) {
+            InlineMirrorErrorStatus(statusMessage = statusMessage, onRetry = onRetry)
+        } else {
+            InlineMirrorLoadingStatus(statusMessage = statusMessage)
+        }
+    }
+}
+
+@Composable
+private fun InlineMirrorErrorStatus(statusMessage: String, onRetry: () -> Unit) {
+    Text(
+        text = statusMessage,
+        color = MaterialTheme.colorScheme.error,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    Button(
+        onClick = onRetry,
+        colors = ButtonDefaults.buttonColors(containerColor = AuroraColors.ember),
+    ) {
+        Icon(Icons.Filled.Refresh, contentDescription = "Retry")
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("Retry Connection")
+    }
+}
+
+@Composable
+private fun InlineMirrorLoadingStatus(statusMessage: String) {
+    CircularProgressIndicator(
+        color = AuroraColors.ember,
+        modifier = Modifier.size(24.dp),
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(
+        text = statusMessage,
+        color = Color.White.copy(alpha = 0.7f),
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Normal,
+    )
 }
 
 @Composable

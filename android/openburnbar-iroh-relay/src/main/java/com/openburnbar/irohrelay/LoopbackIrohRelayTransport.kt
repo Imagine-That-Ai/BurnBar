@@ -92,7 +92,9 @@ internal class LoopbackQueue {
     }
 
     suspend fun pop(): ByteArray? {
-        if (closed.get() && channel.isEmpty) return null
+        if (closed.get()) {
+            return channel.tryReceive().getOrNull()
+        }
         return channel.receiveCatching().getOrNull()
     }
 

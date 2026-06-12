@@ -1,4 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught")
 // Relay read loop must survive arbitrary transport failures and schedule reconnect.
 
 package com.openburnbar.data.media

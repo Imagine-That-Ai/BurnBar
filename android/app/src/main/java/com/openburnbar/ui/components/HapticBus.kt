@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.components
@@ -26,9 +25,7 @@ object HapticBus {
                     ?.defaultVibrator
                     ?: return
             } else {
-                @Suppress("DEPRECATION")
-                context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                    ?: return
+                context.getSystemService(Vibrator::class.java) ?: return
             }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -52,7 +49,6 @@ object HapticBus {
                     )
             }
         } else {
-            @Suppress("DEPRECATION")
             val millis =
                 when (type) {
                     HapticType.LIGHT -> 10L
@@ -64,7 +60,7 @@ object HapticBus {
                     HapticType.TAB_CHANGE -> 15L
                     HapticType.WARNING -> 35L
                 }
-            vibrator.vibrate(millis)
+            vibrator.vibrate(VibrationEffect.createOneShot(millis, VibrationEffect.DEFAULT_AMPLITUDE))
         }
     }
 

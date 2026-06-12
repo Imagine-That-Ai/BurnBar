@@ -1,0 +1,94 @@
+name: Agent Tools CI
+
+# Runs the previously-orphaned test suites for the three shipped
+# agent-integration surfaces (tech-debt audit 2026-06-11, finding H6):
+#   - tools/openburnbar-mcp        (local MCP server, pytest)
+#   - tools/openburnbar-mcp-remote (mcp-remote bridge, node --test via npm test)
+#   - quota-runner                 (hosted quota probe, node --test)
+#
+# Before this workflow these ~95 passing tests ran in zero CI lanes, so a
+# regression in any of them shipped green. Each job is path-filtered to its own
+# surface so the workflow only runs when the relevant code changes, and every
+# job is BLOCKING (no continue-on-error) — a real failure fails the PR.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "tools/openburnbar-mcp/**"
+      - "tools/openburnbar-mcp-remote/**"
+      - "quota-runner/**"
+      - ".github/workflows/agent-tools-ci.yml"
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-tools-ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ── Local MCP server: pytest ──────────────────────────────────────────────
+  openburnbar-mcp:
+    name: openburnbar-mcp (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (incl. test runner)
+        working-directory: tools/openburnbar-mcp
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run pytest
+        working-directory: tools/openburnbar-mcp
+        run: pytest tests/ -q
+
+  # ── mcp-remote bridge: node --test (via npm test) ─────────────────────────
+  openburnbar-mcp-remote:
+    name: openburnbar-mcp-remote (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/openburnbar-mcp-remote/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix tools/openburnbar-mcp-remote
+
+      - name: Test (build + node --test)
+        run: npm --prefix tools/openburnbar-mcp-remote test
+
+  # ── quota-runner hosted probe: node --test ────────────────────────────────
+  quota-runner:
+    name: quota-runner (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: quota-runner/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix quota-runner
+
+      - name: Test (node --test)
+        run: npm --prefix quota-runner test

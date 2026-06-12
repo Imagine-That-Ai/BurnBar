@@ -77,7 +77,10 @@ struct SmartDisplayReorderableSection<Content: View>: View {
                         .font(MobileTheme.Typography.caption)
                 }
                 .padding(8)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .liquidGlassSurface(
+                    in: RoundedRectangle(cornerRadius: 8),
+                    fallback: .regularMaterial
+                )
                 .onAppear { dragging = kind }
                 .onDisappear {
                     dragging = nil

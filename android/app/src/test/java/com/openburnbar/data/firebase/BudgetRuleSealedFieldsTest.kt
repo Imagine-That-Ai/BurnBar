@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 
 package com.openburnbar.data.firebase
 

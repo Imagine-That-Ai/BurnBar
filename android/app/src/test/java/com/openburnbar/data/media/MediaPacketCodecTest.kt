@@ -1,5 +1,3 @@
-@file:Suppress("FunctionNaming")
-// detekt: JUnit backtick BDD test names intentionally contain spaces.
 
 package com.openburnbar.data.media
 
@@ -14,14 +12,6 @@ private const val MILLIS_3 = 0x30
 private const val MILLIS_4 = 0x40
 private const val MILLIS_5 = 1024
 private const val MILLIS_6 = 0x7A
-private const val VAL_0X21 = 0x21
-private const val VAL_0X7B = 0x7B
-private const val VAL_128 = 128
-private const val VAL_180 = 180
-private const val VAL_3 = 3
-private const val VAL_320 = 320
-private const val VAL_4 = 4
-private const val VAL_64 = 64
 
 class MediaPacketCodecTest {
     @Test
@@ -79,7 +69,7 @@ class MediaPacketCodecTest {
         val frame =
             MediaFrame(
                 kind = MediaFrame.Kind.VIDEO_NAL,
-                payload = ByteArray(VAL_64) { 0 },
+                payload = ByteArray(64) { 0 },
             )
         assertThrows(MediaPacketCodec.CodecError.PayloadTooLarge::class.java) {
             codec.encode(frame)
@@ -96,7 +86,7 @@ class MediaPacketCodecTest {
                 gopID = 9u,
                 frameIndex = 2u,
                 presentationTimestampMillis = 1_777uL,
-                payload = ByteArray(MediaPacketCodec.DEFAULT_MAX_PAYLOAD_BYTES + VAL_64 * MILLIS_5) { MILLIS_6.toByte() },
+                payload = ByteArray(MediaPacketCodec.DEFAULT_MAX_PAYLOAD_BYTES + 64 * MILLIS_5) { MILLIS_6.toByte() },
             )
 
         val encoded = codec.encode(source)
@@ -110,7 +100,7 @@ class MediaPacketCodecTest {
     fun decode_rejects_truncated_envelope() {
         val codec = MediaPacketCodec()
         // 4-byte length prefix + half a header is not enough.
-        val truncated = ByteArray(VAL_4 + MediaFrame.HEADER_BYTE_COUNT - VAL_3)
+        val truncated = ByteArray(4 + MediaFrame.HEADER_BYTE_COUNT - 3)
         assertThrows(MediaPacketCodec.CodecError.EnvelopeTooShort::class.java) {
             codec.decode(truncated)
         }
@@ -122,7 +112,7 @@ class MediaPacketCodecTest {
         // Build a valid envelope and corrupt the first byte after prefix.
         val frame = MediaFrame(kind = MediaFrame.Kind.AUDIO_OPUS, payload = byteArrayOf(0x01))
         val envelope = codec.encode(frame)
-        envelope[VAL_4] = 0x7F.toByte() // overwrite the kind byte
+        envelope[4] = 0x7F.toByte() // overwrite the kind byte
         assertThrows(MediaPacketCodec.CodecError.UnknownKind::class.java) {
             codec.decode(envelope)
         }
@@ -131,11 +121,11 @@ class MediaPacketCodecTest {
     @Test
     fun v1_decoder_treats_unknown_metadata_bit_as_payload_without_negotiation() {
         val codec = MediaPacketCodec()
-        val metadataBytes = byteArrayOf(0x00, 0x00, 0x00, 0x02, VAL_0X21.toByte(), 0x00)
-        val samplePayload = byteArrayOf(MILLIS_6.toByte(), VAL_0X7B.toByte())
+        val metadataBytes = byteArrayOf(0x00, 0x00, 0x00, 0x02, 0x21.toByte(), 0x00)
+        val samplePayload = byteArrayOf(MILLIS_6.toByte(), 0x7B.toByte())
         val totalPayloadCount = MediaFrame.HEADER_BYTE_COUNT + metadataBytes.size + samplePayload.size
         val envelope =
-            java.nio.ByteBuffer.allocate(VAL_4 + totalPayloadCount)
+            java.nio.ByteBuffer.allocate(4 + totalPayloadCount)
                 .order(java.nio.ByteOrder.BIG_ENDIAN)
                 .putInt(totalPayloadCount)
                 .put(MediaFrame.Kind.VIDEO_NAL.rawValue)
@@ -155,8 +145,8 @@ class MediaPacketCodecTest {
     @Test
     fun decode_rejects_oversize_declared_length() {
         val codec = MediaPacketCodec(maxPayloadBytes = 64)
-        val envelope = ByteArray(VAL_4 + VAL_128)
-        envelope[VAL_3] = 128.toByte()
+        val envelope = ByteArray(4 + 128)
+        envelope[3] = 128.toByte()
         assertThrows(MediaPacketCodec.CodecError.PayloadTooLarge::class.java) {
             codec.decode(envelope)
         }

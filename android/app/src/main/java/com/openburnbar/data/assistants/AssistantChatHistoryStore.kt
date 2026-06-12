@@ -36,8 +36,8 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private const val VAL_200 = 200
-private const val VAL_600 = 600
+private const val CLOUD_THREAD_FETCH_LIMIT = 200
+private const val CLOUD_MIRROR_DEBOUNCE_MS = 600
 
 /** Data-domain id whose sealingScheme gates at-rest Signal sealing for chat + CLI. */
 private const val SIGNAL_CHAT_DOMAIN = "conversations_chat"
@@ -327,11 +327,12 @@ class AssistantChatHistoryStore internal constructor(
         }.onFailure { Log.e(tag, "Failed to save chat history", it) }
     }
 
+    // Cloud-mirror coroutine converts any producer/Firestore failure into _lastSyncError.
     private fun scheduleCloudMirror(thread: AssistantChatThread, immediate: Boolean = false) {
         val cloud = cloud ?: return
         val job =
             scope.launch {
-                if (!immediate) delay(VAL_600.toLong())
+                if (!immediate) delay(CLOUD_MIRROR_DEBOUNCE_MS.toLong())
                 try {
                     cloud.upsert(thread)
                     synchronized(pendingMirrorsLock) { pendingMirrors.remove(thread.id) }
@@ -517,13 +518,15 @@ internal class AssistantChatFirestoreMirror(
                 val recipients =
                     AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
                 AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
-                    domainID = SIGNAL_CHAT_DOMAIN,
-                    uid = uid,
-                    collection = "mobile_assistant_chats",
-                    docId = thread.id,
-                    plaintext = plaintextBytes,
-                    localIdentity = identity,
-                    otherRecipients = recipients,
+                    AndroidCloudVaultSignalPayloads.SignalEnvelopeMapRequest(
+                        domainID = SIGNAL_CHAT_DOMAIN,
+                        uid = uid,
+                        collection = "mobile_assistant_chats",
+                        docId = thread.id,
+                        plaintext = plaintextBytes,
+                        localIdentity = identity,
+                        otherRecipients = recipients,
+                    ),
                 )?.let { payload["signalEnvelope"] = it }
             }
         }.onFailure { Log.w("AssistantChatFirestoreMirror", "Signal at-rest seal failed; writing chat legacy-only", it) }
@@ -548,7 +551,7 @@ internal class AssistantChatFirestoreMirror(
         val snapshot =
             collection(uid)
                 .orderBy("updatedAt", Query.Direction.DESCENDING)
-                .limit(VAL_200.toLong())
+                .limit(CLOUD_THREAD_FETCH_LIMIT.toLong())
                 .get()
                 .await()
         return snapshot.documents.mapNotNull { document ->
@@ -556,54 +559,7 @@ internal class AssistantChatFirestoreMirror(
         }
     }
 
-    private fun encodeMessage(message: AssistantChatMessage): Map<String, Any?> {
-        val map =
-            mutableMapOf<String, Any?>(
-                "id" to message.id,
-                "role" to message.role,
-                "text" to message.text,
-                "timestamp" to Timestamp(Date(message.timestampMillis)),
-                "modelName" to message.modelName,
-                "isError" to message.isError,
-            )
-        if (message.attachments.isNotEmpty()) {
-            map["attachments"] =
-                message.attachments.map { attachment ->
-                    mapOf(
-                        "id" to attachment.id,
-                        "kind" to attachment.kind,
-                        "displayName" to attachment.displayName,
-                        "mimeType" to attachment.mimeType,
-                        "byteSize" to attachment.byteSize,
-                        "workspaceRelativePath" to attachment.workspaceRelativePath,
-                        "extractedTextPreview" to attachment.extractedTextPreview,
-                    )
-                }
-        }
-        message.hermes?.let { hermes ->
-            val dict = mutableMapOf<String, Any?>()
-            hermes.requestedModelID?.let { dict["requestedModelID"] = it }
-            hermes.responseModelID?.let { dict["responseModelID"] = it }
-            if (hermes.toolCalls.isNotEmpty()) {
-                dict["toolCalls"] = hermes.toolCalls.map { mapOf("id" to it.id, "name" to it.name, "status" to it.status) }
-            }
-            hermes.usage?.let { usage ->
-                val u = mutableMapOf<String, Any?>()
-                usage.outputTokens?.let { u["outputTokens"] = it }
-                usage.totalTokens?.let { u["totalTokens"] = it }
-                usage.source?.let { u["source"] = it }
-                usage.providerGenerationDurationSeconds?.let { u["providerGenerationDurationSeconds"] = it }
-                usage.providerTotalDurationSeconds?.let { u["providerTotalDurationSeconds"] = it }
-                usage.responseStartedAtMillis?.let { u["responseStartedAt"] = Timestamp(Date(it)) }
-                usage.firstResponseChunkAtMillis?.let { u["firstResponseChunkAt"] = Timestamp(Date(it)) }
-                usage.responseCompletedAtMillis?.let { u["responseCompletedAt"] = Timestamp(Date(it)) }
-                if (u.isNotEmpty()) dict["usage"] = u
-            }
-            map["hermes"] = dict
-        }
-        return map
-    }
-
+    // Sequential guard clauses; single-exit rewrite obscures the precedence order.
     internal fun decodeThread(
         documentID: String,
         data: Map<String, Any?>,

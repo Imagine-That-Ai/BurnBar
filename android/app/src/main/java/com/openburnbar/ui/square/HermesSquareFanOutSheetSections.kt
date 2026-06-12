@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.square
@@ -138,7 +137,8 @@ internal fun FanOutRuntimeRow(
     canDisable: Boolean,
     onToggle: (runtime: String, enabled: Boolean) -> Unit,
 ) {
-    val runtime = identity.runtimeID?.token ?: return
+    val runtimeID = identity.runtimeID ?: return
+    val runtime = runtimeID.token
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
@@ -148,25 +148,7 @@ internal fun FanOutRuntimeRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            if (identity.runtimeID != null) {
-                ProviderLogo(runtime = identity.runtimeID, size = 22.dp)
-            } else {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier =
-                    Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(hexColor(identity.paletteHex)),
-                ) {
-                    Text(
-                        identity.glyph,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
+            ProviderLogo(runtime = runtimeID, size = 22.dp)
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 identity.displayName,

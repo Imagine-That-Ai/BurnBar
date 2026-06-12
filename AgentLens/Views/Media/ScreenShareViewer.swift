@@ -73,7 +73,7 @@ private struct ScreenShareViewerPanelContent: View {
                     Image(systemName: "rectangle.on.rectangle")
                         .font(.system(size: 11, weight: .medium))
                         .padding(6)
-                        .background(.thinMaterial, in: Circle())
+                        .liquidGlassSurface(in: .circle, fallback: .thinMaterial)
                         .padding(8)
                 }
                 Spacer()

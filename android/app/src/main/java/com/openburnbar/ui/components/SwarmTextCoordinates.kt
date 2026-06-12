@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // generated-by: scripts/generate-swarm-coordinates (design-token coordinate tables)
 
 package com.openburnbar.ui.components

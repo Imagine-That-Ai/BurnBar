@@ -9,10 +9,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-private const val VAL_0_8 = 0.8
-private const val VAL_1_2 = 1.2
-private const val VAL_30_0 = 30.0
-private const val VAL_7_0 = 7.0
+private const val DOWNTREND_RATIO_THRESHOLD = 0.8
+private const val UPTREND_RATIO_THRESHOLD = 1.2
+private const val FORECAST_MONTH_DAYS = 30.0
+private const val BURN_RATE_WINDOW_DAYS = 7.0
 data class VelocityForecast(
     val dailyBurnRate: Double = 0.0,
     val projectedMonthEnd: Double = 0.0,
@@ -44,8 +44,8 @@ class VelocityForecastStore(
                 val sevenDays = rollups.sevenDays
                 val thirtyDays = rollups.thirtyDays
 
-                val dailyRate = if (sevenDays > 0) sevenDays / VAL_7_0 else today
-                val projectedMonthEnd = dailyRate * VAL_30_0
+                val dailyRate = if (sevenDays > 0) sevenDays / BURN_RATE_WINDOW_DAYS else today
+                val projectedMonthEnd = dailyRate * FORECAST_MONTH_DAYS
 
                 val daysLeft =
                     if (dailyRate > 0 && dailyBudget > 0) {
@@ -56,8 +56,8 @@ class VelocityForecastStore(
 
                 val trend =
                     when {
-                        today > dailyRate * VAL_1_2 -> TrendDirection.UP
-                        today < dailyRate * VAL_0_8 -> TrendDirection.DOWN
+                        today > dailyRate * UPTREND_RATIO_THRESHOLD -> TrendDirection.UP
+                        today < dailyRate * DOWNTREND_RATIO_THRESHOLD -> TrendDirection.DOWN
                         else -> TrendDirection.FLAT
                     }
 

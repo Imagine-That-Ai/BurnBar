@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.square
@@ -27,8 +26,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.openburnbar.ui.theme.AuroraColors
-
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -183,4 +180,3 @@ private fun LazyListScope.hermesSquareConversationItems(state: HermesSquareUiSta
         DiscoverEntry(onTap = { actions.setShowDiscover(true) }, modifier = Modifier.padding(horizontal = 16.dp))
     }
 }
-

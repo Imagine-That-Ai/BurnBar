@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.hermes
@@ -42,7 +41,6 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import com.openburnbar.ui.theme.AuroraSpacing
 
-@Suppress("UnusedParameter")
 @Composable
 fun WelcomeBlock(
     runtimeInfo: Map<String, String>,
@@ -57,6 +55,14 @@ fun WelcomeBlock(
     ) {
         Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
         WelcomeBlockHeroCard(runtimeInfo = runtimeInfo, selectedModel = selectedModel)
+        if (availableModels.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            WelcomeBlockModelPicker(
+                selectedModel = selectedModel,
+                availableModels = availableModels,
+                onModelSelect = onModelSelect,
+            )
+        }
         Spacer(modifier = Modifier.height(28.dp))
         WelcomeBlockSuggestedPrompts(onTriggerPrompt = onTriggerPrompt)
         Spacer(modifier = Modifier.height(20.dp))
@@ -88,6 +94,60 @@ private fun WelcomeBlockHeroCard(runtimeInfo: Map<String, String>, selectedModel
             if (runtimeInfo.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 WelcomeBlockRuntimeBadges(runtimeInfo = runtimeInfo, selectedModel = selectedModel)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WelcomeBlockModelPicker(
+    selectedModel: String,
+    availableModels: List<String>,
+    onModelSelect: (String) -> Unit,
+) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        items(availableModels.distinct()) { model ->
+            val selected = model == selectedModel
+            Surface(
+                shape = RoundedCornerShape(percent = 50),
+                color =
+                    if (selected) {
+                        AuroraColors.hermesMercury.copy(alpha = 0.22f)
+                    } else {
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.25f)
+                    },
+                border =
+                    BorderStroke(
+                        width = 0.75.dp,
+                        color =
+                            if (selected) {
+                                AuroraColors.hermesMercury.copy(alpha = 0.72f)
+                            } else {
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+                            },
+                    ),
+            ) {
+                Row(
+                    modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(percent = 50))
+                        .clickable { onModelSelect(model) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    com.openburnbar.ui.components.ModelLogo(modelKey = model, size = 14.dp)
+                    Text(
+                        text = model,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
     }

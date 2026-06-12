@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // generated-by: scripts/generate-aurora-nav-glyphs (path coordinate tables)
 
 package com.openburnbar.ui.components.aurora
@@ -776,6 +775,7 @@ fun InsightsGlyph(size: Dp, isSelected: Boolean, isPressed: Boolean = false) {
     Canvas(modifier = Modifier.size(size)) {
         val half = size.toPx() / 2f
         val center = Offset(size.toPx() / 2f, size.toPx() / 2f)
+        val pressScale = if (isPressed) 0.9f else 1f
         val brush =
             if (isSelected) {
                 Brush.linearGradient(
@@ -787,10 +787,10 @@ fun InsightsGlyph(size: Dp, isSelected: Boolean, isPressed: Boolean = false) {
                 Brush.linearGradient(
                     colors = listOf(AuroraColors.darkTextSecondary, AuroraColors.darkTextSecondary),
                 )
-            }
+        }
 
         // 4-point star (sparkle) — central
-        val starSize = half * 0.7f
+        val starSize = half * 0.7f * pressScale
         val sparkPath =
             Path().apply {
                 // Vertical diamond
@@ -809,7 +809,7 @@ fun InsightsGlyph(size: Dp, isSelected: Boolean, isPressed: Boolean = false) {
         drawPath(path = sparkPath, brush = brush)
 
         // Small accent dots around the star
-        val dotRadius = size.toPx() * 0.035f
+        val dotRadius = size.toPx() * 0.035f * if (isPressed) 1.18f else 1f
         val dotAlpha =
             if (isSelected && !reduceMotion) {
                 (0.4f + 0.6f * ((shimmer * 4f) % 1f)).coerceIn(0f, 1f)

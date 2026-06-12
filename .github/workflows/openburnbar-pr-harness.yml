@@ -30,7 +30,7 @@ jobs:
       INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Test OpenBurnBar app-test log classifier
         run: bash scripts/test-openburnbar-app-classifier.sh
@@ -79,10 +79,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -127,7 +127,7 @@ jobs:
       INTERNAL_RUN: ${{ github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Set up Java 21 (Android)
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
@@ -149,7 +149,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
-          packages: "platforms;android-35 build-tools;35.0.0"
+          packages: "platforms;android-35 build-tools;35.0.0 ndk;29.0.14206865"
 
       - name: Inject Android Firebase config (internal PRs)
         if: env.INTERNAL_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'
@@ -182,6 +182,9 @@ jobs:
       - name: Build Android APK
         run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Verify Android 16 KB native page-size compatibility
+        run: bash scripts/ci/verify-android-16kb-page-size.sh
+
       - name: Lint Kotlin (ktlint)
         run: |
           set -euo pipefail
@@ -190,8 +193,21 @@ jobs:
           END=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           echo "ktlint: $((END - START))ms — no violations found" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Ban source suppressions
+        run: bash scripts/ci/verify-no-source-suppressions.sh
+
+      - name: Lint Kotlin (detekt)
+        run: cd android && ./gradlew :app:detekt --no-daemon
+
       - name: Run Android unit tests
         run: ./scripts/test-openburnbar-android.sh
+
+      - name: Android diff coverage (JaCoCo line evidence)
+        run: |
+          set -euo pipefail
+          (cd android && ./gradlew :app:jacocoTestReport --no-daemon)
+          git fetch origin main --depth=1 2>/dev/null || true
+          ./scripts/diff-coverage-android.sh origin/main
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
@@ -205,10 +221,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -229,7 +245,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           # Full history so the Rule-0 guard can diff against the PR base ref
           # (and resolve the libsignal submodule gitlink pointer change).
@@ -269,7 +285,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
 
@@ -301,6 +317,39 @@ jobs:
           XCODEBUILD_TEST_ITERATIONS: "3"
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
+      # Package coverage steps run directly after the coverage-enabled test
+      # run and before the WS6 re-run, which rebuilds without instrumentation
+      # and would orphan the profdata from its binaries.
+      - name: Extract package coverage lines
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          ./scripts/extract-package-coverage-lines.sh > "$GITHUB_WORKSPACE/openburnbar-package-coverage-lines.json"
+
+      - name: Compute package diff coverage
+        if: github.event_name == 'pull_request'
+        # Gates OpenBurnBarCore/OpenBurnBarDaemon package sources with the
+        # per-line coverage this lane's own `swift test --enable-code-coverage`
+        # run measured. App-target sources are gated by the App XCTest lane
+        # (scope=app); see scripts/diff-coverage.sh for the partition rules.
+        env:
+          DIFF_COVERAGE_SCOPE: packages
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-package-diff-coverage.json
+        run: |
+          set -euo pipefail
+          ./scripts/diff-coverage-self-test.sh
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          ./scripts/diff-coverage.sh origin/main '' '' "$GITHUB_WORKSPACE/openburnbar-package-coverage-lines.json"
+
+      - name: Upload package coverage artifacts
+        if: always() && github.event_name == 'pull_request' && !env.ACT
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-coverage-data
+          path: |
+            openburnbar-package-coverage-lines.json
+            openburnbar-package-diff-coverage.json
+
       - name: Computer Use safety invariant harness (WS6 gate)
         run: OPENBURNBAR_CORE_SWIFT_FILTER='ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests' OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
 
@@ -315,7 +364,7 @@ jobs:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
           fetch-depth: 0
@@ -345,14 +394,20 @@ jobs:
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
 
-      - name: SwiftLint (informational)
-        continue-on-error: true
+      - name: SwiftLint
+        # The previous "informational" step never executed — swiftlint was
+        # absent from the runner image and the step skipped with
+        # continue-on-error (diligence quality-gate theater). Now: pinned
+        # binary, recalibrated config, and no checked-in suppression baseline.
         run: |
-          if command -v swiftlint >/dev/null 2>&1; then
-            swiftlint lint --quiet
-          else
-            echo "swiftlint not installed; skipping informational lint."
-          fi
+          set -euo pipefail
+          VER="0.63.3"
+          SHA="fb045e85e7cb3374f42a4840b6b85a0106302afa69035c0c6f29af4a44c810b6"
+          curl -fsSL -o /tmp/swiftlint.zip "https://github.com/realm/SwiftLint/releases/download/${VER}/portable_swiftlint.zip"
+          echo "${SHA}  /tmp/swiftlint.zip" | shasum -a 256 -c -
+          unzip -oq /tmp/swiftlint.zip -d /tmp/swiftlint-bin
+          /tmp/swiftlint-bin/swiftlint version
+          /tmp/swiftlint-bin/swiftlint lint --quiet --strict
 
       - name: Inject Firebase config
         if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
@@ -397,10 +452,20 @@ jobs:
 
       - name: Compute diff coverage
         if: github.event_name == 'pull_request' && env.INTERNAL_RUN == 'true'
+        # All-surface gate (Swift app scope + Kotlin + TypeScript). Surfaces
+        # with no changed files are skipped inside diff-coverage-all.sh, so
+        # Swift-only PRs pay no Android/TS cost. Swift package sources
+        # (OpenBurnBarCore/OpenBurnBarDaemon) are gated with real package
+        # coverage by the Swift Core job's "Compute package diff coverage"
+        # step — this lane judges only what its xcresult actually measured.
+        env:
+          DIFF_COVERAGE_SCOPE: app
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-diff-coverage.json
         run: |
           set -euo pipefail
+          ./scripts/diff-coverage-self-test.sh
           test -f "$GITHUB_WORKSPACE/openburnbar-coverage.json"
-          ./scripts/diff-coverage.sh origin/main "$GITHUB_WORKSPACE/openburnbar-coverage.json"
+          ./scripts/diff-coverage-all.sh origin/main
 
       - name: Post coverage summary
         if: always()
@@ -462,7 +527,7 @@ jobs:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
 
@@ -526,7 +591,7 @@ jobs:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
 
@@ -616,7 +681,7 @@ jobs:
       computer_use: ${{ steps.filter.outputs.computer_use }}
       mercury_media: ${{ steps.filter.outputs.mercury_media }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
       - name: Detect changed paths
@@ -667,9 +732,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -680,14 +745,33 @@ jobs:
           java-version: "21"
           distribution: temurin
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           repository: Ajnunezg/hermes-agent
           # Keep this immutable: the gate runs with repo credentials in scope.
           # To bump, update third_party/hermes-agent/manifest.json first, run
           # scripts/ci/verify-vendored-agent-source.sh, then copy pinnedCommit here.
-          ref: 005cf0d86b9f3347660933478f11512fe45a856a
+          # The provenance step below FAILS if this ref and the manifest drift,
+          # so the gate always executes the exact commit the manifest attests
+          # (diligence 2026-06-11 LB-4: attestation and gate had split across
+          # two different commits).
+          ref: bdb830070927cbb20763819f91ee930548f7da92
           path: .ci/hermes-agent
+
+      - name: Verify vendored agent provenance (C-5, on PRs)
+        env:
+          HERMES_AGENT_SRC: ${{ github.workspace }}/.ci/hermes-agent
+        run: |
+          set -euo pipefail
+          manifest_pin="$(python3 -c 'import json;print(json.load(open("third_party/hermes-agent/manifest.json"))["pinnedCommit"])')"
+          checkout_head="$(git -C .ci/hermes-agent rev-parse HEAD)"
+          if [[ "$manifest_pin" != "$checkout_head" ]]; then
+            echo "ERROR: harness checkout ($checkout_head) != manifest pinnedCommit ($manifest_pin)." >&2
+            echo "The E2EE proof would run against a commit the provenance manifest does not attest." >&2
+            echo "Update the checkout ref above and the manifest together." >&2
+            exit 1
+          fi
+          bash scripts/ci/verify-vendored-agent-source.sh
 
       - name: Install Functions dependencies
         run: npm ci --prefix functions
@@ -713,10 +797,10 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
       - name: Hermes relay unit tests (Functions)
@@ -751,7 +835,7 @@ jobs:
     timeout-minutes: 45
     continue-on-error: true
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
         with:
           java-version: "21"
@@ -777,10 +861,10 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: "20"
       - name: Install Rust toolchain for libsignal Swift FFI
@@ -813,7 +897,7 @@ jobs:
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
       - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5

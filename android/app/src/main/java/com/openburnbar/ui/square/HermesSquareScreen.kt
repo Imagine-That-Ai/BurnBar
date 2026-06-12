@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.square
@@ -73,11 +72,12 @@ import com.openburnbar.data.square.ThreadInboxStore
 @Composable
 fun HermesSquareScreen(
     onOpenLegacyRuntime: (AssistantRuntimeID, String?) -> Unit = { _, _ -> },
-    @Suppress("UNUSED_PARAMETER") onOpenBrandZone: (String) -> Unit = {},
+    onOpenBrandZone: (String) -> Unit = {},
     onOpenPairedMac: (String) -> Unit = {},
 ) {
     HermesSquareScreenContent(
         onOpenLegacyRuntime = onOpenLegacyRuntime,
+        onOpenBrandZone = onOpenBrandZone,
         onOpenPairedMac = onOpenPairedMac,
     )
 }

@@ -33,8 +33,7 @@ struct CallHUD: View {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Color(red: 0.63, green: 0.67, blue: 0.73))
-                        .frame(width: 24, height: 24)
-                        .background(.ultraThinMaterial, in: Circle())
+                        .liquidGlassCircleButton(diameter: 24)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Collapse Mercury mirror")
@@ -51,24 +50,28 @@ struct CallHUD: View {
 
             Spacer()
 
-            HStack(spacing: 24) {
-                controlButton(
-                    systemImage: state.isMicMuted ? "mic.slash.fill" : "mic.fill",
-                    action: onMuteMic
-                )
-                controlButton(
-                    systemImage: state.isCameraMuted ? "video.slash.fill" : "video.fill",
-                    action: onMuteCamera
-                )
-                controlButton(
-                    systemImage: state.isSharingScreen ? "rectangle.on.rectangle.slash" : "rectangle.on.rectangle",
-                    action: onShareScreen
-                )
-                controlButton(
-                    systemImage: "phone.down.fill",
-                    tint: .red,
-                    action: onEnd
-                )
+            // All four control circles are visible at once, so they share one
+            // LiquidGlassGroup — glass cannot sample other glass.
+            LiquidGlassGroup(spacing: 24) {
+                HStack(spacing: 24) {
+                    controlButton(
+                        systemImage: state.isMicMuted ? "mic.slash.fill" : "mic.fill",
+                        action: onMuteMic
+                    )
+                    controlButton(
+                        systemImage: state.isCameraMuted ? "video.slash.fill" : "video.fill",
+                        action: onMuteCamera
+                    )
+                    controlButton(
+                        systemImage: state.isSharingScreen ? "rectangle.on.rectangle.slash" : "rectangle.on.rectangle",
+                        action: onShareScreen
+                    )
+                    controlButton(
+                        systemImage: "phone.down.fill",
+                        tint: .red,
+                        action: onEnd
+                    )
+                }
             }
             .padding(.bottom, 24)
         }
@@ -110,7 +113,7 @@ struct CallHUD: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+        .liquidGlassSurface(in: Capsule(style: .continuous))
         .overlay(
             Capsule(style: .continuous)
                 .strokeBorder(.white.opacity(0.28), lineWidth: 0.75)
@@ -151,8 +154,7 @@ struct CallHUD: View {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
+                .liquidGlassCircleButton(diameter: 44)
         }
         .buttonStyle(.plain)
     }

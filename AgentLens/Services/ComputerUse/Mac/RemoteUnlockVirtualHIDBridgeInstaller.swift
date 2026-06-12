@@ -75,6 +75,10 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         let adminScript = """
         set -e
         mkdir -p '\(installDirectory)'
+        mkdir -p '\(PrivilegedInputXPCConstants.userSessionSocketDirectoryParent)'
+        chown root:wheel '\(PrivilegedInputXPCConstants.userSessionSocketDirectoryParent)'
+        chmod 755 '\(PrivilegedInputXPCConstants.userSessionSocketDirectoryParent)'
+        install -d -o \(getuid()) -m 0700 '\(PrivilegedInputXPCConstants.userSessionSocketDirectory())'
         launchctl bootout system/\(executionLaunchLabel) >/dev/null 2>&1 || true
         launchctl bootout system '\(executionLaunchDaemonPlistPath)' >/dev/null 2>&1 || true
         rm -f '\(executionLaunchDaemonPlistPath)'
@@ -169,56 +173,76 @@ final class RemoteUnlockVirtualHIDBridgeInstaller: ObservableObject {
         return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
+    /// Install the execution helper as a gui-domain LaunchAgent so launchd owns
+    /// its lifecycle: starts at login (`RunAtLoad`), restarts after a crash
+    /// (`KeepAlive`), and single-instances by label. A detached `Process` here
+    /// would silently die on logout/crash and never come back — fatal for a
+    /// feature whose whole purpose is recovering a Mac while its operator is
+    /// away from it.
     nonisolated private static func installExecutionLaunchAgent(
         executablePath: String,
         fileManager: FileManager
     ) throws {
-        let launchAgentsDirectory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
         let logsDirectory = URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent("Library/Logs/OpenBurnBar", isDirectory: true)
-        try fileManager.createDirectory(at: launchAgentsDirectory, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        let launchAgentsDirectory = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+        try fileManager.createDirectory(at: launchAgentsDirectory, withIntermediateDirectories: true)
 
         let plistURL = URL(fileURLWithPath: executionLaunchAgentPlistPath)
-        try executionLaunchAgentPlistData(executablePath: executablePath).write(to: plistURL, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: plistURL.path)
+        let plistData = try executionLaunchAgentPlistData(
+            executablePath: executablePath,
+            socketPath: PrivilegedInputXPCConstants.userSessionSocketPath(),
+            stdoutPath: logsDirectory
+                .appendingPathComponent("openburnbar-privileged-input-execution.log", isDirectory: false)
+                .path,
+            stderrPath: logsDirectory
+                .appendingPathComponent("openburnbar-privileged-input-execution.err.log", isDirectory: false)
+                .path
+        )
 
         let domain = "gui/\(getuid())"
         _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", "\(domain)/\(executionLaunchLabel)"])
         _ = runProcess(executablePath: "/bin/launchctl", arguments: ["bootout", domain, plistURL.path])
+        try? fileManager.removeItem(at: plistURL)
 
-        let bootstrap = runProcess(executablePath: "/bin/launchctl", arguments: ["bootstrap", domain, plistURL.path])
+        try plistData.write(to: plistURL, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: plistURL.path)
+
+        let bootstrap = runProcess(
+            executablePath: "/bin/launchctl",
+            arguments: ["bootstrap", domain, plistURL.path]
+        )
         guard bootstrap.status == 0 else {
             throw InstallerError.administratorScriptFailed(bootstrap.combinedOutput)
         }
-
-        let enable = runProcess(executablePath: "/bin/launchctl", arguments: ["enable", "\(domain)/\(executionLaunchLabel)"])
-        guard enable.status == 0 else {
-            throw InstallerError.administratorScriptFailed(enable.combinedOutput)
-        }
-
-        let kickstart = runProcess(executablePath: "/bin/launchctl", arguments: ["kickstart", "-k", "\(domain)/\(executionLaunchLabel)"])
-        guard kickstart.status == 0 else {
-            throw InstallerError.administratorScriptFailed(kickstart.combinedOutput)
-        }
+        _ = runProcess(executablePath: "/bin/launchctl", arguments: ["enable", "\(domain)/\(executionLaunchLabel)"])
+        _ = runProcess(
+            executablePath: "/bin/launchctl",
+            arguments: ["kickstart", "-k", "\(domain)/\(executionLaunchLabel)"]
+        )
     }
 
-    nonisolated private static func executionLaunchAgentPlistData(executablePath: String) throws -> Data {
-        let logDirectory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Logs/OpenBurnBar", isDirectory: true)
-            .path
+    nonisolated static func executionLaunchAgentPlistData(
+        executablePath: String,
+        socketPath: String,
+        stdoutPath: String,
+        stderrPath: String
+    ) throws -> Data {
         let plist: [String: Any] = [
             "Label": executionLaunchLabel,
-            "MachServices": [
-                RemoteUnlockSetupProbe.privilegedInputExecutionMachService: true
+            "ProgramArguments": [
+                executablePath,
+                "--socket",
+                socketPath
             ],
-            "ProgramArguments": [executablePath],
             "RunAtLoad": true,
             "KeepAlive": true,
-            "StandardOutPath": "\(logDirectory)/openburnbar-privileged-input-execution.log",
-            "StandardErrorPath": "\(logDirectory)/openburnbar-privileged-input-execution.err.log",
-            "ProcessType": "Interactive"
+            "LimitLoadToSessionType": "Aqua",
+            "ProcessType": "Interactive",
+            "StandardOutPath": stdoutPath,
+            "StandardErrorPath": stderrPath
         ]
         return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
     }

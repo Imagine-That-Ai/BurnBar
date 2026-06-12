@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 # Post-deploy gate for Cloud Functions (production).
+#
+# Two independent signals (diligence 2026-06-11: conflating them made the
+# nightly synthetic read "prod DOWN" for a compliance-metadata gap while both
+# endpoints returned healthy 200s, guaranteeing red monitoring):
+#   1. AVAILABILITY — status fields on healthLive/healthReady. Always fatal.
+#   2. COMPLIANCE  — AGPL sourceMetadata in the health bodies. Fatal when
+#      HEALTH_GATE_REQUIRE_SOURCE_METADATA=1 (the default, correct for
+#      post-deploy lanes where the new code must serve it); a loud warning
+#      when 0 (synthetic monitoring lanes, until the metadata-serving deploy
+#      reaches prod — flip those lanes to 1 right after).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -12,6 +22,8 @@ LAST_HTTP_CODE=""
 LAST_URL=""
 LAST_BODY_SNIPPET=""
 EXPECTED_SOURCE_URL="${OPENBURNBAR_CORRESPONDING_SOURCE_URL:-https://burnbar.ai/legal/source}"
+REQUIRE_SOURCE_METADATA="${HEALTH_GATE_REQUIRE_SOURCE_METADATA:-1}"
+SOURCE_METADATA_WARNINGS=0
 
 source_metadata_ok() {
   local body_file="$1"
@@ -52,8 +64,23 @@ curl_health() {
         elif [[ "$expect_field" == '.status == "ready"' ]] && grep -q '"status"[[:space:]]*:[[:space:]]*"ready"' "$body_file"; then
           ok=true
         fi
-        if [[ "$ok" == true ]] && source_metadata_ok "$body_file"; then
-          echo "OK ${label} (attempt ${attempt})"
+        if [[ "$ok" == true ]]; then
+          if source_metadata_ok "$body_file"; then
+            echo "OK ${label} (attempt ${attempt})"
+          elif [[ "$REQUIRE_SOURCE_METADATA" != "1" ]]; then
+            # Availability is healthy; compliance metadata is missing. Loud,
+            # not red: a metadata gap must never be indistinguishable from an
+            # outage in the monitoring lanes.
+            echo "::warning title=AGPL source metadata missing::${label} is healthy but does not serve AGPL sourceMetadata yet (deploy pending). Flip HEALTH_GATE_REQUIRE_SOURCE_METADATA=1 once the metadata-serving functions deploy reaches prod."
+            SOURCE_METADATA_WARNINGS=$((SOURCE_METADATA_WARNINGS + 1))
+            echo "OK ${label} — availability only (attempt ${attempt})"
+          else
+            LAST_BODY_SNIPPET="$(head -c 256 "$body_file" 2>/dev/null || true)"
+            echo "waiting for ${label} ${url} (healthy but missing AGPL sourceMetadata, attempt ${attempt}/${RETRIES})..." >&2
+            sleep "$SLEEP_SEC"
+            attempt=$((attempt + 1))
+            continue
+          fi
           cat "$body_file"
           if [[ -n "$snapshot_path" ]]; then
             cp "$body_file" "$snapshot_path"
@@ -107,4 +134,40 @@ if [[ -n "${DEPLOY_HEALTH_JSON:-}" ]]; then
   echo "Wrote ${DEPLOY_HEALTH_JSON}"
 fi
 
-echo "PASS: post-deploy health gate"
+# H13: crash reporting must be enabled in production. The deploy lane writes
+# the functions runtime env (FUNCTIONS_RUNTIME_ENV_FILE) with SENTRY_DSN +
+# SENTRY_ENVIRONMENT before this gate runs. Assert both are present so a DSN
+# regression (cleared secret, dropped writer line) turns this gate red instead
+# of letting functions ship dark. Fatal only when HEALTH_GATE_REQUIRE_SENTRY=1
+# (real production deploys); dry runs that skip the deploy set 0 so the
+# no-deploy lane is never permanently red.
+REQUIRE_SENTRY="${HEALTH_GATE_REQUIRE_SENTRY:-0}"
+SENTRY_ENV_FILE="${FUNCTIONS_RUNTIME_ENV_FILE:-functions/.env.burnbar}"
+if [[ "$REQUIRE_SENTRY" == "1" ]]; then
+  echo "==> Sentry enablement (${SENTRY_ENV_FILE})"
+  if [[ ! -f "$SENTRY_ENV_FILE" ]]; then
+    echo "FAIL: HEALTH_GATE_REQUIRE_SENTRY=1 but ${SENTRY_ENV_FILE} is missing — the deploy never wrote a runtime env, so Sentry cannot be enabled." >&2
+    exit 1
+  fi
+  sentry_dsn_line="$(grep -E '^SENTRY_DSN=' "$SENTRY_ENV_FILE" | tail -n1 || true)"
+  sentry_env_line="$(grep -E '^SENTRY_ENVIRONMENT=' "$SENTRY_ENV_FILE" | tail -n1 || true)"
+  sentry_dsn_value="${sentry_dsn_line#SENTRY_DSN=}"
+  sentry_env_value="${sentry_env_line#SENTRY_ENVIRONMENT=}"
+  if [[ -z "$sentry_dsn_value" ]]; then
+    echo "FAIL: SENTRY_DSN is empty in ${SENTRY_ENV_FILE} — production functions would ship with crash reporting disabled (H13). Set the SENTRY_DSN_FUNCTIONS Actions secret." >&2
+    exit 1
+  fi
+  if [[ "$sentry_env_value" != "production" ]]; then
+    echo "FAIL: SENTRY_ENVIRONMENT='${sentry_env_value:-<unset>}' (expected 'production') in ${SENTRY_ENV_FILE} — production Sentry events would be misattributed (H13)." >&2
+    exit 1
+  fi
+  echo "OK Sentry enabled (environment=${sentry_env_value}, dsn present)"
+else
+  echo "::notice title=Sentry assertion skipped::HEALTH_GATE_REQUIRE_SENTRY!=1 (dry run or synthetic lane); not asserting production crash reporting."
+fi
+
+if [[ "$SOURCE_METADATA_WARNINGS" -gt 0 ]]; then
+  echo "PASS: post-deploy health gate (availability only — ${SOURCE_METADATA_WARNINGS} surface(s) missing AGPL sourceMetadata, see warnings)"
+else
+  echo "PASS: post-deploy health gate"
+fi

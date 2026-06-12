@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.widget
@@ -282,7 +281,6 @@ internal fun LargeWidgetAskSections() {
                 } else {
                     ASK_CHIP_ASSISTANT_HERMES
                 },
-                prompt = prompt.fullPrompt,
                 accent = WidgetTheme.amber,
                 prominent = false,
                 modifier = GlanceModifier.defaultWeight(),

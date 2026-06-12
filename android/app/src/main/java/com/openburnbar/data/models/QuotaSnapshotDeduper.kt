@@ -1,7 +1,7 @@
 package com.openburnbar.data.models
 
-private const val VAL_12 = 12
-private const val VAL_3 = 3
+private const val SNAPSHOT_STALENESS_HOURS = 12
+private const val HIGH_CONFIDENCE_RANK = 3
 
 /**
  * Cloud quota snapshots are stored per provider account and sourceId. Mobile
@@ -84,11 +84,11 @@ private fun ProviderQuotaSnapshot.isTimeStaleForDedupe(now: java.time.Instant = 
                     ?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
             }
             ?: return true
-    return java.time.Duration.between(fetched, now) > java.time.Duration.ofHours(VAL_12.toLong())
+    return java.time.Duration.between(fetched, now) > java.time.Duration.ofHours(SNAPSHOT_STALENESS_HOURS.toLong())
 }
 
 private fun ProviderQuotaSnapshot.confidenceRank(): Int = when (confidence.lowercase()) {
-    "high" -> VAL_3
+    "high" -> HIGH_CONFIDENCE_RANK
     "medium" -> 2
     "low" -> 1
     else -> 0

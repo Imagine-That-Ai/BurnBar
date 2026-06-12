@@ -1,4 +1,3 @@
-@file:Suppress("MatchingDeclarationName")
 
 package com.openburnbar.data.insights.verdict
 
@@ -9,8 +8,8 @@ import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private const val VAL_0_10 = 0.10
-private const val VAL_10 = 10
+private const val CACHE_TARGET_WARNING_MARGIN = 0.10
+private const val ISO_DATE_LENGTH = 10
 
 internal fun buildVerdictRings(
     thresholds: RuleBasedVerdictEngine.Thresholds,
@@ -156,12 +155,10 @@ private fun verdictTopModelKeyNumber(top: InsightDigest.ModelSnapshot): VerdictN
         unit = VerdictDelta.Unit.sessions,
     )
 
-@Suppress("UnusedParameter")
 internal fun buildVerdictBullets(
     thresholds: RuleBasedVerdictEngine.Thresholds,
     digest: InsightDigest,
     prior: InsightDigest?,
-    window: VerdictWindow,
 ): List<VerdictBullet> {
     val bullets = mutableListOf<VerdictBullet>()
     val priorTotals = prior?.totals
@@ -236,7 +233,7 @@ private fun verdictUseCasePatternBullet(digest: InsightDigest): List<VerdictBull
 
 private fun verdictCacheBullets(thresholds: RuleBasedVerdictEngine.Thresholds, digest: InsightDigest): List<VerdictBullet> {
     val cacheRate = verdictCacheHitRate(digest.totals)
-    if (cacheRate > 0 && cacheRate < thresholds.cacheTargetRate - VAL_0_10) {
+    if (cacheRate > 0 && cacheRate < thresholds.cacheTargetRate - CACHE_TARGET_WARNING_MARGIN) {
         return listOf(
             VerdictBullet(
                 id = UUID.randomUUID().toString(),
@@ -295,8 +292,8 @@ private fun verdictDayCitations(digest: InsightDigest, limit: Int): List<Insight
         return listOf(
             InsightCitation(
                 id = UUID.randomUUID().toString(),
-                kind = InsightCitation.Kind.Day(digest.generatedAt.take(VAL_10)),
-                label = digest.generatedAt.take(VAL_10),
+                kind = InsightCitation.Kind.Day(digest.generatedAt.take(ISO_DATE_LENGTH)),
+                label = digest.generatedAt.take(ISO_DATE_LENGTH),
             ),
         )
     }
@@ -304,7 +301,7 @@ private fun verdictDayCitations(digest: InsightDigest, limit: Int): List<Insight
         .sortedByDescending { it.day }
         .take(limit)
         .map { point ->
-            val dateStr = point.day.take(VAL_10)
+            val dateStr = point.day.take(ISO_DATE_LENGTH)
             InsightCitation(
                 id = UUID.randomUUID().toString(),
                 kind = InsightCitation.Kind.Day(dateStr),

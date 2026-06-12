@@ -7,9 +7,6 @@ import org.junit.Test
 
 private const val PERCENT_SCALE = 16
 private const val SECONDS = 721_692_800.0
-private const val VAL_32 = 32
-private const val VAL_33 = 33
-
 class PhoneControlSignerTest {
     private val privateSeed = ByteArray(32) { index -> (index + 1).toByte() }
     private val publicKey = PhoneControlSigner.publicKey(privateSeed)
@@ -188,7 +185,7 @@ class PhoneControlSignerTest {
                 timestampMillis = 1_700_000_000_000L,
                 privateKeySeed = privateSeed,
             )
-        val otherPublicKey = PhoneControlSigner.publicKey(ByteArray(VAL_32) { index -> (index + VAL_33).toByte() })
+        val otherPublicKey = PhoneControlSigner.publicKey(ByteArray(32) { index -> (index + 33).toByte() })
 
         assertThrows(PhoneControlVerifyError.InvalidSignature::class.java) {
             PhoneControlSignerVerify.verify(

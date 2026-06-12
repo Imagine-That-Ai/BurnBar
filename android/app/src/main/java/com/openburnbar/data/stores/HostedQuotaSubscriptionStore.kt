@@ -63,6 +63,7 @@ class HostedQuotaSubscriptionStore(
 ) : ViewModel(), PurchasesUpdatedListener {
     companion object {
         private const val LOG_TAG = "BurnBarBilling"
+        private const val FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY = 3
 
         const val PRODUCT_ID = "com.openburnbar.pro.monthly"
         const val CLOUD_ANNUAL_PRODUCT_ID = "com.openburnbar.pro.annual"
@@ -145,22 +146,28 @@ class HostedQuotaSubscriptionStore(
          * store-product role) and the Apple product IDs the verifier writes to the
          * `hosted_quota_sync` entitlement doc for users who paid on iOS/macOS.
          */
-        internal fun tierForActiveProduct(active: Boolean, productID: String?): CloudTier {
-            if (!active) return CloudTier.NONE
-            val id = productID?.trim().orEmpty()
-            // Fast path: a known Android store product maps via its role.
-            when (STORE_PRODUCT_BY_ID[id]?.role) {
-                HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> return CloudTier.ULTRA
-                HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> return CloudTier.PRO
-                HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> return CloudTier.CLOUD
-                else -> Unit
+        internal fun tierForActiveProduct(active: Boolean, productID: String?): CloudTier =
+            if (active) tierForProductID(productID?.trim().orEmpty()) else CloudTier.NONE
+
+        private fun tierForProductID(id: String): CloudTier =
+            STORE_PRODUCT_BY_ID[id]?.role?.subscriptionTier()
+                ?: fallbackTierForProductID(id)
+
+        private fun HostedQuotaStoreProductRole.subscriptionTier(): CloudTier? =
+            when (this) {
+                HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> CloudTier.ULTRA
+                HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> CloudTier.PRO
+                HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> CloudTier.CLOUD
+                HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP -> null
             }
+
+        private fun fallbackTierForProductID(id: String): CloudTier {
             // Cross-platform fallback: classify by the product-ID substring the
             // Apple/entitlement verifiers use (e.g. com.openburnbar.ultra.monthly,
             // com.openburnbar.promax.*, com.openburnbar.computer-use.*).
             val lower = id.lowercase()
             return when {
-                lower.isEmpty() -> CloudTier.CLOUD // active but unlabeled ⇒ at least Cloud
+                lower.isEmpty() -> CloudTier.CLOUD // active but unlabeled => at least Cloud
                 lower.contains("ultra") -> CloudTier.ULTRA
                 lower.contains("promax") ||
                     lower.contains("pro_max") ||
@@ -309,14 +316,6 @@ class HostedQuotaSubscriptionStore(
         if (purchaseMs != null) _purchaseDate.value = purchaseMs
     }
 
-    private fun parseTimestampMs(value: Any?): Long? = when (value) {
-        is Timestamp -> value.toDate().time
-        is Long -> value
-        is Number -> value.toLong()
-        is String -> runCatching { java.time.Instant.parse(value).toEpochMilli() }.getOrNull()
-        else -> null
-    }
-
     private fun applyFallbackProductDetails() {
         if (_productDetailsByID.value.isNotEmpty()) return
         _productDetailsByID.value =
@@ -373,6 +372,17 @@ class HostedQuotaSubscriptionStore(
                         details.subscriptionOfferDetails?.firstOrNull()?.offerToken
                             ?: error("No subscription offer is available.")
                     productDetailsBuilder.setOfferToken(offerToken)
+                    subscriptionReplacementProductID(productID, storeProduct)?.let { oldProductID ->
+                        productDetailsBuilder.setSubscriptionProductReplacementParams(
+                            BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams.newBuilder()
+                                .setOldProductId(oldProductID)
+                                .setReplacementMode(
+                                    BillingFlowParams.ProductDetailsParams.SubscriptionProductReplacementParams
+                                        .ReplacementMode.CHARGE_FULL_PRICE,
+                                )
+                                .build(),
+                        )
+                    }
                 }
                 val flowBuilder =
                     BillingFlowParams.newBuilder()
@@ -383,16 +393,6 @@ class HostedQuotaSubscriptionStore(
                         )
                 firebaseAuth.currentUser?.uid?.let { uid ->
                     flowBuilder.setObfuscatedAccountId(HostedQuotaBillingSupport.sha256Hex(uid))
-                }
-                subscriptionReplacementPurchase(productID, storeProduct)?.let { currentPurchase ->
-                    flowBuilder.setSubscriptionUpdateParams(
-                        BillingFlowParams.SubscriptionUpdateParams.newBuilder()
-                            .setOldPurchaseToken(currentPurchase.purchaseToken)
-                            .setSubscriptionReplacementMode(
-                                BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.CHARGE_FULL_PRICE,
-                            )
-                            .build(),
-                    )
                 }
                 val params = flowBuilder.build()
                 val result = client.launchBillingFlow(activity, params)
@@ -410,7 +410,7 @@ class HostedQuotaSubscriptionStore(
         }
     }
 
-    private suspend fun subscriptionReplacementPurchase(productID: String, storeProduct: HostedQuotaStoreProduct): Purchase? {
+    private suspend fun subscriptionReplacementProductID(productID: String, storeProduct: HostedQuotaStoreProduct): String? {
         if (storeProduct.productType != BillingClient.ProductType.SUBS) return null
         return HostedQuotaBillingSupport.queryPurchases(requireBillingClient(), BillingClient.ProductType.SUBS)
             .asSequence()
@@ -420,8 +420,14 @@ class HostedQuotaSubscriptionStore(
                     .filter { existingProductID -> existingProductID in SUBSCRIPTION_PRODUCT_IDS && existingProductID != productID }
                     .map { existingProductID -> existingProductID to purchase }
             }
-            .sortedBy { (existingProductID, _) -> subscriptionProductPriority(existingProductID) }
-            .map { (_, purchase) -> purchase }
+            .sortedBy { (existingProductID, _) ->
+                hostedQuotaSubscriptionProductPriority(
+                    productID = existingProductID,
+                    productsById = STORE_PRODUCT_BY_ID,
+                    fallbackPriority = FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY,
+                )
+            }
+            .map { (existingProductID, _) -> existingProductID }
             .firstOrNull()
     }
 
@@ -543,18 +549,7 @@ class HostedQuotaSubscriptionStore(
     }
 
     private suspend fun handlePurchases(purchases: List<Purchase>) {
-        val topUpPurchase =
-            purchases.firstOrNull {
-                it.purchaseState == Purchase.PurchaseState.PURCHASED && it.products.any { productID -> productID in TOP_UP_PRODUCT_IDS }
-            }
-        if (topUpPurchase != null) {
-            val productID = topUpPurchase.products.first { it in TOP_UP_PRODUCT_IDS }
-            _lastTopUpCredit.value =
-                functions.verifyGooglePlayCloudProTopUp(
-                    purchaseToken = topUpPurchase.purchaseToken,
-                    productID = productID,
-                )
-        }
+        verifyHostedQuotaTopUpPurchase(purchases, TOP_UP_PRODUCT_IDS, functions)?.let { _lastTopUpCredit.value = it }
 
         var lastInactiveSubscription: VerifiedSubscription? = null
         var lastVerificationError: Throwable? = null
@@ -582,12 +577,9 @@ class HostedQuotaSubscriptionStore(
                         productID = candidate.productID,
                         response = response,
                 )
-                if (isVerifiedSubscriptionActive(response)) {
-                    if (!candidate.purchase.isAcknowledged) {
-                        val acknowledged = acknowledge(candidate.purchase)
-                        if (!acknowledged) {
-                            _error.value = "Your subscription is active, but Google Play acknowledgement is still pending."
-                        }
+                if (hostedQuotaSubscriptionIsActive(response)) {
+                    if (!candidate.purchase.isAcknowledged && !acknowledge(candidate.purchase)) {
+                        _error.value = "Your subscription is active, but Google Play acknowledgement is still pending."
                     }
                     applyVerifiedSubscription(verified)
                     return
@@ -634,39 +626,15 @@ class HostedQuotaSubscriptionStore(
             }
             .distinctBy { "${it.purchase.purchaseToken}:${it.productID}" }
             .sortedWith(
-                compareBy<SubscriptionPurchaseCandidate> { subscriptionProductPriority(it.productID) }
+                compareBy<SubscriptionPurchaseCandidate> {
+                    hostedQuotaSubscriptionProductPriority(
+                        productID = it.productID,
+                        productsById = STORE_PRODUCT_BY_ID,
+                        fallbackPriority = FALLBACK_SUBSCRIPTION_PRODUCT_PRIORITY,
+                    )
+                }
                     .thenByDescending { it.purchase.purchaseTime },
             )
-    }
-
-    private fun purchaseProductSummary(purchases: List<Purchase>): List<String> {
-        return purchases.map { purchase ->
-            val state =
-                when (purchase.purchaseState) {
-                    Purchase.PurchaseState.PURCHASED -> "purchased"
-                    Purchase.PurchaseState.PENDING -> "pending"
-                    Purchase.PurchaseState.UNSPECIFIED_STATE -> "unspecified"
-                    else -> "state-${purchase.purchaseState}"
-                }
-            "${purchase.products.joinToString("+")}:$state:ack=${purchase.isAcknowledged}"
-        }
-    }
-
-    private fun subscriptionProductPriority(productID: String): Int {
-        return when (STORE_PRODUCT_BY_ID[productID]?.role) {
-            HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> 0
-            HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> 1
-            HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> 2
-            else -> 3
-        }
-    }
-
-    private fun isVerifiedSubscriptionActive(response: Map<String, Any>): Boolean {
-        val expiresAtMs =
-            parseTimestampMs(response["expiresAt"])
-                ?: parseTimestampMs(response["expireAt"])
-        val active = response["active"] as? Boolean ?: false
-        return active && expiresAtMs != null && expiresAtMs > System.currentTimeMillis()
     }
 
     private fun applyVerifiedSubscription(verified: VerifiedSubscription) {
@@ -712,4 +680,62 @@ class HostedQuotaSubscriptionStore(
     }
 
     private fun requireBillingClient(): BillingClient = checkNotNull(billingClient) { "Google Play Billing client is not ready." }
+}
+
+private fun parseTimestampMs(value: Any?): Long? = when (value) {
+    is Timestamp -> value.toDate().time
+    is Long -> value
+    is Number -> value.toLong()
+    is String -> runCatching { java.time.Instant.parse(value).toEpochMilli() }.getOrNull()
+    else -> null
+}
+
+private suspend fun verifyHostedQuotaTopUpPurchase(
+    purchases: List<Purchase>,
+    topUpProductIds: Set<String>,
+    functions: FunctionsRepository,
+): Map<String, Any>? {
+    val topUpPurchase =
+        purchases.firstOrNull {
+            it.purchaseState == Purchase.PurchaseState.PURCHASED && it.products.any { productID -> productID in topUpProductIds }
+        } ?: return null
+    val productID = topUpPurchase.products.first { it in topUpProductIds }
+    return functions.verifyGooglePlayCloudProTopUp(
+        purchaseToken = topUpPurchase.purchaseToken,
+        productID = productID,
+    )
+}
+
+private fun purchaseProductSummary(purchases: List<Purchase>): List<String> {
+    return purchases.map { purchase ->
+        val state =
+            when (purchase.purchaseState) {
+                Purchase.PurchaseState.PURCHASED -> "purchased"
+                Purchase.PurchaseState.PENDING -> "pending"
+                Purchase.PurchaseState.UNSPECIFIED_STATE -> "unspecified"
+                else -> "state-${purchase.purchaseState}"
+            }
+        "${purchase.products.joinToString("+")}:$state:ack=${purchase.isAcknowledged}"
+    }
+}
+
+private fun hostedQuotaSubscriptionProductPriority(
+    productID: String,
+    productsById: Map<String, HostedQuotaStoreProduct>,
+    fallbackPriority: Int,
+): Int {
+    return when (productsById[productID]?.role) {
+        HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION -> 0
+        HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> 1
+        HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> 2
+        else -> fallbackPriority
+    }
+}
+
+private fun hostedQuotaSubscriptionIsActive(response: Map<String, Any>): Boolean {
+    val expiresAtMs =
+        parseTimestampMs(response["expiresAt"])
+            ?: parseTimestampMs(response["expireAt"])
+    val active = response["active"] as? Boolean ?: false
+    return active && expiresAtMs != null && expiresAtMs > System.currentTimeMillis()
 }

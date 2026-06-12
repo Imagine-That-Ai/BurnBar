@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.pulse
@@ -49,7 +48,6 @@ import com.openburnbar.ui.burn.ProviderAuroraAvatar
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
-
 
 @Composable
 internal fun JigglingProviderRow(model: JigglingProviderRowModel) {

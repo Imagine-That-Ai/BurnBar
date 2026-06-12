@@ -20,6 +20,10 @@ import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraShadowSpec
 import com.openburnbar.ui.theme.AuroraShadows
 
+private const val DefaultGlassFrostDp = 12f
+private const val MinimumGlassFrostStrength = 0.75f
+private const val MaximumGlassFrostStrength = 1.25f
+
 /**
  * Aurora glass surface — translucent fill + brand-tinted sheen + edge-gradient
  * stroke + soft shadow. iOS-parity look for cards/buttons/sheets without
@@ -43,7 +47,9 @@ import com.openburnbar.ui.theme.AuroraShadows
  * its bounds while the blur applies to anything drawn inside.
  *
  * @param cornerRadius corner radius for the surface; defaults to AuroraRadius.lg
- * @param blurRadiusDp blur radius applied on API 31+. Ignored on older devices.
+ * @param blurRadiusDp perceived frost strength. Android Compose cannot blur
+ * the backdrop here without blurring content, so the value modulates fill
+ * density around the default 12dp baseline.
  * @param tintAlpha base fill alpha on top of the blurred backdrop.
  * @param interactive when true, scales 0.98 on press; wire via Modifier.scale externally.
  * @param shadow elevation/spot spec for the dropped shadow.
@@ -52,12 +58,16 @@ import com.openburnbar.ui.theme.AuroraShadows
 @Composable
 fun Modifier.auroraGlass(
     cornerRadius: Dp = AuroraRadius.lg.dp,
-    @Suppress("UNUSED_PARAMETER") blurRadiusDp: Float = 12f, // retained for API compatibility
+    blurRadiusDp: Float = 12f,
     tintAlpha: Float = 0.48f,
     shadow: AuroraShadowSpec = AuroraShadows.medium,
     isDark: Boolean = isSystemInDarkTheme(),
 ): Modifier {
     val shape = RoundedCornerShape(cornerRadius)
+    val frostStrength =
+        (blurRadiusDp / DefaultGlassFrostDp)
+            .coerceIn(MinimumGlassFrostStrength, MaximumGlassFrostStrength)
+    val effectiveTintAlpha = (tintAlpha * frostStrength).coerceIn(0f, 1f)
 
     // Frosted fill that stays glass-like regardless of theme. In dark mode
     // the slate `darkSurface` at high alpha pools into a black slab over the
@@ -67,9 +77,9 @@ fun Modifier.auroraGlass(
     // top. Light mode keeps the cream surface at the full requested alpha.
     val baseFill =
         if (isDark) {
-            AuroraColors.darkSurface.copy(alpha = (tintAlpha * 0.35f).coerceIn(0f, 1f))
+            AuroraColors.darkSurface.copy(alpha = (effectiveTintAlpha * 0.35f).coerceIn(0f, 1f))
         } else {
-            AuroraColors.lightSurface.copy(alpha = tintAlpha)
+            AuroraColors.lightSurface.copy(alpha = effectiveTintAlpha)
         }
 
     // Subtle top-down lightening keeps the card feeling refractive without

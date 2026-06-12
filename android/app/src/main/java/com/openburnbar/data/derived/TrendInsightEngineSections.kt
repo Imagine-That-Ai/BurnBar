@@ -1,4 +1,3 @@
-@file:Suppress("MatchingDeclarationName")
 
 package com.openburnbar.data.derived
 

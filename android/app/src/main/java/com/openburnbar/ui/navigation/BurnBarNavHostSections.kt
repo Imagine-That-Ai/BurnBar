@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.navigation
@@ -493,57 +492,58 @@ internal fun BurnBarNavigationRail(currentTab: BurnBarTab, onSelect: (BurnBarTab
             verticalArrangement = Arrangement.SpaceEvenly,
         ) {
             BurnBarTab.all.forEach { tab ->
-                val selected = currentTab == tab
-                Column(
-                    modifier =
-                    Modifier
-                        .width(96.dp)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(
-                            if (selected) {
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                            } else {
-                                Color.Transparent
-                            },
-                        )
-                        .clickable { onSelect(tab) }
-                        .padding(horizontal = 4.dp, vertical = 3.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Box(
-                        modifier =
-                        Modifier
-                            .size(20.dp)
-                            .clip(CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        AuroraNavIcon(
-                            destination = tab.destination,
-                            size = 18,
-                            isSelected = selected,
-                            userDisplayName = null,
-                        )
-                    }
-                    Text(
-                        tab.railLabel,
-                        color =
-                        if (selected) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-                        },
-                        fontSize = 9.sp,
-                        lineHeight = 10.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+                BurnBarNavigationRailItem(
+                    tab = tab,
+                    selected = currentTab == tab,
+                    onSelect = { onSelect(tab) },
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun BurnBarNavigationRailItem(
+    tab: BurnBarTab,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Column(
+        modifier =
+        Modifier
+            .width(96.dp)
+            .height(44.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
+            .clickable(onClick = onSelect)
+            .padding(horizontal = 4.dp, vertical = 3.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier =
+            Modifier
+                .size(20.dp)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            AuroraNavIcon(
+                destination = tab.destination,
+                size = 18,
+                isSelected = selected,
+                userDisplayName = null,
+            )
+        }
+        Text(
+            tab.railLabel,
+            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+            fontSize = 9.sp,
+            lineHeight = 10.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

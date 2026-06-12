@@ -353,6 +353,7 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
         }
 
         private const val SUBSCRIPTION_DOC_ID_INFO = "subscription-topic"
+        private const val SUBSCRIPTION_DOC_KEY_BYTES = 32
         private const val SUBSCRIPTION_DOC_ID_BYTES = 16
         private const val HEX_BYTE_MASK = 0xff
 
@@ -373,7 +374,7 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
                     vaultKey,
                     ByteArray(0),
                     SUBSCRIPTION_DOC_ID_INFO.toByteArray(),
-                    32,
+                    SUBSCRIPTION_DOC_KEY_BYTES,
                 )
             val mac = Mac.getInstance("HmacSHA256")
             mac.init(SecretKeySpec(docKey, "HmacSHA256"))

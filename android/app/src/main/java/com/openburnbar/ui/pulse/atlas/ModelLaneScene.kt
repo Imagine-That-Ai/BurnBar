@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.pulse.atlas
@@ -69,7 +68,6 @@ private fun rememberModelLanes(digest: TrendDataDigest): List<Lane> =
         }
     }
 
-@Suppress("UnusedParameter")
 @Composable
 private fun LaneRow(lane: Lane, rank: Int) {
     val target = (lane.model.sharePct / 100.0).toFloat().coerceIn(0f, 1f)
@@ -89,6 +87,12 @@ private fun LaneRow(lane: Lane, rank: Int) {
                 .background(Brush.verticalGradient(colors = listOf(lane.color, lane.color.copy(alpha = 0.6f)))),
         )
         Spacer(Modifier.width(10.dp))
+        Text(
+            text = "#$rank",
+            style = AuroraType.tiny,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(8.dp))
         ModelLogo(brand = lane.model.brand, size = 24.dp)
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {

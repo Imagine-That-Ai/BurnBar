@@ -1,7 +1,6 @@
 package com.openburnbar.data.media
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -22,7 +21,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-private const val VAL_4 = 4
+// AudioRecord capture buffer holds this many frameDurationMs PCM frames.
+private const val CAPTURE_BUFFER_FRAME_CAPACITY = 4
 
 /**
  * Android-side mic capture for Phase 5 (1:1 audio call). 1:1 port of
@@ -68,7 +68,6 @@ class MicrophoneCaptureService(
     private var ns: NoiseSuppressor? = null
     private var captureJob: Job? = null
 
-    @SuppressLint("MissingPermission") // we check above
     fun start() {
         val granted =
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -83,7 +82,7 @@ class MicrophoneCaptureService(
         val frameSamples = sampleRateHz * frameDurationMs / 1000
         val frameBytes = frameSamples * 2 // 16-bit mono
         val minBuffer = AudioRecord.getMinBufferSize(sampleRateHz, channelConfig, encoding)
-        val bufferSize = maxOf(minBuffer, frameBytes * VAL_4)
+        val bufferSize = maxOf(minBuffer, frameBytes * CAPTURE_BUFFER_FRAME_CAPACITY)
 
         val newRecord = createInitializedRecord(channelConfig, encoding, bufferSize)
         bindAudioEffects(newRecord)
@@ -110,7 +109,6 @@ class MicrophoneCaptureService(
         throw Failure.StartupFailed(message)
     }
 
-    @SuppressLint("MissingPermission")
     private fun createInitializedRecord(channelConfig: Int, encoding: Int, bufferSize: Int): AudioRecord {
         val newRecord =
             try {
@@ -173,6 +171,5 @@ class MicrophoneCaptureService(
         scope.cancel()
     }
 
-    @Suppress("unused")
     val pcmFrameByteCount: Int get() = sampleRateHz * frameDurationMs / 1000 * 2
 }

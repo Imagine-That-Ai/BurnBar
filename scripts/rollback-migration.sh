@@ -79,6 +79,19 @@ MIGRATIONS=(
   "v32_switcher_profiles|manual|Switcher profiles table"
   "v33_backfill_cursors|safe-rerun|Cursor backfill migration"
   "v34_vector_index_snapshots|manual|Vector index snapshot tracking"
+  "v35_provider_accounts|manual|Provider accounts table and token usage account attribution"
+  "v36_repair_kimi_request_id_models|manual|Repair Kimi request-id models and duplicate cache accounting"
+  "v37_token_usage_performance_indexes|safe-rerun|Token usage performance indexes"
+  "v38_chat_message_attachments|manual|Chat message attachments JSON column"
+  "v39_project_memory_snapshots|manual|Project memory snapshot table"
+  "v40_reprice_gpt55_cached_input|safe-rerun|Reprice GPT-5.5 cached input rows"
+  "v41_reprice_openai_family_cached_input|safe-rerun|Reprice OpenAI-family cached input rows"
+  "v42_budget_rules_and_events|safe-rerun|Budget rules and budget events tables"
+  "v43_text_expansion_snippets|safe-rerun|Text expansion snippets table and active-trigger index"
+  "v44_repair_token_accounting_duplicates|manual|Delete duplicated token accounting rows"
+  "v45_conversation_working_directory|safe-rerun|Conversation working directory column"
+  "v46_drain_target_per_provider|safe-rerun|Per-provider switcher drain target pointer"
+  "v47_conversation_tombstones|safe-rerun|Conversation tombstone and version columns"
 )
 
 # ── Commands ─────────────────────────────────────────────────────────────
@@ -302,6 +315,36 @@ cmd_revert() {
       v34_vector_index_snapshots)
         echo "  Suggested revert SQL:"
         echo "    -- DROP TABLE IF EXISTS vector_index_snapshots;"
+        ;;
+      v35_provider_accounts)
+        echo "  Suggested revert SQL:"
+        echo "    -- DROP INDEX IF EXISTS token_usage_account_time_idx;"
+        echo "    -- DROP INDEX IF EXISTS token_usage_provider_account_idx;"
+        echo "    -- DROP INDEX IF EXISTS token_usage_unique_session_model_device_account_idx;"
+        echo "    -- CREATE UNIQUE INDEX token_usage_unique_session_model_device_idx"
+        echo "    --   ON token_usage(provider, sessionId, model, COALESCE(sourceDeviceId, ''));"
+        echo "    -- DROP TABLE IF EXISTS provider_accounts;"
+        echo "    -- CAUTION: Dropping provider_accounts removes local account labels and routing state."
+        ;;
+      v36_repair_kimi_request_id_models)
+        echo "  Suggested revert SQL:"
+        echo "    -- No lossless SQL revert: this migration deletes duplicate legacy rows"
+        echo "    -- and normalizes Kimi request-id model names in place."
+        echo "    -- Restore from the timestamped backup created before migration if needed."
+        ;;
+      v38_chat_message_attachments)
+        echo "  Suggested revert SQL:"
+        echo "    -- ALTER TABLE chat_messages DROP COLUMN attachmentsJSON;"
+        ;;
+      v39_project_memory_snapshots)
+        echo "  Suggested revert SQL:"
+        echo "    -- DROP TABLE IF EXISTS project_memory_snapshots;"
+        echo "    -- CAUTION: Destroys local generated project memory snapshots."
+        ;;
+      v44_repair_token_accounting_duplicates)
+        echo "  Suggested revert SQL:"
+        echo "    -- No lossless SQL revert: this migration deletes duplicated token rows."
+        echo "    -- Restore from backup if duplicate rows must be recovered."
         ;;
       *)
         echo "  No pre-written revert SQL is available for this migration."

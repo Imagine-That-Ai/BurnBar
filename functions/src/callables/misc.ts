@@ -7,7 +7,7 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { refreshUserRollups } from "../rollups.js";
+import { refreshUserRollups, RollupRebuildUnavailableError } from "../rollups.js";
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "../demoSeed.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -48,6 +48,25 @@ export const rebuildUsageRollups = onCall(
         windows: ["today", "7d", "30d", "90d", "all_time"] as const,
       };
     } catch (err) {
+      // Gate refusals are expected control flow, not failures: the rebuild
+      // engine enforces the full-rebuild circuit breaker, the in-flight
+      // dedupe, and the force-repair cooldown for every caller (the callable
+      // used to bypass all three). Map them onto typed HttpsErrors so clients
+      // can back off instead of retry-looping.
+      if (err instanceof RollupRebuildUnavailableError) {
+        if (err.reason === "circuit_open") {
+          // Stable jsonPayload.event key — GCP log metrics/alerts are wired
+          // to exactly this string. Do not rename.
+          logError({ event: "rollup.full_rebuild_circuit_open", uid, error: err.message });
+        }
+        const code =
+          err.reason === "force_cooldown"
+            ? "resource-exhausted"
+            : err.reason === "in_flight"
+              ? "aborted"
+              : "unavailable";
+        throw new HttpsError(code, err.message, { reason: err.reason, retryAt: err.retryAt });
+      }
       logError({
         event: "callable_error",
         message: "rebuild_usage_rollups_failed",

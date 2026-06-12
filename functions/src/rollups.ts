@@ -15,9 +15,9 @@ import type {
   ProviderAccountSummary,
   ModelSummary,
   DeviceSummary,
-  RollupJobDoc,
 } from "./types.js";
 import {
+  errorMessage,
   isRecord,
   isTimestampWithToDate,
   isTimestampWithToMillis,
@@ -28,6 +28,8 @@ import {
   recordOrUndefined,
   stripUndefinedObject,
 } from "./guards.js";
+import { getConfig } from "./config.js";
+import { logInfo } from "./logging.js";
 import { LEGACY_KIMI_WIRE_MODEL, LEGACY_KIMI_WIRE_PRICING } from "./pricing.js";
 
 const ROLLUP_SCHEMA_VERSION = 3;
@@ -36,14 +38,6 @@ const COUNTER_SCHEMA_VERSION = 1;
 /** Window keys in ascending granularity order. */
 const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
 export type WindowKey = (typeof WINDOW_KEYS)[number];
-
-type RollupEvent = {
-  event: UsageEventDoc;
-  date: Date;
-  tokens: number;
-  cost?: number;
-  model?: string;
-};
 
 export type UsageCounterContribution = {
   logicalKey: string;
@@ -261,51 +255,6 @@ function logicalUsageKey(ev: UsageEventDoc, date: Date, metrics: { tokens: numbe
   return [provider, sessionId, deviceId, accountId, startedAt, tokenBucketKey(ev, metrics)].join("|");
 }
 
-function preferRollupEvent(candidate: RollupEvent, existing: RollupEvent): boolean {
-  const candidateProvenance = provenanceRank(candidate.event);
-  const existingProvenance = provenanceRank(existing.event);
-  if (candidateProvenance !== existingProvenance) {
-    return candidateProvenance > existingProvenance;
-  }
-
-  const candidateUpdatedAt = eventUpdatedMillis(candidate.event);
-  const existingUpdatedAt = eventUpdatedMillis(existing.event);
-  if (candidateUpdatedAt !== existingUpdatedAt) {
-    return candidateUpdatedAt > existingUpdatedAt;
-  }
-
-  const candidateModel = modelRank(candidate.model);
-  const existingModel = modelRank(existing.model);
-  if (candidateModel !== existingModel) {
-    return candidateModel > existingModel;
-  }
-
-  const candidateCost = candidate.cost ?? 0;
-  const existingCost = existing.cost ?? 0;
-  if (candidateCost !== existingCost) {
-    return candidateCost < existingCost;
-  }
-
-  return true;
-}
-
-function dedupeUsageEvents(events: RollupEvent[]): RollupEvent[] {
-  const deduped = new Map<string, RollupEvent>();
-
-  for (const entry of events) {
-    const key = logicalUsageKey(entry.event, entry.date, {
-      tokens: entry.tokens,
-      cost: entry.cost,
-    });
-    const existing = deduped.get(key);
-    if (!existing || preferRollupEvent(entry, existing)) {
-      deduped.set(key, entry);
-    }
-  }
-
-  return Array.from(deduped.values());
-}
-
 function stripUndefined(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => stripUndefined(item));
@@ -378,30 +327,6 @@ function eventProviderID(ev: UsageEventDoc): string {
 
 function accountSummaryKey(ev: UsageEventDoc): string {
   return ev.providerAccountID ?? `${eventProviderID(ev)}:unattributed`;
-}
-
-function windowPredicate(key: WindowKey, now: Date): (date: Date) => boolean {
-  const nowTs = now.getTime();
-  switch (key) {
-    case "today": {
-      const today = toUtcDate(now);
-      return (date: Date) => toUtcDate(date) === today;
-    }
-    case "7d": {
-      const cutoff7 = nowTs - 7 * 24 * 60 * 60 * 1000;
-      return (date: Date) => date.getTime() >= cutoff7;
-    }
-    case "30d": {
-      const cutoff30 = nowTs - 30 * 24 * 60 * 60 * 1000;
-      return (date: Date) => date.getTime() >= cutoff30;
-    }
-    case "90d": {
-      const cutoff90 = nowTs - 90 * 24 * 60 * 60 * 1000;
-      return (date: Date) => date.getTime() >= cutoff90;
-    }
-    case "all_time":
-      return () => true;
-  }
 }
 
 function usageContribution(ev: UsageEventDoc | undefined, candidateKey = ""): UsageCounterCandidate | undefined {
@@ -897,9 +822,20 @@ export function planPendingDeltaDrain(
  * <= 100 queue deletes + <= 200 key sets + the coalesced bucket sets. */
 const PENDING_DELTA_DRAIN_PAGE_SIZE = 100;
 
+/**
+ * Default per-invocation page ceiling (P0-7): 20 pages = 2,000 queue docs.
+ * Without a cap, a pathological backlog turns the page loop into an unbounded
+ * stall for the scheduled worker AND the dashboard callable. Callers pass the
+ * `rollupPendingDeltaDrainMaxPages` config knob; this default covers direct
+ * invocations (scripts, tests).
+ */
+const DEFAULT_PENDING_DELTA_DRAIN_MAX_PAGES = 20;
+
 export type DrainPendingCounterDeltasResult = {
   drainedDocs: number;
   pages: number;
+  /** True when the page cap stopped the drain with queue docs likely remaining. */
+  capped: boolean;
 };
 
 /**
@@ -909,11 +845,21 @@ export type DrainPendingCounterDeltasResult = {
  * idempotently — already-applied transitions leave winners unchanged and emit
  * no increments. Unparseable queue docs are deleted with their page so they
  * cannot wedge the queue.
+ *
+ * The drain stops after `maxPages` pages and reports `capped: true`; callers
+ * must then keep the rollup job dirty (writeUserRollups `keepDirty`) so the
+ * next 5-minute tick resumes the queue instead of orphaning it.
  */
-export async function drainPendingCounterDeltas(db: Firestore, uid: string): Promise<DrainPendingCounterDeltasResult> {
+export async function drainPendingCounterDeltas(
+  db: Firestore,
+  uid: string,
+  options: { maxPages?: number } = {},
+): Promise<DrainPendingCounterDeltasResult> {
   const queuePath = `users/${uid}/pending_counter_deltas`;
+  const maxPages = Math.max(1, Math.floor(options.maxPages ?? DEFAULT_PENDING_DELTA_DRAIN_MAX_PAGES));
   let drainedDocs = 0;
   let pages = 0;
+  let capped = false;
 
   for (;;) {
     // No orderBy: implicit __name__ ordering plus time-prefixed doc IDs (see
@@ -981,9 +927,22 @@ export async function drainPendingCounterDeltas(db: Firestore, uid: string): Pro
 
     drainedDocs += page.docs.length;
     if (page.docs.length < PENDING_DELTA_DRAIN_PAGE_SIZE) break;
+    if (pages >= maxPages) {
+      capped = true;
+      // Stable jsonPayload.event key — GCP log metrics/alerts are wired to
+      // exactly this string. Do not rename.
+      logInfo({
+        event: "rollup.delta_drain_capped",
+        uid,
+        pages,
+        drained_docs: drainedDocs,
+        max_pages: maxPages,
+      });
+      break;
+    }
   }
 
-  return { drainedDocs, pages };
+  return { drainedDocs, pages, capped };
 }
 
 async function queryCounterDocs(
@@ -1388,6 +1347,221 @@ export async function readRollupJobDirtiedAt(db: Firestore, uid: string): Promis
   return job?.dirtiedAt;
 }
 
+// ---------------------------------------------------------------------------
+// Full-rebuild attempt gate (P0-7)
+//
+// The destructive repair path (recursiveDelete of four counter collections +
+// a full raw-usage rescan) used to account for failures only in an in-process
+// catch handler, so a timeout/OOM-killed invocation never advanced the
+// circuit breaker: the worker re-deleted and re-died every 5 minutes forever.
+// The gate below persists an attempt marker transactionally BEFORE the
+// expensive work begins.
+//
+// Invariant: every full-rebuild attempt is preceded by a marker write, and
+// the marker is cleared only by the success path (writeUserRollups with
+// `clearFullRebuildAttempt`) or the in-process failure path
+// (recordRollupRebuildFailure). A killed invocation therefore leaves the
+// marker behind; once it is stale the next pass counts it as a consecutive
+// failure — the breaker advances even when no catch handler ever ran. A
+// still-fresh marker doubles as an in-flight dedupe: no second destructive
+// rebuild starts while one may still be running.
+// ---------------------------------------------------------------------------
+
+/**
+ * An in-flight marker older than this is a killed attempt. Must exceed
+ * rebuildRollups' timeoutSeconds (540 s, scheduled.ts) plus scheduler slack so
+ * an attempt still inside its own invocation window is never miscounted.
+ */
+export const FULL_REBUILD_ATTEMPT_STALE_MS = 12 * 60 * 1000;
+
+/** lastErrorCode recorded when a stale marker is counted: the killed attempt
+ * may have deleted the counters before dying mid-scan, so they must stay
+ * marked untrusted and route the next pass through the repair path. */
+const FULL_REBUILD_KILLED_ERROR_CODE = "full_rebuild_attempt_killed";
+
+export type FullRebuildGateOptions = {
+  maxConsecutiveFullRebuildFailures: number;
+  circuitBreakerMinutes: number;
+  /** Defaults to {@link FULL_REBUILD_ATTEMPT_STALE_MS}. */
+  staleAttemptMillis?: number;
+  /** Set for client `force` rebuilds: enforces the per-user cooldown. */
+  forceMinIntervalMillis?: number;
+};
+
+export type FullRebuildAttemptGate =
+  | { status: "started"; countedStaleAttempt: boolean }
+  | { status: "circuit_open"; openUntil: string }
+  | { status: "in_flight"; attemptStartedAt: string }
+  | { status: "force_cooldown"; retryAt: string };
+
+/** Thrown by {@link refreshUserRollups} when the gate refuses a full rebuild;
+ * the callable maps `reason` onto a typed HttpsError. */
+export class RollupRebuildUnavailableError extends Error {
+  constructor(
+    readonly reason: "circuit_open" | "in_flight" | "force_cooldown",
+    readonly retryAt?: string,
+  ) {
+    super(
+      reason === "circuit_open"
+        ? `Usage counter repair is paused${retryAt ? ` until ${retryAt}` : ""} after repeated failures.`
+        : reason === "in_flight"
+          ? "A usage counter rebuild is already running for this user."
+          : `Forced rebuilds are rate limited; retry${retryAt ? ` after ${retryAt}` : " later"}.`,
+    );
+    this.name = "RollupRebuildUnavailableError";
+  }
+}
+
+/**
+ * Transactionally claims the right to run a full counter rebuild for `uid`.
+ * See the section comment above for the marker/breaker invariant.
+ */
+export async function beginFullRebuildAttempt(
+  db: Firestore,
+  uid: string,
+  options: FullRebuildGateOptions,
+): Promise<FullRebuildAttemptGate> {
+  const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
+  const staleAttemptMillis = options.staleAttemptMillis ?? FULL_REBUILD_ATTEMPT_STALE_MS;
+
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(jobRef);
+    const job = snap.exists ? parseRollupJobDoc(snap.data()) : undefined;
+    const nowMillis = Date.now();
+
+    // parseRollupJobDoc rejects docs without a boolean `dirty`, so every gate
+    // write must keep one: without this, a gate-created doc for a brand-new
+    // user (or a corrupt doc) parses to undefined on the NEXT pass and its
+    // attempt marker turns invisible — no in-flight dedupe, and a killed
+    // attempt never advances the breaker.
+    const ensureParseable = { dirty: job?.dirty ?? false };
+
+    const attemptStartedAt = job?.fullRebuildAttemptInFlightAt;
+    const attemptStartedAtMillis = attemptStartedAt != null ? Date.parse(attemptStartedAt) : Number.NaN;
+    if (attemptStartedAt != null && Number.isFinite(attemptStartedAtMillis)) {
+      if (nowMillis - attemptStartedAtMillis < staleAttemptMillis) {
+        return { status: "in_flight", attemptStartedAt };
+      }
+    }
+    const countedStaleAttempt = Number.isFinite(attemptStartedAtMillis);
+
+    const failures = (job?.consecutiveFullRebuildFailures ?? 0) + (countedStaleAttempt ? 1 : 0);
+    const stalePatch = countedStaleAttempt
+      ? {
+          consecutiveFullRebuildFailures: failures,
+          lastErrorCode: job?.lastErrorCode ?? FULL_REBUILD_KILLED_ERROR_CODE,
+          fullRebuildAttemptInFlightAt: FieldValue.delete(),
+        }
+      : {};
+
+    const openUntil = job?.fullRebuildCircuitOpenUntil;
+    const openUntilMillis = openUntil != null ? Date.parse(openUntil) : Number.NaN;
+    if (openUntil != null && Number.isFinite(openUntilMillis) && openUntilMillis > nowMillis) {
+      if (countedStaleAttempt) {
+        transaction.set(jobRef, { ...ensureParseable, ...stalePatch }, { merge: true });
+      }
+      return { status: "circuit_open", openUntil };
+    }
+
+    if (countedStaleAttempt && failures >= options.maxConsecutiveFullRebuildFailures) {
+      const reopenedUntil = new Date(nowMillis + options.circuitBreakerMinutes * 60 * 1000).toISOString();
+      transaction.set(
+        jobRef,
+        { ...ensureParseable, ...stalePatch, fullRebuildCircuitOpenUntil: reopenedUntil },
+        { merge: true },
+      );
+      return { status: "circuit_open", openUntil: reopenedUntil };
+    }
+
+    if (typeof options.forceMinIntervalMillis === "number") {
+      const lastForceAtMillis = job?.lastForceRebuildAt != null ? Date.parse(job.lastForceRebuildAt) : Number.NaN;
+      if (Number.isFinite(lastForceAtMillis) && nowMillis - lastForceAtMillis < options.forceMinIntervalMillis) {
+        if (countedStaleAttempt) {
+          transaction.set(jobRef, { ...ensureParseable, ...stalePatch }, { merge: true });
+        }
+        return {
+          status: "force_cooldown",
+          retryAt: new Date(lastForceAtMillis + options.forceMinIntervalMillis).toISOString(),
+        };
+      }
+    }
+
+    const startPatch: DocumentData = {
+      ...ensureParseable,
+      ...stalePatch,
+      fullRebuildAttemptInFlightAt: new Date(nowMillis).toISOString(),
+    };
+    if (typeof options.forceMinIntervalMillis === "number") {
+      startPatch.lastForceRebuildAt = new Date(nowMillis).toISOString();
+    }
+    transaction.set(jobRef, startPatch, { merge: true });
+    return { status: "started", countedStaleAttempt };
+  });
+}
+
+/**
+ * Failure-path bookkeeping shared by the scheduled worker and the refresh
+ * callable. Only failures of the full-rebuild repair path advance the
+ * consecutive counter (a first cheap-path failure merely records
+ * `lastErrorCode` to route the NEXT pass to repair — the worker's original
+ * rule), and the breaker opens once the counter reaches the configured
+ * maximum. When the caller's failed attempt went through the gate
+ * (`clearAttemptMarker`, the default), its in-flight marker is cleared here
+ * because this failure is being counted now; leaving it would double-count
+ * the attempt as a stale kill on the next pass. Callers whose failure came
+ * from the CHEAP path pass `clearAttemptMarker: false` — they never wrote a
+ * marker, and clearing one would hide a concurrent full rebuild's kill from
+ * the breaker.
+ */
+export async function recordRollupRebuildFailure(
+  db: Firestore,
+  uid: string,
+  errorCode: string,
+  options: {
+    maxConsecutiveFullRebuildFailures: number;
+    circuitBreakerMinutes: number;
+    clearAttemptMarker?: boolean;
+  },
+): Promise<{ breakerOpened: boolean }> {
+  const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(jobRef);
+    const job = snap.exists ? parseRollupJobDoc(snap.data()) : undefined;
+    const wasFullRebuildFailure = job?.lastErrorCode != null;
+    const consecutiveFullRebuildFailures = wasFullRebuildFailure
+      ? (job?.consecutiveFullRebuildFailures ?? 0) + 1
+      : FieldValue.delete();
+    const breakerShouldOpen =
+      typeof consecutiveFullRebuildFailures === "number" &&
+      consecutiveFullRebuildFailures >= options.maxConsecutiveFullRebuildFailures;
+    const attemptPatch =
+      options.clearAttemptMarker === false ? {} : { fullRebuildAttemptInFlightAt: FieldValue.delete() };
+    transaction.set(
+      jobRef,
+      {
+        // Keep the doc parseable for the gate (see beginFullRebuildAttempt).
+        dirty: job?.dirty ?? false,
+        lastErrorCode: errorCode,
+        consecutiveFullRebuildFailures,
+        fullRebuildCircuitOpenUntil: breakerShouldOpen
+          ? new Date(Date.now() + options.circuitBreakerMinutes * 60 * 1000).toISOString()
+          : FieldValue.delete(),
+        ...attemptPatch,
+      },
+      { merge: true },
+    );
+    return { breakerOpened: breakerShouldOpen };
+  });
+}
+
+function fullRebuildGateOptionsFromConfig(): FullRebuildGateOptions {
+  const cfg = getConfig();
+  return {
+    maxConsecutiveFullRebuildFailures: cfg.rollupMaxConsecutiveFullRebuildFailures,
+    circuitBreakerMinutes: cfg.rollupFullRebuildCircuitBreakerMinutes,
+  };
+}
+
 export type RefreshUserRollupsResult = {
   rollups: Record<WindowKey, UsageRollupDoc>;
   rebuiltCounters: boolean;
@@ -1413,23 +1587,59 @@ export type RefreshUserRollupsResult = {
 export async function refreshUserRollups(
   db: Firestore,
   uid: string,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; gate?: Partial<FullRebuildGateOptions>; drainMaxPages?: number } = {},
 ): Promise<RefreshUserRollupsResult> {
   const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
   const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : undefined;
   const rebuiltCounters = options.force === true || job == null || job.lastErrorCode != null;
   let rollups: Record<WindowKey, UsageRollupDoc>;
   if (rebuiltCounters) {
-    rollups = await computeUserRollups(db, uid);
+    // Every full-rebuild entry point — explicit `force` repair included —
+    // goes through the attempt gate: it enforces the circuit breaker the
+    // scheduled worker honors (the callable used to bypass it entirely),
+    // dedupes concurrent rebuilds via the in-flight marker, and rate-limits
+    // force repairs per user. A rebuild killed mid-flight here is counted by
+    // the next pass through the stale marker, exactly like the worker's.
+    const cfg = getConfig();
+    const gateOptions = {
+      ...fullRebuildGateOptionsFromConfig(),
+      forceMinIntervalMillis: options.force === true ? cfg.rollupForceRebuildMinIntervalMinutes * 60 * 1000 : undefined,
+      ...options.gate,
+    };
+    const gate = await beginFullRebuildAttempt(db, uid, gateOptions);
+    if (gate.status === "circuit_open") {
+      throw new RollupRebuildUnavailableError("circuit_open", gate.openUntil);
+    }
+    if (gate.status === "in_flight") {
+      throw new RollupRebuildUnavailableError("in_flight");
+    }
+    if (gate.status === "force_cooldown") {
+      throw new RollupRebuildUnavailableError("force_cooldown", gate.retryAt);
+    }
+    try {
+      rollups = await computeUserRollups(db, uid);
+      await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { clearFullRebuildAttempt: true });
+    } catch (err) {
+      // In-process failure bookkeeping, mirroring the scheduled worker's
+      // catch: record the failure (advancing the consecutive counter /
+      // breaker) and clear this attempt's in-flight marker NOW. Without
+      // this, the marker dangles until it goes stale — every retry inside
+      // that window is refused as "in_flight" with nothing running, and the
+      // failure itself goes uncounted until the stale-marker pass.
+      await recordRollupRebuildFailure(db, uid, errorMessage(err), gateOptions).catch(() => undefined);
+      throw err;
+    }
   } else {
     // Fold queued trigger deltas into the counters first so the served
     // rollups include every event enqueued up to this point. A drain failure
     // propagates: the dirty flag survives and the scheduled worker (whose
     // catch records `lastErrorCode`) repairs via the full-rebuild path.
-    await drainPendingCounterDeltas(db, uid);
+    const drain = await drainPendingCounterDeltas(db, uid, {
+      maxPages: options.drainMaxPages ?? getConfig().rollupPendingDeltaDrainMaxPages,
+    });
     rollups = await computeUserRollupsFromCounters(db, uid);
+    await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
   }
-  await writeUserRollups(db, uid, rollups, job?.dirtiedAt);
   return { rollups, rebuiltCounters };
 }
 
@@ -1438,6 +1648,7 @@ export async function writeUserRollups(
   uid: string,
   rollups: Record<WindowKey, UsageRollupDoc>,
   observedDirtiedAt: string | undefined,
+  options: { keepDirty?: boolean; clearFullRebuildAttempt?: boolean } = {},
 ): Promise<void> {
   const batch = db.batch();
 
@@ -1456,21 +1667,29 @@ export async function writeUserRollups(
   // dropping the event. Error/breaker state is cleared only when this same
   // dirty epoch was covered; a newer dirty epoch may have recorded its own
   // failure and must survive so the next worker pass takes the repair path.
+  //
+  // `keepDirty`: a capped delta drain left queue docs behind — clearing dirty
+  // would orphan them until the next usage event, so the job stays dirty for
+  // the next tick. `clearFullRebuildAttempt`: only the caller that ran the
+  // full rebuild clears its own in-flight marker; clearing unconditionally
+  // would let a racing cheap-path write erase another invocation's marker and
+  // hide its kill from the breaker (see beginFullRebuildAttempt).
   const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
   await db.runTransaction(async (transaction) => {
     const snap = await transaction.get(jobRef);
     const job = snap.exists ? parseRollupJobDoc(snap.data()) : undefined;
     const lastComputedAt = new Date().toISOString();
+    const attemptPatch = options.clearFullRebuildAttempt ? { fullRebuildAttemptInFlightAt: FieldValue.delete() } : {};
     const successPatch = {
       lastComputedAt,
       lastErrorCode: FieldValue.delete(),
       consecutiveFullRebuildFailures: FieldValue.delete(),
       fullRebuildCircuitOpenUntil: FieldValue.delete(),
     };
-    if (job?.dirtiedAt === observedDirtiedAt) {
-      transaction.set(jobRef, { dirty: false, ...successPatch }, { merge: true });
+    if (!options.keepDirty && job?.dirtiedAt === observedDirtiedAt) {
+      transaction.set(jobRef, { dirty: false, ...successPatch, ...attemptPatch }, { merge: true });
     } else {
-      transaction.set(jobRef, { lastComputedAt }, { merge: true });
+      transaction.set(jobRef, { lastComputedAt, ...attemptPatch }, { merge: true });
     }
   });
 }

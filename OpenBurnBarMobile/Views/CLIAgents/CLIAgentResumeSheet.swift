@@ -206,10 +206,9 @@ struct CLIAgentResumeSheet: View {
             .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .background(MobileTheme.Colors.background.ignoresSafeArea())
         .presentationDetents(isWide ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
-        .presentationBackground(.thinMaterial)
+        .resumeSheetBackground()
         .presentationCornerRadius(28)
     }
 
@@ -621,5 +620,26 @@ struct ResumeBridgeView: View {
         .padding(.vertical, 9)
         .background(Capsule().fill(tint))
         .shadow(color: tint.opacity(0.45), radius: 10, y: 4)
+    }
+}
+
+private extension View {
+    /// Owns the sheet background on every OS. On iOS 26 the system sheet
+    /// background is Liquid Glass — no opaque fill is allowed on top of it,
+    /// only a translucent theme wash, so the glass stays visible and can
+    /// sample the content behind the sheet (including at the `.medium`
+    /// detent). Older systems keep the original opaque theme fill under the
+    /// thin-material presentation background.
+    @ViewBuilder
+    func resumeSheetBackground() -> some View {
+        if #available(iOS 26.0, *) {
+            self.background(
+                MobileTheme.Colors.background.opacity(0.3).ignoresSafeArea()
+            )
+        } else {
+            self
+                .background(MobileTheme.Colors.background.ignoresSafeArea())
+                .presentationBackground(.thinMaterial)
+        }
     }
 }

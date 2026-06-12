@@ -186,14 +186,7 @@ where Option.RawValue == String, Option.AllCases: RandomAccessCollection {
             }
         }
         .padding(2)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm + 2, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm + 2, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.45))
-            }
-        )
+        .background(toolbarPillSurface)
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm + 2, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.sm + 2, style: .continuous)
@@ -222,14 +215,7 @@ let toolbarPillRadius: CGFloat = DesignSystem.Radius.sm + 2  // 8pt
 private struct ToolbarPillBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: toolbarPillRadius, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: toolbarPillRadius, style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(0.45))
-                }
-            )
+            .background(toolbarPillSurface)
             .clipShape(.rect(cornerRadius: toolbarPillRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: toolbarPillRadius, style: .continuous)
@@ -249,6 +235,24 @@ extension View {
     /// Apply the unified glass-pill chrome used across the dashboard toolbar.
     func toolbarPill() -> some View {
         modifier(ToolbarPillBackground())
+    }
+}
+
+/// Shared pill plate for the segmented picker and every toolbar pill. On
+/// macOS 26 a faint surface wash rides on real Liquid Glass (nothing sits
+/// under glass); earlier systems keep the hand-tuned material stack.
+@ViewBuilder
+private var toolbarPillSurface: some View {
+    let shape = RoundedRectangle(cornerRadius: toolbarPillRadius, style: .continuous)
+    if #available(macOS 26, *) {
+        shape
+            .fill(DesignSystem.Colors.surface.opacity(0.15))
+            .glassEffect(.regular, in: shape)
+    } else {
+        ZStack {
+            shape.fill(.ultraThinMaterial)
+            shape.fill(DesignSystem.Colors.surface.opacity(0.45))
+        }
     }
 }
 

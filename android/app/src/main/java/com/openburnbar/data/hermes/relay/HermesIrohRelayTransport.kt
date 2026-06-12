@@ -31,8 +31,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 
-private const val MILLIS = 256
-private const val VAL_32 = 32
+/** Cap on the error text recorded in transport audit detail maps. */
+private const val AUDIT_ERROR_DETAIL_MAX_CHARS = 256
+private const val ED25519_PUBLIC_KEY_BYTES = 32
 private const val RELAY_ERROR_REQUEST_FAILED = "request_failed"
 private const val RELAY_ERROR_TRANSPORT_FAILED = "transport_failed"
 
@@ -169,7 +170,7 @@ class HermesIrohRelayTransport(
             connectionId = connectionId,
             transport = null,
             rttMillis = null,
-            detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(MILLIS)),
+            detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(AUDIT_ERROR_DETAIL_MAX_CHARS)),
         )
         return HermesRelayException("Could not verify iroh pairing record: ${err.message}", err)
     }
@@ -192,7 +193,7 @@ class HermesIrohRelayTransport(
                 connectionId = connectionId,
                 transport = IrohTransportSelection.IROH_DIRECT,
                 rttMillis = null,
-                detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(MILLIS)),
+                detail = mapOf("error" to (err.message ?: err.javaClass.simpleName).take(AUDIT_ERROR_DETAIL_MAX_CHARS)),
             )
             throw err
         }
@@ -508,7 +509,7 @@ internal fun decodeIrohPairingPublicKey(data: Map<String, Any?>): ByteArray {
     val validationError =
         when {
             decoded == null -> "Pairing public key is not valid base64."
-            decoded.size != VAL_32 -> "Pairing public key is not a valid Ed25519 public key."
+            decoded.size != ED25519_PUBLIC_KEY_BYTES -> "Pairing public key is not a valid Ed25519 public key."
             else -> null
         }
     if (validationError != null) throw HermesRelayException(validationError)

@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.media
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ScreenShare
 import androidx.compose.material.icons.automirrored.outlined.StopScreenShare
@@ -26,13 +24,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.ui.components.liquidGlassCircleButton
 import com.openburnbar.ui.theme.AuroraColors
 
 @Composable
@@ -124,7 +122,7 @@ private fun CallHUDControl(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier.size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.10f)),
+        modifier = Modifier.liquidGlassCircleButton(diameter = 56.dp),
         colors = IconButtonDefaults.iconButtonColors(contentColor = accent),
     ) {
         Icon(

@@ -37,9 +37,21 @@ enum BurnLeaderboardMath {
 // MARK: - View Switcher
 
 /// Horizontally scrollable segmented control that drives `BurnLayoutStyle`,
-/// styled to match the Burn tab's period chips.
+/// styled to match the Burn tab's period chips. On iOS 26 the chips ride on
+/// a passive Liquid Glass capsule rail (mirroring `AuroraChipRail`); earlier
+/// systems keep the original bare chip row byte-identical.
 struct BurnLayoutSwitcher: View {
     @Binding var selection: BurnLayoutStyle
+
+    /// Content insets inside the rail. The iOS 26 glass capsule needs
+    /// breathing room around the chips; iOS 17–25 keeps the original 2pt.
+    private var railInsetH: CGFloat {
+        if #available(iOS 26, *) { return MobileTheme.Spacing.md } else { return 2 }
+    }
+
+    private var railInsetV: CGFloat {
+        if #available(iOS 26, *) { return MobileTheme.Spacing.xs } else { return 2 }
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -79,8 +91,21 @@ struct BurnLayoutSwitcher: View {
                     .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
                 }
             }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 2)
+            .padding(.horizontal, railInsetH)
+            .padding(.vertical, railInsetV)
+        }
+        .background {
+            // Glass rail like AuroraChipRail: the rail is a passive container
+            // (the chips inside are the tappable elements), so it gets plain —
+            // not interactive — glass, applied after the content padding so
+            // the capsule encloses the padded bounds. Clear fill only: the
+            // glass must sample the Aurora backdrop behind it, never a
+            // material. iOS 17–25 renders no rail, exactly as before.
+            if #available(iOS 26, *) {
+                Capsule(style: .continuous)
+                    .fill(Color.clear)
+                    .glassEffect(.regular, in: Capsule(style: .continuous))
+            }
         }
     }
 }

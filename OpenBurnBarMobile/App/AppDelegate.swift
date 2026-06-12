@@ -6,6 +6,9 @@ import FirebaseMessaging
 import GoogleSignIn
 import OpenBurnBarCore
 import OpenBurnBarMedia
+#if canImport(Sentry)
+import Sentry
+#endif
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
     /// Retained iOS file-transfer service so its `@Published` state
@@ -18,6 +21,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         seedDefaultAppearanceIfNeeded()
+        Self.configureSentryIfAvailable()
         configureFirebase()
         Task { @MainActor in
             MobileMediaBudgetStatusStore.shared.start()
@@ -37,6 +41,48 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             defaults.set(true, forKey: "useWebsiteBackground")
         }
     }
+
+    /// Initialize Sentry crash reporting if a DSN is available.
+    ///
+    /// Mirrors the macOS `AgentLensApp.configureSentryIfAvailable()` options and
+    /// consent posture exactly: the DSN is read from the `sentry.dsn` key in
+    /// Info.plist (injected via CI for internal builds) and Sentry remains
+    /// disabled silently when absent. There is no additional in-app consent
+    /// gate — same as the Mac app — so internal distribution builds are
+    /// crash-instrumented while OSS/placeholder builds stay dark.
+    #if canImport(Sentry)
+    private static func configureSentryIfAvailable() {
+        guard let dsn = Bundle.main.object(forInfoDictionaryKey: "sentry.dsn") as? String,
+              !dsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+            // No DSN configured — crash reporting remains disabled silently.
+            return
+        }
+        SentrySDK.start { options in
+            options.dsn = dsn
+            options.environment = "mobile"
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+            options.releaseName = "openburnbar-mobile@\(version)"
+            options.tracesSampleRate = 0
+            options.enableAutoSessionTracking = true
+            #if DEBUG
+            options.debug = false
+            #endif
+        }
+
+        // Anonymized per-install user ID so Sentry can correlate crashes without
+        // collecting any personally identifiable information.
+        let user = User()
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.openburnbar.mobile"
+        let vendorSeed = (bundleID + (UIDevice.current.identifierForVendor?.uuidString ?? "")).data(using: .utf8) ?? Data()
+        let anonymizedID = vendorSeed.map { String(format: "%02x", $0) }.joined().prefix(32)
+        user.userId = String(anonymizedID)
+        SentrySDK.setUser(user)
+    }
+    #else
+    private static func configureSentryIfAvailable() {
+        // Sentry SDK not linked — skip silently.
+    }
+    #endif
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         AgentReplyNotificationService.shared.didRegisterForRemoteNotifications(deviceToken: deviceToken)

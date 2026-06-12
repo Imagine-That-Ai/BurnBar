@@ -18,7 +18,6 @@ import org.json.JSONObject
 // primitives (dispatch / approve / fork / forward / delegate / pin /
 // subscribe / rollback).
 
-@Suppress("UnusedParameter")
 @Composable
 fun HermesSquareMiniProgramHost(
     sandboxURL: String,
@@ -39,6 +38,7 @@ fun HermesSquareMiniProgramHost(
     ) {
         MiniProgramWebView(
             sandboxURL = sandboxURL,
+            agentURI = agentURI,
             heightHintDp = heightHintDp,
             installedAgentURIs = installedAgentURIs,
             csp = csp,

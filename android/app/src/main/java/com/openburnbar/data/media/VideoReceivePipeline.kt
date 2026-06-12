@@ -19,8 +19,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 private const val BITS_PER_BYTE = 8.0
-private const val VAL_20000 = 20_000
-private const val VAL_30 = 30
+private const val DEQUEUE_TIMEOUT_MICROS = 20_000
+private const val DECODER_FRAME_RATE_FPS = 30
 
 /**
  * Android-side decode pipeline for inbound Mercury video frames. 1:1 port
@@ -160,7 +160,7 @@ class VideoReceivePipeline(
     private fun queueVideoFrame(codec: MediaCodec, frame: MediaFrame, wireByteCount: Int, isKeyframe: Boolean): Boolean {
         val inputIndex =
             try {
-                codec.dequeueInputBuffer(VAL_20000.toLong())
+                codec.dequeueInputBuffer(DEQUEUE_TIMEOUT_MICROS.toLong())
             } catch (_: IllegalStateException) {
                 -1
             }
@@ -249,7 +249,7 @@ class VideoReceivePipeline(
         val info = MediaCodec.BufferInfo()
         try {
             while (true) {
-                val outIndex = decoder.dequeueOutputBuffer(info, VAL_20000.toLong())
+                val outIndex = decoder.dequeueOutputBuffer(info, DEQUEUE_TIMEOUT_MICROS.toLong())
                 when {
                     outIndex >= 0 -> decoder.releaseOutputBuffer(outIndex, true)
                     outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
@@ -330,7 +330,7 @@ class VideoReceivePipeline(
 
     private fun videoFormat(codec: Codec, widthPx: Int, heightPx: Int): MediaFormat = MediaFormat.createVideoFormat(codec.mime, widthPx, heightPx).apply {
         setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-        setInteger(MediaFormat.KEY_FRAME_RATE, VAL_30)
+        setInteger(MediaFormat.KEY_FRAME_RATE, DECODER_FRAME_RATE_FPS)
         if (decoderSupportsLowLatency(codec)) {
             setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
         }

@@ -3337,3 +3337,107 @@ enum SwarmLogoShape {
 public extension Notification.Name {
     static let cycleSwarmShapeRequested = Notification.Name("com.openburnbar.swarm.cycleSwarmShapeRequested")
 }
+
+// MARK: - Glyph Sampler Facade
+
+/// One dot of a provider glyph formation: a normalized position plus the
+/// logo's sampled brand color at that spot (nil for synthesized fallbacks).
+public struct SwarmGlyphPoint: Sendable {
+    public let position: CGPoint
+    public let brandColor: RGBA?
+
+    public init(position: CGPoint, brandColor: RGBA?) {
+        self.position = position
+        self.brandColor = brandColor
+    }
+}
+
+/// Mini swarm surfaces (e.g. the chat thinking indicator) form the same
+/// provider brand glyphs as the backdrop murmuration through this facade.
+public enum SwarmGlyphSampler {
+    @MainActor private static var cache: [AgentProvider: [SwarmGlyphPoint]] = [:]
+
+    /// Centered point cloud of the provider's brand glyph, normalized to
+    /// roughly [-1, 1] on the longer axis with y growing downward (SwiftUI
+    /// Canvas space). Render targets as `center + position * radius`, exactly
+    /// like the backdrop's logo formations.
+    ///
+    /// At thinking-indicator scale a fill-sampled logo collapses into an
+    /// unreadable blob, so this prefers the glyph's OUTLINE: from the dense
+    /// fill cloud it keeps boundary points (few same-grid neighbors) and only
+    /// falls back to the fill when a mark is already stroke-like. Sampling
+    /// rasterizes the bundled logo once per provider and caches the result.
+    @MainActor
+    public static func glyphPoints(for provider: AgentProvider, maxPoints: Int = 120) -> [SwarmGlyphPoint] {
+        if let cached = cache[provider] { return cached }
+        let sampled = SwarmSimulation.normalizedGlyphOutlinePoints(for: provider, maxPoints: maxPoints)
+        cache[provider] = sampled
+        return sampled
+    }
+}
+
+extension SwarmSimulation {
+    /// Same-file access to the private logo samplers for `SwarmGlyphSampler`.
+    static func normalizedGlyphOutlinePoints(for provider: AgentProvider, maxPoints: Int) -> [SwarmGlyphPoint] {
+        let dense = logoPoints(for: provider, fallback: fallbackLogoPoints(for: provider))
+        let outline = outlinePoints(from: dense)
+        // Stroke-like marks (text fallbacks, thin glyphs) are already mostly
+        // boundary; if the outline pass keeps nearly everything or nearly
+        // nothing, the dense cloud is the better source.
+        let source = (outline.count >= maxPoints / 2 && outline.count < dense.count * 9 / 10)
+            ? outline
+            : dense
+        return evenlyDownsample(source, maxCount: maxPoints).map {
+            SwarmGlyphPoint(position: $0.point, brandColor: $0.logoColor)
+        }
+    }
+
+    /// Keeps points on the silhouette of a grid-sampled fill cloud: interior
+    /// grid points have ~8 same-spacing neighbors, boundary points fewer.
+    private static func outlinePoints(from dense: [ShapePoint]) -> [ShapePoint] {
+        guard dense.count > 24 else { return dense }
+
+        // Estimate the sampling grid pitch from nearest-neighbor distances
+        // of a subsample (the cloud comes off a regular grid).
+        var nearest: [Double] = []
+        let probeStride = max(1, dense.count / 96)
+        for i in stride(from: 0, to: dense.count, by: probeStride) {
+            var best = Double.greatestFiniteMagnitude
+            let a = dense[i].point
+            for j in 0..<dense.count where j != i {
+                let b = dense[j].point
+                let dx = a.x - b.x, dy = a.y - b.y
+                let d2 = Double(dx * dx + dy * dy)
+                if d2 < best { best = d2 }
+            }
+            nearest.append(best.squareRoot())
+        }
+        nearest.sort()
+        guard let pitch = nearest.isEmpty ? nil : nearest[nearest.count / 2],
+              pitch > 0 else { return dense }
+
+        // Spatial hash on the pitch grid, then count 8-neighborhood occupancy.
+        var buckets: [Int64: Int] = [:]
+        @inline(__always) func key(_ p: CGPoint) -> Int64 {
+            let gx = Int32((Double(p.x) / pitch).rounded())
+            let gy = Int32((Double(p.y) / pitch).rounded())
+            return (Int64(gx) << 32) | Int64(UInt32(bitPattern: gy))
+        }
+        for p in dense { buckets[key(p.point), default: 0] += 1 }
+
+        var outline: [ShapePoint] = []
+        for p in dense {
+            let gx = Int32((Double(p.point.x) / pitch).rounded())
+            let gy = Int32((Double(p.point.y) / pitch).rounded())
+            var neighbors = 0
+            for dx in -1...1 {
+                for dy in -1...1 where !(dx == 0 && dy == 0) {
+                    let k = (Int64(gx + Int32(dx)) << 32) | Int64(UInt32(bitPattern: gy + Int32(dy)))
+                    if buckets[k] != nil { neighbors += 1 }
+                }
+            }
+            if neighbors <= 6 { outline.append(p) }
+        }
+        return outline
+    }
+}

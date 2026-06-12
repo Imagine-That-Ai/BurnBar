@@ -49,7 +49,6 @@ object ControlFrameSealSession {
      * the stream); [senderPrivateKey] is the phone's relay sender key (the
      * same identity the chat lane authenticates with).
      */
-    @Suppress("LongParameterList")
     fun establish(
         uid: String,
         connectionId: String,
@@ -97,7 +96,6 @@ object ControlFrameSealSession {
      * itself. (On Android↔Mac, the Mac is the opener; this mirror keeps the
      * Kotlin lifecycle whole and pins the contract in unit tests.)
      */
-    @Suppress("LongParameterList")
     fun open(
         envelope: HermesRealtimeRelayControlSealKeyEnvelope,
         uid: String,

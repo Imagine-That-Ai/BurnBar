@@ -243,6 +243,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
+    "@size-limit/file": "12.1.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.6.0",
     "@types/vscode": "^1.95.0",
@@ -255,6 +256,7 @@
     "knip": "5.88.1",
     "mocha": "^11.7.2",
     "prettier": "3.8.3",
+    "size-limit": "12.1.0",
     "typescript": "^5.9.3",
     "vitest": "4.1.8"
   },
@@ -267,5 +269,15 @@
     "diff": "^8.0.4",
     "vite": "^7.3.2",
     "postcss": "^8.5.10"
-  }
+  },
+  "size-limit": [
+    {
+      "path": "dist/extension.js",
+      "limit": "40 KB"
+    },
+    {
+      "path": "dist/**/*.js",
+      "limit": "420 KB"
+    }
+  ]
 }

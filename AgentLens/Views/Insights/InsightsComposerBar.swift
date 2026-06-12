@@ -37,13 +37,10 @@ struct InsightsComposerBar: View {
         }
         .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
         .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
-        .background(
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous))
+        .overlay(
             RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
-                        .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
+                .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
         )
     }
 

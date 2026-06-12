@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber")
 // Compose layout literals (dp/sp/alpha); token-per-line extraction obscures UI structure.
 
 package com.openburnbar.ui.store
@@ -60,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.RemoteMcpClientRecord
+import com.openburnbar.ui.components.liquidGlassInteractive
 import com.openburnbar.ui.pro.CloudBadgePickerSheet
 import com.openburnbar.ui.pro.CloudBadgeSize
 import com.openburnbar.ui.pro.CloudBadgeWithHalo
@@ -159,9 +159,7 @@ internal fun CloudStoreTopBar(onClose: () -> Unit) {
                     modifier =
                     Modifier
                         .size(32.dp)
-                        .clip(CircleShape)
-                        .background(CloudStorePal.surface.copy(alpha = 0.6f))
-                        .border(0.6.dp, CloudStorePal.border, CircleShape),
+                        .liquidGlassInteractive(shape = CircleShape, isDark = true),
                 ) {
                     Icon(
                         Icons.Filled.Close,

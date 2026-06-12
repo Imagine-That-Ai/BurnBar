@@ -6,15 +6,11 @@ import org.junit.Test
 private const val MILLIS = 42
 private const val MILLIS_2 = 4_000_000
 private const val SECONDS = 8_000_000
-private const val VAL_12 = 12
-private const val VAL_1800000000000_L = 1_800_000_000_000L
-private const val VAL_5 = 5
-
 class VideoReceivePipelineStatsTest {
     @Test
     fun recordsInboundBitrateOverRollingWindow() {
         val pipeline = VideoReceivePipeline()
-        val start = VAL_1800000000000_L
+        val start = 1_800_000_000_000L
 
         pipeline.noteAcceptedFrame(wireByteCount = 500_000, nowMillis = start)
         assertEquals(0, pipeline.stats.value.bitsPerSecond)
@@ -29,7 +25,7 @@ class VideoReceivePipelineStatsTest {
     @Test
     fun clampsRoundTripAndPreservesBitrate() {
         val pipeline = VideoReceivePipeline()
-        val start = VAL_1800000000000_L
+        val start = 1_800_000_000_000L
         pipeline.noteAcceptedFrame(wireByteCount = 250_000, nowMillis = start)
         pipeline.noteAcceptedFrame(wireByteCount = 250_000, nowMillis = start + 500)
 
@@ -50,21 +46,21 @@ class VideoReceivePipelineStatsTest {
             MediaFrame(
                 kind = MediaFrame.Kind.VIDEO_NAL,
                 flags = MediaFrame.Flags.HAS_CURSOR_METADATA,
-                payload = ByteArray(VAL_12),
+                payload = ByteArray(12),
             )
         val v2 =
             MediaFrameV2(
                 kind = MediaFrameV2Kind.VIDEO_NAL,
-                metadata = ByteArray(VAL_5),
-                payload = ByteArray(VAL_12),
+                metadata = ByteArray(5),
+                payload = ByteArray(12),
             )
 
         assertEquals(
-            MediaFrame.HEADER_BYTE_COUNT + MediaFrame.CURSOR_METADATA_BYTE_COUNT + VAL_12,
+            MediaFrame.HEADER_BYTE_COUNT + MediaFrame.CURSOR_METADATA_BYTE_COUNT + 12,
             VideoReceivePipeline.estimatedWireByteCount(v1),
         )
         assertEquals(
-            MediaFrameV2Codec.FIXED_HEADER_BYTE_COUNT + VAL_5 + VAL_12,
+            MediaFrameV2Codec.FIXED_HEADER_BYTE_COUNT + 5 + 12,
             VideoReceivePipeline.estimatedWireByteCount(v2),
         )
     }

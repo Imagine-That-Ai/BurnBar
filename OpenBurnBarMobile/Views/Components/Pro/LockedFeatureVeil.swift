@@ -127,15 +127,32 @@ struct LockedFeatureVeil<Background: View>: View {
 
     @ViewBuilder
     private func featureBody(feature: GatedFeature, priceLine: String?) -> some View {
-        ScrollView {
-            FeatureUnlockContent(
-                feature: feature,
-                priceLine: priceLine,
-                onUnlock: action,
-                onDismiss: nil
+        ZStack {
+            // Per-tier iridescent wash behind the hero — the same color
+            // signature the unlock sheet wears, so the full-screen veil and
+            // the sheet read as one experience.
+            RadialGradient(
+                colors: [
+                    (feature.requiredTier.holoStops.first ?? ProTheme.Palette.aureate).opacity(0.16),
+                    Color.clear
+                ],
+                center: UnitPoint(x: 0.5, y: 0.14),
+                startRadius: 0,
+                endRadius: 460
             )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+
+            ScrollView {
+                FeatureUnlockContent(
+                    feature: feature,
+                    priceLine: priceLine,
+                    onUnlock: action,
+                    onDismiss: nil
+                )
+            }
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollBounceBehavior(.basedOnSize)
     }
 }
 

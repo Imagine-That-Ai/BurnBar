@@ -1,6 +1,6 @@
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
 export const MCP_RESOURCE = process.env.MCP_RESOURCE ?? "https://mcp.burnbar.ai/mcp";
-export const MCP_AUTH_ISSUER = process.env.MCP_AUTH_ISSUER ?? "https://openburnbar.com";
+export const MCP_AUTH_ISSUER = process.env.MCP_AUTH_ISSUER ?? "https://mcp.burnbar.ai";
 export const MAX_REQUEST_BYTES = Number(process.env.MCP_MAX_REQUEST_BYTES ?? 128 * 1024);
 export const MAX_OUTPUT_BYTES = Number(process.env.MCP_MAX_OUTPUT_BYTES ?? 64 * 1024);
 export const POSITIVE_ENTITLEMENT_CACHE_MS = Number(process.env.MCP_POSITIVE_ENTITLEMENT_CACHE_MS ?? 60_000);

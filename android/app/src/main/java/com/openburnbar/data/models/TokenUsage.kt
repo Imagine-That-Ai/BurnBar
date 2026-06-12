@@ -9,7 +9,9 @@ private const val PERCENT_SCALE = 1_000_000_000
 private const val PERCENT_SCALE_2 = 1_000_000_000.0
 private const val PERCENT_SCALE_3 = 1_000_000
 private const val PERCENT_SCALE_4 = 1_000_000.0
-private const val VAL_12 = 12
+private const val TOOL_BUCKET_PRIORITY = 2
+private const val LIMIT_BUCKET_PRIORITY = 3
+private const val QUOTA_SNAPSHOT_STALENESS_HOURS = 12
 
 /**
  * Mirrors the Firestore `UsageEventDoc` from Cloud Functions types.ts.
@@ -219,7 +221,7 @@ val ProviderQuotaSnapshot.hourlyBucket: QuotaBucket?
     get() = buckets.firstOrNull { it.isDisplayableQuotaSignal() && QuotaWindowKind.infer(it) == QuotaWindowKind.FIVE_HOUR }
 
 val ProviderQuotaSnapshot.weeklyBucket: QuotaBucket?
-    get() = buckets.firstOrNull { it.isDisplayableQuotaSignal() && (QuotaWindowKind.infer(it) == QuotaWindowKind.SEVEN_DAY) }
+    get() = buckets.firstOrNull { it.isDisplayableQuotaSignal() && QuotaWindowKind.infer(it) == QuotaWindowKind.SEVEN_DAY }
 
 val ProviderQuotaSnapshot.weeklyOrMonthlyBucket: QuotaBucket?
     get() = weeklyBucket ?: buckets.firstOrNull { it.isDisplayableQuotaSignal() && QuotaWindowKind.infer(it) == QuotaWindowKind.MONTHLY }
@@ -230,16 +232,12 @@ val ProviderQuotaSnapshot.displayableQuotaBuckets: List<QuotaBucket>
 private fun ProviderQuotaSnapshot.primaryBucketPriority(bucket: QuotaBucket): Int {
     if (provider.lowercase() != "zai") return 0
     val lowercased = bucket.label.lowercase()
-    if (lowercased.contains("token") || lowercased.contains("api")) {
-        return 0
+    return when {
+        lowercased.contains("token") || lowercased.contains("api") -> 0
+        listOf("mcp", "tool", "time_limit", "time limit").any { lowercased.contains(it) } -> TOOL_BUCKET_PRIORITY
+        lowercased == "limits" || lowercased == "limit" -> LIMIT_BUCKET_PRIORITY
+        else -> 1
     }
-    if (lowercased.contains("mcp") || lowercased.contains("tool") || lowercased.contains("time_limit") || lowercased.contains("time limit")) {
-        return 2
-    }
-    if (lowercased == "limits" || lowercased == "limit") {
-        return 3
-    }
-    return 1
 }
 
 fun ProviderQuotaSnapshot.primaryDisplayableBucket(defaultWindow: QuotaWindowKind? = null): QuotaBucket? {
@@ -348,6 +346,7 @@ val QuotaBucket.displayRemainingFraction: Double?
  * with the advanced reset countdown. The `now`-parameterised form keeps this
  * deterministic for tests.
  */
+// Sequential guard clauses; single-exit rewrite obscures the precedence order.
 fun QuotaBucket.displayRemainingFractionAsOf(now: java.time.Instant): Double? {
     if (elapsedWindowReset(now) != null) return 1.0
 
@@ -504,6 +503,7 @@ val QuotaBucket.progressFraction: Double
  * frozen snapshot still carries — the fix for "the 5h clock reset but the bar
  * stayed full." The `now`-parameterised form keeps this deterministic for tests.
  */
+// Sequential guard clauses; single-exit rewrite obscures the precedence order.
 fun QuotaBucket.progressFractionAsOf(now: java.time.Instant): Double {
     if (elapsedWindowReset(now) != null) return 0.0
     val usedP = metaNumber("usedPercent", "used_percent", "used_percentage", "usagePercent", "usage_percent", "percentage")
@@ -681,7 +681,7 @@ fun ProviderQuotaSnapshot.isStale(now: java.time.Instant = java.time.Instant.now
         return true
     }
     val age = java.time.Duration.between(fetched, now)
-    val stale = age > java.time.Duration.ofHours(VAL_12.toLong())
+    val stale = age > java.time.Duration.ofHours(QUOTA_SNAPSHOT_STALENESS_HOURS.toLong())
     if (stale) {
         android.util.Log.d(
             "QuotaStale",

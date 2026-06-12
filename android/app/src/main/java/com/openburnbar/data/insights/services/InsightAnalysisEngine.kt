@@ -95,7 +95,7 @@ class AndroidInsightAnalysisEngine(
                         question = request.prompt,
                         answer = composeAnswerBody(result),
                         bullets = composeGroundedPoints(result),
-                        citations = result.citations.take(INSIGHT_VAL_3),
+                        citations = result.citations.take(INSIGHT_MAX_CITATIONS),
                         source = answerSource,
                         modelDisplayName = result.modelTag.displayName,
                     ),
@@ -133,7 +133,7 @@ class AndroidInsightAnalysisEngine(
                                 question = request.prompt,
                                 answer = composeAnswerBody(hostedResult),
                                 bullets = composeGroundedPoints(hostedResult),
-                                citations = hostedResult.citations.take(INSIGHT_VAL_3),
+                                citations = hostedResult.citations.take(INSIGHT_MAX_CITATIONS),
                                 source = InsightBriefingAnswer.Source.HOSTED_FALLBACK,
                                 modelDisplayName = hostedResult.modelTag.displayName,
                                 isFallback = false,
@@ -204,14 +204,13 @@ class AndroidInsightAnalysisEngine(
                 question = request.prompt,
                 answer = composeAnswerBody(result),
                 bullets = composeGroundedPoints(result),
-                citations = result.citations.take(INSIGHT_VAL_3),
+                citations = result.citations.take(INSIGHT_MAX_CITATIONS),
                 source = answerSource,
                 modelDisplayName = result.modelTag.displayName,
             ),
         )
     }
 
-    @Suppress("unused")
     @Deprecated(
         "Kept as a deprecated symbol for source compatibility with older test bundles. " +
             "Production callers should route through tryHostedThenLocalFallback to give the " +
@@ -230,18 +229,18 @@ class AndroidInsightAnalysisEngine(
     }.joinToString(" ")
 
     private fun composeGroundedPoints(result: InsightAnalysisResult): List<String> = (
-        result.findings.take(INSIGHT_VAL_3).map { it.title } +
+        result.findings.take(INSIGHT_GROUNDED_FINDING_LIMIT).map { it.title } +
             result.anomalies.take(2).map { "Spike: ${it.title}" } +
             result.recommendations.take(2).map { "Action: ${it.title}" }
-        ).take(INSIGHT_VAL_4)
+        ).take(INSIGHT_MAX_GROUNDED_POINTS)
 }
 
 class OllamaInsightAnalysisGateway(
     private val baseURL: String = "http://127.0.0.1:11434",
     private val client: OkHttpClient =
         OkHttpClient.Builder()
-            .connectTimeout(INSIGHT_VAL_10.toLong(), TimeUnit.SECONDS)
-            .readTimeout(INSIGHT_HTTP_SECONDS.toLong(), TimeUnit.SECONDS)
+            .connectTimeout(INSIGHT_CONNECT_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
+            .readTimeout(INSIGHT_READ_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
             .build(),
     private val numPredict: Int = 1400,
 ) : InsightAnalysisModelGateway {
@@ -269,7 +268,7 @@ class OllamaInsightAnalysisGateway(
                 put(
                     "options",
                     JSONObject().apply {
-                        put("temperature", INSIGHT_VAL_0_2)
+                        put("temperature", INSIGHT_LOCAL_MODEL_TEMPERATURE)
                         put("num_predict", numPredict)
                     },
                 )
@@ -382,11 +381,11 @@ object InsightAggregator {
         val sources = (includedDataSources + evidencePacks.flatMap { it.includedDataSources }).distinct().sorted()
         val truncated =
             buildList {
-                if (digest.providers.size >= INSIGHT_VAL_12 && "provider_summaries" in includedDataSources)
+                if (digest.providers.size >= INSIGHT_PROVIDER_TRIM_THRESHOLD && "provider_summaries" in includedDataSources)
                     add("provider_summaries")
-                if (digest.models.size >= INSIGHT_HASH_PREFIX_BYTES && "model_summaries" in includedDataSources)
+                if (digest.models.size >= INSIGHT_MODEL_TRIM_THRESHOLD && "model_summaries" in includedDataSources)
                     add("model_summaries")
-                if (digest.daily.size >= INSIGHT_VAL_90 && "daily_points" in includedDataSources) add("daily_points")
+                if (digest.daily.size >= INSIGHT_DAILY_TRIM_THRESHOLD && "daily_points" in includedDataSources) add("daily_points")
             }
         val budget =
             InsightContextBudgetReport(

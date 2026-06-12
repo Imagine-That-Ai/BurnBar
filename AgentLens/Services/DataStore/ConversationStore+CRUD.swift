@@ -69,9 +69,21 @@ extension ConversationStore {
                 let conversationSyncedAt: Date? = preserve ? priorSyncedAt : nil
                 let logSyncedAt: Date? = preserve ? priorLogSyncedAt : nil
 
+                // Use ON CONFLICT(id) DO UPDATE instead of INSERT OR REPLACE so the
+                // conversations rowid stays stable on re-upsert. INSERT OR REPLACE
+                // deletes and re-inserts the row, which (with recursive_triggers OFF,
+                // the SQLite default) suppresses the conversations_ad delete trigger
+                // and leaks an orphaned full-text copy into conversations_fts on every
+                // 60s refresh tick. ON CONFLICT performs an UPDATE in place, so the
+                // existing conversations_au AFTER UPDATE trigger maintains the FTS index
+                // (delete-then-insert for the same rowid). This matches the established
+                // upsert idiom in BudgetRulesStore, ProjectionStore, UsageStore, and
+                // ProviderAccountStore. Columns absent from the SET clause (deletedAt,
+                // version) intentionally retain their existing values, preserving
+                // tombstones across re-indexing rather than resurrecting them.
                 try db.execute(
                     sql: """
-                    INSERT OR REPLACE INTO conversations (
+                    INSERT INTO conversations (
                         id, provider, sessionId, projectName, startTime, endTime,
                         messageCount, userWordCount, assistantWordCount,
                         keyFiles, keyCommands, keyTools,
@@ -80,6 +92,33 @@ extension ConversationStore {
                         sourceType, logSyncedAt, summaryTitle, summaryUpdatedAt, summaryAttemptedAt,
                         summaryProvider, summaryModel
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        provider = excluded.provider,
+                        sessionId = excluded.sessionId,
+                        projectName = excluded.projectName,
+                        startTime = excluded.startTime,
+                        endTime = excluded.endTime,
+                        messageCount = excluded.messageCount,
+                        userWordCount = excluded.userWordCount,
+                        assistantWordCount = excluded.assistantWordCount,
+                        keyFiles = excluded.keyFiles,
+                        keyCommands = excluded.keyCommands,
+                        keyTools = excluded.keyTools,
+                        inferredTaskTitle = excluded.inferredTaskTitle,
+                        lastAssistantMessage = excluded.lastAssistantMessage,
+                        fullText = excluded.fullText,
+                        indexedAt = excluded.indexedAt,
+                        workingDirectory = excluded.workingDirectory,
+                        fileModifiedAt = excluded.fileModifiedAt,
+                        summary = excluded.summary,
+                        conversationSyncedAt = excluded.conversationSyncedAt,
+                        sourceType = excluded.sourceType,
+                        logSyncedAt = excluded.logSyncedAt,
+                        summaryTitle = excluded.summaryTitle,
+                        summaryUpdatedAt = excluded.summaryUpdatedAt,
+                        summaryAttemptedAt = excluded.summaryAttemptedAt,
+                        summaryProvider = excluded.summaryProvider,
+                        summaryModel = excluded.summaryModel
                     """,
                     arguments: [
                         record.id,
