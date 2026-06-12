@@ -172,13 +172,38 @@ final class HermesService {
     static weak var mainSurface: HermesService?
 
     // ── Per-surface conversation state (deliberately NOT shared; see doc) ──
-    var messages: [HermesChatMessage] = []
-    var selectedSessionID: String?
-    var currentConversationTokenBurn = 0
-    var isStreaming = false
-    var lastError: String?
-    var visibleCLIStatusText: String?
-    var visibleCLIErrorText: String?
+    // Stored in `HermesConversationStateStore` (one per service instance);
+    // computed proxies keep the public API identical and let @Observable
+    // tracking flow through to the store's stored properties — the same
+    // pattern as the runtime catalog proxies below.
+    var messages: [HermesChatMessage] {
+        get { conversation.messages }
+        set { conversation.messages = newValue }
+    }
+    var selectedSessionID: String? {
+        get { conversation.selectedSessionID }
+        set { conversation.selectedSessionID = newValue }
+    }
+    var currentConversationTokenBurn: Int {
+        get { conversation.currentConversationTokenBurn }
+        set { conversation.currentConversationTokenBurn = newValue }
+    }
+    var isStreaming: Bool {
+        get { conversation.isStreaming }
+        set { conversation.isStreaming = newValue }
+    }
+    var lastError: String? {
+        get { conversation.lastError }
+        set { conversation.lastError = newValue }
+    }
+    var visibleCLIStatusText: String? {
+        get { conversation.visibleCLIStatusText }
+        set { conversation.visibleCLIStatusText = newValue }
+    }
+    var visibleCLIErrorText: String? {
+        get { conversation.visibleCLIErrorText }
+        set { conversation.visibleCLIErrorText = newValue }
+    }
 
     /// Shared runtime catalog (connections / reachability / models /
     /// session-profile-job lists + persisted selection). Production
@@ -283,6 +308,34 @@ final class HermesService {
             self?.recordUsage(stats, replacing: previousTotal)
         }
     )
+    /// Per-thread transcript state + history persistence bridge lives in
+    /// `HermesConversationStateStore` (the computed proxies above keep the
+    /// public API identical). Lazy so the injected coordinator effects can
+    /// capture `self`; ignored by observation — tracking flows through the
+    /// store's own @Observable stored properties via those proxies.
+    @ObservationIgnored
+    private lazy var conversation = HermesConversationStateStore(
+        history: history,
+        activeModelName: { [weak self] in
+            guard let self else { return nil }
+            return self.activeModelName ?? self.selectedModelID
+        },
+        cancelActiveStream: { [weak self] in
+            self?.currentTask?.cancel()
+            self?.currentTask = nil
+        }
+    )
+    /// Relay/transport routing decisions (usable relay candidates, suggested
+    /// relay, send-time relay preference, endpoint validation) live in
+    /// `HermesTransportSelector`; the service forwards so views and tests
+    /// keep their existing API, and stays the coordinator that acts on the
+    /// decisions. Lazy so the provider closure can capture `self`; ignored
+    /// by observation — reads flow through to the @Observable runtime
+    /// store's `connections`.
+    @ObservationIgnored
+    private lazy var transportSelector = HermesTransportSelector(
+        connectionsProvider: { [weak self] in self?.connections ?? [] }
+    )
     private let selectedConnectionDefaultsKey = HermesRuntimeStore.selectedConnectionDefaultsKey
     private let selectedModelDefaultsKey = HermesRuntimeStore.selectedModelDefaultsKey
     private let favoriteModelsDefaultsKey = HermesRuntimeStore.favoriteModelsDefaultsKey
@@ -313,25 +366,15 @@ final class HermesService {
     /// machinery.
     fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)? = nil
 
+    // Relay candidate/eligibility decisions live in
+    // `HermesTransportSelector`; these forwarders keep the API views and
+    // tests bind to.
     var relayConnections: [HermesConnectionRecord] {
-        connections.filter { connection in
-            connection.mode == .relayLink
-                && connection.status == .online
-                && Self.canAttemptRelayConnection(connection)
-        }
+        transportSelector.relayConnections
     }
 
     var suggestedRelayConnection: HermesConnectionRecord? {
-        relayConnections.sorted { lhs, rhs in
-            let lhsFresh = Self.isRelayConnectionFresh(lhs)
-            let rhsFresh = Self.isRelayConnectionFresh(rhs)
-            if lhsFresh != rhsFresh {
-                return lhsFresh
-            }
-            let lhsLastSeen = lhs.lastSeenAt ?? lhs.updatedAt
-            let rhsLastSeen = rhs.lastSeenAt ?? rhs.updatedAt
-            return lhsLastSeen > rhsLastSeen
-        }.first
+        transportSelector.suggestedRelayConnection
     }
 
     var isRemoteRelayEnabled: Bool {
@@ -342,17 +385,7 @@ final class HermesService {
         if refreshIfMissing, relayConnections.isEmpty {
             await refreshConnections(refreshSelectedConnection: false)
         }
-
-        if selectedConnection.mode == .relayLink,
-           let selectedRelay = relayConnections.first(where: { $0.id == selectedConnection.id }) {
-            return selectedRelay
-        }
-        if selectedConnection.mode == .relayLink,
-           Self.canAttemptRelayConnection(selectedConnection) {
-            return selectedConnection
-        }
-
-        return suggestedRelayConnection ?? relayConnections.first
+        return transportSelector.preferredRelayConnection(selected: selectedConnection)
     }
 
     var hasPendingRelaySuggestion: Bool {
@@ -740,15 +773,10 @@ final class HermesService {
 
     /// Restores a chat thread previously saved by the mobile history store.
     /// Used when the user taps an on-device row in the conversation list.
+    /// Body lives in `HermesConversationStateStore` (which cancels the
+    /// in-flight stream task via the injected effect).
     func loadMobileThread(id: String) {
-        guard let thread = history.thread(id: id),
-              thread.runtime == AssistantRuntimeID.hermes.rawValue else { return }
-        currentTask?.cancel()
-        currentTask = nil
-        isStreaming = false
-        lastError = nil
-        selectedSessionID = thread.id
-        messages = thread.messages.map { Self.convertFromStore($0) }
+        conversation.loadMobileThread(id: id)
     }
 
     /// Deletes a thread from the mobile history store. Clears the active chat
@@ -761,184 +789,18 @@ final class HermesService {
     }
 
     private func persistCurrentThread() {
-        guard let id = selectedSessionID, !messages.isEmpty else { return }
-        let now = Date()
-        let createdAt = history.thread(id: id)?.createdAt ?? messages.first?.timestamp ?? now
-        let title = Self.derivedTitle(from: messages)
-        let preview = Self.derivedPreview(from: messages)
-        let storedMessages = messages.compactMap(Self.convertToStore)
-        guard !storedMessages.isEmpty else { return }
-        let thread = MobileChatThread(
-            id: id,
-            runtime: AssistantRuntimeID.hermes.rawValue,
-            title: title,
-            preview: preview,
-            modelName: activeModelName ?? selectedModelID,
-            createdAt: createdAt,
-            updatedAt: now,
-            messages: storedMessages
-        )
-        history.upsert(thread)
+        conversation.persistCurrentThread()
     }
 
+    // Persistence conversion + thread title derivation moved verbatim to
+    // `HermesConversationStateStore`; these forwarders keep the remaining
+    // gateway/CLI call sites in this file unchanged.
     private static func convertToStore(_ message: HermesChatMessage) -> MobileChatMessage? {
-        // Skip streaming-only placeholders that have no content yet AND no
-        // attachments — attachment-only sends are intentional and must persist.
-        let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !message.toolCalls.isEmpty || !message.attachments.isEmpty else { return nil }
-        // Tool reply messages are ephemeral context — they exist only to
-        // bridge a single assistant tool-call turn to its follow-up
-        // natural-language turn. Once the conversation is reloaded the
-        // user expects to start a new prompt, so persisting tool
-        // results would only clutter the visible transcript.
-        if message.role == .tool { return nil }
-        let role: String
-        switch message.role {
-        case .user: role = "user"
-        case .assistant: role = "assistant"
-        case .system: role = "system"
-        case .tool: return nil
-        }
-        let storedAttachments = message.attachments.map { attachment in
-            MobileChatAttachment(
-                id: attachment.id,
-                kind: attachment.kind.rawValue,
-                displayName: attachment.displayName,
-                mimeType: attachment.mimeType,
-                byteSize: attachment.byteSize,
-                workspaceRelativePath: attachment.workspaceRelativePath,
-                thumbnailPNG: attachment.thumbnailPNG,
-                extractedTextPreview: attachment.extractedTextPreview
-            )
-        }
-        let storedToolCalls = message.toolCalls.map {
-            MobileChatToolCall(
-                id: $0.id,
-                name: $0.name,
-                status: $0.status,
-                detail: $0.detail
-            )
-        }
-        let usage: MobileChatTokenUsage? = {
-            let hasUsageSignal = message.outputTokenCount != nil
-                || message.totalTokenCount != nil
-                || message.providerGenerationDurationSeconds != nil
-                || message.providerTotalDurationSeconds != nil
-                || message.responseStartedAt != nil
-                || message.firstResponseChunkAt != nil
-                || message.responseCompletedAt != nil
-            guard hasUsageSignal else { return nil }
-            return MobileChatTokenUsage(
-                outputTokens: message.outputTokenCount,
-                totalTokens: message.totalTokenCount,
-                source: message.tokenCountSource?.rawValue,
-                providerGenerationDurationSeconds: message.providerGenerationDurationSeconds,
-                providerTotalDurationSeconds: message.providerTotalDurationSeconds,
-                responseStartedAt: message.responseStartedAt,
-                firstResponseChunkAt: message.firstResponseChunkAt,
-                responseCompletedAt: message.responseCompletedAt
-            )
-        }()
-        let hasHermesMetadata = message.requestedModelID != nil
-            || message.responseModelID != nil
-            || !storedToolCalls.isEmpty
-            || usage != nil
-        let metadata = hasHermesMetadata ? MobileChatHermesMetadata(
-            requestedModelID: message.requestedModelID,
-            responseModelID: message.responseModelID,
-            toolCalls: storedToolCalls,
-            usage: usage
-        ) : nil
-        return MobileChatMessage(
-            id: message.id,
-            role: role,
-            text: message.text,
-            timestamp: message.timestamp,
-            modelName: message.modelName,
-            isError: message.isError,
-            attachments: storedAttachments,
-            toolCalls: storedToolCalls,
-            hermes: metadata
-        )
-    }
-
-    private static func convertFromStore(_ message: MobileChatMessage) -> HermesChatMessage {
-        let role: HermesChatRole
-        switch message.role {
-        case "user": role = .user
-        case "system": role = .system
-        case "tool": role = .tool
-        default: role = .assistant
-        }
-        let restoredAttachments: [HermesAttachment] = message.attachments.compactMap { stored in
-            guard let kind = HermesAttachmentKind(rawValue: stored.kind) else { return nil }
-            return HermesAttachment(
-                id: stored.id,
-                kind: kind,
-                displayName: stored.displayName,
-                mimeType: stored.mimeType,
-                byteSize: stored.byteSize,
-                workspaceRelativePath: stored.workspaceRelativePath,
-                thumbnailPNG: stored.thumbnailPNG,
-                extractedTextPreview: stored.extractedTextPreview
-            )
-        }
-        // Prefer the top-level toolCalls list; fall back to the legacy
-        // hermes.toolCalls block for threads written by older builds.
-        let storedToolCalls = message.toolCalls.isEmpty
-            ? (message.hermes?.toolCalls ?? [])
-            : message.toolCalls
-        let restoredToolCalls = storedToolCalls.map {
-            HermesToolCall(
-                id: $0.id,
-                name: $0.name,
-                status: $0.status,
-                arguments: "",
-                detail: $0.detail
-            )
-        }
-        let usage = message.hermes?.usage
-        return HermesChatMessage(
-            id: message.id,
-            role: role,
-            text: message.text,
-            toolCalls: restoredToolCalls,
-            attachments: restoredAttachments,
-            requestedModelID: message.hermes?.requestedModelID,
-            responseModelID: message.hermes?.responseModelID,
-            modelName: message.modelName,
-            timestamp: message.timestamp,
-            isStreaming: false,
-            isError: message.isError,
-            responseStartedAt: usage?.responseStartedAt,
-            firstResponseChunkAt: usage?.firstResponseChunkAt,
-            responseCompletedAt: usage?.responseCompletedAt,
-            outputTokenCount: usage?.outputTokens,
-            totalTokenCount: usage?.totalTokens,
-            tokenCountSource: usage?.source.flatMap { HermesTokenCountSource(rawValue: $0) },
-            providerGenerationDurationSeconds: usage?.providerGenerationDurationSeconds,
-            providerTotalDurationSeconds: usage?.providerTotalDurationSeconds
-        )
+        HermesConversationStateStore.convertToStore(message)
     }
 
     private static func derivedTitle(from messages: [HermesChatMessage]) -> String {
-        if let firstUser = messages.first(where: { $0.role == .user })?.text.trimmingCharacters(in: .whitespacesAndNewlines),
-           !firstUser.isEmpty {
-            return String(firstUser.prefix(64))
-        }
-        return "Hermes conversation"
-    }
-
-    private static func derivedPreview(from messages: [HermesChatMessage]) -> String {
-        if let last = messages.last(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
-            .text.trimmingCharacters(in: .whitespacesAndNewlines), !last.isEmpty {
-            // Thread-list rows are plain text — flatten assistant markdown
-            // so previews never show raw `**` / `#` markers.
-            let plain = HermesAtomParser.plainText(last)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return String(plain.prefix(140))
-        }
-        return ""
+        HermesConversationStateStore.derivedTitle(from: messages)
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
@@ -2417,8 +2279,7 @@ final class HermesService {
     }
 
     private static func advertisesCLIModelCatalog(_ connection: HermesConnectionRecord) -> Bool {
-        connection.capabilities.contains("cli_agent_model_catalog")
-            || connection.capabilities.contains(HermesRelayOperation.cliAgentModelCatalog.rawValue)
+        HermesTransportSelector.advertisesCLIModelCatalog(connection)
     }
 
     private func resolveCLIAgentModelCatalogRelayConnection() async throws -> HermesConnectionRecord {
@@ -2730,57 +2591,23 @@ final class HermesService {
         HermesWireValueParsing.dateValue(value)
     }
 
+    // Endpoint validation + relay eligibility predicates moved verbatim to
+    // `HermesTransportSelector`; these forwarders keep the names views,
+    // tests, and the call sites in this file rely on.
     static func validatedEndpointURL(_ rawValue: String) -> URL? {
-        guard let url = URL(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let scheme = url.scheme?.lowercased(),
-              let host = url.host?.lowercased(),
-              url.user == nil,
-              url.password == nil,
-              url.query == nil,
-              url.fragment == nil else {
-            return nil
-        }
-        if scheme == "https" {
-            return url
-        }
-        if scheme == "http", host == "localhost" || host == "127.0.0.1" || Self.isPrivateIPv4(host) {
-            return url
-        }
-        return nil
-    }
-
-    private static func isPrivateIPv4(_ host: String) -> Bool {
-        let parts = host.split(separator: ".").compactMap { Int($0) }
-        guard parts.count == 4, parts.allSatisfy({ (0...255).contains($0) }) else {
-            return false
-        }
-        return parts[0] == 10 || (parts[0] == 172 && (16...31).contains(parts[1])) || (parts[0] == 192 && parts[1] == 168)
+        HermesTransportSelector.validatedEndpointURL(rawValue)
     }
 
     private static func hasUsableRelayEncryption(_ connection: HermesConnectionRecord) -> Bool {
-        connection.relayEncryption == HermesRelayCrypto.relayEncryptionV3
-            && connection.relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersionV3
-            && (connection.relayPublicKey?.isEmpty == false)
+        HermesTransportSelector.hasUsableRelayEncryption(connection)
     }
 
-    // macOS publishes this heartbeat every 30 s while active and every 5 min
-    // in the background. Give background cadence, App Nap, and Firestore cache
-    // propagation enough slack without accepting truly abandoned relay docs.
-    private nonisolated static let relayFreshnessWindow: TimeInterval = 30 * 60
-
     private static func canAttemptRelayConnection(_ connection: HermesConnectionRecord) -> Bool {
-        connection.mode == .relayLink
-            && connection.status == .online
-            && hasUsableRelayEncryption(connection)
-            && isRelayConnectionFresh(connection)
+        HermesTransportSelector.canAttemptRelayConnection(connection)
     }
 
     static func isRelayConnectionFresh(_ connection: HermesConnectionRecord, now: Date = Date()) -> Bool {
-        guard connection.mode == .relayLink else { return true }
-        let heartbeat = connection.realtimeRelayLastSeenAt
-            ?? connection.lastSeenAt
-            ?? connection.updatedAt
-        return now.timeIntervalSince(heartbeat) <= relayFreshnessWindow
+        HermesTransportSelector.isRelayConnectionFresh(connection, now: now)
     }
 
     private static func encodeStringArray(_ values: [String]) -> String {
