@@ -1,9 +1,13 @@
 package com.openburnbar.services.media
 
+import android.Manifest
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.core.content.ContextCompat
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -30,6 +34,9 @@ private object AgentReplyNotificationConstants {
 object AgentReplyNotificationState {
     private const val DEVICE_ID_PREF_NAME = "burnbar.device"
     private const val DEVICE_ID_PREF_KEY = "stable_device_id"
+    private const val PERMISSION_PREF_NAME = "burnbar.notifications"
+    private const val PERMISSION_PREF_GRANTED_KEY = "post_notifications_granted"
+    private const val PERMISSION_PREF_UPDATED_AT_KEY = "post_notifications_updated_at"
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -83,6 +90,41 @@ object AgentReplyNotificationState {
         persist(context.applicationContext)
     }
 
+    /**
+     * Record the outcome of the POST_NOTIFICATIONS runtime-permission prompt and
+     * re-sync the device doc so the cloud fan-out sees the real state. Persisted
+     * to SharedPreferences so a log/diagnostic read survives process death; the
+     * authoritative value pushed to Firestore is always re-derived from the live
+     * OS permission at [persist] time, so a permission revoked in system settings
+     * (which does not call back here) still flips `agentNotificationsEnabled` off
+     * on the next heartbeat.
+     */
+    fun recordPermissionResult(context: Context, granted: Boolean) {
+        val app = context.applicationContext
+        app.getSharedPreferences(PERMISSION_PREF_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(PERMISSION_PREF_GRANTED_KEY, granted)
+            .putLong(PERMISSION_PREF_UPDATED_AT_KEY, System.currentTimeMillis())
+            .apply()
+        android.util.Log.i(
+            "BurnBar",
+            "post_notifications_permission_result granted=$granted sdk=${Build.VERSION.SDK_INT}",
+        )
+        persist(app)
+    }
+
+    /**
+     * The live OS notification-permission state. Pre-Android 13 the permission is
+     * granted at install, so notifications are always deliverable; on 13+ the
+     * runtime grant decides whether any push lands. This is the honest value
+     * written to `agentNotificationsEnabled` — never a hardcoded `true`.
+     */
+    fun notificationsEnabled(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
     fun setActiveChat(context: Context, runtime: String?, threadId: String?, surface: String?) {
         activeRuntime = runtime
         activeThreadId = threadId
@@ -128,7 +170,10 @@ object AgentReplyNotificationState {
                 "deviceId" to stableDeviceId(context),
                 "platform" to "android",
                 "appLifecycle" to appLifecycle,
-                "agentNotificationsEnabled" to true,
+                // Real OS permission state — never a hardcoded `true`. When the
+                // user denies POST_NOTIFICATIONS the cloud fan-out skips this
+                // device instead of marking a silently-dropped push "sent".
+                "agentNotificationsEnabled" to notificationsEnabled(context),
                 "lastSeenAtMillis" to now,
                 "updated_at_millis" to now,
             )

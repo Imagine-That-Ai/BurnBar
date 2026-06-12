@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -115,8 +116,15 @@ class MercuryFcmService : FirebaseMessagingService() {
         val notification: Notification = builder.build()
         try {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
-        } catch (_: SecurityException) {
-            // Missing POST_NOTIFICATIONS permission — fall through silently.
+        } catch (error: SecurityException) {
+            // Missing POST_NOTIFICATIONS permission — log it and persist the real
+            // (revoked) permission state so the device doc reflects that incoming
+            // calls cannot surface, instead of failing silently.
+            Log.w(
+                "BurnBar",
+                "incoming_call_notification_post_denied connection=$connectionId reason=${error.message}",
+            )
+            AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = false)
         }
     }
 
