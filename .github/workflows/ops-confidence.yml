@@ -63,73 +63,32 @@ jobs:
     needs: [prod-health-synthetic, website-zap-baseline]
     if: always() && contains(needs.*.result, 'failure')
     steps:
-      - name: Open ops-confidence failure issue
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - name: Record ops-confidence failure (per-lane dedupe; comment, never silent-skip)
+        uses: ./.github/actions/ops-failure-issue
         with:
-          script: |
-            const title = `Ops confidence launch gate failed (${context.runId})`;
-            const results = ${{ toJSON(needs) }};
-            const body = [
-              'The weekly OpenBurnBar ops-confidence gate failed.',
-              '',
-              `Workflow: ${context.workflow}`,
-              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              '',
-              'Job results:',
-              '```json',
-              JSON.stringify(results, null, 2),
-              '```'
-            ].join('\n');
-            const existing = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'P0 - Critical,area: infra',
-              per_page: 20,
-            });
-            if (!existing.data.some((issue) => issue.title.startsWith('Ops confidence launch gate failed'))) {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels: ['P0 - Critical', 'area: infra'],
-              });
-            }
+          mode: open
+          lane: ops-confidence
+          title-prefix: Ops confidence launch gate failed
+          summary: The weekly OpenBurnBar ops-confidence gate failed.
+          details: |
+            Job results:
+            ```json
+            ${{ toJSON(needs) }}
+            ```
 
   close-resolved-issue:
     runs-on: ubuntu-latest
     needs: [prod-health-synthetic, website-zap-baseline]
-    # Close-on-green: the failure-issue job dedupes on an open issue with the
-    # same title prefix, so a STALE open issue would silently suppress alerts
-    # for future, distinct failures (diligence 2026-06-11). A fully green run
-    # closes the standing issue and re-arms the alarm.
+    # Close-on-green re-arms the alarm: the shared action dedupes on a per-lane
+    # `lane:ops-confidence` label (not a title prefix shared across workflows),
+    # so a STALE open issue from another lane can never suppress this lane.
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     steps:
-      - name: Close resolved failure issues
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - name: Close resolved ops-confidence failure issue
+        uses: ./.github/actions/ops-failure-issue
         with:
-          script: |
-            const prefix = 'Ops confidence launch gate failed';
-            const open = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'P0 - Critical,area: infra',
-              per_page: 50,
-            });
-            for (const issue of open.data) {
-              if (!issue.title.startsWith(prefix)) continue;
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                body: `Resolved by green run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              });
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                state: 'closed',
-              });
-            }
+          mode: close
+          lane: ops-confidence
+          title-prefix: Ops confidence launch gate failed

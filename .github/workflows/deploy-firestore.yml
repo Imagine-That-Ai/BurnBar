@@ -109,34 +109,22 @@ jobs:
             echo "- Scope: firestore.rules, firestore.indexes.json, storage.rules"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Open drift/deploy failure issue
+      - name: Record Firestore deploy failure (per-lane dedupe; comment, never silent-skip)
         if: failure() && (github.event_name == 'schedule' || github.event_name == 'push')
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        uses: ./.github/actions/ops-failure-issue
         with:
-          script: |
-            const title = `Firestore deploy gate failed (${context.runId})`;
-            const body = [
-              'The Firestore deploy/drift gate failed.',
-              '',
-              `Workflow: ${context.workflow}`,
-              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              `Ref: ${context.ref}`,
-              '',
-              'This blocks launch posture until firestore.rules, firestore.indexes.json, and storage.rules are tested, deployed, and drift-clean.'
-            ].join('\n');
-            const existing = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'P0 - Critical,area: infra',
-              per_page: 20,
-            });
-            if (!existing.data.some((issue) => issue.title.startsWith('Firestore deploy gate failed'))) {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels: ['P0 - Critical', 'area: infra'],
-              });
-            }
+          mode: open
+          lane: deploy-firestore
+          title-prefix: Firestore deploy gate failed
+          summary: >-
+            The Firestore deploy/drift gate failed. This blocks launch posture
+            until firestore.rules, firestore.indexes.json, and storage.rules are
+            tested, deployed, and drift-clean.
+
+      - name: Close resolved Firestore deploy failure issue
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'push')
+        uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: close
+          lane: deploy-firestore
+          title-prefix: Firestore deploy gate failed
