@@ -110,7 +110,7 @@ function assertRulesRejectFields(sectionName, fields) {
 // handful of known plaintext fields with `!hasAny`. A pure denylist drifts open
 // the moment a new plaintext field is added; an allowlist fails closed. This
 // closes the "allowlist drift" gap the recon flagged.
-function assertRulesSectionHasOnly(sectionName, note, span = 7000) {
+function assertRulesSectionHasOnly(sectionName, note, span = 7000, allowlistHelperName = null) {
   const rules = readRel("firestore.rules");
   const start = rules.indexOf(sectionName);
   if (start < 0) {
@@ -118,9 +118,14 @@ function assertRulesSectionHasOnly(sectionName, note, span = 7000) {
     return;
   }
   const section = rules.slice(start, Math.min(rules.length, start + span));
-  if (!section.includes("request.resource.data.keys().hasOnly([")) {
-    fail(`firestore.rules: ${note ?? `${sectionName} lacks a keys().hasOnly([ allowlist`}`);
+  if (section.includes("request.resource.data.keys().hasOnly([")) {
+    return;
   }
+  if (allowlistHelperName && section.includes(`${allowlistHelperName}()`)) {
+    assertRulesSectionHasOnly(`function ${allowlistHelperName}()`, note, span);
+    return;
+  }
+  fail(`firestore.rules: ${note ?? `${sectionName} lacks a keys().hasOnly([ allowlist`}`);
 }
 
 // Assert a match block bounded by its own `match /…` start and the next `match `
@@ -669,19 +674,23 @@ assertIncludes(
 // Every sensitive write helper must positively allowlist its keys, not just
 // deny known plaintext fields. (assertRulesRejectFields above only checks the
 // hasAny denylist; this asserts the fail-closed allowlist is present too.)
-for (const [section, note] of [
+for (const [section, note, allowlistHelperName] of [
   ["function validConversationMirror()", "validConversationMirror lacks keys().hasOnly allowlist"],
   ["function validMobileAssistantChatMirror()", "validMobileAssistantChatMirror lacks keys().hasOnly allowlist"],
   ["function validCliSessionMirror()", "validCliSessionMirror lacks keys().hasOnly allowlist"],
   ["function validCliAgentMissionRequest()", "validCliAgentMissionRequest lacks keys().hasOnly allowlist"],
   ["function relayRequestWrite(", "relayRequestWrite lacks keys().hasOnly allowlist"],
   ["function relayChunkWrite(", "relayChunkWrite lacks keys().hasOnly allowlist"],
-  ["function ownerWritableSessionLogManifest(", "session-log manifest lacks keys().hasOnly allowlist"],
+  [
+    "function ownerWritableSessionLogManifest(",
+    "session-log manifest lacks keys().hasOnly allowlist",
+    "validSessionLogManifestKeys",
+  ],
   ["function validProjectMemorySnapshotKeys()", "project_memory_snapshots lacks keys().hasOnly allowlist"],
   ["function validMediaSessionEventKeys()", "media_session_events lacks keys().hasOnly allowlist"],
   ["function validMediaAttachmentManifestKeys()", "media_attachment_manifests lacks keys().hasOnly allowlist"],
 ]) {
-  assertRulesSectionHasOnly(section, note);
+  assertRulesSectionHasOnly(section, note, 7000, allowlistHelperName);
 }
 
 // ── CloudVault sealed payload v2: AAD-bound, v1 read-only compatibility ─────
