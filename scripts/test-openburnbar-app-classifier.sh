@@ -99,6 +99,27 @@ Test Case '-[OpenBurnBarTests.SomeTests test_realRegression]' failed (0.123 seco
 LOG
 )"
 
+timeout_restart_log="$(write_fixture timeout-restart <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-12 22:42:42.654.
+Test Case '-[OpenBurnBarTests.MediaSessionCoordinatorTests testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry]' started.
+Test Case '-[OpenBurnBarTests.MediaSessionCoordinatorTests testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry]' exceeded execution time allowance of 10 minutes. The test may have hung.
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+Test Suite 'Selected tests' passed at 2026-06-12 22:56:21.884.
+     Executed 2032 tests, with 3 tests skipped and 0 failures (0 unexpected) in 194.596 (196.137) seconds
+Failing tests:
+    MediaSessionCoordinatorTests.testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry()
+** TEST FAILED **
+LOG
+)"
+
+timeout_restart_with_assertion_log="$(write_fixture timeout-restart-with-assertion <<'LOG'
+Test Suite 'Selected tests' started at 2026-06-12 22:42:42.654.
+Test Case '-[OpenBurnBarTests.SomeTests test_realRegression]' failed (0.123 seconds).
+Test Case '-[OpenBurnBarTests.SomeTests test_slowCleanup]' exceeded execution time allowance of 10 minutes. The test may have hung.
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+LOG
+)"
+
 unknown_failure_log="$(write_fixture unknown-failure <<'LOG'
 ** TEST FAILED **
 LOG
@@ -110,6 +131,8 @@ assert_true "earlier Xcode retry failure is accepted only when final Selected te
 assert_false "final failing-tests section is not hidden by a stale green summary" is_xcode_false_negative_pass "$final_failing_tests_log"
 assert_true "runner crash without concrete XCTest failure is retryable" is_known_hang "$hang_log"
 assert_false "runner crash with concrete XCTest failure is not hidden as infrastructure" is_known_hang "$hang_with_failure_log"
+assert_true "test-host timeout relaunch with stale failing footer is retryable" is_known_hang "$timeout_restart_log"
+assert_false "test-host timeout relaunch with assertion failure is not hidden" is_known_hang "$timeout_restart_with_assertion_log"
 assert_false "unknown failure is not retryable" is_known_hang "$unknown_failure_log"
 
 echo "OpenBurnBar app-test classifier fixtures passed."
