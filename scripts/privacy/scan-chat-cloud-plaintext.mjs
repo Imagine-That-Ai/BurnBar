@@ -492,11 +492,18 @@ assertIncludes(
   "Remote MCP encrypted-search-only response",
 );
 assertSectionNotIncludes(
-  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
+  "OpenBurnBarMobile/Services/ConversationSearchAPI.swift",
   "func queryConversations(",
   "static func decodeConversationQueryResponse",
   "projectName",
   "iOS queryConversations project filter payload",
+);
+assertSectionNotIncludes(
+  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
+  "func queryConversations(",
+  "static func decodeConversationQueryResponse",
+  "projectName",
+  "iOS queryConversations facade forwarder project filter payload",
 );
 assertSectionNotIncludes(
   "android/app/src/main/java/com/openburnbar/data/firebase/FunctionsRepository.kt",
@@ -1076,16 +1083,25 @@ for (const collection of [
     `dataExport must force seal-aware serialization for ${collection}`,
   );
 }
-assertNotIncludes(
+// The gateway event-construction code lives across the facade and its
+// per-domain split files (tech-debt finding-67); the "never build a plaintext
+// cloud payload" ban must hold in every one of them.
+for (const gatewayEventFile of [
   "OpenBurnBarMobile/Services/FunctionsRepository.swift",
-  'payload["text"] = text',
-  "iOS gateway must not construct plaintext event payloads",
-);
-assertNotIncludes(
-  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
-  'payload["senderDisplayName"] = senderDisplayName',
-  "iOS gateway must not construct plaintext sender payloads",
-);
+  "OpenBurnBarMobile/Services/HermesGatewayAPI.swift",
+  "OpenBurnBarMobile/Services/GatewayEventSealer.swift",
+]) {
+  assertNotIncludes(
+    gatewayEventFile,
+    'payload["text"] = text',
+    `iOS gateway must not construct plaintext event payloads (${gatewayEventFile})`,
+  );
+  assertNotIncludes(
+    gatewayEventFile,
+    'payload["senderDisplayName"] = senderDisplayName',
+    `iOS gateway must not construct plaintext sender payloads (${gatewayEventFile})`,
+  );
+}
 assertIncludes(
   "functions/src/hermesGateway.ts",
   "return false;",
@@ -1152,12 +1168,12 @@ assertIncludes(
   "Hermes BurnBar adapter must store the agent relay private key in Keychain",
 );
 assertIncludes(
-  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
+  "OpenBurnBarMobile/Services/GatewayEventSealer.swift",
   "sealGatewayEventRatchetPayload(",
   "iOS gateway must prefer ratchetEnvelope for capable phone events",
 );
 assertIncludes(
-  "OpenBurnBarMobile/Services/FunctionsRepository.swift",
+  "OpenBurnBarMobile/Services/HermesGatewayAPI.swift",
   "decodedRatchetText(",
   "iOS gateway must open ratchetEnvelope agent replies",
 );
@@ -1270,7 +1286,7 @@ for (const sender of [
 }
 for (const receiver of [
   "OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift",
-  "OpenBurnBarMobile/Services/HermesService.swift",
+  "OpenBurnBarMobile/Services/Hermes/HermesRealtimeRelayTransport.swift",
   "OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/HermesIrohEcho.swift",
 ]) {
   assertIncludes(
@@ -1309,7 +1325,7 @@ assertNotMatches(
   "Android iroh relay client must ignore legacy plaintext terminal errors",
 );
 assertSectionIncludes(
-  "OpenBurnBarMobile/Services/HermesService.swift",
+  "OpenBurnBarMobile/Services/Hermes/HermesRealtimeRelayTransport.swift",
   "private func chunkRecord(",
   "private func receiveFrame",
   "guard let ciphertext = payload.ciphertext",
