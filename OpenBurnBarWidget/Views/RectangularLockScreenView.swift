@@ -25,14 +25,14 @@ struct RectangularLockScreenView: View {
             if let first = snap?.topProviders.first {
                 let providerEnum = AgentProvider.fromPersistedToken(first)
                 let color: Color = {
-                    guard let p = providerEnum else { return WidgetDesignSystem.Colors.amber }
-                    return DesignSystemColors.primary(for: p)
+                    guard let provider = providerEnum else { return WidgetDesignSystem.Colors.amber }
+                    return DesignSystemColors.primary(for: provider)
                 }()
 
                 HStack(spacing: 4) {
-                    if let p = providerEnum,
-                       UIImage(named: p.bundledLogoName) != nil {
-                        UnifiedProviderLogoView(provider: p, size: 12)
+                    if let provider = providerEnum,
+                       UIImage(named: provider.bundledLogoName) != nil {
+                        UnifiedProviderLogoView(provider: provider, size: 12)
                     } else {
                         Image(systemName: "flame.fill")
                             .font(.system(size: 8, weight: .semibold))
