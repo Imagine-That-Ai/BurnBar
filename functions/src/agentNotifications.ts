@@ -88,7 +88,7 @@ export interface SubmitAgentNotificationReplyRequest {
   clientReplyId?: string;
 }
 
-export interface CloudVaultSealedPayload {
+interface CloudVaultSealedPayload {
   schemaVersion: number;
   algorithm: "AES-256-GCM";
   keyVersion: number;
