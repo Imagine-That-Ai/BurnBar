@@ -1,7 +1,6 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
 
 /// Sync domain for uploading conversation metadata to Firestore.
 ///
@@ -11,11 +10,9 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
-    private let state = Locked(CloudSyncDomainState())
-
-    var isSyncing: Bool { state.read().isSyncing }
-    var lastSyncError: String? { state.read().lastSyncError }
-    var lastSyncDate: Date? { state.read().lastSyncDate }
+    private(set) var isSyncing = false
+    private(set) var lastSyncError: String?
+    private(set) var lastSyncDate: Date?
 
     init(
         context: CloudSyncContext,
@@ -34,16 +31,18 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
               gate.account.isCloudSyncEnabled,
               gate.settings.conversationCloudBackupEnabled,
               !gate.syncSuppressed,
+              !isSyncing,
               let uid = gate.account.uid else { return }
 
-        guard state.beginSyncingIfIdle() else { return }
+        isSyncing = true
+        lastSyncError = nil
 
-        defer { state.endSyncing() }
+        defer { isSyncing = false }
 
         do {
             let unsynced = try context.dataStore.fetchUnsyncedConversations(limit: 400)
             guard !unsynced.isEmpty else {
-                state.withLock { $0.lastSyncDate = Date() }
+                lastSyncDate = Date()
                 return
             }
 
@@ -99,17 +98,15 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             let ids = unsynced.map(\.id)
             try context.dataStore.markConversationsSynced(ids: ids)
 
-            state.withLock {
-                $0.lastSyncDate = Date()
-                $0.lastSyncError = nil
-            }
+            lastSyncDate = Date()
+            lastSyncError = nil
         } catch {
             await recordSyncError(error)
         }
     }
 
     private func recordSyncError(_ error: Error) async {
-        state.withLock { $0.lastSyncError = error.localizedDescription }
+        lastSyncError = error.localizedDescription
 
         let nsError = error as NSError
         guard nsError.domain == FirestoreErrorDomain,

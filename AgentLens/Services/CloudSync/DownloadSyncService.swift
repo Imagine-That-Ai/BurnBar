@@ -11,11 +11,9 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
     private let conversationVaultKeyProvider: any ConversationCloudVaultKeyProviding
 
-    private let state = Locked(CloudSyncDomainState())
-
-    var isSyncing: Bool { state.read().isSyncing }
-    var lastSyncError: String? { state.read().lastSyncError }
-    var lastSyncDate: Date? { state.read().lastSyncDate }
+    private(set) var isSyncing = false
+    private(set) var lastSyncError: String?
+    private(set) var lastSyncDate: Date?
     private(set) var cloudTotalCost: Double?
 
     init(
@@ -37,9 +35,10 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
               let resolvedUid = gate.account.uid else { return }
         let localDeviceId = gate.account.deviceId
 
-        state.beginSyncing()
+        isSyncing = true
+        lastSyncError = nil
 
-        defer { state.endSyncing() }
+        defer { isSyncing = false }
 
         await syncDeviceRegistry(uid: resolvedUid, localDeviceId: localDeviceId)
         await downloadRemoteProviderAccounts(uid: resolvedUid, localDeviceId: localDeviceId)
@@ -47,7 +46,7 @@ final class DownloadSyncService: CloudSyncDomain, @unchecked Sendable {
         let newConversationIds = await downloadRemoteConversations(uid: resolvedUid, localDeviceId: localDeviceId)
         enqueueProjectionForRemoteConversations(newConversationIds)
 
-        state.withLock { $0.lastSyncDate = Date() }
+        lastSyncDate = Date()
         await fetchCloudTotal()
         await context.refreshPresentationLayer()
     }

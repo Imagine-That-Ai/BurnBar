@@ -15,11 +15,9 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
-    private let state = Locked(CloudSyncDomainState())
-
-    var isSyncing: Bool { state.read().isSyncing }
-    var lastSyncError: String? { state.read().lastSyncError }
-    var lastSyncDate: Date? { state.read().lastSyncDate }
+    private(set) var isSyncing = false
+    private(set) var lastSyncError: String?
+    private(set) var lastSyncDate: Date?
 
     init(
         context: CloudSyncContext,
@@ -37,12 +35,14 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
               gate.account.isSignedIn,
               gate.account.isCloudSyncEnabled,
               !gate.syncSuppressed,
+              !isSyncing,
               let uid = gate.account.uid else { return }
 
-        guard state.beginSyncingIfIdle() else { return }
+        isSyncing = true
+        lastSyncError = nil
         let deviceId = gate.account.deviceId
 
-        defer { state.endSyncing() }
+        defer { isSyncing = false }
 
         do {
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
@@ -73,10 +73,8 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
                 try context.dataStore.markSynced(ids: syncedIds)
             }
 
-            state.withLock {
-                $0.lastSyncDate = Date()
-                $0.lastSyncError = nil
-            }
+            lastSyncDate = Date()
+            lastSyncError = nil
             try await publishSyncHeartbeat(uid: uid, deviceId: deviceId, collectionsInSync: ["usage"])
         } catch {
             await recordSyncError(error)
@@ -107,7 +105,7 @@ final class UsageSyncService: CloudSyncDomain, @unchecked Sendable {
     }
 
     private func recordSyncError(_ error: Error) async {
-        state.withLock { $0.lastSyncError = error.localizedDescription }
+        lastSyncError = error.localizedDescription
 
         let nsError = error as NSError
         guard nsError.domain == FirestoreErrorDomain,
