@@ -20,6 +20,13 @@ git diff --binary -- "${generated_paths[@]}" > "$before_diff"
 echo "==> Emitting schema bindings…"
 npm --prefix tools/schema-sync run emit
 
+echo "==> Compiling TypeSpec canon and checking emitted parity…"
+if [[ ! -d tools/schema-sync/node_modules/@typespec/compiler ]]; then
+  echo "==> Installing schema-sync toolchain (@typespec/compiler)…"
+  npm --prefix tools/schema-sync ci
+fi
+node tools/schema-sync/check-tsp-canon.mjs
+
 echo "==> Checking for drift…"
 git diff --binary -- "${generated_paths[@]}" > "$after_diff"
 if ! cmp -s "$before_diff" "$after_diff"; then
