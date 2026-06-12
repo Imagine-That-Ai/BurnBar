@@ -38,6 +38,39 @@ export const GOOGLE_PLAY_PRODUCT_IDS = {
 } as const;
 
 /**
+ * Hosted Media Sync (Floo) product IDs. Kept verbatim from
+ * `functions/src/callables/mediaSku.ts` (`MEDIA_SKU`).
+ */
+export const MEDIA_PRODUCT_IDS = {
+  hostedMediaSyncMonthly: "com.openburnbar.hostedMediaSync.monthly",
+} as const;
+
+/**
+ * Computer Use (Agent Control) product IDs. Kept verbatim from
+ * `OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift` and
+ * `AgentLens/Services/ComputerUse/ComputerUseRuntimeController.swift`.
+ */
+export const COMPUTER_USE_PRODUCT_IDS = {
+  computerUseMonthly: "com.openburnbar.computerUse.monthly",
+  hostedComputerUseSyncMonthly: "com.openburnbar.hostedComputerUseSync.monthly",
+} as const;
+
+/**
+ * Legacy product IDs from retired SKU generations whose receipts are still
+ * honored. Kept verbatim from `OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift`
+ * (`legacyHostedQuotaOriginalProductID`) and `services/hermes-realtime-relay/src/config.ts`.
+ */
+export const LEGACY_PRODUCT_IDS = {
+  hostedQuotaOriginalMonthly: "com.openburnbar.hostedQuotaSync.monthly",
+} as const;
+
+/**
+ * Historical proMax bundle SKU. Receipts minted under this identifier still
+ * grant Cloud Pro everywhere (aliases below + every firestore.rules allowlist).
+ */
+export const PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID = "com.openburnbar.proMax.bundle.monthly";
+
+/**
  * Cloud-Pro (proMax) product-ID aliases. The proMax SKU shipped under several
  * historical bundle identifiers; receipts minted under any of these still grant
  * Cloud Pro. Kept verbatim from `functions/src/callables/shared.ts`.
@@ -47,8 +80,60 @@ export const BURNBAR_CLOUD_PRO_PRODUCT_ALIASES = [
   "com.openburnbar.proMax.annual",
   "com.openburnbar.promax.v2.monthly",
   "com.openburnbar.promax.annual",
-  "com.openburnbar.proMax.bundle.monthly",
+  PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID,
 ] as const;
+
+/**
+ * Shared proMax/Ultra tail of every firestore.rules entitlement allowlist:
+ * a Cloud Pro (proMax) or Ultra receipt grants premium, media (Floo), and
+ * Computer Use (Agent Control) alike.
+ *
+ * Order is load-bearing: `tools/gen-rules-entitlements.mjs` renders these
+ * arrays verbatim into `firestore.rules`, and the drift gate compares bytes.
+ */
+const FIRESTORE_RULES_PRO_MAX_ULTRA_TAIL = [
+  PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID,
+  APPLE_PRODUCT_IDS.proMaxMonthly,
+  APPLE_PRODUCT_IDS.proMaxAnnual,
+  APPLE_PRODUCT_IDS.ultraMonthly,
+  GOOGLE_PLAY_PRODUCT_IDS.ultraAnnual,
+  APPLE_PRODUCT_IDS.ultraAnnual,
+] as const;
+
+/**
+ * The exact product-ID allowlists enforced by the three `firestore.rules`
+ * entitlement predicates (`activePremiumEntitlementData`,
+ * `activeMediaEntitlementData`, `activeComputerUseEntitlementData`).
+ *
+ * `tools/gen-rules-entitlements.mjs` is the ONLY writer of those rules
+ * regions; edit these arrays (or the constants they reference) and re-run the
+ * generator. CI fails if `firestore.rules` drifts from a regenerate.
+ *
+ * Preserved shipped asymmetries (kept verbatim; widening a rules allowlist is
+ * a security-reviewed change, not a refactor):
+ * - The lowercase Google Play `com.openburnbar.promax.*` aliases have never
+ *   been in the rules lists, and rules string comparison is case-sensitive.
+ *   `functions/src/callables/stripe.ts` writes the Play product ID through to
+ *   the entitlement doc verbatim, so a Play Cloud Pro receipt does NOT pass
+ *   these rules predicates today. Shipped behavior, preserved as-is.
+ * - A `hosted_media_sync` receipt grants media but is absent from the premium
+ *   floor list, exactly as shipped.
+ */
+export const FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS = {
+  premium: [
+    APPLE_PRODUCT_IDS.hostedQuota,
+    LEGACY_PRODUCT_IDS.hostedQuotaOriginalMonthly,
+    APPLE_PRODUCT_IDS.proMonthly,
+    APPLE_PRODUCT_IDS.proAnnual,
+    ...FIRESTORE_RULES_PRO_MAX_ULTRA_TAIL,
+  ],
+  media: [MEDIA_PRODUCT_IDS.hostedMediaSyncMonthly, ...FIRESTORE_RULES_PRO_MAX_ULTRA_TAIL],
+  computerUse: [
+    COMPUTER_USE_PRODUCT_IDS.computerUseMonthly,
+    COMPUTER_USE_PRODUCT_IDS.hostedComputerUseSyncMonthly,
+    ...FIRESTORE_RULES_PRO_MAX_ULTRA_TAIL,
+  ],
+} as const;
 
 /** Firestore entitlement document IDs (the doc id under `users/{uid}/entitlements/`). */
 export const ENTITLEMENT_DOC_IDS = {

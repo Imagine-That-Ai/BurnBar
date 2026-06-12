@@ -49,6 +49,16 @@ jobs:
       - name: Build entitlements contracts
         run: bash scripts/build-entitlements.sh
 
+      # Catalog contract tests + firestore.rules drift gate: the three rules
+      # entitlement allowlists are GENERATED from packages/entitlements
+      # (tools/gen-rules-entitlements.mjs); fail red if firestore.rules
+      # diverges from a regenerate or the catalog drifts from its fixture.
+      - name: Entitlement catalog tests (node --test)
+        run: node --test packages/entitlements/lib/
+
+      - name: firestore.rules entitlement allowlists are generated (no drift)
+        run: node tools/gen-rules-entitlements.mjs --check
+
       - name: TypeScript type check
         run: cd functions && npx tsc --noEmit
 

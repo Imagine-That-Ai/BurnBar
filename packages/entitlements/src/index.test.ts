@@ -6,10 +6,15 @@ import test from "node:test";
 import {
   APPLE_PRODUCT_IDS,
   BURNBAR_CLOUD_PRO_PRODUCT_ALIASES,
+  COMPUTER_USE_PRODUCT_IDS,
   DEFAULT_ENTITLEMENT_CATALOG,
   ENTITLEMENT_DOC_IDS,
   EntitlementCache,
+  FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS,
   GOOGLE_PLAY_PRODUCT_IDS,
+  LEGACY_PRODUCT_IDS,
+  MEDIA_PRODUCT_IDS,
+  PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID,
   entitlementExpiryMillis,
   evaluateEntitlement,
   isActiveEntitlement,
@@ -19,7 +24,11 @@ import {
 interface CatalogFixture {
   apple: Record<string, string>;
   googlePlay: Record<string, string>;
+  media: Record<string, string>;
+  computerUse: Record<string, string>;
+  legacy: Record<string, string>;
   cloudProAliases: string[];
+  firestoreRulesAllowlists: Record<"premium" | "media" | "computerUse", string[]>;
   entitlementDocIds: Record<string, string>;
 }
 
@@ -41,6 +50,45 @@ test("Google Play product-ID catalog matches the canonical fixture", () => {
 
 test("Cloud Pro product-ID aliases match the canonical fixture", () => {
   assert.deepEqual([...BURNBAR_CLOUD_PRO_PRODUCT_ALIASES], fixture.cloudProAliases);
+});
+
+test("media / computer-use / legacy product-ID catalogs match the canonical fixture", () => {
+  assert.deepEqual({ ...MEDIA_PRODUCT_IDS }, fixture.media);
+  assert.deepEqual({ ...COMPUTER_USE_PRODUCT_IDS }, fixture.computerUse);
+  assert.deepEqual({ ...LEGACY_PRODUCT_IDS }, fixture.legacy);
+});
+
+test("firestore.rules allowlists match the canonical fixture (order included)", () => {
+  assert.deepEqual(
+    {
+      premium: [...FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.premium],
+      media: [...FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.media],
+      computerUse: [...FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.computerUse],
+    },
+    fixture.firestoreRulesAllowlists,
+  );
+});
+
+test("firestore.rules allowlists are composed from the canonical constants", () => {
+  const { premium, media, computerUse } = FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS;
+  assert.equal(premium[0], APPLE_PRODUCT_IDS.hostedQuota);
+  assert.equal(premium[1], LEGACY_PRODUCT_IDS.hostedQuotaOriginalMonthly);
+  assert.equal(media[0], MEDIA_PRODUCT_IDS.hostedMediaSyncMonthly);
+  assert.equal(computerUse[0], COMPUTER_USE_PRODUCT_IDS.computerUseMonthly);
+  assert.equal(computerUse[1], COMPUTER_USE_PRODUCT_IDS.hostedComputerUseSyncMonthly);
+  // Every list carries the shared proMax/Ultra tail (bundle alias included).
+  for (const list of [premium, media, computerUse]) {
+    for (const id of [
+      PRO_MAX_BUNDLE_MONTHLY_PRODUCT_ID,
+      APPLE_PRODUCT_IDS.proMaxMonthly,
+      APPLE_PRODUCT_IDS.proMaxAnnual,
+      APPLE_PRODUCT_IDS.ultraMonthly,
+      GOOGLE_PLAY_PRODUCT_IDS.ultraAnnual,
+      APPLE_PRODUCT_IDS.ultraAnnual,
+    ]) {
+      assert.equal((list as readonly string[]).includes(id), true, `allowlist should carry ${id}`);
+    }
+  }
 });
 
 test("entitlement document IDs match the canonical fixture", () => {

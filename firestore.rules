@@ -187,6 +187,9 @@ service cloud.firestore {
 
     function activePremiumEntitlementData(entitlement) {
       return entitlement.active == true
+        // BEGIN GENERATED: entitlement-product-ids premium — do not hand-edit.
+        // Source: packages/entitlements/src/catalog.ts (FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.premium).
+        // Regenerate: node tools/gen-rules-entitlements.mjs (CI drift gate: --check).
         && entitlement.productID in [
           "com.openburnbar.hostedQuotaSync.cloud.monthly",
           "com.openburnbar.hostedQuotaSync.monthly",
@@ -199,6 +202,7 @@ service cloud.firestore {
           "com.openburnbar.ultra.annual",
           "com.openburnbar.ultra.annual.v2"
         ]
+        // END GENERATED: entitlement-product-ids premium
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
     }
@@ -230,6 +234,9 @@ service cloud.firestore {
 
     function activeMediaEntitlementData(entitlement) {
       return entitlement.active == true
+        // BEGIN GENERATED: entitlement-product-ids media — do not hand-edit.
+        // Source: packages/entitlements/src/catalog.ts (FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.media).
+        // Regenerate: node tools/gen-rules-entitlements.mjs (CI drift gate: --check).
         && entitlement.productID in [
           "com.openburnbar.hostedMediaSync.monthly",
           "com.openburnbar.proMax.bundle.monthly",
@@ -239,6 +246,7 @@ service cloud.firestore {
           "com.openburnbar.ultra.annual",
           "com.openburnbar.ultra.annual.v2"
         ]
+        // END GENERATED: entitlement-product-ids media
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
     }
@@ -264,6 +272,9 @@ service cloud.firestore {
 
     function activeComputerUseEntitlementData(entitlement) {
 	      return entitlement.active == true
+	        // BEGIN GENERATED: entitlement-product-ids computerUse — do not hand-edit.
+	        // Source: packages/entitlements/src/catalog.ts (FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.computerUse).
+	        // Regenerate: node tools/gen-rules-entitlements.mjs (CI drift gate: --check).
 	        && entitlement.productID in [
 	          "com.openburnbar.computerUse.monthly",
 	          "com.openburnbar.hostedComputerUseSync.monthly",
@@ -274,6 +285,7 @@ service cloud.firestore {
 	          "com.openburnbar.ultra.annual",
 	          "com.openburnbar.ultra.annual.v2"
 	        ]
+	        // END GENERATED: entitlement-product-ids computerUse
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
     }
