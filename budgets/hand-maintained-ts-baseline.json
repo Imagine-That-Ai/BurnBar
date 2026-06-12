@@ -1,7 +1,7 @@
 {
-  "loc": 3589,
-  "exportedInterfaces": 393,
-  "fileCount": 181,
-  "generatedAt": "2026-06-12T00:00:00.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Refreshed 2026-06-12 after the prior 27237 baseline went ~7.6x stale and could never fail-close; this binds the ratchet to live LOC again. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
+  "loc": 3269,
+  "exportedInterfaces": 389,
+  "fileCount": 182,
+  "generatedAt": "2026-06-12T07:30:00.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3589 -> 3269 on 2026-06-12 to lock in the Wave 5 gateway re-export reduction (WP7-RATCHETS). Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
 }
