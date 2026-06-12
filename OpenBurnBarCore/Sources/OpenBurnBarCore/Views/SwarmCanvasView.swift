@@ -3355,7 +3355,7 @@ public struct SwarmGlyphPoint: Sendable {
 /// Mini swarm surfaces (e.g. the chat thinking indicator) form the same
 /// provider brand glyphs as the backdrop murmuration through this facade.
 public enum SwarmGlyphSampler {
-    @MainActor private static var cache: [AgentProvider: [SwarmGlyphPoint]] = [:]
+    @MainActor private static var cache: [String: [SwarmGlyphPoint]] = [:]
 
     /// Centered point cloud of the provider's brand glyph, normalized to
     /// roughly [-1, 1] on the longer axis with y growing downward (SwiftUI
@@ -3369,9 +3369,40 @@ public enum SwarmGlyphSampler {
     /// rasterizes the bundled logo once per provider and caches the result.
     @MainActor
     public static func glyphPoints(for provider: AgentProvider, maxPoints: Int = 120) -> [SwarmGlyphPoint] {
-        if let cached = cache[provider] { return cached }
+        let key = "\(provider.rawValue)#\(maxPoints)"
+        if let cached = cache[key] { return cached }
         let sampled = SwarmSimulation.normalizedGlyphOutlinePoints(for: provider, maxPoints: maxPoints)
-        cache[provider] = sampled
+        cache[key] = sampled
+        return sampled
+    }
+
+    /// The BurnBar mark (flame + rising bars) from the backdrop's vector
+    /// shape, ember-brand-tinted per stroke role. Same normalized space as
+    /// `glyphPoints(for:)`.
+    @MainActor
+    public static func burnBarGlyphPoints(maxPoints: Int = 120) -> [SwarmGlyphPoint] {
+        let key = "burnbar#\(maxPoints)"
+        if let cached = cache[key] { return cached }
+        let all = SwarmLogoShape.generatePoints().map { point -> SwarmGlyphPoint in
+            let brand: RGBA
+            switch point.role {
+            case "logo-flame-outer": brand = RGBA(r: 0.93, g: 0.36, b: 0.16)
+            case "logo-flame-inner": brand = RGBA(r: 0.98, g: 0.58, b: 0.20)
+            case "logo-flame-spark": brand = RGBA(r: 1.00, g: 0.78, b: 0.36)
+            default:                 brand = RGBA(r: 0.96, g: 0.62, b: 0.22) // bars
+            }
+            return SwarmGlyphPoint(position: point.point, brandColor: brand)
+        }
+        let sampled: [SwarmGlyphPoint]
+        if all.count > maxPoints {
+            sampled = (0..<maxPoints).map { index in
+                let t = Double(index) / Double(max(maxPoints - 1, 1))
+                return all[min(all.count - 1, Int((Double(all.count - 1) * t).rounded()))]
+            }
+        } else {
+            sampled = all
+        }
+        cache[key] = sampled
         return sampled
     }
 }
