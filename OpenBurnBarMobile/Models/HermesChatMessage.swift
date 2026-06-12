@@ -407,3 +407,16 @@ struct HermesToolCall: Identifiable, Equatable {
         self.detail = detail
     }
 }
+
+// Trim-or-nil helper used by the model accessors above. Declared here so the
+// type stays self-contained after being extracted out of HermesService.swift
+// (the original `fileprivate` copy it relied on stayed behind in that file).
+// TODO(tech-debt): consolidate the ~5 duplicate `nilIfBlank` copies across the
+// mobile target into one shared `internal extension String` once the in-flight
+// HermesService/PiService decomposition settles.
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
