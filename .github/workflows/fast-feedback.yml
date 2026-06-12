@@ -439,6 +439,9 @@ jobs:
         working-directory: functions
         run: npm ci
 
+      - name: Build entitlements contracts
+        run: bash scripts/build-entitlements.sh
+
       - name: Security vitest bundle
         working-directory: functions
         run: npm run test:security
