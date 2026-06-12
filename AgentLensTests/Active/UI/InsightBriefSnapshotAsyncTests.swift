@@ -67,7 +67,8 @@ final class InsightBriefSnapshotAsyncTests: XCTestCase {
         )
         let image = renderViewSnapshot(card, size: CGSize(width: 320, height: 90), colorScheme: .dark)
         guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else {
-            return XCTFail("card did not render")
+            XCTFail("card did not render")
+            return
         }
         var sawInk = false
         for x in stride(from: 0, to: rep.pixelsWide, by: 10) where !sawInk {

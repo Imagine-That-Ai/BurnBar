@@ -110,8 +110,8 @@ final class BurnBarScalarQuantizerTests: XCTestCase {
         var builder = BurnBarScalarQuantizerBuilder(dimensions: dimensions)
         // Accumulate multiple vectors to establish a real range per dimension
         builder.accumulate(vector: [-2.0, -1.0, -3.0])
-        builder.accumulate(vector: [ 0.0,  0.5,  0.0])
-        builder.accumulate(vector: [ 1.0,  1.0,  2.0])
+        builder.accumulate(vector: [ 0.0, 0.5, 0.0])
+        builder.accumulate(vector: [ 1.0, 1.0, 2.0])
         let quantizer = builder.build()
 
         let vector: [Float] = [-1.0, -0.5, -2.0]

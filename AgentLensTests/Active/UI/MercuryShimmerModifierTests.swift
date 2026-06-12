@@ -50,8 +50,8 @@ final class MercuryDropletAnimationTests: XCTestCase {
 
     func test_thinkingViewUsesDesignSystemSpacing() throws {
         // Verify the view doesn't crash when using DesignSystem spacing tokens
-        let _ = DesignSystem.Spacing.lg
-        let _ = DesignSystem.Spacing.md
+        _ = DesignSystem.Spacing.lg
+        _ = DesignSystem.Spacing.md
         // If DesignSystem constants change, these tests catch compile errors
         XCTAssertTrue(DesignSystem.Spacing.lg > 0)
         XCTAssertTrue(DesignSystem.Spacing.md > 0)

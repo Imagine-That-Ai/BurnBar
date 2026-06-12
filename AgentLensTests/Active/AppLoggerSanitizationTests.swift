@@ -9,7 +9,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
             "apiKey": "abc-def",
             "password": "hunter2",
             "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-            "safeKey": "safe-value",
+            "safeKey": "safe-value"
         ]
         let sanitized = AppLogger.sanitizeMetadata(input)
         XCTAssertEqual(sanitized["token"], "[REDACTED]")
@@ -24,7 +24,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
             "somePath": "/Users/alice/Documents/secret.txt",
             "homeDir": "~/Downloads",
             "sshKey": "~/.ssh/id_rsa",
-            "config": "/Users/alice/.aws/credentials",
+            "config": "/Users/alice/.aws/credentials"
         ]
         let sanitized = AppLogger.sanitizeMetadata(input)
         XCTAssertEqual(sanitized["somePath"], "[REDACTED]")
@@ -38,7 +38,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
             "header": "Bearer abc123",
             "auth": "token=sekrit",
             "x-api-key": "sk-prod-xyz",
-            "raw": "bearer xyz789",
+            "raw": "bearer xyz789"
         ]
         let sanitized = AppLogger.sanitizeMetadata(input)
         XCTAssertEqual(sanitized["header"], "[REDACTED]")
@@ -51,7 +51,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
         let input: [String: String] = [
             "projectName": "AcmeCorp-SecretProject",
             "model": "gpt-4-turbo",
-            "model_id": "claude-3-opus",
+            "model_id": "claude-3-opus"
         ]
         let sanitized = AppLogger.sanitizeMetadata(input)
         XCTAssertEqual(sanitized["projectName"], "[REDACTED]")
@@ -71,7 +71,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
         let input: [String: String] = [
             "count": "42",
             "status": "ok",
-            "provider": "openai",
+            "provider": "openai"
         ]
         let sanitized = AppLogger.sanitizeMetadata(input)
         XCTAssertEqual(sanitized["count"], "42")
@@ -82,7 +82,7 @@ final class AppLoggerSanitizationTests: XCTestCase {
     func testSanitizeMetadata_caseInsensitiveKeyMatch() {
         let input: [String: String] = [
             "APIKEY": "secret",
-            "Authorization": "Bearer token",
+            "Authorization": "Bearer token"
         ]
         let sanitized = AppLogger.sanitizeMetadata(input)
         XCTAssertEqual(sanitized["APIKEY"], "[REDACTED]")

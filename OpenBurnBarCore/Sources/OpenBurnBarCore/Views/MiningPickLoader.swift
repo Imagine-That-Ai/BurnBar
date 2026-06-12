@@ -245,13 +245,13 @@ private struct SparkBurstCanvas: View {
         Spark(dx: -0.16, dy: -0.42, radius: 7.0, color: Color(red: 0.980, green: 0.314, blue: 0.325)),
         // Amber / gold
         Spark(dx: -0.04, dy: -0.46, radius: 6.0, color: Color(red: 0.831, green: 0.565, blue: 0.000)),
-        Spark(dx:  0.16, dy: -0.38, radius: 8.0, color: Color(red: 1.000, green: 0.659, blue: 0.000)),
+        Spark(dx: 0.16, dy: -0.38, radius: 8.0, color: Color(red: 1.000, green: 0.659, blue: 0.000)),
         // Blaze / orange
         Spark(dx: -0.38, dy: -0.20, radius: 5.0, color: Color(red: 0.831, green: 0.345, blue: 0.000)),
         Spark(dx: -0.46, dy: -0.08, radius: 6.0, color: Color(red: 0.910, green: 0.380, blue: 0.000)),
         // Whimsy / purple
         Spark(dx: -0.24, dy: -0.50, radius: 5.0, color: Color(red: 0.416, green: 0.353, blue: 0.804)),
-        Spark(dx:  0.08, dy: -0.30, radius: 7.0, color: Color(red: 0.545, green: 0.498, blue: 0.910))
+        Spark(dx: 0.08, dy: -0.30, radius: 7.0, color: Color(red: 0.545, green: 0.498, blue: 0.910))
     ]
 
     var body: some View {

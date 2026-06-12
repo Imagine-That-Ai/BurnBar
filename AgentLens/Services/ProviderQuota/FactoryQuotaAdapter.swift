@@ -152,16 +152,16 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
                 // Standard (the conservative choice — better to over-report
                 // Standard burn than to silently misattribute it to Core).
                 if sessionDate >= thirtyDaysAgo { standardThirtyDay += total }
-                if sessionDate >= sevenDaysAgo  { standardSevenDay  += total }
-                if sessionDate >= fiveHoursAgo  { standardFiveHour  += total }
+                if sessionDate >= sevenDaysAgo { standardSevenDay  += total }
+                if sessionDate >= fiveHoursAgo { standardFiveHour  += total }
             case .standard:
                 if sessionDate >= thirtyDaysAgo { standardThirtyDay += total }
-                if sessionDate >= sevenDaysAgo  { standardSevenDay  += total }
-                if sessionDate >= fiveHoursAgo  { standardFiveHour  += total }
+                if sessionDate >= sevenDaysAgo { standardSevenDay  += total }
+                if sessionDate >= fiveHoursAgo { standardFiveHour  += total }
             case .droidCore:
                 if sessionDate >= thirtyDaysAgo { coreThirtyDay += total }
-                if sessionDate >= sevenDaysAgo  { coreSevenDay  += total }
-                if sessionDate >= fiveHoursAgo  { coreFiveHour  += total }
+                if sessionDate >= sevenDaysAgo { coreSevenDay  += total }
+                if sessionDate >= fiveHoursAgo { coreFiveHour  += total }
             }
 
             factoryBilledSessions += 1
@@ -367,7 +367,6 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
             buckets: buckets
         )
     }
-
 
     // MARK: - Personal Account Dashboard Scraper
 

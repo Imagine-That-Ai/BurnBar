@@ -91,4 +91,3 @@ final class SourceArtifactStoreTests: XCTestCase {
         XCTAssertEqual(allArtifacts.first?.status, .deleted)
     }
 }
-

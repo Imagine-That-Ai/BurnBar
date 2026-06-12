@@ -24,7 +24,7 @@ public enum PTYInteractiveSessionError: Error, LocalizedError, Equatable {
         case .sessionNotRunning:
             return "Interactive PTY session is not running."
         case .writeFailed(let code):
-            return "Failed to write to the PTY master (errno \(code))."
+            return "Failed to write to the PTY controller (errno \(code))."
         case .timedOut:
             return "Interactive PTY session timed out."
         }
@@ -47,7 +47,7 @@ public enum PTYInteractiveSessionError: Error, LocalizedError, Equatable {
 /// `Pipe`s the child sees a non-interactive stdin and either refuses to start
 /// its TUI or silently switches to a batch mode. `openpty()` gives the child a
 /// genuine controlling terminal while letting this process read/write the
-/// master side.
+/// controller side.
 ///
 /// ## Concurrency
 ///
@@ -82,7 +82,7 @@ public final class PTYInteractiveSession: @unchecked Sendable {
     }
 
     private struct State {
-        var masterFD: Int32 = -1
+        var controllerFD: Int32 = -1
         var readSource: DispatchSourceRead?
         var transcript = Data()
         var lastOutputAt: Date?
@@ -112,7 +112,7 @@ public final class PTYInteractiveSession: @unchecked Sendable {
 
     // MARK: - Lifecycle
 
-    /// Allocates a PTY, spawns the configured subprocess attached to its slave
+    /// Allocates a PTY, spawns the configured subprocess attached to its replica
     /// side, and begins relaying child output to `onOutput`.
     ///
     /// - Parameter onOutput: invoked on a dedicated serial queue for every
@@ -123,22 +123,22 @@ public final class PTYInteractiveSession: @unchecked Sendable {
             throw PTYInteractiveSessionError.executableNotFound(configuration.executableURL.path)
         }
 
-        var master: Int32 = -1
-        var slave: Int32 = -1
+        var controller: Int32 = -1
+        var replica: Int32 = -1
         var window = winsize(
             ws_row: configuration.rows,
             ws_col: configuration.columns,
             ws_xpixel: 0,
             ws_ypixel: 0
         )
-        guard openpty(&master, &slave, nil, nil, &window) == 0 else {
+        guard openpty(&controller, &replica, nil, nil, &window) == 0 else {
             throw PTYInteractiveSessionError.ptyAllocationFailed(code: errno)
         }
 
-        // The child's controlling terminal is the slave; the parent keeps the
-        // master to read/write. `closeOnDealloc: false` because we own the
+        // The child's controlling terminal is the replica; the parent keeps the
+        // controller to read/write. `closeOnDealloc: false` because we own the
         // lifecycle explicitly and close the descriptor ourselves.
-        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: false)
+        let replicaHandle = FileHandle(fileDescriptor: replica, closeOnDealloc: false)
 
         process.executableURL = configuration.executableURL
         process.arguments = configuration.arguments
@@ -150,22 +150,22 @@ public final class PTYInteractiveSession: @unchecked Sendable {
         if let workingDirectory = configuration.workingDirectory {
             process.currentDirectoryURL = workingDirectory
         }
-        process.standardInput = slaveHandle
-        process.standardOutput = slaveHandle
-        process.standardError = slaveHandle
+        process.standardInput = replicaHandle
+        process.standardOutput = replicaHandle
+        process.standardError = replicaHandle
 
         process.terminationHandler = { [weak self] _ in
             self?.handleTermination()
         }
 
         let onOutputBox = onOutput
-        let readSource = DispatchSource.makeReadSource(fileDescriptor: master, queue: readQueue)
+        let readSource = DispatchSource.makeReadSource(fileDescriptor: controller, queue: readQueue)
         let cap = transcriptByteCap
         readSource.setEventHandler { [weak self] in
             guard let self else { return }
             var buffer = [UInt8](repeating: 0, count: 8192)
             let bytesRead = buffer.withUnsafeMutableBytes { ptr in
-                read(master, ptr.baseAddress, 8192)
+                read(controller, ptr.baseAddress, 8192)
             }
             if bytesRead <= 0 {
                 readSource.cancel()
@@ -182,23 +182,23 @@ public final class PTYInteractiveSession: @unchecked Sendable {
             onOutputBox(chunk)
         }
         readSource.setCancelHandler {
-            close(master)
+            close(controller)
         }
 
         do {
             try process.run()
         } catch {
-            close(master)
-            close(slave)
+            close(controller)
+            close(replica)
             throw PTYInteractiveSessionError.spawnFailed(error.localizedDescription)
         }
 
-        // Close the slave in the parent so the master read sees EOF when the
+        // Close the replica in the parent so the controller read sees EOF when the
         // child exits. The child retains its own duplicated descriptors.
-        close(slave)
+        close(replica)
 
         state.withLock { s in
-            s.masterFD = master
+            s.controllerFD = controller
             s.readSource = readSource
             s.isRunning = true
             s.lastOutputAt = Date()
@@ -210,14 +210,14 @@ public final class PTYInteractiveSession: @unchecked Sendable {
 
     /// Writes raw text to the child's terminal input (no trailing newline).
     public func send(_ text: String) throws {
-        try writeToMaster(Data(text.utf8))
+        try writeToController(Data(text.utf8))
     }
 
     /// Writes text followed by a carriage return — the keystroke an interactive
     /// TUI expects to submit a line (PTYs translate `\r` to `\n` via the line
     /// discipline).
     public func sendLine(_ text: String) throws {
-        try writeToMaster(Data((text + "\r").utf8))
+        try writeToController(Data((text + "\r").utf8))
     }
 
     /// Sends a control character (e.g. `"c"` for Ctrl-C / `0x03`).
@@ -227,11 +227,11 @@ public final class PTYInteractiveSession: @unchecked Sendable {
             return
         }
         let controlByte = ascii & 0b0001_1111
-        try writeToMaster(Data([controlByte]))
+        try writeToController(Data([controlByte]))
     }
 
-    private func writeToMaster(_ data: Data) throws {
-        let fd = state.read().masterFD
+    private func writeToController(_ data: Data) throws {
+        let fd = state.read().controllerFD
         guard fd >= 0, isRunning else {
             throw PTYInteractiveSessionError.sessionNotRunning
         }
@@ -292,7 +292,7 @@ public final class PTYInteractiveSession: @unchecked Sendable {
     // MARK: - Termination
 
     /// Gracefully asks the child to exit (Ctrl-C twice for a TUI), then escalates
-    /// to SIGTERM and SIGKILL. Closes the master descriptor.
+    /// to SIGTERM and SIGKILL. Closes the controller descriptor.
     public func terminate(graceful: TimeInterval = 1.5) {
         guard state.read().isRunning else { return }
         // Two interrupts is the common "cancel then quit" affordance for
@@ -333,7 +333,7 @@ public final class PTYInteractiveSession: @unchecked Sendable {
             s.isRunning = false
             let captured = s.readSource
             s.readSource = nil
-            s.masterFD = -1
+            s.controllerFD = -1
             return captured
         }
         source?.cancel()

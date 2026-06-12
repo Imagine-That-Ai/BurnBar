@@ -541,21 +541,57 @@ final class MediaControlStreamPresenceTests: XCTestCase {
             initialBackoff: 0.01,
             maxBackoff: 0.01,
             heartbeatInitialDelay: 0.01,
-            // Slow post-resume cadence so exactly-one assertion does not race 10 ms ticks.
-            heartbeatInterval: 1.0
+            // Effectively-infinite post-resume cadence: after the single
+            // resumed heartbeat the next tick is an hour out, so the
+            // exactly-one assertion below cannot race a second tick no
+            // matter how badly a loaded CI runner stalls this task.
+            // (Pre-resume ticks still run at heartbeatInitialDelay because
+            // pendingHeartbeatSentAt stays nil while suppressed.)
+            heartbeatInterval: 3600.0
         )
 
-        coordinator.suspendBackgroundTraffic(for: 0.4)
+        // Anchor the window in the test BEFORE suspending: the
+        // coordinator stamps its own wall-clock deadline at or after
+        // `suppressedAt`, so `suppressionExpiry` below is a strict lower
+        // bound of the production deadline.
+        let suppressionWindow: TimeInterval = 2.0
+        let suppressedAt = Date()
+        coordinator.suspendBackgroundTraffic(for: suppressionWindow)
         coordinator.start(uid: "user-1", connectionID: "conn-1")
         try await waitUntilLive(coordinator)
-        try await Task.sleep(nanoseconds: 50_000_000)
 
-        var heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
-        XCTAssertTrue(heartbeats.isEmpty, "suppressed background presence must stay off the lane while user work is active")
+        // Poll the lane for the remainder of the window instead of one
+        // fixed-sleep spot check. Soundness: the wall clock is read AFTER
+        // each sentFrames snapshot, so a snapshot is only asserted on when
+        // it provably completed before the suppression deadline — a
+        // legitimately resumed heartbeat can never be misread as a
+        // suppression violation, and no fixed sleep races the window edge.
+        let suppressionExpiry = suppressedAt.addingTimeInterval(suppressionWindow)
+        var observedSuppressedLane = false
+        while true {
+            let heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
+            guard Date() < suppressionExpiry else { break }
+            XCTAssertTrue(
+                heartbeats.isEmpty,
+                "suppressed background presence must stay off the lane while user work is active"
+            )
+            observedSuppressedLane = true
+            if !heartbeats.isEmpty { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertTrue(
+            observedSuppressedLane,
+            "runner stalled past the entire suppression window before the lane could be observed once; widen suppressionWindow"
+        )
 
-        try await waitUntilHeartbeatCount(stream, count: 1)
+        // The heartbeat must actually resume once the window passes. The
+        // first send synchronously runs the VideoToolbox capability probe
+        // (multiple VTCompressionSession creations), which can take seconds
+        // cold on a loaded CI simulator — wait generously instead of the
+        // old fixed 1 s deadline that caused the CI flake.
+        try await waitUntilHeartbeatCount(stream, count: 1, timeout: 30)
         await coordinator.stop()
-        heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
+        let heartbeats = await stream.sentFrames.filter { $0.type == .mediaPresenceHeartbeat }
         XCTAssertEqual(heartbeats.count, 1)
     }
 
@@ -747,8 +783,15 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
-    private func waitUntilLive(_ coordinator: MediaControlStreamCoordinator) async throws {
-        let deadline = Date().addingTimeInterval(1.0)
+    // The wait helpers poll, so generous deadlines cost nothing on the
+    // success path — they only bound how long a genuinely broken run
+    // takes to report. 1 s deadlines proved too tight on loaded CI
+    // runners (first-heartbeat sends run a cold VideoToolbox probe).
+    private func waitUntilLive(
+        _ coordinator: MediaControlStreamCoordinator,
+        timeout: TimeInterval = 10
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
         while coordinator.phase != .live {
             if Date() > deadline {
                 XCTFail("media control stream did not become live")
@@ -758,8 +801,11 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         }
     }
 
-    private func waitForInbound(_ coordinator: MediaControlStreamCoordinator) async throws {
-        let deadline = Date().addingTimeInterval(1.0)
+    private func waitForInbound(
+        _ coordinator: MediaControlStreamCoordinator,
+        timeout: TimeInterval = 10
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
         while coordinator.lastInboundAt == nil {
             if Date() > deadline {
                 XCTFail("media control stream did not receive inbound traffic")
@@ -769,8 +815,11 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         }
     }
 
-    private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(1.0)
+    private func waitUntil(
+        timeout: TimeInterval = 10,
+        _ predicate: @escaping @MainActor () -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
         while !predicate() {
             if Date() > deadline {
                 XCTFail("condition was not met before timeout")
@@ -780,8 +829,12 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         }
     }
 
-    private func waitUntilHeartbeatCount(_ stream: MediaControlFakeStream, count: Int) async throws {
-        let deadline = Date().addingTimeInterval(1.0)
+    private func waitUntilHeartbeatCount(
+        _ stream: MediaControlFakeStream,
+        count: Int,
+        timeout: TimeInterval = 10
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
         while await stream.sentFrames.filter({ $0.type == .mediaPresenceHeartbeat }).count < count {
             if Date() > deadline {
                 XCTFail("expected \(count) heartbeat frame(s)")

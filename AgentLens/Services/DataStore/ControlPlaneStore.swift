@@ -33,7 +33,7 @@ final class ControlPlaneStore: Sendable {
                     record.detail,
                     record.overrideMode?.rawValue,
                     record.forcedDirectionStatus?.rawValue,
-                    record.createdAt,
+                    record.createdAt
                 ]
             )
         }

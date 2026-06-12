@@ -18,7 +18,7 @@ final class FirestoreNormalizationTests: XCTestCase {
 
     // MARK: - Raw Firestore document shapes (exactly as written by Cloud Functions / desktop sync)
 
-    static let cloudFunctionRollupDoc: [String: Any] = [
+    private static let cloudFunctionRollupDoc: [String: Any] = [
         "today": 5000,
         "7d": 35000,
         "30d": 150000,
@@ -68,7 +68,7 @@ final class FirestoreNormalizationTests: XCTestCase {
 
     /// Shape produced by the desktop `UsageSyncService.encodeUsage`.
     /// The desktop writes `"id"` as a UUID string; normalization must NOT overwrite it.
-    static let desktopUsageEvent: [String: Any] = [
+    private static let desktopUsageEvent: [String: Any] = [
         "id": "550e8400-e29b-41d4-a716-446655440000",
         "deviceId": "mac-1",
         "provider": "claude-code",
@@ -88,7 +88,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         "updatedAt": NSNull()
     ]
 
-    static let cloudFunctionQuotaDoc: [String: Any] = [
+    private static let cloudFunctionQuotaDoc: [String: Any] = [
         "provider": "minimax",
         "sourceKind": "provider",
         "sourceId": "default",
@@ -109,7 +109,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         "updatedAt": "2026-05-02T12:00:00Z"
     ]
 
-    static let desktopSyncedQuotaDoc: [String: Any] = [
+    private static let desktopSyncedQuotaDoc: [String: Any] = [
         "provider": "Cursor",
         "providerID": "cursor",
         "sourceKind": "officialAPI",
@@ -138,7 +138,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         "updatedAt": "2026-05-04T06:04:57.701Z"
     ]
 
-    static let desktopStylePercentQuotaDoc: [String: Any] = [
+    private static let desktopStylePercentQuotaDoc: [String: Any] = [
         "provider": "Claude Code",
         "providerID": "claude-code",
         "sourceKind": "localCLI",
@@ -174,7 +174,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         "updatedAt": "2026-05-12T00:17:00Z"
     ]
 
-    static let zeroLimitPercentQuotaDoc: [String: Any] = [
+    private static let zeroLimitPercentQuotaDoc: [String: Any] = [
         "provider": "Codex",
         "providerID": "codex",
         "sourceKind": "localSession",
@@ -200,7 +200,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         "updatedAt": "2026-05-12T00:17:00Z"
     ]
 
-    static let miniMaxUnlimitedQuotaDoc: [String: Any] = [
+    private static let miniMaxUnlimitedQuotaDoc: [String: Any] = [
         "provider": "minimax",
         "providerID": "minimax",
         "sourceKind": "provider",
@@ -222,7 +222,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         "updatedAt": "2026-05-12T01:40:10Z"
     ]
 
-    static let liveBackfilledQuotaDocs: [(id: String, data: [String: Any])] = [
+    private static let liveBackfilledQuotaDocs: [(id: String, data: [String: Any])] = [
         (
             id: "claude-code_unattributed_mac-local-cache",
             data: canonicalQuotaDoc(provider: "claude-code", providerID: "claude-code", sourceKind: "localCLI", source: "localCLI", bucketName: "claude-five_hour", label: "5-hour window", unit: "percent", used: 21, limit: 100, remaining: 79)
@@ -298,7 +298,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         ]
     }
 
-    static let cloudFunctionConnectionDoc: [String: Any] = [
+    private static let cloudFunctionConnectionDoc: [String: Any] = [
         "provider": "minimax",
         "status": "connected",
         "lastValidatedAt": "2026-05-02T12:00:00Z",
@@ -400,13 +400,11 @@ final class FirestoreNormalizationTests: XCTestCase {
         formatter.formatOptions = [.withFullDate]
         let expectedMay1 = formatter.date(from: "2026-05-01")!
 
-        for point in rollup!.dailyPoints {
-            if point.id == "2026-05-01" {
-                XCTAssertEqual(point.date.timeIntervalSinceReferenceDate,
-                               expectedMay1.timeIntervalSinceReferenceDate,
-                               accuracy: 1.0,
-                               "dailyPoints date should decode to 2026, not a future year")
-            }
+        for point in rollup!.dailyPoints where point.id == "2026-05-01" {
+            XCTAssertEqual(point.date.timeIntervalSinceReferenceDate,
+                           expectedMay1.timeIntervalSinceReferenceDate,
+                           accuracy: 1.0,
+                           "dailyPoints date should decode to 2026, not a future year")
         }
     }
 

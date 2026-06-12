@@ -616,7 +616,6 @@ private struct ApplyAndRestartRow: View {
     }
 }
 
-
 // MARK: - Liquid Glass transparency row
 
 /// Slider for `LiquidGlassTransparency`, mirroring the iOS control in

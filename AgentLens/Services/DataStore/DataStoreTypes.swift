@@ -453,12 +453,6 @@ struct ChunkEmbeddingVersionStats: Equatable, Sendable {
     let embeddingVersionID: String
     let vectorCount: Int
     let newestUpdatedAt: Date?
-
-    init(embeddingVersionID: String, vectorCount: Int, newestUpdatedAt: Date?) {
-        self.embeddingVersionID = embeddingVersionID
-        self.vectorCount = vectorCount
-        self.newestUpdatedAt = newestUpdatedAt
-    }
 }
 
 struct RetrievalHealthRecord: Equatable, Sendable {

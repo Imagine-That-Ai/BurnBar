@@ -45,7 +45,7 @@ final class AugmentParser: LogParser, Sendable {
             provider.logDirectory,
             "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment",
             "~/Library/Application Support/Cursor/User/globalStorage/augment.vscode-augment",
-            "~/Library/Application Support/Windsurf/User/globalStorage/augment.vscode-augment",
+            "~/Library/Application Support/Windsurf/User/globalStorage/augment.vscode-augment"
         ]
 
         var seen: Set<String> = []

@@ -15,7 +15,7 @@ public enum AssistantRuntimeOption: String, AppEnum {
     public static var caseDisplayRepresentations: [AssistantRuntimeOption: DisplayRepresentation] {
         [
             .hermes: DisplayRepresentation(title: "Hermes"),
-            .pi:     DisplayRepresentation(title: "Pi")
+            .pi: DisplayRepresentation(title: "Pi")
         ]
     }
 

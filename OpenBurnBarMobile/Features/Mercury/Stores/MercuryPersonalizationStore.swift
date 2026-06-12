@@ -110,7 +110,7 @@ final class MercuryPersonalizationStore: ObservableObject {
         if lower.contains("imac") { pool.append("iMac") }
         pool.append(contentsOf: ["Studio Mac", "The Forge", "Home Base", "The Workbench"])
         var seen: Set<String> = [trimmed]
-        return pool.filter { !$0.isEmpty && seen.insert($0).inserted }.prefix(4).map { $0 }
+        return Array(pool.filter { !$0.isEmpty && seen.insert($0).inserted }.prefix(4))
     }
 
     // MARK: - Persistence

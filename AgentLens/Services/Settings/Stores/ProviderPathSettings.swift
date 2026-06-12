@@ -87,13 +87,13 @@ final class ProviderPathSettings {
                 expandedConfigured,
                 ("~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
                 ("~/Library/Application Support/Cursor/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
-                ("~/Library/Application Support/Windsurf/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
+                ("~/Library/Application Support/Windsurf/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath
             ]
         case .hermes:
             candidates = [
                 expandedConfigured,
                 ("~/.hermes" as NSString).expandingTildeInPath,
-                ("~/.hermes/sessions" as NSString).expandingTildeInPath,
+                ("~/.hermes/sessions" as NSString).expandingTildeInPath
             ]
         case .goose:
             if let root = ProcessInfo.processInfo.environment["GOOSE_PATH_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -103,12 +103,12 @@ final class ProviderPathSettings {
             candidates.append(contentsOf: [
                 ("~/Library/Application Support/Block/goose/sessions" as NSString).expandingTildeInPath,
                 ("~/.local/share/goose/sessions" as NSString).expandingTildeInPath,
-                expandedConfigured,
+                expandedConfigured
             ])
         case .forgeDev:
             candidates = [
                 expandedConfigured,
-                ("~/.forge" as NSString).expandingTildeInPath,
+                ("~/.forge" as NSString).expandingTildeInPath
             ]
         default:
             candidates = [expandedConfigured]

@@ -32,7 +32,8 @@ final class PhoneControlAuthorityValidatorAttestationTests: XCTestCase {
             publicKey: real,
             uid: "u1"
         ) else {
-            return XCTFail("First contact must wait for Mac safety-code confirmation.")
+            XCTFail("First contact must wait for Mac safety-code confirmation.")
+            return
         }
         XCTAssertTrue(validator.confirmPeerPin(nodeId: "ios-phone-aabb", publicKey: real, uid: "u1"))
         XCTAssertTrue(validator.registerPeer(nodeId: "ios-phone-aabb", publicKey: real, uid: "u1"))

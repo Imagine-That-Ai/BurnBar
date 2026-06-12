@@ -568,7 +568,7 @@ final class ConnectionsViewModelTests: XCTestCase {
                     lastQuotaResetsAt: nil,
                     lastStatusMessage: "Missing API key",
                     updatedAt: updatedAt
-                ),
+                )
             ]
         )
 

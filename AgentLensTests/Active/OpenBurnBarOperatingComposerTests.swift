@@ -39,7 +39,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
                 now.addingTimeInterval(-30 * 3_600),
                 now.addingTimeInterval(-20 * 3_600),
                 now.addingTimeInterval(-10 * 3_600),
-                now.addingTimeInterval(-5 * 3_600),
+                now.addingTimeInterval(-5 * 3_600)
             ],
             latestMessage: "Approval sheet shipped and wrapped.",
             latestSummary: "Approval sheet rollout is wrapped and the dashboard copy is stable.",
@@ -75,7 +75,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
                 now.addingTimeInterval(-6 * 24 * 3_600),
                 now.addingTimeInterval(-5 * 24 * 3_600),
                 now.addingTimeInterval(-4 * 24 * 3_600),
-                now.addingTimeInterval(-3 * 24 * 3_600),
+                now.addingTimeInterval(-3 * 24 * 3_600)
             ],
             latestMessage: "Zephyr is burning harder, but Apollo is still the active focus under test.",
             latestSummary: "Zephyr remains noisy background work.",
@@ -87,8 +87,8 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
 
         XCTAssertEqual(snapshot.direction.status, .notEnoughSignal)
         XCTAssertEqual(snapshot.direction.availability, .sparse)
-        XCTAssertTrue(snapshot.direction.sparseReason?.contains("Only 4 indexed conversation") == true)
-        XCTAssertTrue(snapshot.direction.sparseReason?.contains("Apollo") == true)
+        XCTAssertEqual(snapshot.direction.sparseReason?.contains("Only 4 indexed conversation"), true)
+        XCTAssertEqual(snapshot.direction.sparseReason?.contains("Apollo"), true)
     }
 
     @MainActor
@@ -123,7 +123,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
                 now.addingTimeInterval(-60 * 3_600),
                 now.addingTimeInterval(-48 * 3_600),
                 now.addingTimeInterval(-36 * 3_600),
-                now.addingTimeInterval(-30 * 3_600),
+                now.addingTimeInterval(-30 * 3_600)
             ],
             latestMessage: "The release notes say the migration is blocked. Should we keep the current launch scope?",
             latestSummary: nil,
@@ -157,7 +157,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
                 now.addingTimeInterval(-4 * 24 * 3_600),
                 now.addingTimeInterval(-3 * 24 * 3_600),
                 now.addingTimeInterval(-2 * 24 * 3_600),
-                now.addingTimeInterval(-36 * 3_600),
+                now.addingTimeInterval(-36 * 3_600)
             ],
             latestMessage: "Older cleanup pass is archived.",
             latestSummary: "Zephyr cleanup is archived.",
@@ -177,7 +177,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
                 now.addingTimeInterval(-3 * 24 * 3_600),
                 now.addingTimeInterval(-2 * 24 * 3_600),
                 now.addingTimeInterval(-45 * 60),
-                now.addingTimeInterval(-15 * 60),
+                now.addingTimeInterval(-15 * 60)
             ],
             latestMessage: "Zephyr is actively pulling burn away from Apollo.",
             latestSummary: "Zephyr work resumed and is consuming fresh budget.",
@@ -429,7 +429,7 @@ extension OpenBurnBarOperatingComposerTests {
 
         XCTAssertNotNil(approvalAction, "VAL-APP-001: missionApproval action should be present")
         XCTAssertFalse(approvalAction?.available ?? true, "VAL-APP-001: Approve action must be disabled when mission is already approved")
-        XCTAssertTrue(approvalAction?.reason.contains("already approved") == true, "VAL-APP-001: Reason must indicate mission is already approved")
+        XCTAssertEqual(approvalAction?.reason.contains("already approved"), true, "VAL-APP-001: Reason must indicate mission is already approved")
     }
 
     /// VAL-APP-001 Evidence: Approve action is enabled only when mission is pending approval
@@ -481,7 +481,7 @@ extension OpenBurnBarOperatingComposerTests {
         XCTAssertNotNil(feedback, "VAL-APP-002: actionFeedback must be set after approval action")
         XCTAssertEqual(feedback?.kind, .missionApproval, "VAL-APP-002: Feedback kind must be missionApproval")
         XCTAssertEqual(feedback?.tone, .success, "VAL-APP-002: Success approval must have .success tone")
-        XCTAssertTrue(feedback?.message.contains("approved") == true, "VAL-APP-002: Success message must indicate approval")
+        XCTAssertEqual(feedback?.message.contains("approved"), true, "VAL-APP-002: Success message must indicate approval")
     }
 
     /// VAL-APP-002 Evidence: Approval action failure feedback provides explicit reason
@@ -591,8 +591,8 @@ extension OpenBurnBarOperatingComposerTests {
 
         XCTAssertNotNil(feedback, "VAL-APP-003: actionFeedback must be set when supersedeStatus has no forcedStatus")
         XCTAssertEqual(feedback?.tone, .error, "VAL-APP-003: Validation failure must have .error tone")
-        XCTAssertTrue(feedback?.message.contains("status") == true,
-                      "VAL-APP-003: Error message must reference the missing status selection")
+        XCTAssertEqual(feedback?.message.contains("status"), true,
+                       "VAL-APP-003: Error message must reference the missing status selection")
     }
 
     // MARK: VAL-APP-009: App mission authoring creates daemon mission and reflects provenance
@@ -945,8 +945,8 @@ extension OpenBurnBarOperatingComposerTests {
         // Empty answer should set error feedback
         XCTAssertNotNil(layer.controllerFeedback, "VAL-APP-004: controllerFeedback must be set after empty answer")
         XCTAssertEqual(layer.controllerFeedback?.tone, .error, "VAL-APP-004: Empty answer must have .error tone")
-        XCTAssertTrue(layer.controllerFeedback?.message.contains("answer") == true,
-                      "VAL-APP-004: Error message must reference the answer field")
+        XCTAssertEqual(layer.controllerFeedback?.message.contains("answer"), true,
+                       "VAL-APP-004: Error message must reference the answer field")
     }
 
     /// VAL-APP-004 Evidence: Empty whitespace answer fails validation
@@ -1532,7 +1532,7 @@ extension OpenBurnBarOperatingComposerTests {
         XCTAssertEqual(mappedMission.prLinkage?.repository, "Ajnunezg/BurnBar")
         XCTAssertEqual(mappedMission.prLinkage?.prNumberOrID, "42")
         XCTAssertEqual(mappedMission.prLinkage?.state, .merged)
-        XCTAssertTrue(mappedMission.prLinkage?.isMerged == true)
+        XCTAssertEqual(mappedMission.prLinkage?.isMerged, true)
         XCTAssertEqual(mappedMission.prLinkage?.mergeCommitSHA, "abc123def")
     }
 
@@ -1690,9 +1690,9 @@ extension OpenBurnBarOperatingComposerTests {
         let mappedMission = try XCTUnwrap(runtime.missions.first)
         XCTAssertEqual(mappedMission.ownerPrincipalID, "bob")
         XCTAssertEqual(mappedMission.assigneePrincipalID, "worker-b")
-        XCTAssertEqual(mappedMission.roleEligibility.canApprove, false)
-        XCTAssertEqual(mappedMission.roleEligibility.canTransferOwnership, true)
-        XCTAssertEqual(mappedMission.roleEligibility.canAnswerClosureQuestion, true)
+        XCTAssertFalse(mappedMission.roleEligibility.canApprove)
+        XCTAssertTrue(mappedMission.roleEligibility.canTransferOwnership)
+        XCTAssertTrue(mappedMission.roleEligibility.canAnswerClosureQuestion)
         XCTAssertEqual(mappedMission.latestAuditEventID, "audit-transfer-2")
         XCTAssertEqual(mappedMission.latestAuditSummary, "ownership transferred from alice to bob")
     }
@@ -1900,7 +1900,7 @@ extension OpenBurnBarOperatingComposerTests {
                     now.addingTimeInterval(-34 * 3_600),
                     now.addingTimeInterval(-28 * 3_600),
                     now.addingTimeInterval(-20 * 3_600),
-                    now.addingTimeInterval(-8 * 3_600),
+                    now.addingTimeInterval(-8 * 3_600)
                 ],
                 latestMessage: "Everything wrapped cleanly.",
                 latestSummary: "Closure complete and artifacts posted.",
@@ -2358,7 +2358,7 @@ extension OpenBurnBarOperatingComposerTests {
 
         XCTAssertNotNil(summary.readinessFailure)
         XCTAssertEqual(summary.readinessFailure?.code, .missingCredential)
-        XCTAssertTrue(summary.readinessFailure?.displayMessage.contains("Credential missing") == true)
+        XCTAssertEqual(summary.readinessFailure?.displayMessage.contains("Credential missing"), true)
     }
 
     /// VAL-CROSS-009 Evidence: Mission summary readinessFailure is nil when no failure exists
@@ -2480,7 +2480,7 @@ extension OpenBurnBarOperatingComposerTests {
         )
 
         XCTAssertEqual(summary.enterprisePolicyBlock?.reasonCode, .budgetHardCapBlocked)
-        XCTAssertTrue(summary.enterprisePolicyBlock?.displayMessage.contains("Budget hard cap reached") == true)
+        XCTAssertEqual(summary.enterprisePolicyBlock?.displayMessage.contains("Budget hard cap reached"), true)
     }
 
     func testVAL_CROSS_012_EnterprisePolicyReasonCodeConsistencyAcrossSurfaces() {

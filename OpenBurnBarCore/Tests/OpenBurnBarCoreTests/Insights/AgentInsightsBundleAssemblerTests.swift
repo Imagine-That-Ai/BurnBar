@@ -163,9 +163,9 @@ final class AgentInsightsBundleAssemblerTests: XCTestCase {
         let bundle = AgentInsightsBundleAssembler.assemble(
             scope: .agent(.codex),
             snapshot: snapshot([
-                usage(provider: .codex, model: "gpt-5",   sessionID: "s1", endingDaysAgo: 0.2, cost: 0, tokens: 5_000),
+                usage(provider: .codex, model: "gpt-5", sessionID: "s1", endingDaysAgo: 0.2, cost: 0, tokens: 5_000),
                 usage(provider: .codex, model: "gpt-mini", sessionID: "s2", endingDaysAgo: 0.2, cost: 0, tokens: 1_000),
-                usage(provider: .codex, model: "gpt-pro",  sessionID: "s3", endingDaysAgo: 0.2, cost: 0, tokens: 3_000)
+                usage(provider: .codex, model: "gpt-pro", sessionID: "s3", endingDaysAgo: 0.2, cost: 0, tokens: 3_000)
             ]),
             now: now
         )
@@ -178,7 +178,7 @@ final class AgentInsightsBundleAssemblerTests: XCTestCase {
         let bundle = AgentInsightsBundleAssembler.assemble(
             scope: .agent(.codex),
             snapshot: snapshot([
-                usage(provider: .codex,      model: "x", sessionID: "a", endingDaysAgo: 1, cost: 10, tokens: 1_000),
+                usage(provider: .codex, model: "x", sessionID: "a", endingDaysAgo: 1, cost: 10, tokens: 1_000),
                 usage(provider: .claudeCode, model: "y", sessionID: "b", endingDaysAgo: 1, cost: 99, tokens: 99_000)
             ]),
             now: now
@@ -192,8 +192,8 @@ final class AgentInsightsBundleAssemblerTests: XCTestCase {
         let bundle = AgentInsightsBundleAssembler.assemble(
             scope: .aggregate,
             snapshot: snapshot([
-                usage(provider: .codex,      model: "x", sessionID: "a", endingDaysAgo: 1, cost: 10, tokens: 1_000),
-                usage(provider: .claudeCode, model: "y", sessionID: "b", endingDaysAgo: 1, cost: 5,  tokens: 2_000)
+                usage(provider: .codex, model: "x", sessionID: "a", endingDaysAgo: 1, cost: 10, tokens: 1_000),
+                usage(provider: .claudeCode, model: "y", sessionID: "b", endingDaysAgo: 1, cost: 5, tokens: 2_000)
             ]),
             now: now
         )
@@ -290,10 +290,10 @@ final class AgentInsightsBundleAssemblerTests: XCTestCase {
     func testMissionsRankedCriticalFirstLowLast() {
         var analysis = emptyAnalysis(provider: .codex)
         analysis.missionCandidates = [
-            mission(title: "low",      priority: .low),
-            mission(title: "high",     priority: .high),
+            mission(title: "low", priority: .low),
+            mission(title: "high", priority: .high),
             mission(title: "critical", priority: .critical),
-            mission(title: "medium",   priority: .medium)
+            mission(title: "medium", priority: .medium)
         ]
         let bundle = AgentInsightsBundleAssembler.assemble(
             scope: .agent(.codex),

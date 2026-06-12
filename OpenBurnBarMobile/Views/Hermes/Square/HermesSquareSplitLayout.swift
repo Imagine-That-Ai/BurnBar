@@ -296,7 +296,7 @@ private struct HermesSquareRuntimeHistorySidebar: View {
     @State private var historyStore = MobileChatHistoryStore.shared
     @State private var registry = AgentIdentityRegistry.shared
 
-    @State private var renameTargetItem: ThreadInboxItem? = nil
+    @State private var renameTargetItem: ThreadInboxItem?
     @State private var newTitleText: String = ""
     @State private var isShowingRenameAlert: Bool = false
 
@@ -595,10 +595,10 @@ private struct HermesSquareLeftColumn: View {
     let onSelect: (HermesSquareSplitLayout.DetailRoute) -> Void
     let onOpenThread: (ThreadInboxItem) -> Void
 
-    @State private var renameTargetItem: ThreadInboxItem? = nil
+    @State private var renameTargetItem: ThreadInboxItem?
     @State private var newTitleText: String = ""
     @State private var isShowingRenameAlert: Bool = false
-    @State private var missionForActionSheet: MissionConsoleActiveTile? = nil
+    @State private var missionForActionSheet: MissionConsoleActiveTile?
 
     @State private var piService = PiService()
     @State private var registry = AgentIdentityRegistry.shared
@@ -1460,13 +1460,12 @@ private struct HermesSquareLeftColumn: View {
                 lastActivityAt: nil
             )
         }
-        searchHits = (await localHits + cloudHits)
+        searchHits = Array((await localHits + cloudHits)
             .sorted { lhs, rhs in
                 if lhs.score != rhs.score { return lhs.score > rhs.score }
                 return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
             }
-            .prefix(30)
-            .map { $0 }
+            .prefix(30))
     }
 
     private func reindexSearch() async {
@@ -1557,7 +1556,7 @@ private struct HermesSquareLeftColumn: View {
         let snapshot = missionHost.snapshot
         let knownByID = Dictionary(uniqueKeysWithValues: snapshot.activeTiles.map { ($0.id, $0) })
         let now = Date()
-        return group.childMissionIDs.enumerated().map { (idx, id) -> MissionConsoleActiveTile in
+        return group.childMissionIDs.enumerated().map { idx, id -> MissionConsoleActiveTile in
             if let existing = knownByID[id] { return existing }
             let runtimeToken = idx < group.runtimeTokens.count ? group.runtimeTokens[idx] : nil
             let elapsedSinceGroupCreation = now.timeIntervalSince(group.createdAt)
@@ -1741,10 +1740,11 @@ struct MercuryLiveDetailView: View {
             action: {
                 Haptics.medium()
                 showCloudStore = true
+            },
+            background: {
+                FlooLiveTeaserBackground()
             }
-        ) {
-            FlooLiveTeaserBackground()
-        }
+        )
     }
 
     @ViewBuilder
@@ -1877,7 +1877,6 @@ private struct HermesSquareDetailColumn: View {
     @State private var piService = PiService()
     @State private var historyStore = MobileChatHistoryStore.shared
     @State private var cliReader = CLIAgentChatReader.shared
-
 
     var body: some View {
         Group {
@@ -2066,12 +2065,12 @@ private struct HermesSquareDetailColumn: View {
                 identity: identity,
                 registry: registry,
                 missionHost: missionHost,
-                onOpenRuntimeThread: { runtime in
+                onOpenRuntimeThread: { _ in
                     // In the split layout, runtime thread opens replace
                     // the detail column content rather than pushing a
                     // NavigationStack destination.
                 },
-                onOpenRuntimeList: { runtime in }
+                onOpenRuntimeList: { _ in }
             )
         } else {
             placeholder

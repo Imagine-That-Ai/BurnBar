@@ -46,7 +46,7 @@ public struct BitrateController: Sendable {
     public let lossDownAdaptThreshold: Double
     public let recoveryHysteresisSamples: Int
 
-    private(set) public var currentBitsPerSecond: Int
+    public private(set) var currentBitsPerSecond: Int
     private var goodSamplesSinceDownAdapt: Int = 0
 
     public init(

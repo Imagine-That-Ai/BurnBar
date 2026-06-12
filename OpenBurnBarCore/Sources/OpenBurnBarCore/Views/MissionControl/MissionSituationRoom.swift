@@ -592,7 +592,7 @@ public struct MissionActivityTicker: View {
             if entries.isEmpty {
                 empty
             } else {
-                ForEach(Array(entries.prefix(8).enumerated()), id: \.element.id) { (index, entry) in
+                ForEach(Array(entries.prefix(8).enumerated()), id: \.element.id) { index, entry in
                     if index > 0 {
                         Divider().overlay(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.4))
                     }

@@ -21,7 +21,9 @@ public struct VerdictTraceStripView: View {
     }
 
     public var body: some View {
-        Button(action: { onTapSession?(strip.sessionID) }) {
+        Button {
+            onTapSession?(strip.sessionID)
+        } label: {
             HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
                 lanesColumn
                 summaryColumn

@@ -15,11 +15,11 @@ enum DesignSystem {
         // Editorial values are the shared `DesignSystemTokens.*Editorial` palette
         // (the single coral accent, ochre, deep coral, and slate) so macOS, iOS,
         // and the web console stay in lockstep.
-        static let ember   = Color.adaptive(editorial: DesignSystemTokens.emberEditorial,  light: "F45B69", dark: "FA5053")
+        static let ember   = Color.adaptive(editorial: DesignSystemTokens.emberEditorial, light: "F45B69", dark: "FA5053")
         /// Light: tangerine; dark: amber.
-        static let amber   = Color.adaptive(editorial: DesignSystemTokens.amberEditorial,  light: "F28C38", dark: "FFA800")
+        static let amber   = Color.adaptive(editorial: DesignSystemTokens.amberEditorial, light: "F28C38", dark: "FFA800")
         /// Light: Spanish orange; dark: blaze.
-        static let blaze   = Color.adaptive(editorial: DesignSystemTokens.blazeEditorial,  light: "E86100", dark: "E86100")
+        static let blaze   = Color.adaptive(editorial: DesignSystemTokens.blazeEditorial, light: "E86100", dark: "E86100")
         static let whimsy  = Color.adaptive(editorial: DesignSystemTokens.whimsyEditorial, light: "6A5ACD", dark: "8B7FE8")
 
         // Legacy aliases (keeps ProviderTheme and other references compiling)
@@ -37,22 +37,22 @@ enum DesignSystem {
 
         // Surfaces — light: coral + tangerine dust (ember / Spanish orange cast);
         // dark: cool slate blue ramp (GitHub/Xcode dark lineage) — warm accents pop on cool chrome.
-        static let background      = Color.adaptive(editorial: DesignSystemTokens.backgroundEditorial,      light: "F3E8E6", dark: "0D1117")
-        static let surface         = Color.adaptive(editorial: DesignSystemTokens.surfaceEditorial,         light: "FAF5F2", dark: "161B22")
+        static let background      = Color.adaptive(editorial: DesignSystemTokens.backgroundEditorial, light: "F3E8E6", dark: "0D1117")
+        static let surface         = Color.adaptive(editorial: DesignSystemTokens.surfaceEditorial, light: "FAF5F2", dark: "161B22")
         static let surfaceElevated = Color.adaptive(editorial: DesignSystemTokens.surfaceElevatedEditorial, light: "FDF8F5", dark: "1F2630")
-        static let border          = Color.adaptive(editorial: DesignSystemTokens.borderEditorial,          light: "E8BFB5", dark: "30363D")
-        static let borderSubtle    = Color.adaptive(editorial: DesignSystemTokens.borderSubtleEditorial,    light: "F2E0DA", dark: "21262D")
-        static let surfaceMuted    = Color.adaptive(editorial: "F0EEE7",                                     light: "F2E0DA", dark: "1B202A")
+        static let border          = Color.adaptive(editorial: DesignSystemTokens.borderEditorial, light: "E8BFB5", dark: "30363D")
+        static let borderSubtle    = Color.adaptive(editorial: DesignSystemTokens.borderSubtleEditorial, light: "F2E0DA", dark: "21262D")
+        static let surfaceMuted    = Color.adaptive(editorial: "F0EEE7", light: "F2E0DA", dark: "1B202A")
 
         // Text — light: warm brown with coral undertone / dark: cool slate off-white
-        static let textPrimary   = Color.adaptive(editorial: DesignSystemTokens.textPrimaryEditorial,   light: "2A1816", dark: "E6EDF3")
+        static let textPrimary   = Color.adaptive(editorial: DesignSystemTokens.textPrimaryEditorial, light: "2A1816", dark: "E6EDF3")
         static let textSecondary = Color.adaptive(editorial: DesignSystemTokens.textSecondaryEditorial, light: "6E4E48", dark: "8B949E")
-        static let textMuted     = Color.adaptive(editorial: DesignSystemTokens.textMutedEditorial,     light: "9A756D", dark: "6E7681")
+        static let textMuted     = Color.adaptive(editorial: DesignSystemTokens.textMutedEditorial, light: "9A756D", dark: "6E7681")
 
         // Semantic
         static let success = Color.adaptive(editorial: DesignSystemTokens.successEditorial, light: "3A7835", dark: "38D898")
         static let warning = Color.adaptive(editorial: DesignSystemTokens.warningEditorial, light: "C47800", dark: "FFA800")
-        static let error   = Color.adaptive(editorial: DesignSystemTokens.errorEditorial,   light: "D43030", dark: "FA5053")
+        static let error   = Color.adaptive(editorial: DesignSystemTokens.errorEditorial, light: "D43030", dark: "FA5053")
 
         // Hermes mercury identity (chat surfaces — not provider purple)
         static let hermesMercury  = Color.adaptive(editorial: DesignSystemTokens.hermesMercuryEditorial, light: "AEA69C", dark: "C8BFB5")
@@ -249,7 +249,7 @@ enum DesignSystem {
                 Color(hex: "D4A373"), Color(hex: "10B981"), Color(hex: "EC4899"),
                 Color(hex: "F97316"), Color(hex: "3B82F6"), Color(hex: "A855F7"),
                 Color(hex: "EF4444"), Color(hex: "14B8A6"), Color(hex: "F59E0B"),
-                Color(hex: "8B5CF6"), Color(hex: "06B6D4"), Color(hex: "84CC16"),
+                Color(hex: "8B5CF6"), Color(hex: "06B6D4"), Color(hex: "84CC16")
             ]
             var hash = UInt64(5381)
             for byte in key.utf8 {
@@ -334,12 +334,12 @@ enum DesignSystem {
     }
 
     enum Shadows {
-        static let none      = ShadowSpec(color: .clear,                 radius: 0,  x: 0, y: 0)
-        static let subtle    = ShadowSpec(color: Color.black.opacity(0.05), radius: 2,  x: 0, y: 1)
-        static let small     = ShadowSpec(color: Color.black.opacity(0.10), radius: 4,  x: 0, y: 2)
-        static let medium    = ShadowSpec(color: Color.black.opacity(0.12), radius: 8,  x: 0, y: 3)
+        static let none      = ShadowSpec(color: .clear, radius: 0, x: 0, y: 0)
+        static let subtle    = ShadowSpec(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+        static let small     = ShadowSpec(color: Color.black.opacity(0.10), radius: 4, x: 0, y: 2)
+        static let medium    = ShadowSpec(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 3)
         static let cardHover = ShadowSpec(color: Colors.ember.opacity(0.40), radius: 12, x: 0, y: 4)
         static let large     = ShadowSpec(color: Color.black.opacity(0.20), radius: 16, x: 0, y: 6)
-        static let fab       = ShadowSpec(color: Colors.amber.opacity(0.70), radius: 4,  x: 0, y: 2)
+        static let fab       = ShadowSpec(color: Colors.amber.opacity(0.70), radius: 4, x: 0, y: 2)
     }
 }

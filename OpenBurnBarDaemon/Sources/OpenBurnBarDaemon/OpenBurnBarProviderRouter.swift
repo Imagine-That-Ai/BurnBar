@@ -522,8 +522,7 @@ public struct BurnBarProviderRouter: Sendable {
                             ?? slot.slot.lastQuotaResetsAt
                             ?? BurnBarProviderCredentialSlotRoutingPolicy.resetDate(from: slot.slot.lastStatusMessage)
                     }
-                    .sorted()
-                    .first
+                    .min()
                 let suffix = nextRetry.map { " Retry after \($0.formatted(date: .abbreviated, time: .standard))." } ?? ""
                 return .credentialsUnavailable(
                     providerID: configuration.provider.id,

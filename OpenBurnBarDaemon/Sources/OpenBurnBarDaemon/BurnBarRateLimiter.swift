@@ -64,11 +64,9 @@ public actor BurnBarRateLimiter {
         }
 
         var pruned = 0
-        for (key, bucket) in buckets {
-            if Self.seconds(from: bucket.lastUpdated.duration(to: now)) > bucketIdleTimeoutSeconds {
-                buckets.removeValue(forKey: key)
-                pruned += 1
-            }
+        for (key, bucket) in buckets where Self.seconds(from: bucket.lastUpdated.duration(to: now)) > bucketIdleTimeoutSeconds {
+            buckets.removeValue(forKey: key)
+            pruned += 1
         }
         lastPruned = now
 

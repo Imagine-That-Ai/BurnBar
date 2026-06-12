@@ -492,7 +492,7 @@ struct RootNavigationView: View {
         case .firebaseUnavailable: return "Firebase unavailable"
         case .appCheckBlocked: return "App Check blocked"
         case .permissionDenied: return "Permission denied"
-        case .degraded(_): return "Degraded"
+        case .degraded: return "Degraded"
         case .unknown: return "Checking…"
         }
     }
@@ -501,7 +501,7 @@ struct RootNavigationView: View {
         switch syncHealthStore.health {
         case .healthy: return MobileTheme.success
         case .syncing: return MobileTheme.amber
-        case .macNotSyncing, .offline, .degraded(_): return MobileTheme.warning
+        case .macNotSyncing, .offline, .degraded: return MobileTheme.warning
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
         case .unknown: return MobileTheme.Colors.textMuted
         }

@@ -243,7 +243,7 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
                 contextLimit: 2
             )
             XCTAssertFalse(draft.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            XCTAssertTrue(draft.references.isEmpty == false)
+            XCTAssertFalse(draft.references.isEmpty)
         } catch let error as ArtifactAuthoringError {
             if case .cliUnavailable = error {
                 throw XCTSkip("No real CLI provider is available in this environment.")

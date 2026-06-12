@@ -51,7 +51,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         let documents = try store.fetchSearchDocuments(limit: 20)
         guard let projectedConversationDocument = documents.first(where: { $0.sourceID == conversation.id }) else {
-            return XCTFail("Expected projected document for crash-recovered conversation.")
+            XCTFail("Expected projected document for crash-recovered conversation.")
+            return
         }
         let chunks = try store.fetchSearchChunks(documentID: projectedConversationDocument.id)
         XCTAssertFalse(chunks.isEmpty)
@@ -241,7 +242,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         guard
             let document = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id })
         else {
-            return XCTFail("Expected projected conversation document for embedding lineage test.")
+            XCTFail("Expected projected conversation document for embedding lineage test.")
+            return
         }
         let chunks = try store.fetchSearchChunks(documentID: document.id)
         XCTAssertFalse(chunks.isEmpty)
@@ -277,14 +279,16 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             let document = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id }),
             let chunk = try store.fetchSearchChunks(documentID: document.id).first
         else {
-            return XCTFail("Expected projected chunk before re-embed.")
+            XCTFail("Expected projected chunk before re-embed.")
+            return
         }
 
         let versionV1ID = EmbeddingIdentity.versionID(for: embedderV1.descriptor)
         guard
             let blobV1 = try store.fetchChunkEmbeddings(chunkID: chunk.id).first(where: { $0.embeddingVersionID == versionV1ID })?.vectorBlob
         else {
-            return XCTFail("Expected initial embedding for first version.")
+            XCTFail("Expected initial embedding for first version.")
+            return
         }
 
         let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "projection-test-v2", seed: "projection-seed-b")
@@ -1629,7 +1633,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Verify a new job was enqueued (different from the completed one)
         let queuedAfterUpdate = try store.fetchProjectionJobs(statuses: [.queued], limit: 10)
-        XCTAssertTrue(queuedAfterUpdate.isEmpty == false, "A new projection job should be queued after remote update.")
+        XCTAssertFalse(queuedAfterUpdate.isEmpty, "A new projection job should be queued after remote update.")
 
         let newJob = queuedAfterUpdate.first(where: { $0.sourceID == conversation.id })
         XCTAssertNotNil(newJob, "Queued job should be for the updated conversation.")
@@ -2176,7 +2180,7 @@ extension ProjectionPipelineServiceTests {
         // First projection — all added
         let firstResult = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
         XCTAssertEqual(firstResult.added, 2)
-        XCTAssertTrue(firstResult.isNoOp == false)
+        XCTAssertFalse(firstResult.isNoOp)
 
         // Second projection with IDENTICAL chunks — should be a complete no-op
         let secondResult = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)

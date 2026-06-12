@@ -1179,7 +1179,7 @@ final class SettingsManagerTests: XCTestCase {
         let settings = makeSettingsManager(defaults: defaults)
 
         let order = settings.summaryProviderOrder
-        XCTAssertTrue(order.first == .local)
+        XCTAssertEqual(order.first, .local)
         XCTAssertTrue(order.contains(.mlx))
         XCTAssertTrue(order.contains(.minimax))
         XCTAssertTrue(order.contains(.openrouter))

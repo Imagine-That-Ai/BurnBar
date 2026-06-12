@@ -68,8 +68,8 @@ final class OpenBurnBarMigrationTests: XCTestCase {
 
         OpenBurnBarDefaultsMigration(defaults: defaults, legacyDomains: [legacyDomain]).migrateIfNeeded()
 
-        XCTAssertEqual(defaults.bool(forKey: "showInMenuBar"), true)
-        XCTAssertEqual(defaults.bool(forKey: "hasLaunchedBefore"), true)
+        XCTAssertTrue(defaults.bool(forKey: "showInMenuBar"))
+        XCTAssertTrue(defaults.bool(forKey: "hasLaunchedBefore"))
         XCTAssertEqual(
             defaults.data(forKey: CursorConnectorConfig.defaultsKey),
             Data("legacy-config".utf8)
@@ -112,7 +112,6 @@ private final class InMemoryKeychainBackend: KeychainStoreBackend {
         storage[service]?[account] = nil
     }
 }
-
 
 @MainActor
 final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {

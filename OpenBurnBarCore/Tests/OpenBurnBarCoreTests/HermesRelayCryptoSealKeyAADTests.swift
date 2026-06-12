@@ -86,7 +86,7 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
             HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid", connectionID: "conn", peerNodeId: "peer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 2
-            ),
+            )
         ]
         for (index, variant) in variants.enumerated() {
             XCTAssertNotEqual(base, variant, "component \(index) is not bound into the AAD")
@@ -123,7 +123,7 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
             HermesRelayCrypto.mediaSealKeyAAD(
                 uid: "uid", connectionID: "conn", viewerId: "viewer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 2
-            ),
+            )
         ]
         for (index, variant) in variants.enumerated() {
             XCTAssertNotEqual(base, variant, "component \(index) is not bound into the AAD")

@@ -42,9 +42,9 @@ struct PretextTextView: View {
     var shrinkTargetLines: Int = 3
 
     @State private var resolvedLines: [PretextLine] = []
-    @State private var resolvedHeight: CGFloat? = nil
-    @State private var resolvedWidth: CGFloat? = nil
-    @State private var measureToken: UUID = UUID()
+    @State private var resolvedHeight: CGFloat?
+    @State private var resolvedWidth: CGFloat?
+    @State private var measureToken = UUID()
 
     var body: some View {
         Group {

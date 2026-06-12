@@ -14,7 +14,7 @@ enum DeviceHardwareIcon {
         ("laptopcomputer", "Laptop"),
         ("server.rack", "Server"),
         ("cpu", "Workstation"),
-        ("terminal", "Terminal"),
+        ("terminal", "Terminal")
     ]
 
     // Apple Silicon Macs use generic "MacXX,YY" identifiers.
@@ -37,7 +37,7 @@ enum DeviceHardwareIcon {
         "mac15,8": "macbook", "mac15,9": "macbook", "mac15,10": "macbook",
         "mac15,11": "macbook",
         "mac15,12": "macbook", "mac15,13": "macbook",
-        "mac15,4": "desktopcomputer", "mac15,5": "desktopcomputer",
+        "mac15,4": "desktopcomputer", "mac15,5": "desktopcomputer"
     ]
 
     static func sfSymbol(for hardwareModel: String?) -> String {

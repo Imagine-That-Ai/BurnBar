@@ -82,7 +82,7 @@ struct ClaudeOAuthUsageFetcher {
             credentials.organizationUuid ?? "",
             credentials.subscriptionType,
             credentials.rateLimitTier,
-            stableSecret,
+            stableSecret
         ].joined(separator: "|")
         let digest = SHA256.hash(data: Data(identity.utf8))
             .map { String(format: "%02x", $0) }
@@ -284,7 +284,7 @@ struct ClaudeOAuthUsageFetcher {
             "\(NSHomeDirectory())/.claude/local/claude",
             "\(NSHomeDirectory())/.local/bin/claude",
             "/opt/homebrew/bin/claude",
-            "/usr/local/bin/claude",
+            "/usr/local/bin/claude"
         ].compactMap { quotaNonEmpty($0) }
 
         for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {

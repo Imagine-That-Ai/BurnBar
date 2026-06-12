@@ -66,7 +66,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
         request.requestedScopes = [.fullName, .email]
         request.nonce = sha256(nonce)
         let controller = ASAuthorizationController(authorizationRequests: [request])
-        return try await withCheckedThrowingContinuation { cont in
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             let d = AppleDelegate(nonce: nonce) { result in
                 cont.resume(with: result)
             }
@@ -87,7 +87,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
             throw CloudGatewayError.classified(.firebaseUnavailable)
         }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
-        return try await withCheckedThrowingContinuation { cont in
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             GIDSignIn.sharedInstance.signIn(withPresenting: root) { result, error in
                 if let error {
                     let nsError = error as NSError
@@ -105,8 +105,12 @@ final class LiveAuthGateway: NSObject, AuthGateway {
                 }
                 let c = GoogleAuthProvider.credential(withIDToken: id, accessToken: r.user.accessToken.tokenString)
                 Task { @MainActor in
-                    do { try await self.auth(c); cont.resume() }
-                    catch { cont.resume(throwing: CloudGatewayError.classified(.other(message: error.localizedDescription))) }
+                    do {
+                        try await self.auth(c)
+                        cont.resume()
+                    } catch {
+                        cont.resume(throwing: CloudGatewayError.classified(.other(message: error.localizedDescription)))
+                    }
                 }
             }
         }
@@ -243,8 +247,11 @@ private final class AppleDelegate: NSObject, ASAuthorizationControllerDelegate, 
         let fc = OAuthProvider.appleCredential(withIDToken: str, rawNonce: nonce, fullName: cred.fullName)
         Task { @MainActor in
             do {
-                if let u = Auth.auth().currentUser, u.isAnonymous { try await u.link(with: fc) }
-                else { try await Auth.auth().signIn(with: fc) }
+                if let u = Auth.auth().currentUser, u.isAnonymous {
+                    try await u.link(with: fc)
+                } else {
+                    try await Auth.auth().signIn(with: fc)
+                }
                 done(.success(()))
             } catch { done(.failure(CloudGatewayError.classified(.other(message: error.localizedDescription)))) }
         }

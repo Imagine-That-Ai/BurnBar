@@ -4,7 +4,7 @@ import OpenBurnBarCore
 @testable import OpenBurnBarComputerUseCore
 
 final class ComputerUsePhoneControlSignerTests: XCTestCase {
-    struct ToyIntent: Codable, Hashable {
+    private struct ToyIntent: Codable, Hashable {
         let kind: String
         let nx: Double?
         let ny: Double?

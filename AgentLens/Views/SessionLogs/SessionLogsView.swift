@@ -69,7 +69,7 @@ struct SessionLogsView: View {
     var iCloudMirrorService: ICloudSessionMirrorService?
     var jumpTarget: ConversationJumpTarget?
     /// Fallback when usage-derived `sessionModelMap` has no model (e.g. in-app Hermes chat).
-    var preferredChatModelKey: String? = nil
+    var preferredChatModelKey: String?
 
     @State private var allLogs: [ConversationRecord] = []
     @State private var searchText = ""
@@ -292,7 +292,7 @@ struct SessionLogsView: View {
             ("yesterday", "Yesterday", "moon.fill", DesignSystem.Colors.amber),
             ("week", "This Week", "calendar", DesignSystem.Colors.blaze),
             ("month", "This Month", "calendar.badge.clock", DesignSystem.Colors.whimsy),
-            ("older", "Older", "archivebox.fill", DesignSystem.Colors.textMuted),
+            ("older", "Older", "archivebox.fill", DesignSystem.Colors.textMuted)
         ]
         return defs.compactMap { d in
             guard let logs = buckets[d.id], !logs.isEmpty else { return nil }

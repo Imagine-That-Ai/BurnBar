@@ -285,7 +285,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         let commit = try XCTUnwrap(fakeEncryptedCloudClient.searchIndexCommits.first)
         let indexedHashes = commit.chunks.flatMap { ($0["tokenHashes"] as? [String]) ?? [] }
         XCTAssertFalse(
-            Set(indexedHashes).intersection(queryHashes).isEmpty,
+            Set(indexedHashes).isDisjoint(with: queryHashes),
             "The hosted index must let a short name query match longer path/user tokens without plaintext search."
         )
     }
@@ -554,7 +554,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             )
         )
         XCTAssertFalse(blocked.isWithinLimits)
-        XCTAssertTrue(blocked.blockingReason?.contains("Backup storage limit reached") == true)
+        XCTAssertEqual(blocked.blockingReason?.contains("Backup storage limit reached"), true)
     }
 
     func test_sessionLogUpload_stopsBeforeNetworkWhenBackupLimitExceeded() async throws {
@@ -601,7 +601,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(fakeEncryptedCloudClient.uploadedBodies.count, 0)
         XCTAssertEqual(fakeEncryptedCloudClient.searchIndexCommits.count, 0)
         XCTAssertEqual(try dataStore.countUnsyncedSessionLogs(), 1)
-        XCTAssertTrue(limitedSync.lastSyncError?.contains("Backup storage limit reached") == true)
+        XCTAssertEqual(limitedSync.lastSyncError?.contains("Backup storage limit reached"), true)
     }
 
     func test_manualBackupProgress_emitsRealCounters() async throws {

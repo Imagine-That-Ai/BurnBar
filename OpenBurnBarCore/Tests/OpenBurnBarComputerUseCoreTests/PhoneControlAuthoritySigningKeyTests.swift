@@ -24,7 +24,8 @@ final class PhoneControlAuthoritySigningKeyTests: XCTestCase {
         // payload bytes verify under the same public key on both paths.
         let payload = signer.signablePayload(intentHashHex: hashHex, counter: 7, timestamp: timestamp)
         guard let identitySignature = Data(base64Encoded: viaIdentity.signatureBase64) else {
-            return XCTFail("identity signature is not base64")
+            XCTFail("identity signature is not base64")
+            return
         }
         XCTAssertTrue(privateKey.publicKey.isValidSignature(identitySignature, for: payload))
         XCTAssertTrue(signer.isValidAuthoritySignature(
@@ -96,7 +97,7 @@ final class PhoneControlAuthoritySigningKeyTests: XCTestCase {
 
         for identity in [
             PhoneControlAuthoritySigningKey.ed25519(Curve25519.Signing.PrivateKey()),
-            PhoneControlAuthoritySigningKey.secureEnclaveP256(P256.Signing.PrivateKey()),
+            PhoneControlAuthoritySigningKey.secureEnclaveP256(P256.Signing.PrivateKey())
         ] {
             let proof = try signer.signLocalAuthProof(
                 deviceId: "device-1",
@@ -113,7 +114,8 @@ final class PhoneControlAuthoritySigningKeyTests: XCTestCase {
                 expiresAt: proof.expiresAt
             )
             guard let signature = Data(base64Encoded: proof.signatureEd25519) else {
-                return XCTFail("proof signature is not base64")
+                XCTFail("proof signature is not base64")
+                return
             }
             XCTAssertTrue(
                 identity.verifyingKey.isValidSignature(signature, for: payload),

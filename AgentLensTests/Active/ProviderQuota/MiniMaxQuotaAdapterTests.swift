@@ -4,8 +4,8 @@ import GRDB
 @testable import OpenBurnBarCore
 
 final class MiniMaxQuotaAdapterTests: XCTestCase {
-    var tempDirectoryURL: URL!
-    var fileManager: FileManager!
+    private var tempDirectoryURL: URL!
+    private var fileManager: FileManager!
 
     override func setUp() {
         super.setUp()
@@ -139,8 +139,8 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
 private final class MiniMaxMockURLProtocol: URLProtocol {
     nonisolated(unsafe) static var responder: ((URLRequest) -> (URLResponse, Data))?
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         guard let responder = Self.responder else {

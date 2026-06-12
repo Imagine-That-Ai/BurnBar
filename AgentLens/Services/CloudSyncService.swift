@@ -39,8 +39,6 @@ final class CloudSyncService {
     /// `Firestore.firestore()` is only read from sync methods that guard `accountManager.isFirebaseAvailable` first.
     var db: Firestore { Firestore.firestore() }
 
-
-
     // MARK: - Init
 
     init(
@@ -225,6 +223,5 @@ final class CloudSyncService {
         await service.fetchCloudTotal()
         cloudTotalCost = service.cloudTotalCost
     }
-
 
 }

@@ -85,7 +85,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .clientClaimControl: "client.claimControl",
         .clientDetach: "client.detach",
         .searchQuery: "daemon.search.query",
-        .runResume: "run.resume",
+        .runResume: "run.resume"
     ]
 
     func testRPCMethodWireNames_areStableForEveryCase() {

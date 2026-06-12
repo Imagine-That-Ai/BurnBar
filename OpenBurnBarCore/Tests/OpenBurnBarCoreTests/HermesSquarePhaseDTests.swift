@@ -8,9 +8,9 @@ import XCTest
 final class HermesSquareVoiceIntentResolverTests: XCTestCase {
 
     private let nameMap: [String: String] = [
-        "claude":   "agent://burnbar/claude",
-        "codex":    "agent://burnbar/codex",
-        "hermes":   "agent://burnbar/hermes",
+        "claude": "agent://burnbar/claude",
+        "codex": "agent://burnbar/codex",
+        "hermes": "agent://burnbar/hermes",
         "openclaw": "agent://burnbar/openclaw"
     ]
 

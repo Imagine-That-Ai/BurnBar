@@ -108,7 +108,7 @@ final class CursorAgentParserTests: XCTestCase {
         XCTAssertEqual(conv.inferredTaskTitle, "Nested Session Test")
         XCTAssertEqual(conv.projectName, "BurnBar")
         XCTAssertEqual(conv.messageCount, 1)
-        XCTAssertTrue(conv.fullText.contains("Coding is fun") == false) // Thinking is omitted from readable transcript text
+        XCTAssertFalse(conv.fullText.contains("Coding is fun")) // Thinking is omitted from readable transcript text
         XCTAssertTrue(conv.fullText.contains("implement a feature"))
     }
 }

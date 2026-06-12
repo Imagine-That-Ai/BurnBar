@@ -58,8 +58,8 @@ final class ScreenShareSmartTextDoubleTapTests: XCTestCase {
     func testBoundaryIntervalCountsAsDoubleTap() {
         let isDoubleTap = ScreenShareControlInputPolicy.isDoubleTap(
             previousAt: now,
-            previousPoint: CGPoint(x: 0, y: 0),
-            currentPoint: CGPoint(x: 0, y: 0),
+            previousPoint: CGPoint.zero,
+            currentPoint: CGPoint.zero,
             now: now.addingTimeInterval(ScreenShareControlInputPolicy.doubleTapMaxInterval),
             maxDistance: 40
         )

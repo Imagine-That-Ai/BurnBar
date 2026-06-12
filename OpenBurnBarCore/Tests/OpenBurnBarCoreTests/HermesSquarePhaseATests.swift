@@ -476,8 +476,8 @@ final class HermesSquarePersonaScopeTests: XCTestCase {
         )
         XCTAssertEqual(envelope.agentURI, AgentIdentity.builtInURI(.claude))
         XCTAssertEqual(envelope.personaID, AgentPersona.techReviewer.id)
-        XCTAssertEqual(envelope.permitShell, false)
-        XCTAssertEqual(envelope.permitFileEdits, false)
+        XCTAssertFalse(envelope.permitShell)
+        XCTAssertFalse(envelope.permitFileEdits)
         XCTAssertTrue(envelope.permittedTools.contains("read_file"))
     }
 

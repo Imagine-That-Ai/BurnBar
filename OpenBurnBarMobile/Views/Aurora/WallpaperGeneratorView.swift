@@ -62,7 +62,7 @@ struct WallpaperGeneratorView: View {
     @State private var isSavingLive = false
     @State private var saveResult: SaveResult?
     @State private var logoOffsets: [CGSize] = Array(repeating: .zero, count: 3)
-    @State private var activeDragIndex: Int? = nil
+    @State private var activeDragIndex: Int?
     @State private var dragStartOffset: CGSize = .zero
     @State private var previewPhase: CGFloat = 0
     @State private var isHolding = false
@@ -72,12 +72,11 @@ struct WallpaperGeneratorView: View {
     @AppStorage("burnbar.wallpaper.providerGlyphs") private var providerGlyphSelectionRaw = SwarmProviderGlyphSelection.allSentinel
     @State private var currentMode: SwarmFormationMode = .swarm
 
-
     // Resizable sidebar (iPad / macOS) state. Width persists across launches.
     // Compact-width devices (iPhone portrait) fall back to a bottom panel.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("burnbar.wallpaper.sidebarWidth") private var sidebarWidthRaw: Double = 300
-    @State private var liveSidebarWidth: Double? = nil
+    @State private var liveSidebarWidth: Double?
 
     private var sidebarMinWidth: Double { 240 }
     private var sidebarMaxWidth: Double { 460 }
@@ -262,21 +261,19 @@ struct WallpaperGeneratorView: View {
                             // Detect and pan shapes / logos dynamically
                             if activeDragIndex == nil {
                                 let centers = getActiveCenters(size: geo.size)
-                                var bestIndex: Int? = nil
+                                var bestIndex: Int?
                                 var bestDist = Double.infinity
-                                for (index, center) in centers.enumerated() {
-                                    if index < logoOffsets.count {
-                                        let pannedCenter = CGPoint(
-                                            x: center.x + logoOffsets[index].width,
-                                            y: center.y + logoOffsets[index].height
-                                        )
-                                        let dx = value.startLocation.x - pannedCenter.x
-                                        let dy = value.startLocation.y - pannedCenter.y
-                                        let dist = sqrt(dx * dx + dy * dy)
-                                        if dist < 120 && dist < bestDist {
-                                            bestIndex = index
-                                            bestDist = dist
-                                        }
+                                for (index, center) in centers.enumerated() where index < logoOffsets.count {
+                                    let pannedCenter = CGPoint(
+                                        x: center.x + logoOffsets[index].width,
+                                        y: center.y + logoOffsets[index].height
+                                    )
+                                    let dx = value.startLocation.x - pannedCenter.x
+                                    let dy = value.startLocation.y - pannedCenter.y
+                                    let dist = sqrt(dx * dx + dy * dy)
+                                    if dist < 120 && dist < bestDist {
+                                        bestIndex = index
+                                        bestDist = dist
                                     }
                                 }
                                 if let index = bestIndex {
@@ -548,7 +545,6 @@ struct WallpaperGeneratorView: View {
         .padding(14)
         .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
-
 
     // MARK: - Provider Sidebar (iPad / macOS)
 
@@ -1357,7 +1353,9 @@ struct SaveResultSheet: View {
                     }
 
                 case .error:
-                    Button(action: { dismiss() }) {
+                    Button {
+                        dismiss()
+                    } label: {
                         Text("Dismiss")
                             .fontWeight(.semibold)
                             .frame(maxWidth: .infinity)

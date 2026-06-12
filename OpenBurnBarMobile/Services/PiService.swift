@@ -243,7 +243,7 @@ final class PiService {
     /// Closure that resolves the currently-installed `HermesAtomNavigator`,
     /// or `nil` when no chat surface is mounted. Set via
     /// `setToolAtomNavigator(_:)`.
-    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)? = nil
+    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)?
     /// Weak storage backing `atomNavigatorAccessor`. Kept out of the
     /// public surface to discourage callers from reaching past the
     /// accessor.

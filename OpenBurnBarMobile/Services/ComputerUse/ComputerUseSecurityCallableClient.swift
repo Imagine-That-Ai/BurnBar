@@ -92,7 +92,7 @@ enum ComputerUseSecurityCallableClient {
             "deviceId": deviceId,
             "deviceName": deviceName,
             "platform": platform,
-            "nonce": nonce,
+            "nonce": nonce
         ]
         if let appVersion, !appVersion.isEmpty { payload["appVersion"] = appVersion }
         if let publicKeyFingerprint, !publicKeyFingerprint.isEmpty {
@@ -117,7 +117,7 @@ enum ComputerUseSecurityCallableClient {
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "nonce": nonce,
-            "trustChain": trustChain,
+            "trustChain": trustChain
         ]
         payload["approverDeviceId"] = resolvedApproverDeviceId
         let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call(payload)
@@ -194,7 +194,7 @@ enum ComputerUseSecurityCallableClient {
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
             "deviceId": deviceId,
-            "nonce": nonce,
+            "nonce": nonce
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
@@ -220,7 +220,7 @@ enum ComputerUseSecurityCallableClient {
             "publicKeyBase64": publicKeyBase64,
             "publishedAtMillis": publishedAtMillis,
             "protocolVersion": protocolVersion,
-            "nonce": nonce,
+            "nonce": nonce
         ]
         // F2: legacy publishes stay byte-identical (no keyKind field); an
         // SE-P256 identity sends the discriminator the server persists as
@@ -258,7 +258,7 @@ enum ComputerUseSecurityCallableClient {
             "signalIdentityKeyId": signalIdentityKeyId,
             "signalIdentityKeyVersion": signalIdentityKeyVersion,
             "signalIdentityPublicKeyFingerprint": signalIdentityPublicKeyFingerprint,
-            "nonce": nonce,
+            "nonce": nonce
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Relay sender-key publication failed.")
@@ -278,7 +278,7 @@ enum ComputerUseSecurityCallableClient {
             "deviceId": deviceId,
             "peerNodeId": peerNodeId,
             "publicKeyBase64": publicKeyBase64,
-            "nonce": nonce,
+            "nonce": nonce
         ]
         if keyKind != .ed25519 {
             payload["keyKind"] = keyKind.rawValue
@@ -308,7 +308,7 @@ enum ComputerUseSecurityCallableClient {
         let result = try await functions.httpsCallable("respondMissionApproval").call([
             "requestId": requestId,
             "approve": approve,
-            "deviceId": deviceId,
+            "deviceId": deviceId
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Mission approval response failed.")
@@ -324,7 +324,7 @@ enum ComputerUseSecurityCallableClient {
         let result = try await functions.httpsCallable("respondHermesGatewayApproval").call([
             "approvalId": approvalId,
             "approve": approve,
-            "deviceId": deviceId,
+            "deviceId": deviceId
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Gateway approval response failed.")
@@ -376,7 +376,8 @@ private actor AppCheckAttestationBindingCoordinator {
 
     func run(_ operation: @escaping @Sendable () async throws -> Void) async throws {
         if let inFlight {
-            return try await inFlight.value
+            try await inFlight.value
+            return
         }
 
         let task = Task {
@@ -384,6 +385,7 @@ private actor AppCheckAttestationBindingCoordinator {
         }
         inFlight = task
         defer { inFlight = nil }
-        return try await task.value
+        try await task.value
+        return
     }
 }

@@ -86,7 +86,7 @@ struct ClaudeQuotaBridgeManager {
             : wrapperCommand
         settings["statusLine"] = [
             "type": "command",
-            "command": shellSafeCommand,
+            "command": shellSafeCommand
         ]
         try snapshotStore.writeJSONObject(settings, to: settingsURL)
     }

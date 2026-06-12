@@ -760,7 +760,7 @@ enum OpenBurnBarOperatingComposer {
             )
         }
 
-        let latestUsage = projectUsages.sorted(by: { $0.endTime > $1.endTime }).first
+        let latestUsage = projectUsages.min(by: { $0.endTime > $1.endTime })
         let dominantModel = Dictionary(grouping: projectUsages, by: \.model)
             .mapValues { entries in entries.reduce(0) { $0 + $1.cost } }
             .max(by: { $0.value < $1.value })?
@@ -922,7 +922,7 @@ enum OpenBurnBarOperatingComposer {
                     conversation.provider.displayName,
                     conversation.endTime?.formatted(date: .abbreviated, time: .shortened)
                         ?? conversation.indexedAt.formatted(date: .abbreviated, time: .shortened),
-                    truncated(conversation.lastAssistantMessage, limit: 160),
+                    truncated(conversation.lastAssistantMessage, limit: 160)
                 ]
                 .compactMap { $0?.nonEmpty }
                 .joined(separator: " · "),
@@ -1449,7 +1449,7 @@ enum OpenBurnBarOperatingComposer {
             record(weight: -1, "Project dominance is weak at \(Int((dominance * 100).rounded()))%, so the lead is not decisive yet.")
         }
 
-        if let latestConversation, (latestConversation.summary?.nonEmpty != nil || latestConversation.summaryTitle?.nonEmpty != nil) {
+        if let latestConversation, latestConversation.summary?.nonEmpty != nil || latestConversation.summaryTitle?.nonEmpty != nil {
             record(weight: 2, "Latest checkpoint “\(latestConversation.summaryTitle?.nonEmpty ?? latestConversation.inferredTaskTitle)” is summarized and grounded.")
         } else {
             record(weight: -1, "The latest checkpoint still lacks a structured summary.")

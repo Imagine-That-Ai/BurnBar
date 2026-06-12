@@ -180,7 +180,7 @@ final class MediaFrameAEADVectorTests: XCTestCase {
         return ["1", "true", "yes"].contains(value.lowercased())
     }
 
-    private static let fixtureURL: URL = URL(fileURLWithPath: #filePath)
+    private static let fixtureURL = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .appendingPathComponent("Fixtures", isDirectory: true)
         .appendingPathComponent("MediaFrameAEADVector.json")
@@ -293,7 +293,9 @@ final class MediaFrameAEADVectorTests: XCTestCase {
             generator: VectorGenerator(
                 command: "BURNBAR_EMIT_AEAD_VECTORS=1 swift test --package-path OpenBurnBarCore --filter MediaFrameAEADVectorTests",
                 language: "swift",
-                note: "Sealed by the production Swift CryptoKit MediaFrameAEAD. All inputs (shared secret, salt, AAD params, plaintext) are deterministic frozen constants; the AES-GCM nonce inside each envelope was drawn once at emission and is frozen with the fixture. Kotlin opens the identical copy at android/app/src/test/resources/media-aead/MediaFrameAEADVector.json (MediaFrameAeadVectorTest)."
+                note: "Sealed by the production Swift CryptoKit MediaFrameAEAD. All inputs (shared secret, salt, AAD params, plaintext) are deterministic frozen constants; " +
+                    "the AES-GCM nonce inside each envelope was drawn once at emission and is frozen with the fixture. " +
+                    "Kotlin opens the identical copy at android/app/src/test/resources/media-aead/MediaFrameAEADVector.json (MediaFrameAeadVectorTest)."
             ),
             cases: cases
         )

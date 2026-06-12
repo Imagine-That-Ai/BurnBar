@@ -145,7 +145,7 @@ final class MercuryConsentStore: ObservableObject {
         [
             connectionId.nilIfEmpty() ?? "_",
             viewerDeviceId?.nilIfEmpty() ?? "_",
-            canonicalPeerNodeID(controlAuthorityPeerNodeId) ?? "_",
+            canonicalPeerNodeID(controlAuthorityPeerNodeId) ?? "_"
         ].joined(separator: "|")
     }
 

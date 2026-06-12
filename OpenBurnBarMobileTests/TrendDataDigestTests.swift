@@ -23,7 +23,7 @@ final class TrendDataDigestTests: XCTestCase {
 
     func testRealisticDigestStaysUnderSixKB() {
         let totals: [RollupWindowKey: RollupTotals] = [
-            .today:     RollupTotals(requests: 74, tokens: 412_800, costUsd: 18.74),
+            .today: RollupTotals(requests: 74, tokens: 412_800, costUsd: 18.74),
             .sevenDays: RollupTotals(requests: 418, tokens: 2_814_000, costUsd: 126.40),
             .thirtyDays: RollupTotals(requests: 1_882, tokens: 13_740_000, costUsd: 613.92)
         ]
@@ -50,7 +50,7 @@ final class TrendDataDigestTests: XCTestCase {
 
         let devices = [
             RollupDeviceSummary(deviceId: "macbook-1", requests: 1200, tokens: 2_500_000),
-            RollupDeviceSummary(deviceId: "studio",    requests: 700,  tokens: 1_400_000)
+            RollupDeviceSummary(deviceId: "studio", requests: 700, tokens: 1_400_000)
         ]
 
         let cal = Calendar(identifier: .gregorian)
@@ -103,7 +103,7 @@ final class TrendDataDigestTests: XCTestCase {
     func testDigestEncodesProviderSharePercents() {
         let providers = [
             RollupProviderSummary(provider: "claudecode", providerID: ProviderID(rawValue: "claudecode"), totalRequests: 100, totalTokens: 600_000, totalCost: 60),
-            RollupProviderSummary(provider: "codex",      providerID: ProviderID(rawValue: "codex"),      totalRequests: 100, totalTokens: 400_000, totalCost: 40)
+            RollupProviderSummary(provider: "codex", providerID: ProviderID(rawValue: "codex"), totalRequests: 100, totalTokens: 400_000, totalCost: 40)
         ]
         let digest = TrendDataDigest.build(
             windowTotals: [:],

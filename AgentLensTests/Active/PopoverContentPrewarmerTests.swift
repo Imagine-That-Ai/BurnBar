@@ -19,9 +19,9 @@ final class PopoverContentPrewarmerTests: XCTestCase {
         @MainActor
         init() {
             prewarmer = PopoverContentPrewarmer(
-                isPopoverShown: { [unowned self] in shown },
-                prime: { [unowned self] in primeCount += 1 },
-                scheduler: { [unowned self] work in pendingWork.append(work) }
+                isPopoverShown: { [weak self] in self?.shown ?? false },
+                prime: { [weak self] in self?.primeCount += 1 },
+                scheduler: { [weak self] work in self?.pendingWork.append(work) }
             )
         }
 
@@ -128,7 +128,7 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         let popover = delegate.popover
         XCTAssertNotNil(popover?.contentViewController, "The prime must build real popover content")
         XCTAssertEqual(popover?.behavior, .transient)
-        XCTAssertTrue(popover?.delegate === delegate)
+        XCTAssertIdentical(popover?.delegate, delegate)
         let size = popover?.contentViewController?.view.fittingSize ?? .zero
         XCTAssertGreaterThan(size.width, 1, "The prime must pay the first layout off the click path")
     }
@@ -166,8 +166,9 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         drainMainQueue()
         let reprimedController = delegate.popover?.contentViewController
         XCTAssertNotNil(reprimedController, "The close re-prime must rebuild content off the click path")
-        XCTAssertFalse(
-            reprimedController === primedController,
+        XCTAssertNotIdentical(
+            reprimedController,
+            primedController,
             "The re-prime must build NEW content, never freeze the stale controller back in"
         )
     }
@@ -211,6 +212,6 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         delegate.primePopoverContent()
         let second = delegate.popover?.contentViewController
         XCTAssertNotNil(second)
-        XCTAssertFalse(second === first, "Re-priming must rebuild from the CURRENT factory")
+        XCTAssertNotIdentical(second, first, "Re-priming must rebuild from the CURRENT factory")
     }
 }

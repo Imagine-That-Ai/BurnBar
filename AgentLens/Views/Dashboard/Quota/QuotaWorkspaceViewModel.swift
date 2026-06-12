@@ -358,7 +358,7 @@ final class QuotaWorkspaceViewModel {
         }
 
         return order.compactMap { key in
-            snapshotsByIdentity[key]?.sorted(by: isPreferredSnapshot(_:over:)).first
+            snapshotsByIdentity[key]?.min(by: isPreferredSnapshot(_:over:))
         }
     }
 

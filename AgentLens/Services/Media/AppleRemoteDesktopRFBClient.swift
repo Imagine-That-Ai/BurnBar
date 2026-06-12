@@ -541,10 +541,8 @@ extension RemoteUnlockBigUInt: Comparable {
             return lhs.limbs.count < rhs.limbs.count
         }
         guard !lhs.limbs.isEmpty else { return false }
-        for index in stride(from: lhs.limbs.count - 1, through: 0, by: -1) {
-            if lhs.limbs[index] != rhs.limbs[index] {
-                return lhs.limbs[index] < rhs.limbs[index]
-            }
+        for index in stride(from: lhs.limbs.count - 1, through: 0, by: -1) where lhs.limbs[index] != rhs.limbs[index] {
+            return lhs.limbs[index] < rhs.limbs[index]
         }
         return false
     }

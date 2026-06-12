@@ -140,7 +140,7 @@ final class TextExpansionRuntimeController: ObservableObject, @unchecked Sendabl
         }
 
         guard let nsEvent = NSEvent(cgEvent: event) else { return Unmanaged.passUnretained(event) }
-        if nsEvent.modifierFlags.intersection([.command, .control, .option]).isEmpty == false {
+        if !nsEvent.modifierFlags.isDisjoint(with: [.command, .control, .option]) {
             resetBuffer()
             return Unmanaged.passUnretained(event)
         }

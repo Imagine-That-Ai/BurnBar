@@ -74,7 +74,7 @@ enum ComputerUseSecurityCallableClient {
             "deviceId": deviceId,
             "deviceName": deviceName,
             "platform": platform,
-            "nonce": nonce,
+            "nonce": nonce
         ]
         if let appVersion, !appVersion.isEmpty { payload["appVersion"] = appVersion }
         if let publicKeyFingerprint, !publicKeyFingerprint.isEmpty {
@@ -106,7 +106,7 @@ enum ComputerUseSecurityCallableClient {
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "nonce": nonce,
-            "trustChain": trustChain,
+            "trustChain": trustChain
         ]
         payload["approverDeviceId"] = resolvedApproverDeviceId
         let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call(payload)
@@ -183,7 +183,7 @@ enum ComputerUseSecurityCallableClient {
         let nonce = try await issueHighRiskActionNonce()
         let result = try await functions.httpsCallable("revokeEscrowDeviceTrust").call([
             "deviceId": deviceId,
-            "nonce": nonce,
+            "nonce": nonce
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
@@ -202,7 +202,7 @@ enum ComputerUseSecurityCallableClient {
             "deviceId": deviceId,
             "roleId": roleId,
             "publicKeyBase64": publicKeyBase64,
-            "nonce": nonce,
+            "nonce": nonce
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Iroh pairing public-key publication failed.")
@@ -221,7 +221,7 @@ enum ComputerUseSecurityCallableClient {
             "publishedAtMillis": record.publishedAtMillis,
             "protocolVersion": record.protocolVersion,
             "signature": record.signature,
-            "nonce": nonce,
+            "nonce": nonce
         ]
         if let relayURL = record.relayURL, !relayURL.isEmpty {
             payload["relayURL"] = relayURL
@@ -239,7 +239,7 @@ enum ComputerUseSecurityCallableClient {
         let result = try await functions.httpsCallable("revokeIrohPairingRecord").call([
             "deviceId": deviceId,
             "connectionId": connectionId,
-            "nonce": nonce,
+            "nonce": nonce
         ])
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Iroh pairing record revocation failed.")

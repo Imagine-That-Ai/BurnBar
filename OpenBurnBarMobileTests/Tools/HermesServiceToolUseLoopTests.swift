@@ -21,7 +21,7 @@ import OpenBurnBarCore
 @MainActor
 final class HermesServiceToolUseLoopTests: XCTestCase {
 
-    override class func setUp() {
+    override static func setUp() {
         if FirebaseApp.app() == nil {
             let options = FirebaseOptions(
                 googleAppID: "1:0:ios:0",

@@ -29,7 +29,7 @@ struct HermesSquareAgentAvatar: View {
     /// bottom-right corner of the harness avatar. The model logo doubles
     /// as the carrier for the availability dot, so the corner stays a
     /// single composite glance.
-    var modelProvider: AgentProvider? = nil
+    var modelProvider: AgentProvider?
 
     private var accent: Color { Color(hex: identity.paletteHex) }
     private var hasLogo: Bool { identity.resolvedProvider != nil }

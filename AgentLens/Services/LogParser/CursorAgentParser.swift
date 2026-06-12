@@ -86,10 +86,10 @@ final class CursorAgentParser: LogParser, Sendable {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
 
         // Optional metadata from summary.json
-        var summaryModel: String? = nil
-        var summaryTitle: String? = nil
-        var summaryProject: String? = nil
-        var summaryCwd: String? = nil
+        var summaryModel: String?
+        var summaryTitle: String?
+        var summaryProject: String?
+        var summaryCwd: String?
 
         if let summaryURL,
            FileManager.default.fileExists(atPath: summaryURL.path),

@@ -1597,7 +1597,7 @@ extension ProviderQuotaService {
             }
         }
 
-        return groups.compactMap { (groupKey, members) -> ProviderQuotaBucket? in
+        return groups.compactMap { groupKey, members -> ProviderQuotaBucket? in
             guard let first = members.first else { return nil }
             // Require unit consistency. If one input is requests and another
             // is tokens for the same key (shouldn't happen, but) we cannot

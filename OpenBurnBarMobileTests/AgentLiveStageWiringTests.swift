@@ -138,7 +138,7 @@ final class AgentLiveStageWiringTests: XCTestCase {
             pipController: pipController
         )
 
-        XCTAssertTrue(singleton.videoCoordinator === videoCoordinator)
+        XCTAssertIdentical(singleton.videoCoordinator, videoCoordinator)
         XCTAssertFalse(pipController.didRequestAutomaticInlinePiP)
 
         singleton.configurePictureInPicture(onDidStart: {}, onDidStop: {})
@@ -170,7 +170,7 @@ func waitUntil(
 
 private final class StubPairingKeyProvider: IrohPairingPublicKeyProviding, @unchecked Sendable {
     var fetchCalls = 0
-    var scheduledKey: Data = Data(repeating: 0x42, count: 32)
+    var scheduledKey = Data(repeating: 0x42, count: 32)
     var scheduledError: Error?
 
     func fetchPublicKey(uid: String) async throws -> Data {

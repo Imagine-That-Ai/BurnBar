@@ -706,7 +706,7 @@ final class HermesRelayHostService {
                 data["status"] = HermesRelayRequestStatus.claimed.rawValue
                 data["claimedBy"] = self.connectionID
                 return data as NSDictionary
-            }) { result, error in
+            }, completion: { result, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return
@@ -720,7 +720,7 @@ final class HermesRelayHostService {
                     return
                 }
                 continuation.resume(returning: ClaimedRelayRequest(data: data))
-            }
+            })
         }
     }
 

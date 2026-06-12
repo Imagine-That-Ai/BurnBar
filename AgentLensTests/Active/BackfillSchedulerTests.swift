@@ -78,7 +78,7 @@ final class BackfillSchedulerTests: XCTestCase {
         let now = Date()
 
         // Simulate multiple backfill runs
-        var lastUpperBound: Date? = nil
+        var lastUpperBound: Date?
         let maxIterations = 10
 
         for _ in 0..<maxIterations {
@@ -194,7 +194,7 @@ final class BackfillSchedulerTests: XCTestCase {
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
 
-        var previousUpperBound: Date? = nil
+        var previousUpperBound: Date?
 
         // Simulate sequential backfill runs with larger stride to avoid clamping
         // Using stride(from: 60, through: 20, by: -10) gives: [60, 50, 40, 30, 20]
@@ -617,7 +617,7 @@ final class BackfillSchedulerTests: XCTestCase {
             dataStore: store,
             quotaService: ProviderQuotaService(refreshProviders: []),
             parserOverrides: [
-                .claudeCode: EmptyDeterministicParser(provider: .claudeCode),
+                .claudeCode: EmptyDeterministicParser(provider: .claudeCode)
             ]
         )
         await aggregator.refreshAll()
@@ -689,7 +689,7 @@ final class BackfillSchedulerTests: XCTestCase {
             provenanceConfidence: .exact
         )
         let parserOverrides: [AgentProvider: any LogParser] = [
-            .claudeCode: DeterministicSingleUsageParser(provider: .claudeCode, usage: deterministicUsage),
+            .claudeCode: DeterministicSingleUsageParser(provider: .claudeCode, usage: deterministicUsage)
         ]
 
         do {

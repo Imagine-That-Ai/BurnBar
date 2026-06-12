@@ -191,7 +191,7 @@ extension BurnBarMissionControlService {
             matches.append(record.event)
         }
 
-        return matches.sorted { $0.recordedAt > $1.recordedAt }.first
+        return matches.min { $0.recordedAt > $1.recordedAt }
     }
 
     func missionResultStatus(for phase: BurnBarRunPhase) -> BurnBarMissionResultStatus {
@@ -371,13 +371,13 @@ extension BurnBarMissionControlService {
         metadata["packet_count"] = .number(Double(packets.count))
         metadata["result_count"] = .number(Double(results.count))
         metadata["burn_record_count"] = .number(Double(burnRecords.count))
-        if let latestPacket = packets.sorted(by: { ($0.dispatchedAt ?? .distantPast) > ($1.dispatchedAt ?? .distantPast) }).first,
+        if let latestPacket = packets.min(by: { ($0.dispatchedAt ?? .distantPast) > ($1.dispatchedAt ?? .distantPast) }),
            let runID = latestPacket.runID?.rawValue {
             metadata["latest_run_id"] = .string(runID)
         } else {
             metadata.removeValue(forKey: "latest_run_id")
         }
-        if let latestTakeover = takeoverHistory?.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
+        if let latestTakeover = takeoverHistory?.min(by: { $0.updatedAt > $1.updatedAt }) {
             metadata["latest_takeover_status"] = .string(latestTakeover.status.rawValue)
             if let runID = latestTakeover.takeoverRunID?.rawValue {
                 metadata["latest_takeover_run_id"] = .string(runID)

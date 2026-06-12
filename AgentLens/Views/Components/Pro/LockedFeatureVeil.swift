@@ -73,16 +73,17 @@ struct LockedFeatureVeil<Background: View>: View {
     LockedFeatureVeil(
         headline: "Insights, surfaced.",
         detail: "Cross-agent patterns, weekly retros, and forecast cohorts — included with OpenBurnBar Cloud.",
-        action: {}
-    ) {
-        VStack(spacing: 14) {
-            ForEach(0..<4) { _ in
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(DesignSystem.Colors.surface)
-                    .frame(height: 72)
+        action: {},
+        background: {
+            VStack(spacing: 14) {
+                ForEach(0..<4) { _ in
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(DesignSystem.Colors.surface)
+                        .frame(height: 72)
+                }
             }
+            .padding(20)
         }
-        .padding(20)
-    }
+    )
     .frame(width: 640, height: 480)
 }

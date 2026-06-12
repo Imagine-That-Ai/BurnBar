@@ -118,7 +118,9 @@ struct MobileProviderWizardView: View {
                     .textInputAutocapitalization(.never)
                     .accessibilityIdentifier("a11y.wizard.search.field")
                 if !m.searchText.isEmpty {
-                    Button(action: { m.clearSearch() }) {
+                    Button {
+                        m.clearSearch()
+                    } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
@@ -159,7 +161,9 @@ struct MobileProviderWizardView: View {
                 .font(MobileTheme.Typography.caption)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
                 .multilineTextAlignment(.center)
-            Button(action: { model.clearSearch() }) {
+            Button {
+                model.clearSearch()
+            } label: {
                 Label("Clear search", systemImage: "xmark.circle.fill")
                     .font(MobileTheme.Typography.caption)
                     .fontWeight(.semibold)
@@ -451,7 +455,9 @@ struct MobileProviderWizardView: View {
                         .tracking(0.6)
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                     Spacer()
-                    Button(action: { m.toggleRevealCredential() }) {
+                    Button {
+                        m.toggleRevealCredential()
+                    } label: {
                         Image(systemName: m.revealCredential ? "eye.slash.fill" : "eye.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(MobileTheme.Colors.textMuted)

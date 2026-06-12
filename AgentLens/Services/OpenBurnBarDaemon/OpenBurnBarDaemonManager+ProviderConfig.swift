@@ -96,7 +96,6 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
-
     /// Bulk advertisement toggle for an entire provider — mute (or unmute)
     /// every supplied model id in a single config write so the user can turn a
     /// whole provider off and then cherry-pick a few models back on.

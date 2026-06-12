@@ -29,7 +29,7 @@ final class SmartHubBridgeServer {
 
     private(set) var isRunning = false
     private(set) var boundPort: UInt16?
-    private(set) var lastRefreshedAt: Date = Date()
+    private(set) var lastRefreshedAt = Date()
     private(set) var refreshVersion: UInt64 = 0
 
     /// Wall-clock timestamp of the last `/state.json` GET. Used by the
@@ -474,14 +474,14 @@ final class SmartHubBridgeServer {
         // text into the payload instead of plain JSON, which makes the
         // Nest Hub page's `await r.json()` throw and trap the UI in
         // "Reconnecting to Mac…".
-        let bucketsJSON = p.buckets.map { (b) -> String in
+        let bucketsJSON = p.buckets.map { b -> String in
             """
             {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)","isCreditBalance":\(b.isCreditBalance ? "true" : "false")}
             """
         }.joined(separator: ",")
 
-        let accountsJSON = p.accounts.map { (a) -> String in
-            let abuckets = a.buckets.map { (b) -> String in
+        let accountsJSON = p.accounts.map { a -> String in
+            let abuckets = a.buckets.map { b -> String in
                 """
                 {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)","isCreditBalance":\(b.isCreditBalance ? "true" : "false")}
                 """
@@ -491,14 +491,17 @@ final class SmartHubBridgeServer {
             """
         }.joined(separator: ",")
 
-        let burnRatesJSON = p.burnRates.map { (r) -> String in
+        let burnRatesJSON = p.burnRates.map { r -> String in
             """
             {"windowLabel":"\(escape(r.windowLabel))","tokens":"\(escape(r.tokens))","cost":"\(escape(r.cost))","runs":"\(escape(r.runs))"}
             """
         }.joined(separator: ",")
 
         return """
-        {"name":"\(escape(p.name))","slug":"\(escape(p.slug))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))","accentHex":"\(escape(p.accentHex))","logoSVG":"\(escape(p.logoSVG))","tokenTotal":"\(escape(p.tokenTotal))","tokenTotalCurrency":"\(escape(p.tokenTotalCurrency))","tokenTotalLabel":"\(escape(p.tokenTotalLabel))","statusPill":"\(escape(p.statusPill))","statusTone":"\(p.statusTone.rawValue)","freshnessLabel":"\(escape(p.freshnessLabel))","fetchedAtLabel":"\(escape(p.fetchedAtLabel))","runsLabel":"\(escape(p.runsLabel))","costLabel":"\(escape(p.costLabel))","hasQuotaData":\(p.hasQuotaData ? "true" : "false"),"buckets":[\(bucketsJSON)],"accounts":[\(accountsJSON)],"burnRates":[\(burnRatesJSON)]}
+        {"name":"\(escape(p.name))","slug":"\(escape(p.slug))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))","accentHex":"\(escape(p.accentHex))",\
+        "logoSVG":"\(escape(p.logoSVG))","tokenTotal":"\(escape(p.tokenTotal))","tokenTotalCurrency":"\(escape(p.tokenTotalCurrency))","tokenTotalLabel":"\(escape(p.tokenTotalLabel))","statusPill":"\(escape(p.statusPill))","statusTone":"\(p.statusTone.rawValue)",\
+        "freshnessLabel":"\(escape(p.freshnessLabel))","fetchedAtLabel":"\(escape(p.fetchedAtLabel))","runsLabel":"\(escape(p.runsLabel))","costLabel":"\(escape(p.costLabel))","hasQuotaData":\(p.hasQuotaData ? "true" : "false"),\
+        "buckets":[\(bucketsJSON)],"accounts":[\(accountsJSON)],"burnRates":[\(burnRatesJSON)]}
         """
     }
 

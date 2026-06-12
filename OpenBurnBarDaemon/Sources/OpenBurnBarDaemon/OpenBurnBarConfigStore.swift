@@ -456,7 +456,6 @@ public actor BurnBarConfigStore {
         }
     }
 
-
     /// Set (or replace) a verbatim display-name override for a model. The
     /// model keeps its canonical wire id and routing; only its human label
     /// changes. Forgiving by design: the override applies to whatever
@@ -792,9 +791,9 @@ public actor BurnBarConfigStore {
             return preferred.apiKey
         }
 
-        if let next = activeSlots.sorted(by: {
+        if let next = activeSlots.min(by: {
             ($0.slot.lastSelectedAt ?? .distantPast) < ($1.slot.lastSelectedAt ?? .distantPast)
-        }).first {
+        }) {
             return next.apiKey
         }
 
