@@ -100,5 +100,7 @@ class QuotaStoreTest {
     }
 
     private fun firestorePermissionDenied(): FirebaseException =
-        FirebaseException("Missing or insufficient permissions.")
+        mockk {
+            every { message } returns "Missing or insufficient permissions."
+        }
 }
