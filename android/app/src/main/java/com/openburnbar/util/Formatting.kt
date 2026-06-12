@@ -30,9 +30,33 @@ object Formatting {
             maximumFractionDigits = 0
         }
 
+    private val preciseCurrencyFormatter =
+        NumberFormat.getCurrencyInstance(Locale.US).apply {
+            minimumFractionDigits = 4
+            maximumFractionDigits = 4
+        }
+
     fun formatCurrency(amount: Double): String = currencyFormatter.format(amount)
 
     fun formatShortCurrency(amount: Double): String = shortCurrencyFormatter.format(amount)
+
+    /** Four fraction digits for sub-cent unit costs (e.g. "$0.0184"). */
+    fun formatPreciseCurrency(amount: Double): String = preciseCurrencyFormatter.format(amount)
+
+    /**
+     * Compact USD for tight surfaces (home-screen/lock-screen widgets):
+     * "$1.2M", "$3.4k", "$123", "$12.34".
+     *
+     * All currency in the app is USD rendered with US separators on every
+     * locale (see docs/adr/2026-06-12-localization-english-only-v1.md);
+     * never combine a hardcoded "$" with default-locale number formatting.
+     */
+    fun formatCompactCurrency(amount: Double): String = when {
+        amount >= MILLION -> "$" + "%.1f".format(Locale.US, amount / MILLION) + "M"
+        amount >= THOUSAND -> "$" + "%.1f".format(Locale.US, amount / THOUSAND) + "k"
+        amount >= 100 -> formatShortCurrency(amount)
+        else -> formatCurrency(amount)
+    }
 
     fun formatTokens(count: Int): String = formatTokens(count.toLong())
 

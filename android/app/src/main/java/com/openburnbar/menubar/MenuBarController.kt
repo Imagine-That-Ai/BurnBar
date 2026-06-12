@@ -1,5 +1,6 @@
 package com.openburnbar.menubar
 
+import com.openburnbar.util.Formatting
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -36,8 +37,8 @@ object MenuBarController {
     }
 
     fun formatCost(value: Double): String = if (value >= 100.0) {
-        "$${"%.0f".format(value)}"
+        Formatting.formatShortCurrency(value)
     } else {
-        "$${"%.2f".format(value)}"
+        Formatting.formatCurrency(value)
     }
 }

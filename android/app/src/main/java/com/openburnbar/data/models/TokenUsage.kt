@@ -3,6 +3,7 @@ package com.openburnbar.data.models
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 import com.openburnbar.data.stores.QuotaWindowKind
+import com.openburnbar.util.Formatting
 import kotlin.math.roundToInt
 
 private const val PERCENT_SCALE = 1_000_000_000
@@ -543,7 +544,7 @@ fun QuotaBucket.formatValue(value: Double): String {
             }
         }
         ProviderQuotaUnit.CURRENCY -> {
-            "$%.2f".format(value)
+            Formatting.formatCurrency(value)
         }
     }
 }
