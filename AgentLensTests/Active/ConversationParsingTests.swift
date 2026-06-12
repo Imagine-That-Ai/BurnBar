@@ -144,7 +144,8 @@ final class ConversationParsingTests: XCTestCase {
         try await ConversationIndexer.shared.index([incoming], in: store)
 
         guard let row = try store.fetchConversation(id: stored.id) else {
-            return XCTFail("Expected existing conversation row.")
+            XCTFail("Expected existing conversation row.")
+            return
         }
         XCTAssertEqual(row.indexedAt.timeIntervalSince1970, indexedAt.timeIntervalSince1970, accuracy: 0.0001)
     }
@@ -167,7 +168,8 @@ final class ConversationParsingTests: XCTestCase {
         try await ConversationIndexer.shared.index([incoming], in: store)
 
         guard let row = try store.fetchConversation(id: stored.id) else {
-            return XCTFail("Expected existing conversation row.")
+            XCTFail("Expected existing conversation row.")
+            return
         }
         XCTAssertEqual(row.indexedAt.timeIntervalSince1970, indexedAt.timeIntervalSince1970, accuracy: 0.0001)
     }

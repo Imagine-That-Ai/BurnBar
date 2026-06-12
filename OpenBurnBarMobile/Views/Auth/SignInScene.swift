@@ -544,8 +544,8 @@ private struct EmberLogo: View {
         LinearGradient(
             stops: [
                 .init(color: Color.white.opacity(0.10 + 0.45 * intensity), location: 0.05),
-                .init(color: Color.white.opacity(0.20 * intensity),         location: 0.30),
-                .init(color: Color.clear,                                   location: 0.65)
+                .init(color: Color.white.opacity(0.20 * intensity), location: 0.30),
+                .init(color: Color.clear, location: 0.65)
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -587,7 +587,7 @@ private struct EmberLogo: View {
         // the bottom 30% is the descending bar ladder, where flames don't
         // belong).
         let yStart: CGFloat = 0.65
-        let yEnd:   CGFloat = 0.05
+        let yEnd: CGFloat = 0.05
         let y = yStart + (yEnd - yStart) * progress
 
         // Subtle horizontal wobble so the spark drifts as it rises.

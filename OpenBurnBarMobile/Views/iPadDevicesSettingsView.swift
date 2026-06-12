@@ -120,8 +120,6 @@ struct iPadDevicesSettingsView: View {
         }
     }
 
-
-
     // MARK: - Refresh
 
     private func refreshAll() async {

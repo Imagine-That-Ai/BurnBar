@@ -9,7 +9,7 @@ public extension AgentDesktopCapability {
     static let biometricStepUpRequired: Set<AgentDesktopCapability> = [
         .desktopSystemInput,
         .shell,
-        .shellUnrestricted,
+        .shellUnrestricted
     ]
 
     /// Whether each signed action exercising this capability must carry a fresh

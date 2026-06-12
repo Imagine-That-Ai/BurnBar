@@ -424,4 +424,3 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
         Array(Set(values)).sorted()
     }
 }
-

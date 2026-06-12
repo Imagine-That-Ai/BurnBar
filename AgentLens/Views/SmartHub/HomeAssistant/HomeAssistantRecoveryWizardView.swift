@@ -455,7 +455,9 @@ private struct ConnectTokenStep: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Button(action: { openTokenPage() }) {
+                Button {
+                    openTokenPage()
+                } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.right.square.fill")
                             .font(.system(size: 15, weight: .semibold))
@@ -723,7 +725,9 @@ private struct ConfirmInstallStep: View {
             Spacer()
 
             HStack {
-                Button(action: { model.chooseBlueprintFallback() }) {
+                Button {
+                    model.chooseBlueprintFallback()
+                } label: {
                     Label("Use blueprint instead", systemImage: "doc.append")
                         .font(DesignSystem.Typography.body)
                         .padding(.horizontal, DesignSystem.Spacing.md)

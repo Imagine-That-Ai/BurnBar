@@ -220,7 +220,7 @@ final class UsageAggregator {
                 "providers_scanned": String(parsers.count),
                 "usage_rows": String(result.allUsages.count),
                 "indexed_changes": String(result.indexedConversationChanges),
-                "api_supplemental_rows": String(postResult.supplementalUsageCount),
+                "api_supplemental_rows": String(postResult.supplementalUsageCount)
             ]
         )
     }
@@ -462,7 +462,6 @@ private extension UsageAggregator {
         }
         requestProjectionSweep()
     }
-
 
     @discardableResult
     func runProjectionSweep() async -> Bool {

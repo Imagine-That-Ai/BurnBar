@@ -184,8 +184,8 @@ public struct InsightLayout: Codable, Hashable, Sendable {
 
     private func rangeIsFree(occupancy: [[Bool]], c: Int, r: Int, colSpan: Int, rowSpan: Int) -> Bool {
         for rr in r..<(r + rowSpan) {
-            for cc in c..<(c + colSpan) {
-                if occupancy[rr][cc] { return false }
+            for cc in c..<(c + colSpan) where occupancy[rr][cc] {
+                return false
             }
         }
         return true

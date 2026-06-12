@@ -27,13 +27,13 @@ actor SearchService {
     var _lastTypedHealthWriteError: OpenBurnBarError?
 
     /// May be read from the main thread or tests while retrieval runs in the background.
-    public var lastHealthWriteError: String? {
-        get { _lastHealthWriteError }
+    var lastHealthWriteError: String? {
+        _lastHealthWriteError
     }
 
     /// Typed counterpart to `lastHealthWriteError` for metrics and structured logging.
-    public var lastTypedHealthWriteError: OpenBurnBarError? {
-        get { _lastTypedHealthWriteError }
+    var lastTypedHealthWriteError: OpenBurnBarError? {
+        _lastTypedHealthWriteError
     }
 
     func setLastHealthWriteError(_ value: String?, typed: OpenBurnBarError? = nil) {
@@ -75,16 +75,16 @@ actor SearchService {
 
     /// `nonisolated` because `dataStore` is an immutable `let` and `fetchConversations`
     /// uses GRDB's synchronous `read` — no actor isolation needed.
-    public nonisolated func recentConversations(limit: Int = 80) -> [ConversationRecord] {
+    nonisolated func recentConversations(limit: Int = 80) -> [ConversationRecord] {
         let bounded = max(1, min(limit, 1_000))
         return (try? dataStore.fetchConversations(limit: bounded)) ?? []
     }
 
-    public nonisolated func latestConversation(limit: Int = 200) -> ConversationRecord? {
+    nonisolated func latestConversation(limit: Int = 200) -> ConversationRecord? {
         latestConversation(in: recentConversations(limit: limit))
     }
 
-    public nonisolated func latestConversation(in conversations: [ConversationRecord]) -> ConversationRecord? {
+    nonisolated func latestConversation(in conversations: [ConversationRecord]) -> ConversationRecord? {
         conversations.max(by: { a, b in
             let ad = a.endTime ?? a.startTime ?? .distantPast
             let bd = b.endTime ?? b.startTime ?? .distantPast
@@ -92,7 +92,7 @@ actor SearchService {
         })
     }
 
-    public func runBurnBarQuery(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
+    func runBurnBarQuery(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
         let now = nowProvider()
         let cacheKey = SearchQueryCacheKey(query: query)
         if let cachedResult = SearchQueryCache.shared.get(key: cacheKey, now: now) {
@@ -168,7 +168,7 @@ actor SearchService {
         )
     }
 
-    public func retrieve(_ query: RetrievalQuery) async -> [RetrievalResult] {
+    func retrieve(_ query: RetrievalQuery) async -> [RetrievalResult] {
         let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return [] }
         let accessContext = await MainActor.run { self.sharedArtifactAccessContextProvider() }

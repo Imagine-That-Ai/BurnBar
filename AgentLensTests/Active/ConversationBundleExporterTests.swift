@@ -49,7 +49,7 @@ final class ConversationBundleExporterTests: XCTestCase {
     func testExportProducesFolderJsonAndMarkdownFiles() async throws {
         let records = [
             makeRecord(sessionId: "s1", title: "Refactor the parser"),
-            makeRecord(provider: .codex, sessionId: "s2", title: "Fix the crash"),
+            makeRecord(provider: .codex, sessionId: "s2", title: "Fix the crash")
         ]
 
         let result = try await ConversationBundleExporter.exportBundle(records: records, to: workDir)
@@ -118,7 +118,7 @@ final class ConversationBundleExporterTests: XCTestCase {
         let records = [
             makeRecord(sessionId: "dup-a", title: "Same Title"),
             makeRecord(sessionId: "dup-b", title: "Same Title"),
-            makeRecord(sessionId: "dup-c", title: "Same Title"),
+            makeRecord(sessionId: "dup-c", title: "Same Title")
         ]
         let result = try await ConversationBundleExporter.exportBundle(records: records, to: workDir)
 

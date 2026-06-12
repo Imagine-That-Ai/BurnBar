@@ -158,7 +158,7 @@ final class ProjectionStore: Sendable {
                     SearchSourceKind.conversation.rawValue,
                     ProjectionJobStatus.queued.rawValue,
                     ProjectionJobStatus.failed.rawValue,
-                    ProjectionJobStatus.canceled.rawValue,
+                    ProjectionJobStatus.canceled.rawValue
                 ]
             )
             return try Int.fetchOne(db, sql: "SELECT changes()") ?? 0
@@ -749,7 +749,7 @@ final class ProjectionStore: Sendable {
             "retrieval_health",
             "artifact_permissions",
             "audit_events",
-            "operating_action_history",
+            "operating_action_history"
         ]
         let expectedIndexes = [
             "controller_runtime_cache_updated_idx",
@@ -772,7 +772,7 @@ final class ProjectionStore: Sendable {
             "audit_events_action_time_idx",
             "operating_action_history_project_time_idx",
             "operating_action_history_kind_time_idx",
-            "operating_action_history_mission_time_idx",
+            "operating_action_history_mission_time_idx"
         ]
 
         return try dbQueue.read { db in

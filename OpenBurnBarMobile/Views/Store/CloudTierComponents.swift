@@ -276,9 +276,9 @@ struct CloudTierCard: View {
     let billingPeriod: CloudBillingPeriod
     let isPurchasing: Bool
     /// "≈ $20.75" per-month equivalent, shown beneath an annual price.
-    var monthlyEquivalentText: String? = nil
+    var monthlyEquivalentText: String?
     /// Whole months effectively free vs monthly billing ("2 MONTHS FREE" seal).
-    var annualFreeMonths: Int? = nil
+    var annualFreeMonths: Int?
     let onSubscribe: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

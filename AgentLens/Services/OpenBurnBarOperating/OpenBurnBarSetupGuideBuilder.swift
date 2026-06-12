@@ -27,7 +27,7 @@ enum OpenBurnBarSetupGuideBuilder {
         let detectedCount = detection.values.filter { $0 }.count
         let gatewayParts: [String] = [
             statusLabel(name: "Hermes", ok: hermesAvailable),
-            statusLabel(name: "OpenClaw", ok: openClawAvailable),
+            statusLabel(name: "OpenClaw", ok: openClawAvailable)
         ]
         .compactMap { $0 }
 

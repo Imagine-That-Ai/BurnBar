@@ -48,7 +48,7 @@ private struct ColorSwatchGrid: View {
         ("blaze", DesignSystem.Colors.blaze),
         ("whimsy", DesignSystem.Colors.whimsy),
         ("hermesMercury", DesignSystem.Colors.hermesMercury),
-        ("hermesAureate", DesignSystem.Colors.hermesAureate),
+        ("hermesAureate", DesignSystem.Colors.hermesAureate)
     ]
 
     var body: some View {

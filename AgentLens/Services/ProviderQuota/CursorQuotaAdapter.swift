@@ -260,7 +260,7 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
         }
 
         // On-demand usage (separate from plan)
-        if let onDemand, ((onDemand.used ?? 0) > 0 || (onDemand.limit ?? 0) > 0) {
+        if let onDemand, (onDemand.used ?? 0) > 0 || (onDemand.limit ?? 0) > 0 {
             let odUsed = Double(onDemand.used ?? 0) / 100.0
             let odLimit = Double(onDemand.limit ?? 0) / 100.0
             if odUsed > 0 || odLimit > 0 {

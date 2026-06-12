@@ -105,7 +105,7 @@ extension VoIPCallService: @preconcurrency PKPushRegistryDelegate {
                         "deviceId": deviceId,
                         "platform": "ios",
                         "voipDeviceToken": tokenHex,
-                        "updated_at_millis": nowMillis,
+                        "updated_at_millis": nowMillis
                     ],
                     merge: true
                 )

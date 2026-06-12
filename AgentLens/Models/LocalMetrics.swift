@@ -50,7 +50,7 @@ enum LocalMetricsSubsystem: String, Sendable {
 /// Uses an atomic via `OSAllocatedUnfairLock` on macOS 15+, falls back to `NSLock`.
 actor LocalMetricsCounter {
     private var counts: [String: Int] = [:]
-    private var lastReset: Date = Date()
+    private var lastReset = Date()
 
     func increment(_ key: String) {
         counts[key, default: 0] += 1

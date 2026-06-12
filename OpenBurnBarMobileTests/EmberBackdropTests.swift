@@ -15,7 +15,7 @@ final class EmberBackdropTests: XCTestCase {
     func testReduceTransparencyDisablesEffects() {
         // The view should compile and its body should not crash
         let view = EmberSurfaceBackground(respectsReduceTransparency: true)
-        let _ = view.body
+        _ = view.body
     }
 
     func testEmberSkeletonExists() {

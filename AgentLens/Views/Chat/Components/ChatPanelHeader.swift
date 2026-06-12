@@ -8,8 +8,8 @@ struct ChatPanelHeader: View {
     var onMinimize: () -> Void
     var onClose: () -> Void
     var onShowClearChatPrompt: () -> Void
-    var onMaximize: (() -> Void)? = nil
-    var onPopOut: (() -> Void)? = nil
+    var onMaximize: (() -> Void)?
+    var onPopOut: (() -> Void)?
     @State private var showChatMenu = false
     @State private var headerDragStart: CGSize?
     var containerSize: CGSize

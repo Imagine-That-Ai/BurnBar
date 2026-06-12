@@ -50,7 +50,7 @@ final class SettingsSearchEngineTests: XCTestCase {
             title: "Café Defaults",
             subtitle: "Diacritic test",
             keywords: ["coffee"]
-        ),
+        )
     ]
 
     // MARK: - Tests
@@ -120,7 +120,7 @@ final class SettingsSearchEngineTests: XCTestCase {
                 anchorID: "a",
                 title: "Alpha",
                 keywords: ["match"]
-            ),
+            )
         ]
         let results = SettingsSearchEngine.search("match", in: items)
         XCTAssertEqual(results.map(\.id), ["a", "b"])
@@ -159,7 +159,7 @@ final class SettingsSearchEngineTests: XCTestCase {
                 pageRoute: .generalRoot,
                 anchorID: "title-hit",
                 title: "Setup Wizard"
-            ),
+            )
         ]
         let results = SettingsSearchEngine.search("wizard", in: items)
         XCTAssertEqual(results.first?.id, "title-hit")

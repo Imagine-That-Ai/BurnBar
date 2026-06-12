@@ -85,4 +85,3 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
         XCTAssertTrue(queuedJobs.contains { $0.jobType == .purge })
     }
 }
-

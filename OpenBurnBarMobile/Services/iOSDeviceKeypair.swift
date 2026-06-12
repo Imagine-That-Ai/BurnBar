@@ -8,7 +8,7 @@ import Security
 final class iOSDeviceKeypair: DeviceKeypairProtocol {
     private static let keyTag = "com.openburnbar.mobile.escrow-key".data(using: .utf8)!
     private var privateKey: P256.KeyAgreement.PrivateKey
-    public private(set) var keyVersion: Int
+    private(set) var keyVersion: Int
 
     // MARK: - Init
 

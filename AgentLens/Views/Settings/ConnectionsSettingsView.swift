@@ -823,7 +823,6 @@ struct ConnectionsSettingsView: View {
         }
     }
 
-
     private func setProviderAdvertisement(_ providerID: String, modelIDs: [String], isEnabled: Bool) {
         Task {
             await daemonManager.setProviderModelsAdvertisement(
@@ -1166,7 +1165,6 @@ struct ConnectionsSettingsView: View {
         }
     }
 
-
     private func exactExternalQuotaSnapshot(
         for account: ExternalOAuthAccount,
         provider: AgentProvider
@@ -1177,7 +1175,7 @@ struct ConnectionsSettingsView: View {
             let normalizedProfileID = normalizedQuotaIdentifier(profileID)
             let normalizedProfileSourceIDs = Set([
                 "switcher-cli:\(account.cliType.rawValue):\(profileID)",
-                "switcher:\(profileID)",
+                "switcher:\(profileID)"
             ].compactMap(normalizedQuotaIdentifier))
             return snapshots.first { snapshot in
                 normalizedQuotaIdentifier(snapshot.accountID) == normalizedProfileID
@@ -1689,8 +1687,7 @@ private struct AccountRowView: View {
 
     private var accessibilityLabel: String {
         var parts: [String] = [account.label]
-        if isActive { parts.append("active now") }
-        else if isNextFallback { parts.append("next fallback") }
+        if isActive { parts.append("active now") } else if isNextFallback { parts.append("next fallback") }
         parts.append(ProviderAccountStatusVisual.label(account.status))
         parts.append("stored in \(ProviderAccountStorage.label(account.storageScope))")
         return parts.joined(separator: ", ")

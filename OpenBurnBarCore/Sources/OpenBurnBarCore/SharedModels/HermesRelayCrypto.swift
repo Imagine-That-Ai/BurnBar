@@ -61,7 +61,6 @@ public struct HermesRelayEncryptedRequestPayload: Codable, Sendable, Equatable {
     }
 }
 
-
 /// RFC 9180 HPKE Auth-mode v3 key-wrap output (mirrors the Python
 /// `RelayKeyWrapV3` dataclass in `gateway/crypto/relay_e2ee.py`).
 ///

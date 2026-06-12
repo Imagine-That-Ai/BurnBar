@@ -2938,7 +2938,7 @@ public actor BurnBarHTTPGatewayServer {
     private func isAllowedCORSOrigin(_ value: String) -> Bool {
         guard let components = URLComponents(string: value),
               let scheme = components.scheme?.lowercased(),
-              (scheme == "http" || scheme == "https"),
+              scheme == "http" || scheme == "https",
               let host = components.host?.lowercased() else {
             return false
         }
@@ -3207,7 +3207,7 @@ public actor BurnBarHTTPGatewayServer {
             self.advertisementEnabled = models.contains { $0.advertisementEnabled }
             self.advertised = advertised ?? group.advertised
             self.routeEligible = models.contains { $0.routeEligible }
-            self.lastRefreshAt = models.compactMap(\.lastRefreshAt).sorted().last
+            self.lastRefreshAt = models.compactMap(\.lastRefreshAt).max()
             self.lastError = models.compactMap(\.lastError).first
             self.baseModelID = models.compactMap(\.baseModelID).first
             self.thinkingLevel = thinkingLevel

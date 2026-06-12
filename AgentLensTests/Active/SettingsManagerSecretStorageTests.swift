@@ -20,7 +20,8 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
     func test_initMigratesLegacyDefaultsTokensIntoKeychain() throws {
         let suiteName = "com.openburnbar.tests.settings.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
-            return XCTFail("Could not create isolated defaults suite")
+            XCTFail("Could not create isolated defaults suite")
+            return
         }
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -77,7 +78,8 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
     func test_savePersistsTokensToKeychainWithoutUserDefaultsCopies() throws {
         let suiteName = "com.openburnbar.tests.settings.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
-            return XCTFail("Could not create isolated defaults suite")
+            XCTFail("Could not create isolated defaults suite")
+            return
         }
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -310,7 +312,8 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
     func test_load_keychainWriteFails_retainsLegacyDefaultsKey() throws {
         let suiteName = "com.openburnbar.tests.settings.migration-fail.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
-            return XCTFail("Could not create isolated defaults suite")
+            XCTFail("Could not create isolated defaults suite")
+            return
         }
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -340,7 +343,8 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
     func test_persist_keychainWriteFails_retainsLegacyDefaultsKey() throws {
         let suiteName = "com.openburnbar.tests.settings.persist-fail.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
-            return XCTFail("Could not create isolated defaults suite")
+            XCTFail("Could not create isolated defaults suite")
+            return
         }
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -369,7 +373,8 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
     func test_load_keychainVerificationFails_retainsLegacyDefaultsKey() throws {
         let suiteName = "com.openburnbar.tests.settings.verify-fail.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
-            return XCTFail("Could not create isolated defaults suite")
+            XCTFail("Could not create isolated defaults suite")
+            return
         }
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }

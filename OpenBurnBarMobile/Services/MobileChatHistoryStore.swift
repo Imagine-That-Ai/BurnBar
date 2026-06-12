@@ -23,10 +23,10 @@ struct MobileChatThread: Identifiable, Codable, Equatable {
     var messages: [MobileChatMessage]
 
     // Custom metadata fields for custom title, HSL label color, pinning, and priority order
-    var customTitle: String? = nil
-    var labelColorHex: String? = nil
-    var isPinned: Bool? = nil
-    var priorityOrder: Int? = nil
+    var customTitle: String?
+    var labelColorHex: String?
+    var isPinned: Bool?
+    var priorityOrder: Int?
 
     var messageCount: Int { messages.count }
 

@@ -423,7 +423,6 @@ struct SettingsView: View {
     }
 }
 
-
 private struct SettingsWindowReader: NSViewRepresentable {
     @Binding var window: NSWindow?
 

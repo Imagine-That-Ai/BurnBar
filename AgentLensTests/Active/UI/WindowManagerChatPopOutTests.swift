@@ -54,7 +54,7 @@ final class WindowManagerChatPopOutTests: XCTestCase {
             accountManager: AccountManager.shared
         )
 
-        XCTAssertTrue(first === second, "Subsequent opens should reuse the existing window")
+        XCTAssertIdentical(first, second, "Subsequent opens should reuse the existing window")
     }
 
     func test_closeChatPopOutWindow_releasesReference() async throws {

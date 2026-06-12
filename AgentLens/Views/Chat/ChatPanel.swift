@@ -15,10 +15,10 @@ struct ChatPanel: View {
     /// When set, replaces the floating panel with the maximized dashboard
     /// workspace (matches Claude.ai / ChatGPT full-canvas layout). When `nil`,
     /// the Maximize button is hidden.
-    var onMaximize: (() -> Void)? = nil
+    var onMaximize: (() -> Void)?
     /// When set, opens a standalone pop-out chat window. When `nil`, the
     /// Pop-out button is hidden.
-    var onPopOut: (() -> Void)? = nil
+    var onPopOut: (() -> Void)?
     var onClose: () -> Void
 
     @State private var brief = InsightBriefSnapshot()

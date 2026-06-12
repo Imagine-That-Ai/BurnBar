@@ -113,7 +113,7 @@ final class SpellCheckService {
     ///
     /// Returns `nil` if the cursor is at a word boundary or the context is empty.
     func extractCurrentWord(from context: String?) -> String? {
-        guard let context = context, !context.isEmpty else { return nil }
+        guard let context, !context.isEmpty else { return nil }
 
         // Walk backward from the end to find the start of the current word
         var endIndex = context.endIndex

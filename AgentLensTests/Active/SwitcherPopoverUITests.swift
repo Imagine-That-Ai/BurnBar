@@ -534,7 +534,7 @@ final class SwitcherPopoverUITests: XCTestCase {
                     browserType: .chrome,
                     browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "P\(3)"),
                     sortKey: 3
-                ),
+                )
             ]
         }
 

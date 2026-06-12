@@ -162,32 +162,34 @@ struct LockedFeatureVeil<Background: View>: View {
     LockedFeatureVeil(
         headline: "Insights, surfaced.",
         detail: "Cross-agent patterns, weekly retros, and forecast cohorts — included with OpenBurnBar Cloud.",
-        action: {}
-    ) {
-        VStack(spacing: 16) {
-            ForEach(0..<4) { _ in
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(MobileTheme.Colors.surface)
-                    .frame(height: 80)
+        action: {},
+        background: {
+            VStack(spacing: 16) {
+                ForEach(0..<4) { _ in
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(MobileTheme.Colors.surface)
+                        .frame(height: 80)
+                }
             }
+            .padding(20)
         }
-        .padding(20)
-    }
+    )
 }
 
 #Preview("Locked Feature Veil — feature (Data Vault)") {
     LockedFeatureVeil(
         feature: GatedFeature.gatedFeature(.dataVault),
         priceLine: "From $24.99/mo",
-        action: {}
-    ) {
-        VStack(spacing: 16) {
-            ForEach(0..<4) { _ in
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(MobileTheme.Colors.surface)
-                    .frame(height: 80)
+        action: {},
+        background: {
+            VStack(spacing: 16) {
+                ForEach(0..<4) { _ in
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(MobileTheme.Colors.surface)
+                        .frame(height: 80)
+                }
             }
+            .padding(20)
         }
-        .padding(20)
-    }
+    )
 }

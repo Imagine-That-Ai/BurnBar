@@ -22,7 +22,7 @@ final class TrendInsightEngineTests: XCTestCase {
     func testProviderDominanceTriggersWhenOverEightyPercent() {
         let providers = [
             RollupProviderSummary(provider: "claudecode", providerID: ProviderID(rawValue: "claudecode"), totalRequests: 100, totalTokens: 900_000, totalCost: 90),
-            RollupProviderSummary(provider: "codex",      providerID: ProviderID(rawValue: "codex"),      totalRequests: 100, totalTokens: 100_000, totalCost: 10)
+            RollupProviderSummary(provider: "codex", providerID: ProviderID(rawValue: "codex"), totalRequests: 100, totalTokens: 100_000, totalCost: 10)
         ]
         let digest = TrendDataDigest.build(
             windowTotals: [:],
@@ -88,7 +88,7 @@ final class TrendInsightEngineTests: XCTestCase {
     func testInsightsAreSortedByPriorityDescending() {
         let providers = [
             RollupProviderSummary(provider: "claudecode", providerID: ProviderID(rawValue: "claudecode"), totalRequests: 100, totalTokens: 900_000, totalCost: 90),
-            RollupProviderSummary(provider: "codex",      providerID: ProviderID(rawValue: "codex"),      totalRequests: 100, totalTokens: 100_000, totalCost: 10)
+            RollupProviderSummary(provider: "codex", providerID: ProviderID(rawValue: "codex"), totalRequests: 100, totalTokens: 100_000, totalCost: 10)
         ]
         let usages = [
             TokenUsage(

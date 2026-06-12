@@ -67,7 +67,7 @@ enum DatabaseEncryptionService {
             kSecAttrService as String: service,
             kSecAttrAccount as String: keyIdentifierAccount,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -98,7 +98,7 @@ enum DatabaseEncryptionService {
             kSecAttrService as String: service,
             kSecAttrAccount as String: keyIdentifierAccount,
             kSecValueData as String: Data(key.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         if status != errSecSuccess {
@@ -113,7 +113,7 @@ enum DatabaseEncryptionService {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: keyIdentifierAccount,
+            kSecAttrAccount as String: keyIdentifierAccount
         ]
         SecItemDelete(query as CFDictionary)
     }
@@ -247,7 +247,7 @@ enum DatabaseEncryptionService {
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: keyIdentifierAccount,
                 kSecValueData as String: Data(key.utf8),
-                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
             SecItemDelete(addQuery as CFDictionary) // overwrite if present
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)

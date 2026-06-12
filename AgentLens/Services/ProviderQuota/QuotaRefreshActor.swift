@@ -87,7 +87,7 @@ actor QuotaRefreshActor {
             .kimi: KimiQuotaAdapter(),
             .antigravity: AntigravityQuotaAdapter(),
             .xAI: XAIQuotaAdapter(),
-            .mimo: MimoQuotaAdapter(),
+            .mimo: MimoQuotaAdapter()
         ]
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)

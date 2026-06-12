@@ -14,7 +14,7 @@ import OpenBurnBarCore
 
 struct FoilCTAButton: View {
     let title: String
-    var subtitle: String? = nil
+    var subtitle: String?
     var icon: String = "sparkle"
     var isLoading: Bool = false
     var fillWidth: Bool = true

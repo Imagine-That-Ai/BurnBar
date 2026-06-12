@@ -752,7 +752,7 @@ public final class MobileProjectMemoryProvider: MobileProjectMemoryProviding {
     private func loadUsageRows() async throws -> [TokenUsage] {
         let firestore = firestoreProvider()
         var rows: [TokenUsage] = []
-        var cursor: DocumentSnapshot? = nil
+        var cursor: DocumentSnapshot?
 
         while rows.count < maxRows {
             let (page, pageLast) = try await firestore.fetchUsagePage(
@@ -1020,7 +1020,7 @@ private func encodeJSON<T: Encodable>(_ value: T) throws -> String {
 /// returns the result messages ready to be appended to the chat history.
 /// Pure value-semantics — safe to construct fresh per request.
 @MainActor
-public struct MobileToolExecutor: Sendable {
+public struct MobileToolExecutor {
     public let catalog: MobileToolCatalog
 
     public init(catalog: MobileToolCatalog) {

@@ -198,11 +198,11 @@ extension EasterEggScene {
         let c0 = burstCenter(); let s1 = pickShape(); let c2 = burstCenter()
         let s3 = pickShape(); let c4 = burstCenter()
         return [
-            StormPhase(at: 0.0,  action: .burst(centerX: c0.0, centerY: c0.1)),
+            StormPhase(at: 0.0, action: .burst(centerX: c0.0, centerY: c0.1)),
             StormPhase(at: 1.05, action: .shape(s1)),
             StormPhase(at: 2.25, action: .burst(centerX: c2.0, centerY: c2.1)),
             StormPhase(at: 3.05, action: .shape(s3)),
-            StormPhase(at: 4.2,  action: .burst(centerX: c4.0, centerY: c4.1))
+            StormPhase(at: 4.2, action: .burst(centerX: c4.0, centerY: c4.1))
         ]
     }
 
@@ -267,7 +267,7 @@ extension EasterEggScene {
         var x = spark.startX, y = spark.startY
         var vx: CGFloat = 0, vy: CGFloat = 0
         var rot = spark.startRot, vr = spark.startVR
-        var target: CGPoint? = nil
+        var target: CGPoint?
 
         let step: CGFloat = 1.0 / 120.0
         var simTime: CGFloat = 0
@@ -553,8 +553,7 @@ extension EasterEggScene {
             tilt += seed.vtilt * Double(dt)
 
             // Side walls.
-            if x < r { x = r; vx = abs(vx) * Self.wallRestitution; vflip *= 0.85 }
-            else if x > size.width - r { x = size.width - r; vx = -abs(vx) * Self.wallRestitution; vflip *= 0.85 }
+            if x < r { x = r; vx = abs(vx) * Self.wallRestitution; vflip *= 0.85 } else if x > size.width - r { x = size.width - r; vx = -abs(vx) * Self.wallRestitution; vflip *= 0.85 }
 
             // Ledge tops (thin top band, only while falling).
             if vy > 0 {

@@ -146,7 +146,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTFail("Expected unsuffixed Ollama Cloud model to be rejected")
         } catch let error as BurnBarProviderRouterError {
             guard case .unsupportedModel(let modelID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(modelID, "deepseek-v4-flash")
         }
@@ -270,7 +271,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTFail("Expected missing credential error")
         } catch let error as BurnBarProviderRouterError {
             guard case .missingCredential(let providerID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "opencode")
         }
@@ -465,7 +467,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTFail("Expected missing credential error")
         } catch let error as BurnBarProviderRouterError {
             guard case .missingCredential(let providerID) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "zai")
         }
@@ -477,7 +480,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTFail("Expected unsupported model error")
         } catch let error as BurnBarProviderRouterError {
             guard case .unsupportedModel(let modelName) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(modelName, "kimi")
         }
@@ -487,7 +491,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTFail("Expected unsupported model error")
         } catch let error as BurnBarProviderRouterError {
             guard case .unsupportedModel(let modelName) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(modelName, "pony-alpha-2")
         }
@@ -628,7 +633,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTFail("Expected recent exhausted slot to stay blocked")
         } catch let error as BurnBarProviderRouterError {
             guard case .credentialsUnavailable(let providerID, let reason) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "deepseek")
             XCTAssertTrue(reason.contains("exhausted"))
@@ -1023,7 +1029,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTFail("Expected cooling credential error")
         } catch let error as BurnBarProviderRouterError {
             guard case .credentialsUnavailable(let providerID, let reason) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "zai")
             XCTAssertTrue(reason.contains("cooling down"))
@@ -1108,7 +1115,8 @@ final class BurnBarProviderRouterTests: XCTestCase {
             XCTFail("Expected exhausted credential error")
         } catch let error as BurnBarProviderRouterError {
             guard case .credentialsUnavailable(let providerID, let reason) = error else {
-                return XCTFail("Unexpected error: \(error)")
+                XCTFail("Unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(providerID, "zai")
             XCTAssertTrue(reason.contains("exhausted"))

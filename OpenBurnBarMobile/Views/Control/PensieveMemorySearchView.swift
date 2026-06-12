@@ -73,10 +73,11 @@ struct PensieveMemorySearchView: View {
             action: {
                 Haptics.medium()
                 showCloudStore = true
+            },
+            background: {
+                PensieveMemoryTeaserBackground()
             }
-        ) {
-            PensieveMemoryTeaserBackground()
-        }
+        )
     }
 
     @ViewBuilder
@@ -247,7 +248,7 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
         let result = try await callable.call([
             "queryVector": cloaked.vector,
             "embeddingModelVersion": cloaked.modelVersion,
-            "limit": max(1, min(limit, 50)),
+            "limit": max(1, min(limit, 50))
         ])
         guard let dict = result.data as? [String: Any],
               let rawHits = dict["hits"] as? [[String: Any]] else {

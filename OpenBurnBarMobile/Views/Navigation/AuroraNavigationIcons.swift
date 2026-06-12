@@ -319,12 +319,12 @@ struct IgnisEmbersView: View {
     }
 
     private static let embers: [Ember] = [
-        Ember(id: 0, xJitter: -0.45, drift:  0.10, scale: 0.7, phaseOffset: 0.00),
-        Ember(id: 1, xJitter:  0.30, drift: -0.08, scale: 1.0, phaseOffset: 0.18),
-        Ember(id: 2, xJitter: -0.10, drift:  0.04, scale: 0.85, phaseOffset: 0.36),
-        Ember(id: 3, xJitter:  0.55, drift:  0.12, scale: 0.7, phaseOffset: 0.54),
+        Ember(id: 0, xJitter: -0.45, drift: 0.10, scale: 0.7, phaseOffset: 0.00),
+        Ember(id: 1, xJitter: 0.30, drift: -0.08, scale: 1.0, phaseOffset: 0.18),
+        Ember(id: 2, xJitter: -0.10, drift: 0.04, scale: 0.85, phaseOffset: 0.36),
+        Ember(id: 3, xJitter: 0.55, drift: 0.12, scale: 0.7, phaseOffset: 0.54),
         Ember(id: 4, xJitter: -0.25, drift: -0.06, scale: 1.05, phaseOffset: 0.72),
-        Ember(id: 5, xJitter:  0.18, drift:  0.16, scale: 0.8, phaseOffset: 0.90)
+        Ember(id: 5, xJitter: 0.18, drift: 0.16, scale: 0.8, phaseOffset: 0.90)
     ]
 
     var body: some View {
@@ -409,9 +409,9 @@ struct LivingFireCanvas: View {
 
     private static let sparks: [SparkSeed] = [
         SparkSeed(xJitter: -0.10, phaseOffset: 0.00, color: Color(hex: "FA5053")),
-        SparkSeed(xJitter:  0.18, phaseOffset: 0.27, color: Color(hex: "FFA800")),
+        SparkSeed(xJitter: 0.18, phaseOffset: 0.27, color: Color(hex: "FFA800")),
         SparkSeed(xJitter: -0.20, phaseOffset: 0.55, color: Color(hex: "E86100")),
-        SparkSeed(xJitter:  0.06, phaseOffset: 0.78, color: Color(hex: "FA5053"))
+        SparkSeed(xJitter: 0.06, phaseOffset: 0.78, color: Color(hex: "FA5053"))
     ]
 
     var body: some View {
@@ -1235,9 +1235,9 @@ struct AuroraNavIcon: View {
     let isPressed: Bool
     /// Optional photo URL for the `.you` tab. When provided, renders the
     /// signed-in user's avatar instead of the generic glyph.
-    var userPhotoURL: URL? = nil
+    var userPhotoURL: URL?
     /// Display name used to derive initials when no photo is available.
-    var userDisplayName: String? = nil
+    var userDisplayName: String?
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1351,7 +1351,7 @@ struct AuroraNavIcon: View {
                                     .init(color: MobileTheme.ember.opacity(0.85), location: 0.00),
                                     .init(color: MobileTheme.ember.opacity(0.55), location: 0.35),
                                     .init(color: MobileTheme.amber.opacity(0.32), location: 0.70),
-                                    .init(color: Color.clear,                      location: 1.00)
+                                    .init(color: Color.clear, location: 1.00)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom

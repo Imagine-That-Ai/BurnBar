@@ -222,7 +222,7 @@ public enum TrendInsightEngine {
     private static func costPerOutputToken(_ d: TrendDataDigest) -> [TrendInsight] {
         guard let topModel = d.models.first, topModel.tokens > 0 else { return [] }
         let cheapest = d.models.filter { $0.tokens > 1000 && $0.costUsd > 0 }
-            .min { (a, b) -> Bool in
+            .min { a, b -> Bool in
                 let aRate = a.costUsd / Double(a.tokens)
                 let bRate = b.costUsd / Double(b.tokens)
                 return aRate < bRate

@@ -80,7 +80,8 @@ final class CacheHitRateTests: XCTestCase {
         ]
         let summaries = DashboardUsageViewModel.makeProviderSummaries(from: usages)
         guard let claude = summaries.first(where: { $0.provider == .claudeCode }) else {
-            return XCTFail("missing claude summary")
+            XCTFail("missing claude summary")
+            return
         }
         let sonnet = claude.modelBreakdown.first(where: { $0.modelName == "claude-sonnet-4" })
         let haiku = claude.modelBreakdown.first(where: { $0.modelName == "claude-haiku-4" })
@@ -98,7 +99,8 @@ final class CacheHitRateTests: XCTestCase {
         ]
         let summaries = DashboardUsageViewModel.makeModelSummaries(from: usages)
         guard let model = summaries.first(where: { $0.modelName.contains("sonnet") }) else {
-            return XCTFail("missing model summary")
+            XCTFail("missing model summary")
+            return
         }
         XCTAssertEqual(model.cacheEfficiency.cacheReadTokens, 2_000)
         XCTAssertEqual(model.cacheEfficiency.promptBasis, 4_000)

@@ -275,7 +275,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             ),
             socketPath: socketPath
         )
-        XCTAssertTrue(configUpdateResponse.result?.snapshot.providerSettings(id: "zai")?.isEnabled == true)
+        XCTAssertEqual(configUpdateResponse.result?.snapshot.providerSettings(id: "zai")?.isEnabled, true)
 
         let createResponse: BurnBarRPCResponseEnvelope<BurnBarRunCreateResponse> = try sendEnvelope(
             BurnBarRPCRequestEnvelopeWithParams(
@@ -449,7 +449,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
 
         XCTAssertNil(response.result)
         XCTAssertEqual(response.error?.code, -32603)
-        XCTAssertTrue(response.error?.message.contains("indexed search") == true)
+        XCTAssertEqual(response.error?.message.contains("indexed search"), true)
 
         await server.stop()
     }
@@ -558,7 +558,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             socketPath: socketPath
         )
         XCTAssertEqual(connectorAction.result?.ok, true)
-        XCTAssertTrue(connectorAction.result?.summary.contains("GitHub") == true)
+        XCTAssertEqual(connectorAction.result?.summary.contains("GitHub"), true)
 
         let browserGet: BurnBarRPCResponseEnvelope<BurnBarBrowserToolingResponse> = try sendRequest(
             BurnBarRPCRequestEnvelope(id: "browser-get-1", method: .browserToolingGet, authToken: "test-token"),
@@ -1227,7 +1227,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
         XCTAssertNil(throttled.result)
         XCTAssertEqual(throttled.error?.code, BurnBarRPCErrorCode.rateLimitExceeded)
-        XCTAssertTrue(throttled.error?.message.contains("Rate limit exceeded") == true)
+        XCTAssertEqual(throttled.error?.message.contains("Rate limit exceeded"), true)
 
         await server.stop()
     }

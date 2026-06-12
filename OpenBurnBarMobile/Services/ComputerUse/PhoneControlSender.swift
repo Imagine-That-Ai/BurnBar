@@ -614,7 +614,6 @@ public final class PhoneControlSender: @unchecked Sendable {
         return authority
     }
 
-
     private func ensureAttestationIfRequired() async throws {
         guard MobileComputerUseRemoteConfig.phoneControlAttestationRequired() else { return }
         if await MobileAppCheckAttestationReader.currentAttestationDigestForEnvelope() != nil {

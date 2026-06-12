@@ -24,7 +24,7 @@ struct ProviderQuotaChip: View {
     /// Overrides the leading word of the tooltip — useful when the caller
     /// is a backend pill that wants "Droid — ..." even though the provider
     /// is `.factory`. Falls back to `provider.displayName`.
-    var displayName: String? = nil
+    var displayName: String?
 
     @State private var quotaService = ProviderQuotaService.shared
 

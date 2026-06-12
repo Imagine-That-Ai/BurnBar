@@ -148,7 +148,7 @@ struct PulseDepthBackdrop: View {
 // stack a sense of vertical rhythm without adding new chrome.
 
 struct PulseSectionRule: View {
-    var label: String? = nil
+    var label: String?
     var accent: Color = MobileTheme.ember
 
     var body: some View {

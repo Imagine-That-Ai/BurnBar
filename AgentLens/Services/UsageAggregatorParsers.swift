@@ -342,10 +342,8 @@ final class AiderParser: LogParser, Sendable {
 
         // Also check for per-project .aider.analytics.jsonl in recent git repos
         var analyticsFiles: [URL] = []
-        for path in candidatePaths {
-            if fm.fileExists(atPath: path) {
-                analyticsFiles.append(URL(fileURLWithPath: path))
-            }
+        for path in candidatePaths where fm.fileExists(atPath: path) {
+            analyticsFiles.append(URL(fileURLWithPath: path))
         }
 
         guard !analyticsFiles.isEmpty else {

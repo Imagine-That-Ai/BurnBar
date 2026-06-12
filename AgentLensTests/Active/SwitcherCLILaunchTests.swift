@@ -140,7 +140,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = await coordinator.reconnect(profile: profile)
         guard case .readyToPersist(let updatedProfile) = result else {
-            return XCTFail("Expected readyToPersist result")
+            XCTFail("Expected readyToPersist result")
+            return
         }
 
         XCTAssertEqual(updatedProfile.cliMetadata?.configDirectory, configDirectory.path)
@@ -194,13 +195,14 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = await coordinator.reconnect(profile: profile)
         guard case .readyToPersist = result else {
-            return XCTFail("Expected readyToPersist result")
+            XCTFail("Expected readyToPersist result")
+            return
         }
 
-        XCTAssertTrue(capturedScriptContents.value?.contains("export CODEX_HOME=") == true)
-        XCTAssertTrue(capturedScriptContents.value?.contains("export CODEX_CONFIG_PATH=") == true)
-        XCTAssertTrue(capturedScriptContents.value?.contains("OpenBurnBar is adding Codex") == true)
-        XCTAssertTrue(capturedScriptContents.value?.contains("choose a DIFFERENT Codex account") == true)
+        XCTAssertEqual(capturedScriptContents.value?.contains("export CODEX_HOME="), true)
+        XCTAssertEqual(capturedScriptContents.value?.contains("export CODEX_CONFIG_PATH="), true)
+        XCTAssertEqual(capturedScriptContents.value?.contains("OpenBurnBar is adding Codex"), true)
+        XCTAssertEqual(capturedScriptContents.value?.contains("choose a DIFFERENT Codex account"), true)
     }
 
     func test_cliAuthCoordinator_exportsClaudeConfigDirAndAcceptsMissingAccountLabel() async throws {
@@ -250,13 +252,14 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = await coordinator.reconnect(profile: profile)
         guard case .readyToPersist(let updatedProfile) = result else {
-            return XCTFail("Expected readyToPersist result")
+            XCTFail("Expected readyToPersist result")
+            return
         }
 
         XCTAssertEqual(updatedProfile.cliMetadata?.configDirectory, configDirectory.path)
         XCTAssertNil(updatedProfile.cliMetadata?.accountDescription)
-        XCTAssertTrue(capturedScriptContents.value?.contains("export CLAUDE_CONFIG_DIR=") == true)
-        XCTAssertTrue(capturedScriptContents.value?.contains("export CLAUDE_CONFIG_PATH=") == true)
+        XCTAssertEqual(capturedScriptContents.value?.contains("export CLAUDE_CONFIG_DIR="), true)
+        XCTAssertEqual(capturedScriptContents.value?.contains("export CLAUDE_CONFIG_PATH="), true)
     }
 
     func test_cliAuthCoordinator_classifiesBrokenCodexWrapperBeforeOpeningTerminal() async throws {
@@ -293,7 +296,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = await coordinator.reconnect(profile: profile)
         guard case .failed(let message) = result else {
-            return XCTFail("Expected broken executable failure")
+            XCTFail("Expected broken executable failure")
+            return
         }
 
         XCTAssertFalse(openedTerminal.value)
@@ -339,7 +343,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = await coordinator.reconnect(profile: profile)
         guard case .failed(let message) = result else {
-            return XCTFail("Expected failed result")
+            XCTFail("Expected failed result")
+            return
         }
         XCTAssertTrue(message.contains("native binary is missing"))
     }
@@ -399,7 +404,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = await coordinator.reconnect(profile: profile)
         guard case .requiresConfirmation(let updatedProfile, let previousAccount, let detectedAccount) = result else {
-            return XCTFail("Expected requiresConfirmation result")
+            XCTFail("Expected requiresConfirmation result")
+            return
         }
 
         XCTAssertEqual(previousAccount, "old@example.com")
@@ -407,7 +413,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "new@example.com")
         XCTAssertEqual(updatedProfile.cliMetadata?.providerID, .anthropic)
         XCTAssertEqual(updatedProfile.cliMetadata?.linkedHarnessIDs, ["claude", "droid"])
-        XCTAssertTrue(updatedProfile.cliMetadata?.neverAutoSwitch == true)
+        XCTAssertEqual(updatedProfile.cliMetadata?.neverAutoSwitch, true)
         XCTAssertNil(updatedProfile.cliMetadata?.runtimeAccountID)
         XCTAssertNil(updatedProfile.cliMetadata?.subscriptionTierID)
         XCTAssertNil(updatedProfile.cliMetadata?.modelCapabilityClassID)
@@ -464,7 +470,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = await coordinator.reconnect(profile: profile)
         guard case .requiresConfirmation(let updatedProfile, let previousAccount, let detectedAccount) = result else {
-            return XCTFail("Expected requiresConfirmation result")
+            XCTFail("Expected requiresConfirmation result")
+            return
         }
 
         XCTAssertEqual(previousAccount, "old@example.com")
@@ -518,7 +525,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = await coordinator.reconnect(profile: profile)
         guard case .cancelled = result else {
-            return XCTFail("Expected cancelled result")
+            XCTFail("Expected cancelled result")
+            return
         }
     }
 
@@ -618,7 +626,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         CLILaunchAdapter.environmentProvider = {
             [
                 "HOME": tempHome.path,
-                "SHELL": "/bin/zsh",
+                "SHELL": "/bin/zsh"
             ]
         }
 
@@ -637,15 +645,13 @@ final class SwitcherCLILaunchTests: XCTestCase {
             homeDir + "/Documents",
             homeDir + "/Projects/work",
             NSTemporaryDirectory(),
-            "/var/folders/xx/yyyy/T",
+            "/var/folders/xx/yyyy/T"
         ]
 
-        for path in validPaths {
+        for path in validPaths where FileManager.default.fileExists(atPath: path) {
             // Skip if path doesn't exist in test environment
-            if FileManager.default.fileExists(atPath: path) {
-                let result = CLILaunchAdapter.validateWorkingDirectory(path)
-                XCTAssertTrue(result.isSuccess, "Expected '\(path)' to be valid, got error")
-            }
+            let result = CLILaunchAdapter.validateWorkingDirectory(path)
+            XCTAssertTrue(result.isSuccess, "Expected '\(path)' to be valid, got error")
         }
     }
 
@@ -680,7 +686,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "/usr",
             "/bin",
             "/etc",
-            "/private/etc",
+            "/private/etc"
         ]
 
         for path in unsafePaths {
@@ -703,7 +709,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "--dry-run",
             "--working-dir=/Users/test",
             "--config=/Users/test/.config",
-            "--project=/Users/test/project",
+            "--project=/Users/test/project"
         ]
 
         for arg in allowlisted {
@@ -722,7 +728,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "$(whoami)",
             "${HOME}",
             "--load-extension=/path",
-            "--remote-debugging-port=9222",
+            "--remote-debugging-port=9222"
         ]
 
         for arg in disallowed {
@@ -773,7 +779,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "SECRET",
             "PASSWORD",
             "ANTHROPIC_API_KEY",
-            "MY_SECRET_TOKEN",
+            "MY_SECRET_TOKEN"
         ]
 
         for key in dangerousKeys {
@@ -812,7 +818,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "ANTHROPIC_API_KEY": "anthropic_test_placeholder",
             "OPENAI_API_KEY": "openai_test_placeholder",
             "SECRET_TOKEN": "super-secret-value",
-            "GITHUB_TOKEN": "ghp_secret",
+            "GITHUB_TOKEN": "ghp_secret"
         ]
 
         let result = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: ambientEnv)
@@ -852,7 +858,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "CLAUDE_CONFIG_PATH": "/Users/test/.claude",
             "CODEX_HOME": "/Users/test/.codex",
             "CODEX_CONFIG_PATH": "/Users/test/.codex",
-            "OPENCODE_CONFIG_PATH": "/Users/test/.opencode",
+            "OPENCODE_CONFIG_PATH": "/Users/test/.opencode"
         ]
 
         let result = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: ambientEnv)
@@ -895,7 +901,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
         guard case .success(let config) = result else {
-            return XCTFail("Expected launch config")
+            XCTFail("Expected launch config")
+            return
         }
 
         XCTAssertEqual(config.env["CODEX_HOME"], "/Users/test/.codex-reserve")
@@ -922,7 +929,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
         guard case .success(let config) = result else {
-            return XCTFail("Expected launch config")
+            XCTFail("Expected launch config")
+            return
         }
 
         XCTAssertEqual(config.env["CLAUDE_CONFIG_DIR"], "/Users/test/.claude-reserve")
@@ -933,7 +941,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         // Base env is mostly empty - only HOME and PATH exist
         let minimalEnv: [String: String] = [
             "HOME": "/Users/test",
-            "PATH": "/usr/bin",
+            "PATH": "/usr/bin"
         ]
 
         let result = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: minimalEnv)
@@ -982,7 +990,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
                 "OPENAI_API_KEY",
                 "SECRET_TOKEN",
                 "GITHUB_TOKEN",
-                "AWS_SECRET_ACCESS_KEY",
+                "AWS_SECRET_ACCESS_KEY"
             ]
 
             for sensitiveKey in sensitiveKeys {
@@ -1278,7 +1286,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             .launchTimeout,
             .quotaExhausted("5-hour window spent"),
             .launchFailed("detail"),
-            .noActiveProfile,
+            .noActiveProfile
         ]
 
         for error in errors {
@@ -1296,7 +1304,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             .invalidWorkingDirectory("reason"),
             .quotaExhausted("weekly window spent"),
             .launchTimeout,
-            .noActiveProfile,
+            .noActiveProfile
         ]
 
         for error in errors {
@@ -1447,7 +1455,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "HOME": "/Users/test",
             "SECRET_KEY": "abc123",
             "API_KEY": "xyz789",
-            "PATH": "/usr/bin",
+            "PATH": "/usr/bin"
         ]
         let result = CLILaunchRedactor.redactEnvironment(env)
 
@@ -1628,7 +1636,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         let outcome = await service.launchCLI(for: primary.id)
 
         XCTAssertFalse(outcome.success)
-        XCTAssertEqual(outcome.launchedProfileID, nil)
+        XCTAssertNil(outcome.launchedProfileID)
         XCTAssertEqual(store.fetchActiveProfileID(), primary.id)
         XCTAssertEqual(outcome.attemptedProfileIDs, [primary.id])
         XCTAssertEqual(outcome.error, .launchSpawnFailed("primary launch failed"))

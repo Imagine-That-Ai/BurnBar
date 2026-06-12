@@ -247,7 +247,7 @@ public enum StandardGallery {
         guard digest.providers.count >= 2 else { return nil }
         // Aurora palette for the donut wedges.
         let palette = ["#E07868", "#A294F0", "#E5A848", "#C8BFB5", "#F0A07A"]
-        let points = digest.providers.prefix(5).enumerated().map { idx, p in
+        let points = digest.providers.prefix(5).map { p in
             ChartSpec.DataPoint(
                 x: .string(p.provider),
                 y: Double(p.tokens),
@@ -409,7 +409,7 @@ public enum StandardGallery {
 
     private static func formatCurrency(_ value: Double) -> String {
         if value >= 1000 { return String(format: "$%.0f", value) }
-        if value >= 10   { return String(format: "$%.1f", value) }
+        if value >= 10 { return String(format: "$%.1f", value) }
         return String(format: "$%.2f", value)
     }
 
@@ -417,7 +417,7 @@ public enum StandardGallery {
         let v = Double(value)
         if v >= 1_000_000_000 { return String(format: "%.2fB", v / 1_000_000_000) }
         if v >= 1_000_000 { return String(format: "%.1fM", v / 1_000_000) }
-        if v >= 1_000     { return String(format: "%.1fK", v / 1_000) }
+        if v >= 1_000 { return String(format: "%.1fK", v / 1_000) }
         return "\(value)"
     }
 }

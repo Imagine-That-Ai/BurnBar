@@ -77,7 +77,7 @@ final class OBBSignalInteropFixtureGen: XCTestCase {
             "bobKyberPreKeyRecordB64": Data(bobPrekeys.kyberPreKey.serialize()).base64EncodedString(),
             "ciphertextType": Int(cipher.messageType.rawValue),
             "ciphertextB64": Data(cipher.serialize()).base64EncodedString(),
-            "expectedPlaintext": plaintext,
+            "expectedPlaintext": plaintext
         ]
         let data = try JSONSerialization.data(withJSONObject: fixture, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: URL(fileURLWithPath: outPath))

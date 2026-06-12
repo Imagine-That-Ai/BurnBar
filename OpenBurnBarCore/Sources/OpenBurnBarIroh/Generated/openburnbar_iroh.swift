@@ -20,7 +20,7 @@ fileprivate extension RustBuffer {
     }
 
     static func empty() -> RustBuffer {
-        RustBuffer(capacity: 0, len:0, data: nil)
+        RustBuffer(capacity: 0, len: 0, data: nil)
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
@@ -71,14 +71,14 @@ fileprivate extension Data {
 //
 // Instead, the read() method and these helper functions input a tuple of data
 
-fileprivate func createReader(data: Data) -> (data: Data, offset: Data.Index) {
+private func createReader(data: Data) -> (data: Data, offset: Data.Index) {
     (data: data, offset: 0)
 }
 
 // Reads an integer at the current offset, in big-endian order, and advances
 // the offset on success. Throws if reading the integer would move the
 // offset past the end of the buffer.
-fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
+private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
     let range = reader.offset..<reader.offset + MemoryLayout<T>.size
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
@@ -89,14 +89,14 @@ fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offs
         return value as! T
     }
     var value: T = 0
-    let _ = withUnsafeMutableBytes(of: &value, { reader.data.copyBytes(to: $0, from: range)})
+    _ = withUnsafeMutableBytes(of: &value, { reader.data.copyBytes(to: $0, from: range) })
     reader.offset = range.upperBound
     return value.bigEndian
 }
 
 // Reads an arbitrary number of bytes, to be used to read
 // raw bytes, this is useful when lifting strings
-fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> Array<UInt8> {
+private func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> [UInt8] {
     let range = reader.offset..<(reader.offset+count)
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
@@ -110,17 +110,17 @@ fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), cou
 }
 
 // Reads a float at the current offset.
-fileprivate func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
+private func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
     return Float(bitPattern: try readInt(&reader))
 }
 
 // Reads a float at the current offset.
-fileprivate func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
+private func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
     return Double(bitPattern: try readInt(&reader))
 }
 
 // Indicates if the offset has reached the end of the buffer.
-fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
+private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
     return reader.offset < reader.data.count
 }
 
@@ -128,11 +128,11 @@ fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Boo
 // struct, but we use standalone functions instead in order to make external
 // types work.  See the above discussion on Readers for details.
 
-fileprivate func createWriter() -> [UInt8] {
+private func createWriter() -> [UInt8] {
     return []
 }
 
-fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
+private func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
     writer.append(contentsOf: byteArr)
 }
 
@@ -140,22 +140,22 @@ fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: S
 //
 // Warning: make sure what you are trying to write
 // is in the correct type!
-fileprivate func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
+private func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
     var value = value.bigEndian
     withUnsafeBytes(of: &value) { writer.append(contentsOf: $0) }
 }
 
-fileprivate func writeFloat(_ writer: inout [UInt8], _ value: Float) {
+private func writeFloat(_ writer: inout [UInt8], _ value: Float) {
     writeInt(&writer, value.bitPattern)
 }
 
-fileprivate func writeDouble(_ writer: inout [UInt8], _ value: Double) {
+private func writeDouble(_ writer: inout [UInt8], _ value: Double) {
     writeInt(&writer, value.bitPattern)
 }
 
 // Protocol for types that transfer other types across the FFI. This is
 // analogous to the Rust trait of the same name.
-fileprivate protocol FfiConverter {
+private protocol FfiConverter {
     associatedtype FfiType
     associatedtype SwiftType
 
@@ -166,7 +166,7 @@ fileprivate protocol FfiConverter {
 }
 
 // Types conforming to `Primitive` pass themselves directly over the FFI.
-fileprivate protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
+private protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
 
 extension FfiConverterPrimitive {
 #if swift(>=5.8)
@@ -186,7 +186,7 @@ extension FfiConverterPrimitive {
 
 // Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
 // Used for complex types where it's hard to write a custom lift/lower.
-fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
+private protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
 
 extension FfiConverterRustBuffer {
 #if swift(>=5.8)
@@ -213,7 +213,7 @@ extension FfiConverterRustBuffer {
 }
 // An error type for FFI errors. These errors occur at the UniFFI level, not
 // the library level.
-fileprivate enum UniffiInternalError: LocalizedError {
+private enum UniffiInternalError: LocalizedError {
     case bufferOverflow
     case incompleteData
     case unexpectedOptionalTag
@@ -224,7 +224,7 @@ fileprivate enum UniffiInternalError: LocalizedError {
     case unexpectedStaleHandle
     case rustPanic(_ message: String)
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .bufferOverflow: return "Reading the requested value would read past the end of the buffer"
         case .incompleteData: return "The buffer still has data after lifting its containing value"
@@ -247,16 +247,16 @@ fileprivate extension NSLock {
     }
 }
 
-fileprivate let CALL_SUCCESS: Int8 = 0
-fileprivate let CALL_ERROR: Int8 = 1
-fileprivate let CALL_UNEXPECTED_ERROR: Int8 = 2
-fileprivate let CALL_CANCELLED: Int8 = 3
+private let CALL_SUCCESS: Int8 = 0
+private let CALL_ERROR: Int8 = 1
+private let CALL_UNEXPECTED_ERROR: Int8 = 2
+private let CALL_CANCELLED: Int8 = 3
 
 fileprivate extension RustCallStatus {
     init() {
         self.init(
             code: CALL_SUCCESS,
-            errorBuf: RustBuffer.init(
+            errorBuf: RustBuffer(
                 capacity: 0,
                 len: 0,
                 data: nil
@@ -281,7 +281,7 @@ private func makeRustCall<T, E: Swift.Error>(
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
     uniffiEnsureInitialized()
-    var callStatus = RustCallStatus.init()
+    var callStatus = RustCallStatus()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
     return returnedVal
@@ -296,7 +296,7 @@ private func uniffiCheckCallStatus<E: Swift.Error>(
             return
 
         case CALL_ERROR:
-            if let errorHandler = errorHandler {
+            if let errorHandler {
                 throw try errorHandler(callStatus.errorBuf)
             } else {
                 callStatus.errorBuf.deallocate()
@@ -325,7 +325,7 @@ private func uniffiCheckCallStatus<E: Swift.Error>(
 private func uniffiTraitInterfaceCall<T>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
-    writeReturn: (T) -> ()
+    writeReturn: (T) -> Void
 ) {
     do {
         try writeReturn(makeCall())
@@ -338,7 +338,7 @@ private func uniffiTraitInterfaceCall<T>(
 private func uniffiTraitInterfaceCallWithError<T, E>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
-    writeReturn: (T) -> (),
+    writeReturn: (T) -> Void,
     lowerError: (E) -> RustBuffer
 ) {
     do {
@@ -351,7 +351,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-fileprivate class UniffiHandleMap<T> {
+private class UniffiHandleMap<T> {
     private var map: [UInt64: T] = [:]
     private let lock = NSLock()
     private var currentHandle: UInt64 = 1
@@ -391,22 +391,20 @@ fileprivate class UniffiHandleMap<T> {
     }
 }
 
-
 // Public interface members begin here.
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
+private struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
         return try lift(readInt(&buf))
     }
 
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -414,15 +412,15 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+private struct FfiConverterUInt64: FfiConverterPrimitive {
     typealias FfiType = UInt64
     typealias SwiftType = UInt64
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
         return try lift(readInt(&buf))
     }
 
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -430,23 +428,23 @@ fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterBool : FfiConverter {
+private struct FfiConverterBool: FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
 
-    public static func lift(_ value: Int8) throws -> Bool {
+    static func lift(_ value: Int8) throws -> Bool {
         return value != 0
     }
 
-    public static func lower(_ value: Bool) -> Int8 {
+    static func lower(_ value: Bool) -> Int8 {
         return value ? 1 : 0
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
         return try lift(readInt(&buf))
     }
 
-    public static func write(_ value: Bool, into buf: inout [UInt8]) {
+    static func write(_ value: Bool, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -454,11 +452,11 @@ fileprivate struct FfiConverterBool : FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterString: FfiConverter {
+private struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
 
-    public static func lift(_ value: RustBuffer) throws -> String {
+    static func lift(_ value: RustBuffer) throws -> String {
         defer {
             value.deallocate()
         }
@@ -469,7 +467,7 @@ fileprivate struct FfiConverterString: FfiConverter {
         return String(bytes: bytes, encoding: String.Encoding.utf8)!
     }
 
-    public static func lower(_ value: String) -> RustBuffer {
+    static func lower(_ value: String) -> RustBuffer {
         return value.utf8CString.withUnsafeBufferPointer { ptr in
             // The swift string gives us int8_t, we want uint8_t.
             ptr.withMemoryRebound(to: UInt8.self) { ptr in
@@ -480,12 +478,12 @@ fileprivate struct FfiConverterString: FfiConverter {
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
         let len: Int32 = try readInt(&buf)
         return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
     }
 
-    public static func write(_ value: String, into buf: inout [UInt8]) {
+    static func write(_ value: String, into buf: inout [UInt8]) {
         let len = Int32(value.utf8.count)
         writeInt(&buf, len)
         writeBytes(&buf, value.utf8)
@@ -495,23 +493,20 @@ fileprivate struct FfiConverterString: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+private struct FfiConverterData: FfiConverterRustBuffer {
     typealias SwiftType = Data
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
         let len: Int32 = try readInt(&buf)
         return Data(try readBytes(&buf, count: Int(len)))
     }
 
-    public static func write(_ value: Data, into buf: inout [UInt8]) {
+    static func write(_ value: Data, into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         writeBytes(&buf, value)
     }
 }
-
-
-
 
 /**
  * Self-contained iroh blob endpoint. One instance per device per
@@ -519,7 +514,7 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
  * `Router`. Idempotent bootstrap; subsequent calls replace the inner
  * state.
  */
-public protocol IrohBlobNodeProtocol : AnyObject {
+public protocol IrohBlobNodeProtocol: AnyObject {
 
     /**
      * Spin up the blob endpoint with the supplied secret key + on-disk
@@ -528,7 +523,7 @@ public protocol IrohBlobNodeProtocol : AnyObject {
      * Returns the iroh node identity Swift should embed in the
      * `media.blob.advertise` ticket-host hint.
      */
-    func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String) throws  -> IrohNodeIdentity
+    func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String) throws -> IrohNodeIdentity
 
     /**
      * Dial the ticket's source node, download the blob, write it to
@@ -536,19 +531,19 @@ public protocol IrohBlobNodeProtocol : AnyObject {
      * is handled by iroh-blobs's downloader internally — `did_resume`
      * flips true if any partial state was found at start.
      */
-    func fetchBlob(ticketText: String, destination: String) throws  -> BlobTransferStats
+    func fetchBlob(ticketText: String, destination: String) throws -> BlobTransferStats
 
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
-    func identity() throws  -> IrohNodeIdentity
+    func identity() throws -> IrohNodeIdentity
 
     /**
      * Hash + ingest a local file into the blob store, return a ticket
      * the receiver can use to fetch it. Idempotent — same file content
      * produces the same hash and the same ticket bytes.
      */
-    func publishBlob(localPath: String) throws  -> BlobTicketBytes
+    func publishBlob(localPath: String) throws -> BlobTicketBytes
 
     /**
      * Tear down the router, close the endpoint, drop the store and
@@ -579,7 +574,7 @@ open class IrohBlobNode:
     // TODO: We'd like this to be `private` but for Swifty reasons,
     // we can't implement `FfiConverter` without making this `required` and we can't
     // make it `required` without making it `public`.
-    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
 
@@ -603,7 +598,7 @@ open class IrohBlobNode:
     }
 public convenience init() {
     let pointer =
-        try! rustCall() {
+        try! rustCall {
     uniffi_openburnbar_iroh_fn_constructor_irohblobnode_new($0
     )
 }
@@ -611,15 +606,12 @@ public convenience init() {
 }
 
     deinit {
-        guard let pointer = pointer else {
+        guard let pointer else {
             return
         }
 
         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohblobnode(pointer, $0) }
     }
-
-
-
 
     /**
      * Spin up the blob endpoint with the supplied secret key + on-disk
@@ -628,12 +620,12 @@ public convenience init() {
      * Returns the iroh node identity Swift should embed in the
      * `media.blob.advertise` ticket-host hint.
      */
-open func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String)throws  -> IrohNodeIdentity {
+open func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String)throws -> IrohNodeIdentity {
     return try  FfiConverterTypeIrohNodeIdentity.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohblobnode_bootstrap(self.uniffiClonePointer(),
         FfiConverterTypeIrohSecretKeyMaterial.lower(secret),
         FfiConverterString.lower(storeDir),
-        FfiConverterString.lower(relayUrl),$0
+        FfiConverterString.lower(relayUrl), $0
     )
 })
 }
@@ -644,11 +636,11 @@ open func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: S
      * is handled by iroh-blobs's downloader internally — `did_resume`
      * flips true if any partial state was found at start.
      */
-open func fetchBlob(ticketText: String, destination: String)throws  -> BlobTransferStats {
+open func fetchBlob(ticketText: String, destination: String)throws -> BlobTransferStats {
     return try  FfiConverterTypeBlobTransferStats.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohblobnode_fetch_blob(self.uniffiClonePointer(),
         FfiConverterString.lower(ticketText),
-        FfiConverterString.lower(destination),$0
+        FfiConverterString.lower(destination), $0
     )
 })
 }
@@ -656,9 +648,9 @@ open func fetchBlob(ticketText: String, destination: String)throws  -> BlobTrans
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
-open func identity()throws  -> IrohNodeIdentity {
+open func identity()throws -> IrohNodeIdentity {
     return try  FfiConverterTypeIrohNodeIdentity.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohblobnode_identity(self.uniffiClonePointer(),$0
+    uniffi_openburnbar_iroh_fn_method_irohblobnode_identity(self.uniffiClonePointer(), $0
     )
 })
 }
@@ -668,10 +660,10 @@ open func identity()throws  -> IrohNodeIdentity {
      * the receiver can use to fetch it. Idempotent — same file content
      * produces the same hash and the same ticket bytes.
      */
-open func publishBlob(localPath: String)throws  -> BlobTicketBytes {
+open func publishBlob(localPath: String)throws -> BlobTicketBytes {
     return try  FfiConverterTypeBlobTicketBytes.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohblobnode_publish_blob(self.uniffiClonePointer(),
-        FfiConverterString.lower(localPath),$0
+        FfiConverterString.lower(localPath), $0
     )
 })
 }
@@ -680,12 +672,11 @@ open func publishBlob(localPath: String)throws  -> BlobTicketBytes {
      * Tear down the router, close the endpoint, drop the store and
      * runtime. Idempotent.
      */
-open func shutdown()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohblobnode_shutdown(self.uniffiClonePointer(),$0
+open func shutdown()throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohblobnode_shutdown(self.uniffiClonePointer(), $0
     )
 }
 }
-
 
 }
 
@@ -710,7 +701,7 @@ public struct FfiConverterTypeIrohBlobNode: FfiConverter {
         // The Rust code won't compile if a pointer won't fit in a UInt64.
         // We have to go via `UInt` because that's the thing that's the size of a pointer.
         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if (ptr == nil) {
+        if ptr == nil {
             throw UniffiInternalError.unexpectedNullPointer
         }
         return try lift(ptr!)
@@ -722,9 +713,6 @@ public struct FfiConverterTypeIrohBlobNode: FfiConverter {
         writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
     }
 }
-
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -740,16 +728,13 @@ public func FfiConverterTypeIrohBlobNode_lower(_ value: IrohBlobNode) -> UnsafeM
     return FfiConverterTypeIrohBlobNode.lower(value)
 }
 
-
-
-
 /**
  * A single datagram channel — one `Connection` dedicated to small,
  * unreliable, unordered packets. Audio only for now; future video
  * callers should NOT reuse this object — they get their own QUIC
  * streams per GOP per the master plan.
  */
-public protocol IrohDatagramChannelProtocol : AnyObject {
+public protocol IrohDatagramChannelProtocol: AnyObject {
 
     /**
      * Cleanly close the underlying connection. Idempotent.
@@ -760,7 +745,7 @@ public protocol IrohDatagramChannelProtocol : AnyObject {
      * Maximum datagram payload size negotiated for this connection.
      * Returns 0 if datagrams aren't supported (peer disabled them).
      */
-    func maxDatagramSize() throws  -> UInt32
+    func maxDatagramSize() throws -> UInt32
 
     /**
      * Receive one datagram with a bounded wait. Returns `None` if the
@@ -768,7 +753,7 @@ public protocol IrohDatagramChannelProtocol : AnyObject {
      * is the per-call ceiling — receivers should drive a tight loop at
      * the Opus framing cadence (20 ms) plus a small safety margin.
      */
-    func recv(timeoutMillis: UInt32) throws  -> Data?
+    func recv(timeoutMillis: UInt32) throws -> Data?
 
     /**
      * Send a single datagram. Length is the in-flight MTU (1200 bytes on
@@ -800,7 +785,7 @@ open class IrohDatagramChannel:
     // TODO: We'd like this to be `private` but for Swifty reasons,
     // we can't implement `FfiConverter` without making this `required` and we can't
     // make it `required` without making it `public`.
-    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
 
@@ -825,21 +810,18 @@ open class IrohDatagramChannel:
     // No primary constructor declared for this class.
 
     deinit {
-        guard let pointer = pointer else {
+        guard let pointer else {
             return
         }
 
         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohdatagramchannel(pointer, $0) }
     }
 
-
-
-
     /**
      * Cleanly close the underlying connection. Idempotent.
      */
-open func closeChannel()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_close_channel(self.uniffiClonePointer(),$0
+open func closeChannel()throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_close_channel(self.uniffiClonePointer(), $0
     )
 }
 }
@@ -848,9 +830,9 @@ open func closeChannel()throws  {try rustCallWithError(FfiConverterTypeIrohFfiEr
      * Maximum datagram payload size negotiated for this connection.
      * Returns 0 if datagrams aren't supported (peer disabled them).
      */
-open func maxDatagramSize()throws  -> UInt32 {
+open func maxDatagramSize()throws -> UInt32 {
     return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_max_datagram_size(self.uniffiClonePointer(),$0
+    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_max_datagram_size(self.uniffiClonePointer(), $0
     )
 })
 }
@@ -861,10 +843,10 @@ open func maxDatagramSize()throws  -> UInt32 {
      * is the per-call ceiling — receivers should drive a tight loop at
      * the Opus framing cadence (20 ms) plus a small safety margin.
      */
-open func recv(timeoutMillis: UInt32)throws  -> Data? {
+open func recv(timeoutMillis: UInt32)throws -> Data? {
     return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_recv(self.uniffiClonePointer(),
-        FfiConverterUInt32.lower(timeoutMillis),$0
+        FfiConverterUInt32.lower(timeoutMillis), $0
     )
 })
 }
@@ -874,13 +856,12 @@ open func recv(timeoutMillis: UInt32)throws  -> Data? {
      * most networks) — anything larger fails with `StreamFailed`. The
      * sender is responsible for keeping each Opus packet under the MTU.
      */
-open func send(packet: Data)throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+open func send(packet: Data)throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_send(self.uniffiClonePointer(),
-        FfiConverterData.lower(packet),$0
+        FfiConverterData.lower(packet), $0
     )
 }
 }
-
 
 }
 
@@ -905,7 +886,7 @@ public struct FfiConverterTypeIrohDatagramChannel: FfiConverter {
         // The Rust code won't compile if a pointer won't fit in a UInt64.
         // We have to go via `UInt` because that's the thing that's the size of a pointer.
         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if (ptr == nil) {
+        if ptr == nil {
             throw UniffiInternalError.unexpectedNullPointer
         }
         return try lift(ptr!)
@@ -917,9 +898,6 @@ public struct FfiConverterTypeIrohDatagramChannel: FfiConverter {
         writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
     }
 }
-
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -935,27 +913,24 @@ public func FfiConverterTypeIrohDatagramChannel_lower(_ value: IrohDatagramChann
     return FfiConverterTypeIrohDatagramChannel.lower(value)
 }
 
-
-
-
 /**
  * Wraps an `iroh::Endpoint` and exposes the eight-function surface the Swift
  * `OpenBurnBarIrohEndpoint` actor calls into.
  */
-public protocol IrohEndpointHandleProtocol : AnyObject {
+public protocol IrohEndpointHandleProtocol: AnyObject {
 
     /**
      * Block waiting for an inbound Mercury audio datagram connection.
      * Mac uses this in a loop on a dedicated accept task; iOS / Android
      * dial outbound and rarely accept.
      */
-    func acceptDatagramChannel(timeoutSeconds: UInt32) throws  -> IrohDatagramChannel
+    func acceptDatagramChannel(timeoutSeconds: UInt32) throws -> IrohDatagramChannel
 
     /**
      * Block waiting for one inbound bidirectional stream. Returns once the
      * remote opens its first bi-stream after a successful ALPN handshake.
      */
-    func acceptOne(timeoutSeconds: UInt32) throws  -> IrohStream
+    func acceptOne(timeoutSeconds: UInt32) throws -> IrohStream
 
     /**
      * Spawn the iroh endpoint with the supplied 32-byte secret key. Idempotent
@@ -968,18 +943,18 @@ public protocol IrohEndpointHandleProtocol : AnyObject {
      * Empty string means "use n0's public relay set" (the default in
      * phases 1-5).
      */
-    func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String) throws  -> IrohNodeIdentity
+    func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String) throws -> IrohNodeIdentity
 
     /**
      * Dial a remote node by NodeId (base32 surface form) and open one
      * bidirectional stream. The caller is responsible for stream lifetime.
      */
-    func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws  -> IrohStream
+    func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws -> IrohStream
 
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
-    func identity() throws  -> IrohNodeIdentity
+    func identity() throws -> IrohNodeIdentity
 
     /**
      * Dial a remote NodeId on the Mercury audio ALPN and return a
@@ -987,7 +962,7 @@ public protocol IrohEndpointHandleProtocol : AnyObject {
      * bootstrapped — this method reuses the same iroh `Endpoint` so it
      * shares discovery + relay state.
      */
-    func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws  -> IrohDatagramChannel
+    func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws -> IrohDatagramChannel
 
     /**
      * Cleanly close the endpoint. After shutdown the handle is unusable.
@@ -1015,7 +990,7 @@ open class IrohEndpointHandle:
     // TODO: We'd like this to be `private` but for Swifty reasons,
     // we can't implement `FfiConverter` without making this `required` and we can't
     // make it `required` without making it `public`.
-    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
 
@@ -1039,7 +1014,7 @@ open class IrohEndpointHandle:
     }
 public convenience init() {
     let pointer =
-        try! rustCall() {
+        try! rustCall {
     uniffi_openburnbar_iroh_fn_constructor_irohendpointhandle_new($0
     )
 }
@@ -1047,25 +1022,22 @@ public convenience init() {
 }
 
     deinit {
-        guard let pointer = pointer else {
+        guard let pointer else {
             return
         }
 
         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohendpointhandle(pointer, $0) }
     }
 
-
-
-
     /**
      * Block waiting for an inbound Mercury audio datagram connection.
      * Mac uses this in a loop on a dedicated accept task; iOS / Android
      * dial outbound and rarely accept.
      */
-open func acceptDatagramChannel(timeoutSeconds: UInt32)throws  -> IrohDatagramChannel {
+open func acceptDatagramChannel(timeoutSeconds: UInt32)throws -> IrohDatagramChannel {
     return try  FfiConverterTypeIrohDatagramChannel.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_datagram_channel(self.uniffiClonePointer(),
-        FfiConverterUInt32.lower(timeoutSeconds),$0
+        FfiConverterUInt32.lower(timeoutSeconds), $0
     )
 })
 }
@@ -1074,10 +1046,10 @@ open func acceptDatagramChannel(timeoutSeconds: UInt32)throws  -> IrohDatagramCh
      * Block waiting for one inbound bidirectional stream. Returns once the
      * remote opens its first bi-stream after a successful ALPN handshake.
      */
-open func acceptOne(timeoutSeconds: UInt32)throws  -> IrohStream {
+open func acceptOne(timeoutSeconds: UInt32)throws -> IrohStream {
     return try  FfiConverterTypeIrohStream.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_one(self.uniffiClonePointer(),
-        FfiConverterUInt32.lower(timeoutSeconds),$0
+        FfiConverterUInt32.lower(timeoutSeconds), $0
     )
 })
 }
@@ -1093,11 +1065,11 @@ open func acceptOne(timeoutSeconds: UInt32)throws  -> IrohStream {
      * Empty string means "use n0's public relay set" (the default in
      * phases 1-5).
      */
-open func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String)throws  -> IrohNodeIdentity {
+open func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String)throws -> IrohNodeIdentity {
     return try  FfiConverterTypeIrohNodeIdentity.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_bootstrap(self.uniffiClonePointer(),
         FfiConverterTypeIrohSecretKeyMaterial.lower(secret),
-        FfiConverterString.lower(relayUrl),$0
+        FfiConverterString.lower(relayUrl), $0
     )
 })
 }
@@ -1106,13 +1078,13 @@ open func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String)throws  -> I
      * Dial a remote node by NodeId (base32 surface form) and open one
      * bidirectional stream. The caller is responsible for stream lifetime.
      */
-open func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws  -> IrohStream {
+open func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws -> IrohStream {
     return try  FfiConverterTypeIrohStream.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_connect(self.uniffiClonePointer(),
         FfiConverterString.lower(nodeId),
         FfiConverterString.lower(relayUrl),
         FfiConverterSequenceString.lower(directAddresses),
-        FfiConverterUInt32.lower(timeoutSeconds),$0
+        FfiConverterUInt32.lower(timeoutSeconds), $0
     )
 })
 }
@@ -1120,9 +1092,9 @@ open func connect(nodeId: String, relayUrl: String, directAddresses: [String], t
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
-open func identity()throws  -> IrohNodeIdentity {
+open func identity()throws -> IrohNodeIdentity {
     return try  FfiConverterTypeIrohNodeIdentity.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_identity(self.uniffiClonePointer(),$0
+    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_identity(self.uniffiClonePointer(), $0
     )
 })
 }
@@ -1133,13 +1105,13 @@ open func identity()throws  -> IrohNodeIdentity {
      * bootstrapped — this method reuses the same iroh `Endpoint` so it
      * shares discovery + relay state.
      */
-open func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws  -> IrohDatagramChannel {
+open func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws -> IrohDatagramChannel {
     return try  FfiConverterTypeIrohDatagramChannel.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohendpointhandle_open_datagram_channel(self.uniffiClonePointer(),
         FfiConverterString.lower(nodeId),
         FfiConverterString.lower(relayUrl),
         FfiConverterSequenceString.lower(directAddresses),
-        FfiConverterUInt32.lower(timeoutSeconds),$0
+        FfiConverterUInt32.lower(timeoutSeconds), $0
     )
 })
 }
@@ -1147,12 +1119,11 @@ open func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses:
     /**
      * Cleanly close the endpoint. After shutdown the handle is unusable.
      */
-open func shutdown()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_shutdown(self.uniffiClonePointer(),$0
+open func shutdown()throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_shutdown(self.uniffiClonePointer(), $0
     )
 }
 }
-
 
 }
 
@@ -1177,7 +1148,7 @@ public struct FfiConverterTypeIrohEndpointHandle: FfiConverter {
         // The Rust code won't compile if a pointer won't fit in a UInt64.
         // We have to go via `UInt` because that's the thing that's the size of a pointer.
         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if (ptr == nil) {
+        if ptr == nil {
             throw UniffiInternalError.unexpectedNullPointer
         }
         return try lift(ptr!)
@@ -1189,9 +1160,6 @@ public struct FfiConverterTypeIrohEndpointHandle: FfiConverter {
         writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
     }
 }
-
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1207,14 +1175,11 @@ public func FfiConverterTypeIrohEndpointHandle_lower(_ value: IrohEndpointHandle
     return FfiConverterTypeIrohEndpointHandle.lower(value)
 }
 
-
-
-
 /**
  * A single bidirectional stream, surfaced as an opaque handle to Swift so we
  * can keep the send/recv halves alive across UniFFI boundaries.
  */
-public protocol IrohStreamProtocol : AnyObject {
+public protocol IrohStreamProtocol: AnyObject {
 
     /**
      * Close the stream cleanly. Idempotent.
@@ -1225,12 +1190,12 @@ public protocol IrohStreamProtocol : AnyObject {
      * Read one length-prefixed JSON frame off the stream. Returns `None` on
      * clean stream close.
      */
-    func recvFrame() throws  -> Data?
+    func recvFrame() throws -> Data?
 
     /**
      * Base32 NodeId of the remote peer that opened this stream.
      */
-    func remoteNodeId()  -> String
+    func remoteNodeId() -> String
 
     /**
      * Write a length-prefixed JSON frame onto the stream. Length prefix is
@@ -1259,7 +1224,7 @@ open class IrohStream:
     // TODO: We'd like this to be `private` but for Swifty reasons,
     // we can't implement `FfiConverter` without making this `required` and we can't
     // make it `required` without making it `public`.
-    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
 
@@ -1284,21 +1249,18 @@ open class IrohStream:
     // No primary constructor declared for this class.
 
     deinit {
-        guard let pointer = pointer else {
+        guard let pointer else {
             return
         }
 
         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohstream(pointer, $0) }
     }
 
-
-
-
     /**
      * Close the stream cleanly. Idempotent.
      */
-open func closeStream()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohstream_close_stream(self.uniffiClonePointer(),$0
+open func closeStream()throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohstream_close_stream(self.uniffiClonePointer(), $0
     )
 }
 }
@@ -1307,9 +1269,9 @@ open func closeStream()throws  {try rustCallWithError(FfiConverterTypeIrohFfiErr
      * Read one length-prefixed JSON frame off the stream. Returns `None` on
      * clean stream close.
      */
-open func recvFrame()throws  -> Data? {
+open func recvFrame()throws -> Data? {
     return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohstream_recv_frame(self.uniffiClonePointer(),$0
+    uniffi_openburnbar_iroh_fn_method_irohstream_recv_frame(self.uniffiClonePointer(), $0
     )
 })
 }
@@ -1318,8 +1280,8 @@ open func recvFrame()throws  -> Data? {
      * Base32 NodeId of the remote peer that opened this stream.
      */
 open func remoteNodeId() -> String {
-    return try!  FfiConverterString.lift(try! rustCall() {
-    uniffi_openburnbar_iroh_fn_method_irohstream_remote_node_id(self.uniffiClonePointer(),$0
+    return try!  FfiConverterString.lift(try! rustCall {
+    uniffi_openburnbar_iroh_fn_method_irohstream_remote_node_id(self.uniffiClonePointer(), $0
     )
 })
 }
@@ -1328,13 +1290,12 @@ open func remoteNodeId() -> String {
      * Write a length-prefixed JSON frame onto the stream. Length prefix is
      * a big-endian u32 — matches `IrohRelayWireFormat.lengthPrefix` in Swift.
      */
-open func sendFrame(frame: Data)throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+open func sendFrame(frame: Data)throws {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_method_irohstream_send_frame(self.uniffiClonePointer(),
-        FfiConverterData.lower(frame),$0
+        FfiConverterData.lower(frame), $0
     )
 }
 }
-
 
 }
 
@@ -1359,7 +1320,7 @@ public struct FfiConverterTypeIrohStream: FfiConverter {
         // The Rust code won't compile if a pointer won't fit in a UInt64.
         // We have to go via `UInt` because that's the thing that's the size of a pointer.
         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if (ptr == nil) {
+        if ptr == nil {
             throw UniffiInternalError.unexpectedNullPointer
         }
         return try lift(ptr!)
@@ -1371,9 +1332,6 @@ public struct FfiConverterTypeIrohStream: FfiConverter {
         writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
     }
 }
-
-
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1388,7 +1346,6 @@ public func FfiConverterTypeIrohStream_lift(_ pointer: UnsafeMutableRawPointer) 
 public func FfiConverterTypeIrohStream_lower(_ value: IrohStream) -> UnsafeMutableRawPointer {
     return FfiConverterTypeIrohStream.lower(value)
 }
-
 
 /**
  * Validated wrapper around an iroh-blobs `BlobTicket` text form. Carried
@@ -1411,10 +1368,8 @@ public struct BlobTicketBytes {
     }
 }
 
-
-
 extension BlobTicketBytes: Equatable, Hashable {
-    public static func ==(lhs: BlobTicketBytes, rhs: BlobTicketBytes) -> Bool {
+    public static func == (lhs: BlobTicketBytes, rhs: BlobTicketBytes) -> Bool {
         if lhs.text != rhs.text {
             return false
         }
@@ -1425,7 +1380,6 @@ extension BlobTicketBytes: Equatable, Hashable {
         hasher.combine(text)
     }
 }
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1443,7 +1397,6 @@ public struct FfiConverterTypeBlobTicketBytes: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -1457,7 +1410,6 @@ public func FfiConverterTypeBlobTicketBytes_lift(_ buf: RustBuffer) throws -> Bl
 public func FfiConverterTypeBlobTicketBytes_lower(_ value: BlobTicketBytes) -> RustBuffer {
     return FfiConverterTypeBlobTicketBytes.lower(value)
 }
-
 
 /**
  * Per-transfer statistics returned to Swift on a successful `fetch_blob`.
@@ -1480,10 +1432,8 @@ public struct BlobTransferStats {
     }
 }
 
-
-
 extension BlobTransferStats: Equatable, Hashable {
-    public static func ==(lhs: BlobTransferStats, rhs: BlobTransferStats) -> Bool {
+    public static func == (lhs: BlobTransferStats, rhs: BlobTransferStats) -> Bool {
         if lhs.bytesTotal != rhs.bytesTotal {
             return false
         }
@@ -1507,7 +1457,6 @@ extension BlobTransferStats: Equatable, Hashable {
     }
 }
 
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -1530,7 +1479,6 @@ public struct FfiConverterTypeBlobTransferStats: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -1544,7 +1492,6 @@ public func FfiConverterTypeBlobTransferStats_lift(_ buf: RustBuffer) throws -> 
 public func FfiConverterTypeBlobTransferStats_lower(_ value: BlobTransferStats) -> RustBuffer {
     return FfiConverterTypeBlobTransferStats.lower(value)
 }
-
 
 /**
  * Per-call options for inbound connection acceptance. Today only the
@@ -1560,10 +1507,8 @@ public struct IrohAcceptOptions {
     }
 }
 
-
-
 extension IrohAcceptOptions: Equatable, Hashable {
-    public static func ==(lhs: IrohAcceptOptions, rhs: IrohAcceptOptions) -> Bool {
+    public static func == (lhs: IrohAcceptOptions, rhs: IrohAcceptOptions) -> Bool {
         if lhs.alpn != rhs.alpn {
             return false
         }
@@ -1574,7 +1519,6 @@ extension IrohAcceptOptions: Equatable, Hashable {
         hasher.combine(alpn)
     }
 }
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1592,7 +1536,6 @@ public struct FfiConverterTypeIrohAcceptOptions: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -1606,7 +1549,6 @@ public func FfiConverterTypeIrohAcceptOptions_lift(_ buf: RustBuffer) throws -> 
 public func FfiConverterTypeIrohAcceptOptions_lower(_ value: IrohAcceptOptions) -> RustBuffer {
     return FfiConverterTypeIrohAcceptOptions.lower(value)
 }
-
 
 /**
  * 32 raw public-key bytes plus the base32 NodeId surface form (52 chars).
@@ -1627,10 +1569,8 @@ public struct IrohNodeIdentity {
     }
 }
 
-
-
 extension IrohNodeIdentity: Equatable, Hashable {
-    public static func ==(lhs: IrohNodeIdentity, rhs: IrohNodeIdentity) -> Bool {
+    public static func == (lhs: IrohNodeIdentity, rhs: IrohNodeIdentity) -> Bool {
         if lhs.rawPublicKey != rhs.rawPublicKey {
             return false
         }
@@ -1654,7 +1594,6 @@ extension IrohNodeIdentity: Equatable, Hashable {
     }
 }
 
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -1677,7 +1616,6 @@ public struct FfiConverterTypeIrohNodeIdentity: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -1691,7 +1629,6 @@ public func FfiConverterTypeIrohNodeIdentity_lift(_ buf: RustBuffer) throws -> I
 public func FfiConverterTypeIrohNodeIdentity_lower(_ value: IrohNodeIdentity) -> RustBuffer {
     return FfiConverterTypeIrohNodeIdentity.lower(value)
 }
-
 
 /**
  * 32 raw secret-key bytes generated by `IrohSecretKeyMaterial.generate()` on
@@ -1707,10 +1644,8 @@ public struct IrohSecretKeyMaterial {
     }
 }
 
-
-
 extension IrohSecretKeyMaterial: Equatable, Hashable {
-    public static func ==(lhs: IrohSecretKeyMaterial, rhs: IrohSecretKeyMaterial) -> Bool {
+    public static func == (lhs: IrohSecretKeyMaterial, rhs: IrohSecretKeyMaterial) -> Bool {
         if lhs.raw != rhs.raw {
             return false
         }
@@ -1721,7 +1656,6 @@ extension IrohSecretKeyMaterial: Equatable, Hashable {
         hasher.combine(raw)
     }
 }
-
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1739,7 +1673,6 @@ public struct FfiConverterTypeIrohSecretKeyMaterial: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -1754,10 +1687,7 @@ public func FfiConverterTypeIrohSecretKeyMaterial_lower(_ value: IrohSecretKeyMa
     return FfiConverterTypeIrohSecretKeyMaterial.lower(value)
 }
 
-
 public enum IrohFfiError {
-
-
 
     case InvalidSecretKey
     case InvalidNodeId
@@ -1774,7 +1704,6 @@ public enum IrohFfiError {
     )
 }
 
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -1784,9 +1713,6 @@ public struct FfiConverterTypeIrohFfiError: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IrohFfiError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
-
-
 
         case 1: return .InvalidSecretKey
         case 2: return .InvalidNodeId
@@ -1814,41 +1740,30 @@ public struct FfiConverterTypeIrohFfiError: FfiConverterRustBuffer {
     public static func write(_ value: IrohFfiError, into buf: inout [UInt8]) {
         switch value {
 
-
-
-
-
         case .InvalidSecretKey:
             writeInt(&buf, Int32(1))
-
 
         case .InvalidNodeId:
             writeInt(&buf, Int32(2))
 
-
         case .EndpointNotInitialized:
             writeInt(&buf, Int32(3))
-
 
         case let .ConnectFailed(detail):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(detail, into: &buf)
 
-
         case let .StreamFailed(detail):
             writeInt(&buf, Int32(5))
             FfiConverterString.write(detail, into: &buf)
-
 
         case let .AcceptFailed(detail):
             writeInt(&buf, Int32(6))
             FfiConverterString.write(detail, into: &buf)
 
-
         case let .ShutdownFailed(detail):
             writeInt(&buf, Int32(7))
             FfiConverterString.write(detail, into: &buf)
-
 
         case let .RuntimeFailed(detail):
             writeInt(&buf, Int32(8))
@@ -1857,7 +1772,6 @@ public struct FfiConverterTypeIrohFfiError: FfiConverterRustBuffer {
         }
     }
 }
-
 
 extension IrohFfiError: Equatable, Hashable {}
 
@@ -1870,11 +1784,11 @@ extension IrohFfiError: Foundation.LocalizedError {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
+private struct FfiConverterOptionData: FfiConverterRustBuffer {
     typealias SwiftType = Data?
 
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
+    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value else {
             writeInt(&buf, Int8(0))
             return
         }
@@ -1882,7 +1796,7 @@ fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
         FfiConverterData.write(value, into: &buf)
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterData.read(from: &buf)
@@ -1894,10 +1808,10 @@ fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+private struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
-    public static func write(_ value: [String], into buf: inout [UInt8]) {
+    static func write(_ value: [String], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         for item in value {
@@ -1905,7 +1819,7 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
         let len: Int32 = try readInt(&buf)
         var seq = [String]()
         seq.reserveCapacity(Int(len))
@@ -1916,7 +1830,7 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     }
 }
 public func generateSecretKeyMaterial() -> IrohSecretKeyMaterial {
-    return try!  FfiConverterTypeIrohSecretKeyMaterial.lift(try! rustCall() {
+    return try!  FfiConverterTypeIrohSecretKeyMaterial.lift(try! rustCall {
     uniffi_openburnbar_iroh_fn_func_generate_secret_key_material($0
     )
 })
@@ -1927,7 +1841,7 @@ public func generateSecretKeyMaterial() -> IrohSecretKeyMaterial {
  * without hardcoding the constant.
  */
 public func irohBlobsAlpn() -> Data {
-    return try!  FfiConverterData.lift(try! rustCall() {
+    return try!  FfiConverterData.lift(try! rustCall {
     uniffi_openburnbar_iroh_fn_func_iroh_blobs_alpn($0
     )
 })
@@ -1939,7 +1853,7 @@ public func irohBlobsAlpn() -> Data {
  * surfaces at build time rather than as a runtime decode failure.
  */
 public func irohBlobsCrateVersion() -> String {
-    return try!  FfiConverterString.lift(try! rustCall() {
+    return try!  FfiConverterString.lift(try! rustCall {
     uniffi_openburnbar_iroh_fn_func_iroh_blobs_crate_version($0
     )
 })
@@ -1948,19 +1862,19 @@ public func irohBlobsCrateVersion() -> String {
  * Exported constant so platform code never has to hardcode the ALPN.
  */
 public func mercuryAudioAlpn() -> Data {
-    return try!  FfiConverterData.lift(try! rustCall() {
+    return try!  FfiConverterData.lift(try! rustCall {
     uniffi_openburnbar_iroh_fn_func_mercury_audio_alpn($0
     )
 })
 }
 public func openburnbarAlpn() -> Data {
-    return try!  FfiConverterData.lift(try! rustCall() {
+    return try!  FfiConverterData.lift(try! rustCall {
     uniffi_openburnbar_iroh_fn_func_openburnbar_alpn($0
     )
 })
 }
 public func openburnbarIrohProtocolVersion() -> UInt32 {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
+    return try!  FfiConverterUInt32.lift(try! rustCall {
     uniffi_openburnbar_iroh_fn_func_openburnbar_iroh_protocol_version($0
     )
 })
@@ -1970,10 +1884,10 @@ public func openburnbarIrohProtocolVersion() -> UInt32 {
  * Returns the canonical re-serialized string so Swift never has to
  * second-guess whitespace or encoding nits.
  */
-public func parseBlobTicket(text: String)throws  -> BlobTicketBytes {
+public func parseBlobTicket(text: String)throws -> BlobTicketBytes {
     return try  FfiConverterTypeBlobTicketBytes.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
     uniffi_openburnbar_iroh_fn_func_parse_blob_ticket(
-        FfiConverterString.lower(text),$0
+        FfiConverterString.lower(text), $0
     )
 })
 }
@@ -1993,91 +1907,91 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_func_generate_secret_key_material() != 62546) {
+    if uniffi_openburnbar_iroh_checksum_func_generate_secret_key_material() != 62546 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_func_iroh_blobs_alpn() != 24967) {
+    if uniffi_openburnbar_iroh_checksum_func_iroh_blobs_alpn() != 24967 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_func_iroh_blobs_crate_version() != 22686) {
+    if uniffi_openburnbar_iroh_checksum_func_iroh_blobs_crate_version() != 22686 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_func_mercury_audio_alpn() != 47377) {
+    if uniffi_openburnbar_iroh_checksum_func_mercury_audio_alpn() != 47377 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_func_openburnbar_alpn() != 35230) {
+    if uniffi_openburnbar_iroh_checksum_func_openburnbar_alpn() != 35230 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_func_openburnbar_iroh_protocol_version() != 56559) {
+    if uniffi_openburnbar_iroh_checksum_func_openburnbar_iroh_protocol_version() != 56559 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_func_parse_blob_ticket() != 35063) {
+    if uniffi_openburnbar_iroh_checksum_func_parse_blob_ticket() != 35063 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_bootstrap() != 49542) {
+    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_bootstrap() != 49542 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob() != 53241) {
+    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob() != 53241 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity() != 12806) {
+    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity() != 12806 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_publish_blob() != 9204) {
+    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_publish_blob() != 9204 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_shutdown() != 36452) {
+    if uniffi_openburnbar_iroh_checksum_method_irohblobnode_shutdown() != 36452 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_close_channel() != 19565) {
+    if uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_close_channel() != 19565 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_max_datagram_size() != 21433) {
+    if uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_max_datagram_size() != 21433 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_recv() != 55876) {
+    if uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_recv() != 55876 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_send() != 45879) {
+    if uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_send() != 45879 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_datagram_channel() != 10477) {
+    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_datagram_channel() != 10477 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_one() != 41643) {
+    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_one() != 41643 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_bootstrap() != 23431) {
+    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_bootstrap() != 23431 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_connect() != 26478) {
+    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_connect() != 26478 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_identity() != 41818) {
+    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_identity() != 41818 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_open_datagram_channel() != 37751) {
+    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_open_datagram_channel() != 37751 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_shutdown() != 5484) {
+    if uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_shutdown() != 5484 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohstream_close_stream() != 48508) {
+    if uniffi_openburnbar_iroh_checksum_method_irohstream_close_stream() != 48508 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohstream_recv_frame() != 37160) {
+    if uniffi_openburnbar_iroh_checksum_method_irohstream_recv_frame() != 37160 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohstream_remote_node_id() != 16047) {
+    if uniffi_openburnbar_iroh_checksum_method_irohstream_remote_node_id() != 16047 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohstream_send_frame() != 6093) {
+    if uniffi_openburnbar_iroh_checksum_method_irohstream_send_frame() != 6093 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_constructor_irohblobnode_new() != 36180) {
+    if uniffi_openburnbar_iroh_checksum_constructor_irohblobnode_new() != 36180 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_constructor_irohendpointhandle_new() != 32550) {
+    if uniffi_openburnbar_iroh_checksum_constructor_irohendpointhandle_new() != 32550 {
         return InitializationResult.apiChecksumMismatch
     }
 

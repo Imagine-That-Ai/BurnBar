@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -5,6 +6,8 @@ import UIKit
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseStorage
 import OpenBurnBarCore
+
+private let hermesSettingsLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSettings")
 
 // MARK: - Hermes Settings View
 //
@@ -23,8 +26,8 @@ struct HermesSettingsView: View {
     @State private var editingToken = ""
     @State private var newDirectURL = ""
     @State private var newDirectName = ""
-    @State private var showDeleteConfirm: HermesConnectionRecord? = nil
-    @State private var showModelDetail: HermesRuntimeModelOption? = nil
+    @State private var showDeleteConfirm: HermesConnectionRecord?
+    @State private var showModelDetail: HermesRuntimeModelOption?
     @State private var showModelPicker = false
     @State private var gatewayStore = HermesGatewaySettingsStore()
     @State private var gatewayPairingCode = ""
@@ -1865,7 +1868,7 @@ struct HermesSettingsView: View {
     private var urlBinding: Binding<String> {
         Binding(
             get: { service.selectedConnection.endpointURL ?? "http://localhost:8642" },
-            set: { newValue in
+            set: { _ in
                 // Update the selected connection's endpoint URL
                 // This is a mutable property on the service's selectedConnection
                 // In practice, HermesService manages this via its own persistence
@@ -2137,7 +2140,7 @@ private func hermesGatewayReplyModelProvider(providerID: String?, modelID: Strin
     let provider = hermesAgentProvider(
         for: [
             normalizedProviderID,
-            hermesGatewayNonBlank(modelID),
+            hermesGatewayNonBlank(modelID)
         ]
         .compactMap(\.self)
         .joined(separator: " ")
@@ -2267,7 +2270,7 @@ final class HermesGatewaySettingsStore {
     @ObservationIgnored private let gatewayThreadID = HermesGatewayMessageResolver.defaultThreadID
     @ObservationIgnored private var openedGatewayAttachments: [String: HermesAttachment] = [:]
     @ObservationIgnored private var failedGatewayAttachmentIDs = Set<String>()
-    private static let maxGatewayAttachmentDownloadBytes: Int64 =
+    private static let maxGatewayAttachmentDownloadBytes =
         Int64(HermesAttachmentLimits.maxGenericBytes * 2 + 4096)
 
     init(repository: any HermesGatewayRepository = FunctionsRepository.shared, defaults: UserDefaults = .standard) {
@@ -3261,6 +3264,7 @@ final class HermesGatewaySettingsStore {
             statusNow = Date()
             repairSelectedClientIfNeeded()
         } catch {
+            hermesSettingsLogger.error("Failed to refresh gateway clients after pairing failure: \(error.localizedDescription)")
         }
     }
 

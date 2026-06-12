@@ -36,7 +36,7 @@ final class ProjectsStore {
 
         do {
             var collected: [TokenUsage] = []
-            var cursor: DocumentSnapshot? = nil
+            var cursor: DocumentSnapshot?
             while collected.count < maxRows {
                 let (page, last) = try await firestore.fetchUsagePage(
                     pageSize: pageSize,

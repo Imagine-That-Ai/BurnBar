@@ -374,5 +374,4 @@ public final class InMemorySwitcherProfileStoreAdapter: SwitcherProfileStoreAdap
     }
 }
 
-
 #endif
