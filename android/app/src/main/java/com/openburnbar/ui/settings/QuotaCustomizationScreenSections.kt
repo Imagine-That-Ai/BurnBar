@@ -69,7 +69,6 @@ import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.AuroraTypography
 import kotlin.math.roundToInt
 
-
 @Composable
 internal fun QuotaCustomizationScaffold(
     isDark: Boolean,

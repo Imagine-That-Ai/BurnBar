@@ -70,6 +70,7 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.AuroraTypography
+
 // ── Header ─────────────────────────────────────────────────────────────────
 
 @Composable

@@ -18,7 +18,6 @@
 // measured with StartupBenchmark, not assumed.
 plugins {
     id("com.android.test")
-    id("org.jetbrains.kotlin.android")
     id("androidx.baselineprofile")
 }
 
@@ -29,10 +28,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
-    }
-
-    kotlinOptions {
-        jvmTarget = "21"
     }
 
     defaultConfig {
@@ -53,6 +48,6 @@ baselineProfile {
 
 dependencies {
     implementation("androidx.test.ext:junit:1.2.1")
-    implementation("androidx.test.uiautomator:uiautomator:2.3.0")
-    implementation("androidx.benchmark:benchmark-macro-junit4:1.3.4")
+    implementation("androidx.test.uiautomator:uiautomator:2.4.0-beta02")
+    implementation("androidx.benchmark:benchmark-macro-junit4:1.5.0-alpha06")
 }

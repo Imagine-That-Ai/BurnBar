@@ -4,8 +4,6 @@
 package com.openburnbar.ui.auth
 
 import android.app.Activity
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -50,14 +48,6 @@ internal fun SimpleAuthScreen(userStore: UserStore) {
     val context = LocalContext.current
     val isSigningIn by userStore.isSigningIn.collectAsState()
     val authError by userStore.authError.collectAsState()
-    val googleLauncher =
-        rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.StartActivityForResult(),
-        ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                userStore.handleGoogleSignInResult(result.data)
-            }
-        }
 
     Box(
         modifier =
@@ -82,7 +72,7 @@ internal fun SimpleAuthScreen(userStore: UserStore) {
             SimpleAuthSignInCard(
                 isDark = isDark,
                 isSigningIn = isSigningIn,
-                onGoogleSignIn = { googleLauncher.launch(userStore.getGoogleSignInIntent(context)) },
+                onGoogleSignIn = { (context as? Activity)?.let(userStore::signInWithGoogle) },
                 onAppleSignIn = { (context as? Activity)?.let(userStore::signInWithApple) },
                 onAnonymousSignIn = userStore::signInAnonymously,
             )

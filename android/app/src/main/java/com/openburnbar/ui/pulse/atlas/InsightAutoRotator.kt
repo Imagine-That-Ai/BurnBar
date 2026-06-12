@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Bolt
@@ -32,8 +34,6 @@ import androidx.compose.material.icons.filled.DonutLarge
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.TrendingDown
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -189,8 +189,8 @@ private fun EmptyInsight(modifier: Modifier = Modifier) {
 }
 
 private fun symbolFor(name: String): ImageVector = when (name) {
-    "TrendingUp" -> Icons.Filled.TrendingUp
-    "TrendingDown" -> Icons.Filled.TrendingDown
+    "TrendingUp" -> Icons.AutoMirrored.Filled.TrendingUp
+    "TrendingDown" -> Icons.AutoMirrored.Filled.TrendingDown
     "DonutLarge" -> Icons.Filled.DonutLarge
     "Bolt" -> Icons.Filled.Bolt
     "AcUnit" -> Icons.Filled.AcUnit
