@@ -30,9 +30,8 @@ enum ProjectionWorkerPolicy {
     /// bloats the table and its indexes forever (the audit measured 99.9% dead rows).
     /// We keep one day so recently-finished rows stay inspectable for idempotency/debugging,
     /// then delete them on the next refresh tick.
-    // config TODO: surface this as a user-tunable retention window in SettingsManager.
+    /// Settings can later expose this as a user-tunable retention window.
     static let terminalJobRetention: TimeInterval = 24 * 60 * 60
-
 
     static func shouldContinueBacklogProcessing(afterCompletedPasses completedPasses: Int) -> Bool {
         completedPasses < maxContinuousBacklogPasses

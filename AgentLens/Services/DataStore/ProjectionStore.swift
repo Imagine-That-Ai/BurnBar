@@ -190,7 +190,7 @@ final class ProjectionStore: Sendable {
                 arguments: [
                     ProjectionJobStatus.completed.rawValue,
                     ProjectionJobStatus.canceled.rawValue,
-                    cutoff,
+                    cutoff
                 ]
             )
             return try Int.fetchOne(db, sql: "SELECT changes()") ?? 0

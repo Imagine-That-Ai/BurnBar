@@ -11,8 +11,9 @@
 #      expected percentage, and the threshold pass/fail flips accordingly.
 #   2. Scope partition: app-partition files are out of scope for the
 #      packages lane (reported, never silently dropped).
-#   3. No evidence ⇒ fail: a changed file with no measurement counts every
-#      changed line as uncovered. No presence-based escape (CG-1).
+#   3. No evidence ⇒ fail for executable changed lines. Plain Swift
+#      declaration-only changes are excluded because they do not emit LLVM line
+#      counters.
 #   4. cov:ignore without a justification fails the gate outright;
 #      `cov:ignore -- <reason>` excludes exactly the annotated lines.
 #   5. A lane whose evidence is missing entirely fails closed.
@@ -120,6 +121,40 @@ end_of_record
 EOF
 }
 
+make_declaration_repo() {
+  local repo="$1"
+  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email selftest@openburnbar.invalid
+  git -C "$repo" config user.name "Diff Coverage Self-Test"
+
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Widget.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Model.swift" <<'EOF'
+public struct Model {
+    public var id: String
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm base
+
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Model.swift" <<'EOF'
+public struct Model {
+    public var id: String
+    public var relayKeyVersion: Int?
+    public var supportsSignalEnvelope: Bool?
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm declaration-change
+  git -C "$repo" rev-parse HEAD~1
+}
+
 run_gate() {
   # $1 = repo, $2 = base sha, $3 = scope, $4 = threshold, $5 = pkg lines json,
   # $6 = verdict path, $7 = stderr path. Echoes the gate's exit code.
@@ -178,6 +213,23 @@ check "no-evidence file is reported as no_evidence" \
   "$(json_get "$verdict" '[d for d in v["details"] if d["file"].startswith("AgentLens/")][0]["method"]')"
 check "no-evidence file has zero covered lines" \
   "0" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].startswith("AgentLens/")][0]["coveredLines"]')"
+
+# Declaration-only package changes do not emit LLVM line counters. They should
+# not become fake uncovered executable lines when the package lane has other
+# valid evidence and the changed declaration file has no LCOV source record.
+repo_decl="$tmp_root/repo-declaration"
+base_decl="$(make_declaration_repo "$repo_decl")"
+lcov_decl="$tmp_root/fixture-declaration.lcov"
+write_lcov "$lcov_decl" "$repo_decl"
+pkg_decl="$tmp_root/pkg-lines-declaration.json"
+OPENBURNBAR_COVERAGE_REPO_ROOT="$repo_decl" \
+  "$scripts_dir/extract-package-coverage-lines.sh" "$lcov_decl" > "$pkg_decl"
+
+verdict="$tmp_root/verdict-declaration.json"
+rc="$(run_gate "$repo_decl" "$base_decl" packages 80 "$pkg_decl" "$verdict" "$tmp_root/err-declaration.log")"
+check "declaration-only no-evidence file passes with zero executable changed lines" "0" "$rc"
+check "declaration-only verdict has zero changed executable lines" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
 
 # Missing lane evidence fails closed (no package lines json, no .build).
 rc=0

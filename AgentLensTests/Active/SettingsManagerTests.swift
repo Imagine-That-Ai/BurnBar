@@ -13,6 +13,13 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - Test Isolation
 
     private var tempDirectories: [URL] = []
+    private var originalAppSkinRawValue: String?
+
+    override func setUp() {
+        super.setUp()
+        originalAppSkinRawValue = UserDefaults.standard.string(forKey: AppSkin.storageKey)
+        UserDefaults.standard.set(AppSkin.aurora.rawValue, forKey: AppSkin.storageKey)
+    }
 
     private func makeIsolatedDefaults() -> UserDefaults {
         let suiteName = "com.openburnbar.tests.settings.\(UUID().uuidString)"
@@ -39,6 +46,12 @@ final class SettingsManagerTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         tempDirectories.removeAll()
+        if let originalAppSkinRawValue {
+            UserDefaults.standard.set(originalAppSkinRawValue, forKey: AppSkin.storageKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: AppSkin.storageKey)
+        }
+        originalAppSkinRawValue = nil
         super.tearDown()
     }
 
