@@ -26,13 +26,15 @@ class AndroidSignalProducerInstrumentedTest {
             val plaintext = "on-device signal at-rest payload".toByteArray()
 
             val map = AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
-                domainID = "conversations_chat",
-                uid = "user-on-device",
-                collection = "mobile_assistant_chats",
-                docId = "thread-on-device",
-                plaintext = plaintext,
-                localIdentity = local,
-                otherRecipients = listOf(peer.asRecipient()),
+                AndroidCloudVaultSignalPayloads.SignalEnvelopeMapRequest(
+                    domainID = "conversations_chat",
+                    uid = "user-on-device",
+                    collection = "mobile_assistant_chats",
+                    docId = "thread-on-device",
+                    plaintext = plaintext,
+                    localIdentity = local,
+                    otherRecipients = listOf(peer.asRecipient()),
+                ),
             )
             assertNotNull(map)
             val data = mapOf<String, Any?>("signalEnvelope" to map!!)
