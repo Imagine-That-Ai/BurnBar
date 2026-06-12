@@ -1357,7 +1357,9 @@ struct HermesChatView: View {
                             if service.isStreaming {
                                 HStack {
                                     HermesThinkingSpinner(
-                                        provider: activeProvider,
+                                        // Hermes IS the agent here; the routed
+                                        // model supplies the second mark.
+                                        provider: .hermes,
                                         modelName: service.selectedModelID ?? service.selectedConnection.advertisedModel
                                     )
                                     .padding(.leading, 8)
@@ -1542,7 +1544,7 @@ struct HermesChatView: View {
         }
         .sheet(isPresented: $showThinkingStylePicker) {
             HermesThinkingStylePickerSheet(
-                provider: activeProvider,
+                provider: .hermes,
                 modelName: service.selectedModelID ?? service.selectedConnection.advertisedModel
             )
         }
