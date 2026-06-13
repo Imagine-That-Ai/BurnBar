@@ -53,7 +53,7 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Cache cargo registry + target
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -104,7 +104,7 @@ jobs:
           unzip -l Vendor/openburnbar-iroh.aar | head -40
 
       - name: Upload AAR artifact
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: openburnbar-iroh.aar
           path: Vendor/openburnbar-iroh.aar
@@ -112,7 +112,7 @@ jobs:
           retention-days: 14
 
       - name: Upload generated Kotlin bindings
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: openburnbar-iroh-kotlin-bindings
           path: android/openburnbar-iroh-relay/src/main/java/uniffi/openburnbar_iroh
