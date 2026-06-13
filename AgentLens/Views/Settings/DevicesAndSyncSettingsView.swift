@@ -621,6 +621,12 @@ protocol MacCredentialTransferGateway: AnyObject {
 
 @MainActor
 final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
+    private let signedInUIDProvider: @MainActor () -> String?
+
+    init(signedInUIDProvider: @escaping @MainActor () -> String? = DefaultMacCredentialTransferGateway.currentSignedInUID) {
+        self.signedInUIDProvider = signedInUIDProvider
+    }
+
     func transferability(for provider: AgentProvider) async -> MacCredentialTransferability {
         Self.staticTransferability(for: provider)
     }
@@ -632,6 +638,11 @@ final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
         destinationDeviceID: String,
         onStage: @escaping @MainActor (MacExportStage) -> Void
     ) async {
+        guard let uid = signedInUIDProvider(), !uid.isEmpty else {
+            onStage(.failed(message: MacEscrowProducerError.notAuthenticated.localizedDescription))
+            return
+        }
+
         // Real encrypted PRODUCER consumed by the iOS import path: enumerate the
         // transferable credential, ECIES-seal it to the recipient device's escrow
         // key, and write the escrow_grants/escrow_envelopes docs the phone reads.
@@ -645,7 +656,7 @@ final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
             writer: MacLiveEscrowEnvelopeWriter()
         )
         await producer.startExport(
-            uid: Self.signedInUID(),
+            uid: uid,
             provider: provider,
             destinationDeviceID: destinationDeviceID,
             onStage: onStage
@@ -655,7 +666,7 @@ final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
     /// Resolves the signed-in uid without touching `Auth.auth()` when Firebase
     /// is not configured (e.g. unit tests), so the producer fails closed on
     /// `.notAuthenticated` instead of crashing.
-    private static func signedInUID() -> String? {
+    private static func currentSignedInUID() -> String? {
         guard FirebaseApp.app() != nil else { return nil }
         return Auth.auth().currentUser?.uid
     }

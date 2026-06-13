@@ -51,10 +51,10 @@ final class CredentialTransferSheetTests: XCTestCase {
     }
 
     func test_defaultMacCredentialExportGatewayFailsClosedWhenSignedOut() async {
-        // The real producer runs only when signed in. With no Firebase user
-        // (unit-test host), it must fail closed before reading/sealing/uploading
-        // anything — a single failed stage and no escrow write.
-        let gateway = DefaultMacCredentialTransferGateway()
+        // The real producer runs only when signed in. Force signed-out state
+        // here so CI Firebase config or persisted Auth state cannot make this
+        // test touch keychain/network-backed credential readers.
+        let gateway = DefaultMacCredentialTransferGateway(signedInUIDProvider: { nil })
         var stages: [MacExportStage] = []
 
         await gateway.startExport(provider: .minimax, destinationDeviceID: "iphone") { stage in
