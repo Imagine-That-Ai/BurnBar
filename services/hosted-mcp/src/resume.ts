@@ -171,16 +171,16 @@ async function findConversation(db: ResumeFirestore, uid: string, sessionID: str
     .where("sessionId", "==", sessionID)
     .limit(2)
     .get();
-  if (bySession.docs.length === 1) return { kind: "one", doc: bySession.docs[0] };
-  if (bySession.docs.length > 1) return { kind: "ambiguous", matches: bySession.docs.map((doc) => doc.id) };
+  if (bySession.docs.length === 1) {return { kind: "one", doc: bySession.docs[0] };}
+  if (bySession.docs.length > 1) {return { kind: "ambiguous", matches: bySession.docs.map((doc) => doc.id) };}
 
   const bySource = await db
     .collection(`users/${uid}/cloud_search_documents`)
     .where("sourceID", "==", sessionID)
     .limit(2)
     .get();
-  if (bySource.docs.length === 1) return { kind: "one", doc: bySource.docs[0] };
-  if (bySource.docs.length > 1) return { kind: "ambiguous", matches: bySource.docs.map((doc) => doc.id) };
+  if (bySource.docs.length === 1) {return { kind: "one", doc: bySource.docs[0] };}
+  if (bySource.docs.length > 1) {return { kind: "ambiguous", matches: bySource.docs.map((doc) => doc.id) };}
   return { kind: "none" };
 }
 
@@ -202,13 +202,13 @@ async function findConversationByOpaqueQuery(db: ResumeFirestore, uid: string, a
   await collectPostingMatches(db, uid, semanticHashes, "semantic", provider, projectName, candidates);
 
   const ranked = Array.from(candidates.values()).sort((a, b) => b.score - a.score || a.documentID.localeCompare(b.documentID));
-  if (ranked.length === 0) return { kind: "none" };
+  if (ranked.length === 0) {return { kind: "none" };}
   if (ranked.length > 1 && ranked[0].score === ranked[1].score) {
     return { kind: "ambiguous", matches: ranked.slice(0, 5).map((candidate) => candidate.documentID) };
   }
 
   const direct = await db.doc(`users/${uid}/cloud_search_documents/${ranked[0].documentID}`).get();
-  if (!direct.exists) return { kind: "none" };
+  if (!direct.exists) {return { kind: "none" };}
   return { kind: "one", doc: snapshotAsDoc(ranked[0].documentID, direct) };
 }
 
@@ -221,12 +221,12 @@ async function collectPostingMatches(
   projectName: string,
   candidates: Map<string, { documentID: string; score: number }>
 ) {
-  if (inputHashes.length === 0) return;
+  if (inputHashes.length === 0) {return;}
   const requested = new Set(inputHashes);
   let query = db
     .collection(`users/${uid}/cloud_search_postings`)
     .where("postingKey", "in", inputHashes.map((hash) => `${kind}_${hash}`));
-  if (provider) query = query.where("provider", "==", provider);
+  if (provider) {query = query.where("provider", "==", provider);}
   const snap = await query.limit(50).get();
   for (const posting of snap.docs) {
     const hash = posting.get("hash");
@@ -234,7 +234,7 @@ async function collectPostingMatches(
     if (posting.get("kind") !== kind || typeof hash !== "string" || !requested.has(hash) || typeof documentID !== "string") {
       continue;
     }
-    if (projectName && posting.get("projectName") !== projectName) continue;
+    if (projectName && posting.get("projectName") !== projectName) {continue;}
     const current = candidates.get(documentID) ?? { documentID, score: 0 };
     current.score += kind === "token" ? 2 : 1;
     candidates.set(documentID, current);
@@ -246,7 +246,7 @@ function snapshotAsDoc(id: string, snap: { data(): Record<string, unknown> | und
     id,
     data: () => snap.data() ?? {},
     get(field: string) {
-      if (snap.get) return snap.get(field);
+      if (snap.get) {return snap.get(field);}
       return (snap.data() ?? {})[field];
     }
   };
@@ -254,7 +254,7 @@ function snapshotAsDoc(id: string, snap: { data(): Record<string, unknown> | und
 
 function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
   const parsed = Math.floor(Number(value ?? fallback));
-  if (!Number.isFinite(parsed)) return fallback;
+  if (!Number.isFinite(parsed)) {return fallback;}
   return Math.max(min, Math.min(parsed, max));
 }
 
@@ -263,14 +263,14 @@ function stringField(value: unknown): string {
 }
 
 function hashes(raw: unknown, max: number): string[] {
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {return [];}
   const seen = new Set<string>();
   const result: string[] = [];
   for (const item of raw) {
-    if (typeof item !== "string" || !HEX_32_128.test(item) || seen.has(item)) continue;
+    if (typeof item !== "string" || !HEX_32_128.test(item) || seen.has(item)) {continue;}
     seen.add(item);
     result.push(item);
-    if (result.length >= max) break;
+    if (result.length >= max) {break;}
   }
   return result;
 }
@@ -280,17 +280,17 @@ function hasOpaqueQuery(args: ResumeConversationArgs): boolean {
 }
 
 function timestampISO(value: unknown): string | null {
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "string") return value;
+  if (value instanceof Date) {return value.toISOString();}
+  if (typeof value === "string") {return value;}
   const date = firestoreTimestampToDate(value);
-  if (date) return date.toISOString();
+  if (date) {return date.toISOString();}
   return null;
 }
 
 function firestoreTimestampToDate(value: unknown): Date | null {
-  if (typeof value !== "object" || value === null) return null;
+  if (typeof value !== "object" || value === null) {return null;}
   const toDate = Reflect.get(value, "toDate");
-  if (typeof toDate !== "function") return null;
+  if (typeof toDate !== "function") {return null;}
   const date = toDate.call(value);
   return date instanceof Date && !Number.isNaN(date.valueOf()) ? date : null;
 }
@@ -304,9 +304,9 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function stableJSON(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableJSON).join(",")}]`;
-  if (!isPlainRecord(value)) return JSON.stringify(value);
+  if (value === null || typeof value !== "object") {return JSON.stringify(value);}
+  if (Array.isArray(value)) {return `[${value.map(stableJSON).join(",")}]`;}
+  if (!isPlainRecord(value)) {return JSON.stringify(value);}
   return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJSON(value[key])}`).join(",")}}`;
 }
 

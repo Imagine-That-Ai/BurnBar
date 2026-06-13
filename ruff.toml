@@ -1,0 +1,28 @@
+target-version = "py311"
+line-length = 120
+
+src = ["scripts", "tools/openburnbar-mcp"]
+include = ["scripts/**/*.py", "tools/openburnbar-mcp/**/*.py"]
+exclude = [
+  ".git",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".venv",
+  "build",
+  "dist",
+  "node_modules",
+]
+
+[lint]
+select = ["E", "F", "W", "B", "UP", "S105", "S110", "S112", "S608"]
+# Phase 0 is a defect-catching floor. Keep line wrapping out of this gate until
+# Phase 4's full lint-rationale pass decides the repo-wide Python style budget.
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"**/test_*.py" = ["S105", "S608"]
+"**/*_test.py" = ["S105", "S608"]
+# These local SQLite query builders interpolate only fixed schema-column
+# fragments chosen by allowlists/schema introspection; values remain bound.
+"tools/openburnbar-mcp/resume_core.py" = ["S608"]
+"tools/openburnbar-mcp/server.py" = ["S608"]

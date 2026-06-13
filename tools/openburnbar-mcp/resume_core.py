@@ -28,7 +28,9 @@ MAX_LIST_LIMIT = 50
 DEFAULT_MAX_TOKENS = 8_000
 SEARCH_CHUNKS_FETCH_LIMIT = 30
 SECRET_PATTERNS = [
-    re.compile(r"(?i)\b((?:api|access|secret|session|refresh|auth)[_-]?token|api[_-]?key|password)\s*[:=]\s*([^\s`'\"<>]{8,})"),
+    re.compile(
+        r"(?i)\b((?:api|access|secret|session|refresh|auth)[_-]?token|api[_-]?key|password)\s*[:=]\s*([^\s`'\"<>]{8,})"
+    ),
     re.compile(r"\b(sk-[A-Za-z0-9_-]{20,})\b"),
     re.compile(r"\b(gh[pousr]_[A-Za-z0-9_]{20,})\b"),
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL),
@@ -79,7 +81,9 @@ def default_db_path() -> Path:
 
 def connect_ro(path: Path) -> sqlite3.Connection:
     if not path.is_file():
-        raise FileNotFoundError(f"OpenBurnBar database not found at {path}. Open OpenBurnBar once or set BURNBAR_DB_PATH.")
+        raise FileNotFoundError(
+            f"OpenBurnBar database not found at {path}. Open OpenBurnBar once or set BURNBAR_DB_PATH."
+        )
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=1.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 1000")
@@ -161,10 +165,12 @@ def _cap_list(items: list[str], cap: int) -> list[str]:
 def _redact_text(text: str) -> str:
     redacted = text
     for pattern in SECRET_PATTERNS:
+
         def repl(match: re.Match[str]) -> str:
             if len(match.groups()) >= 2:
                 return f"{match.group(1)}=[REDACTED]"
             return "[REDACTED_SECRET]"
+
         redacted = pattern.sub(repl, redacted)
     return redacted
 
@@ -194,6 +200,7 @@ def _resolve_trail(conn: sqlite3.Connection, conv: sqlite3.Row, k: int = SEARCH_
     source_id = conv["id"]
     if _has_column(conn, "search_chunks", "sourceID"):
         section_expr = "sectionPath" if _has_column(conn, "search_chunks", "sectionPath") else "NULL AS sectionPath"
+        # S608: section_expr is selected from fixed schema-column literals above.
         sql = f"""
             SELECT text, ordinal, messageStartOffset, {section_expr}
             FROM search_chunks
@@ -215,11 +222,21 @@ def _resolve_trail(conn: sqlite3.Connection, conv: sqlite3.Row, k: int = SEARCH_
                 for row in reversed(rows)
                 if str(row["text"] or "").strip()
             ]
-            return {"source": "search_chunks", "total_messages": len(messages), "messages": messages, "trail_items": messages}
+            return {
+                "source": "search_chunks",
+                "total_messages": len(messages),
+                "messages": messages,
+                "trail_items": messages,
+            }
 
     paragraphs = [p.strip() for p in str(conv["fullText"] or "").split("\n\n") if p.strip()][-k:]
     messages = [{"role": "unknown", "content": _redact_text(p), "timestamp": None} for p in paragraphs]
-    return {"source": "fulltext_paragraphs", "total_messages": len(messages), "messages": messages, "trail_items": messages}
+    return {
+        "source": "fulltext_paragraphs",
+        "total_messages": len(messages),
+        "messages": messages,
+        "trail_items": messages,
+    }
 
 
 def _uuid_like(value: str) -> bool:
@@ -230,7 +247,9 @@ def _uuid_like(value: str) -> bool:
         return False
 
 
-def validate_native_handle(provider_normalized: str | None, raw_handle: str | None, env: ResumeEnvironment | None = None) -> str | None:
+def validate_native_handle(
+    provider_normalized: str | None, raw_handle: str | None, env: ResumeEnvironment | None = None
+) -> str | None:
     if not provider_normalized or not raw_handle or "/" in raw_handle:
         return None
     resolved_env = env or ResumeEnvironment()
@@ -254,7 +273,9 @@ def validate_native_handle(provider_normalized: str | None, raw_handle: str | No
                 with sqlite3.connect(f"file:{state_db}?mode=ro", uri=True, timeout=0.5) as conn:
                     conn.row_factory = sqlite3.Row
                     conn.execute("PRAGMA busy_timeout = 500")
-                    row = conn.execute("SELECT rollout_path FROM threads WHERE id = ? LIMIT 1", (raw_handle,)).fetchone()
+                    row = conn.execute(
+                        "SELECT rollout_path FROM threads WHERE id = ? LIMIT 1", (raw_handle,)
+                    ).fetchone()
                     if row:
                         rollout_path = row["rollout_path"]
                         if not rollout_path or Path(str(rollout_path)).expanduser().is_file():
@@ -282,6 +303,7 @@ def _token_summary(conn: sqlite3.Connection, provider: str, session_id: str) -> 
     cost_column = "cost" if _has_column(conn, "token_usage", "cost") else "costUSD"
     try:
         row = conn.execute(
+            # S608: cost_column and where are built from fixed provider/session branches above.
             f"""
             SELECT
               COALESCE(SUM(inputTokens), 0) AS input,
@@ -301,7 +323,9 @@ def _token_summary(conn: sqlite3.Connection, provider: str, session_id: str) -> 
     }
 
 
-def materialize_ccm(conn: sqlite3.Connection, conv: sqlite3.Row, env: ResumeEnvironment | None = None) -> dict[str, Any]:
+def materialize_ccm(
+    conn: sqlite3.Connection, conv: sqlite3.Row, env: ResumeEnvironment | None = None
+) -> dict[str, Any]:
     resolved_env = env or ResumeEnvironment()
     has_working_dir = _has_column(conn, "conversations", "workingDirectory")
     provider = str(conv["provider"])
@@ -359,7 +383,9 @@ def build_ccm(session_id_input: str, env: ResumeEnvironment | None = None) -> di
 
 
 def infer_open_threads(full_text: str, cap: int = 5) -> list[str]:
-    pattern = re.compile(r"^\s*(?:Next:|TODO:|Then,?|After this,?|Next steps?:?|Follow[- ]?up:?)\s*(.+?)$", re.MULTILINE | re.IGNORECASE)
+    pattern = re.compile(
+        r"^\s*(?:Next:|TODO:|Then,?|After this,?|Next steps?:?|Follow[- ]?up:?)\s*(.+?)$", re.MULTILINE | re.IGNORECASE
+    )
     items: list[str] = []
     for match in pattern.finditer(full_text or ""):
         item = " ".join(match.group(1).split())
@@ -380,7 +406,7 @@ def estimate_tokens(text: str, model: str | None = None) -> int:
                 encoder = tiktoken.get_encoding("o200k_base")
                 return max(1, len(encoder.encode(text)))
             except Exception:
-                pass
+                return max(1, (len(text) + 3) // 4)
     return max(1, (len(text) + 3) // 4)
 
 
@@ -409,10 +435,7 @@ def _render_header(header: dict[str, Any]) -> str:
     if directory:
         line += f"  **Directory:** `{directory}`"
     return (
-        f"# BurnBar Resume: {title}\n\n"
-        f"{line}\n"
-        f"**Source:** {source} / `{model}`\n"
-        f"**Session:** {started} -> {ended}\n\n"
+        f"# BurnBar Resume: {title}\n\n{line}\n**Source:** {source} / `{model}`\n**Session:** {started} -> {ended}\n\n"
     )
 
 
@@ -483,15 +506,15 @@ def render_briefing(ccm: dict[str, Any], max_tokens: int = DEFAULT_MAX_TOKENS, t
         parts.append(
             f"## Conversation Trail\n"
             f"> Showing last {len(included)} of {trail.get('total_messages', len(messages))} items "
-            f"(source: {trail.get('source', 'unknown')}).\n\n"
-            + "\n\n".join(included)
-            + "\n\n"
+            f"(source: {trail.get('source', 'unknown')}).\n\n" + "\n\n".join(included) + "\n\n"
         )
     parts.append(_render_handoff(ccm))
     parts.append("## Source\n")
     parts.append(f"- Composite ID: `{ccm['source']['composite_id']}`\n")
     parts.append(f"- Native handle validated: `{str(ccm['source']['native_handle_validated']).lower()}`\n")
-    parts.append("\nUse this briefing as the canonical handoff context. Verify current repository state before editing.\n")
+    parts.append(
+        "\nUse this briefing as the canonical handoff context. Verify current repository state before editing.\n"
+    )
     return _redact_text("".join(parts))
 
 
@@ -539,7 +562,16 @@ def prepare_target_invocation(
 ) -> tuple[list[str], str | None]:
     model = _model_args(target_norm, target_model)
     if target_norm == "claude_code":
-        return (["claude", *model, "--append-system-prompt", "Use the OpenBurnBar Resume briefing as canonical handoff context.", briefing_md], None)
+        return (
+            [
+                "claude",
+                *model,
+                "--append-system-prompt",
+                "Use the OpenBurnBar Resume briefing as canonical handoff context.",
+                briefing_md,
+            ],
+            None,
+        )
     if target_norm == "codex":
         argv = ["codex", *model]
         if working_directory:
@@ -604,7 +636,9 @@ def dispatch_resume(
 
     source_norm = ccm["header"]["provider_normalized"]
     target_norm = normalize_provider(target_harness) or source_norm
-    native_handle = ccm["source"].get("provider_native_session_handle") if ccm["source"].get("native_handle_validated") else None
+    native_handle = (
+        ccm["source"].get("provider_native_session_handle") if ccm["source"].get("native_handle_validated") else None
+    )
     is_native_eligible = source_norm in {"claude_code", "codex"}
     is_same_harness = target_norm == source_norm
 
@@ -618,7 +652,11 @@ def dispatch_resume(
             }
 
     if is_same_harness and is_native_eligible and native_handle:
-        argv = ["claude", "--resume", native_handle] if source_norm == "claude_code" else ["codex", "resume", native_handle]
+        argv = (
+            ["claude", "--resume", native_handle]
+            if source_norm == "claude_code"
+            else ["codex", "resume", native_handle]
+        )
         if target_model:
             argv[1:1] = _model_args(source_norm, target_model)
         return {
@@ -632,7 +670,11 @@ def dispatch_resume(
 
     briefing_md = render_briefing(ccm, max_tokens=max_tokens, target_model=target_model)
     briefing_path = None if print_only else write_temp_briefing_0600(briefing_md)
-    note = "native_handle_invalid_fell_back_to_port" if is_same_harness and is_native_eligible and not native_handle else None
+    note = (
+        "native_handle_invalid_fell_back_to_port"
+        if is_same_harness and is_native_eligible and not native_handle
+        else None
+    )
     target_argv, resume_hint_path = prepare_target_invocation(
         target_norm or "claude_code",
         briefing_md,
@@ -671,7 +713,8 @@ def list_resumable_conversations(
     if provider:
         normalized = normalize_provider(provider)
         raw_matches = [
-            raw for raw in provider_config().get("all_known", [])
+            raw
+            for raw in provider_config().get("all_known", [])
             if isinstance(raw, str) and normalize_provider(raw) == normalized
         ]
         if raw_matches:
@@ -693,6 +736,7 @@ def list_resumable_conversations(
     with connect_ro(resolved_env.resolved_db_path) as conn:
         has_working_dir = _has_column(conn, "conversations", "workingDirectory")
         rows = conn.execute(
+            # S608: where is assembled only from fixed clauses with bound parameters.
             f"""
             SELECT *
             FROM conversations
@@ -706,29 +750,40 @@ def list_resumable_conversations(
         for row in rows:
             provider_norm = normalize_provider(row["provider"])
             native_handle = validate_native_handle(provider_norm, row["sessionId"], resolved_env)
-            items.append({
-                "id": row["id"],
-                "session_id": row["sessionId"],
-                "provider": row["provider"],
-                "provider_normalized": provider_norm,
-                "project_name": row["projectName"],
-                "summary_title": row["summaryTitle"] or row["inferredTaskTitle"] or row["sessionId"],
-                "started_at": row["startTime"],
-                "last_message_at": row["endTime"] or row["indexedAt"],
-                "working_directory": row["workingDirectory"] if has_working_dir and "workingDirectory" in row.keys() else None,
-                "can_resume_native": native_handle is not None,
-            })
-        return {"items": items, "limit": safe_limit, "offset": safe_offset, "next_offset": safe_offset + len(items) if len(items) == safe_limit else None}
+            items.append(
+                {
+                    "id": row["id"],
+                    "session_id": row["sessionId"],
+                    "provider": row["provider"],
+                    "provider_normalized": provider_norm,
+                    "project_name": row["projectName"],
+                    "summary_title": row["summaryTitle"] or row["inferredTaskTitle"] or row["sessionId"],
+                    "started_at": row["startTime"],
+                    "last_message_at": row["endTime"] or row["indexedAt"],
+                    "working_directory": row["workingDirectory"]
+                    if has_working_dir and "workingDirectory" in row.keys()
+                    else None,
+                    "can_resume_native": native_handle is not None,
+                }
+            )
+        return {
+            "items": items,
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "next_offset": safe_offset + len(items) if len(items) == safe_limit else None,
+        }
 
 
 def _schedule_delete(path: str | None, seconds: int) -> None:
     if not path:
         return
+
     def cleanup() -> None:
         try:
             Path(path).unlink(missing_ok=True)
         except OSError:
             pass
+
     timer = threading.Timer(seconds, cleanup)
     timer.daemon = True
     timer.start()
@@ -754,10 +809,18 @@ def spawn_resume(
         return response
     argv = response.get("argv") if response.get("kind") == "native" else response.get("target_argv")
     if not isinstance(argv, list) or not argv:
-        return {"kind": "error", "code": "spawn_unavailable", "recovery": "No target argv was available for this resume target."}
+        return {
+            "kind": "error",
+            "code": "spawn_unavailable",
+            "recovery": "No target argv was available for this resume target.",
+        }
     executable = shutil.which(str(argv[0]))
     if not executable:
-        return {"kind": "error", "code": "target_executable_not_found", "recovery": f"Install `{argv[0]}` or choose a different --as target."}
+        return {
+            "kind": "error",
+            "code": "target_executable_not_found",
+            "recovery": f"Install `{argv[0]}` or choose a different --as target.",
+        }
     cwd = response.get("working_directory")
     if isinstance(cwd, str) and cwd and Path(cwd).is_dir():
         resolved_cwd = cwd
