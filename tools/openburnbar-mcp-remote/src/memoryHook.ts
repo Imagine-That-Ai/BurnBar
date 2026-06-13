@@ -21,7 +21,7 @@
 
 import { createHash, createHmac, hkdfSync } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { closeSync, constants, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -62,6 +62,22 @@ export interface ExtractedMemory {
   confidence: number;
 }
 
+export type MemoryReviewStatus = "quarantined" | "approved" | "rejected";
+
+export interface MemoryProvenance {
+  schemaVersion: 1;
+  sourceKind: "chat_memory";
+  sourceSlugHmac: string;
+  sourceTranscriptHash: string;
+  extractorKind: string;
+  extractorPromptHash: string;
+  extractorOutputHash: string;
+  extractorPromptVersion: string;
+  createdAt: string;
+  reviewStatus: MemoryReviewStatus;
+  approvedAt?: string;
+}
+
 export interface PreparedVector {
   vectorId: string;
   cloakedVector: number[];
@@ -79,6 +95,8 @@ export interface PreparedVector {
   sourceKind: "chat_memory";
   chunkIndex: number;
   byteCount: number;
+  reviewStatus: MemoryReviewStatus;
+  provenance: MemoryProvenance;
 }
 
 function sha256(text: string): string {
@@ -92,7 +110,7 @@ function sha256(text: string): string {
  * test fixture (functions/.../knowledgeMemoryDedupHash.test.ts):
  *   HKDF(vaultKey, salt=∅, info="pensieve-dedup:content"|"…:slug") → HMAC(value).
  */
-function vaultKeyedHmac(vaultKey: Buffer, label: "content" | "slug", value: string): string {
+function vaultKeyedHmac(vaultKey: Buffer, label: "content" | "slug" | "provenance", value: string): string {
   const dedupKey = Buffer.from(hkdfSync("sha256", vaultKey, Buffer.alloc(0), `pensieve-dedup:${label}`, 32));
   return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
 }
@@ -179,6 +197,8 @@ export interface PrepareDeps {
   vaultKey: Buffer;
   cloak?: typeof cloakVector;
   seal?: typeof sealText;
+  reviewStatus?: MemoryReviewStatus;
+  provenance?: Partial<Omit<MemoryProvenance, "schemaVersion" | "sourceKind" | "sourceSlugHmac" | "reviewStatus">>;
 }
 
 /**
@@ -200,6 +220,23 @@ export async function prepareMemoriesForCommit(
   const cloak = deps.cloak ?? cloakVector;
   const seal = deps.seal ?? sealText;
   const slugHmac = vaultKeyedHmac(deps.vaultKey, "slug", sourceSlug);
+  const reviewStatus = deps.reviewStatus ?? "quarantined";
+  const createdAt = deps.provenance?.createdAt ?? new Date().toISOString();
+  const baseProvenance: MemoryProvenance = {
+    schemaVersion: 1,
+    sourceKind: "chat_memory",
+    sourceSlugHmac: slugHmac,
+    sourceTranscriptHash: deps.provenance?.sourceTranscriptHash ?? vaultKeyedHmac(deps.vaultKey, "provenance", `source:${sourceSlug}`),
+    extractorKind: deps.provenance?.extractorKind ?? "injected",
+    extractorPromptHash: deps.provenance?.extractorPromptHash ?? sha256(EXTRACT_PROMPT),
+    extractorOutputHash:
+      deps.provenance?.extractorOutputHash ??
+      vaultKeyedHmac(deps.vaultKey, "provenance", JSON.stringify(memories.map((m) => [m.title, m.text, m.category, m.confidence]))),
+    extractorPromptVersion: deps.provenance?.extractorPromptVersion ?? "pensieve-chat-memory-v1",
+    createdAt,
+    reviewStatus,
+    approvedAt: reviewStatus === "approved" ? deps.provenance?.approvedAt ?? createdAt : deps.provenance?.approvedAt,
+  };
   const seen = new Set<string>();
   const prepared: PreparedVector[] = [];
 
@@ -216,6 +253,7 @@ export async function prepareMemoriesForCommit(
 
     const [vector] = await deps.embedder.embed([cleaned]);
     const cloaked = Array.from(cloak(vector, { vaultKey: deps.vaultKey, modelVersion: deps.embedder.modelVersion }));
+    const provenance = { ...baseProvenance };
     const metadata = {
       source: "member-knowledge",
       source_path: `chat/${redactSecrets(memory.title).text.slice(0, 80) || dedupHash.slice(0, 12)}`,
@@ -225,6 +263,8 @@ export async function prepareMemoriesForCommit(
       chunk_index: 0,
       sourceKind: "chat_memory",
       sourceSlug,
+      reviewStatus,
+      provenance,
     };
     prepared.push({
       vectorId: dedupHash,
@@ -236,6 +276,8 @@ export async function prepareMemoriesForCommit(
       sourceKind: "chat_memory",
       chunkIndex: 0,
       byteCount: Buffer.byteLength(cleaned, "utf8"),
+      reviewStatus,
+      provenance,
     });
   }
   return prepared;
@@ -254,6 +296,8 @@ export interface RunMemorySyncOptions {
   isDuplicate?: (memory: ExtractedMemory, dedupHash: string) => Promise<boolean>;
   /** Sink for the prepared batch. Default: append to the device commit queue. */
   commit?: (batch: { sourceSlug: string; embeddingModelVersion: string; vectors: PreparedVector[] }) => void;
+  reviewStatus?: MemoryReviewStatus;
+  extractorKind?: string;
 }
 
 function defaultExtractor(transcript: string): string {
@@ -291,12 +335,54 @@ export async function runMemorySync(options: RunMemorySyncOptions): Promise<{
   const key = vaultKeyFn();
   if (!key) {throw new Error("Pensieve vault key unavailable — run `openburnbar mcp login`.");}
 
-  const memories = parseExtractedMemories(runExtractor(options.transcript));
+  const extractorOutput = runExtractor(options.transcript);
+  const memories = parseExtractedMemories(extractorOutput);
   const embedder = await loadEmbedder();
-  const vectors = await prepareMemoriesForCommit(memories, sourceSlug, { embedder, vaultKey: key }, options.isDuplicate);
+  const vectors = await prepareMemoriesForCommit(
+    memories,
+    sourceSlug,
+    {
+      embedder,
+      vaultKey: key,
+      reviewStatus: options.reviewStatus ?? "quarantined",
+      provenance: {
+        sourceTranscriptHash: vaultKeyedHmac(key, "provenance", options.transcript),
+        extractorKind: options.extractorKind ?? "claude-cli",
+        extractorPromptHash: sha256(EXTRACT_PROMPT),
+        extractorOutputHash: vaultKeyedHmac(key, "provenance", extractorOutput),
+        extractorPromptVersion: "pensieve-chat-memory-v1",
+        createdAt: new Date().toISOString(),
+      },
+    },
+    options.isDuplicate,
+  );
   const batch = { sourceSlug, embeddingModelVersion: options.embeddingModelVersion ?? embedder.modelVersion, vectors };
   if (vectors.length > 0) {commit(batch);}
   return batch;
+}
+
+export function approvePreparedMemoryBatch(
+  batch: { sourceSlug: string; embeddingModelVersion: string; vectors: PreparedVector[] },
+  approvedAt = new Date().toISOString(),
+): { sourceSlug: string; embeddingModelVersion: string; vectors: PreparedVector[] } {
+  return {
+    ...batch,
+    vectors: batch.vectors.map((vector) => ({
+      ...vector,
+      reviewStatus: "approved",
+      provenance: {
+        ...vector.provenance,
+        reviewStatus: "approved",
+        approvedAt,
+      },
+    })),
+  };
+}
+
+export function deleteQueuedMemoryBatch(path: string): boolean {
+  if (!existsSync(path)) {return false;}
+  rmSync(path, { force: true });
+  return true;
 }
 
 // -- hook install -------------------------------------------------------------

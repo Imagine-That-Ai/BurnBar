@@ -162,7 +162,7 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
     }
 
     func test_notificationReplySealerBindsReplyToUserAndDocumentAAD() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
         let sealed = try MacAgentNotificationReplySealer.sealedReplyMap(
             replyText: "send this back",

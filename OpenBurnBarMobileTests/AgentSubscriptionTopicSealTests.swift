@@ -31,7 +31,7 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
     }
 
     func test_encodeTopic_sealsGraphAndDisplay_writesNoPlaintext() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let encoded = try AgentSubscriptionTopicStore.encodeTopic(makeTopic(), vaultKey: key)
 
         // The graph edge AND the display text are sealed; no plaintext leaks.
@@ -57,8 +57,8 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
     }
 
     func test_documentID_isOpaque_deterministic_keyVarying() throws {
-        let keyA = CloudVaultCrypto.generateVaultKey()
-        let keyB = CloudVaultCrypto.generateVaultKey()
+        let keyA = try CloudVaultCrypto.generateVaultKey()
+        let keyB = try CloudVaultCrypto.generateVaultKey()
 
         let idA1 = try AgentSubscriptionTopicStore.documentID(
             agentURI: "agent://burnbar/research-scout",
@@ -110,7 +110,7 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
     }
 
     func test_documentID_distinctPerTopicAndAgent() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let scout = try AgentSubscriptionTopicStore.documentID(
             agentURI: "agent://burnbar/research-scout", topicID: "agent-updates", vaultKey: key
         )
@@ -136,7 +136,7 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
     }
 
     func test_encodeTopic_thenDecodeTopic_roundTrips() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let topic = makeTopic()
         let encoded = try AgentSubscriptionTopicStore.encodeTopic(topic, vaultKey: key)
         let docID = try AgentSubscriptionTopicStore.documentID(
@@ -221,7 +221,7 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
     }
 
     func test_decodeTopic_sealedGraphUnreadableWithoutKey_returnsNil() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         var encoded = try AgentSubscriptionTopicStore.encodeTopic(makeTopic(), vaultKey: key)
         encoded["agentURI"] = "agent://burnbar/legacy-leak"
         encoded["topicID"] = "legacy-topic"
@@ -268,7 +268,7 @@ final class AgentSubscriptionTopicSealTests: XCTestCase {
     }
 
     func test_resolveUnsubscribeDocID_withKey_targetsTheOpaqueSealedDoc() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let resolved = try AgentSubscriptionTopicStore.resolveUnsubscribeDocID(
             agentURI: "agent://burnbar/research-scout",
             topicID: "agent-updates",

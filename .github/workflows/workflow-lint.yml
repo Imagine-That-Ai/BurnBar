@@ -9,12 +9,14 @@ on:
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+      - "scripts/ci/verify-github-action-pins.mjs"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+      - "scripts/ci/verify-github-action-pins.mjs"
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -39,3 +41,6 @@ jobs:
       - name: Lint workflow files
         run: |
           "$HOME/go/bin/actionlint" -color
+
+      - name: Verify GitHub Actions pins
+        run: node scripts/ci/verify-github-action-pins.mjs
