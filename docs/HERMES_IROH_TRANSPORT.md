@@ -231,8 +231,12 @@ seven phases now land in this PR.
 * **iroh holepunch fails** — fall back to the n0 public (Phase ≤5) or
   hosted (Phase ≥6) relay. Observed in
   `HermesRelayHostService.connectionTransport == "iroh-relay"`.
-* **iroh transport fails entirely** — fall back to the legacy Cloud Run
-  WSS relay. Surfaced as `HermesRelayHostService.transportFailureCount`.
+* **iroh transport fails entirely** — fall back to the **Firestore long-poll
+  transport** (`FirestoreHermesRelayTransport`), the universal last-resort hop
+  that works whenever both peers can sign in to Firebase. Surfaced as
+  `HermesRelayHostService.transportFailureCount`. (The legacy Cloud Run WSS
+  relay was the historical fallback here; it and its Redis backend were retired
+  from `burnbar` on 2026-05-28, so the composite chain is now iroh → Firestore.)
 * **Pairing record stale** — iOS refuses to dial and surfaces a "Mac
   unreachable" banner identical to the current "host offline" state.
 * **Pairing record signature invalid** — same as stale; surfaces as a
