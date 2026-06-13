@@ -143,7 +143,7 @@ struct FeatureUnlockHero: View {
             // Slow orbiting iridescent ring.
             Circle()
                 .stroke(
-                    AngularGradient(colors: tier.holoStops + [tier.holoStops[0]], center: .center),
+                    AngularGradient(colors: tier.holoStops + tier.holoStops.prefix(1), center: .center),
                     lineWidth: 1.2
                 )
                 .frame(width: crestSize * 1.3, height: crestSize * 1.3)
@@ -285,6 +285,8 @@ struct FeatureUnlockFooter: View {
                     .tracking(1.8)
                     .foregroundStyle(ProTheme.Membership.foilLeaf)
                     .fixedSize()
+                    // Caps are visual styling; VoiceOver reads the plain line.
+                    .accessibilityLabel(tier.availabilityLine)
                 hairline(fadeOut: true)
             }
 
@@ -407,7 +409,7 @@ struct FeatureUnlockSheet: View {
                     feature: feature,
                     priceLine: TierPricing.priceLine(for: feature.requiredTier, store: cloudStore),
                     onUnlock: {
-                        Haptics.medium()
+                        // FoilCTAButton owns the tactile.
                         showCloudStore = true
                     },
                     onDismiss: { dismiss() }

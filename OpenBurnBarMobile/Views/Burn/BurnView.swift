@@ -856,7 +856,7 @@ private struct BurnProviderRow: View {
     private var headerRow: some View {
         HStack(spacing: 12) {
             if let providerEnum {
-                ProviderAuroraAvatar(provider: providerEnum, size: 44, animated: false)
+                ProviderAuroraAvatar(provider: providerEnum, size: 44, animated: false, glassInCard: true)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(providerEnum?.displayName ?? providerKey)
