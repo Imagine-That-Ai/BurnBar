@@ -343,6 +343,7 @@ enum ComputerUseSecurityCallableClient {
         let runDocumentRewrap: (String, Data, Data, String, Int) async throws -> CloudVaultRotationRewrapProgress
         let markRotationFailed: (String, Error) async -> Void
 
+        // cov:ignore-start -- live Firebase/Firestore/keychain wiring; injected environment covers rotation logic
         static func live(uid: String, rotatingDeviceId: String) -> Self {
             let firestore = Firestore.firestore()
             let userRef = firestore.collection("users").document(uid)
@@ -423,6 +424,7 @@ enum ComputerUseSecurityCallableClient {
                 }
             )
         }
+        // cov:ignore-end
     }
 
     static func performRevocationCloudVaultRotation(
