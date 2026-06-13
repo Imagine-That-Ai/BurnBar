@@ -67,7 +67,7 @@ jobs:
       - name: Install cargo-audit (pinned)
         run: |
           for attempt in 1 2 3; do
-            if cargo install cargo-audit --version 0.21.2 --locked; then
+            if cargo install cargo-audit --version 0.22.2 --locked; then
               exit 0
             fi
             if [[ "$attempt" == "3" ]]; then

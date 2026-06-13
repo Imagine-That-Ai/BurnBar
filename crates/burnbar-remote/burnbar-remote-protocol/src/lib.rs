@@ -116,10 +116,9 @@ impl ReliableFramePrefix {
     }
 
     pub fn decode(bytes: [u8; RELIABLE_PREFIX_LEN]) -> Result<Self, ProtocolError> {
-        let payload_len = u32::from_be_bytes(bytes[0..4].try_into().expect("fixed"));
-        let kind =
-            MessageKind::try_from(u16::from_be_bytes(bytes[4..6].try_into().expect("fixed")))?;
-        let flags = u16::from_be_bytes(bytes[6..8].try_into().expect("fixed"));
+        let payload_len = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let kind = MessageKind::try_from(u16::from_be_bytes([bytes[4], bytes[5]]))?;
+        let flags = u16::from_be_bytes([bytes[6], bytes[7]]);
         Ok(Self {
             payload_len,
             kind,
@@ -187,14 +186,17 @@ impl MediaDatagramHeader {
         Ok(Self {
             class: DatagramClass::try_from(bytes[0])?,
             flags: bytes[1],
-            stream_id: u16::from_be_bytes(bytes[2..4].try_into().expect("fixed")),
-            frame_id: FrameId(u64::from_be_bytes(bytes[4..12].try_into().expect("fixed"))),
-            packet_index: u16::from_be_bytes(bytes[12..14].try_into().expect("fixed")),
-            packet_count: u16::from_be_bytes(bytes[14..16].try_into().expect("fixed")),
-            capture_timestamp: TimestampMicros(u64::from_be_bytes(
-                bytes[16..24].try_into().expect("fixed"),
-            )),
-            payload_len: u16::from_be_bytes(bytes[24..26].try_into().expect("fixed")),
+            stream_id: u16::from_be_bytes([bytes[2], bytes[3]]),
+            frame_id: FrameId(u64::from_be_bytes([
+                bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
+            ])),
+            packet_index: u16::from_be_bytes([bytes[12], bytes[13]]),
+            packet_count: u16::from_be_bytes([bytes[14], bytes[15]]),
+            capture_timestamp: TimestampMicros(u64::from_be_bytes([
+                bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22],
+                bytes[23],
+            ])),
+            payload_len: u16::from_be_bytes([bytes[24], bytes[25]]),
         })
     }
 }
@@ -209,14 +211,12 @@ pub fn encode_media_datagram(
     header: MediaDatagramHeader,
     payload: &[u8],
 ) -> Result<EncodedDatagram, ProtocolError> {
-    if payload.len() > u16::MAX as usize {
-        return Err(ProtocolError::PayloadTooLarge {
-            actual: payload.len(),
-            max: u16::MAX as usize,
-        });
-    }
+    let payload_len = u16::try_from(payload.len()).map_err(|_| ProtocolError::PayloadTooLarge {
+        actual: payload.len(),
+        max: u16::MAX as usize,
+    })?;
     let mut header = header;
-    header.payload_len = payload.len() as u16;
+    header.payload_len = payload_len;
     let mut out = BytesMut::with_capacity(MEDIA_DATAGRAM_HEADER_LEN + payload.len());
     out.put_slice(&header.encode());
     out.put_slice(payload);
@@ -319,10 +319,11 @@ mod tests {
             kind: MessageKind::Input,
             flags: 7,
         };
-        assert_eq!(
-            ReliableFramePrefix::decode(prefix.encode()).unwrap(),
-            prefix
-        );
+        let decoded = match ReliableFramePrefix::decode(prefix.encode()) {
+            Ok(decoded) => decoded,
+            Err(error) => panic!("reliable prefix should decode: {error}"),
+        };
+        assert_eq!(decoded, prefix);
     }
 
     #[test]
@@ -337,8 +338,14 @@ mod tests {
             capture_timestamp: TimestampMicros(123),
             payload_len: 0,
         };
-        let encoded = encode_media_datagram(header, b"abc").unwrap();
-        let (decoded, payload) = decode_media_datagram(encoded.bytes).unwrap();
+        let encoded = match encode_media_datagram(header, b"abc") {
+            Ok(encoded) => encoded,
+            Err(error) => panic!("media datagram should encode: {error}"),
+        };
+        let (decoded, payload) = match decode_media_datagram(encoded.bytes) {
+            Ok(decoded) => decoded,
+            Err(error) => panic!("media datagram should decode: {error}"),
+        };
         assert_eq!(decoded.payload_len, 3);
         assert_eq!(payload.as_ref(), b"abc");
     }
@@ -355,10 +362,10 @@ mod tests {
             capture_timestamp: TimestampMicros(1),
             payload_len: 0,
         };
-        let mut bytes = encode_media_datagram(header, b"abc")
-            .unwrap()
-            .bytes
-            .to_vec();
+        let mut bytes = match encode_media_datagram(header, b"abc") {
+            Ok(encoded) => encoded.bytes.to_vec(),
+            Err(error) => panic!("media datagram should encode: {error}"),
+        };
         bytes.push(0);
         assert!(matches!(
             decode_media_datagram(Bytes::from(bytes)),
@@ -393,10 +400,13 @@ mod tests {
             requested_at: TimestampMicros(42),
         };
         let mut scratch = Vec::new();
-        encode_control(&request, &mut scratch).unwrap();
-        assert_eq!(
-            decode_control::<SessionRequestMessage>(&scratch).unwrap(),
-            request
-        );
+        if let Err(error) = encode_control(&request, &mut scratch) {
+            panic!("session request should encode: {error}");
+        }
+        let decoded = match decode_control::<SessionRequestMessage>(&scratch) {
+            Ok(decoded) => decoded,
+            Err(error) => panic!("session request should decode: {error}"),
+        };
+        assert_eq!(decoded, request);
     }
 }
