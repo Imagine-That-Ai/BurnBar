@@ -8,15 +8,37 @@ on:
   schedule:
     # 11:15 UTC daily, after the full harness and nightly E2E have time to run.
     - cron: "15 11 * * *"
+  workflow_run:
+    # Event-driven repair loop for the Cursor repair PR. The job filters out
+    # non-Cursor PRs before calling Cursor.
+    workflows:
+      - AGENTS.md Validation
+      - Agent Tools CI
+      - Code Quality Checks
+      - CodeQL PR (JS+Python)
+      - computer-use-loopback-test
+      - Confidentiality Guard
+      - Fast Feedback (<5 min)
+      - License Posture
+      - OpenBurnBar Functional QA
+      - OpenBurnBarIroh xcframework
+      - openburnbar-iroh AAR (Android)
+      - PR Security Gate
+      - Rust Remote Engine
+      - Rust SAST
+      - Website CI
+      - Workflow Lint
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   actions: read
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: cursor-nightly-ci-repair
-  cancel-in-progress: false
+  group: cursor-nightly-ci-repair-${{ github.event.workflow_run.head_branch || github.ref_name || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   repair-nightly-ci:
@@ -34,8 +56,84 @@ jobs:
           echo "::notice::CURSOR_API_KEY is not configured. Add it under Settings -> Secrets and variables -> Actions."
           exit 0
 
-      - name: Collect latest scheduled CI failures
+      - name: Locate open Cursor repair PR
         if: env.CURSOR_API_KEY != ''
+        id: repair_pr
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nightly-ci"
+          pr_json="$RUNNER_TEMP/nightly-ci/repair-pr.json"
+          pr_checks="$RUNNER_TEMP/nightly-ci/repair-pr-checks.json"
+
+          gh pr list \
+            --repo "$GH_REPO" \
+            --state open \
+            --search '"cursor-nightly-ci-repair" in:title,body' \
+            --json number,url,title,headRefName,updatedAt \
+            --limit 1 > "$pr_json"
+
+          pr_number="$(jq -r '.[0].number // empty' "$pr_json")"
+          if [[ -z "$pr_number" ]]; then
+            echo '[]' > "$pr_checks"
+            {
+              echo "exists=false"
+              echo "url="
+              echo "number="
+              echo "failed_checks=0"
+              echo "pending_checks=0"
+              echo "checks=$pr_checks"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pr_url="$(jq -r '.[0].url' "$pr_json")"
+          gh pr view "$pr_number" \
+            --repo "$GH_REPO" \
+            --json statusCheckRollup,mergeStateStatus,reviewDecision,headRefName,url,title > "$pr_checks"
+
+          failed_checks="$(jq '[.statusCheckRollup[] | select(.status == "COMPLETED" and (.conclusion != "SUCCESS" and .conclusion != "SKIPPED" and .conclusion != "NEUTRAL"))] | length' "$pr_checks")"
+          pending_checks="$(jq '[.statusCheckRollup[] | select(.status != "COMPLETED")] | length' "$pr_checks")"
+
+          {
+            echo "exists=true"
+            echo "url=${pr_url}"
+            echo "number=${pr_number}"
+            echo "failed_checks=${failed_checks}"
+            echo "pending_checks=${pending_checks}"
+            echo "checks=$pr_checks"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Classify repair trigger
+        if: env.CURSOR_API_KEY != ''
+        id: trigger
+        run: |
+          set -euo pipefail
+
+          can_start_new=false
+          can_continue_existing=false
+          reason="${GITHUB_EVENT_NAME}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            can_start_new=true
+            can_continue_existing=true
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            repair_pr_number="${{ steps.repair_pr.outputs.number }}"
+            if [[ -n "$repair_pr_number" ]] && jq -e --argjson pr "$repair_pr_number" '.workflow_run.pull_requests[]?.number == $pr' "$GITHUB_EVENT_PATH" > /dev/null; then
+              can_continue_existing=true
+              reason="completed CI for Cursor repair PR #${repair_pr_number}"
+            else
+              reason="completed CI was not for the open Cursor repair PR"
+            fi
+          fi
+
+          {
+            echo "can_start_new=${can_start_new}"
+            echo "can_continue_existing=${can_continue_existing}"
+            echo "reason=${reason}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect latest scheduled CI failures
+        if: env.CURSOR_API_KEY != '' && (steps.trigger.outputs.can_start_new == 'true' || steps.trigger.outputs.can_continue_existing == 'true')
         id: collect
         run: |
           set -euo pipefail
@@ -91,30 +189,89 @@ jobs:
             echo "logs=${logs}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Stop when nightly lanes are green
-        if: env.CURSOR_API_KEY != '' && steps.collect.outputs.failed_count == '0'
-        run: echo "No failed scheduled CI lanes found."
+      - name: Select repair action
+        if: env.CURSOR_API_KEY != ''
+        id: action
+        run: |
+          set -euo pipefail
+
+          mode="stop"
+          reason="${{ steps.trigger.outputs.reason }}"
+          scheduled_failed="${{ steps.collect.outputs.failed_count }}"
+          pr_exists="${{ steps.repair_pr.outputs.exists }}"
+          pr_failed="${{ steps.repair_pr.outputs.failed_checks }}"
+          pr_pending="${{ steps.repair_pr.outputs.pending_checks }}"
+          can_start_new="${{ steps.trigger.outputs.can_start_new }}"
+          can_continue_existing="${{ steps.trigger.outputs.can_continue_existing }}"
+
+          if [[ -z "$scheduled_failed" ]]; then scheduled_failed=0; fi
+          if [[ -z "$pr_failed" ]]; then pr_failed=0; fi
+          if [[ -z "$pr_pending" ]]; then pr_pending=0; fi
+
+          if [[ "$pr_exists" == "true" ]]; then
+            if [[ "$pr_failed" != "0" && "$can_continue_existing" == "true" ]]; then
+              mode="continue"
+              reason="Cursor repair PR has failed checks"
+            elif [[ "$pr_failed" != "0" ]]; then
+              mode="stop"
+              reason="Cursor repair PR is red, but this trigger is not allowed to continue it"
+            elif [[ "$pr_pending" != "0" ]]; then
+              mode="wait"
+              reason="Cursor repair PR checks are still pending"
+            else
+              mode="green"
+              reason="Cursor repair PR checks are green"
+            fi
+          elif [[ "$can_start_new" == "true" && "$scheduled_failed" != "0" ]]; then
+            mode="create"
+            reason="nightly lanes are red and no repair PR exists"
+          elif [[ "$can_start_new" == "true" ]]; then
+            mode="green"
+            reason="nightly lanes are green and no repair PR exists"
+          else
+            mode="stop"
+            reason="no Cursor repair PR for this CI completion"
+          fi
+
+          {
+            echo "mode=${mode}"
+            echo "reason=${reason}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Stop or wait
+        if: env.CURSOR_API_KEY != '' && steps.action.outputs.mode != 'create' && steps.action.outputs.mode != 'continue'
+        run: |
+          echo "Mode: ${{ steps.action.outputs.mode }}"
+          echo "Reason: ${{ steps.action.outputs.reason }}"
+          if [[ "${{ steps.repair_pr.outputs.exists }}" == "true" ]]; then
+            echo "PR: ${{ steps.repair_pr.outputs.url }}"
+          fi
 
       - name: Create Cursor cloud repair agent
-        if: env.CURSOR_API_KEY != '' && steps.collect.outputs.failed_count != '0'
+        if: env.CURSOR_API_KEY != '' && (steps.action.outputs.mode == 'create' || steps.action.outputs.mode == 'continue')
         run: |
           set -euo pipefail
           prompt_file="$RUNNER_TEMP/nightly-ci/cursor-prompt.md"
           payload_file="$RUNNER_TEMP/nightly-ci/cursor-agent-payload.json"
           response_file="$RUNNER_TEMP/nightly-ci/cursor-agent-response.json"
+          repair_pr_url="${{ steps.repair_pr.outputs.url }}"
 
           {
             cat <<'PROMPT'
           You are the OpenBurnBar nightly CI repair operator.
 
           Goal:
-          Keep scheduled full-confidence CI lanes green without slowing daily PR
-          development.
+          Keep scheduled full-confidence CI lanes green without slowing daily
+          PR development. Continue repairing until the monitored lanes or the
+          active repair PR are green.
 
           Rules:
           - Work in the Cursor cloud environment.
-          - Start from the main branch.
-          - Open a PR if the failure is code-owned. Do not merge it.
+          - Use the existing repair PR if one is provided. Otherwise start from
+            main and open a PR if the failure is code-owned.
+          - When opening a PR, title it "[cursor] OpenBurnBar nightly CI repair"
+            and include the marker "cursor-nightly-ci-repair" in the PR body.
+          - Do not merge PRs.
           - Do not modify branch protection, required checks, release gates, or
             workflow definitions to make a red run green.
           - Do not skip, delete, downgrade, or mark tests continue-on-error to
@@ -127,6 +284,19 @@ jobs:
             environment.
           - Put failed workflow/run link, root cause, files changed,
             validations run, and residual risk in the PR body.
+
+          Repair loop state:
+          PROMPT
+            if [[ -n "$repair_pr_url" ]]; then
+              echo "- Continue existing repair PR: ${repair_pr_url}"
+              echo "- Current repair PR checks:"
+              echo '```json'
+              cat "${{ steps.repair_pr.outputs.checks }}"
+              echo '```'
+            else
+              echo "- No existing repair PR was found. Open one only if the failure is code-owned."
+            fi
+            cat <<'PROMPT'
 
           Latest scheduled CI summary:
           PROMPT
@@ -143,19 +313,27 @@ jobs:
 
           jq -n \
             --arg repo "https://github.com/${GH_REPO}" \
+            --arg repair_pr "$repair_pr_url" \
             --arg prompt "$(cat "$prompt_file")" \
             '{
               name: "OpenBurnBar nightly CI repair",
               prompt: { text: $prompt },
               model: { id: "composer-2.5" },
               repos: [
-                {
-                  url: $repo,
-                  startingRef: "main"
-                }
+                (if $repair_pr == "" then
+                  {
+                    url: $repo,
+                    startingRef: "main"
+                  }
+                else
+                  {
+                    url: $repo,
+                    prUrl: $repair_pr
+                  }
+                end)
               ],
-              workOnCurrentBranch: false,
-              autoCreatePR: true,
+              workOnCurrentBranch: ($repair_pr != ""),
+              autoCreatePR: ($repair_pr == ""),
               skipReviewerRequest: true,
               mode: "agent"
             }' > "$payload_file"
