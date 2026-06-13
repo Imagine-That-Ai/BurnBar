@@ -21,9 +21,10 @@ Mac being awake.
 - `nightly-e2e.yml` runs nightly at `43 9 * * *` UTC and manual dispatch. It
   opens or closes a deduplicated failure issue via
   `.github/actions/ops-failure-issue`.
-- `cursor-nightly-ci-repair.yml` runs at `15 11 * * *` UTC. It uses Cursor CLI
-  in GitHub Actions to inspect failed scheduled lanes, patch code-owned
-  failures, and open a repair PR.
+- `cursor-nightly-ci-repair.yml` runs at `15 11 * * *` UTC. It gathers the
+  latest failed scheduled logs and starts a Cursor Cloud Agent through Cursor's
+  API. Cursor works in the cloud and opens a repair PR when the failure is
+  code-owned.
 
 After this workflow change lands on `main`, update branch protection so the
 required PR checks are:
@@ -54,7 +55,9 @@ bash scripts/ops/verify-github-governance.sh
 ## Cursor Setup
 
 The implemented path is `.github/workflows/cursor-nightly-ci-repair.yml`.
-It runs in GitHub Actions and calls Cursor CLI headlessly.
+It runs a small GitHub Actions scheduler and calls the Cursor Cloud Agents API.
+It does not depend on the operator's Mac, the Cursor desktop app, or a local
+headless CLI install.
 
 One secret is required:
 
@@ -62,17 +65,21 @@ One secret is required:
 gh secret set CURSOR_API_KEY --repo Imagine-That-Ai/BurnBar --body "$CURSOR_API_KEY"
 ```
 
-Create the API key in Cursor Dashboard -> API Keys. Without this secret, the
-workflow exits with a notice and does not run the repair agent.
+Create the API key in Cursor Dashboard -> API Keys. Make sure the Cursor
+account or team has GitHub access to `Imagine-That-Ai/BurnBar`, because Cursor
+opens the repair PR from its own cloud agent. Without this secret, the workflow
+exits with a notice and does not run the repair agent.
 
 The workflow uses a restricted-autonomy pattern:
 
-- Cursor reads scheduled CI results and failed logs.
-- Cursor may edit code.
-- Cursor is denied `git`, `gh`, `curl`, destructive removal, workflow edits,
-  and secret/env-file access.
-- Git branch creation, commit, push, and PR creation happen in deterministic
-  workflow steps after Cursor returns.
+- GitHub Actions reads scheduled CI results and failed logs.
+- GitHub Actions sends only the summary and capped failed-log excerpt to Cursor.
+- Cursor starts from `main`, works in the cloud, and may open a PR.
+- Cursor is instructed not to edit branch protection, required checks, release
+  gates, workflow definitions, or tests just to hide a failure.
+- If the failure is external infrastructure, credentials, GitHub outage,
+  Apple/Xcode runner outage, or missing secrets, Cursor should report the
+  operator action instead of changing code.
 
 This keeps the agent useful without giving it direct control over branch
 protection or publishing.

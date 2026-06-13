@@ -1,7 +1,8 @@
 name: Cursor Nightly CI Repair
 
 # Cloud repair loop for scheduled full-confidence lanes. This does not replace
-# the CI gates; it reacts to red scheduled runs and opens a repair PR.
+# the CI gates; it reacts to red scheduled runs and asks Cursor Cloud Agent to
+# open a repair PR.
 
 on:
   schedule:
@@ -11,42 +12,27 @@ on:
 
 permissions:
   actions: read
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: cursor-nightly-ci-repair
   cancel-in-progress: false
 
-env:
-  CURSOR_MODEL: composer-2.5-fast
-
 jobs:
   repair-nightly-ci:
-    name: Cursor repair operator
+    name: Cursor cloud repair operator
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     env:
+      GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
     steps:
-      - name: Check out main
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-        with:
-          fetch-depth: 0
-
       - name: Skip until Cursor API key is configured
         if: env.CURSOR_API_KEY == ''
         run: |
           echo "::notice::CURSOR_API_KEY is not configured. Add it under Settings -> Secrets and variables -> Actions."
           exit 0
-
-      - name: Install Cursor CLI
-        if: env.CURSOR_API_KEY != ''
-        run: |
-          curl https://cursor.com/install -fsS | bash
-          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
 
       - name: Collect latest scheduled CI failures
         if: env.CURSOR_API_KEY != ''
@@ -54,8 +40,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/nightly-ci"
-          : > "$RUNNER_TEMP/nightly-ci/summary.md"
-          : > "$RUNNER_TEMP/nightly-ci/failed-logs.txt"
+          summary="$RUNNER_TEMP/nightly-ci/summary.md"
+          logs="$RUNNER_TEMP/nightly-ci/failed-logs.txt"
+          : > "$summary"
+          : > "$logs"
 
           workflows=(
             "openburnbar-pr-harness.yml"
@@ -75,156 +63,113 @@ jobs:
 
             {
               echo "## ${workflow}"
+              echo
               echo '```json'
               echo "$run_json"
               echo '```'
-            } >> "$RUNNER_TEMP/nightly-ci/summary.md"
+              echo
+            } >> "$summary"
 
+            status="$(echo "$run_json" | jq -r '.[0].status // "none"')"
             conclusion="$(echo "$run_json" | jq -r '.[0].conclusion // "none"')"
             run_id="$(echo "$run_json" | jq -r '.[0].databaseId // empty')"
-            if [[ "$conclusion" == "failure" && -n "$run_id" ]]; then
+            run_url="$(echo "$run_json" | jq -r '.[0].url // empty')"
+            if [[ "$status" == "completed" && "$conclusion" != "success" && "$conclusion" != "skipped" && "$conclusion" != "none" && -n "$run_id" ]]; then
               failed_count=$((failed_count + 1))
               {
                 echo
                 echo "===== ${workflow} run ${run_id} ====="
+                echo "URL: ${run_url}"
                 gh run view "$run_id" --log-failed || true
-              } >> "$RUNNER_TEMP/nightly-ci/failed-logs.txt"
+              } >> "$logs"
             fi
           done
 
           {
             echo "failed_count=${failed_count}"
-            echo "summary=$RUNNER_TEMP/nightly-ci/summary.md"
-            echo "logs=$RUNNER_TEMP/nightly-ci/failed-logs.txt"
+            echo "summary=${summary}"
+            echo "logs=${logs}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Stop when nightly lanes are green
         if: env.CURSOR_API_KEY != '' && steps.collect.outputs.failed_count == '0'
         run: echo "No failed scheduled CI lanes found."
 
-      - name: Configure Cursor CLI permissions
-        if: env.CURSOR_API_KEY != '' && steps.collect.outputs.failed_count != '0'
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.cursor"
-          cat > "$HOME/.cursor/cli-config.json" <<'JSON'
-          {
-            "permissions": {
-              "allow": [
-                "Read(**)",
-                "Write(**)",
-                "Shell(bash)",
-                "Shell(jq)",
-                "Shell(node)",
-                "Shell(npm)",
-                "Shell(python3)",
-                "Shell(swift)",
-                "Shell(xcodebuild)",
-                "Shell(make)"
-              ],
-              "deny": [
-                "Shell(git)",
-                "Shell(gh)",
-                "Shell(curl)",
-                "Shell(rm)",
-                "Read(.env*)",
-                "Read(**/.env*)",
-                "Write(.github/**)",
-                "Write(**/.env*)",
-                "Write(**/*.key)",
-                "Write(**/*.p8)",
-                "Write(**/*secret*)"
-              ]
-            }
-          }
-          JSON
-
-      - name: Ask Cursor to repair code-owned failures
+      - name: Create Cursor cloud repair agent
         if: env.CURSOR_API_KEY != '' && steps.collect.outputs.failed_count != '0'
         run: |
           set -euo pipefail
           prompt_file="$RUNNER_TEMP/nightly-ci/cursor-prompt.md"
-          cat > "$prompt_file" <<'PROMPT'
+          payload_file="$RUNNER_TEMP/nightly-ci/cursor-agent-payload.json"
+          response_file="$RUNNER_TEMP/nightly-ci/cursor-agent-response.json"
+
+          {
+            cat <<'PROMPT'
           You are the OpenBurnBar nightly CI repair operator.
 
           Goal:
-          Fix code-owned failures from scheduled full-confidence CI without
-          weakening gates or hiding failures.
-
-          Inputs:
-          - CI summary: __SUMMARY_PATH__
-          - Failed logs: __LOGS_PATH__
+          Keep scheduled full-confidence CI lanes green without slowing daily PR
+          development.
 
           Rules:
-          - Do not use git or gh. A later deterministic workflow step handles
-            branches, commits, pushes, and PR creation.
-          - Do not edit .github workflows, branch protection policy, release
-            gates, or governance docs.
-          - Do not delete tests, mark tests skipped, add continue-on-error, or
-            loosen assertions to make CI green.
+          - Work in the Cursor cloud environment.
+          - Start from the main branch.
+          - Open a PR if the failure is code-owned. Do not merge it.
+          - Do not modify branch protection, required checks, release gates, or
+            workflow definitions to make a red run green.
+          - Do not skip, delete, downgrade, or mark tests continue-on-error to
+            hide a failure.
           - If the failure is external infrastructure, credentials, GitHub
-            outage, Apple/Xcode runner outage, or missing secrets, write a
-            concise report to cursor-nightly-ci-report.md and do not change
-            code.
+            outage, Apple/Xcode runner outage, or missing secrets, report the
+            exact operator action needed and do not change code.
           - If the failure is code-owned, make the smallest durable fix.
-          - Run the smallest relevant validation you can run in this environment.
-          - Write cursor-nightly-ci-report.md with root cause, files changed,
-            validations run, and residual risk.
+          - Run the smallest relevant validation available in the cloud
+            environment.
+          - Put failed workflow/run link, root cause, files changed,
+            validations run, and residual risk in the PR body.
 
-          Start by reading the CI summary and failed logs.
+          Latest scheduled CI summary:
           PROMPT
-
-          sed -i.bak \
-            -e "s#__SUMMARY_PATH__#${{ steps.collect.outputs.summary }}#g" \
-            -e "s#__LOGS_PATH__#${{ steps.collect.outputs.logs }}#g" \
-            "$prompt_file"
-
-          agent -p --force --trust \
-            --model "$CURSOR_MODEL" \
-            --output-format text \
-            "$(cat "$prompt_file")" | tee "$RUNNER_TEMP/nightly-ci/cursor-output.txt"
-
-      - name: Publish Cursor repair PR
-        if: env.CURSOR_API_KEY != '' && steps.collect.outputs.failed_count != '0'
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            echo "Cursor did not produce a code diff."
-            if [[ -f cursor-nightly-ci-report.md ]]; then
-              cat cursor-nightly-ci-report.md >> "$GITHUB_STEP_SUMMARY"
-            fi
-            exit 0
-          fi
-
-          branch="cursor/nightly-ci-repair-$(date -u +%Y-%m-%d)-${GITHUB_RUN_ID}"
-          git config user.name "cursor-nightly-ci-repair"
-          git config user.email "cursor-nightly-ci-repair@users.noreply.github.com"
-          git checkout -B "$branch"
-          git add -A
-          git commit -m "ci: repair nightly CI failure"
-          git push -u origin "$branch"
-
-          body="$RUNNER_TEMP/nightly-ci/pr-body.md"
-          {
-            echo "## Summary"
-            echo
-            echo "Cursor investigated a scheduled CI failure and produced a scoped repair."
-            echo
-            echo "## CI Evidence"
-            echo
             cat "${{ steps.collect.outputs.summary }}"
             echo
-            echo "## Cursor Report"
+            echo "Failed log excerpt, capped to the last 120000 bytes:"
             echo
-            if [[ -f cursor-nightly-ci-report.md ]]; then
-              cat cursor-nightly-ci-report.md
+            if [[ -s "${{ steps.collect.outputs.logs }}" ]]; then
+              tail -c 120000 "${{ steps.collect.outputs.logs }}"
             else
-              echo "Cursor did not write cursor-nightly-ci-report.md."
+              echo "No failed logs were available."
             fi
-          } > "$body"
+          } > "$prompt_file"
 
-          gh pr create \
-            --base main \
-            --head "$branch" \
-            --title "[cursor] repair nightly CI failure" \
-            --body-file "$body"
+          jq -n \
+            --arg repo "https://github.com/${GH_REPO}" \
+            --arg prompt "$(cat "$prompt_file")" \
+            '{
+              name: "OpenBurnBar nightly CI repair",
+              prompt: { text: $prompt },
+              repos: [
+                {
+                  url: $repo,
+                  startingRef: "main"
+                }
+              ],
+              workOnCurrentBranch: false,
+              autoCreatePR: true,
+              skipReviewerRequest: true,
+              mode: "agent"
+            }' > "$payload_file"
+
+          curl --fail-with-body -sS \
+            --request POST \
+            --url https://api.cursor.com/v1/agents \
+            --header "Authorization: Bearer ${CURSOR_API_KEY}" \
+            --header 'Content-Type: application/json' \
+            --data-binary @"$payload_file" \
+            | tee "$response_file"
+
+          {
+            echo "## Cursor Cloud Agent"
+            echo
+            echo "- Agent: $(jq -r '.agent.url // "unknown"' "$response_file")"
+            echo "- Run: $(jq -r '.run.id // "unknown"' "$response_file")"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -14,7 +14,8 @@ if [[ -z "$REPO" ]]; then
 fi
 
 BRANCH="${OPENBURNBAR_GOVERNANCE_BRANCH:-main}"
-REQUIRED_CHECKS="${OPENBURNBAR_REQUIRED_BRANCH_CHECKS:-Fast Feedback Gate,guard,BurnBar AGPL product posture,Secret Detection (gitleaks),Dependency Review (CVE check),npm Audit (Node package locks),Remote Installer Policy,Vendored Agent Provenance,Signal Activation Parity (fail-closed default),Browser Target Policy (SSRF / DNS-rebinding),OSV Scanner (open source vulnerabilities),Hosted MCP Security Smoke,Hosted MCP Isolation Proofs (local, deterministic),Firestore Security Rules Tests}"
+DEFAULT_REQUIRED_CHECKS=$'Fast Feedback Gate\nguard\nBurnBar AGPL product posture\nSecret Detection (gitleaks)\nDependency Review (CVE check)\nnpm Audit (Node package locks)\nRemote Installer Policy\nVendored Agent Provenance\nSignal Activation Parity (fail-closed default)\nBrowser Target Policy (SSRF / DNS-rebinding)\nOSV Scanner (open source vulnerabilities)\nHosted MCP Security Smoke\nHosted MCP Isolation Proofs (local, deterministic)\nFirestore Security Rules Tests'
+REQUIRED_CHECKS="${OPENBURNBAR_REQUIRED_BRANCH_CHECKS:-$DEFAULT_REQUIRED_CHECKS}"
 REQUIRED_ENVIRONMENTS="${OPENBURNBAR_REQUIRED_ENVIRONMENTS:-release,production}"
 export BRANCH REQUIRED_CHECKS REQUIRED_ENVIRONMENTS
 
@@ -36,7 +37,7 @@ const fs = require("fs");
 const protection = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const environmentsPayload = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
 const requiredChecks = (process.env.REQUIRED_CHECKS || "")
-  .split(",")
+  .split(/\r?\n|,(?=(?:[^()]*\([^()]*\))*[^()]*$)/)
   .map((value) => value.trim())
   .filter(Boolean);
 const requiredEnvironments = (process.env.REQUIRED_ENVIRONMENTS || "")
