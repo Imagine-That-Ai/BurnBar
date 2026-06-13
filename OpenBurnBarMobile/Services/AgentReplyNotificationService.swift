@@ -71,9 +71,26 @@ private enum AgentNotificationReplySealer {
         return encoder
     }()
 
-    static func sealedReplyMap(replyText: String, keyData: Data, vaultKeyID: String) throws -> [String: Any] {
+    static func sealedReplyMap(
+        replyText: String,
+        uid: String,
+        replyID: String,
+        keyData: Data,
+        vaultKeyID: String
+    ) throws -> [String: Any] {
         let payload = try encoder.encode(AgentNotificationReplyPrivatePayload(replyText: replyText))
-        let sealed = try CloudVaultCrypto.sealPayload(payload, keyData: keyData, vaultKeyID: vaultKeyID)
+        let aadContext = try CloudVaultAADContext(
+            uid: uid,
+            collection: "agent_notification_replies",
+            docID: replyID,
+            field: "sealedReplyPayload"
+        )
+        let sealed = try CloudVaultCrypto.sealPayload(
+            payload,
+            keyData: keyData,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
         return CloudVaultCrypto.sealedPayloadDictionary(sealed)
     }
 }
@@ -303,16 +320,19 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         do {
             guard let uid = Auth.auth().currentUser?.uid else { return }
             let key = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid)
+            let replyId = "\(eventID)_\(deviceID)"
             _ = try await callable.call([
                 "eventId": eventID,
                 "sealedReplyPayload": try AgentNotificationReplySealer.sealedReplyMap(
                     replyText: replyText,
+                    uid: uid,
+                    replyID: replyId,
                     keyData: key.keyData,
                     vaultKeyID: key.vaultKeyID
                 ),
                 "vaultKeyID": key.vaultKeyID,
                 "deviceId": deviceID,
-                "clientReplyId": "\(eventID)_\(deviceID)"
+                "clientReplyId": replyId
             ])
         } catch {
             #if DEBUG
@@ -347,9 +367,13 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
 
         switch runtime {
         case AssistantRuntimeID.hermes.rawValue:
-            HermesService.shared.loadMobileThread(id: threadID)
-            HermesService.shared.selectedSessionID = threadID
-            HermesService.shared.sendMessage(replyText)
+            // Send through the per-surface instance the main chat binds —
+            // sending on `.shared` reached the model but the reply never
+            // appeared in any visible transcript (no UI binds `.shared`).
+            let hermes = HermesService.mainSurface ?? HermesService.shared
+            hermes.loadMobileThread(id: threadID)
+            hermes.selectedSessionID = threadID
+            hermes.sendMessage(replyText)
         case AssistantRuntimeID.pi.rawValue, "piagent", "pi_agent":
             let history = MobileChatHistoryStore.shared
             history.bootstrap()

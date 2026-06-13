@@ -208,7 +208,10 @@ final class AppearanceSettings {
     private let persistence: SettingsPersistenceCoordinator
 
     var appearanceMode: AppearanceMode = .system {
-        didSet { persistence.set(appearanceMode, forKey: "appearanceMode") }
+        didSet {
+            persistence.set(appearanceMode, forKey: "appearanceMode")
+            NotificationCenter.default.post(name: .appearanceModeDidChange, object: nil)
+        }
     }
 
     /// The app *skin* (see `AppSkin`) — orthogonal to light/dark. `.editorial`
@@ -416,6 +419,7 @@ final class AppearanceSettings {
 }
 
 extension Notification.Name {
+    static let appearanceModeDidChange = Notification.Name("com.openburnbar.appearance.appearanceModeDidChange")
     static let appearanceSkinDidChange = Notification.Name("com.openburnbar.appearance.appearanceSkinDidChange")
     static let useWebsiteBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useWebsiteBackgroundDidChange")
     static let useConstellationBackgroundDidChange = Notification.Name("com.openburnbar.appearance.useConstellationBackgroundDidChange")

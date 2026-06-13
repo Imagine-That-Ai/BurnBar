@@ -46,6 +46,19 @@ jobs:
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh
 
+      - name: Build entitlements contracts
+        run: bash scripts/build-entitlements.sh
+
+      # Catalog contract tests + firestore.rules drift gate: the three rules
+      # entitlement allowlists are GENERATED from packages/entitlements
+      # (tools/gen-rules-entitlements.mjs); fail red if firestore.rules
+      # diverges from a regenerate or the catalog drifts from its fixture.
+      - name: Entitlement catalog tests (node --test)
+        run: node --test packages/entitlements/lib/
+
+      - name: firestore.rules entitlement allowlists are generated (no drift)
+        run: node tools/gen-rules-entitlements.mjs --check
+
       - name: TypeScript type check
         run: cd functions && npx tsc --noEmit
 
@@ -276,15 +289,23 @@ jobs:
   schema-drift:
     name: Schema sync drift
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: tools/schema-sync/package-lock.json
 
-      - name: Check schema sync drift
+      - name: Install schema-sync toolchain (@typespec/compiler)
+        run: npm --prefix tools/schema-sync ci
+
+      # check-drift.sh also compiles the TypeSpec canon and asserts the
+      # compiled model set matches the emitted generated interfaces
+      # (tools/schema-sync/check-tsp-canon.mjs), so the canon cannot rot.
+      - name: Check schema sync drift + TypeSpec canon
         run: ./tools/schema-sync/check-drift.sh
 
   # ── Wiki / Pensieve verbatim chunker parity ──────────────────────────────
@@ -501,6 +522,9 @@ jobs:
         working-directory: functions
         run: npm ci
 
+      - name: Build entitlements contracts
+        run: bash scripts/build-entitlements.sh
+
       - name: Security vitest bundle
         working-directory: functions
         run: npm run test:security
@@ -548,10 +572,14 @@ jobs:
             services/hermes-realtime-relay/package-lock.json
             services/hosted-mcp/package-lock.json
             packages/signal-envelope-contracts/package-lock.json
+            packages/entitlements/package-lock.json
 
       # Shared dependency: both services' prebuild compiles these contracts.
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh
+
+      - name: Build entitlements contracts
+        run: bash scripts/build-entitlements.sh
 
       # ── hermes-realtime-relay ──
       - name: Install relay dependencies

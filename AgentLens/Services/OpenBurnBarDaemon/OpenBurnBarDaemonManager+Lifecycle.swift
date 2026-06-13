@@ -30,6 +30,7 @@ extension OpenBurnBarDaemonManager {
         await performBusyWork {
             try installFilesIfNeeded()
             try writeLaunchAgentPlist()
+            try revalidateInstalledBinaryBeforeLaunch()
             try await bootoutIfNeeded()
             try await runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
             try await runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
@@ -42,12 +43,27 @@ extension OpenBurnBarDaemonManager {
         await performBusyWork {
             try installFilesIfNeeded()
             try writeLaunchAgentPlist()
+            try revalidateInstalledBinaryBeforeLaunch()
             try await bootoutIfNeeded()
             try await runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
             try await runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
             supervisionState = OpenBurnBarDaemonSupervisor.resetAfterRepair()
             try await awaitHealthy()
         }
+    }
+
+    /// RR-3: re-validate the on-disk installed daemon binary's code signature
+    /// immediately before we ask launchd to (re)launch it.
+    ///
+    /// `installFilesIfNeeded()` validates the binary at install time, but a
+    /// same-user attacker can swap the user-writable installed binary in the
+    /// window between install and launch. Re-checking here refuses to bootstrap
+    /// a binary that no longer satisfies the first-party requirement. The launchd
+    /// `KeepAlive` re-exec we cannot intercept is mitigated by the daemon socket's
+    /// peer code-signature gate (RR-3, daemon side) — that is the load-bearing
+    /// fix; this is the install/launch-path complement.
+    func revalidateInstalledBinaryBeforeLaunch() throws {
+        try validateDaemonBinary(at: paths.installedBinaryURL)
     }
 
     func installedDaemonBinaryNeedsRefresh() -> Bool {
@@ -117,10 +133,12 @@ extension OpenBurnBarDaemonManager {
         guard dependencies.fileManager.isExecutableFile(atPath: sourceBinaryURL.path) else {
             throw OpenBurnBarDaemonManagerError.daemonBinaryUnavailable
         }
+        try validateDaemonBinary(at: sourceBinaryURL)
 
         if sourceBinaryURL.standardizedFileURL != paths.installedBinaryURL.standardizedFileURL {
             try atomicallyInstallBinary(from: sourceBinaryURL, to: paths.installedBinaryURL)
         }
+        try validateDaemonBinary(at: paths.installedBinaryURL)
 
         // Copy the OpenBurnBarCore resource bundle next to the daemon binary so that
         // SPM's Bundle.module (which checks Bundle.main.bundleURL for CLI tools)
@@ -195,6 +213,7 @@ extension OpenBurnBarDaemonManager {
     }
 
     func writeLaunchAgentPlist() throws {
+        try validateDaemonBinary(at: paths.installedBinaryURL)
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
         let daemonSocketAuthToken = try rotateDaemonSocketAuthToken()
 
@@ -272,6 +291,21 @@ extension OpenBurnBarDaemonManager {
             [.posixPermissions: 0o600],
             ofItemAtPath: paths.launchAgentPlistURL.path
         )
+    }
+
+    private func validateDaemonBinary(at url: URL) throws {
+        do {
+            try dependencies.validateDaemonBinary(url)
+        } catch {
+            AppLogger.network.error(
+                "daemon_binary_signature_invalid",
+                metadata: ["path": url.path, "error": error.localizedDescription]
+            )
+            throw OpenBurnBarDaemonManagerError.daemonBinarySignatureInvalid(
+                path: url.path,
+                reason: error.localizedDescription
+            )
+        }
     }
 
     /// Always rotates the daemon socket auth token on daemon reinstall.

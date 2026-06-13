@@ -38,6 +38,7 @@ import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
+import com.openburnbar.util.Formatting
 import java.util.Calendar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -277,7 +278,7 @@ private fun OrgRollupRowCard(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "$${"%.2f".format(row.totalCost)}",
+                    text = Formatting.formatCurrency(row.totalCost),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
                     color = if (isDark) AuroraColors.emberDark else AuroraColors.ember,

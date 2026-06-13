@@ -155,7 +155,9 @@ final class ConversationTombstoneTests: XCTestCase {
                 summaryProvider: nil,
                 summaryModel: nil
             ),
-            key: try vaultKeyProvider.resolvedKey()
+            key: try vaultKeyProvider.resolvedKey(),
+            uid: "test-uid-1",
+            docId: "\(remoteDeviceId)_conv-remote-tomb"
         )
         let basePayload: [String: Any] = [
             "id": "conv-remote-tomb",
@@ -225,7 +227,9 @@ final class ConversationTombstoneTests: XCTestCase {
                 summaryProvider: nil,
                 summaryModel: nil
             ),
-            key: try vaultKeyProvider.resolvedKey()
+            key: try vaultKeyProvider.resolvedKey(),
+            uid: "test-uid-1",
+            docId: "\(remoteDeviceId)_conv-born-deleted"
         )
         fakeGateway.setDocumentData([
             "id": "conv-born-deleted",

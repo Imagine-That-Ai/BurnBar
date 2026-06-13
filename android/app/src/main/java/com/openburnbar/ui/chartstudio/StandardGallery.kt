@@ -3,6 +3,7 @@
 package com.openburnbar.ui.chartstudio
 
 import com.openburnbar.data.derived.TrendDataDigest
+import com.openburnbar.util.Formatting
 
 /**
  * Always-available, Hermes-free content shown in Chart Studio's upper third:
@@ -35,7 +36,7 @@ object StandardGallery {
                 add(
                     QuickFact(
                         label = "Today",
-                        value = "$${"%.2f".format(today.costUsd)}",
+                        value = Formatting.formatCurrency(today.costUsd),
                         detail = "${formatTokens(today.tokens)} tokens",
                         sparkline = dailyPoints,
                     ),
@@ -46,7 +47,7 @@ object StandardGallery {
                     QuickFact(
                         label = topProvider.provider,
                         value = "${topProvider.sharePct.toInt()}%",
-                        detail = "$${"%.2f".format(topProvider.costUsd)} share",
+                        detail = "${Formatting.formatCurrency(topProvider.costUsd)} share",
                     ),
                 )
             }
@@ -63,7 +64,7 @@ object StandardGallery {
                 add(
                     QuickFact(
                         label = "This week",
-                        value = "$${"%.2f".format(week.costUsd)}",
+                        value = Formatting.formatCurrency(week.costUsd),
                         detail = "${formatTokens(week.tokens)} tokens",
                         sparkline = dailyPoints,
                     ),

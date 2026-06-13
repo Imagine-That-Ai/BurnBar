@@ -1,6 +1,7 @@
 package com.openburnbar.data.computeruse
 
 import android.content.Context
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -87,10 +88,26 @@ class RemoteUnlockSavedCredentialStore(context: Context) {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(AES_KEY_BITS)
+                .setUserAuthenticationRequired(true)
+                .applyUserAuthenticationParameters()
+                .setInvalidatedByBiometricEnrollment(true)
                 .build()
         generator.init(spec)
         return generator.generateKey()
     }
+
+    @Suppress("DEPRECATION")
+    private fun KeyGenParameterSpec.Builder.applyUserAuthenticationParameters(): KeyGenParameterSpec.Builder =
+        apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                setUserAuthenticationParameters(
+                    0,
+                    KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL,
+                )
+            } else {
+                setUserAuthenticationValidityDurationSeconds(-1)
+            }
+        }
 
     private fun scopedKey(storeKey: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(storeKey.toByteArray(Charsets.UTF_8))

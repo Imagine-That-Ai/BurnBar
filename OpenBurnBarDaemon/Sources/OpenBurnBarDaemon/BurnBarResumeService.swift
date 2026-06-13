@@ -51,6 +51,16 @@ final class BurnBarResumeService: @unchecked Sendable {
                 userInfo: [NSLocalizedDescriptionKey: "Failed to open SQLite database: \(message)"]
             )
         }
+        // RR-1: key the shared SQLite with the same app Keychain key WHEN a
+        // SQLCipher codec is linked. No-op on a stock-SQLite build so the
+        // disclosed-plaintext file still opens (do-not-brick). The unrelated
+        // ~/.codex/state_5.sqlite read below is a third-party DB and is left as-is.
+        do {
+            try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: handle)
+        } catch {
+            sqlite3_close(handle)
+            throw error
+        }
         sqlite3_busy_timeout(handle, 1000)
         self.db = handle
         self.logger = logger

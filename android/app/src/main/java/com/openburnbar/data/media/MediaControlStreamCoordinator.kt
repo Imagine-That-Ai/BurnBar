@@ -32,6 +32,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
@@ -177,6 +178,17 @@ class MediaControlStreamCoordinator(
     val lastRoundTripMillis: StateFlow<Int?> = _lastRoundTripMillis.asStateFlow()
     private val _lastPeerCapabilities = MutableStateFlow<Set<String>>(emptySet())
     val lastPeerCapabilities: StateFlow<Set<String>> = _lastPeerCapabilities.asStateFlow()
+
+    // RR-7b — raw inbound Agent Watch control frames (classify / approval-request / approval-response
+    // / denied) replayed to the Compose watch surface's AgentWatchControlFrameReceiver. A SharedFlow
+    // (not StateFlow) so every approval-request frame is delivered, not just the latest snapshot.
+    private val _agentWatchControlFrames =
+        kotlinx.coroutines.flow.MutableSharedFlow<HermesRealtimeRelayFrame>(
+            extraBufferCapacity = AGENT_WATCH_FRAME_BUFFER,
+            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+        )
+    val agentWatchControlFrames: kotlinx.coroutines.flow.SharedFlow<HermesRealtimeRelayFrame> =
+        _agentWatchControlFrames.asSharedFlow()
 
     private val _activePair = MutableStateFlow<ActivePair?>(null)
     val activePair: StateFlow<ActivePair?> = _activePair.asStateFlow()
@@ -507,6 +519,7 @@ class MediaControlStreamCoordinator(
     internal val inboundLastCallAck get() = _lastCallAck
     internal val inboundLastAgentGrantReceipt get() = _lastAgentGrantReceipt
     internal val inboundLastControlDenied get() = _lastControlDenied
+    internal val inboundAgentWatchControlFrames get() = _agentWatchControlFrames
     internal val inboundLastClipboardResponse get() = _lastClipboardResponse
     internal val inboundLastRemoteUnlockState get() = _lastRemoteUnlockState
     internal val inboundLastRemoteUnlockResult get() = _lastRemoteUnlockResult
@@ -526,5 +539,6 @@ class MediaControlStreamCoordinator(
     private companion object {
         private const val TAG = "BurnBar"
         private const val SWIFT_REFERENCE_DATE_UNIX_SECONDS = 978_307_200.0
+        private const val AGENT_WATCH_FRAME_BUFFER = 16
     }
 }

@@ -98,7 +98,7 @@ impl Default for LatencyHistogram {
 
 impl LatencyHistogram {
     pub fn record(&mut self, latency: Duration) {
-        let micros = latency.as_micros().min(u64::MAX as u128) as u64;
+        let micros = u64::try_from(latency.as_micros()).unwrap_or(u64::MAX);
         let idx = self
             .buckets_micros
             .iter()
@@ -112,16 +112,21 @@ impl LatencyHistogram {
         if self.total == 0 {
             return None;
         }
-        let rank = ((self.total as f64) * percentile.clamp(0.0, 1.0)).ceil() as u64;
+        let percentile = percentile.clamp(0.0, 1.0);
         let mut cumulative = 0;
         for (idx, count) in self.counts.iter().enumerate() {
             cumulative += count;
-            if cumulative >= rank.max(1) {
+            let coverage = cumulative as f64 / self.total as f64;
+            if coverage >= percentile || cumulative == self.total {
+                let fallback_bucket = match self.buckets_micros.last() {
+                    Some(bucket) => *bucket,
+                    None => return None,
+                };
                 let micros = self
                     .buckets_micros
                     .get(idx)
                     .copied()
-                    .unwrap_or_else(|| *self.buckets_micros.last().expect("buckets"));
+                    .unwrap_or(fallback_bucket);
                 return Some(Duration::from_micros(micros));
             }
         }
@@ -209,9 +214,18 @@ impl BenchmarkReport {
                 Some((
                     *stage,
                     PercentileSummary {
-                        p50_micros: histogram.percentile_upper_bound(0.50)?.as_micros() as u64,
-                        p95_micros: histogram.percentile_upper_bound(0.95)?.as_micros() as u64,
-                        p99_micros: histogram.percentile_upper_bound(0.99)?.as_micros() as u64,
+                        p50_micros: u64::try_from(
+                            histogram.percentile_upper_bound(0.50)?.as_micros(),
+                        )
+                        .unwrap_or(u64::MAX),
+                        p95_micros: u64::try_from(
+                            histogram.percentile_upper_bound(0.95)?.as_micros(),
+                        )
+                        .unwrap_or(u64::MAX),
+                        p99_micros: u64::try_from(
+                            histogram.percentile_upper_bound(0.99)?.as_micros(),
+                        )
+                        .unwrap_or(u64::MAX),
                     },
                 ))
             })

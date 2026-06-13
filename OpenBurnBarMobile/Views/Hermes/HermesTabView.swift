@@ -1349,6 +1349,7 @@ struct HermesChatView: View {
                             ForEach(visibleMessages) { message in
                                 HermesMessageBubble(
                                     message: message,
+                                    hermesService: service,
                                     showTPS: showMessageTPS,
                                     usePretextRendering: usePretextRendering,
                                     viewMode: chatViewMode,
@@ -1592,6 +1593,11 @@ struct HermesChatView: View {
             await refreshGatewayForCurrentAuthState()
         }
         .task {
+            // Register this surface's instance as the conversation-state
+            // owner for cross-cutting services (notification replies, the
+            // Computer Use permission inbox). They previously wrote to
+            // `HermesService.shared`, which no chat UI binds.
+            HermesService.mainSurface = service
             // Idempotent: refreshRuntime coalesces concurrent callers and loads
             // both remote relay discovery and selected-host reachability.
             await service.refreshRuntime()
@@ -3639,6 +3645,12 @@ func hermesAgentProvider(for raw: String) -> AgentProvider {
 
 struct HermesMessageBubble: View {
     let message: HermesChatMessage
+    /// The per-surface service this bubble renders inside. Used to resolve
+    /// the surface's selected thread for the system-permission pill —
+    /// `HermesService.shared` carries no conversation state, so reading
+    /// `selectedSessionID` off it always came back nil and the pill never
+    /// rendered.
+    let hermesService: HermesService
     var showTPS: Bool = false
     /// When true, assistant text is rendered through `HermesRichBubble` so
     /// markdown emphasis renders styled and `@mentions` / `` `code spans` ``
@@ -3662,7 +3674,7 @@ struct HermesMessageBubble: View {
 
     @ViewBuilder
     fileprivate var systemPermissionPillIfNeeded: some View {
-        let threadID = HermesService.shared.selectedSessionID ?? ""
+        let threadID = hermesService.selectedSessionID ?? ""
         if !threadID.isEmpty,
            let item = permissionStore.latestItem(forThread: threadID),
            item.originatingToolCallId == message.id
@@ -4345,15 +4357,6 @@ private struct BreathingDot: ViewModifier {
             visibility: backgroundVisibility,
             scenePhaseActive: scenePhase == .active
         )
-    }
-}
-
-// MARK: - String helpers
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

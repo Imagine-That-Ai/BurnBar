@@ -41,6 +41,7 @@ import androidx.glance.unit.ColorProvider as GlanceColorProvider
 import com.openburnbar.MainActivity
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.logoRes
+import com.openburnbar.util.Formatting
 import kotlin.math.max
 import kotlin.math.min
 
@@ -359,14 +360,9 @@ fun renderRingBitmap(progress: Float, sizePx: Int, accent: Color = WidgetTheme.e
 
 // ── Formatting helpers ──────────────────────────────────────────────────────
 
-fun formatCost(value: Double): String = if (value >= 100) "$${"%.0f".format(value)}" else "$${"%.2f".format(value)}"
+fun formatCost(value: Double): String = if (value >= 100) Formatting.formatShortCurrency(value) else Formatting.formatCurrency(value)
 
-fun formatCostCompact(value: Double): String = when {
-    value >= 1_000_000 -> "$${"%.1fM".format(value / 1_000_000)}"
-    value >= 1_000 -> "$${"%.1fk".format(value / 1_000)}"
-    value >= 100 -> "$${"%.0f".format(value)}"
-    else -> "$${"%.2f".format(value)}"
-}
+fun formatCostCompact(value: Double): String = Formatting.formatCompactCurrency(value)
 
 fun formatTokensCompact(n: Long): String = when {
     n >= 1_000_000_000 -> "%.1fB".format(n / 1_000_000_000.0)

@@ -47,7 +47,6 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.util.Formatting
-import java.util.Locale
 
 internal fun derivePulseHeroState(metrics: PulseHeroCardMetrics): PulseHeroDerivedState {
     val trailingDivisor =
@@ -281,7 +280,7 @@ internal fun rememberBurnRateText(
         when (displayMode) {
             UsageDisplayMode.CURRENCY ->
                 PulseBurnRate.dollarsPerMinute(liveUsages, nowMillis)?.let { rate ->
-                    if (rate < 0.01) "<$0.01/min" else String.format(Locale.getDefault(), "$%.2f/min", rate)
+                    if (rate < 0.01) "<$0.01/min" else "${Formatting.formatCurrency(rate)}/min"
                 }
             UsageDisplayMode.TOKENS ->
                 PulseBurnRate.tokensPerMinute(liveUsages, nowMillis)?.let { rate ->

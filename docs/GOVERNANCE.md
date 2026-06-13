@@ -16,6 +16,8 @@ OpenBurnBar is maintained by [@Ajnunezg](https://github.com/Ajnunezg).
 
 macOS remains **beta** (`0.1.3-beta.1`) while commercial mobile/hosted paths finish approval. This is not an “experimental source-only” project — it is a **tiered product** with different readiness bars per surface.
 
+Live branch/environment governance is verified with `bash scripts/ops/verify-github-governance.sh` and is part of production ops-plane verification.
+
 ## Decision-making
 
 Single-maintainer project. Design decisions, roadmap priorities, and merge authority rest with the maintainer. Contributions welcome via pull requests; no formal RFC process.

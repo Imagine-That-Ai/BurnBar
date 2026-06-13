@@ -9,24 +9,27 @@
 > surfaces too (F10: `b5c78fee4`, `75d221ffa`, `15a51bcec`; F7: `31f50ec75`,
 > `4bce121a8`) — classify-time / mirror-request-time sealKeyV3 establishment
 > over the pinned-sender trust path, iOS sealing, Mac open-or-drop fail-closed,
-> all behind default-off RC gates (`computer_use_control_seal_enabled`,
+> wired to RC gates (`computer_use_control_seal_enabled`,
 > `computer_use_media_frame_aead_enabled`). The F2 server queued-grant lane is
 > keyKind-aware (`23c1424cf`). **Final pass:** Android F7/F10 wiring +
 > a WORKING Android attestation reader landed (Kotlin session ports +
 > establishers + sealed-open in the live read loop; digest on every
 > Android controller envelope); iOS AgentWatch + remote-unlock senders
-> seal via a per-connection session registry; the hermes-agent provenance
-> pin is bumped to `005cf0d86` (PoP signer in the audited source) with
-> `blocking: true` retained. EVERYTHING in this handoff is now implemented.
-> **Posture change (`02c12cb85`):** the three protection flags default ON on
-> both platforms — pre-launch there is no legacy fleet, so the strong
-> protocol IS the launch protocol; a fetched Remote Config value is the
-> operator kill switch and always wins. `attestation_required` stays OFF
-> (rejection rule; flip after launch telemetry). Still open: physical
-> two-device validation (now of the DEFAULT path), the C-4 command-guard
-> merge (the F5 gate's own driver, tracked on the fork's
-> `security/agent-sandbox-hardening`), and the optional full-key
-> `peerNodeId` migration.
+> seal via a per-connection session registry. EVERYTHING in this handoff is now
+> implemented. **Posture change (`02c12cb85`) — current default:** the three
+> protection flags (`computer_use_control_seal_enabled`,
+> `computer_use_media_frame_aead_enabled`, and the F2 keyKind enforcement)
+> **default ON on both platforms.** Pre-launch there is no legacy fleet, so the
+> strong protocol IS the launch protocol; a fetched Remote Config value is the
+> operator kill switch and always wins. This supersedes the "default-off RC
+> gates" framing above and the §2 capability-gate table — those describe how the
+> gates were introduced (dormant, off), not the shipped default. `attestation_required`
+> stays OFF (rejection rule; flip after launch telemetry). **Hermes-agent
+> provenance:** the C-4 command-guard hardening is now merged and pinned —
+> `third_party/hermes-agent/manifest.json` `pinnedCommit`
+> `bdb830070927cbb20763819f91ee930548f7da92` with `pendingHardening.blocking: false`
+> (cleared 2026-06-11). Still open: physical two-device validation (now of the
+> DEFAULT path) and the optional full-key `peerNodeId` migration.
 
 **Branch:** `security/prelaunch-f2-f7-f10-l2` (5 work commits + this handoff doc on top of `main` @ `8a9f8ac47`)
 **Status doc:** [`PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md`](./PRELAUNCH_AUDIT_REMEDIATION_2026-06-09.md) (status matrix near the top)
@@ -76,7 +79,7 @@ Tests for each live next to them (`*Tests.swift`, `*.test.ts`).
 
 ---
 
-## 2. Capability gates (all default-OFF; both peers must advertise)
+## 2. Capability gates (introduced default-OFF; now default-ON per the posture change above — both peers must still advertise)
 
 | Gate constant | Finding | Where to advertise |
 |---|---|---|
@@ -85,8 +88,10 @@ Tests for each live next to them (`*Tests.swift`, `*.test.ts`).
 | `control_seal_v1` | F10 | host.register / presence capabilities array |
 | `popVersion >= 2` | L2 | client doc, captured at device/start + approve |
 
-Nothing emits the new format until both sides advertise, so the tree is safe to
-land as-is.
+Nothing emits the new format until both sides advertise, so the tree was safe to
+land as-is. Per the posture change above, the seal/AEAD/keyKind flags now default
+ON pre-launch; the negotiation (both-sides-advertise) requirement and the RC kill
+switch are unchanged.
 
 ---
 
@@ -146,14 +151,18 @@ The adapter `tools/hermes-platform-burnbar/adapter.py` (and the byte-identical c
 
 ---
 
-## 5. F5 launch-block gate (the "AI safety guard" — already correct, leave it)
+## 5. F5 launch-block gate (the "AI safety guard" — leave the mechanism intact)
 
 `scripts/ci/verify-vendored-agent-source.sh` **fails closed (exit 1)** while
 `third_party/hermes-agent/manifest.json` `pendingHardening.blocking: true`, and is
-wired into `scripts/ci/verify-ops-readiness.sh`. The C-4 command-guard lives in the
-separate `NousResearch/hermes-agent` fork; ops-readiness cannot pass until it's
-merged + re-vendored + `blocking:false`. Verified failing closed this pass — do not
-flip it from this repo.
+wired into `scripts/ci/verify-ops-readiness.sh`. The C-4 command-guard lived in the
+separate `NousResearch/hermes-agent` fork and was the gating item.
+
+**Current state (2026-06-11): the gate is GREEN.** C-4 is merged and pinned —
+`pinnedCommit` `bdb830070927cbb20763819f91ee930548f7da92`, `vendoredSourceTreeSha256`
+re-vendored to match, and `pendingHardening.blocking: false`. The fail-closed
+mechanism stays in place (it re-arms the moment `blocking` flips back to `true` or
+the source hash drifts) — do not weaken it from this repo.
 
 ---
 

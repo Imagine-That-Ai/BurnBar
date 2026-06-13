@@ -363,10 +363,10 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(secret, "new-oauth-token")
         let attributes = try XCTUnwrap(keychainAttributes(service: service, account: account))
         XCTAssertNil(attributes[kSecAttrComment as String], "Overwriting a provider slot should recreate the row, not preserve stale keychain metadata.")
-        XCTAssertEqual(try fallbackSecret(in: fallbackURL, account: account), "new-oauth-token")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fallbackURL.path), "Provider secrets must not be mirrored into a plaintext continuity vault.")
     }
 
-    func testKeychainSecretStoreReadsContinuityVaultWhenKeychainRowIsUnavailable() async throws {
+    func testKeychainSecretStoreScrubsAndIgnoresLegacyContinuityVault() async throws {
         let service = "com.openburnbar.tests.keychain.continuity.\(UUID().uuidString)"
         let providerSlotKey = "anthropic.slot.max"
         let account = "provider.\(providerSlotKey).apiKey"
@@ -376,16 +376,22 @@ final class BurnBarConfigStoreTests: XCTestCase {
             removeFallbackVault(fallbackURL)
         }
 
+        try FileManager.default.createDirectory(
+            at: fallbackURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let legacyVault = #"{"secrets":{"\#(account)":"legacy-plaintext-oauth-token"}}"#
+        try Data(legacyVault.utf8).write(to: fallbackURL, options: .atomic)
+
         let store = BurnBarKeychainSecretStore(
             service: service,
             hermesCredentialPoolURL: nil,
             fallbackSecretFileURL: fallbackURL
         )
-        try await store.setSecret("new-oauth-token", for: providerSlotKey)
-        deleteKeychainSecret(service: service, account: account)
 
         let secret = try await store.secret(for: providerSlotKey)
-        XCTAssertEqual(secret, "new-oauth-token")
+        XCTAssertNil(secret)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fallbackURL.path), "Legacy plaintext continuity vaults should be scrubbed on store initialization.")
     }
 
     func testKeychainSecretStoreRefreshesStoredClaudeOAuthPayloadWhenExpired() async throws {
@@ -434,12 +440,13 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies(), [
             "grant_type=refresh_token&refresh_token=old-refresh-token&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e"
         ])
-        let refreshedPayload = try fallbackSecret(in: fallbackURL, account: account)
+        let refreshedPayload = try keychainSecret(service: service, account: account)
         let oauth = try XCTUnwrap(claudeOAuthPayload(from: refreshedPayload))
         XCTAssertEqual(oauth["accessToken"] as? String, "refreshed-oauth-token")
         XCTAssertEqual(oauth["refreshToken"] as? String, "new-refresh-token")
         XCTAssertEqual(oauth["subscriptionType"] as? String, "max")
         XCTAssertEqual(oauth["rateLimitTier"] as? String, "default_claude_max_20x")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fallbackURL.path), "OAuth refresh must not recreate the removed continuity vault.")
     }
 
     func testKeychainSecretStorePrefersDaemonServiceAndCanReadLegacyService() async throws {
@@ -580,6 +587,28 @@ private func keychainAttributes(service: String, account: String) -> [String: An
     return item as? [String: Any]
 }
 
+private func keychainSecret(service: String, account: String) throws -> String? {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+        kSecReturnData as String: true,
+        kSecMatchLimit as String: kSecMatchLimitOne
+    ]
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    if status == errSecItemNotFound {
+        return nil
+    }
+    guard status == errSecSuccess else {
+        throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+    }
+    guard let data = item as? Data else {
+        return nil
+    }
+    return String(data: data, encoding: .utf8)
+}
+
 private func temporaryFallbackVaultURL() -> URL {
     FileManager.default.temporaryDirectory
         .appendingPathComponent("openburnbar-secret-continuity-\(UUID().uuidString)", isDirectory: true)
@@ -588,13 +617,6 @@ private func temporaryFallbackVaultURL() -> URL {
 
 private func removeFallbackVault(_ fallbackURL: URL) {
     try? FileManager.default.removeItem(at: fallbackURL.deletingLastPathComponent())
-}
-
-private func fallbackSecret(in fallbackURL: URL, account: String) throws -> String? {
-    let data = try Data(contentsOf: fallbackURL)
-    let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    let secrets = try XCTUnwrap(root["secrets"] as? [String: String])
-    return secrets[account]
 }
 
 private func claudeOAuthPayload(from storedSecret: String?) throws -> [String: Any]? {

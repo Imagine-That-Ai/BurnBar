@@ -56,7 +56,11 @@ function requireSafeId(raw: unknown, name: string, maxLength = 200): string {
   return value;
 }
 
-function parseSurvivorWrappers(raw: unknown, expectedVaultKeyID: string, expectedGeneration: number): SurvivorWrapperInput[] {
+function parseSurvivorWrappers(
+  raw: unknown,
+  expectedVaultKeyID: string,
+  expectedGeneration: number,
+): SurvivorWrapperInput[] {
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > 64) {
     throw new HttpsError("invalid-argument", "survivorWrappers must contain 1-64 wrapped keys.");
   }
@@ -77,7 +81,12 @@ function parseSurvivorWrappers(raw: unknown, expectedVaultKeyID: string, expecte
       128,
       true,
     );
-    const wrappedVaultKey = boundedTrimmedString(record.wrappedVaultKey, `survivorWrappers[${index}].wrappedVaultKey`, 8192, true);
+    const wrappedVaultKey = boundedTrimmedString(
+      record.wrappedVaultKey,
+      `survivorWrappers[${index}].wrappedVaultKey`,
+      8192,
+      true,
+    );
     if (!/^[A-Za-z0-9+/=]+$/.test(wrappedVaultKey)) {
       throw new HttpsError("invalid-argument", `survivorWrappers[${index}].wrappedVaultKey must be base64.`);
     }
@@ -114,6 +123,7 @@ export const rotateCloudVaultKey = onCallProduction(
       expectedVaultGeneration?: unknown;
       survivorWrappers?: unknown;
       reason?: unknown;
+      rotationRequirementId?: unknown;
       nonce?: unknown;
     }>,
   ) => {
@@ -127,8 +137,17 @@ export const rotateCloudVaultKey = onCallProduction(
     if (newVaultKeyID === currentVaultKeyID) {
       throw new HttpsError("invalid-argument", "newVaultKeyID must differ from currentVaultKeyID.");
     }
-    const expectedVaultGeneration = boundedInteger(request.data.expectedVaultGeneration, "expectedVaultGeneration", 2, 10_000);
-    const survivorWrappers = parseSurvivorWrappers(request.data.survivorWrappers, newVaultKeyID, expectedVaultGeneration);
+    const expectedVaultGeneration = boundedInteger(
+      request.data.expectedVaultGeneration,
+      "expectedVaultGeneration",
+      2,
+      10_000,
+    );
+    const survivorWrappers = parseSurvivorWrappers(
+      request.data.survivorWrappers,
+      newVaultKeyID,
+      expectedVaultGeneration,
+    );
     if (!survivorWrappers.some((wrapper) => wrapper.targetDeviceId === callerDeviceId)) {
       throw new HttpsError("failed-precondition", "The rotating device must include its own survivor wrapper.");
     }
@@ -136,18 +155,28 @@ export const rotateCloudVaultKey = onCallProduction(
     if (!["manual", "revocation_rewrap", "suspected_compromise", "device_repair", "scheduled"].includes(reason)) {
       throw new HttpsError("invalid-argument", "Unsupported CloudVault rotation reason.");
     }
+    const rotationRequirementId =
+      request.data.rotationRequirementId == null
+        ? null
+        : requireSafeId(request.data.rotationRequirementId, "rotationRequirementId", 256);
 
     const stateRef = db.doc(`users/${uid}/cloud_vault_state/current`);
     const jobId = `cvr_${Date.now()}_${randomBytes(8).toString("hex")}`;
     const jobRef = db.doc(`users/${uid}/cloud_vault_rotation_jobs/${jobId}`);
+    const requirementRef = rotationRequirementId
+      ? db.doc(`users/${uid}/cloud_vault_rotation_requirements/${rotationRequirementId}`)
+      : null;
     const trustedDeviceIds = new Set<string>();
     const revokedDeviceIds = new Set<string>();
 
     await db.runTransaction(async (transaction) => {
-      const [stateSnap, deviceSnaps] = await Promise.all([
-        transaction.get(stateRef),
-        Promise.all(survivorWrappers.map((wrapper) => transaction.get(db.doc(`users/${uid}/escrow_devices/${wrapper.targetDeviceId}`)))),
-      ]);
+      const stateSnap = await transaction.get(stateRef);
+      const deviceSnaps = await Promise.all(
+        survivorWrappers.map((wrapper) =>
+          transaction.get(db.doc(`users/${uid}/escrow_devices/${wrapper.targetDeviceId}`)),
+        ),
+      );
+      const requirementSnap = requirementRef ? await transaction.get(requirementRef) : null;
       const state = recordOrUndefined(stateSnap.data());
       if (!stateSnap.exists || !state || state.vaultKeyID !== currentVaultKeyID || state.status !== "active") {
         throw new HttpsError("failed-precondition", "Current CloudVault state does not match this rotation request.");
@@ -159,9 +188,33 @@ export const rotateCloudVaultKey = onCallProduction(
       for (const [index, deviceSnap] of deviceSnaps.entries()) {
         const wrapper = survivorWrappers[index];
         if (!deviceSnap.exists || deviceSnap.get("trustState") !== "trusted") {
-          throw new HttpsError("permission-denied", `Survivor wrapper target ${wrapper.targetDeviceId} is not trusted.`);
+          throw new HttpsError(
+            "permission-denied",
+            `Survivor wrapper target ${wrapper.targetDeviceId} is not trusted.`,
+          );
         }
         trustedDeviceIds.add(wrapper.targetDeviceId);
+      }
+      if (requirementRef && requirementSnap) {
+        const requirement = recordOrUndefined(requirementSnap.data());
+        const requirementSurvivors = Array.isArray(requirement?.survivorDeviceIds)
+          ? requirement.survivorDeviceIds.filter((item): item is string => typeof item === "string").sort()
+          : [];
+        const requestedSurvivors = survivorWrappers.map((wrapper) => wrapper.targetDeviceId).sort();
+        if (
+          !requirementSnap.exists ||
+          !requirement ||
+          requirement.status !== "pending" ||
+          requirement.rotateCallable !== "rotateCloudVaultKey" ||
+          requirement.currentVaultKeyID !== currentVaultKeyID ||
+          requirement.currentVaultGeneration !== currentGeneration ||
+          JSON.stringify(requirementSurvivors) !== JSON.stringify(requestedSurvivors)
+        ) {
+          throw new HttpsError(
+            "failed-precondition",
+            "CloudVault rotation requirement does not match this rotation request.",
+          );
+        }
       }
 
       transaction.set(
@@ -224,19 +277,41 @@ export const rotateCloudVaultKey = onCallProduction(
         updatedAt: FieldValue.serverTimestamp(),
         schemaVersion: CLOUD_VAULT_ROTATION_SCHEMA_VERSION,
       });
+      if (requirementRef) {
+        transaction.set(
+          requirementRef,
+          {
+            status: "queued",
+            rotationJobId: jobId,
+            queuedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
     });
 
-    const wrappersSnap = await db.collection(`users/${uid}/cloud_vault_key_wrappers`).where("vaultKeyID", "==", currentVaultKeyID).get();
+    const wrappersSnap = await db
+      .collection(`users/${uid}/cloud_vault_key_wrappers`)
+      .where("vaultKeyID", "==", currentVaultKeyID)
+      .get();
     const batch = db.batch();
     for (const doc of wrappersSnap.docs) {
       const wrapper = recordOrUndefined(doc.data());
       const targetDeviceId = typeof wrapper?.targetDeviceId === "string" ? wrapper.targetDeviceId : "";
       if (targetDeviceId && !trustedDeviceIds.has(targetDeviceId)) revokedDeviceIds.add(targetDeviceId);
-      batch.set(doc.ref, { status: "revoked", revokedByRotationJobId: jobId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      batch.set(
+        doc.ref,
+        { status: "revoked", revokedByRotationJobId: jobId, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
     }
     if (!wrappersSnap.empty) await batch.commit();
     if (revokedDeviceIds.size > 0) {
-      await jobRef.set({ revokedDeviceIds: Array.from(revokedDeviceIds).sort(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await jobRef.set(
+        { revokedDeviceIds: Array.from(revokedDeviceIds).sort(), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
     }
 
     logInfo({

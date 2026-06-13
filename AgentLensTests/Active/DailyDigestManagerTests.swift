@@ -55,7 +55,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_createsNotificationRequest() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let hour = 18
 
         // When
@@ -67,7 +67,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_usesCorrectHour() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When - schedule for 9 AM
         manager.scheduleDigest(from: store, at: 9)
@@ -78,7 +78,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_usesCorrectIdentifier() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store)
@@ -90,7 +90,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_removesPendingNotifications() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         mockNotificationCenter.pendingRequests = [
             UNNotificationRequest(identifier: OpenBurnBarIdentity.dailyDigestNotificationIdentifier, content: UNMutableNotificationContent(), trigger: nil),
             UNNotificationRequest(identifier: "legacy-id-1", content: UNMutableNotificationContent(), trigger: nil)
@@ -106,7 +106,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_includesLegacyIdentifiers() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store)
@@ -119,7 +119,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_notificationContent_hasCorrectTitle() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store)
@@ -131,7 +131,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_notificationContent_hasDefaultSound() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store)
@@ -143,7 +143,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_notificationContent_includesNarrative() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store)
@@ -155,7 +155,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_trigger_isCalendarBased() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let hour = 20
 
         // When
@@ -168,7 +168,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_trigger_repeatsDaily() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store)
@@ -184,7 +184,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_trigger_minuteIsZero() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store, at: 14)
@@ -243,7 +243,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleThenCancel_lifecycle() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store)
@@ -255,7 +255,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_reschedule_replacesExistingNotification() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         mockNotificationCenter.pendingRequests = [
             UNNotificationRequest(identifier: OpenBurnBarIdentity.dailyDigestNotificationIdentifier, content: UNMutableNotificationContent(), trigger: nil)
         ]
@@ -273,7 +273,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_differentHours() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let hours = [0, 6, 12, 18, 23]
 
         for hour in hours {
@@ -294,7 +294,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_emptyStore() throws {
         // Given - empty data store
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
 
         // When
         manager.scheduleDigest(from: store)
@@ -306,7 +306,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_withUsages() throws {
         // Given - store with usages
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         var usages: [TokenUsage] = []
@@ -342,7 +342,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
     func test_scheduleDigest_performance() throws {
         // Given
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         var usages: [TokenUsage] = []
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())

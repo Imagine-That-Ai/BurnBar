@@ -381,6 +381,9 @@ class CloudVaultCryptoTest {
                 field = "body",
             )
         val plaintext = "android cloudvault signal payload".toByteArray()
+        // The writing device ("device-key-1") is the sender and signs the envelope; the reader
+        // pins its public key as the trusted sender.
+        val trusted = mapOf("device-key-1" to publicKey)
         val envelope =
             CloudVaultCrypto.sealSignalPayload(
                 plaintext,
@@ -390,19 +393,23 @@ class CloudVaultCryptoTest {
                     CloudVaultSignalRecipient("escrow", "escrow-key-1", publicKey),
                 ),
                 binding = binding,
+                senderIdentityKeyId = "device-key-1",
+                senderIdentityPrivateKey = privateKey,
+                senderIdentityPublicKey = publicKey,
             )
 
         assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_MODE, envelope.mode)
         assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION, envelope.relayEncryption)
         assertEquals(2, envelope.keyDelivery.wraps.size)
+        assertEquals("device-key-1", envelope.senderAuth?.senderIdentityKeyId)
         assertTrue(envelope.ciphertextLayer.payloadAADLabel.startsWith("bindingToAAD-sha256:"))
         assertArrayEquals(
             plaintext,
-            CloudVaultCrypto.openSignalPayload(envelope, "device-key-1", privateKey, expectedBinding = binding),
+            CloudVaultCrypto.openSignalPayload(envelope, "device-key-1", privateKey, expectedBinding = binding, trustedSenderPublicKeys = trusted),
         )
         assertArrayEquals(
             plaintext,
-            CloudVaultCrypto.openSignalPayload(envelope, "escrow-key-1", privateKey, expectedBinding = binding),
+            CloudVaultCrypto.openSignalPayload(envelope, "escrow-key-1", privateKey, expectedBinding = binding, trustedSenderPublicKeys = trusted),
         )
         assertTrue(
             runCatching {
@@ -411,6 +418,7 @@ class CloudVaultCryptoTest {
                     "device-key-1",
                     privateKey,
                     expectedBinding = binding.copy(docId = "relocated-doc"),
+                    trustedSenderPublicKeys = trusted,
                 )
             }.isFailure,
         )
@@ -422,13 +430,23 @@ class CloudVaultCryptoTest {
                     payloadCiphertextB64 = envelope.ciphertextLayer.payloadCiphertextB64.dropLast(1) + "A",
                 ),
             )
-        assertTrue(runCatching { CloudVaultCrypto.openSignalPayload(tampered, "device-key-1", privateKey, expectedBinding = binding) }.isFailure)
-        assertTrue(runCatching { CloudVaultCrypto.openSignalPayload(envelope, "missing-key", privateKey, expectedBinding = binding) }.isFailure)
+        // The sender signature covers the ciphertext, so a tampered payload fails sender-auth first.
+        assertTrue(
+            runCatching {
+                CloudVaultCrypto.openSignalPayload(tampered, "device-key-1", privateKey, expectedBinding = binding, trustedSenderPublicKeys = trusted)
+            }.isFailure,
+        )
+        assertTrue(
+            runCatching {
+                CloudVaultCrypto.openSignalPayload(envelope, "missing-key", privateKey, expectedBinding = binding, trustedSenderPublicKeys = trusted)
+            }.isFailure,
+        )
     }
 
     @Test
     fun signalCloudVaultEnvelopeMapRoundTrips() {
         val publicKey = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_PUBLIC_KEY_B64_CANONICAL)
+        val privateKey = CloudVaultCryptoSupport.decodeBase64(SIGNAL_KAT_PRIVATE_KEY_B64)
         val envelope =
             CloudVaultCrypto.sealSignalPayload(
                 "android cloudvault signal map payload".toByteArray(),
@@ -440,12 +458,20 @@ class CloudVaultCryptoTest {
                     docId = "doc-42",
                     field = "body",
                 ),
+                senderIdentityKeyId = "device-key-1",
+                senderIdentityPrivateKey = privateKey,
+                senderIdentityPublicKey = publicKey,
             )
         val raw = CloudVaultCrypto.signalEnvelopeMap(envelope)
 
         assertFalse(raw.containsKey("relayKeyVersion"))
         assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_MODE, raw["mode"])
         assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION, raw["relayEncryption"])
+        // senderAuth survives the map round-trip with the Swift-Codable key names.
+        val senderAuthRaw = raw["senderAuth"]
+        require(senderAuthRaw is Map<*, *>) { "senderAuth must be a map" }
+        assertEquals("device-key-1", senderAuthRaw["senderIdentityKeyId"])
+        assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_SENDER_AUTH_VERSION, senderAuthRaw["signatureVersion"])
         assertEquals(envelope, CloudVaultCrypto.signalEnvelopeFromMap(raw))
         assertNull(CloudVaultCrypto.signalEnvelopeFromMap(mapOf("mode" to CloudVaultCrypto.SIGNAL_AT_REST_MODE)))
     }

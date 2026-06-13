@@ -24,13 +24,12 @@ import Security
 final class MacMediaCapabilityGate: MediaCapabilityGate {
     static let shared: MacMediaCapabilityGate = {
         MediaBudgetStatusStore.shared.startListening()
+        MacCloudEntitlementStore.shared.start()
         return MacMediaCapabilityGate(
             entitlementProvider: {
-                EntitlementState(
-                    active: true,
-                    fileTransfer: true,
-                    screenShare: true,
-                    videoCall: true
+                entitlementState(
+                    hostedMediaIsActive: MacCloudEntitlementStore.shared.hostedMediaIsActive,
+                    tier: MacCloudEntitlementStore.shared.currentTier
                 )
             },
             usageProvider: {
@@ -39,7 +38,9 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
             budgetProvider: {
                 MediaBudgetStatusStore.shared.effectiveStatus
             },
-            concurrentSessionsProvider: { _ in 0 }
+            concurrentSessionsProvider: { feature in
+                MacMediaActiveSessionRegistry.shared.count(for: feature)
+            }
         )
     }()
 
@@ -54,22 +55,36 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
     typealias UsageProvider = @MainActor () -> MediaQuotaUsageSnapshot
     typealias BudgetProvider = @MainActor () -> MediaBudgetStatus
     typealias ConcurrentSessionsProvider = @MainActor (MediaStreamClass.Feature) -> Int
+    typealias KillSwitchProvider = @MainActor () -> Bool
 
     private let entitlementProvider: EntitlementProvider
     private let usageProvider: UsageProvider
     private let budgetProvider: BudgetProvider
     private let concurrentSessionsProvider: ConcurrentSessionsProvider
+    private let killSwitchProvider: KillSwitchProvider
 
     init(
         entitlementProvider: @escaping EntitlementProvider,
         usageProvider: @escaping UsageProvider,
         budgetProvider: @escaping BudgetProvider,
-        concurrentSessionsProvider: @escaping ConcurrentSessionsProvider
+        concurrentSessionsProvider: @escaping ConcurrentSessionsProvider,
+        killSwitchProvider: @escaping KillSwitchProvider = { SettingsManager.shared.mediaKillSwitch }
     ) {
         self.entitlementProvider = entitlementProvider
         self.usageProvider = usageProvider
         self.budgetProvider = budgetProvider
         self.concurrentSessionsProvider = concurrentSessionsProvider
+        self.killSwitchProvider = killSwitchProvider
+    }
+
+    static func entitlementState(hostedMediaIsActive: Bool, tier: MacCloudTier) -> EntitlementState {
+        let hasMedia = hostedMediaIsActive || tier >= .pro
+        return EntitlementState(
+            active: hasMedia,
+            fileTransfer: hasMedia,
+            screenShare: hasMedia,
+            videoCall: hasMedia
+        )
     }
 
     nonisolated func check(
@@ -94,7 +109,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
             }
 
             let budget = budgetProvider()
-            if SettingsManager.shared.mediaKillSwitch {
+            if killSwitchProvider() {
                 return .denied(reason: .killSwitchActive)
             }
             switch budget.level {
@@ -262,6 +277,25 @@ struct MediaQuotaUsageSnapshot: Sendable, Equatable {
     var screenShareSessions: Int = 0
     var videoCallSecondsUsed: Int = 0
     var videoCallSessions: Int = 0
+}
+
+@MainActor
+final class MacMediaActiveSessionRegistry {
+    static let shared = MacMediaActiveSessionRegistry()
+
+    private var counts: [MediaStreamClass.Feature: Int] = [:]
+
+    func count(for feature: MediaStreamClass.Feature) -> Int {
+        max(0, counts[feature] ?? 0)
+    }
+
+    func setCount(_ count: Int, for feature: MediaStreamClass.Feature) {
+        counts[feature] = max(0, count)
+    }
+
+    func resetForTesting() {
+        counts.removeAll()
+    }
 }
 
 @MainActor

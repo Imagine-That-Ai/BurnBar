@@ -1,6 +1,8 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 
@@ -12,6 +14,12 @@ internal object PhoneControlSignerCanonical {
 
     fun clipboardRequestHashHex(request: PhoneControlClipboardRequest): String =
         hashJson(PhoneControlSignerCanonicalJson.canonicalClipboardRequestJson(request))
+
+    fun approvalRequestHashHex(request: HermesRealtimeRelayApprovalRequest): String =
+        hashJson(PhoneControlSignerCanonicalJson.canonicalApprovalRequestJson(request))
+
+    fun approvalResponseHashHex(response: HermesRealtimeRelayApprovalResponse): String =
+        hashJson(PhoneControlSignerCanonicalJson.canonicalApprovalResponseJson(response))
 
     fun remoteUnlockSessionHashHex(session: HermesRealtimeRelayRemoteUnlockSession): String =
         hashJson(PhoneControlSignerCanonicalJson.canonicalRemoteUnlockSessionJson(session))

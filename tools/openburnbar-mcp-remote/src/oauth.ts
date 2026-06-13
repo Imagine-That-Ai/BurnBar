@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ const SERVICE = "com.openburnbar.mcp-remote";
 const ACCOUNT = "default";
 const REFRESH_ACCOUNT = "refresh";
 const MAX_TOKEN_LENGTH = 8192;
+const ALLOW_INSECURE_TOKEN_SOURCE_ENV = "OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE";
 
 function validatedTokenForStorage(token: string): string {
   const trimmed = token.trim();
@@ -16,27 +17,33 @@ function validatedTokenForStorage(token: string): string {
   return trimmed;
 }
 
-function fallbackPath(suffix = ""): string {
-  const dir = join(homedir(), ".openburnbar");
-  mkdirSync(dir, { recursive: true });
-  return join(dir, `mcp-remote-token${suffix}`);
+function insecureTokenSourcesAllowed(): boolean {
+  return process.env[ALLOW_INSECURE_TOKEN_SOURCE_ENV] === "true";
+}
+
+export function legacyTokenPath(suffix = ""): string {
+  return join(homedir(), ".openburnbar", `mcp-remote-token${suffix}`);
+}
+
+export function removeLegacyTokenFile(suffix = ""): boolean {
+  const path = legacyTokenPath(suffix);
+  if (!existsSync(path)) {return false;}
+  rmSync(path, { force: true });
+  return true;
 }
 
 function readSecret(account: string, suffix: string, envOverride?: string): string | undefined {
-  if (envOverride) {return envOverride;}
+  if (envOverride && insecureTokenSourcesAllowed()) {return validatedTokenForStorage(envOverride);}
   if (process.platform === "darwin") {
     try {
-      return execFileSync("security", ["find-generic-password", "-s", SERVICE, "-a", account, "-w"], { encoding: "utf8" }).trim();
+      const value = execFileSync("security", ["find-generic-password", "-s", SERVICE, "-a", account, "-w"], { encoding: "utf8" }).trim();
+      removeLegacyTokenFile(suffix);
+      return value;
     } catch {
-      // Fall through to the local 0600 fallback for CI and non-interactive installs.
+      // Production is Keychain-only. Insecure sources below are test/dev opt-ins.
     }
   }
-  try {
-    const value = readFileSync(fallbackPath(suffix), "utf8").trim();
-    return value || undefined;
-  } catch {
-    return undefined;
-  }
+  return undefined;
 }
 
 function writeSecret(account: string, suffix: string, token: string): void {
@@ -44,14 +51,18 @@ function writeSecret(account: string, suffix: string, token: string): void {
   if (process.platform === "darwin") {
     try {
       execFileSync("security", ["add-generic-password", "-U", "-s", SERVICE, "-a", account, "-w", safeToken], { stdio: "ignore" });
+      removeLegacyTokenFile(suffix);
       return;
     } catch {
-      // Use the fallback path only when Keychain is unavailable.
+      if (!insecureTokenSourcesAllowed()) {
+        throw new Error("OpenBurnBar MCP token linking requires macOS Keychain. Refusing to write a plaintext fallback token.");
+      }
     }
   }
-  const path = fallbackPath(suffix);
-  writeFileSync(path, `${safeToken}\n`, { mode: 0o600 });
-  chmodSync(path, 0o600);
+  if (!insecureTokenSourcesAllowed()) {
+    throw new Error("OpenBurnBar MCP token linking requires a secure key store. Use OPENBURNBAR_MCP_ACCESS_TOKEN with OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE=true only in tests or disposable CI.");
+  }
+  throw new Error("OpenBurnBar MCP token linking refuses plaintext token files. Set OPENBURNBAR_MCP_ACCESS_TOKEN only for tests or disposable CI.");
 }
 
 export function readAccessToken(): string | undefined {

@@ -92,3 +92,36 @@ jobs:
 
       - name: Test (node --test)
         run: npm --prefix quota-runner test
+
+  # ── Blocking gate (H6) ────────────────────────────────────────────────────
+  # The three jobs above are path-filtered, so on most PRs they're skipped and
+  # only the changed surface runs. A required status check that's sometimes
+  # skipped can't block, and a job that merely runs isn't a gate unless its
+  # failure fails the PR. This summary job (if: always(), mirrors
+  # fast-feedback-gate) is the single BLOCKING check: it fails when any test job
+  # ended in anything other than success or skipped, so a real test failure
+  # turns the PR red instead of staying advisory.
+  agent-tools-gate:
+    name: Agent Tools Gate
+    needs:
+      - openburnbar-mcp
+      - openburnbar-mcp-remote
+      - quota-runner
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all agent-tools jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          failed=$(echo "$results" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          print('\n'.join(failed))
+          ")
+          if [[ -n "$failed" ]]; then
+            echo "::error::The following agent-tools jobs failed:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "### Agent Tools CI: all surfaces passed" >> "$GITHUB_STEP_SUMMARY"

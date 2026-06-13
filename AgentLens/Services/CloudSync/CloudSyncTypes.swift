@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Sync Domain Protocol
 
@@ -60,6 +61,46 @@ extension CloudSyncing {
 }
 
 // MARK: - Shared Sync State
+
+/// Shared per-domain sync status (`isSyncing`/`lastSyncError`/`lastSyncDate`).
+///
+/// Every CloudSync domain service stores one of these inside a `Locked` box so
+/// the `isSyncing` reentrancy guard is an atomic check-then-act instead of an
+/// unguarded triplet mutated from nonisolated async methods (finding-211/gap-2).
+struct CloudSyncDomainState: Sendable {
+    var isSyncing = false
+    var lastSyncError: String?
+    var lastSyncDate: Date?
+}
+
+extension Locked where T == CloudSyncDomainState {
+    /// Atomically transitions `isSyncing` false→true and clears `lastSyncError`.
+    /// Returns `false` when a sync is already in flight; the caller must bail
+    /// without touching any other state (the previous guard semantics).
+    func beginSyncingIfIdle() -> Bool {
+        withLock { state in
+            guard !state.isSyncing else { return false }
+            state.isSyncing = true
+            state.lastSyncError = nil
+            return true
+        }
+    }
+
+    /// Unconditionally marks a sync as started and clears `lastSyncError`.
+    /// Used by domains whose reentrancy is already serialized elsewhere
+    /// (process gates) or that historically ran without a reentrancy guard.
+    func beginSyncing() {
+        withLock { state in
+            state.isSyncing = true
+            state.lastSyncError = nil
+        }
+    }
+
+    /// Marks the in-flight sync as finished. Pairs with either begin call.
+    func endSyncing() {
+        withLock { $0.isSyncing = false }
+    }
+}
 
 /// Shared backoff policy used across all sync domains.
 enum CloudSyncBackoffPolicy {

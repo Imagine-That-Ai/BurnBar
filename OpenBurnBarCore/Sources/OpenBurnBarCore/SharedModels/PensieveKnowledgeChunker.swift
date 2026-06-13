@@ -89,6 +89,40 @@ public enum PensieveKnowledgeChunker {
     /// Soft overlap so a fact split across a boundary still embeds coherently.
     private static let chunkOverlapBytes = 256
 
+    // MARK: - Path-bound AAD (RR-8)
+
+    /// The Firestore collection a sealed chunk lands in: `users/{uid}/<this>/{vectorId}`
+    /// (knowledgeMemory.ts `commitKnowledgeBatch`). This is the same collection the
+    /// at-rest Signal binding pins (`CloudVaultSignalBinding` in KnowledgeSyncService),
+    /// so the AES-GCM AAD and the Signal HPKE `info` bind to identical coordinates.
+    public static let chunkCollection = "cloud_search_knowledge"
+    /// Firestore field name the sealed chunk text occupies — the AAD `field` for the
+    /// ciphertext, matching the Signal binding's `bindingField`.
+    public static let chunkCiphertextField = "sealedCiphertext"
+    /// Firestore field name the sealed chunk metadata occupies — the AAD `field` for
+    /// the metadata blob.
+    public static let chunkMetadataField = "sealedMetadata"
+
+    /// Path-bound AAD context for one sealed chunk field, binding `uid | collection |
+    /// docId | field` exactly as `ConversationCloudSealer.seal` does. The doc id IS
+    /// the chunk's `vectorId` (= dedupHash) — the opaque Firestore doc id the server
+    /// stores it under — so a storage adversary cannot transplant a sealed chunk to a
+    /// different vectorId, collection, or field within the same account. Mirrors the
+    /// server + Signal binding (`collection: "cloud_search_knowledge"`,
+    /// `docId: vectorId`, `field: "sealedCiphertext"`).
+    public static func chunkAADContext(
+        uid: String,
+        vectorId: String,
+        field: String
+    ) throws -> CloudVaultAADContext {
+        try CloudVaultAADContext(
+            uid: uid,
+            collection: chunkCollection,
+            docID: vectorId,
+            field: field
+        )
+    }
+
     // MARK: - Secret redaction (mirror memoryHook.ts SECRET_PATTERNS)
 
     private struct SecretPattern { let regex: NSRegularExpression; let label: String }
@@ -167,6 +201,12 @@ public enum PensieveKnowledgeChunker {
     ///   - sourcePath: stable per-chunk path, surfaced in sealed metadata only.
     ///   - sourceSlug: server source slug (from `configureKnowledgeSource`).
     ///   - vaultKey: 32-byte device vault key.
+    ///   - uid: signed-in user id. When present (RR-8), every chunk's text and
+    ///     metadata are sealed PATH-BOUND to `uid | cloud_search_knowledge | vectorId
+    ///     | field`, so a storage adversary cannot transplant a sealed chunk across
+    ///     accounts, collections, or doc ids. When `nil` (the daemon queue writer,
+    ///     which has no auth session) chunks fall back to the legacy global AAD;
+    ///     `openChunkText`/`openChunkMetadata` read both.
     ///   - title / section / category: optional sealed metadata facets.
     public static func prepareBatch(
         text: String,
@@ -174,6 +214,7 @@ public enum PensieveKnowledgeChunker {
         sourcePath: String,
         sourceSlug: String,
         vaultKey: Data,
+        uid: String? = nil,
         title: String? = nil,
         section: String? = nil,
         category: String? = nil,
@@ -222,8 +263,27 @@ public enum PensieveKnowledgeChunker {
             )
             let metadataString = String(decoding: metadataJSON, as: UTF8.self)
 
-            let sealedCiphertext = try CloudVaultCrypto.sealText(trimmed, keyData: vaultKey)
-            let sealedMetadata = try CloudVaultCrypto.sealText(metadataString, keyData: vaultKey)
+            // RR-8: bind each sealed field to its real Firestore identity
+            // (uid | cloud_search_knowledge | vectorId | field). The doc id IS the
+            // vectorId (= dedupHash), already computed above. With no uid (daemon
+            // queue) we seal with the legacy global AAD so the unauthenticated
+            // writer keeps working; readers open both shapes.
+            let ciphertextAAD = try uid.map {
+                try chunkAADContext(uid: $0, vectorId: dedupHash, field: chunkCiphertextField)
+            }
+            let metadataAAD = try uid.map {
+                try chunkAADContext(uid: $0, vectorId: dedupHash, field: chunkMetadataField)
+            }
+            let sealedCiphertext = try CloudVaultCrypto.sealText(
+                trimmed,
+                keyData: vaultKey,
+                aadContext: ciphertextAAD
+            )
+            let sealedMetadata = try CloudVaultCrypto.sealText(
+                metadataString,
+                keyData: vaultKey,
+                aadContext: metadataAAD
+            )
 
             vectors.append(
                 PensieveKnowledgeVector(
@@ -245,5 +305,56 @@ public enum PensieveKnowledgeChunker {
             embeddingModelVersion: modelVersion,
             vectors: vectors
         )
+    }
+
+    // MARK: - Read (RR-8 backward-compatible open)
+
+    /// Open a sealed chunk's text, threading the RR-8 path-bound AAD context when the
+    /// reader knows the binding coordinates. Mirrors `ConversationCloudSealer.open`'s
+    /// fallback: pass `uid` + `vectorId` for path-bound (schemaVersion-2) chunks; legacy
+    /// global-AAD chunks (sealed before RR-8, or by the daemon with no uid) still open
+    /// because `CloudVaultCrypto.openText` ignores the context for schemaVersion-1
+    /// envelopes and accepts the legacy v1 AAD string. Pass `uid: nil` to open ONLY the
+    /// legacy shape (the original behavior).
+    public static func openChunkText(
+        _ sealed: CloudVaultSealedText,
+        keyData: Data,
+        uid: String? = nil,
+        vectorId: String? = nil
+    ) throws -> String {
+        try CloudVaultCrypto.openText(
+            sealed,
+            keyData: keyData,
+            aadContext: chunkAADContext(uid: uid, vectorId: vectorId, field: chunkCiphertextField)
+        )
+    }
+
+    /// Open a sealed chunk's metadata blob, threading the RR-8 path-bound AAD context
+    /// (field `sealedMetadata`) with the same legacy-readable fallback as
+    /// `openChunkText`.
+    public static func openChunkMetadata(
+        _ sealed: CloudVaultSealedText,
+        keyData: Data,
+        uid: String? = nil,
+        vectorId: String? = nil
+    ) throws -> String {
+        try CloudVaultCrypto.openText(
+            sealed,
+            keyData: keyData,
+            aadContext: chunkAADContext(uid: uid, vectorId: vectorId, field: chunkMetadataField)
+        )
+    }
+
+    /// Build the chunk AAD context only when BOTH binding coordinates are known.
+    /// Either missing (a legacy reader that never threads the path) yields `nil`,
+    /// which makes the open path fall back to the legacy unauthenticated/global-AAD
+    /// branch — never a hard failure on pre-RR-8 data.
+    private static func chunkAADContext(
+        uid: String?,
+        vectorId: String?,
+        field: String
+    ) throws -> CloudVaultAADContext? {
+        guard let uid, let vectorId else { return nil }
+        return try chunkAADContext(uid: uid, vectorId: vectorId, field: field)
     }
 }

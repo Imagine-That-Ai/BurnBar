@@ -1,6 +1,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { entitlementExpiryMillis } from "@openburnbar/entitlements";
 import { NEGATIVE_ENTITLEMENT_CACHE_MS, POSITIVE_ENTITLEMENT_CACHE_MS, REMOTE_MCP_LAST_USED_WRITE_INTERVAL_MS } from "./config.js";
 import { HttpError } from "./errors.js";
 import type { RemoteMcpClientFirestore } from "./firestoreTypes.js";
@@ -40,8 +41,12 @@ function dateFromRaw(raw: unknown): Date | undefined {
 
 function isActive(data: FirebaseFirestore.DocumentData | undefined): { active: boolean; expiresAt?: Date } {
   if (!data || data.active !== true) {return { active: false };}
-  const expiresAt = dateFromRaw(data.expireAt ?? data.expiresAt);
-  if (!expiresAt || expiresAt.getTime() <= Date.now()) {return { active: false, expiresAt };}
+  // Shared expiry math (@openburnbar/entitlements) so functions/relay/hosted-mcp
+  // resolve `expireAt`/`expiresAt` identically. Returns NaN when unparseable.
+  const expiresAtMs = entitlementExpiryMillis(data);
+  if (!Number.isFinite(expiresAtMs)) {return { active: false };}
+  const expiresAt = new Date(expiresAtMs);
+  if (expiresAtMs <= Date.now()) {return { active: false, expiresAt };}
   return { active: true, expiresAt };
 }
 

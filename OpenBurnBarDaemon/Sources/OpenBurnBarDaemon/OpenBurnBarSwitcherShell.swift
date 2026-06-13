@@ -265,6 +265,26 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         // The AgentLens app shares this SQLite file. Without a busy timeout, concurrent
         // writers immediately raise SQLITE_BUSY (error 5: "database is locked").
         configuration.busyMode = .timeout(5)
+
+        // RR-1: key the shared SQLite with the same app Keychain key WHEN a
+        // SQLCipher codec is linked, matching `DatabaseEncryptionService` on the
+        // app side (passphrase mode + cipher_version self-check). This path uses
+        // GRDB's own `db.execute` so the PRAGMA runs through GRDB's SQLCipher
+        // build (not the raw `SQLite3` system module). On a stock-SQLite build
+        // `isCipherAvailable()` is false and we leave the file disclosed-plaintext
+        // rather than applying a silent no-op key.
+        if BurnBarDaemonDatabaseCipher.isCipherAvailable(),
+           let key = BurnBarDaemonDatabaseCipher.validatedKeyForGRDB() {
+            configuration.prepareDatabase { db in
+                try db.execute(sql: "PRAGMA key = '\(key)'")
+                let cipherVersion = try String.fetchOne(db, sql: "PRAGMA cipher_version")
+                guard let version = cipherVersion, version.isEmpty == false else {
+                    throw BurnBarDaemonDatabaseCipherError.keyApplicationFailed(
+                        detail: "PRAGMA cipher_version empty; SQLCipher codec not active on this handle"
+                    )
+                }
+            }
+        }
         return configuration
     }
 

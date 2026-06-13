@@ -29,7 +29,7 @@ const moments = [
 
 <BaseLayout
   title={`${FLOO.name} — your phone and your Mac, joined`}
-  description={`${FLOO.name} connects your iPhone or iPad to your Mac — see its screen, take control, send files, call it, and unlock it. End-to-end encrypted, only your own devices, you approve every connection.`}
+  description={`${FLOO.name} connects your iPhone or iPad to your Mac — see its screen, take control, send files, call it, and unlock it. Screen, control, file, and clipboard contents are sealed end to end between your own devices; you approve every connection.`}
 >
   <section class="pagehead pagehead--floo">
     <div class="container container--narrow pagehead__inner">
@@ -80,8 +80,10 @@ const moments = [
         <span class="eyebrow eyebrow--mercury">Safe by design</span>
         <h2>It only ever connects you to you.</h2>
         <p class="lead">
-          {FLOO.name} is for your devices and no one else's. The connection is private end to end — and
-          that includes us. We built it so we couldn't peek even if we wanted to.
+          {FLOO.name} is for your devices and no one else's. Once paired E2EE is enabled and the runtime-readiness
+          gate is complete, the screen, control, file, and clipboard contents are sealed end to end between
+          your devices — the relay sees routing metadata, never those contents. Live voice and camera
+          frames ride the encrypted QUIC link itself rather than the per-payload seal.
         </p>
       </header>
       <ul class="promiselist">

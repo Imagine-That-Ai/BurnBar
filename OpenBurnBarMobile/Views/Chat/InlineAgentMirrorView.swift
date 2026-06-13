@@ -216,6 +216,10 @@ struct InlineAgentMirrorView: View {
                 smartZoomAutoFollowing = false
             }
         }
+        // RR-14: the inline CLI mirror renders the paired Mac's terminal, so
+        // cover it for the app-switcher snapshot and during screen recording /
+        // mirroring — the FLAG_SECURE equivalent.
+        .screenPrivacyGuard()
     }
 
     private var isShowingFrames: Bool {

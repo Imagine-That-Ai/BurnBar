@@ -16,6 +16,7 @@ import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.InsightWidgetSpec
 import com.openburnbar.data.insights.InsightDataBinding
 import com.openburnbar.data.insights.ValueFormat
+import com.openburnbar.util.Formatting
 
 internal data class RuleBasedBenchmarkAdvice(
     val findings: List<InsightFinding>,
@@ -110,7 +111,7 @@ private fun buildRuleBasedBenchmarkRecommendations(
         val cheapestSimilar = candidates.cheapestSimilar
         val impact =
             cheapestSimilar.blendedCostPerMtoken?.let {
-                "$${"%.2f".format(it)}/MTok blended; validate quality before moving routine work."
+                "${Formatting.formatCurrency(it)}/MTok blended; validate quality before moving routine work."
             }
                 ?: cheapestSimilar.costSignal?.let {
                     "Cost signal ${(it * 100).toInt()}/100; exact savings need provider price confirmation."

@@ -1,6 +1,7 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.media.MediaFrame
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
 
 enum class ComputerUseTrustMode {
     MANUAL,
@@ -36,6 +37,7 @@ data class ComputerUseApprovalRequest(
     val toolKind: String,
     val actionSummary: String,
     val requestedAtMillis: Long,
+    val wireRequest: HermesRealtimeRelayApprovalRequest? = null,
 )
 
 data class ComputerUseApprovalResponse(

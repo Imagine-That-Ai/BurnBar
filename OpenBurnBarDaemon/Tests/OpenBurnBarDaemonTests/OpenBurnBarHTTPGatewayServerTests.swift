@@ -3812,6 +3812,40 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testGatewayMessagesRejectsOpenAICompatibleAdvertisedModel() async throws {
+        GatewayUpstreamURLProtocol.reset()
+        enqueueOpenAIModelCatalog(["glm-5-turbo"], times: 1)
+        let harness = try GatewayHarness()
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-turbo","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("No eligible route for glm-5-turbo"), "body was: \(bodyText)")
+        XCTAssertTrue(
+            GatewayUpstreamURLProtocol.recordedRequests().allSatisfy { $0.path == "/v1/models" },
+            "Messages must reject an OpenAI-compatible advertisement before proxying; paths: "
+                + "\(GatewayUpstreamURLProtocol.recordedRequests().map(\.path))"
+        )
+
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 5)
+        let entry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(entry.requestPath, "/v1/messages")
+        XCTAssertEqual(entry.endpoint, "Anthropic Messages")
+        XCTAssertEqual(entry.finalStatus, .rejected)
+        XCTAssertEqual(entry.httpStatus, 503)
+        XCTAssertEqual(entry.failureMessage, "No eligible Anthropic-family route for glm-5-turbo.")
+    }
+
     func testGatewayChatCompletionsReturns503WhenOnlyAnthropicProvidersConfigured() async throws {
         let harness = try GatewayHarness()
         try await harness.configureAnthropicProviderForGateway()

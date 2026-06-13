@@ -497,7 +497,7 @@ final class AgentToolBroker: @unchecked Sendable {
         return AgentToolExecutionPayload(content: String(decoding: data, as: UTF8.self), detail: detail)
     }
 
-    private static func payload(name: String, response: ComputerUseInvokeResponse) -> AgentToolExecutionPayload {
+    static func payload(name: String, response: ComputerUseInvokeResponse) -> AgentToolExecutionPayload {
         var object: [String: Any] = [
             "ok": response.status == .executed,
             "tool": name,
@@ -509,14 +509,58 @@ final class AgentToolBroker: @unchecked Sendable {
         if let auditEntryIndex = response.auditEntryIndex { object["auditEntryIndex"] = auditEntryIndex }
         if let auditHeadHashHex = response.auditHeadHashHex { object["auditHeadHashHex"] = auditHeadHashHex }
         if let result = response.result {
-            object["result"] = jsonObject(from: result.output)
+            let jsonResult = jsonObject(from: result.output)
+            object["result"] = shouldWrapUntrustedComputerUseResult(toolName: name)
+                ? wrappedUntrustedComputerUseResult(jsonResult, toolName: name)
+                : jsonResult
             object["succeeded"] = result.succeeded
             object["errorMessage"] = result.errorMessage
         }
-        let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
-            ?? Data("{}".utf8)
+        let data: Data
+        do {
+            data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        } catch {
+            data = Data("{}".utf8)
+        }
         let detail = response.denyReason ?? response.status.rawValue
         return AgentToolExecutionPayload(content: String(decoding: data, as: UTF8.self), detail: detail)
+    }
+
+    private static func shouldWrapUntrustedComputerUseResult(toolName: String) -> Bool {
+        toolName == BurnBarToolKind.browserExtract.rawValue
+            || toolName == BurnBarToolKind.macInspectAccessibility.rawValue
+    }
+
+    private static func wrappedUntrustedComputerUseResult(_ result: Any, toolName: String) -> [String: Any] {
+        [
+            "contentFormat": "json",
+            "provenance": "computer_use_tool_result:\(toolName)",
+            "untrustedContent": LLMSafeContent.wrapUntrusted(
+                jsonString(from: result),
+                provenance: "computer_use_tool_result:\(toolName)"
+            )
+        ]
+    }
+
+    private static func jsonString(from value: Any) -> String {
+        if JSONSerialization.isValidJSONObject(value) {
+            do {
+                let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+                return String(decoding: data, as: UTF8.self)
+            } catch {
+                return String(describing: value)
+            }
+        }
+        if value is NSNull {
+            return "null"
+        }
+        if let string = value as? String {
+            return string
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return String(describing: value)
     }
 
     private static func jsonObject(from value: BurnBarJSONValue?) -> Any {

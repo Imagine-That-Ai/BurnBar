@@ -175,6 +175,24 @@ enum MacCloudVaultKeyAccess {
         let keyStore = CloudVaultKeyStore()
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
+            // cov:ignore-start -- live Firestore/keychain recovery branch; injected rotation tests cover mismatch handling
+            if let stateVaultKeyID = try await currentVaultKeyID(userRef: userRef),
+               stateVaultKeyID != vaultKeyID {
+                if let unwrapped = try await unwrapExistingKey(uid: uid, deviceId: deviceId, userRef: userRef) {
+                    try keyStore.saveKey(unwrapped.keyData, uid: uid)
+                    try await ensureState(userRef: userRef, uid: uid, vaultKeyID: unwrapped.vaultKeyID, deviceId: deviceId)
+                    let signalIdentity = try await publishCloudVaultKey(
+                        uid: uid,
+                        vaultKey: unwrapped.keyData,
+                        vaultKeyID: unwrapped.vaultKeyID,
+                        deviceId: deviceId,
+                        userRef: userRef
+                    )
+                    return CloudVaultResolvedKey(keyData: unwrapped.keyData, vaultKeyID: unwrapped.vaultKeyID, signalIdentity: signalIdentity)
+                }
+                throw CloudVaultAccessError.vaultKeyMismatch(expected: stateVaultKeyID, actual: vaultKeyID)
+            }
+            // cov:ignore-end
             try await ensureState(userRef: userRef, uid: uid, vaultKeyID: vaultKeyID, deviceId: deviceId)
             let signalIdentity = try await publishCloudVaultKey(uid: uid, vaultKey: local, vaultKeyID: vaultKeyID, deviceId: deviceId, userRef: userRef)
             return CloudVaultResolvedKey(keyData: local, vaultKeyID: vaultKeyID, signalIdentity: signalIdentity)
@@ -208,6 +226,20 @@ enum MacCloudVaultKeyAccess {
         let signalIdentity = try? OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
+            // cov:ignore-start -- live Firestore/keychain recovery branch; injected rotation tests cover mismatch handling
+            if let stateVaultKeyID = try await currentVaultKeyID(userRef: userRef),
+               stateVaultKeyID != vaultKeyID {
+                if let unwrapped = try await unwrapExistingKey(uid: uid, deviceId: deviceId, userRef: userRef) {
+                    try keyStore.saveKey(unwrapped.keyData, uid: uid)
+                    return CloudVaultResolvedKey(
+                        keyData: unwrapped.keyData,
+                        vaultKeyID: unwrapped.vaultKeyID,
+                        signalIdentity: signalIdentity
+                    )
+                }
+                throw CloudVaultAccessError.vaultKeyMismatch(expected: stateVaultKeyID, actual: vaultKeyID)
+            }
+            // cov:ignore-end
             return CloudVaultResolvedKey(keyData: local, vaultKeyID: vaultKeyID, signalIdentity: signalIdentity)
         }
         if let unwrapped = try await unwrapExistingKey(uid: uid, deviceId: deviceId, userRef: userRef) {

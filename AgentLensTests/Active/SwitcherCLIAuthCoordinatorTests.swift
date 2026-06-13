@@ -1909,26 +1909,6 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
     }
 
-    /// Visibility-stub window: on a headless CI runner `orderFront` does not
-    /// reliably flip `isVisible`, which made the old window-server-dependent
-    /// version of these tests flaky. The contract is pinned deterministically
-    /// instead, with the candidate window list injected.
-    private final class StubVisibilityWindow: NSWindow {
-        var visibleStub = false
-        override var isVisible: Bool { visibleStub }
-    }
-
-    private func makeStubWindow(visible: Bool) -> StubVisibilityWindow {
-        let window = StubVisibilityWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: true
-        )
-        window.visibleStub = visible
-        return window
-    }
-
     /// Window selection runs entirely over the `AuthPresentationWindow` seam —
     /// a plain class, never a real `NSWindow` — so these are deterministic on a
     /// headless CI runner (constructing/ordering an `NSWindow` there crashes
@@ -1984,7 +1964,7 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertFalse(resolution.shouldActivate, "An invisible window must never be force-activated")
     }
 
-        // MARK: - Shared auth keychain-recovery wrapper
+    // MARK: - Shared auth keychain-recovery wrapper
 
     /// Keychain-state recovery is only attempted when the bundle carries
     /// Firebase identifiers (`GoogleService-Info.plist`): present in CI via

@@ -201,6 +201,46 @@ final class ComputerUseScopeMatcherTests: XCTestCase {
         XCTAssertFalse(overlap)
     }
 
+    func testBuiltInBrowserTargetDeniesCoverLocalMetadataAndFileURLs() {
+        let cases: [(String, ComputerUseScopeRuleID)] = [
+            ("file:///etc/passwd", ComputerUseScopeRuleID("builtin.browser_file_url")),
+            ("http://localhost:3000", ComputerUseScopeRuleID("builtin.browser_localhost_http")),
+            ("http://127.0.0.1:11434/api/tags", ComputerUseScopeRuleID("builtin.browser_loopback_ipv4_http")),
+            ("http://[::1]/", ComputerUseScopeRuleID("builtin.browser_loopback_ipv6_http")),
+            ("http://169.254.169.254/latest/meta-data", ComputerUseScopeRuleID("builtin.browser_link_local_http")),
+            ("http://metadata.google.internal/computeMetadata/v1", ComputerUseScopeRuleID("builtin.browser_google_metadata_http"))
+        ]
+
+        for (url, expectedRule) in cases {
+            XCTAssertEqual(
+                matcher.evaluate(
+                    rules: ComputerUseDenyRegistry.builtInRules,
+                    context: ComputerUseScopeContext(url: url)
+                ),
+                .denied(rule: expectedRule),
+                url
+            )
+        }
+    }
+
+    func testUserAllowCannotUnmaskBuiltInBrowserTargetDeny() {
+        let broadAllow = ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("user.allow.local-testing"),
+            effect: .allow,
+            origin: .user,
+            label: "Allow local testing",
+            urlPrefix: "http://127."
+        )
+
+        XCTAssertEqual(
+            matcher.evaluate(
+                rules: ComputerUseDenyRegistry.builtInRules + [broadAllow],
+                context: ComputerUseScopeContext(url: "http://127.0.0.1:11434/api/tags")
+            ),
+            .denied(rule: ComputerUseScopeRuleID("builtin.browser_loopback_ipv4_http"))
+        )
+    }
+
     // MARK: most-recent rule wins among same effect
 
     func testMostRecentRuleWinsAmongSameEffect() {

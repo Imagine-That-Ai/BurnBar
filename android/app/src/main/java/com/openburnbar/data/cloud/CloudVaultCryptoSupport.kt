@@ -47,7 +47,7 @@ internal object CloudVaultCryptoSupport {
         val canonical = bindingToAAD(binding)
         return decodeSignalPublicKey(recipientIdentityPublicKey).seal(
             plaintext,
-            "OpenBurnBar-Signal-AtRest-v1|$canonical".toByteArray(Charsets.UTF_8),
+            "${CloudVaultCrypto.SIGNAL_AT_REST_INFO_PREFIX}$canonical".toByteArray(Charsets.UTF_8),
             canonical.toByteArray(Charsets.UTF_8),
         )
     }
@@ -56,7 +56,7 @@ internal object CloudVaultCryptoSupport {
         val canonical = bindingToAAD(binding)
         return decodeSignalPrivateKey(recipientIdentityPrivateKey).open(
             ciphertext,
-            "OpenBurnBar-Signal-AtRest-v1|$canonical".toByteArray(Charsets.UTF_8),
+            "${CloudVaultCrypto.SIGNAL_AT_REST_INFO_PREFIX}$canonical".toByteArray(Charsets.UTF_8),
             canonical.toByteArray(Charsets.UTF_8),
         )
     }

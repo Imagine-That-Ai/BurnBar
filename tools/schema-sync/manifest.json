@@ -63,7 +63,11 @@
       "tsHandMirror": [
         {
           "path": "functions/src/types/legacy.ts",
-          "interfaces": ["UsageEventDoc", "QuotaSnapshotDoc", "QuotaBucket"],
+          "interfaces": [
+            "UsageEventDoc",
+            "QuotaSnapshotDoc",
+            "QuotaBucket"
+          ],
           "knownDrift": [
             "UsageEventDoc.cacheWriteTokens",
             "UsageEventDoc.costUSD",
@@ -81,6 +85,13 @@
             "QuotaBucket.resetAt"
           ]
         }
+      ],
+      "tspOnlyModels": [
+        "UsageRollupDoc",
+        "ProviderSummary",
+        "ProviderAccountSummary",
+        "ModelSummary",
+        "DeviceSummary"
       ]
     },
     {
@@ -97,17 +108,23 @@
       "swiftHandMirror": [
         {
           "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderAccountTypes.swift",
-          "interfaces": ["ProviderAccountDoc"]
+          "interfaces": [
+            "ProviderAccountDoc"
+          ]
         },
         {
           "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarProviderContracts.swift",
-          "interfaces": ["ProviderAccountConnectContext"]
+          "interfaces": [
+            "ProviderAccountConnectContext"
+          ]
         }
       ],
       "kotlinHandMirror": [
         {
           "path": "android/app/src/main/java/com/openburnbar/data/models/TokenUsage.kt",
-          "interfaces": ["ProviderAccountDoc"]
+          "interfaces": [
+            "ProviderAccountDoc"
+          ]
         }
       ]
     },
@@ -126,7 +143,10 @@
       "tsHandMirror": [
         {
           "path": "functions/src/types/legacy.ts",
-          "interfaces": ["HermesRelayRequestDoc", "HermesRelayChunkDoc"],
+          "interfaces": [
+            "HermesRelayRequestDoc",
+            "HermesRelayChunkDoc"
+          ],
           "knownDrift": [
             "HermesRelayRequestDoc.updatedAt#opt",
             "HermesRelayChunkDoc.chunkIndex",
@@ -149,67 +169,7 @@
         "typescript": "functions/src/types/generated/hermes-gateway.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesGatewayModels.kt"
-      },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy.ts",
-          "interfaces": [
-            "HermesGatewayClientDoc",
-            "HermesGatewayEventDoc",
-            "HermesGatewayMessageDoc",
-            "HermesGatewayAttachmentManifestDoc",
-            "GatewayRelayEnvelopeDoc"
-          ],
-          "knownDrift": [
-            "GatewayRelayEnvelopeDoc.enc",
-            "GatewayRelayEnvelopeDoc.senderPublicKey",
-            "HermesGatewayClientDoc.agentVersion",
-            "HermesGatewayClientDoc.pendingModelId",
-            "HermesGatewayClientDoc.pendingModelRequestedAt",
-            "HermesGatewayClientDoc.oversightMode",
-            "HermesGatewayClientDoc.relayPublicKey",
-            "HermesGatewayClientDoc.relayKeyVersion",
-            "HermesGatewayClientDoc.relayEncryption",
-            "HermesGatewayClientDoc.agentSupportsRelayEnvelopeVersions",
-            "HermesGatewayClientDoc.agentPreferredRelayEnvelopeVersion",
-            "HermesGatewayClientDoc.agentSupportsHpkeV3",
-            "HermesGatewayClientDoc.agentPlatform",
-            "HermesGatewayClientDoc.agentAppBuild",
-            "HermesGatewayClientDoc.phoneSupportsRelayEnvelopeVersions",
-            "HermesGatewayClientDoc.phonePreferredRelayEnvelopeVersion",
-            "HermesGatewayClientDoc.phoneSupportsHpkeV3",
-            "HermesGatewayClientDoc.phonePlatform",
-            "HermesGatewayClientDoc.phoneAppBuild",
-            "HermesGatewayClientDoc.agentRatchetIdentityPublicKey",
-            "HermesGatewayClientDoc.agentRatchetSigningPublicKey",
-            "HermesGatewayClientDoc.agentRatchetSignedPreKeyPublicKey",
-            "HermesGatewayClientDoc.agentRatchetSignedPreKeyId",
-            "HermesGatewayClientDoc.agentRatchetSignedPreKeySignature",
-            "HermesGatewayClientDoc.agentSupportsRatchetV1",
-            "HermesGatewayClientDoc.phoneRatchetIdentityPublicKey",
-            "HermesGatewayClientDoc.phoneRatchetSigningPublicKey",
-            "HermesGatewayClientDoc.phoneRatchetSignedPreKeyPublicKey",
-            "HermesGatewayClientDoc.phoneRatchetSignedPreKeyId",
-            "HermesGatewayClientDoc.phoneRatchetSignedPreKeySignature",
-            "HermesGatewayClientDoc.phoneSupportsRatchetV1",
-            "HermesGatewayClientDoc.supportsRatchetV1",
-            "HermesGatewayClientDoc.supportsRelayEnvelopeVersions",
-            "HermesGatewayClientDoc.preferredRelayEnvelopeVersion",
-            "HermesGatewayClientDoc.supportsHpkeV3",
-            "HermesGatewayEventDoc.ratchetEnvelope",
-            "HermesGatewayEventDoc.signalEnvelope",
-            "HermesGatewayMessageDoc.ratchetEnvelope",
-            "HermesGatewayMessageDoc.signalEnvelope",
-            "HermesGatewayAttachmentManifestDoc.contentType#opt",
-            "HermesGatewayAttachmentManifestDoc.byteCount#opt",
-            "HermesGatewayAttachmentManifestDoc.storagePath#opt",
-            "HermesGatewayAttachmentManifestDoc.bodyStoragePath",
-            "HermesGatewayAttachmentManifestDoc.status#opt",
-            "HermesGatewayAttachmentManifestDoc.ratchetEnvelope",
-            "HermesGatewayAttachmentManifestDoc.signalEnvelope"
-          ]
-        }
-      ]
+      }
     },
     {
       "id": "iroh-pairing",
@@ -222,7 +182,10 @@
         "typescript": "functions/src/types/generated/iroh-pairing.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/IrohPairingModels.kt"
-      }
+      },
+      "tspOnlyModels": [
+        "DeviceLinkDoc"
+      ]
     },
     {
       "id": "pi-agent-relay",
@@ -239,11 +202,16 @@
       "tsHandMirror": [
         {
           "path": "functions/src/types/legacy.ts",
-          "interfaces": ["PiAgentConnectionDoc"],
+          "interfaces": [
+            "PiAgentConnectionDoc"
+          ],
           "knownDrift": [
             "PiAgentConnectionDoc.updatedAt#opt"
           ]
         }
+      ],
+      "tspOnlyModels": [
+        "PiAgentPairingDoc"
       ]
     },
     {
@@ -261,18 +229,25 @@
       "swiftHandMirror": [
         {
           "path": "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/CapabilityToken.swift",
-          "interfaces": ["CapabilityToken"]
+          "interfaces": [
+            "CapabilityToken"
+          ]
         }
       ],
       "tsHandMirror": [
         {
           "path": "functions/src/types/legacy.ts",
-          "interfaces": ["ComputerUsePhoneAuthorityDoc"],
+          "interfaces": [
+            "ComputerUsePhoneAuthorityDoc"
+          ],
           "knownDrift": [
             "ComputerUsePhoneAuthorityDoc.createdAt",
             "ComputerUsePhoneAuthorityDoc.updatedAt"
           ]
         }
+      ],
+      "tspOnlyModels": [
+        "ComputerUseAuditExportSignerPublicKeyDoc"
       ]
     },
     {
@@ -290,11 +265,16 @@
       "tsHandMirror": [
         {
           "path": "functions/src/types/legacy.ts",
-          "interfaces": ["EntitlementBindingDoc"],
+          "interfaces": [
+            "EntitlementBindingDoc"
+          ],
           "knownDrift": [
             "EntitlementBindingDoc.appAccountToken"
           ]
         }
+      ],
+      "tspOnlyModels": [
+        "EntitlementEventDoc"
       ]
     },
     {
@@ -308,7 +288,10 @@
         "typescript": "functions/src/types/generated/entitlements.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/EntitlementModels.kt"
-      }
+      },
+      "tspOnlyModels": [
+        "EscrowEnvelopeDoc"
+      ]
     },
     {
       "id": "insights",
@@ -325,8 +308,13 @@
       "tsHandMirror": [
         {
           "path": "functions/src/types/legacy.ts",
-          "interfaces": ["InsightCanvasDoc"]
+          "interfaces": [
+            "InsightCanvasDoc"
+          ]
         }
+      ],
+      "tspOnlyModels": [
+        "InsightWidgetDoc"
       ]
     },
     {
@@ -340,7 +328,10 @@
         "typescript": "functions/src/types/generated/missions.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MissionModels.kt"
-      }
+      },
+      "tspOnlyModels": [
+        "ApprovalPolicyDoc"
+      ]
     },
     {
       "id": "media-analytics",
@@ -357,8 +348,13 @@
       "tsHandMirror": [
         {
           "path": "functions/src/types/legacy.ts",
-          "interfaces": ["MediaQuotaUsageDoc"]
+          "interfaces": [
+            "MediaQuotaUsageDoc"
+          ]
         }
+      ],
+      "tspOnlyModels": [
+        "MediaSessionDailyRollupDoc"
       ]
     },
     {
@@ -386,5 +382,6 @@
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ModelBenchmarkModels.kt"
       }
     }
-  ]
+  ],
+  "tspOnlyModelsDocs": "tspOnlyModels lists documentation-only TypeSpec models that are not (yet) wired into emit/generate.mjs. check-tsp-canon.mjs allows them and ratchets the list: an entry that disappears from the .tsp or that becomes emitted fails the gate until removed."
 }
