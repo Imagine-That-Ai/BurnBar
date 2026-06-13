@@ -972,8 +972,11 @@ object CloudVaultCrypto {
         val generator = KeyPairGenerator.getInstance("EC")
         generator.initialize(ECGenParameterSpec("secp256r1"))
         val ephemeral = generator.generateKeyPair()
+        val ephemeralPublic =
+            ephemeral.public as? ECPublicKey
+                ?: error("Vault key wrap requires an EC public key")
         val recipientKey =
-            CloudVaultCryptoSupport.publicKeyFromX963(recipientPublicKey, (ephemeral.public as ECPublicKey).params)
+            CloudVaultCryptoSupport.publicKeyFromX963(recipientPublicKey, ephemeralPublic.params)
         val sharedSecret =
             KeyAgreement.getInstance("ECDH").run {
                 init(ephemeral.private)

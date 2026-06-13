@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-12T23:38:35.827Z",
+  "generatedAt": "2026-06-13T12:42:46.493Z",
   "scanner": {
     "tsMode": "token-fallback",
     "excluded": {
@@ -38,16 +38,16 @@
       ]
     }
   },
-  "total": 142,
+  "total": 139,
   "byLanguage": {
     "kotlin": 27,
-    "typescript": 115
+    "typescript": 112
   },
   "byKind": {
     "kotlin_force_unwrap": 6,
     "kotlin_unsafe_cast": 21,
     "ts_non_null_assertion": 4,
-    "ts_type_assertion": 111
+    "ts_type_assertion": 108
   },
   "violations": [
     {
@@ -1282,33 +1282,6 @@
       "kind": "ts_type_assertion",
       "snippet": "return db as unknown as Firestore;",
       "detail": "TypeScript parser unavailable; token: as Firestore"
-    },
-    {
-      "path": "services/hosted-mcp/src/server.ts",
-      "line": 74,
-      "column": 22,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "return pick(parsed as Record<string, unknown>);",
-      "detail": "TypeScript parser unavailable; token: as Record"
-    },
-    {
-      "path": "services/hosted-mcp/src/server.ts",
-      "line": 115,
-      "column": 69,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "const tokenResponse = await handleRefreshTokenGrant(firestore() as unknown as RefreshFirestore, fields);",
-      "detail": "TypeScript parser unavailable; token: as unknown"
-    },
-    {
-      "path": "services/hosted-mcp/src/server.ts",
-      "line": 115,
-      "column": 80,
-      "language": "typescript",
-      "kind": "ts_type_assertion",
-      "snippet": "const tokenResponse = await handleRefreshTokenGrant(firestore() as unknown as RefreshFirestore, fields);",
-      "detail": "TypeScript parser unavailable; token: as RefreshFirestore"
     },
     {
       "path": "services/hosted-mcp/src/signalEnvelopeContracts.test.ts",

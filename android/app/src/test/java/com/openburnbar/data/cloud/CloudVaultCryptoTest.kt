@@ -468,8 +468,8 @@ class CloudVaultCryptoTest {
         assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_MODE, raw["mode"])
         assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION, raw["relayEncryption"])
         // senderAuth survives the map round-trip with the Swift-Codable key names.
-        @Suppress("UNCHECKED_CAST")
-        val senderAuthRaw = raw["senderAuth"] as Map<String, Any>
+        val senderAuthRaw = raw["senderAuth"]
+        require(senderAuthRaw is Map<*, *>) { "senderAuth must be a map" }
         assertEquals("device-key-1", senderAuthRaw["senderIdentityKeyId"])
         assertEquals(CloudVaultCrypto.SIGNAL_AT_REST_SENDER_AUTH_VERSION, senderAuthRaw["signatureVersion"])
         assertEquals(envelope, CloudVaultCrypto.signalEnvelopeFromMap(raw))

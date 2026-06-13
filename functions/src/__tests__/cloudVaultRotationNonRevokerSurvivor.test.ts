@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
+import type { CallableRequest } from "firebase-functions/v2/https";
 
 const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   const store = new Map<string, Record<string, unknown>>();
@@ -39,7 +40,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     const data = store.get(path);
     return {
       exists: data !== undefined,
-      id: path.split("/").pop()!,
+      id: path.split("/").pop() ?? "",
       ref: makeDocRef(path),
       get: (field: string) => data?.[field],
       data: () => data,
@@ -84,9 +85,10 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     collection: (path: string) => makeQuery(path, []),
     async runTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
       const tx = {
-        async get(refOrQuery: { __isDoc?: true; __isQuery?: true; path?: string } & Record<string, unknown>) {
-          if (refOrQuery.__isQuery) return (refOrQuery as unknown as { get: () => unknown }).get();
-          return snapshotFor(refOrQuery.path!);
+        async get(refOrQuery: { __isDoc?: true; __isQuery?: true; path?: string; get(): Promise<unknown> }) {
+          if (refOrQuery.__isQuery) return refOrQuery.get();
+          if (!refOrQuery.path) throw new Error("transaction get requires a document path");
+          return snapshotFor(refOrQuery.path);
         },
         set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
           applyPatch(ref.path, data, opts?.merge === true);
@@ -140,8 +142,14 @@ const REVOKER = "phone-revoker";
 const SURVIVOR_A = "mac-survivor";
 const SURVIVOR_B = "phone-survivor";
 
-function callRequest(uid: string, data: Record<string, unknown>) {
-  return { auth: { uid }, app: { appId: "1:1:ios:x" }, data, rawRequest: { headers: {} } } as never;
+function callRequest<T extends Record<string, unknown>>(uid: string, data: T): CallableRequest<T> {
+  return {
+    auth: { uid, token: Object.create(null), rawToken: "test-token" },
+    app: { appId: "1:1:ios:x", token: Object.create(null) },
+    data,
+    rawRequest: Object.assign(Object.create(null), { headers: {} }),
+    acceptsStreaming: false,
+  };
 }
 
 function seedTrusted(deviceId: string) {

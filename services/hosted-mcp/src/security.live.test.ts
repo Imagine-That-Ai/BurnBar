@@ -17,11 +17,9 @@
 
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
-import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 
 import { MCP_PROTOCOL_VERSION } from "./config.js";
-import type { ServerOverrides } from "./server.js";
 import {
   seedTwoTenantWorld,
   vec384,
@@ -54,6 +52,31 @@ interface McpHttpResult {
   json: unknown;
 }
 
+function recordFrom(value: unknown, context: string): Record<string, unknown> {
+  assert.ok(value && typeof value === "object" && !Array.isArray(value), context);
+  return Object.fromEntries(Object.entries(value));
+}
+
+function stringFrom(value: unknown, context: string): string {
+  if (typeof value !== "string") {
+    assert.fail(context);
+  }
+  return value;
+}
+
+function recordArrayFrom(value: unknown, context: string): Array<Record<string, unknown>> {
+  assert.ok(Array.isArray(value), context);
+  return value.map((entry) => recordFrom(entry, context));
+}
+
+function boundPort(currentServer: Server): number {
+  const address = currentServer.address();
+  assert.ok(address && typeof address === "object", "expected a bound TCP server address");
+  const port = Reflect.get(address, "port");
+  assert.equal(typeof port, "number", "expected a numeric bound server port");
+  return port;
+}
+
 /** POST a JSON-RPC envelope to /mcp with the given bearer; return status + parsed body. */
 async function callMcp(token: string | undefined, payload: unknown, extraHeaders: Record<string, string> = {}): Promise<McpHttpResult> {
   const headers: Record<string, string> = {
@@ -74,10 +97,8 @@ async function callMcp(token: string | undefined, payload: unknown, extraHeaders
 }
 
 function resultOf(json: unknown): Record<string, unknown> {
-  assert.ok(json && typeof json === "object", "expected a JSON-RPC object");
-  const result = (json as Record<string, unknown>).result;
-  assert.ok(result && typeof result === "object", `expected a JSON-RPC result, got ${JSON.stringify(json)}`);
-  return result as Record<string, unknown>;
+  const result = recordFrom(json, "expected a JSON-RPC object").result;
+  return recordFrom(result, `expected a JSON-RPC result, got ${JSON.stringify(json)}`);
 }
 
 /** Parse the tools/call envelope ({content:[{text}]}) back into the tool's JSON payload. */
@@ -85,9 +106,8 @@ function toolPayload(json: unknown): Record<string, unknown> {
   const result = resultOf(json);
   const content = result.content;
   assert.ok(Array.isArray(content) && content.length > 0, "expected tools/call content");
-  const text = (content[0] as Record<string, unknown>).text;
-  assert.equal(typeof text, "string");
-  return JSON.parse(text as string) as Record<string, unknown>;
+  const text = stringFrom(recordFrom(content[0], "expected first tools/call content item").text, "expected tools/call text");
+  return recordFrom(JSON.parse(text), "expected tools/call text to contain JSON");
 }
 
 let nextId = 1;
@@ -99,12 +119,9 @@ before(async () => {
   process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 = world.publicKeyBase64;
   const { createServer } = await import("./server.js");
   const { db, download } = world;
-  // The in-memory firestore satisfies exactly the surface the request path
-  // touches (doc/collection/runTransaction/collectionGroup); cast at the seam.
-  server = createServer({ db: db as unknown as ServerOverrides["db"], download });
+  server = createServer({ db, download });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address() as AddressInfo;
-  endpoint = `http://127.0.0.1:${address.port}`;
+  endpoint = `http://127.0.0.1:${boundPort(server)}`;
 });
 
 after(async () => {
@@ -155,7 +172,7 @@ test("case1 cross-tenant: A's token cannot read B's knowledge vector (forged nam
   const tokenB = world.tenantB.token(KNOWLEDGE_SCOPES);
   const resB = await callMcp(tokenB, callTool("burnbar_search_knowledge", { queryVector: vec384([1, 0, 0]) }));
   const payloadB = toolPayload(resB.json);
-  assert.deepEqual((payloadB.hits as Array<{ vectorId: string }>).map((h) => h.vectorId), [world.vectorIdB]);
+  assert.deepEqual(recordArrayFrom(payloadB.hits, "expected B search hits").map((h) => h.vectorId), [world.vectorIdB]);
 });
 
 // Case 1b — Cross-tenant via the conversation resource path: A cannot read B's doc.
@@ -227,9 +244,8 @@ test("case2 at-rest: returned conversation body is sealed (no plaintext)", async
     assert.ok(!res.body.includes(marker), `sealed body must not contain plaintext marker ${marker}`);
   }
   // The page is the sealed envelope JSON — opaque ciphertext, never cleartext.
-  const page = result.encryptedBodyPage;
-  assert.equal(typeof page, "string");
-  assert.ok((page as string).includes("payloadCiphertextB64"), "expected the at-rest sealed envelope");
+  const page = stringFrom(result.encryptedBodyPage, "expected encrypted body page");
+  assert.ok(page.includes("payloadCiphertextB64"), "expected the at-rest sealed envelope");
 });
 
 // Case 2b — At-rest sealed knowledge: a search hit exposes only ciphertext +
@@ -238,7 +254,7 @@ test("case2b at-rest: knowledge hits expose only sealed ciphertext + opaque slug
   const tokenB = world.tenantB.token(KNOWLEDGE_SCOPES);
   const res = await callMcp(tokenB, callTool("burnbar_search_knowledge", { queryVector: vec384([1, 0, 0]) }));
   const payload = toolPayload(res.json);
-  const hits = payload.hits as Array<Record<string, unknown>>;
+  const hits = recordArrayFrom(payload.hits, "expected knowledge hits");
   assert.equal(hits.length, 1);
   const hit = hits[0];
   assert.equal(hit.decryptMode, "local_decrypt_shim");
