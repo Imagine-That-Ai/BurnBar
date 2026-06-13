@@ -27,6 +27,29 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
     let preferredModelIDs: [String]
     let preferredCredentialSlotID: String?
     let credentialSlots: [CredentialSlot]
+    let customModels: [BurnBarCustomModel]
+
+    init(
+        providerID: String,
+        provider: AgentProvider?,
+        displayName: String,
+        isEnabled: Bool,
+        baseURL: String,
+        preferredModelIDs: [String],
+        preferredCredentialSlotID: String?,
+        credentialSlots: [CredentialSlot],
+        customModels: [BurnBarCustomModel] = []
+    ) {
+        self.providerID = providerID
+        self.provider = provider
+        self.displayName = displayName
+        self.isEnabled = isEnabled
+        self.baseURL = baseURL
+        self.preferredModelIDs = preferredModelIDs
+        self.preferredCredentialSlotID = preferredCredentialSlotID
+        self.credentialSlots = credentialSlots
+        self.customModels = customModels
+    }
 
     var id: String { providerID }
 
@@ -233,7 +256,8 @@ final class OpenBurnBarDaemonUsageSyncService {
                             lastStatusMessage: slot.lastStatusMessage,
                             updatedAt: slot.updatedAt
                         )
-                    }
+                    },
+                customModels: settings.customModels
                 )
             }
             .sorted { providerSortOrder($0.provider) < providerSortOrder($1.provider) }
