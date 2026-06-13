@@ -35,7 +35,13 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
 
   const snapshotFor = (path: string) => {
     const data = store.get(path);
-    return { exists: data !== undefined, get: (f: string) => data?.[f], data: () => data, ref: makeDocRef(path), id: path.split("/").pop() ?? path };
+    return {
+      exists: data !== undefined,
+      get: (f: string) => data?.[f],
+      data: () => data,
+      ref: makeDocRef(path),
+      id: path.split("/").pop() ?? path,
+    };
   };
 
   type Filter = { field: string; op: string; value: unknown };
@@ -71,7 +77,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
       return snapshotFor(path);
     },
     async set(data: Record<string, unknown>, opts?: { merge?: boolean }) {
-      const existing = opts?.merge ? store.get(path) ?? {} : {};
+      const existing = opts?.merge ? (store.get(path) ?? {}) : {};
       store.set(path, { ...existing, ...data });
     },
     async delete() {
@@ -102,7 +108,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
         },
         set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
           writes.push(() => {
-            const existing = opts?.merge ? store.get(ref.path) ?? {} : {};
+            const existing = opts?.merge ? (store.get(ref.path) ?? {}) : {};
             store.set(ref.path, { ...existing, ...data });
           });
           return transaction;
@@ -160,7 +166,11 @@ vi.mock("../logging.js", async () => {
 // Signal session cleanup is exercised elsewhere; stub to isolate the F2 paths.
 vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
 
-import { publishPhoneControlAuthority, publishAgentGrantAuthority, revokeEscrowDeviceTrust } from "../callables/computerUseSecurity.js";
+import {
+  publishPhoneControlAuthority,
+  publishAgentGrantAuthority,
+  revokeEscrowDeviceTrust,
+} from "../callables/computerUseSecurity.js";
 import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
 import { APP_CHECK_ATTESTATION_CLAIM_KEY } from "../appCheckAttestation.js";
 
@@ -171,7 +181,10 @@ const CONN = "conn-1";
 
 function req(data: Record<string, unknown>) {
   return {
-    auth: { uid: UID, token: { [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: APP_ID, boundAtMillis: Date.now() } } },
+    auth: {
+      uid: UID,
+      token: { [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: APP_ID, boundAtMillis: Date.now() } },
+    },
     app: { appId: APP_ID },
     data,
     rawRequest: { headers: {} },
@@ -299,7 +312,11 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
       publicKeyBase64: key.base64,
       publishedAtMillis: Date.now(),
     });
-    await invokeCallable(publishAgentGrantAuthority, { deviceId: DEVICE, peerNodeId: key.peerNodeId, publicKeyBase64: key.base64 });
+    await invokeCallable(publishAgentGrantAuthority, {
+      deviceId: DEVICE,
+      peerNodeId: key.peerNodeId,
+      publicKeyBase64: key.base64,
+    });
     publishedPeerNodeId = key.peerNodeId;
   });
 
@@ -344,7 +361,9 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
 
     // A revocation receipt audit event was written.
     const receipts = [...store.entries()].filter(
-      ([path, data]) => path.startsWith(`users/${UID}/computer_use_audit_events/`) && data.message === "phone_control_peer_revoked_receipt",
+      ([path, data]) =>
+        path.startsWith(`users/${UID}/computer_use_audit_events/`) &&
+        data.message === "phone_control_peer_revoked_receipt",
     );
     expect(receipts).toHaveLength(1);
     expect(receipts[0][1].receiptId).toBe(res.receiptId);
@@ -492,15 +511,16 @@ function p256Pair(): { x963: Buffer; privateKey: import("node:crypto").KeyObject
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const jwk = publicKey.export({ format: "jwk" });
   // EC JWKs always carry x/y; the fallbacks only satisfy the optional typing.
-  const x963 = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x ?? "", "base64url"), Buffer.from(jwk.y ?? "", "base64url")]);
+  const x963 = Buffer.concat([
+    Buffer.from([0x04]),
+    Buffer.from(jwk.x ?? "", "base64url"),
+    Buffer.from(jwk.y ?? "", "base64url"),
+  ]);
   const digest = createHash("sha256").update(x963).digest("hex").slice(0, 24);
   return { x963, privateKey, peerNodeId: `ios-se-${digest}` };
 }
 
-function queuedGrantData(options: {
-  peerNodeId: string;
-  signGrant: (payload: Buffer) => Buffer;
-}) {
+function queuedGrantData(options: { peerNodeId: string; signGrant: (payload: Buffer) => Buffer }) {
   const now = cocoaNow();
   const grantRequest = {
     requestId: `grant-${Math.random().toString(36).slice(2)}`,
