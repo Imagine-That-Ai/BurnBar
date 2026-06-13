@@ -221,7 +221,6 @@ import {
   listPendingCloudVaultRotationRequirements,
   sweepStalePendingCloudVaultRotations,
 } from "../cloudVaultRotationResilience.js";
-import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
 
 const UID = "uidRR5";
 const HOUR_MS = 60 * 60 * 1000;
