@@ -24,9 +24,13 @@ import OpenBurnBarCore
 enum MacEscrowSeal {
     /// Seals `plaintext` to the recipient's escrow public key (raw X9.63 bytes).
     static func seal(_ plaintext: Data, recipientPublicKey: Data) throws -> Data {
-        guard let recipientKey = try? P256.KeyAgreement.PublicKey(x963Representation: recipientPublicKey) else {
+        let recipientKey: P256.KeyAgreement.PublicKey
+        do {
+            recipientKey = try P256.KeyAgreement.PublicKey(x963Representation: recipientPublicKey)
+        } catch {
             throw MacEscrowProducerError.invalidRecipientPublicKey
         }
+
         let ephemeralKey = P256.KeyAgreement.PrivateKey()
         let sharedSecret = try ephemeralKey.sharedSecretFromKeyAgreement(with: recipientKey)
         let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(

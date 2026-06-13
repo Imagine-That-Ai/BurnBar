@@ -96,7 +96,8 @@ final class MacFileTransferSecurityTests: XCTestCase {
         }
 
         // RR-18 — gate denial must short-circuit before the blob backend runs.
-        XCTAssertTrue(await backend.fetchedTickets.isEmpty, "denied transfer must not fetch")
+        let fetchedTickets = await backend.fetchedTickets
+        XCTAssertTrue(fetchedTickets.isEmpty, "denied transfer must not fetch")
         XCTAssertEqual(acks.count, 1)
         XCTAssertEqual(acks.first?.media?.ack?.status, .rejected)
         XCTAssertEqual(acks.first?.media?.ack?.reason, "media admission denied: killSwitchActive")
