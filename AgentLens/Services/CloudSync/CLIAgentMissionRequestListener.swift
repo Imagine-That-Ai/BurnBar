@@ -4,7 +4,7 @@ import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OSLog
 
-private struct CLIAgentMissionPrivatePayload: Codable {
+struct CLIAgentMissionPrivatePayload: Codable {
     var title: String?
     var prompt: String?
     var targetProject: String?
@@ -17,7 +17,7 @@ private struct CLIAgentMissionPrivatePayload: Codable {
     var synthesisSummary: String?
 }
 
-private struct CLIAgentMissionEventPrivatePayload: Codable {
+struct CLIAgentMissionEventPrivatePayload: Codable {
     var title: String?
     var message: String
     var fullMessage: String?
@@ -26,7 +26,7 @@ private struct CLIAgentMissionEventPrivatePayload: Codable {
     var changedFilePath: String?
 }
 
-private enum CLIAgentMissionCloudSealer {
+enum CLIAgentMissionCloudSealer {
     static let sealedSchemaVersion = 2
     static let sealedStateSchemaVersion = 1
 

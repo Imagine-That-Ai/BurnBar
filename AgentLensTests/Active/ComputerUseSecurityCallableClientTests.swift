@@ -1,6 +1,7 @@
 import CryptoKit
 import XCTest
 import OpenBurnBarCore
+import OpenBurnBarSignalCore
 @testable import OpenBurnBar
 
 final class ComputerUseSecurityCallableClientTests: XCTestCase {
@@ -151,5 +152,209 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         XCTAssertEqual(payload["rotationRequirementId"] as? String, "req-1")
         XCTAssertEqual(payload["nonce"] as? String, "nonce-1")
         XCTAssertEqual((payload["survivorWrappers"] as? [[String: Any]])?.count, 1)
+    }
+
+    func testRevocationCloudVaultRotationRunsInjectedSuccessPath() async throws {
+        let currentKey = CloudVaultCrypto.generateVaultKey()
+        let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
+        let survivorPrivateKey = P256.KeyAgreement.PrivateKey()
+        let capture = RotationCapture()
+
+        let environment = makeRotationEnvironment(
+            currentKey: currentKey,
+            currentVaultKeyID: currentVaultKeyID,
+            survivorPrivateKey: survivorPrivateKey,
+            capture: capture
+        )
+
+        let result = try await ComputerUseSecurityCallableClient.performRevocationCloudVaultRotation(
+            uid: "uid-1",
+            requirementId: "req-1",
+            rotatingDeviceId: "mac-1",
+            environment: environment
+        )
+
+        XCTAssertEqual(result.jobId, "job-1")
+        XCTAssertEqual(result.progress.rewrappedDocuments, 7)
+        XCTAssertEqual(result.progress.rewrappedStorageBlobs, 4)
+        XCTAssertEqual(capture.loadedRequirementId, "req-1")
+        XCTAssertEqual(capture.publishedIdentityDeviceId, "mac-1_1")
+        XCTAssertEqual(capture.verifiedSurvivorDeviceIds, ["mac-1"])
+        let payload = try XCTUnwrap(capture.rotatePayload)
+        XCTAssertEqual(payload["callerDeviceId"] as? String, "mac-1")
+        XCTAssertEqual(payload["currentVaultKeyID"] as? String, currentVaultKeyID)
+        XCTAssertEqual(payload["expectedVaultGeneration"] as? Int, 3)
+        XCTAssertEqual(payload["rotationRequirementId"] as? String, "req-1")
+        XCTAssertEqual(payload["nonce"] as? String, "nonce-rotation")
+        let wrappers = try XCTUnwrap(payload["survivorWrappers"] as? [[String: Any]])
+        let wrappedVaultKey = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(wrappers.first?["wrappedVaultKey"] as? String)))
+        let nextKey = try CloudVaultCrypto.unwrapVaultKey(wrappedVaultKey, privateKey: survivorPrivateKey)
+        XCTAssertEqual(capture.savedNextKey, nextKey)
+        XCTAssertEqual(capture.rewrapJobId, "job-1")
+        XCTAssertEqual(capture.rewrapOldKey, currentKey)
+        XCTAssertEqual(capture.rewrapNewKey, nextKey)
+        XCTAssertNil(capture.markedFailedJobId)
+    }
+
+    func testRevocationCloudVaultRotationRejectsMalformedRotateResponse() async throws {
+        let currentKey = CloudVaultCrypto.generateVaultKey()
+        let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
+        let environment = makeRotationEnvironment(
+            currentKey: currentKey,
+            currentVaultKeyID: currentVaultKeyID,
+            survivorPrivateKey: P256.KeyAgreement.PrivateKey(),
+            rotateResponse: ["ok": false],
+            capture: RotationCapture()
+        )
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.performRevocationCloudVaultRotation(
+                uid: "uid-1",
+                requirementId: "req-1",
+                rotatingDeviceId: "mac-1",
+                environment: environment
+            )
+        }) { error in
+            XCTAssertEqual(
+                (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                "Cloud Vault key rotation was not queued."
+            )
+        }
+    }
+
+    func testRevocationCloudVaultRotationMarksQueuedJobFailedWhenLocalRewrapFails() async throws {
+        let currentKey = CloudVaultCrypto.generateVaultKey()
+        let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
+        let capture = RotationCapture()
+        let environment = makeRotationEnvironment(
+            currentKey: currentKey,
+            currentVaultKeyID: currentVaultKeyID,
+            survivorPrivateKey: P256.KeyAgreement.PrivateKey(),
+            rewrapError: TestRotationError(message: "local rewrap failed"),
+            capture: capture
+        )
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.performRevocationCloudVaultRotation(
+                uid: "uid-1",
+                requirementId: "req-1",
+                rotatingDeviceId: "mac-1",
+                environment: environment
+            )
+        }) { error in
+            let message = (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription ?? ""
+            XCTAssertTrue(message.contains("Cloud Vault rotation job job-1 was queued"))
+            XCTAssertTrue(message.contains("local rewrap failed"))
+        }
+        XCTAssertEqual(capture.markedFailedJobId, "job-1")
+        XCTAssertEqual(capture.markedFailureMessage, "local rewrap failed")
+    }
+
+    private func makeRotationEnvironment(
+        currentKey: Data,
+        currentVaultKeyID: String,
+        survivorPrivateKey: P256.KeyAgreement.PrivateKey,
+        rotateResponse: [String: Any] = ["ok": true, "jobId": "job-1"],
+        rewrapError: Error? = nil,
+        capture: RotationCapture
+    ) -> ComputerUseSecurityCallableClient.RevocationCloudVaultRotationEnvironment {
+        ComputerUseSecurityCallableClient.RevocationCloudVaultRotationEnvironment(
+            loadRequirement: { requirementId in
+                capture.loadedRequirementId = requirementId
+                return [
+                    "status": "pending",
+                    "rotateCallable": "rotateCloudVaultKey",
+                    "currentVaultKeyID": currentVaultKeyID,
+                    "currentVaultGeneration": 2,
+                    "survivorDeviceIds": ["mac-1"]
+                ]
+            },
+            loadCurrentKey: {
+                CloudVaultResolvedKey(keyData: currentKey, vaultKeyID: currentVaultKeyID)
+            },
+            loadLocalIdentity: {
+                OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "mac-1")
+            },
+            publishLocalIdentity: { identity in
+                capture.publishedIdentityDeviceId = identity.identityKeyId
+            },
+            verifiedTrustedDevice: { deviceId, _ in
+                capture.verifiedSurvivorDeviceIds.append(deviceId)
+                return CloudVaultVerifiedTrustedDevice(
+                    deviceId: deviceId,
+                    keyVersion: 4,
+                    escrowPublicKeyFingerprint: "fp_\(deviceId)",
+                    escrowPublicKeyData: survivorPrivateKey.publicKey.x963Representation,
+                    signalIdentityKeyId: "\(deviceId)_4",
+                    signalIdentityPublicKeyFingerprint: "sig_fp_\(deviceId)",
+                    signalIdentityPublicKeyData: Data([4, 5, 6])
+                )
+            },
+            issueNonce: {
+                "nonce-rotation"
+            },
+            rotateCloudVaultKey: { payload in
+                capture.rotatePayload = payload
+                return rotateResponse
+            },
+            saveNextKey: { nextKey in
+                capture.savedNextKey = nextKey
+            },
+            runDocumentRewrap: { jobId, oldKeyData, newKeyData, nextVaultKeyID, nextVaultGeneration in
+                if let rewrapError {
+                    throw rewrapError
+                }
+                capture.rewrapJobId = jobId
+                capture.rewrapOldKey = oldKeyData
+                capture.rewrapNewKey = newKeyData
+                capture.rewrapVaultKeyID = nextVaultKeyID
+                capture.rewrapVaultGeneration = nextVaultGeneration
+                return CloudVaultRotationRewrapProgress(
+                    scannedDocuments: 12,
+                    rewrappedDocuments: 7,
+                    changedFields: 9,
+                    scannedStorageBlobs: 5,
+                    rewrappedStorageBlobs: 4
+                )
+            },
+            markRotationFailed: { jobId, error in
+                capture.markedFailedJobId = jobId
+                capture.markedFailureMessage = error.localizedDescription
+            }
+        )
+    }
+}
+
+private final class RotationCapture {
+    var loadedRequirementId: String?
+    var publishedIdentityDeviceId: String?
+    var verifiedSurvivorDeviceIds: [String] = []
+    var rotatePayload: [String: Any]?
+    var savedNextKey: Data?
+    var rewrapJobId: String?
+    var rewrapOldKey: Data?
+    var rewrapNewKey: Data?
+    var rewrapVaultKeyID: String?
+    var rewrapVaultGeneration: Int?
+    var markedFailedJobId: String?
+    var markedFailureMessage: String?
+}
+
+private struct TestRotationError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+private func XCTAssertThrowsErrorAsync<T>(
+    _ expression: () async throws -> T,
+    _ errorHandler: (Error) -> Void,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected async expression to throw", file: file, line: line)
+    } catch {
+        errorHandler(error)
     }
 }

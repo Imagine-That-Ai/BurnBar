@@ -77,6 +77,28 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertTrue(proMax.active)
     }
 
+    func testMacCloudEntitlementStoreAppliesAndClearsHostedMediaEntitlement() {
+        let store = MacCloudEntitlementStore()
+        let expiration = Date(timeIntervalSinceNow: 3_600)
+        let purchase = Date(timeIntervalSinceNow: -7_200)
+
+        store.applyHostedMedia(data: [
+            "active": true,
+            "expiresAt": expiration,
+            "purchaseDate": purchase
+        ])
+
+        XCTAssertTrue(store.hostedMediaIsActive)
+        XCTAssertEqual(store.hostedMediaExpirationDate?.timeIntervalSince1970, expiration.timeIntervalSince1970)
+        XCTAssertEqual(store.hostedMediaPurchaseDate?.timeIntervalSince1970, purchase.timeIntervalSince1970)
+
+        store.clearHostedMediaEntitlement()
+
+        XCTAssertFalse(store.hostedMediaIsActive)
+        XCTAssertNil(store.hostedMediaExpirationDate)
+        XCTAssertNil(store.hostedMediaPurchaseDate)
+    }
+
     func testActiveSessionRegistryClampsCountsPerFeature() {
         MacMediaActiveSessionRegistry.shared.resetForTesting()
         XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .screenShare), 0)
