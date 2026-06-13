@@ -264,7 +264,7 @@ final class CLIAgentChatReaderTests: XCTestCase {
     /// The rename must seal `customTitle` inside `sealedPayload` and write NO
     /// top-level plaintext `customTitle` — mirroring the Mac mirror writer.
     func test_rename_sealsCustomTitle_noTopLevelPlaintext() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
 
         var record = makeSession(id: "s1", agent: .codex, updated: Date(timeIntervalSince1970: 100))
@@ -299,7 +299,7 @@ final class CLIAgentChatReaderTests: XCTestCase {
 
     /// Without the vault key, a sealed renamed doc reveals no plaintext title.
     func test_rename_sealedTitleUnreadableWithoutKey() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
         var record = makeSession(id: "s1", agent: .codex, updated: Date())
         record.title = "Sensitive title"

@@ -15,7 +15,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
     // MARK: - cancelMission
 
     func test_cancelMissionUpdate_sealsSummary_writesNoPlaintextLiveSummary() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
 
         let update = try CLIAgentMissionDispatcher.cancelMissionUpdate(
@@ -56,7 +56,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
     }
 
     func test_cancelMissionUpdate_summaryUnreadableWithoutKey() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
         let update = try CLIAgentMissionDispatcher.cancelMissionUpdate(vaultKey: key, vaultKeyID: vaultKeyID)
 
@@ -73,7 +73,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
     }
 
     func test_missionSnapshotFallsBackToLegacySealedPayloadWhenOptionalSignalEnvelopeCannotOpen() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
         var doc = try CLIAgentMissionRequestPayloadFactory.buildSealed(
             id: "mission-fallback",
@@ -112,7 +112,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
     func test_missionSnapshotOpensPathBoundLegacyPayloadAndRejectsRelocation() throws {
         let uid = "mission-legacy-user-\(UUID().uuidString)"
         let documentID = "mission-legacy-bound"
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
         let doc = try CLIAgentMissionRequestPayloadFactory.buildSealed(
             id: documentID,
@@ -222,7 +222,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
     }
 
     func test_mergeMissionGroupUpdate_sealsSynthesis_writesNoPlaintext() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
 
         let update = try CLIAgentMissionDispatcher.mergeMissionGroupUpdate(
@@ -254,7 +254,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
     }
 
     func test_mergeMissionGroupUpdate_synthesisUnreadableWithoutKey() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
         let update = try CLIAgentMissionDispatcher.mergeMissionGroupUpdate(
             winnerMissionID: nil,

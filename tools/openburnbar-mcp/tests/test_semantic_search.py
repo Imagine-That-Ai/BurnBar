@@ -71,6 +71,7 @@ def test_semantic_search_returns_unavailable_when_tables_missing(tmp_path, monke
 def test_cloud_semantic_search_requires_explicit_cloud_credentials(monkeypatch):
     monkeypatch.delenv("OPENBURNBAR_FIREBASE_ID_TOKEN", raising=False)
     monkeypatch.delenv("OPENBURNBAR_CLOUD_VAULT_KEY_BASE64", raising=False)
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_DECRYPT", "true")
 
     payload = json.loads(server.burnbar_cloud_semantic_search_conversations("hosted semantic search"))
 
@@ -283,6 +284,7 @@ def test_project_memory_local_list_and_get(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
     monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", "true")
 
     listed = json.loads(server.burnbar_list_project_memory())
     fetched = json.loads(server.burnbar_get_project_memory("burnbar", source="local"))
@@ -299,6 +301,8 @@ def test_project_memory_local_list_and_get(tmp_path, monkeypatch):
 
 def test_project_memory_cloud_get_decrypts_snapshot(monkeypatch):
     called: dict[str, object] = {}
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", "true")
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_DECRYPT", "true")
 
     monkeypatch.setattr(
         server,
@@ -406,6 +410,7 @@ def test_project_memory_cloud_sync_encrypts_and_commits(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
     monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_SYNC", "true")
 
     monkeypatch.setattr(
         server,

@@ -389,7 +389,7 @@ final class HermesSquareMissionGroupTests: XCTestCase {
     }
 
     func testGroupDocumentDecodesRedactedMetadataWhenSealedPayloadUnreadable() throws {
-        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
         let sealedRequest = try CloudVaultCrypto.sealPayload(
             JSONSerialization.data(withJSONObject: [

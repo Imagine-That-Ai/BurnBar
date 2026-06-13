@@ -18,6 +18,7 @@
  *      harness in hermesGatewaySealedEvent.test.ts).
  */
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import type { CallableRequest } from "firebase-functions/v2/https";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashHermesGatewayBearerToken } from "../hermesGateway.js";
@@ -65,11 +66,15 @@ vi.mock("firebase-admin/firestore", () => ({
 // Each call returns a URL that embeds the storage path so a re-init that DID
 // clobber would be observable as a fresh, different URL.
 let signedUrlCounter = 0;
+const storageObjects = new Set<string>();
 vi.mock("firebase-admin/storage", () => ({
   getStorage: () => ({
     bucket: () => ({
       file: (path: string) => ({
-        getSignedUrl: async () => [`https://signed.example/${path}?n=${++signedUrlCounter}`],
+        exists: async () => [storageObjects.has(path)],
+        getSignedUrl: async (opts?: { action?: string }) => [
+          `https://signed.example/${encodeURIComponent(path)}?action=${opts?.action ?? "unknown"}&n=${++signedUrlCounter}`,
+        ],
       }),
     }),
   }),
@@ -276,6 +281,7 @@ async function callGateway(path: string, body: Record<string, unknown>): Promise
 describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)", () => {
   beforeEach(() => {
     stored.clear();
+    storageObjects.clear();
     signedUrlCounter = 0;
     popNonceCounter = 0;
     seedGrant();
@@ -376,6 +382,126 @@ describe("/attachments/init — create-if-absent hardening (finding P2#8 fix 2)"
     const finalManifest = record(record(finalizeRes.body, "finalize response body").attachment, "attachment manifest");
     expect(finalManifest.id).toBe(attachmentId);
     expect(finalManifest.status).toBe("uploaded");
+  });
+});
+
+describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", () => {
+  beforeEach(() => {
+    stored.clear();
+    storageObjects.clear();
+    signedUrlCounter = 0;
+    popNonceCounter = 0;
+    seedGrant();
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  function callableRequest(
+    uid: string,
+    data: { attachmentId?: unknown; clientId?: unknown; destinationId?: unknown },
+  ): CallableRequest<{ attachmentId?: unknown; clientId?: unknown; destinationId?: unknown }> {
+    return {
+      auth: { uid, token: Object.create(null), rawToken: "test-token" },
+      app: { appId: "test-app", token: Object.create(null) },
+      data,
+      rawRequest: Object.assign(Object.create(null), { headers: {} }),
+      acceptsStreaming: false,
+    };
+  }
+
+  function seedUploadedAttachment(id = "att_download_0001"): Record<string, unknown> {
+    const storagePath = `users/${UID}/hermes_gateway_attachments/${CLIENT_ID}/${id}`;
+    const manifest = {
+      id,
+      clientId: CLIENT_ID,
+      destinationId: "burnbar:home",
+      relayEnvelope: sealedEnvelope(),
+      contentType: "application/octet-stream",
+      byteCount: 4096,
+      storagePath,
+      status: "uploaded",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      uploadedAt: "2026-06-01T00:01:00.000Z",
+      finalizedAt: "2026-06-01T00:01:00.000Z",
+      sha256: "a".repeat(64),
+      schemaVersion: 2,
+    };
+    stored.set(`users/${UID}/hermes_gateway_attachments/${id}`, manifest);
+    storageObjects.add(storagePath);
+    return manifest;
+  }
+
+  it("mints a read URL only after uid, client, status, path, and object checks pass", async () => {
+    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../callables/hermesGateway.js");
+    const manifest = seedUploadedAttachment();
+
+    const result = await handleHermesGatewayAttachmentDownloadUrl(
+      callableRequest(UID, {
+        attachmentId: manifest.id,
+        clientId: CLIENT_ID,
+        destinationId: "burnbar:home",
+      }),
+    );
+
+    expect(result.attachmentId).toBe(manifest.id);
+    expect(result.maxBytes).toBeGreaterThan(0);
+    expect(result.downloadURL).toContain("action=read");
+    expect(result.downloadURL).toContain(encodeURIComponent(String(manifest.storagePath)));
+  });
+
+  it("does not mint a URL for another user namespace", async () => {
+    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../callables/hermesGateway.js");
+    const manifest = seedUploadedAttachment();
+
+    await expect(
+      handleHermesGatewayAttachmentDownloadUrl(
+        callableRequest("other-user", {
+          attachmentId: manifest.id,
+          clientId: CLIENT_ID,
+          destinationId: "burnbar:home",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "not-found" });
+  });
+
+  it("does not mint a URL for pending uploads, missing objects, or client mismatches", async () => {
+    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../callables/hermesGateway.js");
+    const manifest = seedUploadedAttachment("att_download_0002");
+    const manifestPath = `users/${UID}/hermes_gateway_attachments/${manifest.id}`;
+    stored.set(manifestPath, { ...manifest, status: "pending_upload" });
+
+    await expect(
+      handleHermesGatewayAttachmentDownloadUrl(
+        callableRequest(UID, {
+          attachmentId: manifest.id,
+          clientId: CLIENT_ID,
+          destinationId: "burnbar:home",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+
+    stored.set(manifestPath, manifest);
+    storageObjects.clear();
+    await expect(
+      handleHermesGatewayAttachmentDownloadUrl(
+        callableRequest(UID, {
+          attachmentId: manifest.id,
+          clientId: CLIENT_ID,
+          destinationId: "burnbar:home",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "not-found" });
+
+    storageObjects.add(String(manifest.storagePath));
+    await expect(
+      handleHermesGatewayAttachmentDownloadUrl(
+        callableRequest(UID, {
+          attachmentId: manifest.id,
+          clientId: "hgw_other_client",
+          destinationId: "burnbar:home",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "permission-denied" });
   });
 });
 

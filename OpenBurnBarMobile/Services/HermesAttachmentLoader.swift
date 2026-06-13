@@ -16,6 +16,7 @@ enum HermesAttachmentLoader {
         case unreadableFile(String)
         case workspaceUnavailable
         case tooLarge(name: String, kind: HermesAttachmentKind, byteSize: Int)
+        case unsafeAttachment(name: String, reason: String)
 
         var errorDescription: String? {
             switch self {
@@ -25,6 +26,8 @@ enum HermesAttachmentLoader {
                 return "Chat workspace folder is unavailable."
             case .tooLarge(let name, let kind, let byteSize):
                 return "\(name) is too large (\(HermesAttachmentEncoder.formatBytes(byteSize))) for an inline \(kind.rawValue) attachment."
+            case .unsafeAttachment(let name, let reason):
+                return "\(name) cannot be opened as an agent attachment: \(reason)"
             }
         }
     }
@@ -48,6 +51,7 @@ enum HermesAttachmentLoader {
         let mimeType = mimeType(for: url)
         let kind = HermesAttachmentKind.infer(mimeType: mimeType, fileName: displayName)
 
+        try enforceSafeAttachmentForAgentImport(name: displayName, mimeType: mimeType, byteSize: byteSize)
         try enforceSizeLimit(name: displayName, kind: kind, byteSize: byteSize)
 
         let attachmentID = UUID().uuidString
@@ -152,11 +156,12 @@ enum HermesAttachmentLoader {
         let safeName = safeFilename(displayName)
         let storedRelative = "attachments/\(attachmentID)-\(safeName)"
         let storedURL = workspace.appendingPathComponent(storedRelative)
-        try data.write(to: storedURL)
 
         let mime = mimeType(forFileName: displayName)
         let kind = HermesAttachmentKind.infer(mimeType: mime, fileName: displayName)
+        try enforceSafeAttachmentForAgentImport(name: displayName, mimeType: mime, byteSize: data.count)
         try enforceSizeLimit(name: displayName, kind: kind, byteSize: data.count)
+        try data.write(to: storedURL)
 
         let preview = kind == .textDocument ? String(data: data.prefix(HermesAttachmentLimits.textPreviewBytes), encoding: .utf8) : nil
         let thumbnail = kind == .image ? UIImage(data: data).flatMap { thumbnailJPEG(from: $0, maxSide: 96) } : nil
@@ -188,6 +193,7 @@ enum HermesAttachmentLoader {
         let displayName = opened.fileName
         let mime = opened.contentType ?? mimeType(forFileName: displayName)
         let kind = HermesAttachmentKind.infer(mimeType: mime, fileName: displayName)
+        try enforceSafeAttachmentForAgentImport(name: displayName, mimeType: mime, byteSize: opened.data.count)
         try enforceSizeLimit(name: displayName, kind: kind, byteSize: opened.data.count)
 
         let safeName = safeFilename(displayName)
@@ -229,6 +235,42 @@ enum HermesAttachmentLoader {
         }
         if byteSize > limit {
             throw LoaderError.tooLarge(name: name, kind: kind, byteSize: byteSize)
+        }
+    }
+
+    private static func enforceSafeAttachmentForAgentImport(
+        name: String,
+        mimeType: String,
+        byteSize: Int
+    ) throws {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == "." || trimmed == ".." || trimmed.contains("/") || trimmed.contains("\\") {
+            throw LoaderError.unsafeAttachment(name: name, reason: "invalid filename")
+        }
+        if trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) {
+            throw LoaderError.unsafeAttachment(name: name, reason: "filename contains control characters")
+        }
+        let ext = (trimmed as NSString).pathExtension.lowercased()
+        let mediaType = mimeType.split(separator: ";").first?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let blockedMediaTypes: Set<String> = [
+            "text/html",
+            "text/javascript",
+            "application/javascript",
+            "application/ecmascript",
+            "application/xhtml+xml",
+            "application/xml",
+            "text/xml",
+            "image/svg+xml"
+        ]
+        let blockedExtensions: Set<String> = [
+            "app", "applescript", "command", "dmg", "exe", "hta", "html", "js", "jse",
+            "pkg", "ps1", "scpt", "sh", "svg", "terminal", "vbs", "workflow", "xhtml", "xml"
+        ]
+        if blockedMediaTypes.contains(mediaType) || blockedExtensions.contains(ext) {
+            throw LoaderError.unsafeAttachment(name: name, reason: "active content is blocked")
+        }
+        if byteSize > HermesAttachmentLimits.maxGenericBytes {
+            throw LoaderError.unsafeAttachment(name: name, reason: "file exceeds the maximum accepted size")
         }
     }
 

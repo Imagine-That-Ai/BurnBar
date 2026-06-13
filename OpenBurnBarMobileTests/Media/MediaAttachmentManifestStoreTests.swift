@@ -42,7 +42,7 @@ final class MediaAttachmentManifestStoreTests: XCTestCase {
     ]
 
     func test_encodeManifest_sealsFilename_writesNoPlaintext() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let document = try MediaAttachmentManifestStore.encodeManifest(makeCompletion(), vaultKey: key)
 
         // Filename is sealed; no cleartext name leaks.
@@ -59,7 +59,7 @@ final class MediaAttachmentManifestStoreTests: XCTestCase {
     }
 
     func test_encodeManifest_emitsOnlyAllowlistedKeys() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let document = try MediaAttachmentManifestStore.encodeManifest(makeCompletion(), vaultKey: key)
 
         // Every emitted key is in the rule's `hasOnly` allowlist — no smuggled
@@ -83,7 +83,7 @@ final class MediaAttachmentManifestStoreTests: XCTestCase {
     }
 
     func test_encodeManifest_roundTripsSealedFilename() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let completion = makeCompletion(filename: "私的レポート.pdf")
         let document = try MediaAttachmentManifestStore.encodeManifest(completion, vaultKey: key)
 
@@ -98,7 +98,7 @@ final class MediaAttachmentManifestStoreTests: XCTestCase {
         XCTAssertEqual(MediaAttachmentManifestStore.direction(for: .received), "macToIos")
 
         // Direction is written through to the doc.
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let sent = try? MediaAttachmentManifestStore.encodeManifest(
             makeCompletion(direction: .sent), vaultKey: key)
         let received = try? MediaAttachmentManifestStore.encodeManifest(
