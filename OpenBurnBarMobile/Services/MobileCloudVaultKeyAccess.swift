@@ -223,7 +223,7 @@ enum MobileCloudVaultKeyAccess {
             throw MobileCloudVaultAccessError.vaultKeyUnavailable
         }
 
-        let created = CloudVaultCrypto.generateVaultKey()
+        let created = try CloudVaultCrypto.generateVaultKey()
         try keyStore.saveKey(created, uid: uid)
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: created)
         try await ensureState(userRef: userRef, uid: uid, vaultKeyID: vaultKeyID, deviceId: deviceId)

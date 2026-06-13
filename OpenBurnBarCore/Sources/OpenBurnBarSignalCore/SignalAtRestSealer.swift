@@ -140,7 +140,7 @@ public enum OpenBurnBarSignalAtRest {
         let senderPrivateKey = try PrivateKey(senderIdentityPrivateKey)
         let senderPublicKeyB64 = senderPrivateKey.publicKey.serialize().base64EncodedString()
 
-        let contentKey = CloudVaultCrypto.generateVaultKey()
+        let contentKey = try CloudVaultCrypto.generateVaultKey()
         let aad = try canonicalAAD(for: binding.aadBinding)
         let sealedPayload = try AES.GCM.seal(
             plaintext,

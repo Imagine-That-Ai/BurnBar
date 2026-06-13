@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { __testing__ } from "../callables/knowledgeMemory.js";
 
-const { PENSIEVE_LIMITS, KNOWLEDGE_VECTOR_DIM, MAX_CHUNK_BYTES, requireSourceKind, requireCloakedVector, slugify } =
-  __testing__;
+const {
+  PENSIEVE_LIMITS,
+  KNOWLEDGE_VECTOR_DIM,
+  MAX_CHUNK_BYTES,
+  requireSourceKind,
+  requireReviewStatus,
+  requireChatMemoryProvenance,
+  requireCloakedVector,
+  slugify,
+} = __testing__;
 
 describe("Pensieve tier limits", () => {
   it("matches the plan's Pro and Ultra caps", () => {
@@ -31,6 +39,37 @@ describe("requireSourceKind", () => {
   it("rejects unknown source kinds", () => {
     expect(() => requireSourceKind("secrets", "sourceKind")).toThrow(/must be one of/);
     expect(() => requireSourceKind(undefined, "sourceKind")).toThrow();
+  });
+});
+
+describe("chat memory provenance validators", () => {
+  const approved = {
+    schemaVersion: 1,
+    sourceKind: "chat_memory",
+    reviewStatus: "approved",
+    sourceSlugHmac: "aa".repeat(32),
+    sourceTranscriptHash: "bb".repeat(32),
+    extractorKind: "claude-cli",
+    extractorPromptHash: "cc".repeat(32),
+    extractorOutputHash: "dd".repeat(32),
+    extractorPromptVersion: "pensieve-chat-memory-v1",
+    createdAt: "2026-06-13T00:00:00.000Z",
+    approvedAt: "2026-06-13T00:01:00.000Z",
+  };
+
+  it("accepts explicit approved provenance", () => {
+    expect(requireReviewStatus("approved", "reviewStatus")).toBe("approved");
+    expect(requireChatMemoryProvenance(approved, "provenance", "approved")).toMatchObject({
+      sourceKind: "chat_memory",
+      reviewStatus: "approved",
+      sourceSlugHmac: approved.sourceSlugHmac,
+    });
+  });
+
+  it("rejects approved provenance without approvedAt", () => {
+    const missing = { ...approved };
+    delete (missing as { approvedAt?: string }).approvedAt;
+    expect(() => requireChatMemoryProvenance(missing, "provenance", "approved")).toThrow(/approvedAt/);
   });
 });
 

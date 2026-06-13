@@ -883,6 +883,62 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(stored, plaintext)
     }
 
+    func testGatewayOpenedAttachmentRejectsActiveContentBeforeWorkspaceImport() throws {
+        let threadID = "gateway-malicious-active-\(UUID().uuidString)"
+        let malicious = HermesGatewayOpenedAttachment(
+            attachmentId: "att-active",
+            fileName: "invoice.html",
+            byteCount: 38,
+            contentType: "text/html; charset=utf-8",
+            data: Data(#"<script>location='burnbar://owned'</script>"#.utf8)
+        )
+
+        XCTAssertThrowsError(try HermesAttachmentLoader.importGatewayOpenedAttachment(malicious, threadID: threadID)) { error in
+            guard case HermesAttachmentLoader.LoaderError.unsafeAttachment(let name, let reason) = error else {
+                return XCTFail("Expected unsafeAttachment, got \(error)")
+            }
+            XCTAssertEqual(name, "invoice.html")
+            XCTAssertEqual(reason, "active content is blocked")
+        }
+    }
+
+    func testGatewayOpenedAttachmentRejectsPathLikeFilenameBeforeWorkspaceImport() throws {
+        let threadID = "gateway-malicious-path-\(UUID().uuidString)"
+        let malicious = HermesGatewayOpenedAttachment(
+            attachmentId: "att-path",
+            fileName: "../Library/Keychains/login.keychain-db",
+            byteCount: 4,
+            contentType: "text/plain",
+            data: Data("data".utf8)
+        )
+
+        XCTAssertThrowsError(try HermesAttachmentLoader.importGatewayOpenedAttachment(malicious, threadID: threadID)) { error in
+            guard case HermesAttachmentLoader.LoaderError.unsafeAttachment(let name, let reason) = error else {
+                return XCTFail("Expected unsafeAttachment, got \(error)")
+            }
+            XCTAssertEqual(name, "../Library/Keychains/login.keychain-db")
+            XCTAssertEqual(reason, "invalid filename")
+        }
+    }
+
+    func testLocalAttachmentImportRejectsSvgActiveContent() throws {
+        let threadID = "local-malicious-svg-\(UUID().uuidString)"
+
+        XCTAssertThrowsError(
+            try HermesAttachmentLoader.importData(
+                Data(#"<svg><script>alert(1)</script></svg>"#.utf8),
+                displayName: "diagram.svg",
+                threadID: threadID
+            )
+        ) { error in
+            guard case HermesAttachmentLoader.LoaderError.unsafeAttachment(let name, let reason) = error else {
+                return XCTFail("Expected unsafeAttachment, got \(error)")
+            }
+            XCTAssertEqual(name, "diagram.svg")
+            XCTAssertEqual(reason, "active content is blocked")
+        }
+    }
+
     func testHermesGatewayClientRecordReadsAgentRelayPubkeyAndCanSeal() {
         let agentKey = HermesRelayCrypto.generatePrivateKey().publicKeyBase64
         let record = HermesGatewayClientRecord(
@@ -3651,6 +3707,14 @@ private final class MockHermesGatewayRepository: HermesGatewayRepository {
     func revokeHermesGatewayClient(clientId: String) async throws {
         revokedClientIds.append(clientId)
         clients.removeAll { $0.id == clientId }
+    }
+
+    func hermesGatewayAttachmentDownloadURL(
+        attachmentId: String,
+        clientId: String,
+        destinationId: String?
+    ) async throws -> URL {
+        URL(string: "https://example.invalid/hermes-gateway-attachment/\(attachmentId)")!
     }
 
     func enqueueHermesGatewayEvent(

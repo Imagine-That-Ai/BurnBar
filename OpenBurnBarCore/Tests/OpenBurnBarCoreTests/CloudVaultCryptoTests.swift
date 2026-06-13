@@ -4,6 +4,19 @@ import XCTest
 @testable import OpenBurnBarCore
 
 final class CloudVaultCryptoTests: XCTestCase {
+    func test_generateVaultKeyThrowsWhenSystemRandomFails() {
+        let original = CloudVaultCrypto.secureRandomCopyBytes
+        CloudVaultCrypto.secureRandomCopyBytes = { _, _, _ in errSecNotAvailable }
+        defer { CloudVaultCrypto.secureRandomCopyBytes = original }
+
+        XCTAssertThrowsError(try CloudVaultCrypto.generateVaultKey()) { error in
+            guard case CloudVaultCryptoError.keychainError(let status) = error else {
+                return XCTFail("Expected keychainError, got \(error)")
+            }
+            XCTAssertEqual(status, Int(errSecNotAvailable))
+        }
+    }
+
     func test_textAndBlobRoundTrip_decryptsOnlyWithVaultKey() throws {
         let key = Data(repeating: 0x42, count: 32)
         let otherKey = Data(repeating: 0x24, count: 32)

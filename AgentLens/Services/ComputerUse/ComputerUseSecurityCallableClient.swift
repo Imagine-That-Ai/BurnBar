@@ -609,7 +609,7 @@ enum ComputerUseSecurityCallableClient {
         let localIdentity = try environment.loadLocalIdentity()
         try await environment.publishLocalIdentity(localIdentity)
 
-        let nextKey = CloudVaultCrypto.generateVaultKey()
+        let nextKey = try CloudVaultCrypto.generateVaultKey()
         let nextVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: nextKey)
         let nextVaultGeneration = rotationRequirement.currentVaultGeneration + 1
         var survivorWrappers: [[String: Any]] = []

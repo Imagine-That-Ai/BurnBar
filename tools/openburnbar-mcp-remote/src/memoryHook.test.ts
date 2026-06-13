@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,8 @@ import {
   redactSecrets,
   parseExtractedMemories,
   prepareMemoriesForCommit,
+  approvePreparedMemoryBatch,
+  deleteQueuedMemoryBatch,
   runMemorySync,
   installMemoryHook,
   MIN_CONFIDENCE,
@@ -75,10 +77,19 @@ test("prepareMemoriesForCommit redacts, filters confidence, dedups, embeds+cloak
   const rotate = prepared[0];
   assert.equal(rotate.cloakedVector.length, 384);
   assert.equal(rotate.sourceKind, "chat_memory");
+  assert.equal(rotate.reviewStatus, "quarantined");
+  assert.equal(rotate.provenance.schemaVersion, 1);
+  assert.equal(rotate.provenance.sourceKind, "chat_memory");
+  assert.equal(rotate.provenance.sourceSlugHmac, rotate.slugHmac);
+  assert.match(rotate.provenance.sourceTranscriptHash, /^[a-f0-9]{64}$/);
+  assert.match(rotate.provenance.extractorPromptHash, /^[a-f0-9]{64}$/);
+  assert.match(rotate.provenance.extractorOutputHash, /^[a-f0-9]{64}$/);
   assert.equal(decryptSealedText(rotate.sealedCiphertext), "rotate the vault key monthly");
   const meta = JSON.parse(decryptSealedText(rotate.sealedMetadata) ?? "{}");
   assert.equal(meta.sourceKind, "chat_memory");
   assert.equal(meta.category, "gotcha");
+  assert.equal(meta.reviewStatus, "quarantined");
+  assert.equal(meta.provenance.sourceSlugHmac, rotate.slugHmac);
 
   // §3: every vector carries the VAULT-KEYED dedupHash + slugHmac (not a cleartext
   // SHA-256/path). dedupHash == HKDF/HMAC of the cleaned plaintext, and is reused
@@ -93,6 +104,22 @@ test("prepareMemoriesForCommit redacts, filters confidence, dedups, embeds+cloak
   // The secret memory's ciphertext must not contain the raw key.
   const secretPlain = decryptSealedText(prepared[1].sealedCiphertext) ?? "";
   assert.ok(!secretPlain.includes("sk-SHOULDNOTLEAK0000000000"));
+});
+
+test("approvePreparedMemoryBatch explicitly promotes quarantined memories", async () => {
+  const embedder = createDeterministicHashingEmbedder();
+  const prepared = await prepareMemoriesForCommit(
+    [{ title: "T", text: "durable memory", category: "fact", confidence: 0.9 }],
+    "chat-memory",
+    { embedder, vaultKey: KEY },
+  );
+  const batch = { sourceSlug: "chat-memory", embeddingModelVersion: embedder.modelVersion, vectors: prepared };
+
+  const approved = approvePreparedMemoryBatch(batch, "2026-06-13T00:00:00.000Z");
+
+  assert.equal(approved.vectors[0].reviewStatus, "approved");
+  assert.equal(approved.vectors[0].provenance.reviewStatus, "approved");
+  assert.equal(approved.vectors[0].provenance.approvedAt, "2026-06-13T00:00:00.000Z");
 });
 
 test("prepareMemoriesForCommit honours the isDuplicate predicate (namespace dedup)", async () => {
@@ -116,6 +143,9 @@ test("runMemorySync wires extractor -> prepare -> commit with injected IO", asyn
   assert.equal(batch.embeddingModelVersion, "hashing-bow-v1");
   assert.equal(captured.length, 1, "commit sink received the batch");
   assert.equal(decryptSealedText(batch.vectors[0].sealedCiphertext), "we chose Firestore vectors");
+  assert.equal(batch.vectors[0].reviewStatus, "quarantined");
+  assert.equal(batch.vectors[0].provenance.extractorKind, "claude-cli");
+  assert.match(batch.vectors[0].provenance.sourceTranscriptHash, /^[a-f0-9]{64}$/);
 });
 
 test("runMemorySync throws without a vault key and never commits", async () => {
@@ -152,4 +182,11 @@ test("installMemoryHook merges a SessionEnd hook idempotently", () => {
   } finally {
     rmSync(path, { force: true });
   }
+});
+
+test("deleteQueuedMemoryBatch removes a queued local quarantine file", () => {
+  const path = join(tmpdir(), `obb-memory-delete-${KEY.toString("hex").slice(0, 8)}.json`);
+  writeFileSync(path, JSON.stringify({ ok: true }));
+  assert.equal(deleteQueuedMemoryBatch(path), true);
+  assert.equal(deleteQueuedMemoryBatch(path), false);
 });

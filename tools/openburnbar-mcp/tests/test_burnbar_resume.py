@@ -594,6 +594,7 @@ def test_mcp_tool_wrappers_return_json(tmp_path, monkeypatch):
     conn.commit()
     monkeypatch.setenv("BURNBAR_DB_PATH", str(env.resolved_db_path))
     monkeypatch.setenv("HOME", str(env.resolved_home))
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", "true")
     server = _load_server()
 
     listed = json.loads(server.burnbar_list_resumable_conversations(limit=1))
