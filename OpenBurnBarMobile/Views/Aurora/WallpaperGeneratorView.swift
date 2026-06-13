@@ -543,7 +543,11 @@ struct WallpaperGeneratorView: View {
             }
         }
         .padding(14)
-        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        // Material, not glass: this panel sits OUTSIDE the bottom-controls
+        // LiquidGlassGroup yet is visually adjacent to it, so a glass surface
+        // here would be a co-visible glass-on-glass sibling — and glass cannot
+        // sample other glass. Same rounded-rect shape, material fill.
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     // MARK: - Provider Sidebar (iPad / macOS)
