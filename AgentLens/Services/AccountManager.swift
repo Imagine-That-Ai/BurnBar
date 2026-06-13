@@ -677,7 +677,7 @@ final class AccountManager {
     ) -> NSWindow {
         let presentationWindow = googleAuthPresentationWindowCandidate(
             from: window,
-            appWindows: appWindows ?? NSApp.windows
+            windows: appWindows ?? NSApp.windows
         )
         guard activate, presentationWindow.isVisible, !presentationWindow.isMiniaturized else {
             return presentationWindow
@@ -687,19 +687,33 @@ final class AccountManager {
         return presentationWindow
     }
 
-    private static func googleAuthPresentationWindowCandidate(
-        from window: NSWindow,
-        appWindows: [NSWindow]
-    ) -> NSWindow {
+    private static func googleAuthPresentationWindowCandidate(from window: NSWindow, windows: [NSWindow]) -> NSWindow {
+        googleAuthPresentationWindowCandidate(
+            from: window,
+            windows: windows,
+            sheetParent: { $0.sheetParent },
+            isVisible: { $0.isVisible },
+            isMiniaturized: { $0.isMiniaturized }
+        )
+    }
+
+    private static func googleAuthPresentationWindowCandidate<Window>(
+        from window: Window,
+        windows: [Window],
+        sheetParent: (Window) -> Window?,
+        isVisible: (Window) -> Bool,
+        isMiniaturized: (Window) -> Bool
+    ) -> Window {
         var candidate = window
-        while let parent = candidate.sheetParent {
+        while let parent = sheetParent(candidate) {
             candidate = parent
         }
-        if candidate.isVisible, !candidate.isMiniaturized {
+        if isVisible(candidate), !isMiniaturized(candidate) {
             return candidate
         }
-        let fallback = appWindows.first {
-            $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil
+        let fallback = windows.first {
+            guard isVisible($0), !isMiniaturized($0) else { return false }
+            return sheetParent($0) == nil
         }
         if let fallback {
             return fallback
@@ -1045,6 +1059,46 @@ final class AccountManager {
         appWindows: [NSWindow]? = nil
     ) -> NSWindow {
         googleAuthPresentationWindow(from: window, appWindows: appWindows, activate: false)
+    }
+
+    struct GoogleAuthPresentationWindowSnapshot: Equatable {
+        let id: String
+        let isVisible: Bool
+        let isMiniaturized: Bool
+        let sheetParentID: String?
+
+        init(
+            id: String,
+            isVisible: Bool,
+            isMiniaturized: Bool = false,
+            sheetParentID: String? = nil
+        ) {
+            self.id = id
+            self.isVisible = isVisible
+            self.isMiniaturized = isMiniaturized
+            self.sheetParentID = sheetParentID
+        }
+    }
+
+    static func googleAuthPresentationWindowCandidateForTesting(
+        from window: GoogleAuthPresentationWindowSnapshot,
+        appWindows: [GoogleAuthPresentationWindowSnapshot] = []
+    ) -> GoogleAuthPresentationWindowSnapshot {
+        var windowsByID: [String: GoogleAuthPresentationWindowSnapshot] = [:]
+        for candidate in [window] + appWindows {
+            windowsByID[candidate.id] = candidate
+        }
+
+        return googleAuthPresentationWindowCandidate(
+            from: window,
+            windows: appWindows,
+            sheetParent: { snapshot in
+                guard let sheetParentID = snapshot.sheetParentID else { return nil }
+                return windowsByID[sheetParentID]
+            },
+            isVisible: { $0.isVisible },
+            isMiniaturized: { $0.isMiniaturized }
+        )
     }
     #endif
 }
