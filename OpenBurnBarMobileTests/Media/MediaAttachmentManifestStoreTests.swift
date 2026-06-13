@@ -93,7 +93,7 @@ final class MediaAttachmentManifestStoreTests: XCTestCase {
         XCTAssertEqual(opened, "私的レポート.pdf")
     }
 
-    func test_direction_mapsPhonePerspective() {
+    func test_direction_mapsPhonePerspective() throws {
         XCTAssertEqual(MediaAttachmentManifestStore.direction(for: .sent), "iosToMac")
         XCTAssertEqual(MediaAttachmentManifestStore.direction(for: .received), "macToIos")
 
