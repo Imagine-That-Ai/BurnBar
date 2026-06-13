@@ -316,6 +316,11 @@ final class MediaSessionCoordinator: ObservableObject {
 
     private func startAdmissionMonitor() {
         admissionMonitorTask?.cancel()
+        // Tests use UInt64.max to disable the background monitor and drive
+        // admission rechecks manually without spawning a centuries-long sleep.
+        guard admissionRecheckIntervalNanoseconds < UInt64.max else {
+            return
+        }
         admissionMonitorTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
