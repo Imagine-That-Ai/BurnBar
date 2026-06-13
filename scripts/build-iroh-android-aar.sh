@@ -33,6 +33,7 @@ GENERATED_KT_DIR="${KOTLIN_PKG_DIR}/uniffi/openburnbar_iroh"
 BUILD_DIR="${ROOT_DIR}/build/iroh-aar"
 ARCHS_DIR="${BUILD_DIR}/jni"
 UNIFFI_HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-kotlin-helper"
+DETERMINISTIC_ZIP_TIME="${IROH_AAR_ZIP_TIME:-202401010000.00}"
 
 PROFILE="${IROH_BUILD_PROFILE:-release}"
 PROFILE_FLAG=""
@@ -279,7 +280,18 @@ find "${GENERATED_KT_DIR}" -name '*.kt' -type f | while IFS= read -r generated_f
   awk '
     /^@file:Suppress\(/ { next }
     /^[[:space:]]*@Suppress\(/ { next }
-    { print }
+    {
+      sub(/[[:space:]]+$/, "")
+      lines[++line_count] = $0
+    }
+    END {
+      while (line_count > 0 && lines[line_count] == "") {
+        line_count--
+      }
+      for (line = 1; line <= line_count; line++) {
+        print lines[line]
+      }
+    }
   ' "${generated_file}" > "${sanitized_file}"
   mv "${sanitized_file}" "${generated_file}"
 done
@@ -308,12 +320,20 @@ cat > "${AAR_STAGING}/AndroidManifest.xml" <<EOF
 EOF
 
 # Empty classes.jar — required by AGP even though the AAR only ships .so.
+# Build it with fixed metadata so CI can byte-compare a local rebuild against
+# the committed AAR instead of failing on zip timestamps.
 EMPTY_JAR_DIR="${BUILD_DIR}/empty-classes"
 rm -rf "${EMPTY_JAR_DIR}"
-mkdir -p "${EMPTY_JAR_DIR}"
+mkdir -p "${EMPTY_JAR_DIR}/META-INF"
+cat > "${EMPTY_JAR_DIR}/META-INF/MANIFEST.MF" <<'EOF'
+Manifest-Version: 1.0
+Created-By: OpenBurnBar
+
+EOF
+find "${EMPTY_JAR_DIR}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 (
   cd "${EMPTY_JAR_DIR}"
-  jar cf "${AAR_STAGING}/classes.jar" -C "${EMPTY_JAR_DIR}" .
+  COPYFILE_DISABLE=1 zip -X -q "${AAR_STAGING}/classes.jar" META-INF/MANIFEST.MF
 )
 
 # proguard.txt + R.txt (empty) — required by AGP.
@@ -322,9 +342,10 @@ mkdir -p "${EMPTY_JAR_DIR}"
 
 mkdir -p "${VENDOR_DIR}"
 rm -f "${AAR_PATH}"
+find "${AAR_STAGING}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 (
   cd "${AAR_STAGING}"
-  zip -rq "${AAR_PATH}" .
+  find . -type f | LC_ALL=C sort | COPYFILE_DISABLE=1 zip -X -q "${AAR_PATH}" -@
 )
 
 log "DONE: ${AAR_PATH}"
