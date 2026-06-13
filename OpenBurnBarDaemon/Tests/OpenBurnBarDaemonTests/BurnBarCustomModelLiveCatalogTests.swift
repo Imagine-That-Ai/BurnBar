@@ -126,7 +126,8 @@ final class BurnBarCustomModelLiveCatalogTests: XCTestCase {
             XCTFail("Expected an invalid-custom-model-id error.")
         } catch let error as BurnBarConfigStoreError {
             guard case .invalidCustomModelID = error else {
-                return XCTFail("Expected .invalidCustomModelID, got \(error).")
+                XCTFail("Expected .invalidCustomModelID, got \(error).")
+                return
             }
         }
     }
