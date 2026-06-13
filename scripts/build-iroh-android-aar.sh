@@ -279,9 +279,10 @@ find "${GENERATED_KT_DIR}" -name '*.kt' -type f | while IFS= read -r generated_f
   awk '
     /^@file:Suppress\(/ { next }
     /^[[:space:]]*@Suppress\(/ { next }
-    { print }
+    { sub(/[[:space:]]+$/, ""); print }
   ' "${generated_file}" > "${sanitized_file}"
   mv "${sanitized_file}" "${generated_file}"
+  perl -0pi -e 's/\n+\z/\n/' "${generated_file}"
 done
 
 # --- Assemble the AAR ----------------------------------------------------------
@@ -311,10 +312,10 @@ EOF
 EMPTY_JAR_DIR="${BUILD_DIR}/empty-classes"
 rm -rf "${EMPTY_JAR_DIR}"
 mkdir -p "${EMPTY_JAR_DIR}"
-(
-  cd "${EMPTY_JAR_DIR}"
-  jar cf "${AAR_STAGING}/classes.jar" -C "${EMPTY_JAR_DIR}" .
-)
+jar --create \
+  --file "${AAR_STAGING}/classes.jar" \
+  --date=2000-01-01T00:00:00+00:00 \
+  -C "${EMPTY_JAR_DIR}" .
 
 # proguard.txt + R.txt (empty) — required by AGP.
 : > "${AAR_STAGING}/proguard.txt"
@@ -322,9 +323,10 @@ mkdir -p "${EMPTY_JAR_DIR}"
 
 mkdir -p "${VENDOR_DIR}"
 rm -f "${AAR_PATH}"
+find "${AAR_STAGING}" -exec touch -t 200001010000 {} +
 (
   cd "${AAR_STAGING}"
-  zip -rq "${AAR_PATH}" .
+  zip -X -rq "${AAR_PATH}" .
 )
 
 log "DONE: ${AAR_PATH}"
