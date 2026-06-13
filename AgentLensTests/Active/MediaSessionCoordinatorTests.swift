@@ -1,5 +1,5 @@
-import XCTest
 import CoreMedia
+import XCTest
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 #endif
@@ -87,6 +87,9 @@ final class MediaSessionCoordinatorTests: XCTestCase {
                 }
                 return RecordingScreenCaptureSession()
             },
+            // Recording fake: virtualized CI Macs have no hardware HEVC encoder
+            // (VTCompressionSessionCreate -> -12908), and this test's subject
+            // is the rollback/retry state machine, not VideoToolbox.
             videoEncoderFactory: { _, _ in
                 let encoder = RecordingVideoEncoder()
                 encoders.append(encoder)
@@ -141,6 +144,16 @@ final class MediaSessionCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(coordinator.phase, .ended(reason: .budgetHardCap))
     }
+}
+
+@MainActor
+private final class StubVideoEncoder: VideoEncoding {
+    func start() throws {}
+    func encode(sampleBuffer: CMSampleBuffer) async throws {}
+    func setTargetBitsPerSecond(_ bps: Int) throws {}
+    func requestLongTermReferenceRefresh() {}
+    func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64) {}
+    func stop() {}
 }
 
 @MainActor

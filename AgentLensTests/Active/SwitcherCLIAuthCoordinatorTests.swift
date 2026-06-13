@@ -1909,55 +1909,73 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
     }
 
-    /// Visibility-stub window: on a headless CI runner `orderFront` does not
-    /// reliably flip `isVisible`, which made the old window-server-dependent
-    /// version of these tests flaky. The contract is pinned deterministically
-    /// instead, with the candidate window list injected.
-    private final class StubVisibilityWindow: NSWindow {
-        var visibleStub = false
-        override var isVisible: Bool { visibleStub }
-    }
+    private typealias GoogleAuthWindowSnapshot = AccountManager.GoogleAuthPresentationWindowSnapshot
 
-    private func makeStubWindow(visible: Bool) -> StubVisibilityWindow {
-        let window = StubVisibilityWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: true
+    private func googleAuthWindow(
+        _ id: String,
+        visible: Bool,
+        miniaturized: Bool = false,
+        sheetParentID: String? = nil
+    ) -> GoogleAuthWindowSnapshot {
+        GoogleAuthWindowSnapshot(
+            id: id,
+            isVisible: visible,
+            isMiniaturized: miniaturized,
+            sheetParentID: sheetParentID
         )
-        window.visibleStub = visible
-        return window
     }
 
     func test_googleAuthPresentationWindow_returnsVisibleWindow() {
-        let window = makeStubWindow(visible: true)
-        defer { window.close() }
+        let window = googleAuthWindow("current", visible: true)
 
-        let resolved = AccountManager.googleAuthPresentationWindowForTesting(from: window, appWindows: [])
+        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(from: window)
 
-        XCTAssertIdentical(resolved, window)
+        XCTAssertEqual(resolved, window)
     }
 
     func test_googleAuthPresentationWindow_fallsBackToVisibleAppWindow() {
-        let hidden = makeStubWindow(visible: false)
-        let visibleFallback = makeStubWindow(visible: true)
-        defer { hidden.close(); visibleFallback.close() }
+        let hidden = googleAuthWindow("current", visible: false)
+        let visibleFallback = googleAuthWindow("fallback", visible: true)
 
-        let resolved = AccountManager.googleAuthPresentationWindowForTesting(
+        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(
             from: hidden,
             appWindows: [visibleFallback]
         )
 
-        XCTAssertIdentical(resolved, visibleFallback)
+        XCTAssertEqual(resolved, visibleFallback)
     }
 
     func test_googleAuthPresentationWindow_returnsOriginalWhenNothingVisible() {
-        let hidden = makeStubWindow(visible: false)
-        defer { hidden.close() }
+        let hidden = googleAuthWindow("current", visible: false)
 
-        let resolved = AccountManager.googleAuthPresentationWindowForTesting(from: hidden, appWindows: [])
+        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(from: hidden)
 
-        XCTAssertIdentical(resolved, hidden)
+        XCTAssertEqual(resolved, hidden)
+    }
+
+    func test_googleAuthPresentationWindow_usesVisibleSheetParent() {
+        let parent = googleAuthWindow("parent", visible: true)
+        let sheet = googleAuthWindow("sheet", visible: true, sheetParentID: "parent")
+
+        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(
+            from: sheet,
+            appWindows: [parent]
+        )
+
+        XCTAssertEqual(resolved, parent)
+    }
+
+    func test_googleAuthPresentationWindow_skipsMiniaturizedFallback() {
+        let hidden = googleAuthWindow("current", visible: false)
+        let miniaturized = googleAuthWindow("miniaturized", visible: true, miniaturized: true)
+        let visibleFallback = googleAuthWindow("fallback", visible: true)
+
+        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(
+            from: hidden,
+            appWindows: [miniaturized, visibleFallback]
+        )
+
+        XCTAssertEqual(resolved, visibleFallback)
     }
 
     // MARK: - Shared auth keychain-recovery wrapper
