@@ -795,6 +795,148 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(disallowed.contains("NotebookEdit"))
         XCTAssertFalse(disallowed.contains("Bash"))
     }
+
+    func test_missionRuntimePlanner_parsesPresentationModeWithNativeDefault() {
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.presentationMode(from: ["presentationMode": "mac_visible_cli"]),
+            .macVisibleCLI
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.presentationMode(from: ["presentationMode": "  native_chat  "]),
+            .nativeChat
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.presentationMode(from: ["presentationMode": "nonsense"]),
+            .nativeChat
+        )
+        XCTAssertEqual(CLIAgentMissionRuntimePlanner.presentationMode(from: [:]), .nativeChat)
+    }
+
+    func test_missionRuntimePlanner_buildsDirectLaunchPlansForAdditionalAgentRuntimes() throws {
+        let baseData: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Developer/OpenBurnBar",
+            "depth": "deep",
+            "approvalMode": "risky_only",
+            "commandsAllowed": true,
+            "fileEditsAllowed": false,
+            "requestedModelID": "sage"
+        ]
+
+        let droidCommandPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Droid mission",
+            prompt: "Inspect the workspace.",
+            backend: CLIAgentMissionBackend(chatBackend: .droid),
+            data: baseData
+        ))
+        XCTAssertEqual(droidCommandPlan.executableName, "droid")
+        XCTAssertTrue(droidCommandPlan.arguments.contains("exec"))
+        XCTAssertTrue(droidCommandPlan.arguments.contains("--model"))
+        XCTAssertTrue(droidCommandPlan.arguments.contains("sage"))
+        XCTAssertTrue(droidCommandPlan.arguments.contains("--auto"))
+        XCTAssertTrue(droidCommandPlan.arguments.contains("medium"))
+
+        var editOnlyData = baseData
+        editOnlyData["commandsAllowed"] = false
+        editOnlyData["fileEditsAllowed"] = true
+        let droidEditPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Droid edit mission",
+            prompt: "Prepare edits without shell execution.",
+            backend: CLIAgentMissionBackend(chatBackend: .droid),
+            data: editOnlyData
+        ))
+        XCTAssertTrue(droidEditPlan.arguments.contains("low"))
+        XCTAssertTrue(droidEditPlan.arguments.contains("--disabled-tools"))
+        XCTAssertTrue(droidEditPlan.arguments.contains("execute-cli"))
+
+        let forgePlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Forge mission",
+            prompt: "Use the selected Forge agent.",
+            backend: CLIAgentMissionBackend(chatBackend: .forge),
+            data: baseData
+        ))
+        XCTAssertEqual(forgePlan.executableName, "forge")
+        XCTAssertEqual(Array(forgePlan.arguments.prefix(2)), ["--agent", "sage"])
+        XCTAssertTrue(forgePlan.arguments.contains("--prompt"))
+
+        let antigravityPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Antigravity mission",
+            prompt: "Run with AGY.",
+            backend: CLIAgentMissionBackend(chatBackend: .antigravity),
+            data: baseData
+        ))
+        XCTAssertEqual(antigravityPlan.executableName, "agy")
+        XCTAssertFalse(antigravityPlan.arguments.isEmpty)
+
+        let cursorPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Cursor mission",
+            prompt: "Run with Cursor Agent.",
+            backend: CLIAgentMissionBackend(chatBackend: .cursorAgent),
+            data: baseData
+        ))
+        XCTAssertEqual(cursorPlan.executableName, "cursor-agent")
+        XCTAssertFalse(cursorPlan.arguments.isEmpty)
+    }
+
+    func test_missionRuntimePlanner_buildsVisibleTerminalPlansForGrantBackedRuntimes() throws {
+        let data: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Documents/Windsurf/BurnBar",
+            "clientThreadID": "visible-thread-1",
+            "commandsAllowed": true,
+            "fileEditsAllowed": true,
+            "requestedModelID": "frontier-model"
+        ]
+
+        let expectedExecutables: [(ChatBackendID, String)] = [
+            (.codex, "codex"),
+            (.claude, "claude"),
+            (.droid, "droid"),
+            (.forge, "forge"),
+            (.antigravity, "agy"),
+            (.cursorAgent, "cursor-agent")
+        ]
+
+        for (backendID, executable) in expectedExecutables {
+            let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+                title: "Visible terminal mission",
+                prompt: "Run visibly with scoped permissions.",
+                backend: CLIAgentMissionBackend(chatBackend: backendID),
+                data: data
+            ))
+            XCTAssertEqual(plan.executableName, executable)
+            XCTAssertFalse(plan.arguments.isEmpty, "\(backendID.rawValue) should receive launch arguments")
+            XCTAssertEqual(plan.extraEnvironment, [:])
+        }
+    }
+
+    func test_missionRuntimePlanner_returnsNilForUnsupportedDirectAndVisibleRuntimes() {
+        let custom = CLIAgentMissionBackend(rawValue: "unknown-runtime", displayName: "Unknown")
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Unsupported",
+            prompt: "No launch plan",
+            backend: custom,
+            data: [:]
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Unsupported",
+            prompt: "No launch plan",
+            backend: custom,
+            data: [:]
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Codex native chat",
+            prompt: "Codex should route through visible terminal for CLI mode.",
+            backend: CLIAgentMissionBackend(chatBackend: .codex),
+            data: [:]
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Claude native chat",
+            prompt: "Claude should route through visible terminal for CLI mode.",
+            backend: CLIAgentMissionBackend(chatBackend: .claude),
+            data: [:]
+        ))
+    }
 }
 
 private struct DecodedMissionEventPayload: Decodable {
