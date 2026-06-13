@@ -265,7 +265,7 @@ private struct PulseHeroBurnCardContent: View {
                     .blendMode(.plusLighter)
                     .allowsHitTesting(false)
 
-                ProviderAuroraAvatar(provider: topProvider, size: 56)
+                ProviderAuroraAvatar(provider: topProvider, size: 56, glassInCard: true)
                     .motionParallax(intensity: 8)
             }
             .padding(MobileTheme.Spacing.md)

@@ -260,48 +260,55 @@ struct InlineAgentMirrorView: View {
     /// default so it does not cover the terminal prompt; tapping it opens the
     /// special keys upward.
     private var terminalControlBar: some View {
-        VStack(alignment: .trailing, spacing: 8) {
-            if terminalControlsExpanded {
-                VStack(alignment: .trailing, spacing: 6) {
-                    HStack(spacing: 6) {
-                        terminalKeyButton(systemImage: isTyping ? "keyboard.chevron.compact.down" : "keyboard") {
-                            isTyping.toggle()
+        // The expanded special-keys panel (.liquidGlassSurface) and the
+        // toggle chip (.liquidGlassInteractive) are co-visible siblings, so on
+        // iOS 26 they must share one GlassEffectContainer — glass cannot
+        // sample other glass. LiquidGlassGroup passes content through unchanged
+        // pre-26.
+        LiquidGlassGroup(spacing: 8) {
+            VStack(alignment: .trailing, spacing: 8) {
+                if terminalControlsExpanded {
+                    VStack(alignment: .trailing, spacing: 6) {
+                        HStack(spacing: 6) {
+                            terminalKeyButton(systemImage: isTyping ? "keyboard.chevron.compact.down" : "keyboard") {
+                                isTyping.toggle()
+                            }
+                            terminalKeyButton(label: "esc") { controller.sendKey("escape") }
+                            terminalKeyButton(label: "tab") { controller.sendKey("tab") }
+                            terminalKeyButton(label: "⌃C") { controller.sendKey("c", modifiers: ["control"]) }
                         }
-                        terminalKeyButton(label: "esc") { controller.sendKey("escape") }
-                        terminalKeyButton(label: "tab") { controller.sendKey("tab") }
-                        terminalKeyButton(label: "⌃C") { controller.sendKey("c", modifiers: ["control"]) }
+                        HStack(spacing: 6) {
+                            terminalKeyButton(systemImage: "arrow.up") { controller.sendKey("up") }
+                            terminalKeyButton(systemImage: "arrow.down") { controller.sendKey("down") }
+                            terminalKeyButton(systemImage: "arrow.left") { controller.sendKey("left") }
+                            terminalKeyButton(systemImage: "arrow.right") { controller.sendKey("right") }
+                            terminalKeyButton(systemImage: "return") { controller.sendKey("return") }
+                        }
                     }
-                    HStack(spacing: 6) {
-                        terminalKeyButton(systemImage: "arrow.up") { controller.sendKey("up") }
-                        terminalKeyButton(systemImage: "arrow.down") { controller.sendKey("down") }
-                        terminalKeyButton(systemImage: "arrow.left") { controller.sendKey("left") }
-                        terminalKeyButton(systemImage: "arrow.right") { controller.sendKey("right") }
-                        terminalKeyButton(systemImage: "return") { controller.sendKey("return") }
-                    }
+                    .padding(8)
+                    .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5)
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .padding(8)
-                .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5)
-                )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
 
-            Button {
-                withAnimation(MobileTheme.Animation.snappy) {
-                    terminalControlsExpanded.toggle()
+                Button {
+                    withAnimation(MobileTheme.Animation.snappy) {
+                        terminalControlsExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: terminalControlsExpanded ? "chevron.down" : "ellipsis")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .frame(width: 44, height: 36)
+                        .liquidGlassInteractive(in: Capsule())
+                        .overlay(Capsule().strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5))
                 }
-            } label: {
-                Image(systemName: terminalControlsExpanded ? "chevron.down" : "ellipsis")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    .frame(width: 44, height: 36)
-                    .liquidGlassInteractive(in: Capsule())
-                    .overlay(Capsule().strokeBorder(MobileTheme.Colors.border.opacity(0.35), lineWidth: 0.5))
+                .buttonStyle(.plain)
+                .accessibilityLabel(terminalControlsExpanded ? "Hide Terminal Controls" : "Show Terminal Controls")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(terminalControlsExpanded ? "Hide Terminal Controls" : "Show Terminal Controls")
         }
     }
 
