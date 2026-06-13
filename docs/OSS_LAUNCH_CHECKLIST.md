@@ -24,6 +24,23 @@ Re-check every item immediately before changing repository visibility.
 - Branch deletions: disabled
 - SECURITY policy recognized by GitHub: yes
 
+## CI posture update on 2026-06-13
+
+- Daily PR merges are gated by fast checks: `Fast Feedback Gate`,
+  `Confidentiality Guard / guard`, `BurnBar AGPL product posture`, and the
+  PR security jobs from `security-pr.yml`.
+- The full macOS/iOS/Android/retrieval harness is no longer a PR merge
+  blocker. It runs on `push` to `main`, on a nightly schedule, and by manual
+  dispatch as `.github/workflows/openburnbar-pr-harness.yml`.
+- `nightly-e2e.yml` remains the nightly launch-confidence lane and opens or
+  closes a deduplicated failure issue through `.github/actions/ops-failure-issue`.
+- `cursor-nightly-ci-repair.yml` is the cloud repair loop: after nightly
+  confidence lanes run, Cursor CLI can patch code-owned failures and open a
+  repair PR when `CURSOR_API_KEY` is configured in GitHub Actions secrets.
+- After this change lands on `main`, branch protection should remove
+  `openburnbar-pr` from the required PR checks and require the fast merge
+  checks verified by `bash scripts/ops/verify-github-governance.sh`.
+
 ## Local release-prep verification on 2026-04-13 (branch `release/oss-prep-2026-04-13`)
 
 - `./scripts/test-openburnbar-swift.sh` passed
@@ -55,7 +72,12 @@ Re-check every item immediately before changing repository visibility.
 - [x] `SECURITY.md` — private vulnerability reporting path, security best practices
 
 ### CI/CD workflows (.github/workflows/)
-- [x] `openburnbar-pr-harness.yml` — PR validation: Swift tests, app tests, retrieval evals, TS tests, replay evals, extension-host tests
+- [x] `fast-feedback.yml` — PR validation: fast lint, types, schema drift,
+  non-Swift tests, security vitest, Rust deny, and the aggregate
+  `Fast Feedback Gate`
+- [x] `openburnbar-pr-harness.yml` — full-confidence validation on `main`,
+  nightly, and manual dispatch: Swift tests, app tests, retrieval evals, TS
+  tests, replay evals, extension-host tests, and targeted E2E proofs
 - [x] `release.yml` — tagged source release: verifies the source tree and creates a draft source-only GitHub Release
 
 ### Dependency management
