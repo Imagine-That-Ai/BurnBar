@@ -90,7 +90,7 @@ final class MacFileTransferService: ObservableObject {
 
     private let service: MediaFileTransferService
     private let settingsProvider: @MainActor () -> Bool
-    private let controlStreamRegistry: MediaControlStreamRegistry?
+    private let controlStreams: MediaControlStreamRegistry?
     /// RR-18 — authoritative media admission gate (entitlement + daily cap +
     /// kill switch + concurrency). Inbound file receive and outbound send both
     /// consult it for `.fileTransfer` exactly as `MediaSessionCoordinator` does
@@ -122,14 +122,14 @@ final class MacFileTransferService: ObservableObject {
     init(
         service: MediaFileTransferService,
         settingsProvider: @escaping @MainActor () -> Bool,
-        controlStreamRegistry: MediaControlStreamRegistry? = nil,
+        controlStreams: MediaControlStreamRegistry? = nil,
         capabilityGate: any MediaCapabilityGate = AlwaysAllowMediaCapabilityGate(),
         frameSealKeyProvider: @escaping @MainActor (_ uid: String, _ connectionID: String) -> SymmetricKey? = { _, _ in nil },
         advertiseTimeout: TimeInterval = 6.0
     ) {
         self.service = service
         self.settingsProvider = settingsProvider
-        self.controlStreamRegistry = controlStreamRegistry
+        self.controlStreams = controlStreams
         self.capabilityGate = capabilityGate
         self.frameSealKeyProvider = frameSealKeyProvider
         self.advertiseTimeout = advertiseTimeout
@@ -239,7 +239,7 @@ final class MacFileTransferService: ObservableObject {
             try await advertiseSenderOverride(frame)
             return
         }
-        guard let registry = controlStreamRegistry else {
+        guard let registry = controlStreams else {
             lastError = .dispatchUnavailable
             throw Failure.dispatchUnavailable
         }
@@ -261,7 +261,7 @@ final class MacFileTransferService: ObservableObject {
         uid: String,
         connectionID: String
     ) async {
-        guard let registry = controlStreamRegistry else {
+        guard let registry = controlStreams else {
             // Misconfigured — no registry to register with. Close
             // defensively so we don't leak the stream.
             await stream.close()
@@ -432,12 +432,13 @@ final class MacFileTransferService: ObservableObject {
             lastError = .fetchFailed(reason ?? "")
         }
 
-        try? await ackSender(Self.makeAckFrame(
+        await sendAck(
             for: manifest,
             frame: frame,
             status: status,
-            reason: reason
-        ))
+            reason: reason,
+            ackSender: ackSender
+        )
     }
 
     /// Emit a `.rejected` ack without touching the blob backend — used when the
@@ -451,12 +452,32 @@ final class MacFileTransferService: ObservableObject {
         ackSender: AdvertiseSender
     ) async {
         lastError = .fetchFailed(reason)
-        try? await ackSender(Self.makeAckFrame(
+        await sendAck(
             for: manifest,
             frame: frame,
             status: .rejected,
-            reason: reason
-        ))
+            reason: reason,
+            ackSender: ackSender
+        )
+    }
+
+    private func sendAck(
+        for manifest: HermesRealtimeRelayAttachmentManifest,
+        frame: HermesRealtimeRelayFrame,
+        status: HermesRealtimeRelayMediaAck.Status,
+        reason: String?,
+        ackSender: AdvertiseSender
+    ) async {
+        do {
+            try await ackSender(Self.makeAckFrame(
+                for: manifest,
+                frame: frame,
+                status: status,
+                reason: reason
+            ))
+        } catch {
+            Self.log.error("media_blob_ack_send_failed error=\(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private static func makeAckFrame(

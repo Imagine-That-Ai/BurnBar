@@ -91,7 +91,7 @@ final class HermesRelayHostService {
                         settingsProvider: { @MainActor [settingsManager] in
                             settingsManager.mediaBlobTransferEnabled
                         },
-                        controlStreamRegistry: controlRegistry,
+                        controlStreams: controlRegistry,
                         // RR-18 — admit inbound transfers through the same
                         // authoritative media gate (entitlement + daily cap +
                         // kill switch + concurrency) that screen-share / video

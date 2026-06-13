@@ -86,13 +86,29 @@ final class MediaBudgetStatusStore {
     }
 
     private func persistLastKnownStatus(_ status: MediaBudgetStatus) {
-        guard let encoded = try? JSONEncoder().encode(status) else { return }
-        defaults.set(encoded, forKey: Self.lastKnownStatusDefaultsKey)
+        do {
+            let encoded = try JSONEncoder().encode(status)
+            defaults.set(encoded, forKey: Self.lastKnownStatusDefaultsKey)
+        } catch {
+            AppLogger.sync.error(
+                "media_budget_status_persist_failed",
+                metadata: ["error": error.localizedDescription]
+            )
+        }
     }
 
     private static func loadPersistedLastKnownStatus(from defaults: UserDefaults) -> MediaBudgetStatus? {
         guard let data = defaults.data(forKey: lastKnownStatusDefaultsKey) else { return nil }
-        return try? JSONDecoder().decode(MediaBudgetStatus.self, from: data)
+        do {
+            return try JSONDecoder().decode(MediaBudgetStatus.self, from: data)
+        } catch {
+            AppLogger.sync.error(
+                "media_budget_status_load_failed",
+                metadata: ["error": error.localizedDescription]
+            )
+            defaults.removeObject(forKey: lastKnownStatusDefaultsKey)
+            return nil
+        }
     }
 
     private func handleListenerError(_ error: Error) {
