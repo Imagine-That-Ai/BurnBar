@@ -106,4 +106,5 @@ type SchemaParityAssertions = [
   AssertSignalEnvelopeParity,
 ];
 
-void (null as unknown as SchemaParityAssertions);
+const schemaParityAssertionCount: SchemaParityAssertions["length"] = 16;
+void schemaParityAssertionCount;

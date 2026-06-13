@@ -41,7 +41,7 @@ const { firestoreMock, writes, FakeTimestamp } = vi.hoisted(() => {
         return this;
       },
       async get() {
-        return { docs: [] as unknown[] };
+        return { docs: [] };
       },
     }),
     doc: (path: string) => docRef(path),

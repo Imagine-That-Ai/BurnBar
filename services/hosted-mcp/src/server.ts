@@ -73,7 +73,25 @@ function parseTokenRequest(raw: string, contentType: string | undefined): {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new HttpError(400, "Token request body must be an object.", "invalid_request");
   }
-  return pick(parsed as Record<string, unknown>);
+  return pick(Object.fromEntries(Object.entries(parsed)));
+}
+
+function refreshFirestore(db: HostedMcpFirestore): RefreshFirestore {
+  return {
+    doc: (documentPath) => db.doc(documentPath),
+    collection(collectionPath) {
+      const collection = db.collection(collectionPath);
+      return {
+        where(field, op, value) {
+          const where = Reflect.get(collection, "where");
+          if (typeof where !== "function") {
+            throw new HttpError(500, "Firestore grant collection does not support where().", "server_misconfigured");
+          }
+          return Reflect.apply(where, collection, [field, op, value]);
+        },
+      };
+    },
+  };
 }
 
 function validateOrigin(req: IncomingMessage): void {
@@ -130,7 +148,7 @@ async function route(req: IncomingMessage, res: ServerResponse, overrides: Serve
     }
     validateOrigin(req);
     const fields = parseTokenRequest(await readRawBody(req), req.headers["content-type"]);
-    const tokenResponse = await handleRefreshTokenGrant(resolveDb() as unknown as RefreshFirestore, fields);
+    const tokenResponse = await handleRefreshTokenGrant(refreshFirestore(resolveDb()), fields);
     sendJson(res, 200, tokenResponse, { "cache-control": "no-store", pragma: "no-cache" });
     return;
   }
@@ -160,7 +178,7 @@ async function route(req: IncomingMessage, res: ServerResponse, overrides: Serve
   const db = resolveDb();
   const body = await readBody(req);
   const response = await handleMcpRequest(db, claims, body, { download: overrides.download });
-  void writeAuditEvent(db as unknown as import("firebase-admin/firestore").Firestore, claims, {
+  void writeAuditEvent(db, claims, {
     kind: "mcp_request",
     toolName: requestToolName(body),
     latencyMs: Date.now() - started,

@@ -19,6 +19,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { MCP_RESOURCE } from "./config.js";
 import { mintEd25519Token, type AccessTokenClaims } from "./auth.js";
+import type { HostedMcpFirestore, McpCollectionRef, McpDocRef, McpTransaction } from "./firestoreTypes.js";
 import { cosineSimilarity, KNOWLEDGE_VECTOR_DIM } from "./knowledgeVector.js";
 import type { StorageBodyDownloader } from "./resources.js";
 
@@ -34,7 +35,12 @@ interface StoredDoc {
 
 /** Deep-ish clone so reads never alias the stored object the caller might mutate. */
 function clone<T>(value: T): T {
-  return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
+  return structuredClone(value);
+}
+
+function recordFrom(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {return {};}
+  return Object.fromEntries(Object.entries(value));
 }
 
 /** Resolve `FieldValue.vector(...)`/array query vectors to a plain number[]. */
@@ -56,12 +62,12 @@ function toVector(raw: unknown): number[] {
  * Dependency-free in-memory Firestore. Satisfies the HostedMcpFirestore surface
  * AND the knowledge vector-search surface, threaded into createServer({ db }).
  */
-export interface InMemoryFirestore {
-  doc(path: string): unknown;
-  collection(path: string): unknown;
+export interface InMemoryFirestore extends HostedMcpFirestore {
+  doc(path: string): McpDocRef;
+  collection(path: string): McpCollectionRef;
   /** Presence is what isFullFirestore() checks so tools/call accepts this db. */
   collectionGroup(path: string): unknown;
-  runTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
+  runTransaction<T>(fn: (tx: McpTransaction) => Promise<T>): Promise<T>;
   /** test/debug only: raw access to seeded docs (used by the at-rest assertion). */
   __docs(): StoredDoc[];
 }
@@ -82,7 +88,7 @@ export function createInMemoryFirestore(seed: StoredDoc[] = []): InMemoryFiresto
         };
       },
       async set(value: unknown, options?: { merge?: boolean }) {
-        const next = (value ?? {}) as Record<string, unknown>;
+        const next = recordFrom(value);
         if (options?.merge) {docs.set(path, { ...(docs.get(path) ?? {}), ...next });}
         else {docs.set(path, { ...next });}
         return undefined;
@@ -115,7 +121,7 @@ export function createInMemoryFirestore(seed: StoredDoc[] = []): InMemoryFiresto
         }) {
           const qv = toVector(queryVector);
           const ranked = filtered
-            .map((row) => ({ row, sim: cosineSimilarity(qv, (row.data.embedding as number[]) ?? []) }))
+            .map((row) => ({ row, sim: cosineSimilarity(qv, toVector(row.data.embedding)) }))
             .sort((a, b) => b.sim - a.sim)
             .slice(0, limit);
           return {
@@ -170,7 +176,7 @@ export function createInMemoryFirestore(seed: StoredDoc[] = []): InMemoryFiresto
     collectionGroup() {
       throw new Error("collectionGroup is not used by the hosted MCP request path");
     },
-    async runTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+    async runTransaction<T>(fn: (tx: McpTransaction) => Promise<T>): Promise<T> {
       const tx = {
         async get(ref: { get(): Promise<{ get(field: string): unknown }> }) {
           return ref.get();

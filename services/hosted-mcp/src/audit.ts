@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { Timestamp, type Firestore } from "firebase-admin/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import type { AccessTokenClaims } from "./auth.js";
+import type { RemoteMcpClientFirestore } from "./firestoreTypes.js";
 
 function hash(value: string | undefined): string | undefined {
   if (!value) {return undefined;}
@@ -8,7 +9,7 @@ function hash(value: string | undefined): string | undefined {
 }
 
 export async function writeAuditEvent(
-  db: Firestore,
+  db: RemoteMcpClientFirestore,
   claims: AccessTokenClaims,
   fields: {
     kind: string;
