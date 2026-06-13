@@ -214,12 +214,12 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
                 rotatingDeviceId: "mac-1",
                 environment: environment
             )
-        }) { error in
+        }, { error in
             XCTAssertEqual(
                 (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
                 "Cloud Vault key rotation was not queued."
             )
-        }
+        })
     }
 
     func testRevocationCloudVaultRotationMarksQueuedJobFailedWhenLocalRewrapFails() async throws {
@@ -241,11 +241,11 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
                 rotatingDeviceId: "mac-1",
                 environment: environment
             )
-        }) { error in
+        }, { error in
             let message = (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription ?? ""
             XCTAssertTrue(message.contains("Cloud Vault rotation job job-1 was queued"))
             XCTAssertTrue(message.contains("local rewrap failed"))
-        }
+        })
         XCTAssertEqual(capture.markedFailedJobId, "job-1")
         XCTAssertEqual(capture.markedFailureMessage, "local rewrap failed")
     }
