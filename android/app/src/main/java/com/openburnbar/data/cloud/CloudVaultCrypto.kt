@@ -132,6 +132,22 @@ data class CloudVaultSignalBinding(
             )
 }
 
+/**
+ * Sender authentication for an at-rest Signal envelope — the Android mirror of Swift
+ * `CloudVaultSignalSenderAuth` (OpenBurnBarCore/.../CloudVaultCrypto.swift:303). The writing
+ * device signs the envelope (binding + ciphertext + recipient wraps) with its identity PRIVATE
+ * key; a reader verifies the signature against the sender's PINNED public key from the
+ * trusted-device set (NOT the wire `senderIdentityKeyB64`). Because the server holds only PUBLIC
+ * identity keys it cannot forge a valid signature, which closes the at-rest forgery hole (a
+ * libsignal `seal` to the recipient alone has no sender auth).
+ */
+data class CloudVaultSignalSenderAuth(
+    val senderIdentityKeyId: String,
+    val senderIdentityKeyB64: String,
+    val signatureB64: String,
+    val signatureVersion: Int = CloudVaultCrypto.SIGNAL_AT_REST_SENDER_AUTH_VERSION,
+)
+
 data class CloudVaultSignalEnvelope(
     val signalEnvelopeFormatVersion: Int = CloudVaultCrypto.SIGNAL_ENVELOPE_FORMAT_VERSION,
     val mode: String = CloudVaultCrypto.SIGNAL_AT_REST_MODE,
@@ -139,7 +155,27 @@ data class CloudVaultSignalEnvelope(
     val ciphertextLayer: CloudVaultSignalCiphertextLayer,
     val keyDelivery: CloudVaultSignalAtRestKeyDelivery,
     val binding: CloudVaultSignalBinding,
+    // Optional on the wire (legacy envelopes predate it), but REQUIRED for a reader to accept an
+    // at-rest envelope — `openSignalPayload` rejects an envelope without verified sender auth and
+    // the caller falls back to the (non-forgeable) legacy sealedPayload.
+    val senderAuth: CloudVaultSignalSenderAuth? = null,
 )
+
+/**
+ * At-rest Signal sender-authentication failures — the Android mirror of Swift
+ * `OpenBurnBarSignalCoreError` (the sender-auth cases). Thrown fail-closed by
+ * `CloudVaultCrypto.openSignalPayload`; `SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback`
+ * classifies each so a forged/stripped sender block (or a relocated binding) never downgrades to
+ * the unauthenticated legacy `sealedPayload`.
+ */
+sealed class CloudVaultSignalSenderAuthException(message: String) : IllegalStateException(message) {
+    class SenderAuthMissing : CloudVaultSignalSenderAuthException("The at-rest Signal envelope has no sender authentication block.")
+
+    class SenderNotTrusted(val senderIdentityKeyId: String) :
+        CloudVaultSignalSenderAuthException("The at-rest Signal envelope sender $senderIdentityKeyId is not a trusted device.")
+
+    class SenderSignatureInvalid : CloudVaultSignalSenderAuthException("The at-rest Signal envelope sender signature failed verification.")
+}
 
 data class CloudVaultSignalRecipient(
     val recipientKind: String,
@@ -154,6 +190,11 @@ data class CloudVaultDocumentRewrapResult(
     val changed: Boolean get() = changedFields.isNotEmpty()
 }
 
+// Single cohesive CloudVault crypto facade kept whole on purpose: every sealer/opener here shares
+// the byte-parity constants + AAD/Signal helpers with the Swift `CloudVaultCrypto`, and splitting it
+// would scatter that parity seam. The RR-7a sender-auth + RR-5 wrap/generate additions edge it over
+// the size rule; the grouping is load-bearing, so suppress rather than fragment.
+@Suppress("LargeClass")
 object CloudVaultCrypto {
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_TAG_BYTES = 16
@@ -175,6 +216,14 @@ object CloudVaultCrypto {
     const val SIGNAL_AT_REST_CONTENT_KEY_LENGTH: Int = 32
     const val SIGNAL_PAYLOAD_SCHEMA_VERSION: Int = 1
     const val SIGNAL_MAX_RECIPIENT_WRAPS: Int = 32
+
+    // At-rest sender-authentication construction — byte-parity with Swift
+    // `CloudVaultCrypto.signalAtRestSenderAuthVersion` / `...Domain`. Bump only on a breaking change.
+    const val SIGNAL_AT_REST_SENDER_AUTH_VERSION: Int = 1
+    const val SIGNAL_AT_REST_SENDER_AUTH_DOMAIN: String = "OpenBurnBar-Signal-AtRest-SenderAuth-v1"
+    // HPKE `info` prefix the signed message embeds — byte-parity with Swift
+    // `OpenBurnBarSignalAtRest.atRestInfoPrefix` and `CloudVaultCryptoSupport.atRestSeal`.
+    const val SIGNAL_AT_REST_INFO_PREFIX: String = "OpenBurnBar-Signal-AtRest-v1|"
     const val aadContextPrefix: String = "OpenBurnBar-CloudVault-aad-v2"
     const val legacyAADContextPrefix: String = "OpenBurnBar-CloudVault-aad-v1"
     const val currentSealedTextSchemaVersion: Int = 2
@@ -348,8 +397,13 @@ object CloudVaultCrypto {
         plaintext: ByteArray,
         recipients: List<CloudVaultSignalRecipient>,
         binding: CloudVaultSignalBinding,
+        senderIdentityKeyId: String,
+        senderIdentityPrivateKey: ByteArray,
+        senderIdentityPublicKey: ByteArray,
     ): CloudVaultSignalEnvelope {
         validateSignalRecipients(recipients)
+        val senderPrivateKey = CloudVaultCryptoSupport.decodeSignalPrivateKey(senderIdentityPrivateKey)
+        val senderPublicKeyB64 = CloudVaultCryptoSupport.encodeBase64(senderIdentityPublicKey)
         val contentKey = ByteArray(SIGNAL_AT_REST_CONTENT_KEY_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
         val canonicalAAD = CloudVaultCryptoSupport.bindingToAAD(binding.aadBinding)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
@@ -357,6 +411,7 @@ object CloudVaultCrypto {
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(contentKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
         cipher.updateAAD(canonicalAAD.toByteArray(Charsets.UTF_8))
         val payloadCiphertext = nonce + cipher.doFinal(plaintext)
+        val payloadCiphertextB64 = CloudVaultCryptoSupport.encodeBase64(payloadCiphertext)
         val wraps =
             recipients.map { recipient ->
                 val sealedContentKey = CloudVaultCryptoSupport.atRestSeal(contentKey, recipient.publicKeyData, binding.aadBinding)
@@ -367,16 +422,73 @@ object CloudVaultCrypto {
                     sealedContentKeyB64 = CloudVaultCryptoSupport.encodeBase64(sealedContentKey),
                 )
             }
+        // Sender authentication: sign the envelope (binding via HPKE info + ciphertext + wraps)
+        // with the writing device's identity private key. A malicious server holds only public
+        // keys and cannot forge this signature.
+        val signedMessage =
+            senderAuthSignedMessage(
+                info = "$SIGNAL_AT_REST_INFO_PREFIX$canonicalAAD",
+                payloadCiphertextB64 = payloadCiphertextB64,
+                wraps = wraps,
+            )
+        val signature = senderPrivateKey.calculateSignature(signedMessage)
         return CloudVaultSignalEnvelope(
             ciphertextLayer =
                 CloudVaultSignalCiphertextLayer(
-                    payloadCiphertextB64 = CloudVaultCryptoSupport.encodeBase64(payloadCiphertext),
+                    payloadCiphertextB64 = payloadCiphertextB64,
                     payloadAADLabel = signalPayloadAadLabel(canonicalAAD),
                     schemaVersion = SIGNAL_PAYLOAD_SCHEMA_VERSION,
                 ),
             keyDelivery = CloudVaultSignalAtRestKeyDelivery(wraps = wraps),
             binding = binding,
+            senderAuth =
+                CloudVaultSignalSenderAuth(
+                    senderIdentityKeyId = senderIdentityKeyId,
+                    senderIdentityKeyB64 = senderPublicKeyB64,
+                    signatureB64 = CloudVaultCryptoSupport.encodeBase64(signature),
+                ),
         )
+    }
+
+    /**
+     * Canonical bytes the sender signs and the reader verifies. Deterministic and byte-identical
+     * across platforms (byte-parity with Swift `OpenBurnBarSignalAtRest.senderAuthSignedMessage`):
+     * domain separator, then the HPKE `info` (which embeds the path binding → relocation guard),
+     * then the ciphertext, then the recipient wraps so neither the content nor the recipient set
+     * can be tampered without breaking the signature.
+     *
+     * Framing is LENGTH-PREFIXED (4-byte big-endian length per field), not delimiter-joined, so no
+     * field value can inject a separator. Every string is NFC-normalized (matching `bindingToAAD`)
+     * and wraps are ordered by the raw UTF-8 BYTES of the normalized `recipientIdentityKeyId` (not
+     * Kotlin's locale/Unicode `String.<`), so the bytes are identical to the Swift side even for
+     * non-ASCII device ids.
+     */
+    fun senderAuthSignedMessage(
+        info: String,
+        payloadCiphertextB64: String,
+        wraps: List<CloudVaultSignalAtRestWrap>,
+    ): ByteArray {
+        fun normalizedBytes(value: String): ByteArray =
+            java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFC).toByteArray(Charsets.UTF_8)
+        val out = java.io.ByteArrayOutputStream()
+        fun frame(value: String) {
+            val bytes = normalizedBytes(value)
+            out.write(uint32BigEndian(bytes.size))
+            out.write(bytes)
+        }
+        frame(SIGNAL_AT_REST_SENDER_AUTH_DOMAIN)
+        frame(info)
+        frame(payloadCiphertextB64)
+        val sorted =
+            wraps.sortedWith { lhs, rhs ->
+                compareByteArraysLexicographically(normalizedBytes(lhs.recipientIdentityKeyId), normalizedBytes(rhs.recipientIdentityKeyId))
+            }
+        out.write(uint32BigEndian(sorted.size))
+        for (wrap in sorted) {
+            frame(wrap.recipientIdentityKeyId)
+            frame(wrap.sealedContentKeyB64)
+        }
+        return out.toByteArray()
     }
 
     fun openSignalPayload(
@@ -384,6 +496,7 @@ object CloudVaultCrypto {
         recipientIdentityKeyId: String,
         recipientIdentityPrivateKey: ByteArray,
         expectedBinding: CloudVaultSignalBinding,
+        trustedSenderPublicKeys: Map<String, ByteArray>,
     ): ByteArray {
         require(envelope.signalEnvelopeFormatVersion == SIGNAL_ENVELOPE_FORMAT_VERSION) { "Invalid Signal envelope version" }
         require(envelope.mode == SIGNAL_AT_REST_MODE) { "Invalid Signal envelope mode" }
@@ -392,11 +505,15 @@ object CloudVaultCrypto {
         require(envelope.keyDelivery.contentKeyLength == SIGNAL_AT_REST_CONTENT_KEY_LENGTH) { "Invalid Signal content-key length" }
         require(envelope.ciphertextLayer.schemaVersion == SIGNAL_PAYLOAD_SCHEMA_VERSION) { "Invalid Signal payload schema" }
         require(envelope.binding == expectedBinding) { "Signal envelope binding mismatch" }
+        val canonicalAAD = CloudVaultCryptoSupport.bindingToAAD(expectedBinding.aadBinding)
+        // Sender authentication (fail-closed): the envelope MUST carry a sender-auth block whose
+        // sender is pinned-trusted and whose signature verifies — so a server-forged envelope
+        // (the server holds only public keys) is rejected and the caller falls back to legacy.
+        verifySenderAuth(envelope, canonicalAAD, trustedSenderPublicKeys)
         val wrap =
             envelope.keyDelivery.wraps.firstOrNull { it.recipientIdentityKeyId == recipientIdentityKeyId }
                 ?: error("Missing Signal recipient wrap")
         val sealedContentKey = CloudVaultCryptoSupport.decodeBase64(wrap.sealedContentKeyB64)
-        val canonicalAAD = CloudVaultCryptoSupport.bindingToAAD(expectedBinding.aadBinding)
         val contentKey = CloudVaultCryptoSupport.atRestOpen(sealedContentKey, recipientIdentityPrivateKey, expectedBinding.aadBinding)
         require(contentKey.size == SIGNAL_AT_REST_CONTENT_KEY_LENGTH) { "Invalid Signal content key" }
         val payload = CloudVaultCryptoSupport.decodeBase64(envelope.ciphertextLayer.payloadCiphertextB64)
@@ -406,6 +523,35 @@ object CloudVaultCrypto {
             payload.copyOfRange(GCM_NONCE_BYTES, payload.size),
             canonicalAAD.toByteArray(Charsets.UTF_8),
         )
+    }
+
+    /**
+     * Verify the at-rest envelope's sender-auth block fail-closed: present, pinned-trusted, and a
+     * valid signature over the domain-separated binding+ciphertext+wraps. Throws a
+     * [CloudVaultSignalSenderAuthException] (classified by [SignalAtRestFallbackPolicy]) on any failure.
+     */
+    @Suppress("ThrowsCount") // each fail-closed branch throws a DISTINCT classified exception the fallback policy needs.
+    private fun verifySenderAuth(
+        envelope: CloudVaultSignalEnvelope,
+        canonicalAAD: String,
+        trustedSenderPublicKeys: Map<String, ByteArray>,
+    ) {
+        val senderAuth = envelope.senderAuth ?: throw CloudVaultSignalSenderAuthException.SenderAuthMissing()
+        val pinnedSenderKey =
+            trustedSenderPublicKeys[senderAuth.senderIdentityKeyId]
+                ?: throw CloudVaultSignalSenderAuthException.SenderNotTrusted(senderAuth.senderIdentityKeyId)
+        val signedMessage =
+            senderAuthSignedMessage(
+                info = "$SIGNAL_AT_REST_INFO_PREFIX$canonicalAAD",
+                payloadCiphertextB64 = envelope.ciphertextLayer.payloadCiphertextB64,
+                wraps = envelope.keyDelivery.wraps,
+            )
+        val signatureValid =
+            runCatching {
+                val signatureBytes = CloudVaultCryptoSupport.decodeBase64(senderAuth.signatureB64)
+                CloudVaultCryptoSupport.decodeSignalPublicKey(pinnedSenderKey).verifySignature(signedMessage, signatureBytes)
+            }.getOrDefault(false)
+        if (!signatureValid) throw CloudVaultSignalSenderAuthException.SenderSignatureInvalid()
     }
 
     fun openPayload(envelope: CloudVaultSealedPayload, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): ByteArray {
@@ -598,7 +744,20 @@ object CloudVaultCrypto {
                     "mode" to envelope.binding.mode,
                     "formatVersion" to envelope.binding.formatVersion,
                 ),
-        )
+        ).let { base ->
+            // Key order is map-insensitive on the wire; the senderAuth keys mirror the Swift
+            // Codable property names so a Swift reader decodes the Android-sealed block.
+            envelope.senderAuth?.let { senderAuth ->
+                base +
+                    ("senderAuth" to
+                        mapOf(
+                            "senderIdentityKeyId" to senderAuth.senderIdentityKeyId,
+                            "senderIdentityKeyB64" to senderAuth.senderIdentityKeyB64,
+                            "signatureB64" to senderAuth.signatureB64,
+                            "signatureVersion" to senderAuth.signatureVersion,
+                        ))
+            } ?: base
+        }
 
     fun signalEnvelopeFromMap(raw: Map<*, *>?): CloudVaultSignalEnvelope? {
         val parts = signalEnvelopeParts(raw) ?: return null
@@ -613,6 +772,17 @@ object CloudVaultCrypto {
             ciphertextLayer = ciphertextLayer,
             keyDelivery = keyDelivery,
             binding = binding,
+            senderAuth = signalSenderAuth(raw?.get("senderAuth") as? Map<*, *>),
+        )
+    }
+
+    private fun signalSenderAuth(raw: Map<*, *>?): CloudVaultSignalSenderAuth? {
+        if (raw == null) return null
+        return CloudVaultSignalSenderAuth(
+            senderIdentityKeyId = signalString(raw, "senderIdentityKeyId") ?: return null,
+            senderIdentityKeyB64 = signalString(raw, "senderIdentityKeyB64") ?: return null,
+            signatureB64 = signalString(raw, "signatureB64") ?: return null,
+            signatureVersion = signalInt(raw, "signatureVersion") ?: SIGNAL_AT_REST_SENDER_AUTH_VERSION,
         )
     }
 
@@ -787,6 +957,37 @@ object CloudVaultCrypto {
         return plaintext
     }
 
+    /** Fresh 32-byte vault key — the Android mirror of Swift `CloudVaultCrypto.generateVaultKey()`. */
+    fun generateVaultKey(): ByteArray = ByteArray(SHA256_DIGEST_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
+
+    /**
+     * Wrap a 32-byte vault key to a recipient's P-256 escrow public key — the exact inverse of
+     * [unwrapVaultKey] and the Android mirror of Swift `CloudVaultCrypto.wrapVaultKey`. Output is the
+     * ephemeral public key (X9.63, 65 bytes) followed by the AES-GCM combined box (nonce ‖ ct ‖ tag),
+     * byte-compatible so any platform's [unwrapVaultKey] opens it. Used by the RR-5 revocation
+     * rotation chain to wrap the next vault key to each surviving trusted device.
+     */
+    fun wrapVaultKey(keyData: ByteArray, recipientPublicKey: ByteArray): ByteArray {
+        require(keyData.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
+        val generator = KeyPairGenerator.getInstance("EC")
+        generator.initialize(ECGenParameterSpec("secp256r1"))
+        val ephemeral = generator.generateKeyPair()
+        val recipientKey =
+            CloudVaultCryptoSupport.publicKeyFromX963(recipientPublicKey, (ephemeral.public as ECPublicKey).params)
+        val sharedSecret =
+            KeyAgreement.getInstance("ECDH").run {
+                init(ephemeral.private)
+                doPhase(recipientKey, true)
+                generateSecret()
+            }
+        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(sharedSecret, ByteArray(0), WRAP_INFO.toByteArray(), SHA256_DIGEST_BYTES)
+        val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        val combined = nonce + cipher.doFinal(keyData)
+        return publicKeyX963(ephemeral.public) + combined
+    }
+
     fun publicKeyX963(publicKey: PublicKey): ByteArray {
         val ec =
             publicKey as? ECPublicKey
@@ -812,6 +1013,25 @@ object CloudVaultCrypto {
 
     private fun signalPayloadAadLabel(canonicalAAD: String): String =
         "bindingToAAD-sha256:${sha256Hex(canonicalAAD.toByteArray(Charsets.UTF_8)).take(32)}"
+
+    /** 4-byte big-endian length prefix, matching the Swift `UInt32(...).bigEndian` framing. */
+    private fun uint32BigEndian(value: Int): ByteArray =
+        byteArrayOf(
+            (value ushr 24 and BYTE_MASK).toByte(),
+            (value ushr 16 and BYTE_MASK).toByte(),
+            (value ushr 8 and BYTE_MASK).toByte(),
+            (value and BYTE_MASK).toByte(),
+        )
+
+    /** Unsigned byte-wise lexicographic compare, matching Swift's `lexicographicallyPrecedes` on UTF-8. */
+    private fun compareByteArraysLexicographically(lhs: ByteArray, rhs: ByteArray): Int {
+        val min = minOf(lhs.size, rhs.size)
+        for (index in 0 until min) {
+            val diff = (lhs[index].toInt() and BYTE_MASK) - (rhs[index].toInt() and BYTE_MASK)
+            if (diff != 0) return diff
+        }
+        return lhs.size - rhs.size
+    }
 }
 
 class AndroidCloudVaultDeviceKeypair private constructor(
@@ -954,6 +1174,13 @@ object AndroidCloudVaultKeyAccess {
             .putString("vault_key_$uid", CloudVaultCryptoSupport.encodeBase64(AndroidLocalSecretBox.encrypt(key)))
             .apply()
     }
+
+    /**
+     * RR-5 — persist the rotated vault key locally after a successful `rotateCloudVaultKey`, the
+     * Android mirror of Swift `CloudVaultKeyStore().saveKey`. So the next read resolves the new key
+     * directly instead of unwrapping the survivor wrapper again.
+     */
+    fun saveKey(uid: String, key: ByteArray) = saveLocalKey(uid, key)
 }
 
 internal object AndroidLocalSecretBox {

@@ -39,6 +39,18 @@ class PhoneControlSender(
      * the authority envelope, so attaching post-sign is signature-safe.
      */
     private val attestationDigestProvider: suspend () -> String? = { null },
+    /**
+     * RR-7c — ENFORCING attestation gate for the control-action send path, the Android analogue of
+     * iOS `PhoneControlSender.ensureAttestationIfRequired()`. When the (default-off) strict ramp is
+     * on it returns the bound App Check digest (or throws [AttestationRequiredException] when none
+     * can be produced) so Android STOPS being structurally attach-only — a digest-less control
+     * envelope is never emitted under strict mode and the Mac validator's `requirePresent` gate has
+     * something to enforce. The default no-op returns `null`, so when the ramp is off every emitted
+     * byte is identical to the pre-RR-7c behavior (the best-effort [attestationDigestProvider] still
+     * attaches a digest opportunistically). Wired in production to
+     * `AndroidAppCheckAttestationReader.ensureAttestationDigestOrThrow()`.
+     */
+    private val attestationEnforcer: suspend () -> String? = { null },
     private val frameSink: suspend (HermesRealtimeRelayFrame) -> Unit,
 ) {
     sealed class SendError(message: String) : RuntimeException(message) {
@@ -48,6 +60,19 @@ class PhoneControlSender(
     private suspend fun PhoneControlAuthorityEnvelope.withAttestationDigest(): PhoneControlAuthorityEnvelope {
         val digest = attestationDigestProvider()?.takeIf { it.isNotBlank() } ?: return this
         return copy(attestationHashBlake3 = digest)
+    }
+
+    /**
+     * RR-7c — fail-closed attestation gate run BEFORE a control action is signed. When strict mode
+     * is on this binds + returns the App Check digest (or throws [AttestationRequiredException]); the
+     * returned digest is attached to the authority envelope so the strict-mode wire shape always
+     * carries an enforceable digest. When the ramp is off it returns `null` and the caller's
+     * best-effort [withAttestationDigest] keeps the pre-RR-7c behavior. Propagates
+     * [AttestationRequiredException] so the send never emits a digest-less envelope under strict mode.
+     */
+    private suspend fun PhoneControlAuthorityEnvelope.withEnforcedAttestation(): PhoneControlAuthorityEnvelope {
+        val enforced = attestationEnforcer()?.takeIf { it.isNotBlank() } ?: return withAttestationDigest()
+        return copy(attestationHashBlake3 = enforced)
     }
 
     suspend fun send(intent: PhoneControlIntent): PhoneControlAuthorityEnvelope {
@@ -67,7 +92,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            ).withAttestationDigest()
+            ).withEnforcedAttestation()
         val relayAuthority = authority.toRelayAuthority()
         val frame =
             HermesRealtimeRelayFrame(
@@ -104,7 +129,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            ).withAttestationDigest()
+            ).withEnforcedAttestation()
         val signedGrant =
             if (agentGrant.localAuthenticationSatisfied) {
                 agentGrant.copy(
@@ -155,7 +180,7 @@ class PhoneControlSender(
                 counter = counter,
                 timestampMillis = timestampMillis,
                 identity = identity,
-            ).withAttestationDigest()
+            ).withEnforcedAttestation()
         val signedWire = responseWithRequestHash.copy(authority = authority.toRelayAuthority())
         val frame =
             HermesRealtimeRelayFrame(

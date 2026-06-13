@@ -52,7 +52,9 @@ class AndroidCloudVaultSignalPayloadsTest {
 
             val envelope = requireNotNull(map)
             val data = mapOf<String, Any?>("signalEnvelope" to envelope)
-            // Both the local device and the trusted peer can open it.
+            // The author (local device) is the sender; the peer pins it as a trusted sender.
+            val trustedSenders = mapOf(local.identityKeyId to local.publicKeyData)
+            // The local (self-authored) device verifies its own sender signature with no extra set.
             assertArrayEquals(
                 plaintext,
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
@@ -63,6 +65,7 @@ class AndroidCloudVaultSignalPayloadsTest {
                     localIdentity = local,
                 ),
             )
+            // The trusted peer can open it too once it pins the author as a trusted sender.
             assertArrayEquals(
                 plaintext,
                 AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
@@ -71,8 +74,20 @@ class AndroidCloudVaultSignalPayloadsTest {
                     collection = "mobile_assistant_chats",
                     docId = "thread-1",
                     localIdentity = peer,
+                    trustedSenderPublicKeys = trustedSenders,
                 ),
             )
+            // RR-7a: the same peer WITHOUT the author pinned rejects the envelope fail-closed
+            // (an unrecognized sender) rather than accepting a potentially forged envelope.
+            assertThrows(CloudVaultSignalSenderAuthException.SenderNotTrusted::class.java) {
+                AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                    data,
+                    uid = "user-1",
+                    collection = "mobile_assistant_chats",
+                    docId = "thread-1",
+                    localIdentity = peer,
+                )
+            }
         } finally {
             AndroidCloudVaultSignalPayloads.signalSealingOverrideProvider = null
         }

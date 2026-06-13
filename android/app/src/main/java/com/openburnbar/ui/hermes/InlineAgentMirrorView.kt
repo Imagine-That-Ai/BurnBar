@@ -280,7 +280,10 @@ private fun InlineMirrorAckCollector(
             if (ack.decision == HermesRealtimeRelayMirrorAck.Decision.ACCEPTED) {
                 callbacks.onMirrorSessionIDChange(ack.sessionId)
                 runCatching {
-                    callbacks.onPhoneControlSenderChange(inlineMirrorPhoneControlSender(context, coordinator))
+                    val sender = inlineMirrorPhoneControlSender(context, coordinator)
+                    callbacks.onPhoneControlSenderChange(sender)
+                    // RR-7b: publish the live sender so the Agent Watch surface can sign + transmit approvals.
+                    com.openburnbar.BurnBarApplication.activePhoneControlSender = sender
                 }.onFailure { e ->
                     Log.e("InlineMirror", "Failed to setup phone control sender: ${e.message}", e)
                 }
@@ -308,6 +311,8 @@ private fun inlineMirrorPhoneControlSender(
         attestationDigestProvider = {
             AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope()
         },
+        // RR-7c: fail-closed attestation gate under the strict ramp (mirror iOS).
+        attestationEnforcer = { AndroidAppCheckAttestationReader.ensureAttestationDigestOrThrow() },
         frameSink = sealSession
             ?.let { ControlSealSessionEstablisher.sealingFrameSink(baseSink, it) }
             ?: baseSink,
