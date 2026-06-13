@@ -313,6 +313,7 @@ impl PairingTicket {
         if self.is_expired(now) {
             return Err(AuthorizationError::PairingExpired);
         }
+        let max_session_ttl_micros = u64::try_from(max_session_ttl.as_micros()).unwrap_or(u64::MAX);
         Ok(AuthorizedDeviceRecord {
             device_id: self.device_id,
             endpoint_id: self.endpoint_id,
@@ -322,7 +323,7 @@ impl PairingTicket {
             allowed_modes: self.allowed_modes,
             permissions: self.permissions,
             local_consent_required,
-            max_session_ttl_micros: max_session_ttl.as_micros().min(u64::MAX as u128) as u64,
+            max_session_ttl_micros,
         })
     }
 }
@@ -1131,6 +1132,27 @@ mod tests {
     use super::*;
     use burnbar_remote_core::Permission;
 
+    fn must<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("{context}: {error}"),
+        }
+    }
+
+    fn must_err<T, E>(result: Result<T, E>, context: &str) -> E {
+        match result {
+            Ok(_) => panic!("{context}: expected error"),
+            Err(error) => error,
+        }
+    }
+
+    fn must_some<T>(option: Option<T>, context: &str) -> T {
+        match option {
+            Some(value) => value,
+            None => panic!("{context}"),
+        }
+    }
+
     fn record() -> AuthorizedDeviceRecord {
         AuthorizedDeviceRecord {
             device_id: DeviceId::new("client"),
@@ -1151,9 +1173,9 @@ mod tests {
     #[tokio::test]
     async fn consent_is_not_optional() {
         let auth = InMemorySessionAuthorizer::default();
-        auth.upsert_device(record()).unwrap();
-        let err = auth
-            .authorize_peer(PeerAuthorizationRequest {
+        must(auth.upsert_device(record()), "device should insert");
+        let err = must_err(
+            auth.authorize_peer(PeerAuthorizationRequest {
                 remote_endpoint_id: EndpointId::new("endpoint"),
                 requested_device_id: DeviceId::new("client"),
                 requested_account_id: AccountId::new("account"),
@@ -1163,8 +1185,9 @@ mod tests {
                 local_consent_granted: false,
                 now: TimestampMicros(1),
             })
-            .await
-            .unwrap_err();
+            .await,
+            "authorization without consent should fail",
+        );
         assert_eq!(err, AuthorizationError::MissingLocalConsent);
     }
 
@@ -1172,7 +1195,10 @@ mod tests {
     fn replay_window_rejects_old_sequences() {
         let mut window = AntiReplayWindow::default();
         let session_id = SessionId::new("s");
-        window.check_and_advance(session_id.clone(), 10).unwrap();
+        must(
+            window.check_and_advance(session_id.clone(), 10),
+            "first sequence should advance",
+        );
         assert!(matches!(
             window.check_and_advance(session_id, 10),
             Err(AuthorizationError::ReplayDetected { .. })
@@ -1192,23 +1218,25 @@ mod tests {
             allowed_modes: vec![SessionMode::ViewOnly],
             permissions: PermissionSet::from_iter([Permission::ViewScreen]),
         };
-        let err = ticket
-            .into_authorized_record(TimestampMicros(21), true, Duration::from_secs(60))
-            .unwrap_err();
+        let err = must_err(
+            ticket.into_authorized_record(TimestampMicros(21), true, Duration::from_secs(60)),
+            "expired ticket should fail",
+        );
         assert_eq!(err, AuthorizationError::PairingExpired);
     }
 
     #[tokio::test]
     async fn secure_key_store_round_trips_and_deletes() {
         let store = InMemorySecureKeyStore::default();
-        store.write_key("device", b"secret").await.unwrap();
-        assert_eq!(
-            store.read_key("device").await.unwrap().as_slice(),
-            b"secret"
+        must(
+            store.write_key("device", b"secret").await,
+            "key should write",
         );
-        store.delete_key("device").await.unwrap();
+        let key = must(store.read_key("device").await, "key should read");
+        assert_eq!(key.as_slice(), b"secret");
+        must(store.delete_key("device").await, "key should delete");
         assert_eq!(
-            store.read_key("device").await.unwrap_err(),
+            must_err(store.read_key("device").await, "deleted key should fail"),
             AuthorizationError::KeyUnavailable
         );
     }
@@ -1217,19 +1245,22 @@ mod tests {
     fn rate_limiter_enforces_window() {
         let mut limiter = RateLimiter::new(2, Duration::from_millis(10));
         let session = SessionId::new("s");
-        limiter
-            .check(&session, "input", TimestampMicros(1))
-            .unwrap();
-        limiter
-            .check(&session, "input", TimestampMicros(2))
-            .unwrap();
+        must(
+            limiter.check(&session, "input", TimestampMicros(1)),
+            "first event should pass rate limit",
+        );
+        must(
+            limiter.check(&session, "input", TimestampMicros(2)),
+            "second event should pass rate limit",
+        );
         assert!(matches!(
             limiter.check(&session, "input", TimestampMicros(3)),
             Err(AuthorizationError::RateLimited { .. })
         ));
-        limiter
-            .check(&session, "input", TimestampMicros(20_000))
-            .unwrap();
+        must(
+            limiter.check(&session, "input", TimestampMicros(20_000)),
+            "later event should pass after window",
+        );
     }
 
     #[test]
@@ -1249,27 +1280,29 @@ mod tests {
     #[tokio::test]
     async fn audit_sink_appends_events() {
         let sink = InMemoryAuditSink::default();
-        sink.append(AuditEvent {
-            kind: AuditEventKind::SessionAuthorized,
-            account_id: AccountId::new("account"),
-            workspace_id: WorkspaceId::new("workspace"),
-            session_id: Some(SessionId::new("session")),
-            device_id: Some(DeviceId::new("device")),
-            endpoint_id: Some(EndpointId::new("endpoint")),
-            at: TimestampMicros(1),
-            detail: "ok".into(),
-        })
-        .await
-        .unwrap();
-        assert_eq!(sink.snapshot().unwrap().len(), 1);
+        must(
+            sink.append(AuditEvent {
+                kind: AuditEventKind::SessionAuthorized,
+                account_id: AccountId::new("account"),
+                workspace_id: WorkspaceId::new("workspace"),
+                session_id: Some(SessionId::new("session")),
+                device_id: Some(DeviceId::new("device")),
+                endpoint_id: Some(EndpointId::new("endpoint")),
+                at: TimestampMicros(1),
+                detail: "ok".into(),
+            })
+            .await,
+            "audit event should append",
+        );
+        assert_eq!(must(sink.snapshot(), "audit snapshot should read").len(), 1);
     }
 
     #[tokio::test]
     async fn control_policy_gate_blocks_clipboard_without_confirmation() {
         let auth = InMemorySessionAuthorizer::default();
-        auth.upsert_device(record()).unwrap();
-        let grant = auth
-            .authorize_peer(PeerAuthorizationRequest {
+        must(auth.upsert_device(record()), "device should insert");
+        let grant = must(
+            auth.authorize_peer(PeerAuthorizationRequest {
                 remote_endpoint_id: EndpointId::new("endpoint"),
                 requested_device_id: DeviceId::new("client"),
                 requested_account_id: AccountId::new("account"),
@@ -1279,14 +1312,15 @@ mod tests {
                 local_consent_granted: true,
                 now: TimestampMicros(1),
             })
-            .await
-            .unwrap();
+            .await,
+            "authorization should grant",
+        );
         let mut gate = ControlPolicyGate::new(
             RateLimiter::new(10, Duration::from_secs(1)),
             HighRiskPolicy::default(),
         );
-        let err = gate
-            .authorize(
+        let err = must_err(
+            gate.authorize(
                 &auth,
                 ControlAuthorizationRequest {
                     grant,
@@ -1299,17 +1333,18 @@ mod tests {
                 },
                 false,
             )
-            .await
-            .unwrap_err();
+            .await,
+            "clipboard without confirmation should fail",
+        );
         assert_eq!(err, AuthorizationError::HighRiskActionRequiresConfirmation);
     }
 
     #[tokio::test]
     async fn kill_switch_blocks_control_gate() {
         let auth = InMemorySessionAuthorizer::default();
-        auth.upsert_device(record()).unwrap();
-        let grant = auth
-            .authorize_peer(PeerAuthorizationRequest {
+        must(auth.upsert_device(record()), "device should insert");
+        let grant = must(
+            auth.authorize_peer(PeerAuthorizationRequest {
                 remote_endpoint_id: EndpointId::new("endpoint"),
                 requested_device_id: DeviceId::new("client"),
                 requested_account_id: AccountId::new("account"),
@@ -1319,15 +1354,16 @@ mod tests {
                 local_consent_granted: true,
                 now: TimestampMicros(1),
             })
-            .await
-            .unwrap();
+            .await,
+            "authorization should grant",
+        );
         let mut gate = ControlPolicyGate::new(
             RateLimiter::new(10, Duration::from_secs(1)),
             HighRiskPolicy::default(),
         );
         gate.kill_switch().activate();
-        let err = gate
-            .authorize(
+        let err = must_err(
+            gate.authorize(
                 &auth,
                 ControlAuthorizationRequest {
                     grant,
@@ -1340,8 +1376,9 @@ mod tests {
                 },
                 true,
             )
-            .await
-            .unwrap_err();
+            .await,
+            "kill switch should block control",
+        );
         assert_eq!(err, AuthorizationError::KillSwitchActive);
     }
 
@@ -1364,7 +1401,10 @@ mod tests {
             handshake_nonce: [1u8; 16],
             signed_policy_hash: "policy".into(),
         };
-        let payload = grant_signing_payload(&grant).unwrap();
+        let payload = must(
+            grant_signing_payload(&grant),
+            "grant signing payload should encode",
+        );
         assert!(payload.starts_with(SESSION_GRANT_SIGNING_CONTEXT));
         assert_eq!(payload[SESSION_GRANT_SIGNING_CONTEXT.len()], 0);
     }
@@ -1388,22 +1428,32 @@ mod tests {
             handshake_nonce: [1u8; 16],
             signed_policy_hash: "policy".into(),
         };
-        let signed = SignedSessionGrant::sign(grant, "test-key", [7u8; 32]).unwrap();
-        signed.verify_untrusted_signature_only().unwrap();
+        let signed = must(
+            SignedSessionGrant::sign(grant, "test-key", [7u8; 32]),
+            "session grant should sign",
+        );
+        must(
+            signed.verify_untrusted_signature_only(),
+            "session grant signature should verify",
+        );
 
         let mut tampered = signed.clone();
         tampered.grant.signed_policy_hash = "other-policy".into();
         assert_eq!(
-            tampered.verify_untrusted_signature_only().unwrap_err(),
+            must_err(
+                tampered.verify_untrusted_signature_only(),
+                "tampered policy hash should fail verification",
+            ),
             AuthorizationError::SignatureVerificationFailed
         );
 
         let mut tampered_nonce = signed.clone();
         tampered_nonce.grant.handshake_nonce = [2u8; 16];
         assert_eq!(
-            tampered_nonce
-                .verify_untrusted_signature_only()
-                .unwrap_err(),
+            must_err(
+                tampered_nonce.verify_untrusted_signature_only(),
+                "tampered nonce should fail verification",
+            ),
             AuthorizationError::SignatureVerificationFailed
         );
     }
@@ -1427,10 +1477,16 @@ mod tests {
             handshake_nonce: [1u8; 16],
             signed_policy_hash: "policy".into(),
         };
-        let signed = SignedSessionGrant::sign(grant, "attacker", [9u8; 32]).unwrap();
+        let signed = must(
+            SignedSessionGrant::sign(grant, "attacker", [9u8; 32]),
+            "attacker grant should sign",
+        );
         let store = InMemoryTrustedSignerStore::default();
         assert_eq!(
-            store.verify_session_grant(&signed).unwrap_err(),
+            must_err(
+                store.verify_session_grant(&signed),
+                "self-signed grant should be untrusted",
+            ),
             AuthorizationError::UntrustedSigner
         );
     }
@@ -1455,21 +1511,34 @@ mod tests {
             handshake_nonce: [1u8; 16],
             signed_policy_hash: "policy".into(),
         };
-        let signed = signer.sign_session_grant(grant).unwrap();
+        let signed = must(
+            signer.sign_session_grant(grant),
+            "trusted signer should sign grant",
+        );
         let store = InMemoryTrustedSignerStore::default();
-        store
-            .upsert_signer(TrustedSignerRecord {
+        must(
+            store.upsert_signer(TrustedSignerRecord {
                 signer_key_id: signer.signer_key_id().to_string(),
                 public_key: signer.public_key(),
                 account_id: AccountId::new("account"),
                 workspace_id: WorkspaceId::new("workspace"),
                 revoked: false,
-            })
-            .unwrap();
-        store.verify_session_grant(&signed).unwrap();
-        store.revoke_signer("host-signer").unwrap();
+            }),
+            "trusted signer should insert",
+        );
+        must(
+            store.verify_session_grant(&signed),
+            "trusted signer should verify grant",
+        );
+        must(
+            store.revoke_signer("host-signer"),
+            "trusted signer should revoke",
+        );
         assert_eq!(
-            store.verify_session_grant(&signed).unwrap_err(),
+            must_err(
+                store.verify_session_grant(&signed),
+                "revoked signer should fail verification",
+            ),
             AuthorizationError::RevokedSigner
         );
     }
@@ -1478,43 +1547,54 @@ mod tests {
     async fn secure_key_store_rejects_invalid_key_names() {
         let store = InMemorySecureKeyStore::default();
         assert_eq!(
-            store.write_key("../secret", b"secret").await.unwrap_err(),
+            must_err(
+                store.write_key("../secret", b"secret").await,
+                "invalid key name should fail",
+            ),
             AuthorizationError::InvalidKeyName
         );
     }
 
     #[tokio::test]
     async fn tamper_evident_audit_log_validates_and_hides_details() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = must(tempfile::tempdir(), "temp dir should create");
         let path = dir.path().join("chain.jsonl");
         let sink = TamperEvidentAuditLog::new(&path);
-        sink.append(AuditEvent {
-            kind: AuditEventKind::ControlAuthorized,
-            account_id: AccountId::new("account"),
-            workspace_id: WorkspaceId::new("workspace"),
-            session_id: Some(SessionId::new("session")),
-            device_id: Some(DeviceId::new("device")),
-            endpoint_id: Some(EndpointId::new("endpoint")),
-            at: TimestampMicros(1),
-            detail: "clipboard secret text".into(),
-        })
-        .await
-        .unwrap();
-        let report = sink.validate(None).unwrap();
+        must(
+            sink.append(AuditEvent {
+                kind: AuditEventKind::ControlAuthorized,
+                account_id: AccountId::new("account"),
+                workspace_id: WorkspaceId::new("workspace"),
+                session_id: Some(SessionId::new("session")),
+                device_id: Some(DeviceId::new("device")),
+                endpoint_id: Some(EndpointId::new("endpoint")),
+                at: TimestampMicros(1),
+                detail: "clipboard secret text".into(),
+            })
+            .await,
+            "audit event should append",
+        );
+        let report = must(sink.validate(None), "audit chain should validate");
         assert!(report.is_valid);
         assert_eq!(report.entry_count, 1);
-        let raw = std::fs::read_to_string(&path).unwrap();
+        let raw = must(std::fs::read_to_string(&path), "audit chain should read");
         assert!(!raw.contains("clipboard secret text"));
 
-        let head = report.head_hash_hex.unwrap();
-        std::fs::write(path, raw.replace("ControlAuthorized", "ControlDenied")).unwrap();
-        let report = sink.validate(Some(&head)).unwrap();
+        let head = must_some(report.head_hash_hex, "audit chain should have a head hash");
+        must(
+            std::fs::write(path, raw.replace("ControlAuthorized", "ControlDenied")),
+            "audit chain should be writable for tamper test",
+        );
+        let report = must(
+            sink.validate(Some(&head)),
+            "tampered audit chain should still produce a report",
+        );
         assert!(!report.is_valid);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn tamper_evident_audit_log_serializes_concurrent_appends() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = must(tempfile::tempdir(), "temp dir should create");
         let path = dir.path().join("chain.jsonl");
         let sink = std::sync::Arc::new(TamperEvidentAuditLog::new(&path));
         let mut tasks = Vec::new();
@@ -1536,10 +1616,13 @@ mod tests {
         }
 
         for task in tasks {
-            task.await.unwrap().unwrap();
+            must(
+                must(task.await, "audit append task should join"),
+                "audit append task should succeed",
+            );
         }
 
-        let report = sink.validate(None).unwrap();
+        let report = must(sink.validate(None), "audit chain should validate");
         assert!(report.is_valid);
         assert_eq!(report.entry_count, 32);
     }
@@ -1549,17 +1632,27 @@ mod tests {
     async fn macos_keychain_store_round_trips_and_deletes() {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .map_or_else(
+                |error| panic!("system time should be after epoch: {error}"),
+                |duration| duration,
+            )
             .as_nanos();
         let store = MacOsKeychainSecureKeyStore::new(format!("test-{nanos}"));
-        store.write_key("device", b"secret").await.unwrap();
-        assert_eq!(
-            store.read_key("device").await.unwrap().as_slice(),
-            b"secret"
+        must(
+            store.write_key("device", b"secret").await,
+            "keychain key should write",
         );
-        store.delete_key("device").await.unwrap();
+        let key = must(store.read_key("device").await, "keychain key should read");
+        assert_eq!(key.as_slice(), b"secret");
+        must(
+            store.delete_key("device").await,
+            "keychain key should delete",
+        );
         assert_eq!(
-            store.read_key("device").await.unwrap_err(),
+            must_err(
+                store.read_key("device").await,
+                "deleted keychain key should fail",
+            ),
             AuthorizationError::KeyUnavailable
         );
     }
