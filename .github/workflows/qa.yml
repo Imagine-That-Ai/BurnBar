@@ -209,8 +209,24 @@ jobs:
             echo "::error::Functional QA did not complete (step outcome: ${QA_STEP_OUTCOME}). The PR comment/artifacts have details."
             exit 1
           fi
-          if grep -qE ':no_entry: BLOCKED|:x: FAIL' qa-results/report.md; then
-            echo "::error::Functional QA report contains BLOCKED/FAIL rows. See the PR comment."
-            exit 1
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+
+          report = Path("qa-results/report.md").read_text()
+          bad_rows = []
+          for line in report.splitlines():
+              if not line.startswith("|"):
+                  continue
+              cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+              if len(cells) < 5 or cells[0] in {"#", "---"} or cells[4] == "Result":
+                  continue
+              if ":no_entry: BLOCKED" in cells[4] or ":x: FAIL" in cells[4]:
+                  bad_rows.append(line)
+
+          if bad_rows:
+              print("::error::Functional QA report contains BLOCKED/FAIL result rows. See the PR comment.")
+              for row in bad_rows:
+                  print(row)
+              raise SystemExit(1)
+          PY
           echo "Functional QA passed."
