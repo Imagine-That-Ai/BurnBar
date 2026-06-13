@@ -64,6 +64,7 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
     case modelAliasConflictsWithVariant(aliasID: String)
     case modelAliasConflictsWithCatalogModel(aliasID: String, baseModelID: String)
     case invalidModelDisplayName(modelID: String)
+    case invalidCustomModelID(String)
 
     public var errorDescription: String? {
         switch self {
@@ -87,6 +88,8 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
             return "Model alias '\(aliasID)' conflicts with a catalog model and cannot route to '\(baseModelID)'."
         case .invalidModelDisplayName(let modelID):
             return "Display name for model '\(modelID)' is invalid. It must contain at least one non-whitespace character."
+        case .invalidCustomModelID(let modelID):
+            return "Custom model id '\(modelID)' is invalid. Use letters, numbers, and . _ - : / only."
         }
     }
 }
@@ -456,6 +459,52 @@ public actor BurnBarConfigStore {
         }
     }
 
+    /// Register (or replace) a user-declared custom model on a provider. Unlike
+    /// an alias, a custom model id need NOT exist in the bundled catalog — that
+    /// is the point: it advertises and routes a provider model newer than the
+    /// catalog. Validation is limited to id well-formedness; the provider must be
+    /// a supported routing provider (enforced by `mutateProviderSettings`).
+    @discardableResult
+    public func upsertCustomModel(
+        providerID: String,
+        customModel: BurnBarCustomModel
+    ) throws -> BurnBarCustomModel {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalized = BurnBarCustomModel(
+            modelID: customModel.modelID.trimmingCharacters(in: .whitespacesAndNewlines),
+            displayName: BurnBarCustomModel.normalizedDisplayName(
+                modelID: customModel.modelID,
+                displayName: customModel.displayName
+            ),
+            createdAt: customModel.createdAt,
+            updatedAt: Date()
+        )
+        guard BurnBarCustomModel.isValidModelID(normalized.modelID) else {
+            throw BurnBarConfigStoreError.invalidCustomModelID(normalized.modelID)
+        }
+
+        let updated = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            mutable.upsertCustomModel(normalized)
+            return mutable
+        }
+        return updated.customModels.first(where: {
+            $0.modelID.caseInsensitiveCompare(normalized.modelID) == .orderedSame
+        }) ?? normalized
+    }
+
+    public func removeCustomModel(
+        providerID: String,
+        modelID: String
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            _ = mutable.removeCustomModel(modelID: modelID)
+            return mutable
+        }
+    }
+
     /// Set (or replace) a verbatim display-name override for a model. The
     /// model keeps its canonical wire id and routing; only its human label
     /// changes. Forgiving by design: the override applies to whatever
@@ -720,14 +769,18 @@ public actor BurnBarConfigStore {
                 resolvedSlots: resolvedSlots,
                 legacySecret: legacySecret
             )
+            let preferredModels = Self.appendingCustomModels(
+                base: catalogSupport.preferredModels(
+                    providerID: mutableSettings.providerID,
+                    preferredModelIDs: mutableSettings.preferredModelIDs
+                ),
+                customModels: mutableSettings.customModels
+            )
             resolved.append(
                 BurnBarResolvedProviderConfiguration(
                     provider: provider,
                     settings: mutableSettings,
-                    preferredModels: catalogSupport.preferredModels(
-                        providerID: mutableSettings.providerID,
-                        preferredModelIDs: mutableSettings.preferredModelIDs
-                    ),
+                    preferredModels: preferredModels,
                     credentialSlots: resolvedSlots,
                     apiKey: selectedKey
                 )
@@ -746,6 +799,43 @@ public actor BurnBarConfigStore {
 
     private func slotSecretStoreKey(providerID: String, slotID: String) -> String {
         "\(providerID).slot.\(slotID)"
+    }
+
+    /// Fold user-declared custom models into a provider's resolved preferred-model
+    /// list as synthesized public catalog rows. Doing this at resolution time
+    /// makes a custom model behave exactly like a catalog model end-to-end: it is
+    /// advertised in `/v1/models` (the advertised-catalog builder iterates
+    /// `preferredModels`) and routed verbatim to the provider (the router's
+    /// exact-match path resolves it). Ids already present in the catalog rows —
+    /// by id, alias, or matcher — are skipped so a custom entry never duplicates
+    /// or shadows a known model.
+    static func appendingCustomModels(
+        base: [BurnBarCatalogModel],
+        customModels: [BurnBarCustomModel]
+    ) -> [BurnBarCatalogModel] {
+        guard !customModels.isEmpty else { return base }
+        let pricingTemplate = base.first?.pricing ?? .defaultFallback
+        var seen = Set(base.map { $0.id.lowercased() })
+        var result = base
+        for custom in customModels {
+            let id = custom.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty, seen.insert(id.lowercased()).inserted else { continue }
+            if base.contains(where: { $0.matches(modelName: id) }) { continue }
+            let displayName = custom.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.append(BurnBarCatalogModel(
+                id: id,
+                displayName: displayName.isEmpty ? id : displayName,
+                visibility: .public,
+                aliases: [],
+                matchers: [],
+                pricing: pricingTemplate,
+                canonicalModelID: id,
+                capabilityClassID: id,
+                capabilityClassRank: nil,
+                modelCapabilities: nil
+            ))
+        }
+        return result
     }
 
     private func mutateProviderSettings(
@@ -922,7 +1012,8 @@ public actor BurnBarConfigStore {
             credentialSlots: normalizedSlots,
             modelVariants: modelVariants,
             modelAliases: supportedAliases,
-            modelDisplayOverrides: settings.modelDisplayOverrides
+            modelDisplayOverrides: settings.modelDisplayOverrides,
+            customModels: settings.customModels
         )
     }
 
