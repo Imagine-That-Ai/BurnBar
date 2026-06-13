@@ -1909,73 +1909,59 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
     }
 
-    private typealias GoogleAuthWindowSnapshot = AccountManager.GoogleAuthPresentationWindowSnapshot
-
-    private func googleAuthWindow(
-        _ id: String,
-        visible: Bool,
-        miniaturized: Bool = false,
-        sheetParentID: String? = nil
-    ) -> GoogleAuthWindowSnapshot {
-        GoogleAuthWindowSnapshot(
-            id: id,
-            isVisible: visible,
-            isMiniaturized: miniaturized,
-            sheetParentID: sheetParentID
-        )
+    /// Window selection runs entirely over the `AuthPresentationWindow` seam —
+    /// a plain class, never a real `NSWindow` — so these are deterministic on a
+    /// headless CI runner (constructing/ordering an `NSWindow` there crashes
+    /// the test host).
+    @MainActor
+    private final class FakeAuthWindow: AuthPresentationWindow {
+        var isVisible: Bool
+        var isMiniaturized: Bool
+        var authSheetParent: AuthPresentationWindow?
+        init(visible: Bool, miniaturized: Bool = false, sheetParent: AuthPresentationWindow? = nil) {
+            self.isVisible = visible
+            self.isMiniaturized = miniaturized
+            self.authSheetParent = sheetParent
+        }
     }
 
+    @MainActor
     func test_googleAuthPresentationWindow_returnsVisibleWindow() {
-        let window = googleAuthWindow("current", visible: true)
-
-        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(from: window)
-
-        XCTAssertEqual(resolved, window)
+        let window = FakeAuthWindow(visible: true)
+        let resolution = AccountManager.resolveAuthPresentationWindow(from: window, candidates: [])
+        XCTAssertIdentical(resolution.window, window)
+        XCTAssertTrue(resolution.shouldActivate)
     }
 
+    @MainActor
+    func test_googleAuthPresentationWindow_walksToSheetParent() {
+        let parent = FakeAuthWindow(visible: true)
+        let sheet = FakeAuthWindow(visible: true, sheetParent: parent)
+        let resolution = AccountManager.resolveAuthPresentationWindow(from: sheet, candidates: [])
+        XCTAssertIdentical(resolution.window, parent, "Resolution must surface the top of the sheet chain")
+        XCTAssertTrue(resolution.shouldActivate)
+    }
+
+    @MainActor
     func test_googleAuthPresentationWindow_fallsBackToVisibleAppWindow() {
-        let hidden = googleAuthWindow("current", visible: false)
-        let visibleFallback = googleAuthWindow("fallback", visible: true)
-
-        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(
+        let hidden = FakeAuthWindow(visible: false)
+        let miniaturized = FakeAuthWindow(visible: true, miniaturized: true)
+        let sheet = FakeAuthWindow(visible: true, sheetParent: FakeAuthWindow(visible: true))
+        let visibleFallback = FakeAuthWindow(visible: true)
+        let resolution = AccountManager.resolveAuthPresentationWindow(
             from: hidden,
-            appWindows: [visibleFallback]
+            candidates: [miniaturized, sheet, visibleFallback]
         )
-
-        XCTAssertEqual(resolved, visibleFallback)
+        XCTAssertIdentical(resolution.window, visibleFallback, "Fallback skips hidden/miniaturized/sheet windows")
+        XCTAssertTrue(resolution.shouldActivate)
     }
 
+    @MainActor
     func test_googleAuthPresentationWindow_returnsOriginalWhenNothingVisible() {
-        let hidden = googleAuthWindow("current", visible: false)
-
-        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(from: hidden)
-
-        XCTAssertEqual(resolved, hidden)
-    }
-
-    func test_googleAuthPresentationWindow_usesVisibleSheetParent() {
-        let parent = googleAuthWindow("parent", visible: true)
-        let sheet = googleAuthWindow("sheet", visible: true, sheetParentID: "parent")
-
-        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(
-            from: sheet,
-            appWindows: [parent]
-        )
-
-        XCTAssertEqual(resolved, parent)
-    }
-
-    func test_googleAuthPresentationWindow_skipsMiniaturizedFallback() {
-        let hidden = googleAuthWindow("current", visible: false)
-        let miniaturized = googleAuthWindow("miniaturized", visible: true, miniaturized: true)
-        let visibleFallback = googleAuthWindow("fallback", visible: true)
-
-        let resolved = AccountManager.googleAuthPresentationWindowCandidateForTesting(
-            from: hidden,
-            appWindows: [miniaturized, visibleFallback]
-        )
-
-        XCTAssertEqual(resolved, visibleFallback)
+        let hidden = FakeAuthWindow(visible: false)
+        let resolution = AccountManager.resolveAuthPresentationWindow(from: hidden, candidates: [])
+        XCTAssertIdentical(resolution.window, hidden)
+        XCTAssertFalse(resolution.shouldActivate, "An invisible window must never be force-activated")
     }
 
     // MARK: - Shared auth keychain-recovery wrapper
