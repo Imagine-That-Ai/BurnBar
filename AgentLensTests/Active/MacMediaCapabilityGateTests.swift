@@ -1,4 +1,5 @@
 import XCTest
+import FirebaseCore
 import OpenBurnBarCore
 import OpenBurnBarMedia
 @testable import OpenBurnBar
@@ -97,6 +98,56 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertFalse(store.hostedMediaIsActive)
         XCTAssertNil(store.hostedMediaExpirationDate)
         XCTAssertNil(store.hostedMediaPurchaseDate)
+    }
+
+    func testMacCloudEntitlementStoreFailsClosedWhenCloudIsNotConfigured() {
+        guard FirebaseApp.app() == nil else {
+            return
+        }
+        let store = MacCloudEntitlementStore()
+
+        store.start()
+
+        XCTAssertFalse(store.isActive)
+        XCTAssertFalse(store.hostedComputerUseIsActive)
+        XCTAssertFalse(store.hostedMediaIsActive)
+        XCTAssertFalse(store.isUltraActive)
+        XCTAssertEqual(store.currentTier, .free)
+        XCTAssertEqual(store.cloudTier, .none)
+        XCTAssertEqual(store.error, "Cloud is not configured on this Mac.")
+    }
+
+    func testMacCloudEntitlementStoreParsesHostedMediaDateShapesAndExpiry() {
+        let store = MacCloudEntitlementStore()
+        let future = Date(timeIntervalSinceNow: 7_200)
+        let purchase = Date(timeIntervalSince1970: 1_700_000_000)
+
+        store.applyHostedMedia(data: [
+            "active": true,
+            "expireAt": future.timeIntervalSince1970,
+            "originalPurchaseDate": ISO8601DateFormatter().string(from: purchase)
+        ])
+
+        XCTAssertTrue(store.hostedMediaIsActive)
+        XCTAssertEqual(
+            store.hostedMediaExpirationDate?.timeIntervalSince1970 ?? 0,
+            future.timeIntervalSince1970,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            store.hostedMediaPurchaseDate?.timeIntervalSince1970 ?? 0,
+            purchase.timeIntervalSince1970,
+            accuracy: 0.001
+        )
+
+        store.applyHostedMedia(data: [
+            "active": true,
+            "expirationDate": Int(Date(timeIntervalSinceNow: -60).timeIntervalSince1970),
+            "purchaseDate": purchase
+        ])
+
+        XCTAssertFalse(store.hostedMediaIsActive)
+        XCTAssertEqual(store.hostedMediaPurchaseDate, purchase)
     }
 
     func testActiveSessionRegistryClampsCountsPerFeature() {

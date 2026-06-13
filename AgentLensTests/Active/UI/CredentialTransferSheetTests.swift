@@ -208,6 +208,26 @@ final class CredentialTransferSheetTests: XCTestCase {
         XCTAssertNoThrow(try detailSUT.find(text: MacCopy.googleNestHubSectionTitle))
         XCTAssertNoThrow(try detailSUT.find(text: "Nest Hub quota display"))
     }
+
+    func test_devicesSettingsSummarizesTrustedDeviceCounts() async throws {
+        let deviceTrust = DeviceTrustViewModel(gateway: FakeMacDeviceTrustGateway(devices: [
+            MacTrustedDevice(id: "mac", displayName: "MacBook Pro", platform: "macOS", isCurrentDevice: true),
+            MacTrustedDevice(id: "iphone", displayName: "Alberto's iPhone", platform: "iOS")
+        ]))
+        await deviceTrust.load()
+
+        let view = DevicesAndSyncSettingsView(
+            settingsManager: SettingsManager(),
+            deviceTrust: deviceTrust,
+            exportViewModel: CredentialTransferExportViewModel(gateway: FakeExportGateway())
+        )
+        let sut = try view.inspect()
+
+        XCTAssertNoThrow(try sut.find(text: MacCopy.cloudSyncSectionTitle))
+        XCTAssertNoThrow(try sut.find(text: "Trusted Devices"))
+        XCTAssertNoThrow(try sut.find(text: "2"))
+        XCTAssertNoThrow(try sut.find(text: MacCopy.smartDisplaysSectionTitle))
+    }
 }
 
 @MainActor

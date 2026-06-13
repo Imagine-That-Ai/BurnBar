@@ -1,6 +1,7 @@
 import CryptoKit
 import XCTest
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
 import OpenBurnBarSignalCore
 @testable import OpenBurnBar
 
@@ -56,6 +57,74 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         }
     }
 
+    func testHighRiskCallablesFailClosedWhenNoUserIsAuthenticated() async {
+        let record = IrohPairingRecord(
+            uid: "uid-1",
+            connectionId: "conn-1",
+            nodeId: "node-1",
+            relayURL: "https://relay.example",
+            directAddresses: ["/ip4/127.0.0.1/tcp/1234"],
+            publishedAtMillis: 1_700_000_000_000,
+            signature: "sig"
+        )
+        let actions: [(String, () async throws -> Void)] = [
+            ("bind", { try await ComputerUseSecurityCallableClient.bindAppCheckAttestation() }),
+            ("nonce", { _ = try await ComputerUseSecurityCallableClient.issueHighRiskActionNonce() }),
+            ("register", {
+                try await ComputerUseSecurityCallableClient.registerEscrowDevice(
+                    deviceId: "mac-1",
+                    deviceName: "Mac",
+                    platform: "macOS",
+                    appVersion: "1.0",
+                    publicKeyFingerprint: "fp",
+                    keyVersion: 1
+                )
+            }),
+            ("approve", {
+                try await ComputerUseSecurityCallableClient.approveEscrowDeviceTrust(
+                    deviceId: "iphone-1",
+                    approverDeviceId: "mac-1"
+                )
+            }),
+            ("revoke", {
+                _ = try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(
+                    deviceId: "iphone-1",
+                    rotatingDeviceId: "mac-1"
+                )
+            }),
+            ("publish-pairing-key", {
+                try await ComputerUseSecurityCallableClient.publishIrohPairingPublicKey(
+                    deviceId: "mac-1",
+                    publicKeyBase64: "pub"
+                )
+            }),
+            ("publish-pairing-record", {
+                try await ComputerUseSecurityCallableClient.publishIrohPairingRecord(
+                    deviceId: "mac-1",
+                    record: record
+                )
+            }),
+            ("revoke-pairing-record", {
+                try await ComputerUseSecurityCallableClient.revokeIrohPairingRecord(
+                    deviceId: "mac-1",
+                    connectionId: "conn-1"
+                )
+            })
+        ]
+
+        for (name, action) in actions {
+            await XCTAssertThrowsErrorAsync({
+                try await action()
+            }, { error in
+                XCTAssertEqual(
+                    (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                    "Sign in before performing this Computer Use security action.",
+                    name
+                )
+            })
+        }
+    }
+
     func testRotationRequirementNormalizesSurvivorDeviceIdsAndDefaultsGeneration() throws {
         let requirement = try ComputerUseSecurityCallableClient.RevocationCloudVaultRotationRequirement(
             data: [
@@ -71,6 +140,17 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         XCTAssertEqual(requirement.currentVaultKeyID, "vault-current")
         XCTAssertEqual(requirement.currentVaultGeneration, 4)
         XCTAssertEqual(requirement.survivorDeviceIds, ["mac-1", "z-phone"])
+
+        let defaultGeneration = try ComputerUseSecurityCallableClient.RevocationCloudVaultRotationRequirement(
+            data: [
+                "status": "pending",
+                "rotateCallable": "rotateCloudVaultKey",
+                "currentVaultKeyID": "vault-default",
+                "survivorDeviceIds": ["mac-1"]
+            ],
+            rotatingDeviceId: "mac-1"
+        )
+        XCTAssertEqual(defaultGeneration.currentVaultGeneration, 1)
     }
 
     func testRotationRequirementFailsClosedForConsumedOrNonSurvivorRequirements() throws {
@@ -154,6 +234,83 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         XCTAssertEqual((payload["survivorWrappers"] as? [[String: Any]])?.count, 1)
     }
 
+    func testCloudVaultAccessErrorsAndEscrowPublicKeyMatching() {
+        XCTAssertEqual(
+            CloudVaultAccessError.vaultKeyUnavailable.errorDescription,
+            "Cloud vault key is unavailable on this device."
+        )
+        XCTAssertEqual(
+            CloudVaultAccessError.vaultKeyMismatch(expected: "expected", actual: "actual").errorDescription,
+            "Cloud vault key mismatch. Expected expected, got actual."
+        )
+        XCTAssertEqual(
+            CloudVaultAccessError.invalidWrappedKey.errorDescription,
+            "Cloud vault wrapper could not be decrypted."
+        )
+        XCTAssertEqual(
+            EscrowPublicKeyPublishError.immutablePublicKeyConflict(deviceId: "mac-1", keyVersion: 2)
+                .errorDescription,
+            "Escrow public key conflict for mac-1_2."
+        )
+        XCTAssertEqual(
+            SignalIdentityPublicKeyPublishError.immutablePublicKeyConflict(deviceId: "mac-1", keyVersion: 3)
+                .errorDescription,
+            "Signal identity public key conflict for mac-1_3."
+        )
+
+        XCTAssertTrue(EscrowPublicKeyPublisher.matchesExistingPublicKey(
+            [
+                "deviceId": "mac-1",
+                "publicKeyData": "pub",
+                "publicKeyFingerprint": "fp",
+                "keyVersion": 2,
+                "algorithm": "ECIES-P256-AESGCM"
+            ],
+            deviceId: "mac-1",
+            publicKeyBase64: "pub",
+            publicKeyFingerprint: "fp",
+            keyVersion: 2
+        ))
+        XCTAssertTrue(EscrowPublicKeyPublisher.matchesExistingPublicKey(
+            [
+                "deviceId": "mac-1",
+                "publicKeyData": "pub",
+                "keyVersion": 2,
+                "algorithm": "ECIES-P256-AESGCM"
+            ],
+            deviceId: "mac-1",
+            publicKeyBase64: "pub",
+            publicKeyFingerprint: "fp",
+            keyVersion: 2
+        ))
+        XCTAssertFalse(EscrowPublicKeyPublisher.matchesExistingPublicKey(
+            [
+                "deviceId": "mac-1",
+                "publicKeyData": "other",
+                "publicKeyFingerprint": "fp",
+                "keyVersion": 2,
+                "algorithm": "ECIES-P256-AESGCM"
+            ],
+            deviceId: "mac-1",
+            publicKeyBase64: "pub",
+            publicKeyFingerprint: "fp",
+            keyVersion: 2
+        ))
+        XCTAssertFalse(EscrowPublicKeyPublisher.matchesExistingPublicKey(
+            [
+                "deviceId": "mac-1",
+                "publicKeyData": "pub",
+                "publicKeyFingerprint": "other",
+                "keyVersion": 2,
+                "algorithm": "ECIES-P256-AESGCM"
+            ],
+            deviceId: "mac-1",
+            publicKeyBase64: "pub",
+            publicKeyFingerprint: "fp",
+            keyVersion: 2
+        ))
+    }
+
     func testRevocationCloudVaultRotationRunsInjectedSuccessPath() async throws {
         let currentKey = CloudVaultCrypto.generateVaultKey()
         let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
@@ -194,6 +351,71 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         XCTAssertEqual(capture.rewrapOldKey, currentKey)
         XCTAssertEqual(capture.rewrapNewKey, nextKey)
         XCTAssertNil(capture.markedFailedJobId)
+    }
+
+    func testRevocationCloudVaultRotationRejectsMissingRequirementCurrentKeyAndMismatchedKey() async throws {
+        let currentKey = CloudVaultCrypto.generateVaultKey()
+        let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.performRevocationCloudVaultRotation(
+                uid: "uid-1",
+                requirementId: "req-missing",
+                rotatingDeviceId: "mac-1",
+                environment: makeRotationEnvironment(
+                    currentKey: currentKey,
+                    currentVaultKeyID: currentVaultKeyID,
+                    survivorPrivateKey: P256.KeyAgreement.PrivateKey(),
+                    requirementMissing: true,
+                    capture: RotationCapture()
+                )
+            )
+        }, { error in
+            XCTAssertEqual(
+                (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                "Cloud Vault rotation requirement is missing or already consumed."
+            )
+        })
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.performRevocationCloudVaultRotation(
+                uid: "uid-1",
+                requirementId: "req-1",
+                rotatingDeviceId: "mac-1",
+                environment: makeRotationEnvironment(
+                    currentKey: currentKey,
+                    currentVaultKeyID: currentVaultKeyID,
+                    survivorPrivateKey: P256.KeyAgreement.PrivateKey(),
+                    currentKeyMissing: true,
+                    capture: RotationCapture()
+                )
+            )
+        }, { error in
+            XCTAssertEqual(
+                (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                "This Mac does not have the current Cloud Vault key needed to rotate after revocation."
+            )
+        })
+
+        await XCTAssertThrowsErrorAsync({
+            try await ComputerUseSecurityCallableClient.performRevocationCloudVaultRotation(
+                uid: "uid-1",
+                requirementId: "req-1",
+                rotatingDeviceId: "mac-1",
+                environment: makeRotationEnvironment(
+                    currentKey: currentKey,
+                    currentVaultKeyID: currentVaultKeyID,
+                    survivorPrivateKey: P256.KeyAgreement.PrivateKey(),
+                    currentKeyIDOverride: "vault-other",
+                    capture: RotationCapture()
+                )
+            )
+        }, { error in
+            XCTAssertEqual(
+                (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                "Cloud Vault rotation requirement expected \(currentVaultKeyID), but this Mac has vault-other."
+            )
+        })
     }
 
     func testRevocationCloudVaultRotationRejectsMalformedRotateResponse() async throws {
@@ -254,6 +476,9 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         currentKey: Data,
         currentVaultKeyID: String,
         survivorPrivateKey: P256.KeyAgreement.PrivateKey,
+        requirementMissing: Bool = false,
+        currentKeyMissing: Bool = false,
+        currentKeyIDOverride: String? = nil,
         rotateResponse: [String: Any] = ["ok": true, "jobId": "job-1"],
         rewrapError: Error? = nil,
         capture: RotationCapture
@@ -261,6 +486,7 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
         ComputerUseSecurityCallableClient.RevocationCloudVaultRotationEnvironment(
             loadRequirement: { requirementId in
                 capture.loadedRequirementId = requirementId
+                if requirementMissing { return nil }
                 return [
                     "status": "pending",
                     "rotateCallable": "rotateCloudVaultKey",
@@ -270,7 +496,8 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
                 ]
             },
             loadCurrentKey: {
-                CloudVaultResolvedKey(keyData: currentKey, vaultKeyID: currentVaultKeyID)
+                if currentKeyMissing { return nil }
+                return CloudVaultResolvedKey(keyData: currentKey, vaultKeyID: currentKeyIDOverride ?? currentVaultKeyID)
             },
             loadLocalIdentity: {
                 OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "mac-1")
