@@ -14,7 +14,9 @@ import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeypair
+import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.cloud.SignalAtRestFallbackPolicy
 import java.io.File
 import java.lang.IllegalStateException
 import java.util.Date
@@ -665,11 +667,23 @@ internal class AssistantChatFirestoreMirror(
         val uid = requireUID()
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
         val plaintextBytes = json.encodeToString(thread).toByteArray(Charsets.UTF_8)
+        // RR-8 cross-platform parity: bind the payload to its Firestore path with the SAME AAD
+        // context iOS/macOS use (uid|mobile_assistant_chats|threadId|sealedPayload|2|sealedPayload),
+        // so a doc written on one platform decrypts on the others. Without this Android wrote a
+        // global AAD that iOS path-bound readers — and now this writer's readers — would reject.
+        val aadContext =
+            CloudVaultAADContext(
+                uid = uid,
+                collection = "mobile_assistant_chats",
+                docID = thread.id,
+                field = "sealedPayload",
+            )
         val sealedPayload =
             CloudVaultCrypto.sealPayload(
                 plaintextBytes,
                 resolvedKey.keyData,
                 resolvedKey.vaultKeyID,
+                aadContext = aadContext,
             )
         val payload =
             mutableMapOf<String, Any?>(
@@ -738,6 +752,14 @@ internal class AssistantChatFirestoreMirror(
                 val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
                 AndroidSignalIdentityKeyStore.load(escrow.deviceId, escrow.keyVersion)
             }.getOrNull()
+        // RR-7a sender-auth: resolve the PINNED trusted-sender public keys once (local identity +
+        // every trusted escrow device's published identity) so cross-device envelopes verify their
+        // sender signature fail-closed. Best-effort — local identity always present; a partial set
+        // is treated as `senderSetComplete = false` by the fallback policy.
+        val trustedSenders =
+            signalIdentity?.let {
+                runCatching { AndroidCloudVaultSignalPayloads.trustedSenderPublicKeys(uid = uid, firestore = firestore, localIdentity = it) }.getOrNull()
+            } ?: emptyMap()
         val snapshot =
             collection(uid)
                 .orderBy("updatedAt", Query.Direction.DESCENDING)
@@ -745,8 +767,54 @@ internal class AssistantChatFirestoreMirror(
                 .get()
                 .await()
         return snapshot.documents.mapNotNull { document ->
-            decodeThread(document.id, document.data ?: return@mapNotNull null, key?.keyData, uid, signalIdentity)
+            decodeThread(document.id, document.data ?: return@mapNotNull null, key?.keyData, uid, signalIdentity, trustedSenders)
         }
+    }
+
+    /** Outcome of the Signal-first decode: a decoded thread, a fail-closed drop, or fall through to legacy. */
+    private sealed interface SignalFirstDecode {
+        data class Decoded(val thread: AssistantChatThread) : SignalFirstDecode
+
+        object FailClosed : SignalFirstDecode
+
+        object FallThrough : SignalFirstDecode
+    }
+
+    /**
+     * Signal-first open (item 3). Rollout compatibility: direct client writes carry the legacy
+     * AES-GCM "sealedPayload" alongside the optional Signal envelope until Phase-E. RR-7a sender-auth:
+     * a sender-auth failure (stripped/forged/untrusted block) or a relocated binding must NOT
+     * downgrade to the unauthenticated legacy payload — route every failure through
+     * [SignalAtRestFallbackPolicy] and fall through only when it permits. `senderSetComplete` is true
+     * once the local identity resolved at least one cross-device sender (a non-trivial set).
+     */
+    private fun decodeSignalThread(
+        documentID: String,
+        data: Map<String, Any?>,
+        uid: String?,
+        signalIdentity: AndroidSignalIdentityKeypair?,
+        trustedSenderPublicKeys: Map<String, ByteArray>,
+    ): SignalFirstDecode {
+        if (data["signalEnvelope"] == null || uid == null) return SignalFirstDecode.FallThrough
+        val senderSetComplete = trustedSenderPublicKeys.size > 1
+        val result =
+            runCatching {
+                AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                    data = data,
+                    uid = uid,
+                    collection = "mobile_assistant_chats",
+                    docId = documentID,
+                    localIdentity = signalIdentity,
+                    trustedSenderPublicKeys = trustedSenderPublicKeys,
+                )?.let { json.decodeFromString<AssistantChatThread>(it.toString(Charsets.UTF_8)) }
+            }
+        result.getOrNull()?.let { return SignalFirstDecode.Decoded(it) }
+        val error = result.exceptionOrNull() ?: return SignalFirstDecode.FallThrough
+        if (!SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback(error, senderSetComplete)) {
+            Log.w("AssistantChatFirestoreMirror", "Signal at-rest open failed closed; dropping thread", error)
+            return SignalFirstDecode.FailClosed
+        }
+        return SignalFirstDecode.FallThrough
     }
 
     // Sequential guard clauses; single-exit rewrite obscures the precedence order.
@@ -756,30 +824,33 @@ internal class AssistantChatFirestoreMirror(
         vaultKey: ByteArray? = null,
         uid: String? = null,
         signalIdentity: AndroidSignalIdentityKeypair? = null,
+        trustedSenderPublicKeys: Map<String, ByteArray> = emptyMap(),
     ): AssistantChatThread? {
-        // Signal-first open (item 3). Rollout compatibility: direct client writes carry the
-        // legacy AES-GCM "sealedPayload" alongside the optional Signal envelope until Phase-E.
-        // On any failure (gate off, identity unavailable, malformed, relocated binding), fall
-        // through to the legacy opener rather than dropping the thread — mirrors iOS decodeThread.
-        if (data["signalEnvelope"] != null && uid != null) {
-            val decoded =
-                runCatching {
-                    AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-                        data = data,
-                        uid = uid,
-                        collection = "mobile_assistant_chats",
-                        docId = documentID,
-                        localIdentity = signalIdentity,
-                    )?.let { json.decodeFromString<AssistantChatThread>(it.toString(Charsets.UTF_8)) }
-                }.getOrNull()
-            if (decoded != null) return decoded
+        when (val signalFirst = decodeSignalThread(documentID, data, uid, signalIdentity, trustedSenderPublicKeys)) {
+            is SignalFirstDecode.Decoded -> return signalFirst.thread
+            SignalFirstDecode.FailClosed -> return null
+            SignalFirstDecode.FallThrough -> Unit
         }
         if (data["contentSealed"] == true || data["sealedPayload"] != null) {
             val sealedPayload = CloudVaultCrypto.sealedPayloadFromMap(data["sealedPayload"] as? Map<*, *>) ?: return null
             val key = vaultKey ?: return null
+            // RR-8: pass the path-bound AAD context so path-AAD envelopes (written by iOS/macOS, or
+            // by this app post-fix) open. openPayload ignores the context for legacy global-AAD docs
+            // (it branches on envelope.aad first), so this is safe for old and new documents alike.
+            val aadContext =
+                uid?.let {
+                    runCatching {
+                        CloudVaultAADContext(
+                            uid = it,
+                            collection = "mobile_assistant_chats",
+                            docID = documentID,
+                            field = "sealedPayload",
+                        )
+                    }.getOrNull()
+                }
             return runCatching {
                 json.decodeFromString<AssistantChatThread>(
-                    CloudVaultCrypto.openPayload(sealedPayload, key).toString(Charsets.UTF_8),
+                    CloudVaultCrypto.openPayload(sealedPayload, key, aadContext = aadContext).toString(Charsets.UTF_8),
                 )
             }.getOrNull()
         }

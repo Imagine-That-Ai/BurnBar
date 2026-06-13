@@ -120,6 +120,7 @@ internal fun ScreenShareViewerActivity.applyControlDenied(denied: HermesRealtime
         -> {
             phoneControlSender = null
             phoneControlConnectionID = null
+            com.openburnbar.BurnBarApplication.activePhoneControlSender = null
         }
         else -> Unit
     }
