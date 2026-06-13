@@ -179,7 +179,7 @@ jobs:
             exit 1
           fi
 
-          npx firebase-tools deploy "${firebase_args[@]}"
+          npm --prefix functions exec -- firebase deploy "${firebase_args[@]}"
 
       - name: Dry-run skip deploy
         if: steps.tag.outputs.dry_run == 'true'
