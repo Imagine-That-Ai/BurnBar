@@ -133,7 +133,7 @@ export class HermesRealtimeRelaySession {
       case "response.chunk":
       case "response.complete":
       case "response.error":
-        if (!frame.requestId) throw new Error("requestId is required.");
+        if (!frame.requestId) {throw new Error("requestId is required.");}
         if (this.registeredHostConnectionId !== frame.connectionId) {
           throw new Error("Host response is not bound to this relay connection.");
         }
@@ -179,7 +179,7 @@ export class HermesRealtimeRelaySession {
   }
 
   private async refreshPresence(): Promise<void> {
-    if (!this.registeredHostConnectionId) return;
+    if (!this.registeredHostConnectionId) {return;}
     await this.deps.bus.set(
       hostPresenceKey(this.deps.uid, this.registeredHostConnectionId, this.registeredRuntime ?? DEFAULT_RELAY_RUNTIME),
       JSON.stringify({ sessionID: this.deps.sessionID, observedAt: Date.now() }),
@@ -189,12 +189,12 @@ export class HermesRealtimeRelaySession {
   }
 
   private frameRuntime(frame: HermesRealtimeFrame): HermesRelayRuntime {
-    if (frame.runtime === undefined && this.boundRuntime) return this.boundRuntime;
+    if (frame.runtime === undefined && this.boundRuntime) {return this.boundRuntime;}
     return normalizeRuntime(frame.runtime);
   }
 
   private async bindRuntime(runtime: HermesRelayRuntime): Promise<void> {
-    if (this.boundRuntime === runtime) return;
+    if (this.boundRuntime === runtime) {return;}
     if (this.boundRuntime) {
       throw new Error("Relay socket runtime cannot change after registration.");
     }
@@ -210,7 +210,7 @@ export class HermesRealtimeRelaySession {
   }
 
   private async subscribe(channel: string): Promise<void> {
-    if (this.subscribedChannels.has(channel)) return;
+    if (this.subscribedChannels.has(channel)) {return;}
     const unsubscribe = await this.deps.bus.subscribe(channel, (message) => {
       if (this.isOutboundBackpressured()) {
         return;
@@ -223,7 +223,7 @@ export class HermesRealtimeRelaySession {
   }
 
   private async subscribeControl(channel: string): Promise<void> {
-    if (this.subscribedChannels.has(channel)) return;
+    if (this.subscribedChannels.has(channel)) {return;}
     const unsubscribe = await this.deps.bus.subscribe(channel, (message) => {
       this.handleControlMessage(message);
     });
@@ -314,10 +314,10 @@ export class HermesRealtimeRelaySession {
   }
 
   private async cleanup(): Promise<void> {
-    if (this.closed) return;
+    if (this.closed) {return;}
     this.closed = true;
-    if (this.presenceTimer) clearInterval(this.presenceTimer);
-    if (this.leaseTimer) clearInterval(this.leaseTimer);
+    if (this.presenceTimer) {clearInterval(this.presenceTimer);}
+    if (this.leaseTimer) {clearInterval(this.leaseTimer);}
     await Promise.allSettled(this.unsubscribeCallbacks.map((unsubscribe) => unsubscribe()));
     this.unsubscribeCallbacks = [];
     this.subscribedChannels.clear();
@@ -363,11 +363,11 @@ export function isOpenSocket(socket: WebSocket): boolean {
 }
 
 function truncateUtf8(value: string, maxBytes: number): string {
-  if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) {return value;}
   let output = "";
   for (const character of value) {
     const next = output + character;
-    if (Buffer.byteLength(next, "utf8") > maxBytes) break;
+    if (Buffer.byteLength(next, "utf8") > maxBytes) {break;}
     output = next;
   }
   return output;

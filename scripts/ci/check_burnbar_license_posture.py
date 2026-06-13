@@ -121,7 +121,9 @@ def check_package_lock_license() -> Check:
     workspaces = root.get("workspaces", [])
     if "packages/*" not in workspaces:
         return Check("package-lock AGPL license", False, "package-lock.json does not include packages/* workspace")
-    return Check("package-lock AGPL license", True, "package-lock.json declares AGPL root and product packages workspace")
+    return Check(
+        "package-lock AGPL license", True, "package-lock.json declares AGPL root and product packages workspace"
+    )
 
 
 def check_readme_license() -> Check:
@@ -159,7 +161,11 @@ def check_app_legal_surfaces() -> list[Check]:
             # check regains teeth the moment the surface appears.
             if not path.parent.is_dir():
                 checks.append(
-                    Check(f"{rel_path} legal surface", True, f"skipped (no {path.parent.relative_to(ROOT)} surface in this tree)")
+                    Check(
+                        f"{rel_path} legal surface",
+                        True,
+                        f"skipped (no {path.parent.relative_to(ROOT)} surface in this tree)",
+                    )
                 )
             else:
                 checks.append(Check(f"{rel_path} legal surface", False, f"{rel_path} is missing"))
@@ -179,7 +185,9 @@ def check_signal_agpl_evidence() -> list[Check]:
     checks = [
         check_file_contains("Vendor/libsignal/LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE", "libsignal AGPL license"),
         check_file_contains("Vendor/libsignal/Cargo.toml", 'license = "AGPL-3.0-only"', "libsignal Cargo license"),
-        check_file_contains("Vendor/libsignal/node/package.json", '"license": "AGPL-3.0-only"', "libsignal npm license"),
+        check_file_contains(
+            "Vendor/libsignal/node/package.json", '"license": "AGPL-3.0-only"', "libsignal npm license"
+        ),
         check_file_contains("Vendor/libsignal/Cargo.toml", "SparsePostQuantumRatchet", "Signal SPQR dependency pin"),
     ]
     package_requirements = {
@@ -256,7 +264,9 @@ def check_signal_boundary() -> Check:
             False,
             "official libsignal is imported outside packages/libsignal-bridge: " + ", ".join(violations),
         )
-    return Check("Signal bridge boundary", True, "only the BurnBar libsignal bridge imports official libsignal directly")
+    return Check(
+        "Signal bridge boundary", True, "only the BurnBar libsignal bridge imports official libsignal directly"
+    )
 
 
 def check_libsignal_runtime_readiness() -> Check:
@@ -436,12 +446,12 @@ def check_legal_docs() -> list[Check]:
             "HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
         ],
         "docs/legal/agpl-release-review.evidence.template.json": [
-            "\"reviewStatus\": \"pending\"",
-            "\"reviewerRole\": \"external_counsel\"",
-            "\"AGPL-3.0-only product license\"",
-            "\"MIT-compatible Nous/Hermes upstream boundary\"",
-            "\"docs/legal/AGPL_RELEASE_REVIEW_PACKET.md\"",
-            "\"docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md\"",
+            '"reviewStatus": "pending"',
+            '"reviewerRole": "external_counsel"',
+            '"AGPL-3.0-only product license"',
+            '"MIT-compatible Nous/Hermes upstream boundary"',
+            '"docs/legal/AGPL_RELEASE_REVIEW_PACKET.md"',
+            '"docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md"',
         ],
         "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md": [
             "explicit release-owner approval",

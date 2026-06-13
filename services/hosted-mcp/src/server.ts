@@ -22,10 +22,10 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   for await (const chunk of req) {
     const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buf.length;
-    if (size > MAX_REQUEST_BYTES) throw new HttpError(413, "MCP request body is too large.", "request_too_large");
+    if (size > MAX_REQUEST_BYTES) {throw new HttpError(413, "MCP request body is too large.", "request_too_large");}
     chunks.push(buf);
   }
-  if (chunks.length === 0) throw new HttpError(400, "Missing JSON-RPC request body.", "missing_body");
+  if (chunks.length === 0) {throw new HttpError(400, "Missing JSON-RPC request body.", "missing_body");}
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
@@ -35,7 +35,7 @@ async function readRawBody(req: IncomingMessage): Promise<string> {
   for await (const chunk of req) {
     const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buf.length;
-    if (size > MAX_REQUEST_BYTES) throw new HttpError(413, "Token request body is too large.", "request_too_large");
+    if (size > MAX_REQUEST_BYTES) {throw new HttpError(413, "Token request body is too large.", "request_too_large");}
     chunks.push(buf);
   }
   return Buffer.concat(chunks).toString("utf8");
@@ -61,7 +61,7 @@ function parseTokenRequest(raw: string, contentType: string | undefined): {
     const params = new URLSearchParams(raw);
     return pick(Object.fromEntries(params.entries()));
   }
-  if (!raw.trim()) return {};
+  if (!raw.trim()) {return {};}
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -76,14 +76,14 @@ function parseTokenRequest(raw: string, contentType: string | undefined): {
 
 function validateOrigin(req: IncomingMessage): void {
   const origin = req.headers.origin;
-  if (!origin) return;
-  if (!allowedOrigins().has(origin)) throw new HttpError(403, "Invalid MCP Origin header.", "invalid_origin");
+  if (!origin) {return;}
+  if (!allowedOrigins().has(origin)) {throw new HttpError(403, "Invalid MCP Origin header.", "invalid_origin");}
 }
 
 function validateProtocol(req: IncomingMessage): void {
   const version = req.headers["mcp-protocol-version"];
-  if (!version) return;
-  if (version !== MCP_PROTOCOL_VERSION) throw new HttpError(400, "Unsupported MCP protocol version.", "unsupported_protocol_version");
+  if (!version) {return;}
+  if (version !== MCP_PROTOCOL_VERSION) {throw new HttpError(400, "Unsupported MCP protocol version.", "unsupported_protocol_version");}
 }
 
 async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {

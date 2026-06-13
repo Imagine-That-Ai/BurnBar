@@ -151,12 +151,12 @@ export function parseFrame(
   } catch {
     throw new Error("Frame must be valid JSON.");
   }
-  if (!isRecord(parsed)) throw new Error("Frame must be a JSON object.");
-  if (!isAllowedFrameType(parsed.type)) throw new Error("Unsupported realtime relay frame type.");
+  if (!isRecord(parsed)) {throw new Error("Frame must be a JSON object.");}
+  if (!isAllowedFrameType(parsed.type)) {throw new Error("Unsupported realtime relay frame type.");}
   assertSafeIdentifier(parsed.uid, "uid");
   assertSafeIdentifier(parsed.connectionId, "connectionId");
-  if (parsed.requestId !== undefined) assertSafeIdentifier(parsed.requestId, "requestId");
-  if (parsed.protocolVersion !== PROTOCOL_VERSION) throw new Error("Unsupported realtime relay protocol version.");
+  if (parsed.requestId !== undefined) {assertSafeIdentifier(parsed.requestId, "requestId");}
+  if (parsed.protocolVersion !== PROTOCOL_VERSION) {throw new Error("Unsupported realtime relay protocol version.");}
   if (parsed.runtime !== undefined && !isRelayRuntime(parsed.runtime)) {
     throw new Error("Unsupported relay runtime discriminator.");
   }
@@ -189,11 +189,11 @@ export function assertRoleCanSend(frame: HermesRealtimeFrame, role: HermesRelayS
     case "response.chunk":
     case "response.complete":
     case "response.error":
-      if (role !== "host") throw new Error("Frame type is not allowed for this relay role.");
+      if (role !== "host") {throw new Error("Frame type is not allowed for this relay role.");}
       return;
     case "request.start":
     case "request.cancel":
-      if (role !== "client") throw new Error("Frame type is not allowed for this relay role.");
+      if (role !== "client") {throw new Error("Frame type is not allowed for this relay role.");}
       return;
     case "ping":
     case "pong":
@@ -206,7 +206,7 @@ export function assertRoleCanSend(frame: HermesRealtimeFrame, role: HermesRelayS
 export function assertRequestFrame(
   frame: HermesRealtimeFrame
 ): asserts frame is HermesRealtimeFrame & { requestId: string } {
-  if (!frame.requestId) throw new Error("requestId is required.");
+  if (!frame.requestId) {throw new Error("requestId is required.");}
   if (frame.type === "request.start") {
     if (!frame.payload?.operation || !RELAY_OPERATIONS.has(frame.payload.operation)) {
       throw new Error("operation is required.");
@@ -216,7 +216,7 @@ export function assertRequestFrame(
     }
     assertBoundedBase64(frame.payload.payloadCiphertext, "payloadCiphertext", 450_000);
     assertBoundedBase64(frame.payload.wrappedKey, "wrappedKey", 4_096);
-    if (frame.payload.relayEncryption !== "p256-hkdf-sha256-aesgcm") throw new Error("Unsupported relay encryption.");
+    if (frame.payload.relayEncryption !== "p256-hkdf-sha256-aesgcm") {throw new Error("Unsupported relay encryption.");}
     if (frame.payload.relayKeyVersion !== undefined && !isBoundedInteger(frame.payload.relayKeyVersion, 1, 32)) {
       throw new Error("relayKeyVersion is invalid.");
     }
@@ -236,13 +236,13 @@ function assertFrameShape(frame: HermesRealtimeFrame): void {
       assertResponseChunk(frame);
       return;
     case "response.complete":
-      if (!frame.requestId) throw new Error("requestId is required.");
+      if (!frame.requestId) {throw new Error("requestId is required.");}
       if (!isBoundedInteger(frame.payload?.chunkCount, 0, MAX_RELAY_SEQUENCE)) {
         throw new Error("chunkCount is invalid.");
       }
       return;
     case "response.error":
-      if (!frame.requestId) throw new Error("requestId is required.");
+      if (!frame.requestId) {throw new Error("requestId is required.");}
       if (frame.payload?.error !== undefined && !isBoundedString(frame.payload.error, MAX_RELAY_ERROR_LENGTH)) {
         throw new Error("error is too large.");
       }
@@ -255,7 +255,7 @@ function assertFrameShape(frame: HermesRealtimeFrame): void {
 }
 
 function assertResponseChunk(frame: HermesRealtimeFrame): void {
-  if (!frame.requestId) throw new Error("requestId is required.");
+  if (!frame.requestId) {throw new Error("requestId is required.");}
   if (!isBoundedInteger(frame.payload?.sequence, 0, MAX_RELAY_SEQUENCE)) {
     throw new Error("sequence is invalid.");
   }
@@ -272,7 +272,7 @@ function assertResponseChunk(frame: HermesRealtimeFrame): void {
 }
 
 function assertCapabilities(capabilities: unknown): void {
-  if (capabilities === undefined) return;
+  if (capabilities === undefined) {return;}
   if (!Array.isArray(capabilities) || capabilities.length > MAX_RELAY_CAPABILITIES) {
     throw new Error("capabilities are invalid.");
   }
@@ -324,8 +324,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parsePayload(value: unknown): HermesRealtimePayload | undefined {
-  if (value === undefined) return undefined;
-  if (!isRecord(value)) throw new Error("Frame payload is invalid.");
+  if (value === undefined) {return undefined;}
+  if (!isRecord(value)) {throw new Error("Frame payload is invalid.");}
   return {
     operation: isRelayOperation(value.operation) ? value.operation : undefined,
     method: typeof value.method === "string" ? value.method : undefined,
@@ -343,7 +343,7 @@ function parsePayload(value: unknown): HermesRealtimePayload | undefined {
 }
 
 function parseCapabilities(value: unknown): string[] | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {return undefined;}
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error("capabilities are invalid.");
   }

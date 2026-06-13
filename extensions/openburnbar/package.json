@@ -242,7 +242,7 @@
     "size": "size-limit"
   },
   "devDependencies": {
-    "@eslint/js": "^9.22.0",
+    "@eslint/js": "9.39.4",
     "@size-limit/file": "12.1.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.6.0",
@@ -262,7 +262,7 @@
   },
   "dependencies": {
     "@sentry/node": "8.55.2",
-    "globals": "^17.4.0"
+    "globals": "17.6.0"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",

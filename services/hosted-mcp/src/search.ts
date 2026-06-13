@@ -20,8 +20,8 @@ export interface SearchArgs {
 }
 
 function hashes(raw: unknown, max: number, field: string): string[] {
-  if (raw === undefined) return [];
-  if (!Array.isArray(raw)) throw new HttpError(400, `${field} must be an array.`, "invalid_input");
+  if (raw === undefined) {return [];}
+  if (!Array.isArray(raw)) {throw new HttpError(400, `${field} must be an array.`, "invalid_input");}
   return raw.slice(0, max).filter((item): item is string => typeof item === "string" && HEX_32_128.test(item));
 }
 
@@ -63,16 +63,16 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
   const seenDocuments = new Set<string>();
   for (const item of page) {
     const documentID = typeof item.data.documentID === "string" ? item.data.documentID : "";
-    if (!documentID || seenDocuments.has(documentID)) continue;
+    if (!documentID || seenDocuments.has(documentID)) {continue;}
     let doc: FirebaseFirestore.DocumentData | undefined;
     if (args.includeBodyPreview) {
       const docSnap = await db.doc(`users/${uid}/cloud_search_documents/${documentID}`).get();
       firestoreDocumentReads += 1;
-      if (!docSnap.exists) continue;
+      if (!docSnap.exists) {continue;}
       doc = docSnap.data() ?? {};
-      if (doc.bodyHash !== item.data.bodyHash || doc.storagePath !== item.data.storagePath) continue;
+      if (doc.bodyHash !== item.data.bodyHash || doc.storagePath !== item.data.storagePath) {continue;}
     }
-    if (args.projectName && (doc?.projectName ?? item.data.projectName) !== args.projectName) continue;
+    if (args.projectName && (doc?.projectName ?? item.data.projectName) !== args.projectName) {continue;}
     seenDocuments.add(documentID);
     hits.push({
       id: `burnbar://conversation/${documentID}/${item.id}`,
@@ -114,12 +114,12 @@ async function collectPostingMatches(
   provider: string | undefined,
   candidateReadCap: number
 ): Promise<number> {
-  if (inputHashes.length === 0) return 0;
+  if (inputHashes.length === 0) {return 0;}
   const requested = new Set(inputHashes);
   let query: FirebaseFirestore.Query = db
     .collection(`users/${uid}/cloud_search_postings`)
     .where("postingKey", "in", inputHashes.map((hash) => `${kind}_${hash}`));
-  if (provider) query = query.where("provider", "==", provider);
+  if (provider) {query = query.where("provider", "==", provider);}
   const postings = await query.limit(candidateReadCap).get();
   let firestoreDocumentReads = postings.docs.length;
   const chunkIDs = new Set<string>();
@@ -131,45 +131,45 @@ async function collectPostingMatches(
     }
   }
   const refs = Array.from(chunkIDs).slice(0, candidateReadCap).map((chunkID) => db.doc(`users/${uid}/cloud_search_chunks/${chunkID}`));
-  if (refs.length === 0) return firestoreDocumentReads;
+  if (refs.length === 0) {return firestoreDocumentReads;}
   const chunks = await db.getAll(...refs);
   firestoreDocumentReads += refs.length;
   for (const chunk of chunks) {
-    if (!chunk.exists) continue;
+    if (!chunk.exists) {continue;}
     const data = chunk.data() ?? {};
-    if (provider && data.provider !== provider) continue;
+    if (provider && data.provider !== provider) {continue;}
     const values = Array.isArray(data[kind === "token" ? "tokenHashes" : "semanticHashes"])
       ? data[kind === "token" ? "tokenHashes" : "semanticHashes"].filter((hash: unknown): hash is string => typeof hash === "string")
       : [];
     const matches = values.reduce((sum: number, hash: string) => sum + (requested.has(hash) ? 1 : 0), 0);
-    if (matches <= 0) continue;
+    if (matches <= 0) {continue;}
     const current = candidates.get(chunk.id) ?? { id: chunk.id, tokenMatches: 0, semanticMatches: 0, data };
-    if (kind === "token") current.tokenMatches += matches;
-    else current.semanticMatches += matches;
+    if (kind === "token") {current.tokenMatches += matches;}
+    else {current.semanticMatches += matches;}
     candidates.set(chunk.id, current);
   }
   return firestoreDocumentReads;
 }
 
 function timestampISO(value: unknown): string | undefined {
-  if (!value) return undefined;
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "string") return value;
+  if (!value) {return undefined;}
+  if (value instanceof Date) {return value.toISOString();}
+  if (typeof value === "string") {return value;}
   const date = firestoreTimestampToDate(value);
   return date?.toISOString();
 }
 
 function firestoreTimestampToDate(value: unknown): Date | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
+  if (typeof value !== "object" || value === null) {return undefined;}
   const toDate = Reflect.get(value, "toDate");
-  if (typeof toDate !== "function") return undefined;
+  if (typeof toDate !== "function") {return undefined;}
   const date = toDate.call(value);
   return date instanceof Date && !Number.isNaN(date.valueOf()) ? date : undefined;
 }
 
 export async function listIndexStatus(db: Firestore, uid: string) {
   const manifest = await db.doc(`users/${uid}/cloud_search_index_manifest/current`).get();
-  if (manifest.exists) return { ...manifest.data(), mode: "manifest" };
+  if (manifest.exists) {return { ...manifest.data(), mode: "manifest" };}
   const states = await db.collection(`users/${uid}/cloud_search_index_state`).limit(100).get();
   return {
     mode: "legacy_state_rollup",
@@ -184,11 +184,7 @@ export async function listFacets(db: Firestore, uid: string, kind: string) {
   const counts = new Map<string, number>();
   for (const doc of docs.docs) {
     const value = doc.get(field);
-    if (typeof value === "string" && value.trim()) counts.set(value, (counts.get(value) ?? 0) + 1);
+    if (typeof value === "string" && value.trim()) {counts.set(value, (counts.get(value) ?? 0) + 1);}
   }
   return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 50).map(([value, count]) => ({ value, count }));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
