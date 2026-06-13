@@ -157,6 +157,39 @@ jobs:
       - name: Reject curl-pipe-shell installers
         run: scripts/ci/verify-no-remote-shell-installers.sh
 
+  vendored-agent-provenance:
+    name: Vendored Agent Provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+        with:
+          repository: Ajnunezg/hermes-agent
+          # Keep this immutable: the gate runs with repo credentials in scope.
+          # To bump, update third_party/hermes-agent/manifest.json first, run
+          # scripts/ci/verify-vendored-agent-source.sh, then copy pinnedCommit
+          # here.
+          ref: bdb830070927cbb20763819f91ee930548f7da92
+          path: .ci/hermes-agent
+
+      - name: Verify vendored agent provenance
+        env:
+          HERMES_AGENT_SRC: ${{ github.workspace }}/.ci/hermes-agent
+        run: |
+          set -euo pipefail
+          manifest_pin="$(python3 -c 'import json;print(json.load(open("third_party/hermes-agent/manifest.json"))["pinnedCommit"])')"
+          checkout_head="$(git -C .ci/hermes-agent rev-parse HEAD)"
+          if [[ "$manifest_pin" != "$checkout_head" ]]; then
+            echo "ERROR: harness checkout ($checkout_head) != manifest pinnedCommit ($manifest_pin)." >&2
+            echo "The E2EE proof would run against a commit the provenance manifest does not attest." >&2
+            echo "Update this checkout ref and the manifest together." >&2
+            exit 1
+          fi
+          bash scripts/ci/verify-vendored-agent-source.sh
+
   signal-activation-parity:
     name: Signal Activation Parity (fail-closed default)
     runs-on: ubuntu-latest
