@@ -670,7 +670,10 @@ final class AccountManager {
         }
     }
 
-    private static func googleAuthPresentationWindow(from window: NSWindow) -> NSWindow {
+    private static func googleAuthPresentationWindow(
+        from window: NSWindow,
+        appWindows: [NSWindow]? = nil
+    ) -> NSWindow {
         var candidate = window
         while let parent = candidate.sheetParent {
             candidate = parent
@@ -680,7 +683,7 @@ final class AccountManager {
             candidate.makeKeyAndOrderFront(nil)
             return candidate
         }
-        let fallback = NSApp.windows.first { $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil }
+        let fallback = (appWindows ?? NSApp.windows).first { $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil }
         if let fallback {
             NSApp.activate(ignoringOtherApps: true)
             fallback.makeKeyAndOrderFront(nil)
@@ -1022,8 +1025,11 @@ final class AccountManager {
         firebaseAuthLegacyDefaultStoredUserDeleteQuery(appName: appName)
     }
 
-    static func googleAuthPresentationWindowForTesting(from window: NSWindow) -> NSWindow {
-        googleAuthPresentationWindow(from: window)
+    static func googleAuthPresentationWindowForTesting(
+        from window: NSWindow,
+        appWindows: [NSWindow]? = nil
+    ) -> NSWindow {
+        googleAuthPresentationWindow(from: window, appWindows: appWindows)
     }
     #endif
 }
