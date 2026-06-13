@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { realpathSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -219,7 +220,11 @@ function sortObject(value) { return Object.fromEntries(Object.entries(value).sor
 function compareViolations(a, b) { return a.path.localeCompare(b.path) || a.line - b.line || a.column - b.column || a.kind.localeCompare(b.kind); }
 function normalizePath(value) { return value.split(path.sep).join("/"); }
 function printTextReport(report) { console.log(`Unsafe cast debt: ${report.total}`); console.log(`TypeScript scanner: ${report.scanner.tsMode}`); console.log(""); console.log("By language:"); for (const [language, count] of Object.entries(report.byLanguage)) console.log(`  ${language}: ${count}`); console.log(""); console.log("By kind:"); for (const [kind, count] of Object.entries(report.byKind)) console.log(`  ${kind}: ${count}`); }
-function parseArgs(argv) { const options = { format: "text", check: false, repoRoot: process.cwd() }; for (let i = 0; i < argv.length; i += 1) { const arg = argv[i]; if (arg === "--format") options.format = argv[++i]; else if (arg === "--repo-root") options.repoRoot = argv[++i]; else if (arg === "--check") options.check = true; else if (arg === "--help" || arg === "-h") options.help = true; else throw new Error(`Unknown argument: ${arg}`); } if (!["json", "text"].includes(options.format)) throw new Error(`Unsupported format: ${options.format}`); return options; }
-function printHelp() { console.log(`Usage: node tools/type-debt/audit-unsafe-casts.mjs [options]\n\nOptions:\n  --repo-root <path>  Repository root to scan (default: current directory)\n  --format <json|text>\n  --check            Exit non-zero when any violation exists\n  --help             Show this help\n`); }
-async function main() { const options = parseArgs(process.argv.slice(2)); if (options.help) { printHelp(); return; } const report = await auditUnsafeCasts({ repoRoot: options.repoRoot }); if (options.format === "json") console.log(JSON.stringify(report, null, 2)); else printTextReport(report); if (options.check && report.total > 0) process.exitCode = 1; }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { main().catch((error) => { console.error(error.message); process.exit(1); }); }
+function parseArgs(argv) { const options = { format: "text", check: false, repoRoot: process.cwd() }; for (let i = 0; i < argv.length; i += 1) { const arg = argv[i]; if (arg === "--format") options.format = argv[++i]; else if (arg === "--repo-root") options.repoRoot = argv[++i]; else if (arg === "--check") options.check = true; else if (arg === "--out") options.out = argv[++i]; else if (arg === "--help" || arg === "-h") options.help = true; else throw new Error(`Unknown argument: ${arg}`); } if (!["json", "text"].includes(options.format)) throw new Error(`Unsupported format: ${options.format}`); return options; }
+function printHelp() { console.log(`Usage: node tools/type-debt/audit-unsafe-casts.mjs [options]\n\nOptions:\n  --repo-root <path>  Repository root to scan (default: current directory)\n  --format <json|text>\n  --check            Exit non-zero when any violation exists\n  --out <path>       Write the JSON report to a file (atomic, no stdout buffering)\n  --help             Show this help\n`); }
+async function main() { const options = parseArgs(process.argv.slice(2)); if (options.help) { printHelp(); return; } const report = await auditUnsafeCasts({ repoRoot: options.repoRoot }); const json = JSON.stringify(report, null, 2); if (options.out) { const { writeFileSync } = await import("node:fs"); writeFileSync(options.out, json); } else if (options.format === "json") console.log(json); else printTextReport(report); if (options.check && report.total > 0) process.exitCode = 1; }
+// realpath both sides: on macOS /tmp is a symlink to /private/tmp, so the
+// logical argv[1] and the canonical import.meta.url diverge and the old
+// equality check silently skipped main() (empty report, exit 0).
+const __invoked = process.argv[1] && (() => { try { return realpathSync(path.resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();
+if (__invoked) { main().catch((error) => { console.error(error.message); process.exit(1); }); }

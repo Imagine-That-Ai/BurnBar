@@ -102,7 +102,7 @@ struct CloudBillingPeriodToggle: View {
                     Text("SAVE 17%")
                         .font(.system(size: 12, weight: .heavy, design: .rounded))
                         .tracking(0.8)
-                        .foregroundStyle(isSelected ? ProTheme.Membership.surface : ProTheme.Membership.foilLeaf)
+                        .foregroundStyle(isSelected ? ProTheme.Membership.letterpress : ProTheme.Membership.foilLeaf)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(
@@ -161,7 +161,7 @@ struct CloudTierLineup: View {
                     monthlyEquivalentText: store.monthlyEquivalentDisplayPrice(for: cloud),
                     annualFreeMonths: annualFreeMonths(title: "BurnBar Cloud")
                 ) {
-                    Haptics.medium()
+                    // FoilCTAButton owns the tactile (it fires Haptics.medium()).
                     Task { await store.purchase(productID: cloud.id) }
                 }
             }
@@ -176,7 +176,7 @@ struct CloudTierLineup: View {
                     monthlyEquivalentText: store.monthlyEquivalentDisplayPrice(for: pro),
                     annualFreeMonths: annualFreeMonths(title: "BurnBar Cloud Pro")
                 ) {
-                    Haptics.medium()
+                    // FoilCTAButton owns the tactile (it fires Haptics.medium()).
                     Task { await store.purchase(productID: pro.id) }
                 }
             }
@@ -194,7 +194,7 @@ struct CloudTierLineup: View {
                     monthlyEquivalentText: store.monthlyEquivalentDisplayPrice(for: ultra),
                     annualFreeMonths: annualFreeMonths(title: "BurnBar Cloud Ultra")
                 ) {
-                    Haptics.medium()
+                    // FoilCTAButton owns the tactile (it fires Haptics.medium()).
                     Task { await store.purchase(productID: ultra.id) }
                 }
             }
@@ -308,7 +308,7 @@ struct CloudTierCard: View {
         .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(flagshipGlow)
-        .membershipCard(strokeWidth: isFlagship ? 1.4 : 1.0)
+        .membershipCard(enableShimmer: false, strokeWidth: isFlagship ? 1.4 : 1.0)
         .overlay(holographicAccent)
         .overlay(flagshipChromaticRim)
         .accessibilityElement(children: .combine)
@@ -464,11 +464,13 @@ struct CloudTierCard: View {
 
     /// "2 MONTHS FREE" when the annual maths really hands back whole months;
     /// the generic value seal otherwise. Derived from live or catalog prices —
-    /// never asserted.
-    private var annualSealText: String {
-        guard let annualFreeMonths else { return "BEST VALUE" }
-        return annualFreeMonths == 1 ? "1 MONTH FREE" : "\(annualFreeMonths) MONTHS FREE"
+    /// never asserted. Static + internal so tests pin the copy selection.
+    static func annualSealText(freeMonths: Int?) -> String {
+        guard let freeMonths else { return "BEST VALUE" }
+        return freeMonths == 1 ? "1 MONTH FREE" : "\(freeMonths) MONTHS FREE"
     }
+
+    private var annualSealText: String { Self.annualSealText(freeMonths: annualFreeMonths) }
 
     @ViewBuilder
     private var trialRibbon: some View {

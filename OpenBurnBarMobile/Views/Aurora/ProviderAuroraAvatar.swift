@@ -11,6 +11,13 @@ struct ProviderAuroraAvatar: View {
     let provider: AgentProvider
     var size: CGFloat = 64
     var animated: Bool = true
+    /// Set true when this avatar renders inside an AuroraGlassCard / `.auroraGlass`
+    /// surface. Liquid Glass cannot sample other Liquid Glass (see
+    /// Theme/LiquidGlass.swift and IdentityHero.swift) — a nested `.glassEffect`
+    /// disc would sample the scroll backdrop behind the card and punch a hole
+    /// through it. When set, the disc uses the material fallback on ALL OS
+    /// versions so the card glass carries the Liquid Glass identity instead.
+    var glassInCard: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var ringRotation: Double = 0
@@ -58,7 +65,7 @@ struct ProviderAuroraAvatar: View {
     @ViewBuilder
     private var glassDisc: some View {
         let inset: CGFloat = max(6, size * 0.14)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !glassInCard {
             // Liquid Glass: the disc is pure glass sampling the real backdrop —
             // a material fill underneath would block the refraction and read as
             // frosted plastic. The avatar's personality survives as a faint
