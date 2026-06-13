@@ -1,14 +1,30 @@
 # Privileged socket authentication (P0 + WS1)
 
+> **Transport status (post-P0-6 / M-9):** **XPC is the preferred and primary
+> privileged-input transport.** The privileged-input dispatch path runs over the
+> XPC Mach service `com.openburnbar.privileged-input-execution`
+> (`PrivilegedInputXPCClient` in `OpenBurnBarComputerUseCore`); the legacy `/tmp`
+> Unix-domain socket adapter is the compatibility shim being retired under P0-6.
+> The P0-6 rework removes any plaintext privileged input (including Remote Unlock
+> credential material) from the legacy socket lane and moves it onto the
+> authenticated XPC dispatch envelope. **P0-6 is still in flight on the current
+> tree** — until the socket adapter is fully removed, treat the Unix-socket lane
+> as the weaker, legacy path and prefer the XPC client for new callers. The
+> designated-requirement string below is the **M-9-fixed** form (the earlier
+> requirement was too permissive; see "Designated requirement").
+
 ## WS1 minimal TCB (2026-05-30)
 
 | Component | Role | Entitlements |
 |-----------|------|--------------|
-| `OpenBurnBarPrivilegedInputExecution` | HID leaf (XPC Mach service `com.openburnbar.privileged-input-execution`) | `hid.virtual.device` only |
-| `OpenBurnBarVirtualHIDBridge` | Legacy Unix socket adapter → forwards to execution over XPC | None (no HID/network/keychain) |
+| `OpenBurnBarPrivilegedInputExecution` | HID leaf (XPC Mach service `com.openburnbar.privileged-input-execution`) — **preferred transport** | `hid.virtual.device` only |
+| `OpenBurnBarVirtualHIDBridge` | **Legacy** Unix socket adapter → forwards to execution over XPC (being retired under P0-6) | None (no HID/network/keychain) |
 | `OpenBurnBarRemoteAccessAgent` | Wake display, launch console-user workers, WS2 token stub | None (no HID/network/keychain) |
 
-Clients prefer **XPC** (`PrivilegedInputXPCClient` in `OpenBurnBarComputerUseCore`); the socket path remains until migration completes. Dispatch uses `PrivilegedInputDispatchRequest` / `PrivilegedInputDispatchEnvelope` (stable for WS2 capability tokens).
+Dispatch uses `PrivilegedInputDispatchRequest` / `PrivilegedInputDispatchEnvelope`
+(stable for WS2 capability tokens). Both the XPC service and the legacy socket
+adapter share the same peer-authentication gate (§"P0 peer authentication") and
+the same fail-closed input policy (§"Virtual HID `\"input\"` fail-closed policy").
 
 All three privileged helpers are built with **Hardened Runtime** enabled in `project.yml`.
 
@@ -29,6 +45,14 @@ Canonical Team ID and requirement string live in `OpenBurnBarSigningIdentity` (`
 - `certificate leaf[subject.OU] = "<TEAM_ID>"`
 - `identifier "com.openburnbar.*"`
 - Hardened Runtime + Library Validation
+
+> **M-9 fix:** an earlier requirement string was too permissive (it accepted
+> any first-party identifier without binding the Team-ID OU and the
+> `com.openburnbar.*` identifier together), so a different team's Apple-signed
+> binary could satisfy it. The current form above binds **all** of anchor +
+> leaf OU (Team ID) + identifier prefix + Hardened-Runtime/Library-Validation,
+> closing that gap. Re-run the red-team probe (below) after any change to
+> `OpenBurnBarSigningIdentity`.
 
 ## Virtual HID `"input"` fail-closed policy
 

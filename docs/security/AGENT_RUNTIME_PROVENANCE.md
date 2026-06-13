@@ -43,13 +43,15 @@ HERMES_AGENT_SRC=/path/to/hermes-agent scripts/ci/verify-vendored-agent-source.s
 
 ## Operational steps (before beta)
 
-1. **Merge the C-4 hardening.** The agent command-guard hardening (secret-read /
-   exfil gating, fail-closed tirith, smart-mode escalation — branch
-   `security/agent-sandbox-hardening`) is **not** in the currently-pinned commit
-   `cde04bb9a`. Merge it into `ajnunezg/burnbar-gateway-e2ee`, re-vendor the
-   bytecode, then update `pinnedCommit` + `vendoredSourceTreeSha256` and clear
-   `pendingHardening.blocking`. The manifest flags this as blocking and the
-   verifier warns until it is done.
+1. **C-4 hardening — DONE (2026-06-11).** The agent command-guard hardening
+   (secret-read / exfil gating, fail-closed tirith, smart-mode escalation —
+   branch `security/agent-sandbox-hardening`) is now commit
+   `bdb830070927cbb20763819f91ee930548f7da92`, pushed to the public fork branch
+   `ajnunezg/burnbar-gateway-e2ee` and pinned as `pinnedCommit` in the manifest.
+   `vendoredSourceTreeSha256` was re-vendored to match and
+   `pendingHardening.blocking` is now `false`. (`gh api repos/Ajnunezg/hermes-agent/commits/bdb830070`
+   resolves, and the PR harness cross-checks its checkout ref against this
+   manifest, so the gate runs the exact attested commit.)
 2. **Wire the verifier into CI.** Add a checkout of the pinned fork to the
    release / corresponding-source job and run
    `scripts/ci/verify-vendored-agent-source.sh` (blocking). It is intentionally
