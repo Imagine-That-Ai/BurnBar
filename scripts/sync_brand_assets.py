@@ -38,6 +38,7 @@ MEMBER_BADGES = [
     ("CloudBadgeSunDisc", "sun_disc.pdf", "sun_disc.svg", "17_sun_disc.svg"),
 ]
 
+
 def sync_website_vectors():
     print(">>> Syncing Brand SVGs to Website public vectors...")
     os.makedirs(WEBSITE_VECTOR_DIR, exist_ok=True)
@@ -47,6 +48,7 @@ def sync_website_vectors():
             dst_path = os.path.join(WEBSITE_VECTOR_DIR, filename)
             shutil.copy2(src_path, dst_path)
             print(f"  Copied: {filename} -> Website Vector")
+
 
 def sync_assets_svgs():
     print("\n>>> Syncing and upgrading assets/svgs/ with high-quality counterparts...")
@@ -59,6 +61,7 @@ def sync_assets_svgs():
             print(f"  Upgraded: {src_name} -> {dst_name} in assets/svgs/")
         else:
             print(f"  Warning: Source file {src_name} not found!")
+
 
 def update_xcassets_for_path(assets_catalog_path, app_name):
     print(f"\n>>> Migrating member badges in {app_name} from legacy PDF to high-quality SVG...")
@@ -77,7 +80,7 @@ def update_xcassets_for_path(assets_catalog_path, app_name):
         # 2. Update Contents.json to point to the new SVG
         contents_json_path = os.path.join(imageset_dir, "Contents.json")
         if os.path.exists(contents_json_path):
-            with open(contents_json_path, "r") as f:
+            with open(contents_json_path) as f:
                 try:
                     data = json.load(f)
                 except Exception as e:
@@ -95,20 +98,9 @@ def update_xcassets_for_path(assets_catalog_path, app_name):
             else:
                 # Re-create correct Contents.json format if missing or invalid
                 new_data = {
-                    "images": [
-                        {
-                            "filename": svg_name,
-                            "idiom": "universal"
-                        }
-                    ],
-                    "info": {
-                        "author": "xcode",
-                        "version": 1
-                    },
-                    "properties": {
-                        "preserves-vector-representation": True,
-                        "template-rendering-intent": "original"
-                    }
+                    "images": [{"filename": svg_name, "idiom": "universal"}],
+                    "info": {"author": "xcode", "version": 1},
+                    "properties": {"preserves-vector-representation": True, "template-rendering-intent": "original"},
                 }
                 with open(contents_json_path, "w") as f:
                     json.dump(new_data, f, indent=2)
@@ -120,12 +112,16 @@ def update_xcassets_for_path(assets_catalog_path, app_name):
             os.remove(pdf_path)
             print(f"  Cleaned up legacy PDF: {pdf_name}")
 
+
 def main():
     sync_website_vectors()
     sync_assets_svgs()
     update_xcassets_for_path(MAC_ASSETS_DIR, "AgentLens (macOS)")
     update_xcassets_for_path(IOS_ASSETS_DIR, "OpenBurnBarMobile (iOS)")
-    print("\n>>> Brand asset synchronization and migration completed successfully! All 17 vector sets fully updated across Web, assets catalog, and macOS/iOS apps.")
+    print(
+        "\n>>> Brand asset synchronization and migration completed successfully! All 17 vector sets fully updated across Web, assets catalog, and macOS/iOS apps."
+    )
+
 
 if __name__ == "__main__":
     main()

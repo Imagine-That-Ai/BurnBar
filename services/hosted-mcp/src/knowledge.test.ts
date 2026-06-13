@@ -21,12 +21,12 @@ interface StubRow {
 type StubDb = KnowledgeSearchFirestore & KnowledgeDocumentFirestore;
 
 function vectorArray(raw: unknown): number[] {
-  if (Array.isArray(raw)) return raw.map(Number);
+  if (Array.isArray(raw)) {return raw.map(Number);}
   if (typeof raw === "object" && raw !== null) {
     const toArray = Reflect.get(raw, "toArray");
     if (typeof toArray === "function") {
       const vector = Reflect.apply(toArray, raw, []);
-      if (Array.isArray(vector)) return vector.map(Number);
+      if (Array.isArray(vector)) {return vector.map(Number);}
     }
   }
   return [];

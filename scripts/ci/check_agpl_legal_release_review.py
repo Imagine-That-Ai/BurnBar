@@ -34,9 +34,7 @@ APPROVED_STATUS = "approved"
 # per-PR lane); a release simply cannot claim a signed approval until the real
 # key is pinned here. That is the intended one-time, reviewable unlock — not a
 # permanently-red gate, and emphatically not a green-while-blind one.
-COUNSEL_PUBLIC_KEY_SHA256 = (
-    "REPLACE_WITH_PINNED_COUNSEL_PUBLIC_KEY_SHA256_FINGERPRINT"
-)
+COUNSEL_PUBLIC_KEY_SHA256 = "REPLACE_WITH_PINNED_COUNSEL_PUBLIC_KEY_SHA256_FINGERPRINT"
 COUNSEL_KEY_PLACEHOLDER = "REPLACE_WITH_PINNED_COUNSEL_PUBLIC_KEY_SHA256_FINGERPRINT"
 SUPPORTED_SIGNATURE_FORMATS = {"openssl-sha256-rsa", "openssl-sha256-ecdsa"}
 REQUIRED_SCOPE = {
@@ -295,8 +293,10 @@ def validate_legal_release_review(
                 if not isinstance(value, str) or not value.strip():
                     errors.append(f"approval.{key} is required")
             document_sha = approval.get("documentSha256")
-            if isinstance(document_sha, str) and document_sha.strip() and (
-                len(document_sha) != 64 or any(char not in "0123456789abcdefABCDEF" for char in document_sha)
+            if (
+                isinstance(document_sha, str)
+                and document_sha.strip()
+                and (len(document_sha) != 64 or any(char not in "0123456789abcdefABCDEF" for char in document_sha))
             ):
                 errors.append("approval.documentSha256 must be a 64-character hex SHA-256")
 
@@ -307,8 +307,7 @@ def validate_legal_release_review(
                 and signature_format not in SUPPORTED_SIGNATURE_FORMATS
             ):
                 errors.append(
-                    "approval.signatureFormat must be one of: "
-                    + ", ".join(sorted(SUPPORTED_SIGNATURE_FORMATS))
+                    "approval.signatureFormat must be one of: " + ", ".join(sorted(SUPPORTED_SIGNATURE_FORMATS))
                 )
 
             # Cryptographic verification runs whenever a release claims approval,
@@ -357,9 +356,7 @@ def validate_legal_release_review(
             elif "publicKeyPath" in resolved:
                 fingerprint = _public_key_fingerprint(resolved["publicKeyPath"])
                 if fingerprint is None:
-                    errors.append(
-                        f"approval.publicKeyPath is not a readable public key: {path_rels['publicKeyPath']}"
-                    )
+                    errors.append(f"approval.publicKeyPath is not a readable public key: {path_rels['publicKeyPath']}")
                 elif fingerprint.lower() != COUNSEL_PUBLIC_KEY_SHA256.lower():
                     errors.append(
                         "approval.publicKeyPath does not match the pinned counsel signing key "

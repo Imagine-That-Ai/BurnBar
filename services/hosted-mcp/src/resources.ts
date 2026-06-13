@@ -25,7 +25,7 @@ export async function readConversationBody(
 ) {
   const uri = typeof args.resourceUri === "string" ? args.resourceUri : "";
   const match = RESOURCE_RE.exec(uri);
-  if (!match) throw new HttpError(400, "resourceUri must be a stable URI returned by search.", "invalid_resource_uri");
+  if (!match) {throw new HttpError(400, "resourceUri must be a stable URI returned by search.", "invalid_resource_uri");}
   const docId = match[1];
   const maxChars = Math.max(1024, Math.min(Number(args.maxChars ?? 24_000), 96_000));
   const cursor = args.cursor ? verifyCursor(args.cursor, uid, "burnbar_get_conversation_body") : undefined;
@@ -34,7 +34,7 @@ export async function readConversationBody(
   }
   const offset = cursor?.offset ?? 0;
   const snap = await db.doc(`users/${uid}/cloud_search_documents/${docId}`).get();
-  if (!snap.exists) throw new HttpError(404, "Conversation resource not found.", "resource_not_found");
+  if (!snap.exists) {throw new HttpError(404, "Conversation resource not found.", "resource_not_found");}
   const data = snap.data() ?? {};
   const storagePath = typeof data.storagePath === "string" ? data.storagePath : "";
   const bodyHash = typeof data.bodyHash === "string" ? data.bodyHash : "";

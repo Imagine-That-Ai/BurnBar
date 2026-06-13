@@ -39,18 +39,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
-import socket
 import sys
-import threading
-import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from http import HTTPStatus
 from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
+from collections.abc import Iterable
 from urllib.parse import urlparse
 
 # When invoked as a script the parent dir is on sys.path; when imported as a
@@ -98,8 +95,8 @@ class ProxyConfig:
     upstream_port: int
     upstream_scheme: str
     provider_id: str
-    session_id: Optional[str]
-    project_name: Optional[str]
+    session_id: str | None
+    project_name: str | None
     confidence: str
     estimate_when_missing: bool
 
@@ -126,11 +123,7 @@ def _filter_response_headers(headers: Iterable[tuple[str, str]]) -> list[tuple[s
     out: list[tuple[str, str]] = []
     for k, v in headers:
         canonical_name = FORWARDED_RESPONSE_HEADERS.get(k.lower())
-        if (
-            canonical_name is None
-            or k.lower() in HOP_BY_HOP_HEADERS
-            or _contains_header_ctl(v)
-        ):
+        if canonical_name is None or k.lower() in HOP_BY_HOP_HEADERS or _contains_header_ctl(v):
             continue
         out.append((canonical_name, v))
     return out
@@ -140,7 +133,7 @@ def _contains_header_ctl(value: str) -> bool:
     return any(ch in value for ch in ("\r", "\n", "\x00"))
 
 
-def _origin_form_path(raw_path: str) -> Optional[str]:
+def _origin_form_path(raw_path: str) -> str | None:
     if not raw_path.startswith("/") or raw_path.startswith("//"):
         return None
     parsed = urlparse(raw_path)
@@ -177,7 +170,7 @@ def _coerce_float(value: Any) -> float:
         return 0.0
 
 
-def extract_usage(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
+def extract_usage(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Extract OpenAI-style `usage` from a chat/completions JSON body."""
     if not isinstance(payload, dict):
         return None
@@ -332,12 +325,8 @@ def _build_event(
     """Return `(UsageEvent, confidence)` for the recorded response."""
     confidence = config.confidence
     usage = extract_usage(response_payload) or {}
-    input_tokens = _coerce_int(
-        usage.get("prompt_tokens") or usage.get("input_tokens")
-    )
-    output_tokens = _coerce_int(
-        usage.get("completion_tokens") or usage.get("output_tokens")
-    )
+    input_tokens = _coerce_int(usage.get("prompt_tokens") or usage.get("input_tokens"))
+    output_tokens = _coerce_int(usage.get("completion_tokens") or usage.get("output_tokens"))
     reasoning_tokens = 0
     details = usage.get("completion_tokens_details")
     if isinstance(details, dict):
@@ -351,13 +340,9 @@ def _build_event(
 
     if input_tokens == 0 and output_tokens == 0:
         if not config.estimate_when_missing:
-            raise ValueError(
-                "Hermes response did not include `usage` and estimate_when_missing=False"
-            )
+            raise ValueError("Hermes response did not include `usage` and estimate_when_missing=False")
         request_text = _collect_request_text(request_body)
-        response_text = accumulated_response_text or _collect_response_text(
-            response_payload
-        )
+        response_text = accumulated_response_text or _collect_response_text(response_payload)
         input_tokens = _estimate_tokens_for_text(request_text)
         output_tokens = _estimate_tokens_for_text(response_text)
         confidence = "low_confidence_estimate"
@@ -385,8 +370,8 @@ def _record_usage(
     *,
     config: ProxyConfig,
     event: UsageEvent,
-    upstream_request_id: Optional[str],
-    extra_extra: Optional[str] = None,
+    upstream_request_id: str | None,
+    extra_extra: str | None = None,
 ) -> None:
     try:
         idempotency_key = derive_idempotency_key(
@@ -410,7 +395,7 @@ def _record_usage(
         logger.warning("failed to record usage: %s", exc)
 
 
-def _parse_sse_data(line: bytes) -> Optional[dict[str, Any]]:
+def _parse_sse_data(line: bytes) -> dict[str, Any] | None:
     if not line.startswith(b"data:"):
         return None
     body = line[len(b"data:") :].strip()
@@ -454,12 +439,8 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
         if self.config.upstream_scheme == "https":
             from http.client import HTTPSConnection  # local import: optional dep
 
-            return HTTPSConnection(
-                self.config.upstream_host, self.config.upstream_port, timeout=120
-            )
-        return HTTPConnection(
-            self.config.upstream_host, self.config.upstream_port, timeout=120
-        )
+            return HTTPSConnection(self.config.upstream_host, self.config.upstream_port, timeout=120)
+        return HTTPConnection(self.config.upstream_host, self.config.upstream_port, timeout=120)
 
     def _request_body(self) -> bytes:
         length_header = self.headers.get("Content-Length")
@@ -486,9 +467,7 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
 
         upstream = self._open_upstream()
         upstream_headers = {
-            k: v
-            for k, v in self.headers.items()
-            if k.lower() not in HOP_BY_HOP_HEADERS and k.lower() != "host"
+            k: v for k, v in self.headers.items() if k.lower() not in HOP_BY_HOP_HEADERS and k.lower() != "host"
         }
         upstream_headers["Host"] = f"{self.config.upstream_host}:{self.config.upstream_port}"
 
@@ -518,7 +497,7 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
         path: str,
         request_body: dict[str, Any],
     ) -> None:
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         upstream_status = response.status
         content_type = response.getheader("Content-Type", "") or ""
         is_sse = "text/event-stream" in content_type.lower()
@@ -547,11 +526,7 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
         # before forwarding so the mobile picker doesn't render a single
         # bogus row. Mobile falls through to its bundled catalog when the
         # filtered `data` is empty.
-        if (
-            method == "GET"
-            and path == "/v1/models"
-            and "application/json" in content_type.lower()
-        ):
+        if method == "GET" and path == "/v1/models" and "application/json" in content_type.lower():
             body_bytes = _filter_self_loop_models(body_bytes)
 
         try:
@@ -559,11 +534,7 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             return
 
-        if (
-            method == "POST"
-            and self._is_chat_or_completions_path(path)
-            and "application/json" in content_type.lower()
-        ):
+        if method == "POST" and self._is_chat_or_completions_path(path) and "application/json" in content_type.lower():
             try:
                 payload = json.loads(body_bytes.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -584,9 +555,7 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
             request_id = (
                 response.getheader("X-Request-Id")
                 or response.getheader("x-request-id")
-                or (
-                    payload.get("id") if isinstance(payload, dict) else None
-                )
+                or (payload.get("id") if isinstance(payload, dict) else None)
             )
             _record_usage(
                 config=self.config,
@@ -606,7 +575,7 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
     ) -> None:
         accumulated_text: list[str] = []
         last_payload: dict[str, Any] = {}
-        last_request_id: Optional[str] = None
+        last_request_id: str | None = None
 
         # Read the upstream stream line-by-line, mirror to the client
         # immediately, and capture usage when present.
@@ -692,9 +661,7 @@ def _make_handler(config: ProxyConfig) -> type[HermesProxyHandler]:
 
 
 def parse_args(argv: list[str]) -> ProxyConfig:
-    parser = argparse.ArgumentParser(
-        description="OpenAI-compatible Hermes → OpenBurnBar usage-recording proxy."
-    )
+    parser = argparse.ArgumentParser(description="OpenAI-compatible Hermes → OpenBurnBar usage-recording proxy.")
     parser.add_argument(
         "--listen",
         default=DEFAULT_LISTEN,
@@ -790,7 +757,7 @@ def serve(config: ProxyConfig) -> None:
         server.server_close()
 
 
-def main(argv: Optional[list[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     config = parse_args(list(argv if argv is not None else sys.argv[1:]))
     serve(config)
 

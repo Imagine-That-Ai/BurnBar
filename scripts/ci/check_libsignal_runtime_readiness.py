@@ -62,9 +62,7 @@ def load_manifest(manifest: Path | str, repo_root: Path | str | None = None) -> 
     path = _resolve(manifest, repo_root)
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     gates = {
-        gate.get("id"): gate
-        for gate in data.get("requiredGates", [])
-        if isinstance(gate, dict) and gate.get("id")
+        gate.get("id"): gate for gate in data.get("requiredGates", []) if isinstance(gate, dict) and gate.get("id")
     }
     data["gates"] = gates
     return data
@@ -116,9 +114,7 @@ def check_manifest(manifest: Path | str, repo_root: Path | str | None = None) ->
     if unevidenced:
         errors.append("complete gates missing completed evidence: " + ", ".join(unevidenced))
 
-    incomplete = [
-        gate_id for gate_id in REQUIRED_GATE_IDS if gates.get(gate_id, {}).get("status") != "complete"
-    ]
+    incomplete = [gate_id for gate_id in REQUIRED_GATE_IDS if gates.get(gate_id, {}).get("status") != "complete"]
     if status == "ready" and incomplete:
         errors.append("manifest says ready but gates are incomplete: " + ", ".join(incomplete))
 

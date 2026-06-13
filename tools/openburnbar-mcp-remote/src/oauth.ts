@@ -23,7 +23,7 @@ function fallbackPath(suffix = ""): string {
 }
 
 function readSecret(account: string, suffix: string, envOverride?: string): string | undefined {
-  if (envOverride) return envOverride;
+  if (envOverride) {return envOverride;}
   if (process.platform === "darwin") {
     try {
       return execFileSync("security", ["find-generic-password", "-s", SERVICE, "-a", account, "-w"], { encoding: "utf8" }).trim();
