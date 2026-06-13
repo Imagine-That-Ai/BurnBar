@@ -6,8 +6,14 @@ permissions:
 
 on:
   schedule:
-    - cron: "0 9 * * *"
+    # 09:43 UTC daily. Keep off the top of the hour to reduce scheduler
+    # contention and leave the full harness room to start first.
+    - cron: "43 9 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: nightly-e2e-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   prod-health-synthetic:
