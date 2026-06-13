@@ -407,7 +407,7 @@ jobs:
           echo "hosted MCP local isolation proofs passed (cross-tenant / revocation / entitlement / cap / at-rest)"
           PROOF
 
-          npx --prefix functions firebase-tools emulators:exec \
+          npm --prefix functions exec -- firebase emulators:exec \
             --only firestore \
             --project "$MCP_PROOF_PROJECT" \
             --config firebase.json \
