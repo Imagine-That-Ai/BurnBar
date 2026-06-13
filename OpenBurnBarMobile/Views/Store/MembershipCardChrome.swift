@@ -182,7 +182,9 @@ struct MembershipSeal: View {
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .tracking(1.4)
         }
-        .foregroundStyle(prominent ? ProTheme.Membership.surface : ProTheme.Membership.foilLeaf)
+        // Dark ink in BOTH modes: the prominent fill is bright foil (gold in
+        // light, platinum in dark) — cream-on-gold fails WCAG AA in light mode.
+        .foregroundStyle(prominent ? ProTheme.Membership.letterpress : ProTheme.Membership.foilLeaf)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(
@@ -204,5 +206,8 @@ struct MembershipSeal: View {
             .clipShape(Capsule(style: .continuous))
         )
         .shadow(color: ProTheme.Membership.foilLeaf.opacity(prominent ? 0.35 : 0), radius: 8, y: 3)
+        // Spoken label uses sentence case — the caps are visual styling, not
+        // something VoiceOver should shout.
+        .accessibilityLabel(Text(text.localizedCapitalized))
     }
 }

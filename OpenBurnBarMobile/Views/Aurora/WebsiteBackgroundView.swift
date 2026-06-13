@@ -174,7 +174,14 @@ struct WebsiteBackgroundView: View {
     /// text for the frame budget. A nil plan rate means "use the canvas
     /// default" (60 fps), so streaming substitutes the cap directly.
     private func streamingThrottledFrameRate(_ planRate: Double?) -> Double? {
-        guard hermesStreamingActive else { return planRate }
+        Self.throttledFrameRate(planRate: planRate, streamingActive: hermesStreamingActive)
+    }
+
+    /// Pure policy so the swarm-throttle behavior is unit-testable: while a
+    /// Hermes reply streams, cap at 20 fps; never raise an already-slower
+    /// plan; pass the plan through untouched when not streaming.
+    static func throttledFrameRate(planRate: Double?, streamingActive: Bool) -> Double? {
+        guard streamingActive else { return planRate }
         return min(planRate ?? 20, 20)
     }
 

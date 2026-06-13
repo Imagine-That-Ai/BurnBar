@@ -2682,6 +2682,10 @@ final class HermesService {
     private func appendVisibleContent(_ content: String, to message: inout HermesChatMessage) {
         guard !content.isEmpty else { return }
         message.markFirstResponseChunk()
+        // LOAD-BEARING: each tool-use iteration appends a NEW assistant
+        // message but `lastStreamCommit` is shared service state and never
+        // reset — first-bubble immediacy for every message rests entirely on
+        // this empty-text check.
         let isFirstChunk = message.text.isEmpty
         if message.text.isEmpty || content.hasPrefix(message.text) {
             message.text = content

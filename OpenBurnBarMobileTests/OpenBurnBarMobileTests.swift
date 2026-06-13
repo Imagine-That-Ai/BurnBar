@@ -4315,6 +4315,24 @@ private final class MobileFakeSelfHostedQuotaRunnerSecrets: SelfHostedQuotaRunne
     }
 }
 
+final class HermesStreamingSwarmThrottleTests: XCTestCase {
+    // The entire swarm-perf payoff hangs on this policy; pin it.
+    func testStreamingCapsFrameRateAtTwenty() {
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: nil, streamingActive: true), 20)
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: 60, streamingActive: true), 20)
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: 30, streamingActive: true), 20)
+    }
+
+    func testStreamingNeverRaisesASlowerPlan() {
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: 15, streamingActive: true), 15)
+    }
+
+    func testNotStreamingPassesPlanThroughUntouched() {
+        XCTAssertEqual(WebsiteBackgroundView.throttledFrameRate(planRate: 60, streamingActive: false), 60)
+        XCTAssertNil(WebsiteBackgroundView.throttledFrameRate(planRate: nil, streamingActive: false))
+    }
+}
+
 final class SwarmBackgroundPowerPolicyTests: XCTestCase {
     func testVisibilityConstraintKeepsMostRestrictiveState() {
         XCTAssertEqual(.prominent, MobileBackgroundVisibility.prominent.constrained(by: .prominent))
