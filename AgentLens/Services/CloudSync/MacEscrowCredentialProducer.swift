@@ -292,7 +292,7 @@ struct MacEscrowCredentialProducer {
 /// attacker key while keeping a legitimately-signed fingerprint string).
 @MainActor
 struct MacLiveEscrowRecipientKeyResolver: MacEscrowRecipientKeyResolver {
-    var firestore: Firestore = Firestore.firestore()
+    var firestore = Firestore.firestore()
 
     func recipientKey(uid: String, destinationDeviceID: String) async throws -> MacEscrowRecipientKey {
         let userRef = firestore.collection("users").document(uid)
@@ -414,7 +414,7 @@ struct MacLiveEscrowCredentialSecretReader: MacEscrowCredentialSecretReader {
 /// Writes the grant/envelope/audit docs to Firestore.
 @MainActor
 struct MacLiveEscrowEnvelopeWriter: MacEscrowEnvelopeWriter {
-    var firestore: Firestore = Firestore.firestore()
+    var firestore = Firestore.firestore()
 
     func write(uid: String, plan: MacEscrowEnvelopePlan) async throws {
         let userRef = firestore.collection("users").document(uid)

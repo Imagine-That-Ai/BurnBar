@@ -44,12 +44,17 @@ class CloudVaultCryptoSignalInstrumentedTest {
         val publicKey = CloudVaultCryptoSupport.decodeBase64(SIGNAL_DEVICE_KAT_PUBLIC_KEY_B64_CANONICAL)
         val binding = cloudBinding(docId = "android-physical-doc", field = "signalEnvelope")
         val plaintext = """{"device":"android","signal":true}""".toByteArray()
+        val senderIdentityKeyId = "android-device-key-v1"
+        val trustedSenders = mapOf(senderIdentityKeyId to publicKey)
 
         val envelope =
             CloudVaultCrypto.sealSignalPayload(
                 plaintext = plaintext,
-                recipients = listOf(CloudVaultSignalRecipient("device", "android-device-key-v1", publicKey)),
+                recipients = listOf(CloudVaultSignalRecipient("device", senderIdentityKeyId, publicKey)),
                 binding = binding,
+                senderIdentityKeyId = senderIdentityKeyId,
+                senderIdentityPrivateKey = privateKey,
+                senderIdentityPublicKey = publicKey,
             )
 
         assertEquals(binding, envelope.binding)
@@ -57,9 +62,10 @@ class CloudVaultCryptoSignalInstrumentedTest {
             plaintext,
             CloudVaultCrypto.openSignalPayload(
                 envelope = envelope,
-                recipientIdentityKeyId = "android-device-key-v1",
+                recipientIdentityKeyId = senderIdentityKeyId,
                 recipientIdentityPrivateKey = privateKey,
                 expectedBinding = binding,
+                trustedSenderPublicKeys = trustedSenders,
             ),
         )
         assertTrue(
@@ -67,9 +73,10 @@ class CloudVaultCryptoSignalInstrumentedTest {
             runCatching {
                 CloudVaultCrypto.openSignalPayload(
                     envelope = envelope,
-                    recipientIdentityKeyId = "android-device-key-v1",
+                    recipientIdentityKeyId = senderIdentityKeyId,
                     recipientIdentityPrivateKey = privateKey,
                     expectedBinding = cloudBinding(docId = "relocated-doc", field = "signalEnvelope"),
+                    trustedSenderPublicKeys = trustedSenders,
                 )
             }.isFailure,
         )

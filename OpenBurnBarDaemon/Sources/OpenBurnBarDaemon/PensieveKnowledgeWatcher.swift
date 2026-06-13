@@ -359,6 +359,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             "ciphertext": sealed.ciphertext,
             "tag": sealed.tag
         ]
+        // cov:ignore-start -- daemon watcher currently seals uid-less schema-v1 batches; schema-v2 aad preservation is defensive parity with the app writer until daemon uid-bound sealing lands.
         // Kept in lockstep with KnowledgeSyncService.encode (app target): preserve the
         // path-bound (schemaVersion-2) fields so the writer/reader round-trip is lossless.
         // The daemon watcher seals uid-less (legacy schemaVersion-1), so these are nil here
@@ -369,6 +370,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         if let aad = sealed.aad {
             dict["aad"] = aad
         }
+        // cov:ignore-end
         return dict
     }
 }

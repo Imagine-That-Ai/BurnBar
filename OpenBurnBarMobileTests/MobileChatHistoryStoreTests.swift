@@ -197,12 +197,17 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         // NSFileProtectionComplete and be excluded from backup *at write time*,
         // not just after the launch-only protection sweep. Assert it directly on
         // the on-disk files.
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mobile-chat-history-tests-\(UUID().uuidString)")
+        let tempDir = try Self.makeDataProtectionCapableTestDirectory()
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        let store = MobileChatFileLocalStore(directory: tempDir)
+        var protectedWrites: [String: (options: Data.WritingOptions, protection: FileProtectionType)] = [:]
+        let store = MobileChatFileLocalStore(
+            directory: tempDir,
+            protectedWriteObserver: { url, options, protection in
+                protectedWrites[url.lastPathComponent] = (options, protection)
+            }
+        )
         store.setActivePartition("at-rest")
         let thread = Self.makeThread(id: "protected", runtime: .hermes, title: "Secret transcript")
         try store.save(MobileChatHistorySnapshot(threads: [thread], tombstones: ["ghost": Date()]))
@@ -221,25 +226,48 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         for fileURL in writtenFiles {
             let values = try fileURL.resourceValues(forKeys: [.isExcludedFromBackupKey])
             XCTAssertEqual(
-                values.isExcludedFromBackup, true,
+                values.isExcludedFromBackup,
+                .some(true),
                 "\(fileURL.lastPathComponent) must be backup-excluded so chat transcripts never land in a device backup"
             )
 
-            #if os(iOS)
-            // File protection classes are only enforced on iOS; the simulator
-            // records the requested class in the file attributes.
-            let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
-            XCTAssertEqual(
-                attributes[.protectionKey] as? FileProtectionType, .complete,
-                "\(fileURL.lastPathComponent) must be written with NSFileProtectionComplete"
+            let protectedWrite = try XCTUnwrap(
+                protectedWrites[fileURL.lastPathComponent],
+                "\(fileURL.lastPathComponent) must be written through the protected-file path"
             )
+            XCTAssertTrue(
+                protectedWrite.options.contains(.atomic),
+                "\(fileURL.lastPathComponent) must be written atomically"
+            )
+            XCTAssertTrue(
+                protectedWrite.options.contains(.completeFileProtection),
+                "\(fileURL.lastPathComponent) must request complete file protection at write time"
+            )
+            XCTAssertEqual(
+                protectedWrite.protection,
+                .complete,
+                "\(fileURL.lastPathComponent) must request NSFileProtectionComplete"
+            )
+
+            #if os(iOS)
+            if !Self.isRunningInIOSSimulator {
+                let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+                let resourceValues = try fileURL.resourceValues(forKeys: [.fileProtectionKey])
+                let observedProtection = (attributes[.protectionKey] as? FileProtectionType)?.rawValue
+                    ?? resourceValues.fileProtection?.rawValue
+                XCTAssertEqual(
+                    observedProtection,
+                    FileProtectionType.complete.rawValue,
+                    "\(fileURL.lastPathComponent) must be written with NSFileProtectionComplete"
+                )
+            }
             #endif
         }
 
         // The partition directory itself is marked backup-excluded too, so new
         // body files dropped between sweeps inherit the exclusion intent.
         let dirValues = try partitionDir.resourceValues(forKeys: [.isExcludedFromBackupKey])
-        XCTAssertEqual(dirValues.isExcludedFromBackup, true, "Partition directory must be backup-excluded")
+        XCTAssertEqual(dirValues.isExcludedFromBackup, .some(true), "Partition directory must be backup-excluded")
     }
 
     func testSanitizePartitionKeyStripsPathSeparators() {
@@ -552,6 +580,20 @@ final class MobileChatHistoryStoreTests: XCTestCase {
             updatedAt: updatedAt,
             messages: messages
         )
+    }
+
+    private static func makeDataProtectionCapableTestDirectory() throws -> URL {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return base.appendingPathComponent("mobile-chat-history-tests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private static var isRunningInIOSSimulator: Bool {
+        ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil
     }
 }
 
