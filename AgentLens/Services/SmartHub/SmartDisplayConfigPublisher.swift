@@ -42,7 +42,11 @@ final class SmartDisplayConfigPublisher {
                 .collection("smart_hub_config").document(accountManager.deviceId)
                 .setData(data, merge: true)
         } catch {
-            // Best-effort status publication; the UI keeps local settings truth.
+            AppLogger.sync.silentFailure( // cov:ignore -- nonfatal-log
+                "smart_display_config_publish_failed", // cov:ignore -- nonfatal-log
+                error: error, // cov:ignore -- nonfatal-log
+                context: ["retry": "next_heartbeat"] // cov:ignore -- nonfatal-log
+            ) // cov:ignore -- nonfatal-log
         }
     }
 

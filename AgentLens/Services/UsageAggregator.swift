@@ -457,7 +457,11 @@ private extension UsageAggregator {
                     )
                 )
             } catch {
-                // Keep refresh flow alive; retrieval health write failures are non-fatal here.
+                AppLogger.search.silentFailure( // cov:ignore -- nonfatal-log
+                    "discovery_health_write_failed", // cov:ignore -- nonfatal-log
+                    error: error, // cov:ignore -- nonfatal-log
+                    context: ["subsystem": RetrievalSubsystem.discovery.rawValue] // cov:ignore -- nonfatal-log
+                ) // cov:ignore -- nonfatal-log
             }
         }
         requestProjectionSweep()
@@ -496,7 +500,11 @@ private extension UsageAggregator {
                     )
                 )
             } catch {
-                // Keep refresh flow alive; health write failures are non-fatal here.
+                AppLogger.search.silentFailure( // cov:ignore -- nonfatal-log
+                    "projection_health_write_failed", // cov:ignore -- nonfatal-log
+                    error: error, // cov:ignore -- nonfatal-log
+                    context: ["subsystem": RetrievalSubsystem.projection.rawValue] // cov:ignore -- nonfatal-log
+                ) // cov:ignore -- nonfatal-log
             }
             return false
         }
