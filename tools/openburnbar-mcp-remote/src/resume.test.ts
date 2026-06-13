@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 import { buildResumeSpawnCommand, renderHostedResumeResponse, runResumeCli } from "./resume.js";
-import { validatedMcpEndpoint } from "./shim.js";
+import { forwardMcpMessage, validatedMcpEndpoint } from "./shim.js";
 
 function seal(text: string, key: Buffer) {
   const nonce = randomBytes(12);
@@ -166,6 +166,54 @@ test("MCP endpoint validation rejects token exfiltration targets", () => {
   assert.throws(() => validatedMcpEndpoint("https://example.com/mcp"), /explicitly allowed custom HTTPS/);
   assert.throws(() => validatedMcpEndpoint("http://example.com/mcp"), /HTTPS/);
   assert.throws(() => validatedMcpEndpoint("https://token@example.com/mcp"), /credentials/);
+});
+
+test("MCP refresh refuses custom endpoints even when custom HTTPS is allowed", async () => {
+  const previousAllowCustomEndpoint = process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT;
+  const previousAllowInsecureTokenSource = process.env.OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE;
+  const previousAccessToken = process.env.OPENBURNBAR_MCP_ACCESS_TOKEN;
+  const previousRefreshToken = process.env.OPENBURNBAR_MCP_REFRESH_TOKEN;
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT = "true";
+  process.env.OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE = "true";
+  process.env.OPENBURNBAR_MCP_ACCESS_TOKEN = "expired-access";
+  process.env.OPENBURNBAR_MCP_REFRESH_TOKEN = "durable-refresh";
+  globalThis.fetch = (async (url) => {
+    urls.push(String(url));
+    return new Response(JSON.stringify({ error: "expired" }), { status: 401 });
+  }) as typeof fetch;
+
+  try {
+    const result = await forwardMcpMessage(
+      { jsonrpc: "2.0", id: 7, method: "tools/list", params: {} },
+      "https://example.invalid/mcp",
+    ) as { error?: { code?: number } };
+    assert.equal(result.error?.code, -32001);
+    assert.deepEqual(urls, ["https://example.invalid/mcp"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousAllowCustomEndpoint === undefined) {
+      delete process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT;
+    } else {
+      process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT = previousAllowCustomEndpoint;
+    }
+    if (previousAllowInsecureTokenSource === undefined) {
+      delete process.env.OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE;
+    } else {
+      process.env.OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE = previousAllowInsecureTokenSource;
+    }
+    if (previousAccessToken === undefined) {
+      delete process.env.OPENBURNBAR_MCP_ACCESS_TOKEN;
+    } else {
+      process.env.OPENBURNBAR_MCP_ACCESS_TOKEN = previousAccessToken;
+    }
+    if (previousRefreshToken === undefined) {
+      delete process.env.OPENBURNBAR_MCP_REFRESH_TOKEN;
+    } else {
+      process.env.OPENBURNBAR_MCP_REFRESH_TOKEN = previousRefreshToken;
+    }
+  }
 });
 
 test("spawn command uses detached target mapping without hosted plaintext persistence", () => {

@@ -27,6 +27,10 @@ export function validatedMcpEndpoint(endpoint: string): URL {
   throw new Error("OpenBurnBar MCP endpoint must be https://mcp.burnbar.ai, an explicitly allowed custom HTTPS endpoint, or loopback HTTP for local development.");
 }
 
+function isTrustedRefreshEndpoint(target: URL): boolean {
+  return target.protocol === "https:" && TRUSTED_HTTPS_HOSTS.has(target.hostname.toLowerCase());
+}
+
 /**
  * Exchange the stored (expired) access token + durable refresh token for a fresh
  * 15-minute access token at the resource server's RFC 6749 token endpoint. Rotates
@@ -34,9 +38,10 @@ export function validatedMcpEndpoint(endpoint: string): URL {
  * is impossible (no refresh token, or the grant was revoked / expired).
  */
 async function refreshAccessToken(target: URL, expiredAccessToken: string): Promise<string | undefined> {
+  if (!isTrustedRefreshEndpoint(target)) {return undefined;}
   const refreshToken = readRefreshToken();
   if (!refreshToken) {return undefined;}
-  const tokenUrl = new URL("/oauth/token", target.origin);
+  const tokenUrl = new URL("/oauth/token", DEFAULT_ENDPOINT);
   let res: Response;
   try {
     res = await fetch(tokenUrl, {

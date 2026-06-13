@@ -49,10 +49,9 @@ test("verifies HMAC bearer token claims and rejects wrong audience", () => {
   assert.throws(() => verifyBearerToken(`Bearer ${unsafeClient}`), /client ID/);
 });
 
-test("verifies Ed25519 bearer tokens and disables legacy HMAC when public key is configured", () => {
+test("verifies Ed25519 bearer tokens and rejects legacy HMAC when public key is configured", () => {
   const previousPublic = process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;
   const previousPrivate = process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64;
-  const previousLegacy = process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
   const previousHmac = process.env.MCP_TOKEN_HMAC_SECRET;
   try {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
@@ -65,7 +64,6 @@ test("verifies Ed25519 bearer tokens and disables legacy HMAC when public key is
       "utf8",
     ).toString("base64");
     process.env.MCP_TOKEN_HMAC_SECRET = "legacy-secret";
-    delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
 
     const claims = {
       sub: "user-ed",
@@ -82,8 +80,6 @@ test("verifies Ed25519 bearer tokens and disables legacy HMAC when public key is
 
     const hmacToken = mintDevelopmentToken({ ...claims, jti: "jti-hmac" }, "legacy-secret");
     assert.throws(() => verifyBearerToken(`Bearer ${hmacToken}`), /Legacy HMAC/);
-    process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = "true";
-    assert.equal(verifyBearerToken(`Bearer ${hmacToken}`).jti, "jti-hmac");
   } finally {
     if (previousPublic === undefined) {
       delete process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;
@@ -94,11 +90,6 @@ test("verifies Ed25519 bearer tokens and disables legacy HMAC when public key is
       delete process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64;
     } else {
       process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 = previousPrivate;
-    }
-    if (previousLegacy === undefined) {
-      delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
-    } else {
-      process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = previousLegacy;
     }
     if (previousHmac === undefined) {
       delete process.env.MCP_TOKEN_HMAC_SECRET;
