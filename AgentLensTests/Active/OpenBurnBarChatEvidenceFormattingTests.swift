@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
@@ -158,5 +159,41 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
         XCTAssertEqual(snapshot.conversationRowCount, 0)
         XCTAssertEqual(snapshot.sharedArtifactCount, 0)
         XCTAssertTrue(snapshot.controllerRuntimeCached)
+    }
+
+    func test_notificationReplySealerBindsReplyToUserAndDocumentAAD() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let sealed = try MacAgentNotificationReplySealer.sealedReplyMap(
+            replyText: "send this back",
+            uid: "uid-1",
+            replyID: "reply-1",
+            keyData: key,
+            vaultKeyID: vaultKeyID
+        )
+
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: sealed))
+        let expectedContext = try CloudVaultAADContext(
+            uid: "uid-1",
+            collection: "agent_notification_replies",
+            docID: "reply-1",
+            field: "sealedReplyPayload"
+        )
+        XCTAssertEqual(envelope.aad, expectedContext.stringValue)
+        XCTAssertEqual(
+            try MacAgentNotificationReplySealer.openReplyText(
+                envelope,
+                uid: "uid-1",
+                replyID: "reply-1",
+                keyData: key
+            ),
+            "send this back"
+        )
+        XCTAssertThrowsError(try MacAgentNotificationReplySealer.openReplyText(
+            envelope,
+            uid: "uid-1",
+            replyID: "reply-2",
+            keyData: key
+        ))
     }
 }
