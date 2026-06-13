@@ -1546,6 +1546,12 @@ export const revokeEscrowDeviceTrust = onCall(
             rotateCallable: "rotateCloudVaultKey",
             nextRotationReason: "revocation_rewrap",
             createdAt: FieldValue.serverTimestamp(),
+            // Millis mirror of createdAt so the stale-pending detector
+            // (detectStalePendingCloudVaultRotations) can range-query a
+            // collection-group on a sortable scalar — a serverTimestamp() is
+            // a sentinel at write time and cannot be compared in a query
+            // predicate. Mirrors agent_notification_events.updatedAtMillis.
+            createdAtMillis: now.toMillis(),
             updatedAt: FieldValue.serverTimestamp(),
             schemaVersion: 1,
           });
