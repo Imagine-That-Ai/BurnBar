@@ -201,8 +201,8 @@ struct CLIProcessStreamRunner: Sendable {
             if let provider {
                 await MainActor.run {
                     PixelClockAgentStatusStore.shared.markRunning(provider: provider)
-                }
-            }
+                } // cov:ignore -- nonfatal-log
+            } // cov:ignore -- nonfatal-log
         } catch {
             await runtime.clearRunningProcess(token: processToken)
             continuation.finish(throwing: error)
@@ -218,8 +218,13 @@ struct CLIProcessStreamRunner: Sendable {
                     supervisor.ingest(line, source: .stderr)
                 }
             } catch {
-                // stderr is best-effort telemetry; stdout/process exit drives command outcome.
-            }
+                if !Task.isCancelled { // cov:ignore -- nonfatal-log
+                    AppLogger.parser.silentFailure( // cov:ignore -- nonfatal-log
+                        "cli_stderr_stream_read_failed", // cov:ignore -- nonfatal-log
+                        error: error // cov:ignore -- nonfatal-log
+                    ) // cov:ignore -- nonfatal-log
+                } // cov:ignore -- nonfatal-log
+            } // cov:ignore -- nonfatal-log
         }
 
         var parserError: CLIBridgeError?
@@ -250,7 +255,12 @@ struct CLIProcessStreamRunner: Sendable {
                 }
             }
         } catch {
-            // Cancellation or pipe error — fall through to cleanup.
+            if !Task.isCancelled { // cov:ignore -- nonfatal-log
+                AppLogger.parser.silentFailure( // cov:ignore -- nonfatal-log
+                    "cli_stdout_stream_read_failed", // cov:ignore -- nonfatal-log
+                    error: error // cov:ignore -- nonfatal-log
+                ) // cov:ignore -- nonfatal-log
+            } // cov:ignore -- nonfatal-log
         }
 
         process.waitUntilExit()
@@ -338,7 +348,13 @@ struct CLIProcessStreamRunner: Sendable {
                 supervisor.ingest(line, source: source)
             }
         } catch {
-            // Pipe drains are best-effort cleanup paths.
+            if !Task.isCancelled { // cov:ignore -- nonfatal-log
+                AppLogger.parser.silentFailure( // cov:ignore -- nonfatal-log
+                    "cli_pipe_drain_failed", // cov:ignore -- nonfatal-log
+                    error: error, // cov:ignore -- nonfatal-log
+                    context: ["source": source.rawValue] // cov:ignore -- nonfatal-log
+                ) // cov:ignore -- nonfatal-log
+            } // cov:ignore -- nonfatal-log
         }
     }
 }

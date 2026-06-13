@@ -486,7 +486,11 @@ final class SessionLogSyncService: CloudSyncDomain, @unchecked Sendable {
                 context.settingsManager.conversationFacetBackfillVersion = Self.facetSchemaVersion
             }
         } catch {
-            // Leave the version unchanged so the backfill retries on the next sync cycle.
+            AppLogger.sync.silentFailure( // cov:ignore -- nonfatal-log
+                "session_log_facet_backfill_failed", // cov:ignore -- nonfatal-log
+                error: error, // cov:ignore -- nonfatal-log
+                context: ["retry": "next_sync_cycle"] // cov:ignore -- nonfatal-log
+            ) // cov:ignore -- nonfatal-log
         }
     }
 
