@@ -130,7 +130,7 @@ fun ComputerUseAgentWatchScreen(
     )
 }
 
-private fun ComputerUseApprovalResponse.toRelayApprovalResponse(respondedBy: String): HermesRealtimeRelayApprovalResponse =
+internal fun ComputerUseApprovalResponse.toRelayApprovalResponse(respondedBy: String): HermesRealtimeRelayApprovalResponse =
     HermesRealtimeRelayApprovalResponse(
         approvalId = approvalId,
         decision =
