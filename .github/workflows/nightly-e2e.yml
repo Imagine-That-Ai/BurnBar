@@ -140,7 +140,7 @@ jobs:
         run: |
           npm ci --prefix functions
           npm run build --prefix functions
-          npx firebase-tools emulators:start --project openburnbar-dev --only functions &
+          npm --prefix functions exec -- firebase emulators:start --project openburnbar-dev --only functions &
           # Wait for emulator to be ready
           timeout 60 bash -c 'until curl -sf http://localhost:5001 2>/dev/null; do sleep 2; done' || true
 
