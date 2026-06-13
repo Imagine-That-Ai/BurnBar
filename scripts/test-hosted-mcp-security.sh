@@ -4,6 +4,19 @@ cd "$(dirname "$0")/.."
 
 ENDPOINT="${OPENBURNBAR_MCP_ENDPOINT:-http://127.0.0.1:8080/mcp}"
 
+# ---------------------------------------------------------------------------
+# LOCAL deterministic adversarial proofs — secret-free, every PR.
+#
+# Boots the REAL hosted MCP server in-process against a seeded in-memory
+# Firestore + storage and proves cross-tenant isolation, revoked-client
+# rejection, non-entitled gating, the rate-limit cap, and at-rest-sealed
+# payloads through the actual route + auth + entitlement + cursor + resource
+# code paths. Unlike the Pensieve cases below (which gate on PENSIEVE_* and skip
+# in token-less CI), this runs unconditionally and needs no live endpoint or
+# secrets. Requires services/hosted-mcp/lib (the CI job builds it first).
+node scripts/prove-hosted-mcp-live.mjs --local
+echo
+
 missing_auth_status="$(curl -sS -o /tmp/openburnbar-mcp-missing-auth.json -w '%{http_code}' \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \

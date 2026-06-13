@@ -6,7 +6,7 @@ import { enforceRateLimit } from "./rateLimits.js";
 import { callTool, listMcpTools } from "./toolRegistry.js";
 import { jsonRpcError, McpError } from "./errors.js";
 import { truncateJson } from "./redaction.js";
-import { listResources, readConversationBody } from "./resources.js";
+import { listResources, readConversationBody, type StorageBodyDownloader } from "./resources.js";
 import type { HostedMcpFirestore } from "./firestoreTypes.js";
 import { isFullFirestore } from "./firestoreTypes.js";
 
@@ -17,13 +17,28 @@ interface JsonRpcRequest {
   params?: Record<string, unknown>;
 }
 
-export async function handleMcpRequest(db: HostedMcpFirestore, claims: AccessTokenClaims, input: unknown) {
+/**
+ * Optional runtime seams the HTTP handler threads down. `download` lets a
+ * deterministic local harness seed the sealed session body without a live
+ * Cloud Storage bucket; production leaves it undefined so resources.ts uses the
+ * real `getStorage()` path.
+ */
+export interface McpRequestDeps {
+  download?: StorageBodyDownloader;
+}
+
+export async function handleMcpRequest(
+  db: HostedMcpFirestore,
+  claims: AccessTokenClaims,
+  input: unknown,
+  deps: McpRequestDeps = {}
+) {
   const req = parseJsonRpcRequest(input);
   if (!req) {
     return jsonRpcError(null, -32600, "Invalid JSON-RPC request.");
   }
   try {
-    const result = await dispatch(db, claims, req);
+    const result = await dispatch(db, claims, req, deps);
     return { jsonrpc: "2.0", id: req.id ?? null, result: truncateJson(result, MAX_OUTPUT_BYTES) };
   } catch (err) {
     if (err instanceof McpError) return jsonRpcError(req.id, err.code, err.message, err.data);
@@ -31,7 +46,7 @@ export async function handleMcpRequest(db: HostedMcpFirestore, claims: AccessTok
   }
 }
 
-async function dispatch(db: HostedMcpFirestore, claims: AccessTokenClaims, req: JsonRpcRequest): Promise<unknown> {
+async function dispatch(db: HostedMcpFirestore, claims: AccessTokenClaims, req: JsonRpcRequest, deps: McpRequestDeps): Promise<unknown> {
   switch (req.method) {
     case "initialize":
       await requireMcpSessionAccess(db, claims, "metadata:standard");
@@ -61,7 +76,7 @@ async function dispatch(db: HostedMcpFirestore, claims: AccessTokenClaims, req: 
     case "resources/read": {
       await requireResourceAccess(db, claims, "conversation:read", "body:standard");
       const uri = typeof req.params?.uri === "string" ? req.params.uri : "";
-      return readConversationBody(db, claims.sub, { resourceUri: uri });
+      return readConversationBody(db, claims.sub, { resourceUri: uri }, deps.download);
     }
     default:
       throw new McpError(-32601, `Unsupported MCP method ${req.method}.`);

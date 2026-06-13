@@ -26,6 +26,90 @@ function run(command, args, options = {}) {
   };
 }
 
+/**
+ * Notification channel types that carry a GCP-managed verification handshake
+ * (a real human/endpoint had to confirm the target). For these we require
+ * verificationStatus === "VERIFIED" so an audited NXDOMAIN email channel —
+ * which stays enabled in GCP but never verifies — fails closed.
+ */
+export const VERIFIABLE_CHANNEL_TYPES = new Set(["email", "sms"]);
+
+/**
+ * Channel types we accept without a verification handshake. For these we still
+ * assert the type is known and the target is a non-empty, non-placeholder value.
+ */
+export const ALLOWED_CHANNEL_TYPES = new Set([
+  "email",
+  "sms",
+  "slack",
+  "pubsub",
+  "webhook_tokenauth",
+  "webhook_basicauth",
+]);
+
+/**
+ * Channel-label keys that hold the routable target, by channel type. Used to
+ * read the address/endpoint out of `gcloud monitoring channels list` JSON.
+ */
+const CHANNEL_TARGET_LABEL = {
+  email: "email_address",
+  sms: "number",
+  slack: "channel_name",
+  pubsub: "topic",
+  webhook_tokenauth: "url",
+  webhook_basicauth: "url",
+};
+
+/**
+ * Known-bad / unresolvable placeholder domains that an enabled-but-dead email
+ * channel parks on (the Cure53-audited NXDOMAIN case). A target on any of these
+ * is rejected even before verificationStatus is consulted, so a placeholder can
+ * never read as a live page even if GCP somehow reports it VERIFIED.
+ */
+const PLACEHOLDER_TARGET_PATTERNS = [
+  /@example\.(com|org|net)$/i,
+  /@example\./i,
+  /@(localhost|invalid|test|local)$/i,
+  /\.(example|invalid|test|local|localhost)$/i,
+  /\b(changeme|todo|placeholder|noreply|donotreply|fixme)\b/i,
+];
+
+/** Reads the routable target (email address, phone, url, …) from a channel. */
+export function channelTarget(channel) {
+  if (!channel) return null;
+  const labelKey = CHANNEL_TARGET_LABEL[channel.type];
+  const target = labelKey ? channel.labels?.[labelKey] : null;
+  return typeof target === "string" && target.trim() !== "" ? target.trim() : null;
+}
+
+/** True when a target is empty or matches a known placeholder/unresolvable pattern. */
+export function isPlaceholderTarget(target) {
+  if (!target) return true;
+  return PLACEHOLDER_TARGET_PATTERNS.some((pattern) => pattern.test(target));
+}
+
+/**
+ * Decides whether a single notification channel is trustworthy enough to count
+ * as live for the gate. Returns { ok, reason }; reason is null when ok.
+ * Fails closed on: missing channel, disabled, unknown type, empty/placeholder
+ * target, and — for verifiable types (email/sms) — verificationStatus !== VERIFIED.
+ */
+export function evaluateChannel(channel) {
+  if (!channel.present) return { ok: false, reason: "missing" };
+  if (!channel.enabled) return { ok: false, reason: "disabled" };
+  if (!channel.type || !ALLOWED_CHANNEL_TYPES.has(channel.type)) {
+    return { ok: false, reason: `unsupported-type:${channel.type || "null"}` };
+  }
+  if (!channel.target) return { ok: false, reason: "empty-target" };
+  if (isPlaceholderTarget(channel.target)) {
+    return { ok: false, reason: `placeholder-target:${channel.target}` };
+  }
+  if (VERIFIABLE_CHANNEL_TYPES.has(channel.type) && channel.verificationStatus !== "VERIFIED") {
+    return { ok: false, reason: `unverified:${channel.verificationStatus || "null"}` };
+  }
+  return { ok: true, reason: null };
+}
+
 export function metricTypesForPolicy(policy) {
   const filters = (policy.conditions || [])
     .map((condition) => condition.conditionThreshold?.filter || "")
@@ -78,16 +162,27 @@ export function checkAlertPolicies(expectedPolicies) {
     const notificationChannels = policy?.notificationChannels || [];
     const notificationChannelStatuses = notificationChannels.map((name) => {
       const channel = channelsByName.get(name);
-      return {
+      const status = {
         name,
         present: Boolean(channel),
         enabled: channel?.enabled === true,
         type: channel?.type || null,
         displayName: channel?.displayName || null,
         verificationStatus: channel?.verificationStatus || null,
+        target: channelTarget(channel),
       };
+      const { ok, reason } = evaluateChannel(status);
+      status.live = ok;
+      status.reason = reason;
+      return status;
     });
-    const liveNotificationChannelCount = notificationChannelStatuses.filter((channel) => channel.present && channel.enabled).length;
+    // A channel is "live" only when enabled, a known/targeted type, and — for
+    // verifiable types — VERIFIED. Disabled/unverified/placeholder channels do
+    // not count, so a policy backed solely by them fails closed.
+    const liveNotificationChannelCount = notificationChannelStatuses.filter((channel) => channel.live).length;
+    const unhealthyNotificationChannels = notificationChannelStatuses
+      .filter((channel) => !channel.live)
+      .map((channel) => ({ name: channel.name, type: channel.type, reason: channel.reason }));
     const missingMetricTypes = expected.requiredMetricTypes.filter(
       (metricType) => !metricTypes.includes(metricType),
     );
@@ -99,6 +194,7 @@ export function checkAlertPolicies(expectedPolicies) {
       notificationChannels,
       notificationChannelStatuses,
       liveNotificationChannelCount,
+      unhealthyNotificationChannels,
       metricTypes,
       missingMetricTypes,
       ok:

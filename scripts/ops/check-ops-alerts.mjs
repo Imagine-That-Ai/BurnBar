@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * Ops-only alert policy gate (9 policies from ops-alert-policy-definitions.mjs).
- * Exits 0 when all are present, enabled, channel-backed, and metric-complete.
+ * Exits 0 when all are present, enabled, metric-complete, and backed by a LIVE
+ * notification channel — enabled, a known/targeted type, and (for email/sms)
+ * VERIFIED. A disabled, unverified, or placeholder/NXDOMAIN channel fails closed.
  */
 import { checkOpsAlerts } from "../lib/ops-alerts-gate.mjs";
 
@@ -23,6 +25,7 @@ if (failing.length > 0) {
       enabled: policy.enabled,
       notificationChannelCount: (policy.notificationChannels || []).length,
       liveNotificationChannelCount: policy.liveNotificationChannelCount || 0,
+      unhealthyNotificationChannels: policy.unhealthyNotificationChannels || [],
       missingMetricTypes: policy.missingMetricTypes,
     }, null, 2));
   }
