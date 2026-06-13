@@ -90,7 +90,7 @@ jobs:
           # install would pull whatever the registry serves into a production
           # deploy step (diligence 2026-06-11 LB-3 residual).
           npm ci --prefix functions
-          npx --prefix functions firebase-tools deploy \
+          npm --prefix functions exec -- firebase deploy \
             --only firestore:rules,firestore:indexes,storage \
             --project "$FIREBASE_PROJECT" \
             --non-interactive
