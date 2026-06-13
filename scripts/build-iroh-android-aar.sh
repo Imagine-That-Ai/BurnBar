@@ -87,7 +87,7 @@ ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 [[ -d "${ANDROID_SDK}" ]] || abort "Android SDK not found at ${ANDROID_SDK}; export ANDROID_HOME"
 
 ensure_ndk() {
-  local desired_version="${IROH_ANDROID_NDK_VERSION:-29.0.14206865}"
+  local desired_version="${IROH_ANDROID_NDK_VERSION:-${ANDROID_NDK_VERSION:-29.0.14206865}}"
   local ndk_root="${ANDROID_SDK}/ndk/${desired_version}"
   if [[ -d "${ndk_root}" ]]; then
     log "found NDK at ${ndk_root}"
