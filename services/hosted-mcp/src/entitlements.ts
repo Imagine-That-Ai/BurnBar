@@ -4,7 +4,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { entitlementExpiryMillis } from "@openburnbar/entitlements";
 import { NEGATIVE_ENTITLEMENT_CACHE_MS, POSITIVE_ENTITLEMENT_CACHE_MS, REMOTE_MCP_LAST_USED_WRITE_INTERVAL_MS } from "./config.js";
 import { HttpError } from "./errors.js";
-import type { HostedMcpFirestore, RemoteMcpClientFirestore } from "./firestoreTypes.js";
+import type { RemoteMcpClientFirestore } from "./firestoreTypes.js";
 
 export interface EntitlementState {
   active: boolean;

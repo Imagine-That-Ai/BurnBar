@@ -1,4 +1,4 @@
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { entitlementExpiryMillis } from "@openburnbar/entitlements";
 import { RelayHttpError } from "./errors.js";
 import type { EntitlementFirestore } from "./firestoreTypes.js";

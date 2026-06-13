@@ -4,7 +4,7 @@ import { requireScope } from "./auth.js";
 import { requireActiveBurnBarPro, requireActiveRemoteMcpAccess } from "./entitlements.js";
 import { enforceRateLimit } from "./rateLimits.js";
 import { listFacets, listIndexStatus, searchConversations } from "./search.js";
-import { listResources, readConversationBody, recentUsage } from "./resources.js";
+import { readConversationBody, recentUsage } from "./resources.js";
 import { listResumable, resumeConversation } from "./resume.js";
 import { knowledgeSearchFirestoreFrom, searchKnowledge, readKnowledgeDocument } from "./knowledge.js";
 

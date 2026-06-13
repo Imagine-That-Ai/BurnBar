@@ -11,6 +11,17 @@ export interface SealedEnvelope {
   aad?: string;
 }
 
+function hasInvalidAADSegment(value: string): boolean {
+  if (!value) return true;
+  for (const char of value) {
+    const codePoint = char.codePointAt(0);
+    if (char === "|" || codePoint === undefined || codePoint <= 0x1f || codePoint === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function cloudVaultAADContext(
   uid: string,
   collection: string,
@@ -20,7 +31,7 @@ export function cloudVaultAADContext(
   purpose = field,
 ): string {
   for (const [name, value] of Object.entries({ uid, collection, docID, field, purpose })) {
-    if (!value || /[\u0000-\u001f\u007f|]/u.test(value)) {
+    if (hasInvalidAADSegment(value)) {
       throw new Error(`Invalid CloudVault AAD ${name}.`);
     }
   }

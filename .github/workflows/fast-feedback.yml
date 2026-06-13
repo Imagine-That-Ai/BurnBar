@@ -535,6 +535,44 @@ jobs:
       - name: Unit tests (hosted-MCP)
         run: npm test --prefix services/hosted-mcp
 
+  # ── TypeScript package lint: previously ungated package surfaces ────────────
+  typescript-package-lint:
+    name: TypeScript package lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/entitlements/package-lock.json
+            packages/libsignal-bridge/package-lock.json
+            packages/libsignal-protocol/package-lock.json
+            packages/signal-envelope-contracts/package-lock.json
+            services/hermes-realtime-relay/package-lock.json
+            services/hosted-mcp/package-lock.json
+            tools/openburnbar-mcp-remote/package-lock.json
+
+      - name: Install and lint TypeScript package surfaces
+        run: |
+          set -euo pipefail
+          packages=(
+            packages/entitlements
+            packages/libsignal-bridge
+            packages/libsignal-protocol
+            packages/signal-envelope-contracts
+            services/hermes-realtime-relay
+            services/hosted-mcp
+            tools/openburnbar-mcp-remote
+          )
+          for pkg in "${packages[@]}"; do
+            npm ci --prefix "$pkg"
+            npm run lint --prefix "$pkg"
+          done
+
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
     name: Fast Feedback Gate
@@ -555,6 +593,7 @@ jobs:
       - functions-security-fast
       - signal-honesty-copy
       - services-fast
+      - typescript-package-lint
     runs-on: ubuntu-latest
     if: always()
     steps:

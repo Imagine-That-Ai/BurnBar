@@ -13,6 +13,22 @@ import { cloakVector, createDeterministicHashingEmbedder } from "./embed.js";
 
 const VAULT = Buffer.alloc(32, 7);
 
+interface TestToolCallMessage {
+  params: {
+    arguments: Record<string, unknown>;
+  };
+}
+
+interface TestToolSchema {
+  properties: Record<string, unknown>;
+  required?: string[];
+}
+
+interface TestTool {
+  name: string;
+  inputSchema: TestToolSchema;
+}
+
 function depsWith(over: Partial<KnowledgeShimDeps> = {}): KnowledgeShimDeps {
   return {
     loadEmbedder: async () => createDeterministicHashingEmbedder(),
@@ -33,7 +49,7 @@ test("prepareKnowledgeRequest embeds + cloaks the query into a 384-dim queryVect
     toolCall("burnbar_search_knowledge", { query: "how to rotate the vault key", section: "security" }),
     depsWith(),
   );
-  const args = (message as any).params.arguments;
+  const args = (message as TestToolCallMessage).params.arguments;
   assert.equal(args.query, undefined, "raw query text must be stripped before it leaves the device");
   assert.ok(Array.isArray(args.queryVector) && args.queryVector.length === 384);
   assert.equal(args.embeddingModelVersion, "hashing-bow-v1");
@@ -58,7 +74,7 @@ test("prepareKnowledgeRequest passes through non-knowledge calls and pre-vectori
 });
 
 test("rewriteToolsListForKnowledge swaps the vector field for a query string", () => {
-  const json = {
+  const json: { result: { tools: TestTool[] } } = {
     result: {
       tools: [
         { name: "burnbar_search_conversations", inputSchema: { properties: { query: {} } } },
@@ -70,13 +86,15 @@ test("rewriteToolsListForKnowledge swaps the vector field for a query string", (
     },
   };
   rewriteToolsListForKnowledge(json);
-  const k = json.result.tools.find((t: any) => t.name === "burnbar_search_knowledge") as any;
+  const k = json.result.tools.find((t) => t.name === "burnbar_search_knowledge");
+  assert.ok(k);
   assert.equal(k.inputSchema.properties.queryVector, undefined);
   assert.equal(k.inputSchema.properties.embeddingModelVersion, undefined);
   assert.ok(k.inputSchema.properties.query);
   assert.deepEqual(k.inputSchema.required, ["query"]);
   // unrelated tool untouched
-  const c = json.result.tools.find((t: any) => t.name === "burnbar_search_conversations") as any;
+  const c = json.result.tools.find((t) => t.name === "burnbar_search_conversations");
+  assert.ok(c);
   assert.ok(c.inputSchema.properties.query);
 });
 

@@ -1,0 +1,62 @@
+name: CodeQL PR (JS/Python)
+
+# Fast, path-filtered CodeQL lane for source surfaces where PR analysis is cheap.
+# Swift and Android CodeQL stay in the nightly/push workflow because their traced
+# builds are too slow for normal PR feedback.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/codeql-pr.yml"
+      - "functions/**/*.js"
+      - "functions/**/*.ts"
+      - "extensions/openburnbar/**/*.js"
+      - "extensions/openburnbar/**/*.ts"
+      - "packages/**/*.js"
+      - "packages/**/*.ts"
+      - "services/**/*.js"
+      - "services/**/*.ts"
+      - "tools/**/*.js"
+      - "tools/**/*.mjs"
+      - "tools/**/*.py"
+      - "scripts/**/*.py"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+          - language: python
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/pr-language:${{ matrix.language }}"

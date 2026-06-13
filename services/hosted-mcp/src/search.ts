@@ -188,7 +188,3 @@ export async function listFacets(db: Firestore, uid: string, kind: string) {
   }
   return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 50).map(([value, count]) => ({ value, count }));
 }
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
