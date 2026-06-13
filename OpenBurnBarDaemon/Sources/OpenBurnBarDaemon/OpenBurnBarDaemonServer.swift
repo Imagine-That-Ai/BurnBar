@@ -435,6 +435,7 @@ public actor BurnBarDaemonServer {
                  .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
                  .providerModelVariantUpsert, .providerModelVariantRemove,
                  .providerModelAliasUpsert, .providerModelAliasRemove,
+                 .providerCustomModelUpsert, .providerCustomModelRemove,
                  .providerModelDisplayNameSet, .providerModelDisplayNameClear:
                 return try await handleConfigRPC(
                     method: method,
