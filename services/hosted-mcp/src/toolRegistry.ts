@@ -4,7 +4,7 @@ import { requireScope } from "./auth.js";
 import { requireActiveBurnBarPro, requireActiveRemoteMcpAccess } from "./entitlements.js";
 import { enforceRateLimit } from "./rateLimits.js";
 import { listFacets, listIndexStatus, searchConversations } from "./search.js";
-import { listResources, readConversationBody, recentUsage } from "./resources.js";
+import { readConversationBody, recentUsage } from "./resources.js";
 import { listResumable, resumeConversation } from "./resume.js";
 import { knowledgeSearchFirestoreFrom, searchKnowledge, readKnowledgeDocument } from "./knowledge.js";
 
@@ -199,7 +199,7 @@ export async function callTool(ctx: ToolContext, name: string, args: Record<stri
   if (!tool) {
     return { content: [{ type: "text", text: `Unknown OpenBurnBar MCP tool: ${name}` }], isError: true };
   }
-  for (const scope of tool.requiredScopes) requireScope(ctx.claims, scope);
+  for (const scope of tool.requiredScopes) {requireScope(ctx.claims, scope);}
   await requireActiveRemoteMcpAccess(ctx.claims.sub, ctx.claims.client_id, ctx.claims.scopes, ctx.db);
   const entitlement = await requireActiveBurnBarPro(ctx.claims.sub, ctx.db);
   // Ultra members get the richer rate bucket (e.g. search:ultra 180/min) when the tool offers one.

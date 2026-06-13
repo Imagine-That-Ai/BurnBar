@@ -8,7 +8,7 @@ import { basename } from "node:path";
 import { readFileSync } from "node:fs";
 
 function looksLikeSessionId(s: string | undefined): boolean {
-  if (!s) return false;
+  if (!s) {return false;}
   return /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s) || /^[A-Za-z0-9_-]{16,}$/.test(s);
 }
 
@@ -124,7 +124,7 @@ async function runMemoryCli(sub: string | undefined, arg: string | undefined): P
 }
 
 function optionValue(name: string, index: number): string | undefined {
-  if (index < 0) return undefined;
+  if (index < 0) {return undefined;}
   const next = process.argv[index + 1];
   if (!next || next.startsWith("--")) {
     process.stderr.write(`error: ${name} requires a value\n`);

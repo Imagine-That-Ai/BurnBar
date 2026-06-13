@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 
@@ -28,7 +28,7 @@ def main() -> int:
 
     sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
     spdx_id = sbom.get("SPDXID", "SPDXRef-DOCUMENT")
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    now = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     vex = {
         "@context": "https://openvex.dev/ns/v0.2.0",

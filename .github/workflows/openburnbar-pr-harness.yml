@@ -44,6 +44,9 @@ jobs:
       - name: Check try? debt budget
         run: ./scripts/debt/check-try-optional-budget.sh
 
+      - name: Check unchecked Sendable debt budget
+        run: ./scripts/debt/check-unchecked-sendable-budget.sh
+
       - name: Refresh tech debt metrics snapshot
         run: |
           set -euo pipefail
@@ -57,7 +60,7 @@ jobs:
       - name: Detect dead feature flags
         run: |
           set -euo pipefail
-          ./scripts/detect-dead-feature-flags.sh || true
+          ./scripts/detect-dead-feature-flags.sh --fail-on-stale
 
       - name: Confirm fast security gate is active
         run: |

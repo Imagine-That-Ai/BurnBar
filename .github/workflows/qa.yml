@@ -113,9 +113,8 @@ jobs:
         #     INTERNAL_RUN's HAS_FIREBASE_SECRETS above).
         #   - QA_FIREBASE_*: the dedicated QA Auth account the qa skill signs in
         #     with (tools/qa/README.md).
-        #   - ANTHROPIC_API_KEY: one model provider so agent/Hermes QA flows run.
         # Deliberately NOT in scope (removed to shrink the curl-CLI blast radius):
-        # the alternate provider keys (OPENAI/OPENROUTER/ZAI/Z_AI/MINIMAX), the
+        # ANTHROPIC, the alternate provider keys (OPENAI/OPENROUTER/ZAI/Z_AI/MINIMAX), the
         # provider GitHub PAT, the Factory session creds (BEARER/COOKIE), the
         # backend API_SERVER_KEY, and the Sentry DSN. If a future QA flow needs
         # one of these, add it back narrowly with a note on why.
@@ -126,10 +125,14 @@ jobs:
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
           QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}
           QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          set -euo pipefail
           mkdir -p qa-results
-          droid exec --auto high "You are running in a non-interactive CI environment. There is NO human available. Do NOT use AskUser, do NOT wait for confirmations, do NOT pause for input. Run the qa skill for OpenBurnBar against the checked-out branch. This workflow is optional/informational. Write the final report to qa-results/report.md and put artifacts under qa-results/." 2>&1 | tee qa-results/qa-output.txt
+          if [[ -z "${FACTORY_API_KEY:-}" ]]; then
+            echo "::error::FACTORY_API_KEY is required for functional QA."
+            exit 1
+          fi
+          droid exec --model glm-5.1 --auto high "You are running in a non-interactive CI environment. There is NO human available. There is no Anthropic API key; use the selected Factory Droid Core model only. Do NOT use AskUser, do NOT wait for confirmations, do NOT pause for input. Run the qa skill for OpenBurnBar against the checked-out branch. This workflow is optional/informational. Write the final report to qa-results/report.md and put artifacts under qa-results/." 2>&1 | tee qa-results/qa-output.txt
 
       - name: Ensure report exists
         if: always()

@@ -46,7 +46,7 @@ function pseudoVector(seed: number, dim = EMBEDDING_DIM): number[] {
 
 function l2(v: ArrayLike<number>): number {
   let n = 0;
-  for (let i = 0; i < v.length; i += 1) n += v[i] * v[i];
+  for (let i = 0; i < v.length; i += 1) {n += v[i] * v[i];}
   return Math.sqrt(n);
 }
 

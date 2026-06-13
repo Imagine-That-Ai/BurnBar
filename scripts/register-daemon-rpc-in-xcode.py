@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Register OpenBurnBarDaemon RPC extension files in OpenBurnBar.xcodeproj (idempotent)."""
+
 from __future__ import annotations
 
 import hashlib
@@ -65,7 +66,7 @@ def main() -> int:
         rel_path = path[len(daemon_prefix) :]
         file_ref_lines.append(
             f"\t\t{file_ref_id} /* {file_name} */ = {{isa = PBXFileReference; "
-            f"lastKnownFileType = sourcecode.swift; path = {pbx_quote(rel_path)}; sourceTree = \"<group>\"; }};"
+            f'lastKnownFileType = sourcecode.swift; path = {pbx_quote(rel_path)}; sourceTree = "<group>"; }};'
         )
         build_file_lines.append(
             f"\t\t{build_file_id} /* {file_name} in Sources */ = "
@@ -89,7 +90,9 @@ def main() -> int:
 
     if group_lines:
         pattern = re.compile(
-            r"(" + re.escape(DAEMON_SOURCES_GROUP) + r"\s*/\*\s*OpenBurnBarDaemon\s*\*/\s*=\s*\{[^}]*?children\s*=\s*\(\n)(.*?)(\n\s*\);)",
+            r"("
+            + re.escape(DAEMON_SOURCES_GROUP)
+            + r"\s*/\*\s*OpenBurnBarDaemon\s*\*/\s*=\s*\{[^}]*?children\s*=\s*\(\n)(.*?)(\n\s*\);)",
             re.DOTALL,
         )
         m = pattern.search(contents)
@@ -100,7 +103,9 @@ def main() -> int:
 
     if phase_lines:
         pattern = re.compile(
-            r"(" + re.escape(DAEMON_SOURCES_PHASE) + r"\s*/\*\s*Sources\s*\*/\s*=\s*\{[^}]*?files\s*=\s*\(\n)(.*?)(\n\s*\);)",
+            r"("
+            + re.escape(DAEMON_SOURCES_PHASE)
+            + r"\s*/\*\s*Sources\s*\*/\s*=\s*\{[^}]*?files\s*=\s*\(\n)(.*?)(\n\s*\);)",
             re.DOTALL,
         )
         m = pattern.search(contents)

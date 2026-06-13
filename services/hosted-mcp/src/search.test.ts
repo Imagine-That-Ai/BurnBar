@@ -113,7 +113,7 @@ function makeSearchFirestore(): Firestore {
           return {
             docs: docs.filter((doc) => filters.every((filter) => {
               const actual = doc.get(filter.field);
-              if (filter.op === "in" && Array.isArray(filter.value)) return filter.value.includes(actual);
+              if (filter.op === "in" && Array.isArray(filter.value)) {return filter.value.includes(actual);}
               return actual === filter.value;
             })).slice(0, limitCount)
           };

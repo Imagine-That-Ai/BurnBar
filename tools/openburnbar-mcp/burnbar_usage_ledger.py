@@ -22,7 +22,6 @@ Why a separate module:
 
 from __future__ import annotations
 
-import errno
 import fcntl
 import hashlib
 import json
@@ -33,9 +32,10 @@ import subprocess
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
+from collections.abc import Iterator
 
 
 # Seconds between Unix epoch (1970-01-01) and Apple reference date
@@ -81,17 +81,13 @@ def default_ledger_path() -> Path:
     """Return the default usage-events ledger path, honouring the same env
     overrides the daemon supports."""
     override = (
-        os.environ.get("OPENBURNBAR_USAGE_LEDGER_PATH")
-        or os.environ.get("BURNBAR_USAGE_LEDGER_PATH")
-        or ""
+        os.environ.get("OPENBURNBAR_USAGE_LEDGER_PATH") or os.environ.get("BURNBAR_USAGE_LEDGER_PATH") or ""
     ).strip()
     if override:
         return Path(override).expanduser().resolve()
 
     support_override = (
-        os.environ.get("OPENBURNBAR_DAEMON_SUPPORT_DIR")
-        or os.environ.get("BURNBAR_DAEMON_SUPPORT_DIR")
-        or ""
+        os.environ.get("OPENBURNBAR_DAEMON_SUPPORT_DIR") or os.environ.get("BURNBAR_DAEMON_SUPPORT_DIR") or ""
     ).strip()
     if support_override:
         return Path(support_override).expanduser().resolve() / "usage-events.jsonl"
@@ -124,22 +120,20 @@ class UsageEvent:
     cache_read_tokens: int = 0
     reasoning_tokens: int = 0
     cost: float = 0.0
-    recorded_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    run_id: Optional[str] = None
-    session_id: Optional[str] = None
-    project_name: Optional[str] = None
+    recorded_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    run_id: str | None = None
+    session_id: str | None = None
+    project_name: str | None = None
     confidence: str = "exact"
 
     def to_event_payload(self) -> dict[str, Any]:
         if self.provider_id.lower() not in KNOWN_PROVIDER_IDS:
             raise ValueError(
-                f"Unknown providerID '{self.provider_id}'. Expected one of: "
-                + ", ".join(sorted(KNOWN_PROVIDER_IDS))
+                f"Unknown providerID '{self.provider_id}'. Expected one of: " + ", ".join(sorted(KNOWN_PROVIDER_IDS))
             )
         if self.confidence not in KNOWN_CONFIDENCE:
             raise ValueError(
-                f"Unknown confidence '{self.confidence}'. Expected one of: "
-                + ", ".join(sorted(KNOWN_CONFIDENCE))
+                f"Unknown confidence '{self.confidence}'. Expected one of: " + ", ".join(sorted(KNOWN_CONFIDENCE))
             )
         for name, value in (
             ("input_tokens", self.input_tokens),
@@ -155,14 +149,14 @@ class UsageEvent:
 
         recorded = self.recorded_at
         if recorded.tzinfo is None:
-            recorded = recorded.replace(tzinfo=timezone.utc)
+            recorded = recorded.replace(tzinfo=UTC)
         # Swift's default `JSONEncoder.dateEncodingStrategy` is
         # `.deferredToDate`, which encodes `Date` as a `Double` representing
         # seconds since 2001-01-01 00:00:00 UTC (Apple reference date). The
         # daemon ledger reader uses the default decoder, so we MUST emit the
         # same shape — ISO-8601 strings will type-mismatch and the row will be
         # silently dropped on import.
-        recorded_seconds = recorded.astimezone(timezone.utc).timestamp() - APPLE_REFERENCE_DATE_OFFSET
+        recorded_seconds = recorded.astimezone(UTC).timestamp() - APPLE_REFERENCE_DATE_OFFSET
 
         payload: dict[str, Any] = {
             "providerID": self.provider_id.lower(),
@@ -189,9 +183,9 @@ def derive_idempotency_key(
     *,
     provider_id: str,
     model_id: str,
-    session_id: Optional[str],
+    session_id: str | None,
     recorded_at: datetime,
-    extra: Optional[str] = None,
+    extra: str | None = None,
 ) -> str:
     """Stable key for `(session, provider, model, time, extra)` tuples.
 
@@ -201,13 +195,13 @@ def derive_idempotency_key(
     """
     when = recorded_at
     if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
+        when = when.replace(tzinfo=UTC)
     payload = "|".join(
         [
             provider_id.lower(),
             model_id,
             session_id or "",
-            f"{when.astimezone(timezone.utc).timestamp():.6f}",
+            f"{when.astimezone(UTC).timestamp():.6f}",
             extra or "",
         ]
     )
@@ -262,50 +256,34 @@ def existing_idempotency_keys(ledger_path: Path) -> set[str]:
 
 def _default_socket_path() -> Path:
     override = (
-        os.environ.get("OPENBURNBAR_DAEMON_SOCKET_PATH")
-        or os.environ.get("BURNBAR_DAEMON_SOCKET_PATH")
-        or ""
+        os.environ.get("OPENBURNBAR_DAEMON_SOCKET_PATH") or os.environ.get("BURNBAR_DAEMON_SOCKET_PATH") or ""
     ).strip()
     if override:
         return Path(override).expanduser().resolve()
 
     support_override = (
-        os.environ.get("OPENBURNBAR_DAEMON_SUPPORT_DIR")
-        or os.environ.get("BURNBAR_DAEMON_SUPPORT_DIR")
-        or ""
+        os.environ.get("OPENBURNBAR_DAEMON_SUPPORT_DIR") or os.environ.get("BURNBAR_DAEMON_SUPPORT_DIR") or ""
     ).strip()
     if support_override:
         return Path(support_override).expanduser().resolve() / "openburnbar-daemon.sock"
 
-    return (
-        Path.home()
-        / "Library"
-        / "Application Support"
-        / "OpenBurnBar"
-        / "openburnbar-daemon.sock"
-    )
+    return Path.home() / "Library" / "Application Support" / "OpenBurnBar" / "openburnbar-daemon.sock"
 
 
-def _resolve_socket_auth_token() -> Optional[str]:
+def _resolve_socket_auth_token() -> str | None:
     """Best-effort lookup of the daemon socket auth token.
 
     The macOS app stamps the token into the launch-agent plist; the daemon
     process picks it up from the `OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN`
     env var. Hermes-launched MCP servers may inherit it directly.
     """
-    env_token = (
-        os.environ.get("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN")
-        or os.environ.get("BURNBAR_DAEMON_SOCKET_AUTH_TOKEN")
+    env_token = os.environ.get("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN") or os.environ.get(
+        "BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"
     )
     if env_token and env_token.strip():
         return env_token.strip()
 
-    plist_path = (
-        Path.home()
-        / "Library"
-        / "LaunchAgents"
-        / "com.openburnbar.daemon.plist"
-    )
+    plist_path = Path.home() / "Library" / "LaunchAgents" / "com.openburnbar.daemon.plist"
     if not plist_path.is_file():
         return None
     try:
@@ -334,9 +312,9 @@ def _try_record_via_daemon_socket(
     event_payload: dict[str, Any],
     idempotency_key: str,
     socket_path: Path,
-    auth_token: Optional[str],
+    auth_token: str | None,
     timeout_seconds: float = 1.5,
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Try to record the usage event by talking to the local daemon's RPC
     server. Returns `None` if the daemon is not reachable; raises only when
     the daemon explicitly rejects the request."""
@@ -363,7 +341,7 @@ def _try_record_via_daemon_socket(
                 buf += chunk
         finally:
             sock.close()
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return None
     if not buf:
         return None
@@ -375,9 +353,7 @@ def _try_record_via_daemon_socket(
         # Surface daemon-side rejection (e.g. unauthorized) so the caller can
         # decide whether to fall back to a direct write.
         err = envelope["error"]
-        raise RuntimeError(
-            f"daemon rejected usage record: code={err.get('code')} message={err.get('message')!r}"
-        )
+        raise RuntimeError(f"daemon rejected usage record: code={err.get('code')} message={err.get('message')!r}")
     result = envelope.get("result")
     if not isinstance(result, dict):
         return None
@@ -394,7 +370,7 @@ def append_usage_record(
     *,
     event: UsageEvent,
     idempotency_key: str,
-    ledger_path: Optional[Path] = None,
+    ledger_path: Path | None = None,
     prefer_daemon: bool = True,
 ) -> dict[str, Any]:
     """Append a usage record to the ledger if its key is not already present.
@@ -451,9 +427,7 @@ def append_usage_record(
         try:
             fd = os.open(ledger, flags, 0o600)
         except OSError as exc:
-            raise OSError(
-                f"Failed to open ledger at {ledger}: {os.strerror(exc.errno)}"
-            ) from exc
+            raise OSError(f"Failed to open ledger at {ledger}: {os.strerror(exc.errno)}") from exc
         try:
             os.write(fd, (serialized + "\n").encode("utf-8"))
             os.fsync(fd)
