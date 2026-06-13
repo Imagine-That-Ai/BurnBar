@@ -107,6 +107,12 @@ class DevicesStore(
                             isCurrentDevice = doc.id == currentDeviceId,
                         )
                     }
+                // RR-5 pickup-on-launch: finish any pending Cloud Vault rotation this device is a
+                // survivor for (revoking device offline / unable to rotate). Once per store instance.
+                if (!pendingRotationPickupDone) {
+                    pendingRotationPickupDone = true
+                    pickUpPendingCloudVaultRotations()
+                }
             } catch (e: FirebaseException) {
                 Log.e("BurnBar", "Devices load failed", e)
                 _lastError.value = e.message
@@ -115,6 +121,8 @@ class DevicesStore(
             }
         }
     }
+
+    private var pendingRotationPickupDone = false
 
     fun bootstrapApproveSelf() {
         viewModelScope.launch {
@@ -154,13 +162,41 @@ class DevicesStore(
         viewModelScope.launch {
             _actionInFlightFor.value = device.id
             try {
-                securityClient.revokeEscrowDeviceTrust(device.id)
+                // RR-5: pass THIS (surviving) device's escrow id so the server's
+                // cloudVaultRotationRequired signal drives the local rotation chain (re-key, wrap to
+                // survivors, rotateCloudVaultKey, document rewrap) instead of being discarded.
+                val rotatingDeviceId =
+                    runCatching { com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId }.getOrNull()
+                val result = securityClient.revokeEscrowDeviceTrust(device.id, rotatingDeviceId = rotatingDeviceId)
+                if (result.cloudVaultRotationRequired && !result.cloudVaultRotationCompleted) {
+                    _lastError.value =
+                        result.cloudVaultRotationFailureMessage
+                            ?: result.cloudVaultRotationBlockedReason
+                            ?: "Cloud Vault rotation is required but did not complete."
+                }
                 load()
             } catch (e: FirebaseException) {
+                _lastError.value = e.message
+            } catch (e: IllegalStateException) {
                 _lastError.value = e.message
             } finally {
                 _actionInFlightFor.value = null
             }
+        }
+    }
+
+    /**
+     * RR-5 pickup-on-launch — finishes any pending Cloud Vault rotation this device is a survivor
+     * for, in case the revoking device was offline (or could not rotate). Best-effort and silent on
+     * success; only a hard failure surfaces. Call from the devices surface's first load.
+     */
+    fun pickUpPendingCloudVaultRotations() {
+        viewModelScope.launch {
+            runCatching {
+                val rotatingDeviceId =
+                    com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+                securityClient.pickUpPendingCloudVaultRotations(rotatingDeviceId)
+            }.onFailure { _lastError.value = it.message }
         }
     }
 

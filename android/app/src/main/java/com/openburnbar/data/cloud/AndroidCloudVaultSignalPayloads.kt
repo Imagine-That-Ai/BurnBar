@@ -68,14 +68,32 @@ object AndroidCloudVaultSignalPayloads {
             field = request.field,
         )
         val recipients = dedupeRecipients(request.localIdentity.asRecipient(), request.otherRecipients)
-        val envelope = CloudVaultCrypto.sealSignalPayload(request.plaintext, recipients, binding)
+        // Sender authentication: sign with THIS device's identity private key (mirrors iOS
+        // MobileCloudVaultSignalPayloads). A malicious server holds only public keys and cannot forge it.
+        val envelope =
+            CloudVaultCrypto.sealSignalPayload(
+                request.plaintext,
+                recipients,
+                binding,
+                senderIdentityKeyId = request.localIdentity.identityKeyId,
+                senderIdentityPrivateKey = request.localIdentity.privateKeyData,
+                senderIdentityPublicKey = request.localIdentity.publicKeyData,
+            )
         return CloudVaultCrypto.signalEnvelopeMap(envelope)
     }
 
     /**
-     * Signal-first open with a relocation guard. Returns null when `field` is absent (so
-     * the caller falls through to the legacy AES-GCM opener). Throws if an envelope is
-     * present but invalid, relocated (binding mismatch), or the local identity is missing.
+     * Signal-first open with a relocation guard and fail-closed sender-auth. Returns null when
+     * `field` is absent (so the caller falls through to the legacy AES-GCM opener). Throws if an
+     * envelope is present but invalid, relocated (binding mismatch), or the local identity is
+     * missing — and a [CloudVaultSignalSenderAuthException] when the sender block is
+     * stripped/forged/untrusted, which the caller routes through
+     * [SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback] before any legacy decode.
+     *
+     * `trustedSenderPublicKeys` are PINNED identity public keys (identityKeyId -> public key bytes)
+     * used to verify the sender signature. The local identity is always added, so a self-authored
+     * doc is fully verified with no extra I/O; pass [trustedSenderPublicKeys] from Firestore for
+     * cross-device reads via [trustedSenderPublicKeys].
      */
     fun openSignalPayloadIfPresent(
         data: Map<String, Any?>,
@@ -85,6 +103,7 @@ object AndroidCloudVaultSignalPayloads {
         field: String = "signalEnvelope",
         bindingField: String? = null,
         localIdentity: AndroidSignalIdentityKeypair?,
+        trustedSenderPublicKeys: Map<String, ByteArray> = emptyMap(),
     ): ByteArray? {
         val raw = data[field] as? Map<*, *> ?: return null
         val envelope =
@@ -94,12 +113,37 @@ object AndroidCloudVaultSignalPayloads {
             CloudVaultSignalBinding(uid = uid, collection = collection, docId = docId, field = bindingField ?: field)
         require(envelope.binding == expected) { "Signal envelope binding does not match the Firestore path." }
         val identity = localIdentity ?: error("Signal identity is unavailable.")
+        val trustedSenders = LinkedHashMap(trustedSenderPublicKeys)
+        trustedSenders[identity.identityKeyId] = identity.publicKeyData
         return CloudVaultCrypto.openSignalPayload(
             envelope,
             recipientIdentityKeyId = identity.identityKeyId,
             recipientIdentityPrivateKey = identity.privateKeyData,
             expectedBinding = expected,
+            trustedSenderPublicKeys = trustedSenders,
         )
+    }
+
+    /**
+     * Best-effort PINNED trusted-sender public keys for READ-time sender-auth verification:
+     * local identity + every trusted escrow device's published identity. Mirrors iOS
+     * `MobileCloudVaultSignalPayloads.trustedSenderPublicKeys`. Never blocks a read — if the full
+     * set cannot resolve it returns just the local identity, so cross-device envelopes from
+     * unresolved senders fall back to the legacy payload (a readiness gap, classified by
+     * [SignalAtRestFallbackPolicy] with `senderSetComplete = false`). After the readiness gate (all
+     * trusted devices published) this returns the full set, activating cross-device sender-auth.
+     */
+    suspend fun trustedSenderPublicKeys(
+        uid: String,
+        firestore: FirebaseFirestore,
+        localIdentity: AndroidSignalIdentityKeypair,
+    ): Map<String, ByteArray> {
+        val map = LinkedHashMap<String, ByteArray>()
+        map[localIdentity.identityKeyId] = localIdentity.publicKeyData
+        runCatching { atRestRecipients(uid = uid, firestore = firestore, localIdentity = localIdentity) }
+            .getOrNull()
+            ?.forEach { recipient -> map[recipient.recipientIdentityKeyId] = recipient.publicKeyData }
+        return map
     }
 
     /**

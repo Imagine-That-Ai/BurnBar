@@ -57,8 +57,18 @@ internal suspend fun MediaControlStreamCoordinator.dispatchMercuryInboundFrame(
                 inboundLastAgentGrantReceipt.value = receipt
                 AgentCapabilityGrantState.apply(receipt)
             }
-        HermesRealtimeRelayFrameType.CONTROL_DENIED ->
+        HermesRealtimeRelayFrameType.CONTROL_DENIED -> {
             frame.control?.denied?.let { inboundLastControlDenied.value = it }
+            inboundAgentWatchControlFrames.tryEmit(frame)
+        }
+        // RR-7b: replay inbound approval / classify frames to the Agent Watch ingest receiver (the
+        // analogue of iOS AgentWatchReceiver.ingest) so a control.approvalRequest populates the
+        // reducer's pendingApproval WITH its wireRequest and the phone can sign + transmit a response.
+        HermesRealtimeRelayFrameType.CONTROL_APPROVAL_REQUEST,
+        HermesRealtimeRelayFrameType.CONTROL_APPROVAL_RESPONSE,
+        HermesRealtimeRelayFrameType.CONTROL_CLASSIFY,
+        ->
+            inboundAgentWatchControlFrames.tryEmit(frame)
         HermesRealtimeRelayFrameType.CONTROL_SYSTEM_PERMISSION_STATUS ->
             frame.control?.systemPermissionStatus?.let { status ->
                 com.openburnbar.data.computeruse.SystemPermissionInboxStoreHolder

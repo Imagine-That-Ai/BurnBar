@@ -20,7 +20,10 @@ class ComputerUseAgentWatchScreenTest {
         assertEquals("approval-1", relayResponse.approvalId)
         assertEquals(HermesRealtimeRelayApprovalResponse.Decision.APPROVE, relayResponse.decision)
         assertEquals("android-phone", relayResponse.respondedBy)
-        assertEquals(2.5, relayResponse.respondedAt, 0.0001)
+        // RR-7b: respondedAt is floored to WHOLE Swift-reference seconds (2.5s sub-second input ->
+        // 2.0) so the canonical number renders as a plain integer byte-identically to the Swift
+        // verifier's JSONEncoder; sub-second fractions would diverge the two number formatters.
+        assertEquals(2.0, relayResponse.respondedAt, 0.0001)
         assertNull(relayResponse.note)
     }
 

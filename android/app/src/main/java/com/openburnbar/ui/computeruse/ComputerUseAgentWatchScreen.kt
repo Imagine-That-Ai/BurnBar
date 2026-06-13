@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.openburnbar.data.computeruse.AgentWatchControlFrameReceiver
 import com.openburnbar.data.computeruse.ComputerUseApprovalResponse
 import com.openburnbar.data.computeruse.ComputerUseTrustMode
 import com.openburnbar.data.computeruse.ComputerUseWatchReducer
@@ -46,6 +47,17 @@ fun ComputerUseAgentWatchScreen(
     val state by reducer.state.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // RR-7b: run the Agent Watch INGEST receiver against the live control stream so an inbound
+    // control.approvalRequest populates the reducer's pendingApproval WITH its wireRequest. When no
+    // coordinator/pair is active (e.g. the settings entry with no paired Mac) the loop is inert.
+    val coordinator = remember { com.openburnbar.BurnBarApplication.mediaControlCoordinator }
+    val activePair by (coordinator?.activePair ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
+    LaunchedEffect(coordinator, activePair?.uid, activePair?.connectionID) {
+        val pair = activePair ?: return@LaunchedEffect
+        val receiver = AgentWatchControlFrameReceiver(reducer, uid = pair.uid, connectionId = pair.connectionID)
+        coordinator?.agentWatchControlFrames?.collect { receiver.ingest(it) }
+    }
+    val effectiveSender = phoneControlSender ?: phoneControlSenderFor(activePair)
     val hermesService = remember { HermesService(appContext = context.applicationContext) }
     val selectedConnection by hermesService.selectedConnection.collectAsState()
     val connections by hermesService.connections.collectAsState()
@@ -84,7 +96,7 @@ fun ComputerUseAgentWatchScreen(
         wireRequest: HermesRealtimeRelayApprovalRequest?,
     ) {
         wireRequest ?: return
-        val sender = phoneControlSender ?: return
+        val sender = effectiveSender ?: return
         val relayResponse = response?.toRelayApprovalResponse(respondedBy = respondedBy) ?: return
         scope.launch {
             runCatching {
@@ -130,6 +142,19 @@ fun ComputerUseAgentWatchScreen(
     )
 }
 
+/**
+ * RR-7b — the live [PhoneControlSender] for the currently paired Mac, or null when no control stream
+ * is established. The mirror surfaces (ScreenShareViewer / InlineAgentMirror) publish their sender to
+ * [com.openburnbar.BurnBarApplication.activePhoneControlSender] when a stream is live; the watch
+ * surface reuses it so a phone-side approval is signed + transmitted over the same connection.
+ */
+private fun phoneControlSenderFor(
+    activePair: com.openburnbar.data.media.MediaControlStreamCoordinator.ActivePair?,
+): PhoneControlSender? {
+    activePair ?: return null
+    return com.openburnbar.BurnBarApplication.activePhoneControlSender
+}
+
 internal fun ComputerUseApprovalResponse.toRelayApprovalResponse(respondedBy: String): HermesRealtimeRelayApprovalResponse =
     HermesRealtimeRelayApprovalResponse(
         approvalId = approvalId,
@@ -140,7 +165,13 @@ internal fun ComputerUseApprovalResponse.toRelayApprovalResponse(respondedBy: St
             else -> HermesRealtimeRelayApprovalResponse.Decision.REJECT
         },
         respondedBy = respondedBy,
-        respondedAt = respondedAtMillis.toDouble() / 1000.0 - 978_307_200.0,
+        // RR-7b respondedAt canonicalization: emit WHOLE Swift-reference SECONDS so the canonical
+        // number renders as a plain integer on BOTH sides — Android `PhoneControlSignerJsonEncoding
+        // .number()` returns the integer form for an integer-valued Double, and Swift's verifier
+        // `JSONEncoder` (default `Date` → `timeIntervalSinceReferenceDate`) likewise emits an integer
+        // for a whole-second Date. Carrying sub-second fractions would diverge the two number
+        // formatters and break the Swift↔Kotlin approval-response hash (locked by the KAT below).
+        respondedAt = (respondedAtMillis / 1000L).toDouble() - 978_307_200.0,
         note =
         when {
             approved -> null
