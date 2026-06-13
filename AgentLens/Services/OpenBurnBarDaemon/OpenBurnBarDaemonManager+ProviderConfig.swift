@@ -514,6 +514,68 @@ extension OpenBurnBarDaemonManager {
     }
 
     @discardableResult
+    func setProviderCustomModel(
+        providerID: String,
+        customModel: BurnBarCustomModel
+    ) async -> Bool {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before custom models can be added."
+                return false
+            }
+        }
+
+        do {
+            try await performRequiredBusyWork {
+                let socketURL = paths.socketURL
+                _ = try await daemonRPC {
+                    try OpenBurnBarDaemonSocketClient.upsertProviderCustomModel(
+                        BurnBarProviderCustomModelUpsertRequest(
+                            providerID: providerID,
+                            customModel: customModel
+                        ),
+                        at: socketURL
+                    )
+                }
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeProviderCustomModel(
+        providerID: String,
+        modelID: String
+    ) async {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before custom models can be removed."
+                return
+            }
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.removeProviderCustomModel(
+                    BurnBarProviderCustomModelRemoveRequest(
+                        providerID: providerID,
+                        modelID: modelID
+                    ),
+                    at: socketURL
+                )
+            }
+        }
+    }
+
+    @discardableResult
     func setProviderModelDisplayName(
         providerID: String,
         modelID: String,

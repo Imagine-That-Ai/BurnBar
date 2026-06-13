@@ -217,6 +217,35 @@ prove the local handle maps to the intended session.
 
 ---
 
+## Advertising a model the catalog doesn't know (custom models)
+
+The proxy's `/v1/models` list is built by `BurnBarLiveModelCatalog` from two
+sources: each provider's static catalog seed (`OpenBurnBarCore/.../Resources/catalog.json`)
+**plus** whatever the provider's live `/models` endpoint returns once it has a
+usable credential. New models therefore appear automatically the moment a
+provider is enabled with a working key — no catalog edit needed.
+
+When that isn't enough (a model newer than the shipped catalog that a
+no-credential provider's live discovery can't surface, or an upstream that
+doesn't list the id), users can declare a **custom model**:
+
+- **UI:** Settings → Agents → Models → **Add model** → pick the provider, type
+  the id the provider serves (e.g. `minimax-m3`, `glm-5.1`, `kimi-k2.6:cloud`),
+  optional display name. The same sheet lists and removes existing custom models.
+- **Contract:** `BurnBarCustomModel` on `BurnBarProviderSettings.customModels`
+  (`BurnBarProviderContracts.swift`). Daemon RPCs
+  `daemon.provider.custom_model.upsert` / `.remove`
+  (`BurnBarConfigStore.upsertCustomModel` / `removeCustomModel`).
+- **Routing:** `resolvedConfigurations()` folds custom models into the provider's
+  `preferredModels` as synthesized public catalog rows, so a custom id both
+  advertises in `/v1/models` and routes verbatim to that provider. Like seeded
+  models, a custom model is only route-eligible — and only appears on the public
+  `/v1/models` — once its provider has a usable credential and eligible quota.
+- Ids already known to the catalog (by id, alias, or matcher) are skipped, so a
+  custom entry never duplicates or shadows a real model.
+
+---
+
 ## Adding a New Provider
 
 1. Create `{Provider}QuotaAdapter.swift` conforming to `ProviderQuotaAdapter`.
