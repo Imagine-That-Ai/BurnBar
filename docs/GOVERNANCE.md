@@ -30,7 +30,7 @@ Single-maintainer project. Design decisions, roadmap priorities, and merge autho
 
 Security reports handled per [`SECURITY.md`](../SECURITY.md). Computer Use kill switch and budget envelopes are operator-automated — see [`docs/runbooks/computer-use-budget.md`](runbooks/computer-use-budget.md).
 
-Accepted product risks are tracked in [`docs/governance/RISK_REGISTER.md`](governance/RISK_REGISTER.md). If a risk is not listed there with an owner, compensating controls, and a review date, treat it as active debt rather than an accepted exception.
+Accepted product risks are tracked in [`docs/governance/RISK_REGISTER.md`](governance/RISK_REGISTER.md). Phase 1 security-register closures are tracked in [`docs/governance/PHASE1_SECURITY_REGISTER.md`](governance/PHASE1_SECURITY_REGISTER.md). If a risk is not listed with an owner, compensating controls, and a review date, treat it as active debt rather than an accepted exception.
 
 ## How to help
 
