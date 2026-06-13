@@ -302,6 +302,62 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertThrowsError(try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: wrongContext))
     }
 
+    func test_missionCloudSealer_bindsStatePayloadToMissionRequestAAD() throws {
+        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let privatePayload = CLIAgentMissionPrivatePayload(
+            title: "Launch audit",
+            prompt: "Find launch blockers.",
+            targetProject: "/repo",
+            liveSummary: "Running",
+            resultPreview: "Two issues",
+            errorMessage: nil,
+            approvalTitle: "Allow shell?",
+            approvalMessage: "Needs local tests",
+            personaScopeJSON: #"{"mode":"strict"}"#,
+            synthesisSummary: "Ready"
+        )
+        let expectedContext = try CLIAgentMissionCloudSealer.missionAADContext(
+            uid: "uid-1",
+            requestID: "mission-1",
+            field: "sealedStatePayload"
+        )
+
+        let sealedPayload = try CLIAgentMissionCloudSealer.seal(
+            privatePayload,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: expectedContext
+        )
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: sealedPayload))
+        XCTAssertEqual(envelope.aad, expectedContext.stringValue)
+
+        let opened = try XCTUnwrap(CLIAgentMissionCloudSealer.openPrivatePayload(
+            ["sealedStatePayload": sealedPayload],
+            field: "sealedStatePayload",
+            uid: "uid-1",
+            requestID: "mission-1",
+            vaultKey: vaultKey
+        ))
+        XCTAssertEqual(opened.title, "Launch audit")
+        XCTAssertEqual(opened.prompt, "Find launch blockers.")
+        XCTAssertEqual(opened.targetProject, "/repo")
+        XCTAssertEqual(opened.liveSummary, "Running")
+        XCTAssertEqual(opened.resultPreview, "Two issues")
+        XCTAssertEqual(opened.approvalTitle, "Allow shell?")
+        XCTAssertEqual(opened.approvalMessage, "Needs local tests")
+        XCTAssertEqual(opened.personaScopeJSON, #"{"mode":"strict"}"#)
+        XCTAssertEqual(opened.synthesisSummary, "Ready")
+
+        XCTAssertNil(CLIAgentMissionCloudSealer.openPrivatePayload(
+            ["sealedStatePayload": sealedPayload],
+            field: "sealedStatePayload",
+            uid: "uid-1",
+            requestID: "mission-2",
+            vaultKey: vaultKey
+        ))
+    }
+
     func test_missionEventFactory_redactsSecretsBeforeMobileStreaming() {
         let providerToken = "sk-" + "1234567890abcdef"
         let jwtToken = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiJ1c2VyLWlkLTEyMzQ1Njc4OTAifQ", "signaturepayload0987654321"].joined(separator: ".")
