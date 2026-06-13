@@ -290,7 +290,8 @@ final class MacMediaCapabilityGateTests: XCTestCase {
             entitlementProvider: { entitlement },
             usageProvider: { usage },
             budgetProvider: { budget },
-            concurrentSessionsProvider: { _ in concurrent }
+            concurrentSessionsProvider: { _ in concurrent },
+            killSwitchProvider: { false }
         )
     }
 

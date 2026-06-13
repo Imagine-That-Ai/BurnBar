@@ -230,6 +230,18 @@ final class DataStoreCoordinator {
     static func makeDatabasePoolForTesting(path: String) throws -> DatabasePool {
         try makeDatabasePool(path: path)
     }
+
+    static func makeInMemoryForTesting(
+        runMigrations: Bool = true,
+        refreshOnInit: Bool = false
+    ) throws -> DataStoreCoordinator {
+        let queue = try DatabaseQueue()
+        return try DataStoreCoordinator(
+            databaseQueue: queue,
+            runMigrations: runMigrations,
+            refreshOnInit: refreshOnInit
+        )
+    }
     #endif
 
     /// DEBUG-only N+1 detection (`OpenBurnBarQueryTracer`). Must run AFTER

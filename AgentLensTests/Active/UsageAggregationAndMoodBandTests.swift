@@ -6,7 +6,7 @@ import OpenBurnBarCore
 final class UsageAggregationAndMoodBandTests: XCTestCase {
 
     func test_rollingDailyAverage_sevenDays() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         var usages: [TokenUsage] = []
@@ -32,7 +32,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_rollingDailyAverage_zeroFillsMissingDays() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         var usages: [TokenUsage] = []
@@ -57,25 +57,25 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_moodBand_light() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 0.5, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .light)
     }
 
     func test_moodBand_onPace() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 1.0, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .onPace)
     }
 
     func test_moodBand_heavy() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 2.0, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .heavy)
     }
 
     func test_moodBand_baseline() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u = TokenUsage(
@@ -94,13 +94,13 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_moodBand_quiet() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 0, rollingAvg: 5))
         XCTAssertEqual(store.moodBand, .quiet)
     }
 
     func test_moodBand_zeroAverage() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let d0 = cal.startOfDay(for: Date())
         let d1 = cal.date(byAdding: .day, value: -1, to: d0)!
@@ -167,28 +167,28 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_insightCard_zeroInsights() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages([])
         let insights = InsightEngine.generate(from: store)
         XCTAssertTrue(insights.isEmpty)
     }
 
     func test_insightCard_oneInsight() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 2.0, rollingAvg: 1.0))
         let insights = InsightEngine.generate(from: store)
         XCTAssertTrue(insights.count >= 1)
     }
 
     func test_narrativeTemplate_noSessions() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages([])
         let n = InsightEngine.generateNarrative(from: store)
         XCTAssertTrue(n.headline.contains("No sessions"))
     }
 
     func test_narrativeTemplate_oneSessions() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u = TokenUsage(
@@ -208,7 +208,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_narrativeTemplate_nSessions() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u1 = TokenUsage(
@@ -239,7 +239,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_narrativeTemplate_countsDistinctSessionIds() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u1 = TokenUsage(
@@ -270,7 +270,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_insightCard_newSessions_countsDistinctSessionIds() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u1 = TokenUsage(
@@ -303,7 +303,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_narrativeTemplate_collapsesClaudeSubagentSessionIds() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let topLevel = TokenUsage(
@@ -334,7 +334,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_sparklineData_alwaysSevenPoints() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         XCTAssertEqual(store.last7DayCosts.count, 7)
     }
 
@@ -345,7 +345,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
     }
 
     func test_insightEngine_structuredFields() throws {
-        let store = try DataStore()
+        let store = try DataStore.makeInMemoryForTesting()
         store.replaceUsages(moodFixture(today: 1.0, rollingAvg: 1.0))
         let insights = InsightEngine.generate(from: store)
         XCTAssertFalse(insights.isEmpty)
