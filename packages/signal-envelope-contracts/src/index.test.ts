@@ -266,7 +266,7 @@ test("bindingToAAD normalizes NFD to the same bytes as NFC (cross-platform Unico
 
   // Sanity: ASCII vectors are NFC-stable, so normalization is a no-op for them.
   for (const vector of bindingAADFixture.vectors) {
-    if (vector.name === "non-ascii-nfc-uid") continue;
+    if (vector.name === "non-ascii-nfc-uid") {continue;}
     assert.equal(vector.expectedAAD.normalize("NFC"), vector.expectedAAD, `${vector.name} expectedAAD must be NFC-stable`);
   }
 });

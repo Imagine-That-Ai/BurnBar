@@ -116,7 +116,7 @@ export class RedisRelayQuotaStore implements RelayQuotaStore {
   async checkFrameBytes(uid: string, bytes: number, runtime?: HermesRelayRuntime): Promise<void> {
     const key = windowKey(uid, "bytes", 60_000, runtime);
     const total = await this.redis.incrby(key, bytes);
-    if (total === bytes) await this.redis.expire(key, 70);
+    if (total === bytes) {await this.redis.expire(key, 70);}
     if (total > this.limits.maxBytesPerMinute) {
       throw new RelayLimitError("byte_rate_limit", `Realtime ${runtimeLabel(runtime)} byte limit reached.`);
     }
@@ -125,7 +125,7 @@ export class RedisRelayQuotaStore implements RelayQuotaStore {
   async checkRequestStart(uid: string, runtime: HermesRelayRuntime): Promise<void> {
     const key = windowKey(uid, "request-start", 60_000, runtime);
     const total = await this.redis.incr(key);
-    if (total === 1) await this.redis.expire(key, 70);
+    if (total === 1) {await this.redis.expire(key, 70);}
     if (total > this.limits.maxRequestStartsPerMinute) {
       throw new RelayLimitError("request_rate_limit", `Realtime ${runtime} request rate limit reached.`);
     }

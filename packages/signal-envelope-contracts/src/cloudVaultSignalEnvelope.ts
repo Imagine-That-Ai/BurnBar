@@ -59,7 +59,7 @@ export interface CloudVaultSignalEnvelope extends SignalEnvelope {
  * can never be mistaken for a CloudVault one. Returns a precise type guard.
  */
 export function isCloudVaultSignalEnvelope(value: unknown): value is CloudVaultSignalEnvelope {
-  if (!isSignalEnvelope(value, "at-rest")) return false;
+  if (!isSignalEnvelope(value, "at-rest")) {return false;}
   const sanitized = sanitizeSignalEnvelope(value, "at-rest");
   return sanitized !== undefined && sanitized.binding.scope === "cloudvault";
 }
@@ -71,6 +71,6 @@ export function isCloudVaultSignalEnvelope(value: unknown): value is CloudVaultS
  */
 export function sanitizeCloudVaultSignalEnvelope(value: unknown): CloudVaultSignalEnvelope | undefined {
   const sanitized = sanitizeSignalEnvelope(value, "at-rest");
-  if (!sanitized || sanitized.binding.scope !== "cloudvault") return undefined;
+  if (!sanitized || sanitized.binding.scope !== "cloudvault") {return undefined;}
   return sanitized as CloudVaultSignalEnvelope;
 }

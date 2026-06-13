@@ -134,7 +134,7 @@ export function parseExtractedMemories(raw: string): ExtractedMemory[] {
     const outer = JSON.parse(payload) as unknown;
     if (outer && typeof outer === "object" && !Array.isArray(outer)) {
       const result = (outer as { result?: unknown }).result;
-      if (typeof result === "string") payload = result.trim();
+      if (typeof result === "string") {payload = result.trim();}
     } else if (Array.isArray(outer)) {
       return normalizeMemories(outer);
     }
@@ -146,7 +146,7 @@ export function parseExtractedMemories(raw: string): ExtractedMemory[] {
   payload = payload.replace(/^```(?:json)?\s*/u, "").replace(/\s*```$/u, "");
   const start = payload.indexOf("[");
   const end = payload.lastIndexOf("]");
-  if (start === -1 || end <= start) return [];
+  if (start === -1 || end <= start) {return [];}
   try {
     return normalizeMemories(JSON.parse(payload.slice(start, end + 1)));
   } catch {
@@ -155,13 +155,13 @@ export function parseExtractedMemories(raw: string): ExtractedMemory[] {
 }
 
 function normalizeMemories(raw: unknown): ExtractedMemory[] {
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {return [];}
   const out: ExtractedMemory[] = [];
   for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
+    if (!item || typeof item !== "object") {continue;}
     const rec = item as Record<string, unknown>;
     const text = typeof rec.text === "string" ? rec.text.trim() : "";
-    if (!text) continue;
+    if (!text) {continue;}
     out.push({
       title: typeof rec.title === "string" ? rec.title.trim() : text.slice(0, 60),
       text,
@@ -204,15 +204,15 @@ export async function prepareMemoriesForCommit(
   const prepared: PreparedVector[] = [];
 
   for (const memory of memories) {
-    if (memory.confidence < MIN_CONFIDENCE) continue;
+    if (memory.confidence < MIN_CONFIDENCE) {continue;}
     const cleaned = redactSecrets(memory.text).text.slice(0, MAX_MEMORY_BYTES);
-    if (!cleaned.trim()) continue;
+    if (!cleaned.trim()) {continue;}
     // Vault-keyed dedup hash — opaque to the server. A local non-keyed hash is
     // still used only to label the sealed-metadata source_path fallback below.
     const dedupHash = vaultKeyedHmac(deps.vaultKey, "content", cleaned);
-    if (seen.has(dedupHash)) continue;
+    if (seen.has(dedupHash)) {continue;}
     seen.add(dedupHash);
-    if (await isDuplicate(memory, dedupHash)) continue;
+    if (await isDuplicate(memory, dedupHash)) {continue;}
 
     const [vector] = await deps.embedder.embed([cleaned]);
     const cloaked = Array.from(cloak(vector, { vaultKey: deps.vaultKey, modelVersion: deps.embedder.modelVersion }));
@@ -289,13 +289,13 @@ export async function runMemorySync(options: RunMemorySyncOptions): Promise<{
   const commit = options.commit ?? defaultCommitQueue;
 
   const key = vaultKeyFn();
-  if (!key) throw new Error("Pensieve vault key unavailable — run `openburnbar mcp login`.");
+  if (!key) {throw new Error("Pensieve vault key unavailable — run `openburnbar mcp login`.");}
 
   const memories = parseExtractedMemories(runExtractor(options.transcript));
   const embedder = await loadEmbedder();
   const vectors = await prepareMemoriesForCommit(memories, sourceSlug, { embedder, vaultKey: key }, options.isDuplicate);
   const batch = { sourceSlug, embeddingModelVersion: options.embeddingModelVersion ?? embedder.modelVersion, vectors };
-  if (vectors.length > 0) commit(batch);
+  if (vectors.length > 0) {commit(batch);}
   return batch;
 }
 

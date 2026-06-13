@@ -24,7 +24,7 @@ export function legacyVaultKeyPath(): string {
 
 export function removeLegacyVaultKeyFile(): boolean {
   const path = legacyVaultKeyPath();
-  if (!existsSync(path)) return false;
+  if (!existsSync(path)) {return false;}
   rmSync(path, { force: true });
   return true;
 }
@@ -37,7 +37,7 @@ export function readVaultKey(): string | undefined {
       // Production is Keychain-only. Insecure sources below are test/dev opt-ins.
     }
   }
-  if (!insecureVaultKeySourcesAllowed()) return undefined;
+  if (!insecureVaultKeySourcesAllowed()) {return undefined;}
   if (process.env[INSECURE_VAULT_KEY_ENV]) {
     return process.env[INSECURE_VAULT_KEY_ENV];
   }

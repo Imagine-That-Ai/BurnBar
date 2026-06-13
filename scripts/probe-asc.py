@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only probe: mints an ASC JWT and lists apps + existing IAPs.
 Use to confirm credentials work before submitting new SKUs."""
+
 import json
 import os
 import sys
@@ -9,10 +10,12 @@ import urllib.request
 from pathlib import Path
 
 KEY_ID = os.environ.get("ASC_KEY_ID", "79P9X769N9")
-KEY_PATH = Path(os.environ.get(
-    "ASC_KEY_PATH",
-    str(Path.home() / ".appstoreconnect/private_keys" / f"AuthKey_{KEY_ID}.p8"),
-))
+KEY_PATH = Path(
+    os.environ.get(
+        "ASC_KEY_PATH",
+        str(Path.home() / ".appstoreconnect/private_keys" / f"AuthKey_{KEY_ID}.p8"),
+    )
+)
 ISSUER_ID = os.environ.get("ASC_ISSUER_ID")  # required
 
 
@@ -20,16 +23,14 @@ def mint_token() -> str:
     if not ISSUER_ID:
         sys.exit("ASC_ISSUER_ID env var required. Find it at https://appstoreconnect.apple.com/access/integrations/api")
     import jwt as pyjwt
+
     now = int(time.time())
-    claims = {"iss": ISSUER_ID, "iat": now, "exp": now + 20 * 60,
-              "aud": "appstoreconnect-v1"}
-    return pyjwt.encode(claims, KEY_PATH.read_bytes(),
-                        algorithm="ES256", headers={"kid": KEY_ID, "typ": "JWT"})
+    claims = {"iss": ISSUER_ID, "iat": now, "exp": now + 20 * 60, "aud": "appstoreconnect-v1"}
+    return pyjwt.encode(claims, KEY_PATH.read_bytes(), algorithm="ES256", headers={"kid": KEY_ID, "typ": "JWT"})
 
 
 def get(path: str, token: str) -> dict:
-    req = urllib.request.Request(f"https://api.appstoreconnect.apple.com{path}",
-                                 method="GET")
+    req = urllib.request.Request(f"https://api.appstoreconnect.apple.com{path}", method="GET")
     req.add_header("Authorization", f"Bearer {token}")
     try:
         with urllib.request.urlopen(req) as resp:

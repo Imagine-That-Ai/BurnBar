@@ -125,13 +125,9 @@ def _platforms_match_canonical(platforms: Any) -> list[str]:
         missing_channels = sorted(expected_channel_names - actual_channel_names)
         extra_channels = sorted(actual_channel_names - expected_channel_names)
         if missing_channels:
-            errors.append(
-                f"platforms.{platform} missing required channel(s): " + ", ".join(missing_channels)
-            )
+            errors.append(f"platforms.{platform} missing required channel(s): " + ", ".join(missing_channels))
         if extra_channels:
-            errors.append(
-                f"platforms.{platform} contains unknown channel(s): " + ", ".join(extra_channels)
-            )
+            errors.append(f"platforms.{platform} contains unknown channel(s): " + ", ".join(extra_channels))
 
         for channel in CHANNELS:
             if channel not in expected_channels:
@@ -145,9 +141,7 @@ def _platforms_match_canonical(platforms: Any) -> list[str]:
             # skipped. Skipping null here was a fail-OPEN hole: a load-bearing
             # cell (e.g. ios.at_rest) could be blanked with the gate still green.
             if not isinstance(actual_model, str) or actual_model != expected_model:
-                errors.append(
-                    f"platforms.{platform}.{channel} must be {expected_model!r}, found {actual_model!r}"
-                )
+                errors.append(f"platforms.{platform}.{channel} must be {expected_model!r}, found {actual_model!r}")
     return errors
 
 
@@ -197,24 +191,18 @@ def _invariant_device_to_device(platforms: Any) -> list[str]:
         model = channels.get("device_to_device")
         if model != "libsignal-double-ratchet":
             errors.append(
-                f"INVARIANT VIOLATION: {platform}.device_to_device must be "
-                f"'libsignal-double-ratchet', found {model!r}"
+                f"INVARIANT VIOLATION: {platform}.device_to_device must be 'libsignal-double-ratchet', found {model!r}"
             )
 
     ios = platforms.get("ios")
     if isinstance(ios, dict):
         ios_d2d = ios.get("device_to_device")
         if ios_d2d != "none-satellite":
-            errors.append(
-                "INVARIANT VIOLATION: ios.device_to_device must be 'none-satellite', "
-                f"found {ios_d2d!r}"
-            )
+            errors.append(f"INVARIANT VIOLATION: ios.device_to_device must be 'none-satellite', found {ios_d2d!r}")
 
     backend = platforms.get("backend")
     if isinstance(backend, dict) and "device_to_device" in backend:
-        errors.append(
-            "INVARIANT VIOLATION: backend must NOT declare a device_to_device channel"
-        )
+        errors.append("INVARIANT VIOLATION: backend must NOT declare a device_to_device channel")
     return errors
 
 
@@ -230,8 +218,7 @@ def _invariant_ai_gateway(platforms: Any) -> list[str]:
         model = channels.get("ai_gateway")
         if model != "homegrown-double-ratchet":
             errors.append(
-                f"INVARIANT VIOLATION: {platform}.ai_gateway must be "
-                f"'homegrown-double-ratchet', found {model!r}"
+                f"INVARIANT VIOLATION: {platform}.ai_gateway must be 'homegrown-double-ratchet', found {model!r}"
             )
     return errors
 
@@ -254,9 +241,7 @@ def _invariant_at_rest(platforms: Any) -> list[str]:
             continue
         model = channels.get("at_rest")
         if model != expected_model:
-            errors.append(
-                f"INVARIANT VIOLATION: {platform}.at_rest must be {expected_model!r}, found {model!r}"
-            )
+            errors.append(f"INVARIANT VIOLATION: {platform}.at_rest must be {expected_model!r}, found {model!r}")
     return errors
 
 
@@ -274,9 +259,7 @@ def _invariant_claim_mapping(data: Any, platforms: Any) -> list[str]:
             continue
         actual_claim = claims.get(model)
         if actual_claim != expected_claim:
-            errors.append(
-                f"claims.{model} must be {expected_claim!r}, found {actual_claim!r}"
-            )
+            errors.append(f"claims.{model} must be {expected_claim!r}, found {actual_claim!r}")
 
     # iOS may never back the "Signal Protocol" claim on any channel.
     if isinstance(platforms, dict):
@@ -309,9 +292,7 @@ def validate_crypto_architecture_policy(data: Any, *, repo_root: Path = ROOT) ->
     # so the field is tamper-evident rather than decorative.
     manifest_bearing = data.get("libsignalBearingModels")
     if manifest_bearing != LIBSIGNAL_BEARING_MODELS:
-        errors.append(
-            f"libsignalBearingModels must equal {LIBSIGNAL_BEARING_MODELS!r}, found {manifest_bearing!r}"
-        )
+        errors.append(f"libsignalBearingModels must equal {LIBSIGNAL_BEARING_MODELS!r}, found {manifest_bearing!r}")
 
     # Enforce the crypto invariants.
     errors.extend(_invariant_ios_libsignal_free(platforms))
@@ -334,9 +315,7 @@ def validate_crypto_architecture_policy(data: Any, *, repo_root: Path = ROOT) ->
         else:
             for model, claim in CLAIM_MAPPING.items():
                 if claim not in adr_text:
-                    errors.append(
-                        f"{ADR_DOC} must render the canonical claim for {model!r}: {claim!r}"
-                    )
+                    errors.append(f"{ADR_DOC} must render the canonical claim for {model!r}: {claim!r}")
 
     # The backend policy library must encode the same matrix in code.
     lib_path = repo_root / BACKEND_POLICY_LIB
@@ -350,10 +329,7 @@ def validate_crypto_architecture_policy(data: Any, *, repo_root: Path = ROOT) ->
         else:
             missing_needles = [needle for needle in BACKEND_POLICY_NEEDLES if needle not in contents]
             if missing_needles:
-                errors.append(
-                    f"{BACKEND_POLICY_LIB} missing required symbol(s): "
-                    + ", ".join(missing_needles)
-                )
+                errors.append(f"{BACKEND_POLICY_LIB} missing required symbol(s): " + ", ".join(missing_needles))
 
     return errors
 
