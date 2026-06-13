@@ -143,7 +143,7 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         )
         XCTAssertEqual(coordinator.phase, .active(feature: .screenShare))
 
-        gate.result = .denied(reason: .killSwitchActive)
+        await gate.setResult(.denied(reason: .killSwitchActive))
         await coordinator.recheckActiveAdmissionForTesting()
 
         XCTAssertEqual(coordinator.phase, .ended(reason: .budgetHardCap))
@@ -221,8 +221,12 @@ private final class RecordingMediaSink: MediaStreamSink, @unchecked Sendable {
     func close() async {}
 }
 
-private final class MutableMediaCapabilityGate: MediaCapabilityGate, @unchecked Sendable {
-    var result: MediaCapabilityCheck = .allowed(envelope: MediaCapabilityEnvelope(feature: .screenShare))
+private actor MutableMediaCapabilityGate: MediaCapabilityGate {
+    private var result: MediaCapabilityCheck = .allowed(envelope: MediaCapabilityEnvelope(feature: .screenShare))
+
+    func setResult(_ result: MediaCapabilityCheck) {
+        self.result = result
+    }
 
     func check(
         feature: MediaStreamClass.Feature,
