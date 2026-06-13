@@ -39,7 +39,7 @@ bash scripts/ops/verify-production-ops-plane.sh
 
 | Checkpoint | Status (UTC 2026-05-31) |
 |------------|-------------------------|
-| GCP ops alerts (8 policies) | **PASS** — `check-ops-alerts.mjs` |
+| GCP ops alerts (14 required policies) | **PASS** — `check-ops-alerts.mjs` on 2026-06-13; verifies enabled live notification channels, not just channel counts |
 | Prod health gate | **PASS** — `healthLive`, `healthReady`, `healthCheck` deployed (`us-central1-burnbar.cloudfunctions.net`) |
 | Full verify script | **PASS** — `verify-production-ops-plane.sh` (`ok: true`, `opsAlertsOk: true`) |
 
