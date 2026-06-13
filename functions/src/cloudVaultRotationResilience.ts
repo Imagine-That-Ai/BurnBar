@@ -51,7 +51,7 @@ const STALE_PENDING_SWEEP_BATCH_LIMIT = 100;
 /** Don't re-nudge a requirement more often than this (avoid push spam). */
 const NUDGE_MIN_INTERVAL_MS = 60 * 60_000;
 
-export interface PendingRotationRequirementSummary {
+interface PendingRotationRequirementSummary {
   requirementId: string;
   reason: string;
   revokedDeviceId: string | null;
@@ -136,7 +136,7 @@ export const listPendingCloudVaultRotationRequirements = onCallProduction(
   },
 );
 
-export type StaleRotationOutcome = "flagged" | "nudged" | "skipped";
+type StaleRotationOutcome = "flagged" | "nudged" | "skipped";
 
 /**
  * Best-effort silent data push to a surviving device. Reuses the durable

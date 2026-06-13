@@ -39,15 +39,15 @@ function clone<T>(value: T): T {
 
 /** Resolve `FieldValue.vector(...)`/array query vectors to a plain number[]. */
 function toVector(raw: unknown): number[] {
-  if (Array.isArray(raw)) return raw.map(Number);
+  if (Array.isArray(raw)) {return raw.map(Number);}
   if (raw && typeof raw === "object") {
     const toArray = Reflect.get(raw, "toArray");
     if (typeof toArray === "function") {
       const out = Reflect.apply(toArray, raw, []);
-      if (Array.isArray(out)) return out.map(Number);
+      if (Array.isArray(out)) {return out.map(Number);}
     }
     const values = Reflect.get(raw, "_values") ?? Reflect.get(raw, "values");
-    if (Array.isArray(values)) return values.map(Number);
+    if (Array.isArray(values)) {return values.map(Number);}
   }
   return [];
 }
@@ -68,7 +68,7 @@ export interface InMemoryFirestore {
 
 export function createInMemoryFirestore(seed: StoredDoc[] = []): InMemoryFirestore {
   const docs = new Map<string, Record<string, unknown>>();
-  for (const entry of seed) docs.set(entry.path, entry.data);
+  for (const entry of seed) {docs.set(entry.path, entry.data);}
 
   function docRef(path: string) {
     return {
@@ -83,8 +83,8 @@ export function createInMemoryFirestore(seed: StoredDoc[] = []): InMemoryFiresto
       },
       async set(value: unknown, options?: { merge?: boolean }) {
         const next = (value ?? {}) as Record<string, unknown>;
-        if (options?.merge) docs.set(path, { ...(docs.get(path) ?? {}), ...next });
-        else docs.set(path, { ...next });
+        if (options?.merge) {docs.set(path, { ...(docs.get(path) ?? {}), ...next });}
+        else {docs.set(path, { ...next });}
         return undefined;
       },
     };
@@ -323,7 +323,7 @@ export function seedTwoTenantWorld(): SeededWorld {
   ]);
   const download: StorageBodyDownloader = async (storagePath) => {
     const body = sealedBodies.get(storagePath);
-    if (body === undefined) throw new Error(`unexpected storage path: ${storagePath}`);
+    if (body === undefined) {throw new Error(`unexpected storage path: ${storagePath}`);}
     return Buffer.from(body, "utf8");
   };
 
