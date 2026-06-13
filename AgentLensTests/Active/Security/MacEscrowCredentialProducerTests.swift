@@ -174,7 +174,8 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
         await producer.startExport(uid: "uid-1", provider: .minimax, destinationDeviceID: "iphone-1") { stages.append($0) }
 
         guard case .failed(let message) = stages.last else {
-            return XCTFail("Expected fail-closed, got \(stages)")
+            XCTFail("Expected fail-closed, got \(stages)")
+            return
         }
         XCTAssertTrue(message.contains("No transferable"))
         XCTAssertTrue(writer.writtenPlans.isEmpty, "no envelope must be written when no credential is read")

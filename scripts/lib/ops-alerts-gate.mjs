@@ -26,17 +26,32 @@ function run(command, args, options = {}) {
   };
 }
 
+function parseJsonOutput(output, fallback) {
+  try {
+    return JSON.parse(output || JSON.stringify(fallback));
+  } catch (error) {
+    return { __parseError: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function disallowedAlertEmails() {
+  return new Set(
+    (process.env.OPENBURNBAR_DISALLOWED_ALERT_EMAILS || "support@openburnbar.app")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
 /**
- * Notification channel types that carry a GCP-managed verification handshake
- * (a real human/endpoint had to confirm the target). For these we require
- * verificationStatus === "VERIFIED" so an audited NXDOMAIN email channel —
- * which stays enabled in GCP but never verifies — fails closed.
+ * Notification channel types that carry a GCP-managed verification handshake.
+ * These must report verificationStatus === "VERIFIED" to count as live.
  */
 export const VERIFIABLE_CHANNEL_TYPES = new Set(["email", "sms"]);
 
 /**
- * Channel types we accept without a verification handshake. For these we still
- * assert the type is known and the target is a non-empty, non-placeholder value.
+ * Channel types accepted by the gate. Non-verifiable types still need a known,
+ * non-empty, non-placeholder target.
  */
 export const ALLOWED_CHANNEL_TYPES = new Set([
   "email",
@@ -47,10 +62,6 @@ export const ALLOWED_CHANNEL_TYPES = new Set([
   "webhook_basicauth",
 ]);
 
-/**
- * Channel-label keys that hold the routable target, by channel type. Used to
- * read the address/endpoint out of `gcloud monitoring channels list` JSON.
- */
 const CHANNEL_TARGET_LABEL = {
   email: "email_address",
   sms: "number",
@@ -60,12 +71,6 @@ const CHANNEL_TARGET_LABEL = {
   webhook_basicauth: "url",
 };
 
-/**
- * Known-bad / unresolvable placeholder domains that an enabled-but-dead email
- * channel parks on (the Cure53-audited NXDOMAIN case). A target on any of these
- * is rejected even before verificationStatus is consulted, so a placeholder can
- * never read as a live page even if GCP somehow reports it VERIFIED.
- */
 const PLACEHOLDER_TARGET_PATTERNS = [
   /@example\.(com|org|net)$/i,
   /@example\./i,
@@ -74,7 +79,6 @@ const PLACEHOLDER_TARGET_PATTERNS = [
   /\b(changeme|todo|placeholder|noreply|donotreply|fixme)\b/i,
 ];
 
-/** Reads the routable target (email address, phone, url, …) from a channel. */
 export function channelTarget(channel) {
   if (!channel) return null;
   const labelKey = CHANNEL_TARGET_LABEL[channel.type];
@@ -82,19 +86,35 @@ export function channelTarget(channel) {
   return typeof target === "string" && target.trim() !== "" ? target.trim() : null;
 }
 
-/** True when a target is empty or matches a known placeholder/unresolvable pattern. */
 export function isPlaceholderTarget(target) {
   if (!target) return true;
   return PLACEHOLDER_TARGET_PATTERNS.some((pattern) => pattern.test(target));
 }
 
+function reasonMessage(reason) {
+  if (reason === "missing") return "notification channel is missing";
+  if (reason === "disabled") return "notification channel is disabled";
+  if (reason === "empty-target") return "notification channel has no routable target label";
+  if (reason.startsWith("unsupported-type:")) {
+    return `notification channel has unsupported type ${reason.slice("unsupported-type:".length)}`;
+  }
+  if (reason.startsWith("placeholder-target:")) {
+    return `notification channel uses placeholder target ${reason.slice("placeholder-target:".length)}`;
+  }
+  if (reason.startsWith("disallowed-email:")) {
+    return `email notification channel uses disallowed black-hole address ${reason.slice("disallowed-email:".length)}`;
+  }
+  if (reason.startsWith("unverified:")) {
+    return `notification channel is not verified (${reason.slice("unverified:".length)})`;
+  }
+  return reason;
+}
+
 /**
  * Decides whether a single notification channel is trustworthy enough to count
- * as live for the gate. Returns { ok, reason }; reason is null when ok.
- * Fails closed on: missing channel, disabled, unknown type, empty/placeholder
- * target, and — for verifiable types (email/sms) — verificationStatus !== VERIFIED.
+ * as live for the gate.
  */
-export function evaluateChannel(channel) {
+export function evaluateChannel(channel, options = {}) {
   if (!channel.present) return { ok: false, reason: "missing" };
   if (!channel.enabled) return { ok: false, reason: "disabled" };
   if (!channel.type || !ALLOWED_CHANNEL_TYPES.has(channel.type)) {
@@ -104,10 +124,78 @@ export function evaluateChannel(channel) {
   if (isPlaceholderTarget(channel.target)) {
     return { ok: false, reason: `placeholder-target:${channel.target}` };
   }
+  const blockedEmails = options.disallowedEmails || disallowedAlertEmails();
+  if (channel.type === "email" && blockedEmails.has(channel.target.toLowerCase())) {
+    return { ok: false, reason: `disallowed-email:${channel.target}` };
+  }
   if (VERIFIABLE_CHANNEL_TYPES.has(channel.type) && channel.verificationStatus !== "VERIFIED") {
     return { ok: false, reason: `unverified:${channel.verificationStatus || "null"}` };
   }
   return { ok: true, reason: null };
+}
+
+export function notificationChannelStatus(name, channel, options = {}) {
+  const status = {
+    name,
+    present: Boolean(channel),
+    enabled: channel?.enabled === true,
+    type: channel?.type || null,
+    displayName: channel?.displayName || null,
+    verificationStatus: channel?.verificationStatus || null,
+    target: channelTarget(channel),
+    emailAddress: channel?.type === "email" ? channelTarget(channel) || "" : "",
+    live: false,
+    reason: null,
+    problems: [],
+    ok: false,
+  };
+  const { ok, reason } = evaluateChannel(status, options);
+  status.live = ok;
+  status.reason = reason;
+  status.problems = ok ? [] : [reasonMessage(reason)];
+  status.ok = ok;
+  return status;
+}
+
+function loadNotificationChannels(runner, project) {
+  const attempts = [
+    ["monitoring", "channels", "list", "--project", project, "--format=json"],
+    ["alpha", "monitoring", "channels", "list", "--project", project, "--format=json"],
+    ["beta", "monitoring", "channels", "list", "--project", project, "--format=json"],
+  ];
+  let result;
+  for (const args of attempts) {
+    result = runner("gcloud", args);
+    if (result.ok) break;
+  }
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.stderr || result.stdout || result.error || "unable to list notification channels",
+      byName: new Map(),
+    };
+  }
+
+  const channels = parseJsonOutput(result.stdout, []);
+  if (channels.__parseError) {
+    return {
+      ok: false,
+      error: `unable to parse notification channels JSON: ${channels.__parseError}`,
+      byName: new Map(),
+    };
+  }
+  if (!Array.isArray(channels)) {
+    return {
+      ok: false,
+      error: "notification channels JSON was not an array",
+      byName: new Map(),
+    };
+  }
+
+  return {
+    ok: true,
+    byName: new Map(channels.map((channel) => [channel.name, channel])),
+  };
 }
 
 export function metricTypesForPolicy(policy) {
@@ -124,30 +212,33 @@ export function metricTypesForPolicy(policy) {
 }
 
 /** Returns per-policy status; ok is true only when all required policies pass. */
-export function checkAlertPolicies(expectedPolicies) {
-  const result = run("gcloud", [
+export function checkAlertPolicies(expectedPolicies, options = {}) {
+  const project = options.project || PROJECT;
+  const runner = options.runner || run;
+  const disallowedEmails = options.disallowedEmails || disallowedAlertEmails();
+  const result = runner("gcloud", [
     "monitoring",
     "policies",
     "list",
     "--project",
-    PROJECT,
+    project,
     "--format=json",
   ]);
-  if (!result.ok) return { ok: false, error: result.stderr || result.stdout, project: PROJECT };
+  if (!result.ok) return { ok: false, error: result.stderr || result.stdout, project };
 
-  const channelResult = run("gcloud", [
-    "monitoring",
-    "channels",
-    "list",
-    "--project",
-    PROJECT,
-    "--format=json",
-  ]);
-  if (!channelResult.ok) return { ok: false, error: channelResult.stderr || channelResult.stdout, project: PROJECT };
+  const policies = parseJsonOutput(result.stdout, []);
+  if (policies.__parseError) {
+    return { ok: false, error: `unable to parse alert policies JSON: ${policies.__parseError}`, project };
+  }
+  if (!Array.isArray(policies)) {
+    return { ok: false, error: "alert policies JSON was not an array", project };
+  }
 
-  const policies = JSON.parse(result.stdout || "[]");
-  const channels = JSON.parse(channelResult.stdout || "[]");
-  const channelsByName = new Map(channels.map((channel) => [channel.name, channel]));
+  const channelLookup = loadNotificationChannels(runner, project);
+  if (!channelLookup.ok) {
+    return { ok: false, error: channelLookup.error, project };
+  }
+
   const byDisplayName = new Map();
   for (const policy of policies) {
     const entries = byDisplayName.get(policy.displayName) || [];
@@ -159,33 +250,20 @@ export function checkAlertPolicies(expectedPolicies) {
     const matches = byDisplayName.get(expected.displayName) || [];
     const policy = matches[0];
     const metricTypes = policy ? metricTypesForPolicy(policy) : [];
+    const missingMetricTypes = expected.requiredMetricTypes.filter(
+      (metricType) => !metricTypes.includes(metricType),
+    );
     const notificationChannels = policy?.notificationChannels || [];
-    const notificationChannelStatuses = notificationChannels.map((name) => {
-      const channel = channelsByName.get(name);
-      const status = {
-        name,
-        present: Boolean(channel),
-        enabled: channel?.enabled === true,
-        type: channel?.type || null,
-        displayName: channel?.displayName || null,
-        verificationStatus: channel?.verificationStatus || null,
-        target: channelTarget(channel),
-      };
-      const { ok, reason } = evaluateChannel(status);
-      status.live = ok;
-      status.reason = reason;
-      return status;
-    });
-    // A channel is "live" only when enabled, a known/targeted type, and — for
-    // verifiable types — VERIFIED. Disabled/unverified/placeholder channels do
-    // not count, so a policy backed solely by them fails closed.
+    const notificationChannelStatuses = notificationChannels.map((name) =>
+      notificationChannelStatus(name, channelLookup.byName.get(name), { disallowedEmails }),
+    );
+    const notificationChannelProblems = notificationChannelStatuses.flatMap((channel) =>
+      channel.problems.map((problem) => `${channel.name}: ${problem}`),
+    );
     const liveNotificationChannelCount = notificationChannelStatuses.filter((channel) => channel.live).length;
     const unhealthyNotificationChannels = notificationChannelStatuses
       .filter((channel) => !channel.live)
       .map((channel) => ({ name: channel.name, type: channel.type, reason: channel.reason }));
-    const missingMetricTypes = expected.requiredMetricTypes.filter(
-      (metricType) => !metricTypes.includes(metricType),
-    );
     return {
       displayName: expected.displayName,
       present: matches.length === 1,
@@ -193,6 +271,7 @@ export function checkAlertPolicies(expectedPolicies) {
       enabled: policy?.enabled === true,
       notificationChannels,
       notificationChannelStatuses,
+      notificationChannelProblems,
       liveNotificationChannelCount,
       unhealthyNotificationChannels,
       metricTypes,
@@ -207,7 +286,7 @@ export function checkAlertPolicies(expectedPolicies) {
 
   return {
     ok: required.every((policy) => policy.ok),
-    project: PROJECT,
+    project,
     required,
   };
 }

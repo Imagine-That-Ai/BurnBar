@@ -42,7 +42,7 @@ jobs:
 
       - name: Upload jscpd report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: jscpd-duplication-report
           path: jscpd-report/
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload size reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: bundle-size-reports
           path: extensions/openburnbar/size-limit-extension.txt
@@ -201,7 +201,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0 (node24-native)
         with:
           java-version: "21"
           distribution: "temurin"
@@ -236,7 +236,7 @@ jobs:
 
       - name: Upload Android dependency health report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: android-dependency-health
           path: android-dep-health.txt
