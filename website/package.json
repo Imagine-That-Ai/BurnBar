@@ -58,7 +58,7 @@
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
-    "astro": "^6.3.2",
+    "astro": "^6.4.6",
     "firebase": "12.14.0",
     "typescript": "^5.9.3"
   },
