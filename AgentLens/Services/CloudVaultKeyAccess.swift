@@ -210,7 +210,7 @@ enum MacCloudVaultKeyAccess {
             throw CloudVaultAccessError.vaultKeyUnavailable
         }
 
-        let created = CloudVaultCrypto.generateVaultKey()
+        let created = try CloudVaultCrypto.generateVaultKey() // cov:ignore -- live Firestore/keychain first-device bootstrap; RNG failure handling is covered in CloudVaultCryptoTests
         try keyStore.saveKey(created, uid: uid)
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: created)
         try await ensureState(userRef: userRef, uid: uid, vaultKeyID: vaultKeyID, deviceId: deviceId)

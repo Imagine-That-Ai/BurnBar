@@ -74,7 +74,7 @@ import {
   isActiveBurnBarUltraEntitlement,
   BURNBAR_ULTRA_ENTITLEMENT_ID as ULTRA_ENTITLEMENT_ID,
 } from "./shared.js";
-import { stripUndefinedObject } from "../guards.js";
+import { isRecord, stripUndefinedObject } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { randomBytes } from "node:crypto";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -83,7 +83,10 @@ import { validateSignalAtRestEnvelopeForWrite } from "../signalAtRestWrite.js";
 const KNOWLEDGE_VECTOR_DIM = 384;
 const MAX_CHUNK_BYTES = 64 * 1024; // generous per-chunk plaintext ceiling
 const MAX_BATCH_VECTORS = 800;
+type KnowledgeReviewStatus = "quarantined" | "approved" | "rejected";
+
 const SOURCE_KINDS = new Set(["repo_docs", "notes", "chat_memory"]);
+const REVIEW_STATUSES = new Set(["quarantined", "approved", "rejected"]);
 
 /**
  * Stamped onto every row so old (legacy v0) rows stay distinguishable from the
@@ -180,6 +183,71 @@ function requireSourceKind(raw: unknown, fieldName: string): string {
     throw new HttpsError("invalid-argument", `${fieldName} must be one of: ${[...SOURCE_KINDS].join(", ")}.`);
   }
   return value;
+}
+
+function requireReviewStatus(raw: unknown, fieldName: string): KnowledgeReviewStatus {
+  const value = boundedTrimmedString(raw, fieldName, 32, true);
+  if (!isKnowledgeReviewStatus(value)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be one of: ${[...REVIEW_STATUSES].join(", ")}.`);
+  }
+  return value;
+}
+
+function isKnowledgeReviewStatus(value: string): value is KnowledgeReviewStatus {
+  return REVIEW_STATUSES.has(value);
+}
+
+function requireIsoLikeTimestamp(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, 64, true);
+  if (!/^\d{4}-\d{2}-\d{2}T/u.test(value)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an ISO-8601 timestamp.`);
+  }
+  return value;
+}
+
+function requireChatMemoryProvenance(
+  raw: unknown,
+  fieldName: string,
+  expectedStatus: KnowledgeReviewStatus,
+): Record<string, unknown> {
+  if (!isRecord(raw)) {
+    throw new HttpsError("invalid-argument", `${fieldName} is required for chat_memory vectors.`);
+  }
+  const rec = raw;
+  const schemaVersion = requireBoundedNumber(rec.schemaVersion, `${fieldName}.schemaVersion`, 1, 1);
+  const sourceKind = requireSourceKind(rec.sourceKind, `${fieldName}.sourceKind`);
+  if (sourceKind !== "chat_memory") {
+    throw new HttpsError("invalid-argument", `${fieldName}.sourceKind must be chat_memory.`);
+  }
+  const reviewStatus = requireReviewStatus(rec.reviewStatus, `${fieldName}.reviewStatus`);
+  if (reviewStatus !== expectedStatus) {
+    throw new HttpsError("invalid-argument", `${fieldName}.reviewStatus must match vector reviewStatus.`);
+  }
+  const approvedAt =
+    rec.approvedAt === undefined || rec.approvedAt === null
+      ? undefined
+      : requireIsoLikeTimestamp(rec.approvedAt, `${fieldName}.approvedAt`);
+  if (reviewStatus === "approved" && !approvedAt) {
+    throw new HttpsError("invalid-argument", `${fieldName}.approvedAt is required when reviewStatus is approved.`);
+  }
+  return {
+    schemaVersion,
+    sourceKind,
+    reviewStatus,
+    sourceSlugHmac: requireHexDigest(rec.sourceSlugHmac, `${fieldName}.sourceSlugHmac`),
+    sourceTranscriptHash: requireHexDigest(rec.sourceTranscriptHash, `${fieldName}.sourceTranscriptHash`),
+    extractorKind: boundedTrimmedString(rec.extractorKind, `${fieldName}.extractorKind`, 64, true),
+    extractorPromptHash: requireHexDigest(rec.extractorPromptHash, `${fieldName}.extractorPromptHash`),
+    extractorOutputHash: requireHexDigest(rec.extractorOutputHash, `${fieldName}.extractorOutputHash`),
+    extractorPromptVersion: boundedTrimmedString(
+      rec.extractorPromptVersion,
+      `${fieldName}.extractorPromptVersion`,
+      120,
+      true,
+    ),
+    createdAt: requireIsoLikeTimestamp(rec.createdAt, `${fieldName}.createdAt`),
+    approvedAt,
+  };
 }
 
 /**
@@ -305,6 +373,19 @@ export const commitKnowledgeBatch = onCall(
       const validated = vectors.map((raw, i) => {
         const { dedupHash, dedupHashVersion } = resolveDedupHash(raw, `vectors[${i}]`);
         const vectorId = safeCloudDocumentID(raw.vectorId ?? dedupHash, `vectors[${i}].vectorId`);
+        const sourceKind = requireSourceKind(raw.sourceKind, `vectors[${i}].sourceKind`);
+        let reviewStatus: KnowledgeReviewStatus | undefined;
+        let memoryProvenance: Record<string, unknown> | undefined;
+        if (sourceKind === "chat_memory") {
+          reviewStatus = requireReviewStatus(raw.reviewStatus, `vectors[${i}].reviewStatus`);
+          if (reviewStatus !== "approved") {
+            throw new HttpsError(
+              "failed-precondition",
+              `vectors[${i}] is chat_memory and must be explicitly approved before commit.`,
+            );
+          }
+          memoryProvenance = requireChatMemoryProvenance(raw.provenance, `vectors[${i}].provenance`, reviewStatus);
+        }
         return {
           // Prefer an explicit device id; else the keyed dedupHash (B-SEC-2 — a
           // keyed value, not a plaintext SHA-256). `vectorId` is only an opaque
@@ -332,9 +413,11 @@ export const commitKnowledgeBatch = onCall(
           ),
           dedupHash,
           dedupHashVersion,
-          sourceKind: requireSourceKind(raw.sourceKind, `vectors[${i}].sourceKind`),
+          sourceKind,
           chunkIndex: requireBoundedNumber(raw.chunkIndex, `vectors[${i}].chunkIndex`, 0, 1_000_000),
           byteCount: requireBoundedNumber(raw.byteCount, `vectors[${i}].byteCount`, 0, MAX_CHUNK_BYTES),
+          reviewStatus,
+          memoryProvenance,
         };
       });
 
@@ -405,6 +488,8 @@ export const commitKnowledgeBatch = onCall(
           sealedCiphertext: v.sealedCiphertext,
           sealedMetadata: v.sealedMetadata,
           signalEnvelope: v.signalEnvelope,
+          reviewStatus: v.reviewStatus,
+          memoryProvenance: v.memoryProvenance,
           deviceId,
           commitID,
           updatedAt: now,
@@ -567,6 +652,8 @@ export const __testing__ = {
   DEDUP_HASH_VERSION_VAULT_HMAC,
   RETIRED_EMBEDDING_MODEL_VERSION,
   requireSourceKind,
+  requireReviewStatus,
+  requireChatMemoryProvenance,
   requireCloakedVector,
   resolveDedupHash,
   purgeLegacyKnowledgeVectorsForUser,

@@ -164,6 +164,27 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         _ = try await callable.call(["clientId": clientId])
     }
 
+    func hermesGatewayAttachmentDownloadURL(
+        attachmentId: String,
+        clientId: String,
+        destinationId: String?
+    ) async throws -> URL {
+        let callable = try functionsClient().httpsCallable("getHermesGatewayAttachmentDownloadUrl")
+        var payload: [String: Any] = [
+            "attachmentId": attachmentId,
+            "clientId": clientId
+        ]
+        if let destinationId, !destinationId.isEmpty {
+            payload["destinationId"] = destinationId
+        }
+        let result = try await callable.call(payload)
+        let response = try Self.decodeHermesGatewayValue(HermesGatewayAttachmentDownloadURLResponse.self, from: result.data)
+        guard response.attachmentId == attachmentId, let url = URL(string: response.downloadURL) else {
+            throw FunctionsError.gatewayAttachmentUnreadable
+        }
+        return url
+    }
+
     func enqueueHermesGatewayEvent(
         text: String,
         destinationId: String = "burnbar:home",
@@ -503,6 +524,13 @@ private struct HermesGatewayClientsResponse: Decodable, Sendable {
     let clients: [HermesGatewayClientRecord]
 }
 
+private struct HermesGatewayAttachmentDownloadURLResponse: Decodable, Sendable {
+    let downloadURL: String
+    let expiresAt: String
+    let attachmentId: String
+    let maxBytes: Int?
+}
+
 // MARK: - Hermes Gateway Repository
 
 @MainActor
@@ -520,6 +548,12 @@ protocol HermesGatewayRepository: AnyObject {
 
     func listHermesGatewayClients(includeRevoked: Bool) async throws -> [HermesGatewayClientRecord]
     func revokeHermesGatewayClient(clientId: String) async throws
+
+    func hermesGatewayAttachmentDownloadURL(
+        attachmentId: String,
+        clientId: String,
+        destinationId: String?
+    ) async throws -> URL
 
     func enqueueHermesGatewayEvent(
         text: String,

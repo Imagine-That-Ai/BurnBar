@@ -359,8 +359,8 @@ jobs:
   app-xctest:
     name: App XCTest
     runs-on: macos-26
-    # 3000+ tests plus coverage; cold macOS runners can exceed 75 minutes.
-    timeout-minutes: 150
+    # 3000+ tests and growing; 45 min was hit at suite tail on slow runners.
+    timeout-minutes: 75
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     env:
       INTERNAL_RUN: "true"
@@ -840,7 +840,7 @@ jobs:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: bash ./scripts/ci/inject-firebase-config-android.sh
       - name: Android Hermes instrumented smoke
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2
         with:
           api-level: 34
           target: google_apis

@@ -52,7 +52,7 @@ jobs:
           cache-dependency-path: functions/package-lock.json
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2 # v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
@@ -74,12 +74,24 @@ jobs:
           VERIFY_OPS_PLANE_SUMMARY: verify-ops-plane-summary.json
         run: bash scripts/ops/verify-production-ops-plane.sh
 
+      - name: Collect Firebase security evidence
+        env:
+          FIREBASE_PROJECT: burnbar
+          FUNCTIONS_REGION: us-central1
+          KMS_LOCATIONS: global,us,us-central1,us-east1,us-east4,northamerica-northeast1
+        run: |
+          node scripts/ops/collect-firebase-security-evidence.mjs \
+            --strict \
+            --output firebase-security-evidence.json
+
       - name: Upload verification summary
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: ops-plane-verify-${{ github.run_id }}
-          path: verify-ops-plane-summary.json
+          path: |
+            verify-ops-plane-summary.json
+            firebase-security-evidence.json
           if-no-files-found: ignore
 
   skipped-no-gcp-key:

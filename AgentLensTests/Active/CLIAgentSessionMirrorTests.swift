@@ -242,7 +242,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
     }
 
     func test_missionEventFactory_sealsPrivateEventPayloadWithRequestBoundAAD() throws {
-        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
         let event = CLIAgentMissionEventFactory.event(
             sequence: 7,
@@ -303,7 +303,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
     }
 
     func test_missionCloudSealer_bindsStatePayloadToMissionRequestAAD() throws {
-        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
         let privatePayload = CLIAgentMissionPrivatePayload(
             title: "Launch audit",

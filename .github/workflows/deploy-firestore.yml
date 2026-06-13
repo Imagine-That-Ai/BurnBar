@@ -62,19 +62,19 @@ jobs:
 
       - name: Authenticate to Google Cloud (service account)
         if: ${{ env.HAS_GCP_SA_KEY == 'true' }}
-        uses: google-github-actions/auth@v2 # v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Authenticate to Google Cloud (legacy Play service account)
         if: ${{ env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true' }}
-        uses: google-github-actions/auth@v2 # v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
 
       - name: Set up gcloud
         if: ${{ env.HAS_GCP_SA_KEY == 'true' || env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == 'true' }}
-        uses: google-github-actions/setup-gcloud@v2 # v2
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
       - name: Require deploy credentials
         if: ${{ env.HAS_GCP_SA_KEY != 'true' && env.HAS_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != 'true' }}
@@ -90,7 +90,7 @@ jobs:
           # install would pull whatever the registry serves into a production
           # deploy step (diligence 2026-06-11 LB-3 residual).
           npm ci --prefix functions
-          npm --prefix functions exec -- firebase deploy \
+          npx --prefix functions firebase-tools deploy \
             --only firestore:rules,firestore:indexes,storage \
             --project "$FIREBASE_PROJECT" \
             --non-interactive

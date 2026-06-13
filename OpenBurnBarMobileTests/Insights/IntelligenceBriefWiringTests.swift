@@ -303,7 +303,7 @@ final class IntelligenceBriefWiringTests: XCTestCase {
     }
 
     func test_cliAgentMissionSealedPayloadRemovesPrivatePlaintextAndDecodesWithVaultKey() throws {
-        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
 
         let payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
@@ -342,7 +342,7 @@ final class IntelligenceBriefWiringTests: XCTestCase {
     }
 
     func test_cliAgentMissionSealedEventRemovesPrivatePlaintextAndDecodesWithVaultKey() throws {
-        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-05-14T10:00:00Z"))
 
