@@ -31,6 +31,8 @@ if echo "$changed" | grep -q '^extensions/openburnbar/'; then
 fi
 if echo "$changed" | grep -q '^functions/'; then
     [[ -d "$repo_root/functions/node_modules" ]] || npm ci --prefix "$repo_root/functions"
+    bash "$repo_root/scripts/build-signal-envelope-contracts.sh"
+    bash "$repo_root/scripts/build-entitlements.sh"
     npm --prefix "$repo_root/functions" run test:unit:coverage >/dev/null 2>&1 || true
 fi
 
@@ -46,6 +48,7 @@ import subprocess
 
 base_ref = os.environ["BASE_REF"]
 repo_root = os.environ["REPO_ROOT"]
+repo_root_real = os.path.realpath(repo_root)
 threshold = int(os.environ["COVERAGE_THRESHOLD"])
 
 patterns = ["functions/src/**/*.ts", "extensions/openburnbar/src/**/*.ts"]
@@ -74,10 +77,17 @@ line_cov = {}
 for cov_path in coverage_paths:
     if not os.path.isfile(cov_path):
         continue
+    package_root = os.path.realpath(os.path.dirname(os.path.dirname(cov_path)))
     with open(cov_path) as fh:
         data = json.load(fh)
-    for abs_path, entry in data.items():
-        rel = os.path.relpath(abs_path, repo_root)
+    for raw_path, entry in data.items():
+        cov_file = raw_path.removeprefix("file://").replace("\\", "/")
+        if os.path.isabs(cov_file):
+            rel = os.path.relpath(os.path.realpath(cov_file), repo_root_real)
+        elif cov_file.startswith(("functions/", "extensions/")):
+            rel = cov_file
+        else:
+            rel = os.path.relpath(os.path.realpath(os.path.join(package_root, cov_file)), repo_root_real)
         per_line = line_cov.setdefault(rel, {})
         smap = entry.get("statementMap", {})
         counts = entry.get("s", {})
