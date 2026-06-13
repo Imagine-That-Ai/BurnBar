@@ -352,13 +352,24 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     }
 
     private func encode(_ sealed: CloudVaultSealedText) -> [String: Any] {
-        [
+        var dict: [String: Any] = [
             "algorithm": sealed.algorithm,
             "keyVersion": sealed.keyVersion,
             "nonce": sealed.nonce,
             "ciphertext": sealed.ciphertext,
             "tag": sealed.tag
         ]
+        // Kept in lockstep with KnowledgeSyncService.encode (app target): preserve the
+        // path-bound (schemaVersion-2) fields so the writer/reader round-trip is lossless.
+        // The daemon watcher seals uid-less (legacy schemaVersion-1), so these are nil here
+        // today — carrying them prevents silent drift if the daemon ever gains a uid path.
+        if let schemaVersion = sealed.schemaVersion {
+            dict["schemaVersion"] = schemaVersion
+        }
+        if let aad = sealed.aad {
+            dict["aad"] = aad
+        }
+        return dict
     }
 }
 
