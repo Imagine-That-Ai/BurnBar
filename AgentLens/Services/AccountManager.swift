@@ -670,29 +670,48 @@ final class AccountManager {
         }
     }
 
-    private static func googleAuthPresentationWindow(from window: NSWindow, activate: Bool = true) -> NSWindow {
-        let presentationWindow = googleAuthPresentationWindowCandidate(from: window, windows: NSApp.windows)
-        guard activate, presentationWindow.isVisible, !presentationWindow.isMiniaturized else {
-            return presentationWindow
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        presentationWindow.makeKeyAndOrderFront(nil)
-        return presentationWindow
-    }
-
-    private static func googleAuthPresentationWindowCandidate(from window: NSWindow, windows: [NSWindow]) -> NSWindow {
+    /// The PURE selection policy behind Google Sign-In presentation, factored
+    /// out of `NSWindow`/`NSApp` so it is testable on a headless CI runner
+    /// where constructing a real `NSWindow` crashes the host. Walk to the top
+    /// of the sheet chain; prefer that window when it's visible; otherwise
+    /// fall back to the first visible, non-miniaturized, non-sheet window;
+    /// else keep the original. `shouldActivate` is false only for the last
+    /// (nothing-visible) case, which must not bring an invisible window forward.
+    @MainActor
+    static func resolveAuthPresentationWindow(
+        from window: AuthPresentationWindow,
+        candidates: [AuthPresentationWindow]
+    ) -> (window: AuthPresentationWindow, shouldActivate: Bool) {
         var candidate = window
-        while let parent = candidate.sheetParent {
+        while let parent = candidate.authSheetParent {
             candidate = parent
         }
         if candidate.isVisible, !candidate.isMiniaturized {
-            return candidate
+            return (candidate, true)
         }
-        let fallback = windows.first { $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil }
-        if let fallback {
-            return fallback
+        if let fallback = candidates.first(where: {
+            $0.isVisible && !$0.isMiniaturized && $0.authSheetParent == nil
+        }) {
+            return (fallback, true)
         }
-        return window
+        return (window, false)
+    }
+
+    private static func googleAuthPresentationWindow(
+        from window: NSWindow,
+        appWindows: [NSWindow]? = nil,
+        activate: Bool = true
+    ) -> NSWindow {
+        let resolution = resolveAuthPresentationWindow(
+            from: window,
+            candidates: appWindows ?? NSApp.windows
+        )
+        guard let target = resolution.window as? NSWindow else { return window }
+        if resolution.shouldActivate {
+            NSApp.activate(ignoringOtherApps: true)
+            target.makeKeyAndOrderFront(nil)
+        }
+        return target
     }
 
     private static func isGoogleSignInKeychainError(_ error: Error) -> Bool {
@@ -1027,10 +1046,6 @@ final class AccountManager {
     ) -> [String: Any] {
         firebaseAuthLegacyDefaultStoredUserDeleteQuery(appName: appName)
     }
-
-    static func googleAuthPresentationWindowForTesting(from window: NSWindow) -> NSWindow {
-        googleAuthPresentationWindow(from: window, activate: false)
-    }
     #endif
 }
 
@@ -1118,4 +1133,20 @@ private final class AppleSignInPresentationCoordinator: NSObject, ASAuthorizatio
         cont?.resume(throwing: error)
         onFinish()
     }
+}
+
+// MARK: - Auth presentation window seam
+
+/// Minimal window surface the Google Sign-In presenter needs, so the
+/// selection policy (`AccountManager.resolveAuthPresentationWindow`) can be
+/// unit-tested without a window server. `NSWindow` conforms in production.
+@MainActor
+protocol AuthPresentationWindow: AnyObject {
+    var isVisible: Bool { get }
+    var isMiniaturized: Bool { get }
+    var authSheetParent: AuthPresentationWindow? { get }
+}
+
+extension NSWindow: AuthPresentationWindow {
+    var authSheetParent: AuthPresentationWindow? { sheetParent }
 }

@@ -78,9 +78,7 @@ def strip_manual_log_callable_start(text: str) -> str:
 
 
 def migrate_exports(text: str) -> str:
-    if "loggedOnCall" in text and re.search(
-        r"export const \w+ = loggedOnCall\(", text
-    ):
+    if "loggedOnCall" in text and re.search(r"export const \w+ = loggedOnCall\(", text):
         return text
     return re.sub(
         r"export const (\w+) = onCall\(",

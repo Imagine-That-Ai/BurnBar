@@ -122,20 +122,20 @@ function stripUndefined<T extends Record<string, unknown>>(record: T): T {
 }
 
 function boundedText(raw: unknown, maxLength: number): string | undefined {
-  if (typeof raw !== "string") return undefined;
+  if (typeof raw !== "string") {return undefined;}
   const value = raw.trim();
-  if (!value || value.length > maxLength || /[\r\n|]/u.test(value)) return undefined;
+  if (!value || value.length > maxLength || /[\r\n|]/u.test(value)) {return undefined;}
   return value;
 }
 
 function counter(raw: unknown): number | undefined {
   const value = typeof raw === "number" ? Math.floor(raw) : Number(raw);
-  if (!Number.isSafeInteger(value) || value < 0 || value > SIGNAL_MAX_COUNTER) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0 || value > SIGNAL_MAX_COUNTER) {return undefined;}
   return value;
 }
 
 function base64Within(raw: unknown, maxLength: number): string | undefined {
-  if (typeof raw !== "string") return undefined;
+  if (typeof raw !== "string") {return undefined;}
   const value = raw.trim();
   if (
     !value ||
@@ -146,7 +146,7 @@ function base64Within(raw: unknown, maxLength: number): string | undefined {
     return undefined;
   }
   try {
-    if (Buffer.from(value, "base64").toString("base64") !== value) return undefined;
+    if (Buffer.from(value, "base64").toString("base64") !== value) {return undefined;}
   } catch {
     return undefined;
   }
@@ -155,11 +155,11 @@ function base64Within(raw: unknown, maxLength: number): string | undefined {
 
 function sanitizeCiphertextLayer(raw: unknown): SignalCiphertextLayer | undefined {
   const record = recordOrUndefined(raw);
-  if (!record) return undefined;
+  if (!record) {return undefined;}
   const payloadCiphertextB64 = base64Within(record.payloadCiphertextB64, SIGNAL_MAX_MESSAGE_B64);
   const payloadAADLabel = boundedText(record.payloadAADLabel, SIGNAL_MAX_LABEL);
   const schemaVersion = counter(record.schemaVersion);
-  if (!payloadCiphertextB64 || !payloadAADLabel || schemaVersion === undefined) return undefined;
+  if (!payloadCiphertextB64 || !payloadAADLabel || schemaVersion === undefined) {return undefined;}
   return { payloadCiphertextB64, payloadAADLabel, schemaVersion };
 }
 
@@ -168,7 +168,7 @@ function sanitizeBinding(
   expected: { mode: SignalEnvelopeMode; scope?: SignalEnvelopeScope },
 ): SignalBinding | undefined {
   const record = recordOrUndefined(raw);
-  if (!record) return undefined;
+  if (!record) {return undefined;}
   const uid = boundedText(record.uid, SIGNAL_MAX_ID);
   const scope = record.scope === "gateway" || record.scope === "cloudvault" ? record.scope : undefined;
   const mode = record.mode === "transport" || record.mode === "at-rest" ? record.mode : undefined;
@@ -185,7 +185,7 @@ function sanitizeBinding(
   }
 
   if (scope === "gateway") {
-    if (mode !== "transport") return undefined;
+    if (mode !== "transport") {return undefined;}
     const clientId = boundedText(record.clientId, SIGNAL_MAX_ID);
     const slotId = boundedText(record.slotId, SIGNAL_MAX_ID);
     if (
@@ -211,7 +211,7 @@ function sanitizeBinding(
 
 function sanitizeTransportDelivery(raw: unknown): SignalTransportKeyDelivery | undefined {
   const record = recordOrUndefined(raw);
-  if (!record || record.scheme !== SIGNAL_TRANSPORT_ENCRYPTION) return undefined;
+  if (!record || record.scheme !== SIGNAL_TRANSPORT_ENCRYPTION) {return undefined;}
   const signalMessageType =
     record.signalMessageType === 2 || record.signalMessageType === 3 ? record.signalMessageType : undefined;
   const signalMessageB64 = base64Within(record.signalMessageB64, SIGNAL_MAX_MESSAGE_B64);
@@ -236,12 +236,12 @@ function sanitizeTransportDelivery(raw: unknown): SignalTransportKeyDelivery | u
 
 function sanitizeAtRestDelivery(raw: unknown): SignalAtRestKeyDelivery | undefined {
   const record = recordOrUndefined(raw);
-  if (!record || record.scheme !== SIGNAL_AT_REST_ENCRYPTION) return undefined;
-  if (record.contentKeyLength !== 32 || !Array.isArray(record.wraps)) return undefined;
-  if (record.wraps.length < 1 || record.wraps.length > SIGNAL_MAX_RECIPIENT_WRAPS) return undefined;
+  if (!record || record.scheme !== SIGNAL_AT_REST_ENCRYPTION) {return undefined;}
+  if (record.contentKeyLength !== 32 || !Array.isArray(record.wraps)) {return undefined;}
+  if (record.wraps.length < 1 || record.wraps.length > SIGNAL_MAX_RECIPIENT_WRAPS) {return undefined;}
   const wraps = record.wraps.flatMap((item): SignalAtRestWrap[] => {
     const wrap = recordOrUndefined(item);
-    if (!wrap) return [];
+    if (!wrap) {return [];}
     const recipientKind =
       wrap.recipientKind === "device" || wrap.recipientKind === "escrow" || wrap.recipientKind === "recovery"
         ? wrap.recipientKind
@@ -249,16 +249,16 @@ function sanitizeAtRestDelivery(raw: unknown): SignalAtRestKeyDelivery | undefin
     const recipientIdentityKeyId = boundedText(wrap.recipientIdentityKeyId, SIGNAL_MAX_ID);
     const recipientIdentityKeyB64 = base64Within(wrap.recipientIdentityKeyB64, SIGNAL_MAX_KEY_WRAP_B64);
     const sealedContentKeyB64 = base64Within(wrap.sealedContentKeyB64, SIGNAL_MAX_KEY_WRAP_B64);
-    if (!recipientKind || !recipientIdentityKeyId || !recipientIdentityKeyB64 || !sealedContentKeyB64) return [];
+    if (!recipientKind || !recipientIdentityKeyId || !recipientIdentityKeyB64 || !sealedContentKeyB64) {return [];}
     return [{ recipientKind, recipientIdentityKeyId, recipientIdentityKeyB64, sealedContentKeyB64 }];
   });
-  if (wraps.length !== record.wraps.length) return undefined;
+  if (wraps.length !== record.wraps.length) {return undefined;}
   return { scheme: SIGNAL_AT_REST_ENCRYPTION, wraps, contentKeyLength: 32 };
 }
 
 export function sanitizeSignalEnvelope(raw: unknown, expectedMode?: SignalEnvelopeMode): SignalEnvelope | undefined {
   const record = recordOrUndefined(raw);
-  if (!record) return undefined;
+  if (!record) {return undefined;}
   const signalEnvelopeFormatVersion = counter(record.signalEnvelopeFormatVersion);
   const mode = record.mode === "transport" || record.mode === "at-rest" ? record.mode : undefined;
   if (
@@ -270,7 +270,7 @@ export function sanitizeSignalEnvelope(raw: unknown, expectedMode?: SignalEnvelo
   }
 
   const expectedEncryption = mode === "transport" ? SIGNAL_TRANSPORT_ENCRYPTION : SIGNAL_AT_REST_ENCRYPTION;
-  if (record.relayEncryption !== expectedEncryption) return undefined;
+  if (record.relayEncryption !== expectedEncryption) {return undefined;}
 
   const rawRelayKeyVersion =
     record.relayKeyVersion === undefined
@@ -279,7 +279,7 @@ export function sanitizeSignalEnvelope(raw: unknown, expectedMode?: SignalEnvelo
         ? Math.floor(record.relayKeyVersion)
         : Number(record.relayKeyVersion);
   if (mode === "transport") {
-    if (rawRelayKeyVersion !== SIGNAL_RELAY_KEY_VERSION) return undefined;
+    if (rawRelayKeyVersion !== SIGNAL_RELAY_KEY_VERSION) {return undefined;}
   } else if (record.relayKeyVersion !== undefined) {
     return undefined;
   }
@@ -288,7 +288,7 @@ export function sanitizeSignalEnvelope(raw: unknown, expectedMode?: SignalEnvelo
   const keyDelivery =
     mode === "transport" ? sanitizeTransportDelivery(record.keyDelivery) : sanitizeAtRestDelivery(record.keyDelivery);
   const binding = sanitizeBinding(record.binding, { mode, scope: mode === "transport" ? "gateway" : undefined });
-  if (!ciphertextLayer || !keyDelivery || !binding) return undefined;
+  if (!ciphertextLayer || !keyDelivery || !binding) {return undefined;}
   return stripUndefined({
     signalEnvelopeFormatVersion,
     mode,
@@ -399,7 +399,7 @@ function collectNestedDrops(path: string, envelope: Record<string, unknown>, dro
     dropped.push(...collectDisallowedKeys(`${path}.binding`, binding, SIGNAL_BINDING_FIELDS));
   }
   const keyDelivery = recordOrUndefined(envelope.keyDelivery);
-  if (!keyDelivery) return;
+  if (!keyDelivery) {return;}
 
   const allowed =
     keyDelivery.scheme === SIGNAL_AT_REST_ENCRYPTION
@@ -419,7 +419,7 @@ function collectNestedDrops(path: string, envelope: Record<string, unknown>, dro
 function collectDisallowedKeys(path: string, data: Record<string, unknown>, allowed: Set<string>): string[] {
   const dropped: string[] = [];
   for (const key of Object.keys(data)) {
-    if (!allowed.has(key)) dropped.push(`${path}.${key}`);
+    if (!allowed.has(key)) {dropped.push(`${path}.${key}`);}
   }
   return dropped;
 }

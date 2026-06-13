@@ -246,11 +246,15 @@ def validate_native_signal_runtime_evidence(
                     f"{_path((*proof_path, 'command'))} missing required command fragment(s): "
                     + ", ".join(missing_fragments)
                 )
-        artifact_paths, path_errors = _string_list(proof.get("artifactPaths"), f"{_path((*proof_path, 'artifactPaths'))}")
+        artifact_paths, path_errors = _string_list(
+            proof.get("artifactPaths"), f"{_path((*proof_path, 'artifactPaths'))}"
+        )
         errors.extend(path_errors)
         missing_paths = sorted(required_paths.difference(artifact_paths))
         if missing_paths:
-            errors.append(f"{_path((*proof_path, 'artifactPaths'))} missing required path(s): " + ", ".join(missing_paths))
+            errors.append(
+                f"{_path((*proof_path, 'artifactPaths'))} missing required path(s): " + ", ".join(missing_paths)
+            )
         for path_group in requirements["proofs"].get(f"{proof_id}_path_groups", ()):
             if not any(path in artifact_paths for path in path_group):
                 errors.append(

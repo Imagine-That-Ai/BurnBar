@@ -26,7 +26,7 @@ export async function authenticateRequest(
   const role = relayRole(req);
   const authorization = req.headers.authorization;
   const match = typeof authorization === "string" ? authorization.match(/^Bearer\s+(.+)$/i) : null;
-  if (!match) throw new RelayHttpError(401, "missing_firebase_token", "Missing Firebase ID token.");
+  if (!match) {throw new RelayHttpError(401, "missing_firebase_token", "Missing Firebase ID token.");}
   const decoded = await getAuth().verifyIdToken(match[1], options.verifyRevokedIdTokens);
 
   let appID: string | undefined;

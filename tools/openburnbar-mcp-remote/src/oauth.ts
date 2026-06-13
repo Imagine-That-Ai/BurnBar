@@ -33,13 +33,13 @@ export function legacyTokenPath(suffix = ""): string {
 
 export function removeLegacyTokenFile(suffix = ""): boolean {
   const path = legacyTokenPath(suffix);
-  if (!existsSync(path)) return false;
+  if (!existsSync(path)) {return false;}
   rmSync(path, { force: true });
   return true;
 }
 
 function readSecret(account: string, suffix: string, envOverride?: string): string | undefined {
-  if (envOverride && insecureTokenSourcesAllowed()) return validatedTokenForStorage(envOverride);
+  if (envOverride && insecureTokenSourcesAllowed()) {return validatedTokenForStorage(envOverride);}
   if (process.platform === "darwin") {
     try {
       const value = execFileSync("security", ["find-generic-password", "-s", SERVICE, "-a", account, "-w"], { encoding: "utf8" }).trim();
@@ -49,7 +49,7 @@ function readSecret(account: string, suffix: string, envOverride?: string): stri
       // Production is Keychain-only. Insecure sources below are test/dev opt-ins.
     }
   }
-  if (!insecureTokenSourcesAllowed()) return undefined;
+  if (!insecureTokenSourcesAllowed()) {return undefined;}
   try {
     const value = readFileSync(fallbackPath(suffix), "utf8").trim();
     return value ? validatedTokenForStorage(value) : undefined;

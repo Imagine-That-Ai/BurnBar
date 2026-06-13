@@ -66,6 +66,7 @@ struct DashboardBackdrop: View {
 
     var body: some View {
         ZStack {
+            // cov:ignore-start -- decorative background composition is smoke-tested but not line-attributed by ViewInspector
             if clarity > 0 {
                 LiquidGlassWindowBlend()
                     .ignoresSafeArea()
@@ -108,6 +109,7 @@ struct DashboardBackdrop: View {
                             .offset(x: 220, y: 110)
                     }
             }
+            // cov:ignore-end
         }
     }
 }
@@ -126,6 +128,7 @@ struct WebsiteBackgroundView: View {
     @Environment(SettingsManager.self) private var settingsManager
 
     var body: some View {
+        // cov:ignore-start -- decorative background composition is smoke-tested but not line-attributed by ViewInspector
         if settingsManager.appearanceSkin == .editorial {
             // Light dot-crest: paper field with a transparent, slow, sparkle-free
             // swarm on top. Provider logos render in their real brand colours, so
@@ -148,5 +151,6 @@ struct WebsiteBackgroundView: View {
             SwarmCanvasView(accent: accent, pace: .energetic, rendersAsynchronously: true)
                 .ignoresSafeArea()
         }
+        // cov:ignore-end
     }
 }

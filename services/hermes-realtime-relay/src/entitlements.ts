@@ -1,4 +1,4 @@
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { entitlementExpiryMillis } from "@openburnbar/entitlements";
 import { RelayHttpError } from "./errors.js";
 import type { EntitlementFirestore } from "./firestoreTypes.js";
@@ -61,7 +61,7 @@ export class FirestoreEntitlementVerifier implements EntitlementVerifier {
       const snap = await this.firestore
         .doc(`users/${uid}/entitlements/${entitlementID}`)
         .get();
-      if (!snap.exists) continue;
+      if (!snap.exists) {continue;}
 
       const data = snap.data() ?? {};
       const productID = entitlementProductID(entitlementID, data);
@@ -71,7 +71,7 @@ export class FirestoreEntitlementVerifier implements EntitlementVerifier {
         && Number.isFinite(expiresAtMs)
         && expiresAtMs > now;
 
-      if (!active) continue;
+      if (!active) {continue;}
 
       const cachedUntilMs = Math.min(now + this.cacheTTLMillis, expiresAtMs);
       this.cache.set(uid, {
@@ -102,8 +102,8 @@ function entitlementDenied(message: string): RelayHttpError {
 
 function entitlementProductID(entitlementID: string, data: Record<string, unknown>): string {
   const productID = typeof data.productID === "string" ? data.productID : "";
-  if (productID) return productID;
-  if (entitlementID === "burnbar_pro") return "com.openburnbar.pro.monthly";
-  if (entitlementID === "hosted_quota_sync") return "com.openburnbar.hostedQuotaSync.cloud.monthly";
+  if (productID) {return productID;}
+  if (entitlementID === "burnbar_pro") {return "com.openburnbar.pro.monthly";}
+  if (entitlementID === "hosted_quota_sync") {return "com.openburnbar.hostedQuotaSync.cloud.monthly";}
   return "";
 }

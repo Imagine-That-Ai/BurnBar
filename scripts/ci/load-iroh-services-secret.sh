@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Load the iroh services API secret into the current shell.
 #
 # Resolution order (first match wins):
@@ -22,7 +22,7 @@ set -u
 # work in both modes, so prefer BASH_SOURCE when sourced from bash and fall
 # back to the IROH_REPO_ROOT override or the CWD otherwise.
 _iroh_repo_root() {
-    if [ -n "${BASH_SOURCE:-}" ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
+    if [ "${#BASH_SOURCE[@]}" -gt 0 ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
         printf '%s' "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
         return
     fi

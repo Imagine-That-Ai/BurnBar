@@ -133,6 +133,63 @@ final class CredentialTransferSheetTests: XCTestCase {
         XCTAssertNil(vm.lastErrorMessage)
     }
 
+    func test_deviceTrustRevokeReportsQueuedCloudVaultRotation() async {
+        let gateway = FakeMacDeviceTrustGateway(devices: [
+            MacTrustedDevice(id: "iphone", displayName: "iPhone", platform: "iOS")
+        ])
+        gateway.revocationResult = ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult(
+            revokedCloudVaultWrappers: 1,
+            cloudVaultRotationRequired: true,
+            cloudVaultRotationRequirementId: "revoke_queued",
+            cloudVaultRotationBlockedReason: nil
+        )
+        let vm = DeviceTrustViewModel(gateway: gateway)
+
+        await vm.revoke(deviceID: "iphone")
+
+        XCTAssertEqual(vm.lastStatusMessage?.contains("rotation is queued"), true)
+        XCTAssertEqual(vm.lastStatusMessage?.contains("revoke_queued"), true)
+        XCTAssertNil(vm.lastErrorMessage)
+    }
+
+    func test_deviceTrustRevokeReportsBlockedCloudVaultRotationAndCanDismissStatus() async {
+        let gateway = FakeMacDeviceTrustGateway(devices: [
+            MacTrustedDevice(id: "iphone", displayName: "iPhone", platform: "iOS")
+        ])
+        gateway.revocationResult = ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult(
+            revokedCloudVaultWrappers: 1,
+            cloudVaultRotationRequired: false,
+            cloudVaultRotationRequirementId: nil,
+            cloudVaultRotationBlockedReason: "missing_survivor_device"
+        )
+        let vm = DeviceTrustViewModel(gateway: gateway)
+
+        await vm.revoke(deviceID: "iphone")
+
+        XCTAssertEqual(vm.lastStatusMessage?.contains("could not be scheduled"), true)
+        XCTAssertEqual(vm.lastStatusMessage?.contains("missing_survivor_device"), true)
+        vm.clearLastStatus()
+        XCTAssertNil(vm.lastStatusMessage)
+    }
+
+    func test_deviceTrustRevokeSuppressesNoiseForNoActiveCloudVaultState() async {
+        let gateway = FakeMacDeviceTrustGateway(devices: [
+            MacTrustedDevice(id: "iphone", displayName: "iPhone", platform: "iOS")
+        ])
+        gateway.revocationResult = ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult(
+            revokedCloudVaultWrappers: 0,
+            cloudVaultRotationRequired: false,
+            cloudVaultRotationRequirementId: nil,
+            cloudVaultRotationBlockedReason: "no_active_cloud_vault_state"
+        )
+        let vm = DeviceTrustViewModel(gateway: gateway)
+
+        await vm.revoke(deviceID: "iphone")
+
+        XCTAssertNil(vm.lastStatusMessage)
+        XCTAssertNil(vm.lastErrorMessage)
+    }
+
     func test_devicesSettingsExposeNestHubControls() throws {
         let deviceTrust = DeviceTrustViewModel(gateway: FakeMacDeviceTrustGateway(devices: []))
         let view = DevicesAndSyncSettingsView(
@@ -153,6 +210,26 @@ final class CredentialTransferSheetTests: XCTestCase {
         let detailSUT = try detail.inspect()
         XCTAssertNoThrow(try detailSUT.find(text: MacCopy.googleNestHubSectionTitle))
         XCTAssertNoThrow(try detailSUT.find(text: "Nest Hub quota display"))
+    }
+
+    func test_devicesSettingsSummarizesTrustedDeviceCounts() async throws {
+        let deviceTrust = DeviceTrustViewModel(gateway: FakeMacDeviceTrustGateway(devices: [
+            MacTrustedDevice(id: "mac", displayName: "MacBook Pro", platform: "macOS", isCurrentDevice: true),
+            MacTrustedDevice(id: "iphone", displayName: "Alberto's iPhone", platform: "iOS")
+        ]))
+        await deviceTrust.load()
+
+        let view = DevicesAndSyncSettingsView(
+            settingsManager: SettingsManager(),
+            deviceTrust: deviceTrust,
+            exportViewModel: CredentialTransferExportViewModel(gateway: FakeExportGateway())
+        )
+        let sut = try view.inspect()
+
+        XCTAssertNoThrow(try sut.find(text: MacCopy.cloudSyncSectionTitle))
+        XCTAssertNoThrow(try sut.find(text: "Trusted Devices"))
+        XCTAssertNoThrow(try sut.find(text: "2"))
+        XCTAssertNoThrow(try sut.find(text: MacCopy.smartDisplaysSectionTitle))
     }
 }
 

@@ -106,14 +106,14 @@ export class VaultKeyUnavailableError extends Error {
 /** Returns the 32-byte vault key, or undefined when absent (callers may fail open). */
 export function loadVaultKeyBytes(): Buffer | undefined {
   const raw = readVaultKey();
-  if (!raw) return undefined;
+  if (!raw) {return undefined;}
   const key = Buffer.from(raw, "base64");
   return key.length === 32 ? key : undefined;
 }
 
 function requireVaultKeyBytes(): Buffer {
   const key = loadVaultKeyBytes();
-  if (!key) throw new VaultKeyUnavailableError();
+  if (!key) {throw new VaultKeyUnavailableError();}
   return key;
 }
 
@@ -123,7 +123,7 @@ function requireVaultKeyBytes(): Buffer {
 function makeUniformStream(bytes: Buffer): () => number {
   let offset = 0;
   return () => {
-    if (offset + 4 > bytes.length) offset = 0; // defensive; we always derive enough
+    if (offset + 4 > bytes.length) {offset = 0;} // defensive; we always derive enough
     const u = bytes.readUInt32BE(offset);
     offset += 4;
     // Map to (0,1): keep strictly positive so log() in Box-Muller is finite.
@@ -154,7 +154,7 @@ function cacheKey(vaultKey: Buffer, modelVersion: string, dim: number): string {
 function deriveReflections(vaultKey: Buffer, modelVersion: string, dim: number): CloakReflections {
   const key = cacheKey(vaultKey, modelVersion, dim);
   const cached = reflectionCache.get(key);
-  if (cached) return cached;
+  if (cached) {return cached;}
 
   const info = Buffer.from(`OpenBurnBar-Pensieve-Cloak-${modelVersion}-v1`);
   // 2 uniforms per gaussian, 4 bytes per uniform, CLOAK_REFLECTIONS * dim gaussians, + slack.
@@ -175,7 +175,7 @@ function deriveReflections(vaultKey: Buffer, modelVersion: string, dim: number):
     if (norm === 0) {
       v[0] = 1; // degenerate guard; keeps Hᵢ orthogonal
     } else {
-      for (let i = 0; i < dim; i += 1) v[i] /= norm;
+      for (let i = 0; i < dim; i += 1) {v[i] /= norm;}
     }
     vectors.push(v);
   }
@@ -201,9 +201,9 @@ export function cloakVector(
   const x = Float64Array.from(vector as ArrayLike<number>);
   for (const v of vectors) {
     let dot = 0;
-    for (let i = 0; i < dim; i += 1) dot += v[i] * x[i];
+    for (let i = 0; i < dim; i += 1) {dot += v[i] * x[i];}
     const c = 2 * dot;
-    for (let i = 0; i < dim; i += 1) x[i] -= c * v[i];
+    for (let i = 0; i < dim; i += 1) {x[i] -= c * v[i];}
   }
   return x;
 }
@@ -212,10 +212,10 @@ export function cloakVector(
 
 export function l2normalize(vector: ArrayLike<number>): Float64Array {
   let normSq = 0;
-  for (let i = 0; i < vector.length; i += 1) normSq += vector[i] * vector[i];
+  for (let i = 0; i < vector.length; i += 1) {normSq += vector[i] * vector[i];}
   const norm = Math.sqrt(normSq) || 1;
   const out = new Float64Array(vector.length);
-  for (let i = 0; i < vector.length; i += 1) out[i] = vector[i] / norm;
+  for (let i = 0; i < vector.length; i += 1) {out[i] = vector[i] / norm;}
   return out;
 }
 

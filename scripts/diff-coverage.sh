@@ -18,8 +18,9 @@
 #      map shape.
 #
 # Waiver policy — the ONLY ways a changed executable line escapes this gate:
-#   * An in-source annotation `cov:ignore -- <reason>` on the changed line.
-#     A bare `cov:ignore` without a reason FAILS the gate outright.
+#   * An in-source annotation `cov:ignore -- <reason>` on the changed line,
+#     or a justified `cov:ignore-start -- <reason>` / `cov:ignore-end` block.
+#     Bare ignores without a reason FAIL the gate outright.
 #   * An entry in COVERAGE_ALLOWLIST (in the Python below): exact repo path
 #     (or an explicit, documented prefix) plus a mandatory written reason.
 #     Waived files are reported in the verdict JSON under "waived" — they are
@@ -416,9 +417,13 @@ for line in git_output.splitlines():
             file_blocks[current_file].append(ln)
 
 # In-source waivers: `cov:ignore -- <reason>` on a changed line excludes that
-# line. A bare `cov:ignore` without a justification is a gate FAILURE — an
-# unexplained waiver is indistinguishable from a silenced gate.
+# line. `cov:ignore-start -- <reason>` / `cov:ignore-end` excludes changed
+# lines in a block. Bare ignores without a justification are a gate FAILURE —
+# an unexplained waiver is indistinguishable from a silenced gate.
 COV_IGNORE_VALID = re.compile(r"cov:ignore\s*--\s*\S")
+COV_IGNORE_BLOCK_START_VALID = re.compile(r"cov:ignore-start\s*--\s*\S")
+COV_IGNORE_BLOCK_START = re.compile(r"cov:ignore-start\b")
+COV_IGNORE_BLOCK_END = re.compile(r"cov:ignore-end\b")
 cov_ignore_lines = {}
 cov_ignore_violations = []
 for rel_path, line_nums in file_blocks.items():
@@ -427,12 +432,38 @@ for rel_path, line_nums in file_blocks.items():
         continue
     with open(abs_path, encoding="utf-8", errors="replace") as fh:
         src_lines = fh.read().splitlines()
+    line_set = set(line_nums)
+    active_block_start = None
+    block_ignored = set()
+    for idx, text in enumerate(src_lines, start=1):
+        has_start = COV_IGNORE_BLOCK_START.search(text) is not None
+        has_end = COV_IGNORE_BLOCK_END.search(text) is not None
+        if has_start:
+            if not COV_IGNORE_BLOCK_START_VALID.search(text):
+                cov_ignore_violations.append(f"{rel_path}:{idx}")
+            elif active_block_start is not None:
+                cov_ignore_violations.append(f"{rel_path}:{idx} nested cov:ignore-start")
+            else:
+                active_block_start = idx
+        if active_block_start is not None and idx in line_set:
+            block_ignored.add(idx)
+        if has_end:
+            if active_block_start is None:
+                cov_ignore_violations.append(f"{rel_path}:{idx} unmatched cov:ignore-end")
+            else:
+                active_block_start = None
+    if active_block_start is not None:
+        cov_ignore_violations.append(f"{rel_path}:{active_block_start} unclosed cov:ignore-start")
+    if block_ignored:
+        cov_ignore_lines.setdefault(rel_path, set()).update(block_ignored)
     for ln in line_nums:
         idx = ln - 1  # 0-based index
         if not (0 <= idx < len(src_lines)):
             continue
         text = src_lines[idx]
         if "cov:ignore" not in text:
+            continue
+        if COV_IGNORE_BLOCK_START.search(text) or COV_IGNORE_BLOCK_END.search(text):
             continue
         if COV_IGNORE_VALID.search(text):
             cov_ignore_lines.setdefault(rel_path, set()).add(ln)

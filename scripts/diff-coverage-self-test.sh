@@ -15,7 +15,8 @@
 #      declaration-only changes are excluded because they do not emit LLVM line
 #      counters.
 #   4. cov:ignore without a justification fails the gate outright;
-#      `cov:ignore -- <reason>` excludes exactly the annotated lines.
+#      `cov:ignore -- <reason>` and justified ignore blocks exclude exactly
+#      the annotated lines.
 #   5. A lane whose evidence is missing entirely fails closed.
 #
 # Run directly or via the CI coverage steps (it guards the gate before the
@@ -270,6 +271,22 @@ verdict="$tmp_root/verdict-reason.json"
 rc="$(run_gate "$repo_reason" "$base_reason" packages 80 "$pkg_reason" "$verdict" "$tmp_root/err-reason.log")"
 check "justified cov:ignore lines are excluded (remaining lines 100%)" "0" "$rc"
 check "justified waiver leaves only measured lines in the percent" \
+  "100.0" "$(json_get "$verdict" 'v["diffCoverage"]["percent"]')"
+
+# --- fixture 4: cov:ignore-start -- <reason> excludes a block ---------------
+
+repo_block="$tmp_root/repo-block"
+base_block="$(make_repo "$repo_block" ' // cov:ignore-start -- fixture: live integration block' ' // cov:ignore-end')"
+lcov_block="$tmp_root/fixture-block.lcov"
+write_lcov "$lcov_block" "$repo_block"
+pkg_block="$tmp_root/pkg-lines-block.json"
+OPENBURNBAR_COVERAGE_REPO_ROOT="$repo_block" \
+  "$scripts_dir/extract-package-coverage-lines.sh" "$lcov_block" > "$pkg_block"
+
+verdict="$tmp_root/verdict-block.json"
+rc="$(run_gate "$repo_block" "$base_block" packages 80 "$pkg_block" "$verdict" "$tmp_root/err-block.log")"
+check "justified cov:ignore block excludes the enclosed changed lines" "0" "$rc"
+check "justified block waiver leaves only measured lines in the percent" \
   "100.0" "$(json_get "$verdict" 'v["diffCoverage"]["percent"]')"
 
 # -----------------------------------------------------------------------------

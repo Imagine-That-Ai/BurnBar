@@ -35,7 +35,13 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
 
   const snapshotFor = (path: string) => {
     const data = store.get(path);
-    return { exists: data !== undefined, get: (f: string) => data?.[f], data: () => data, ref: makeDocRef(path), id: path.split("/").pop() ?? path };
+    return {
+      exists: data !== undefined,
+      get: (f: string) => data?.[f],
+      data: () => data,
+      ref: makeDocRef(path),
+      id: path.split("/").pop() ?? path,
+    };
   };
 
   type Filter = { field: string; op: string; value: unknown };
@@ -71,7 +77,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
       return snapshotFor(path);
     },
     async set(data: Record<string, unknown>, opts?: { merge?: boolean }) {
-      const existing = opts?.merge ? store.get(path) ?? {} : {};
+      const existing = opts?.merge ? (store.get(path) ?? {}) : {};
       store.set(path, { ...existing, ...data });
     },
     async delete() {
@@ -102,7 +108,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
         },
         set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
           writes.push(() => {
-            const existing = opts?.merge ? store.get(ref.path) ?? {} : {};
+            const existing = opts?.merge ? (store.get(ref.path) ?? {}) : {};
             store.set(ref.path, { ...existing, ...data });
           });
           return transaction;
@@ -160,7 +166,12 @@ vi.mock("../logging.js", async () => {
 // Signal session cleanup is exercised elsewhere; stub to isolate the F2 paths.
 vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
 
-import { publishPhoneControlAuthority, publishAgentGrantAuthority, revokeEscrowDeviceTrust } from "../callables/computerUseSecurity.js";
+import {
+  publishPhoneControlAuthority,
+  publishAgentGrantAuthority,
+  revokeEscrowDeviceTrust,
+} from "../callables/computerUseSecurity.js";
+import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
 import { APP_CHECK_ATTESTATION_CLAIM_KEY } from "../appCheckAttestation.js";
 
 const APP_ID = "1:123:ios:abc";
@@ -170,7 +181,10 @@ const CONN = "conn-1";
 
 function req(data: Record<string, unknown>) {
   return {
-    auth: { uid: UID, token: { [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: APP_ID, boundAtMillis: Date.now() } } },
+    auth: {
+      uid: UID,
+      token: { [APP_CHECK_ATTESTATION_CLAIM_KEY]: { v: 1, appId: APP_ID, boundAtMillis: Date.now() } },
+    },
     app: { appId: APP_ID },
     data,
     rawRequest: { headers: {} },
@@ -298,7 +312,11 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
       publicKeyBase64: key.base64,
       publishedAtMillis: Date.now(),
     });
-    await invokeCallable(publishAgentGrantAuthority, { deviceId: DEVICE, peerNodeId: key.peerNodeId, publicKeyBase64: key.base64 });
+    await invokeCallable(publishAgentGrantAuthority, {
+      deviceId: DEVICE,
+      peerNodeId: key.peerNodeId,
+      publicKeyBase64: key.base64,
+    });
     publishedPeerNodeId = key.peerNodeId;
   });
 
@@ -343,7 +361,9 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
 
     // A revocation receipt audit event was written.
     const receipts = [...store.entries()].filter(
-      ([path, data]) => path.startsWith(`users/${UID}/computer_use_audit_events/`) && data.message === "phone_control_peer_revoked_receipt",
+      ([path, data]) =>
+        path.startsWith(`users/${UID}/computer_use_audit_events/`) &&
+        data.message === "phone_control_peer_revoked_receipt",
     );
     expect(receipts).toHaveLength(1);
     expect(receipts[0][1].receiptId).toBe(res.receiptId);
@@ -351,6 +371,125 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
     expect(receipts[0][1].revokedCloudVaultWrappers).toBe(1);
     expect(receipts[0][1].cloudVaultRotationRequired).toBe(true);
     expect(receipts[0][1].cloudVaultRotationRequirementId).toBe(res.receiptId);
+  });
+});
+
+describe("F2 rotateCloudVaultKey requirement handoff", () => {
+  const MAC = "mac-1";
+  const CURRENT_KEY = `v1_${"a".repeat(32)}`;
+  const NEXT_KEY = `v1_${"b".repeat(32)}`;
+  const REQUIREMENT_ID = "revoke_receipt_1";
+
+  beforeEach(() => {
+    store.clear();
+    store.set(`users/${UID}/escrow_devices/${MAC}`, { platform: "macOS", trustState: "trusted", keyVersion: 1 });
+    store.set(`users/${UID}/escrow_devices/${DEVICE}`, { platform: "iOS", trustState: "revoked", keyVersion: 1 });
+    store.set(`users/${UID}/cloud_vault_state/current`, {
+      uid: UID,
+      status: "active",
+      vaultKeyID: CURRENT_KEY,
+      vaultGeneration: 7,
+    });
+    store.set(`users/${UID}/cloud_vault_key_wrappers/wrap-phone-old`, {
+      uid: UID,
+      targetDeviceId: DEVICE,
+      sourceDeviceId: MAC,
+      status: "active",
+      vaultKeyID: CURRENT_KEY,
+    });
+    store.set(`users/${UID}/cloud_vault_key_wrappers/wrap-mac-old`, {
+      uid: UID,
+      targetDeviceId: MAC,
+      sourceDeviceId: DEVICE,
+      status: "active",
+      vaultKeyID: CURRENT_KEY,
+    });
+    store.set(`users/${UID}/cloud_vault_rotation_requirements/${REQUIREMENT_ID}`, {
+      status: "pending",
+      rotateCallable: "rotateCloudVaultKey",
+      currentVaultKeyID: CURRENT_KEY,
+      currentVaultGeneration: 7,
+      survivorDeviceIds: [MAC],
+    });
+  });
+
+  function survivorWrapper(targetDeviceId = MAC): Record<string, unknown> {
+    return {
+      wrapperId: `wrap-${targetDeviceId}-next`,
+      targetDeviceId,
+      sourceDeviceId: MAC,
+      publicKeyFingerprint: "sha256:mac",
+      keyVersion: 2,
+      vaultKeyID: NEXT_KEY,
+      wrappedVaultKey: Buffer.from("next-vault-key").toString("base64"),
+    };
+  }
+
+  function rotationRequest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      callerDeviceId: MAC,
+      currentVaultKeyID: CURRENT_KEY,
+      newVaultKeyID: NEXT_KEY,
+      expectedVaultGeneration: 8,
+      reason: "revocation_rewrap",
+      rotationRequirementId: REQUIREMENT_ID,
+      survivorWrappers: [survivorWrapper()],
+      ...overrides,
+    };
+  }
+
+  it("queues a matching revocation rotation requirement and revokes old wrappers", async () => {
+    const res = await invokeCallable<{
+      ok: boolean;
+      jobId: string;
+      newVaultKeyID: string;
+      vaultGeneration: number;
+      status: string;
+    }>(rotateCloudVaultKey, rotationRequest());
+
+    expect(res.ok).toBe(true);
+    expect(res.status).toBe("queued");
+    expect(res.newVaultKeyID).toBe(NEXT_KEY);
+    expect(res.vaultGeneration).toBe(8);
+
+    const state = store.get(`users/${UID}/cloud_vault_state/current`);
+    expect(state?.vaultKeyID).toBe(NEXT_KEY);
+    expect(state?.previousVaultKeyID).toBe(CURRENT_KEY);
+    expect(state?.vaultGeneration).toBe(8);
+    expect(state?.rotationJobId).toBe(res.jobId);
+
+    const requirement = store.get(`users/${UID}/cloud_vault_rotation_requirements/${REQUIREMENT_ID}`);
+    expect(requirement?.status).toBe("queued");
+    expect(requirement?.rotationJobId).toBe(res.jobId);
+
+    const nextWrapper = store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-${MAC}-next`);
+    expect(nextWrapper?.status).toBe("active");
+    expect(nextWrapper?.vaultKeyID).toBe(NEXT_KEY);
+    expect(nextWrapper?.rotationJobId).toBe(res.jobId);
+
+    expect(store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-phone-old`)?.status).toBe("revoked");
+    expect(store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-mac-old`)?.status).toBe("revoked");
+
+    const job = store.get(`users/${UID}/cloud_vault_rotation_jobs/${res.jobId}`);
+    expect(job?.reason).toBe("revocation_rewrap");
+    expect(job?.survivorDeviceIds).toEqual([MAC]);
+    expect(job?.revokedDeviceIds).toEqual([DEVICE]);
+  });
+
+  it("rejects a stale or mismatched rotation requirement", async () => {
+    store.set(`users/${UID}/cloud_vault_rotation_requirements/${REQUIREMENT_ID}`, {
+      status: "pending",
+      rotateCallable: "rotateCloudVaultKey",
+      currentVaultKeyID: CURRENT_KEY,
+      currentVaultGeneration: 6,
+      survivorDeviceIds: [MAC],
+    });
+
+    await expect(invokeCallable(rotateCloudVaultKey, rotationRequest())).rejects.toThrow(
+      /CloudVault rotation requirement does not match/,
+    );
+    expect(store.get(`users/${UID}/cloud_vault_state/current`)?.vaultKeyID).toBe(CURRENT_KEY);
+    expect(store.get(`users/${UID}/cloud_vault_rotation_requirements/${REQUIREMENT_ID}`)?.status).toBe("pending");
   });
 });
 
@@ -372,15 +511,16 @@ function p256Pair(): { x963: Buffer; privateKey: import("node:crypto").KeyObject
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const jwk = publicKey.export({ format: "jwk" });
   // EC JWKs always carry x/y; the fallbacks only satisfy the optional typing.
-  const x963 = Buffer.concat([Buffer.from([0x04]), Buffer.from(jwk.x ?? "", "base64url"), Buffer.from(jwk.y ?? "", "base64url")]);
+  const x963 = Buffer.concat([
+    Buffer.from([0x04]),
+    Buffer.from(jwk.x ?? "", "base64url"),
+    Buffer.from(jwk.y ?? "", "base64url"),
+  ]);
   const digest = createHash("sha256").update(x963).digest("hex").slice(0, 24);
   return { x963, privateKey, peerNodeId: `ios-se-${digest}` };
 }
 
-function queuedGrantData(options: {
-  peerNodeId: string;
-  signGrant: (payload: Buffer) => Buffer;
-}) {
+function queuedGrantData(options: { peerNodeId: string; signGrant: (payload: Buffer) => Buffer }) {
   const now = cocoaNow();
   const grantRequest = {
     requestId: `grant-${Math.random().toString(36).slice(2)}`,
