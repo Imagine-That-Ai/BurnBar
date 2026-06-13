@@ -5,6 +5,18 @@ import GRDB
 @MainActor
 final class DataStoreTests: XCTestCase {
 
+    func test_unmigratedStoreDoesNotAutoRefreshOnInit() async throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: false)
+
+        for _ in 0..<3 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(store.debugRefreshGenerationForTesting, 0)
+        XCTAssertFalse(store.isLoading)
+    }
+
     // MARK: - Rolling Daily Average Tests
 
     func test_rollingDailyAverage_sevenDays() throws {
