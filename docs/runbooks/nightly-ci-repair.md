@@ -70,6 +70,9 @@ account or team has GitHub access to `Imagine-That-Ai/BurnBar`, because Cursor
 opens the repair PR from its own cloud agent. Without this secret, the workflow
 exits with a notice and does not run the repair agent.
 
+The workflow pins Cursor Cloud Agent runs to `composer-2.5`, the standard
+Composer 2.5 model. It does not use the fast variant or the account default.
+
 The workflow uses a restricted-autonomy pattern:
 
 - GitHub Actions reads scheduled CI results and failed logs.
