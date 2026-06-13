@@ -79,14 +79,19 @@ If Apple or the community ships practical notarized-repro tooling, revisit in a 
 ./scripts/generate-sbom.py --version dev --repo-root . --output /tmp/openburnbar-dev.spdx.json
 python3 scripts/supply-chain/generate-vex.py --sbom /tmp/openburnbar-dev.spdx.json --output /tmp/openburnbar-dev.vex.json
 
-# Verify cosign attestation (after release)
-cosign verify-attestation --type slsaprovenance \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp 'https://github.com/.+/\.github/workflows/release\.yml@refs/tags/v.*' \
-  ghcr.io/example/openburnbar@sha256:…
+# Verify GitHub/Sigstore attestations for published release assets.
+scripts/ci/verify-release-attestations.sh vX.Y.Z
+
+# For one-off asset inspection, pin the signer workflow and tag source ref.
+gh attestation verify OpenBurnBar-X.Y.Z-macOS.dmg \
+  --repo Imagine-That-Ai/BurnBar \
+  --signer-workflow github.com/Imagine-That-Ai/BurnBar/.github/workflows/release.yml \
+  --source-ref refs/tags/vX.Y.Z \
+  --deny-self-hosted-runners
 ```
 
-Replace the identity regexp with your org/repo when configuring external verifiers.
+Do not check the SOTA release-attestation signoff box until the script exits 0
+against the exact release tag being claimed.
 
 ## Related docs
 
