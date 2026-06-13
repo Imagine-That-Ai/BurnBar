@@ -1,6 +1,20 @@
 {
   "indexes": [
     {
+      "collectionGroup": "cloud_vault_rotation_requirements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAtMillis",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "usage",
       "queryScope": "COLLECTION",
       "fields": [

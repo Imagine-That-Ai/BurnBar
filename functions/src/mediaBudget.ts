@@ -31,14 +31,24 @@ interface BudgetTunings {
   costPerGBUSD: number;
   softCapUSD: number;
   hardCapUSD: number;
+  /**
+   * Set when Remote Config could not be loaded at all (cold start, offline,
+   * permission error). The caller MUST fail closed — clamp to `hard_cap` —
+   * rather than evaluate spend against the optimistic in-code defaults, since
+   * a read failure here means we cannot trust month-to-date spend to be below
+   * the real (operator-tuned) cap either.
+   */
+  failClosed: boolean;
 }
 
 /**
  * Load tunable budget parameters from Firebase Remote Config so ops can
- * recalibrate against an actual n0 invoice without redeploying. Falls
- * back to the conservative defaults if Remote Config is unavailable
- * (cold start, offline, missing parameter) so the function never
- * crashes — under-billing is preferable to skipping the gate entirely.
+ * recalibrate against an actual n0 invoice without redeploying. If Remote
+ * Config is unavailable (cold start, offline, missing parameter) the gate
+ * FAILS CLOSED: `failClosed` is returned so `evaluateBudget` clamps the
+ * envelope to `hard_cap` (kill-switch tier). Skipping the gate or trusting
+ * the optimistic in-code defaults on a read failure would let unbounded
+ * hosted-relay spend through — the exact fail-open hole RR-9 closes.
  *
  * Remote Config parameters consumed:
  *   - `media_cost_per_gb_usd` — number, default 0.04
@@ -80,15 +90,27 @@ async function loadBudgetTunings(): Promise<BudgetTunings> {
       hardCap = HARD_CAP_USD;
     }
   } catch (err) {
+    // Fail closed: a Remote Config read failure makes the live caps unknown,
+    // so we clamp to `hard_cap` instead of evaluating spend against the
+    // optimistic in-code defaults (which would silently fall back to `normal`
+    // and skip the gate entirely).
     logWarn({
       event: "media.budget.remote_config_unavailable",
       error: errorMessage(err),
+      fail_closed: true,
     });
+    return {
+      costPerGBUSD: costPerGB,
+      softCapUSD: softCap,
+      hardCapUSD: hardCap,
+      failClosed: true,
+    };
   }
   return {
     costPerGBUSD: costPerGB,
     softCapUSD: softCap,
     hardCapUSD: hardCap,
+    failClosed: false,
   };
 }
 
@@ -160,7 +182,12 @@ export async function evaluateBudget(now: Date = new Date()): Promise<MediaBudge
 
   let level: MediaBudgetStatusDoc["level"];
   let envelope: typeof NORMAL_ENVELOPE;
-  if (projectedMonthEndUSD >= tunings.hardCapUSD) {
+  if (tunings.failClosed) {
+    // Remote Config was unreadable — clamp to the kill-switch tier regardless
+    // of projected spend so an RC outage can never re-open the relay budget.
+    level = "hard_cap";
+    envelope = HARD_CAP_ENVELOPE;
+  } else if (projectedMonthEndUSD >= tunings.hardCapUSD) {
     level = "hard_cap";
     envelope = HARD_CAP_ENVELOPE;
   } else if (projectedMonthEndUSD >= tunings.softCapUSD) {
