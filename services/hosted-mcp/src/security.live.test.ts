@@ -61,7 +61,7 @@ async function callMcp(token: string | undefined, payload: unknown, extraHeaders
     accept: "application/json, text/event-stream",
     ...extraHeaders,
   };
-  if (token) headers.authorization = `Bearer ${token}`;
+  if (token) {headers.authorization = `Bearer ${token}`;}
   const res = await fetch(`${endpoint}/mcp`, { method: "POST", headers, body: JSON.stringify(payload) });
   const body = await res.text();
   let json: unknown;
@@ -109,16 +109,16 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
-  if (previousEnv.NODE_ENV === undefined) delete process.env.NODE_ENV;
-  else process.env.NODE_ENV = previousEnv.NODE_ENV;
-  if (previousEnv.pub === undefined) delete process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;
-  else process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 = previousEnv.pub;
-  if (previousEnv.legacy === undefined) delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
-  else process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = previousEnv.legacy;
-  if (previousEnv.cursor === undefined) delete process.env.MCP_CURSOR_HMAC_SECRET;
-  else process.env.MCP_CURSOR_HMAC_SECRET = previousEnv.cursor;
-  if (previousEnv.origins === undefined) delete process.env.MCP_ALLOWED_ORIGINS;
-  else process.env.MCP_ALLOWED_ORIGINS = previousEnv.origins;
+  if (previousEnv.NODE_ENV === undefined) {delete process.env.NODE_ENV;}
+  else {process.env.NODE_ENV = previousEnv.NODE_ENV;}
+  if (previousEnv.pub === undefined) {delete process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;}
+  else {process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 = previousEnv.pub;}
+  if (previousEnv.legacy === undefined) {delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;}
+  else {process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = previousEnv.legacy;}
+  if (previousEnv.cursor === undefined) {delete process.env.MCP_CURSOR_HMAC_SECRET;}
+  else {process.env.MCP_CURSOR_HMAC_SECRET = previousEnv.cursor;}
+  if (previousEnv.origins === undefined) {delete process.env.MCP_ALLOWED_ORIGINS;}
+  else {process.env.MCP_ALLOWED_ORIGINS = previousEnv.origins;}
 });
 
 const KNOWLEDGE_SCOPES = ["search:read", "conversation:read", "usage:read", "index:status", "knowledge:read"];
