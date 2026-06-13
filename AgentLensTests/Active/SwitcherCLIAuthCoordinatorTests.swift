@@ -1909,14 +1909,55 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
     }
 
+    /// Visibility-stub window: on a headless CI runner `orderFront` does not
+    /// reliably flip `isVisible`, which made the old window-server-dependent
+    /// version of these tests flaky. The contract is pinned deterministically
+    /// instead, with the candidate window list injected.
+    private final class StubVisibilityWindow: NSWindow {
+        var visibleStub = false
+        override var isVisible: Bool { visibleStub }
+    }
+
+    private func makeStubWindow(visible: Bool) -> StubVisibilityWindow {
+        let window = StubVisibilityWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.visibleStub = visible
+        return window
+    }
+
     func test_googleAuthPresentationWindow_returnsVisibleWindow() {
-        let window = VisiblePresentationTestWindow()
-        window.title = "Google Sign-In Presentation Test"
+        let window = makeStubWindow(visible: true)
+        defer { window.close() }
 
-        let resolvedWindow = AccountManager.googleAuthPresentationWindowForTesting(from: window)
+        let resolved = AccountManager.googleAuthPresentationWindowForTesting(from: window, appWindows: [])
 
-        XCTAssertIdentical(resolvedWindow, window)
-        XCTAssertFalse(window.didOrderFront)
+        XCTAssertIdentical(resolved, window)
+    }
+
+    func test_googleAuthPresentationWindow_fallsBackToVisibleAppWindow() {
+        let hidden = makeStubWindow(visible: false)
+        let visibleFallback = makeStubWindow(visible: true)
+        defer { hidden.close(); visibleFallback.close() }
+
+        let resolved = AccountManager.googleAuthPresentationWindowForTesting(
+            from: hidden,
+            appWindows: [visibleFallback]
+        )
+
+        XCTAssertIdentical(resolved, visibleFallback)
+    }
+
+    func test_googleAuthPresentationWindow_returnsOriginalWhenNothingVisible() {
+        let hidden = makeStubWindow(visible: false)
+        defer { hidden.close() }
+
+        let resolved = AccountManager.googleAuthPresentationWindowForTesting(from: hidden, appWindows: [])
+
+        XCTAssertIdentical(resolved, hidden)
     }
 
     // MARK: - Shared auth keychain-recovery wrapper
@@ -2029,25 +2070,5 @@ final class AccountManagerTests: XCTestCase {
             AccountManager.userFacingAuthErrorMessageForTesting(error),
             "The password is invalid."
         )
-    }
-}
-
-private final class VisiblePresentationTestWindow: NSWindow {
-    private(set) var didOrderFront = false
-
-    override var isVisible: Bool { true }
-    override var isMiniaturized: Bool { false }
-
-    init() {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-    }
-
-    override func makeKeyAndOrderFront(_ sender: Any?) {
-        didOrderFront = true
     }
 }
