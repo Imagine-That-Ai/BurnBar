@@ -1,5 +1,5 @@
-import XCTest
 import CoreMedia
+import XCTest
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 #endif
@@ -87,6 +87,9 @@ final class MediaSessionCoordinatorTests: XCTestCase {
                 }
                 return RecordingScreenCaptureSession()
             },
+            // Recording fake: virtualized CI Macs have no hardware HEVC encoder
+            // (VTCompressionSessionCreate -> -12908), and this test's subject
+            // is the rollback/retry state machine, not VideoToolbox.
             videoEncoderFactory: { _, _ in
                 let encoder = RecordingVideoEncoder()
                 encoders.append(encoder)
@@ -124,10 +127,14 @@ final class MediaSessionCoordinatorTests: XCTestCase {
 
     func testActiveScreenShareStopsWhenAdmissionIsRevoked() async throws {
         let gate = MutableMediaCapabilityGate()
+        let encoder = RecordingVideoEncoder()
         let coordinator = MediaSessionCoordinator(
             capabilityGate: gate,
             admissionRecheckIntervalNanoseconds: UInt64.max,
-            screenCaptureFactory: { _, _ in RecordingScreenCaptureSession() }
+            screenCaptureFactory: { _, _ in RecordingScreenCaptureSession() },
+            // Keep this focused on admission revocation; virtualized CI Macs
+            // can reject the real VideoToolbox encoder independently.
+            videoEncoderFactory: { _, _ in encoder }
         )
 
         try await coordinator.startScreenShare(
@@ -136,11 +143,22 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         )
         XCTAssertEqual(coordinator.phase, .active(feature: .screenShare))
 
-        gate.result = .denied(reason: .killSwitchActive)
+        await gate.setResult(.denied(reason: .killSwitchActive))
         await coordinator.recheckActiveAdmissionForTesting()
 
         XCTAssertEqual(coordinator.phase, .ended(reason: .budgetHardCap))
+        XCTAssertTrue(encoder.didStop)
     }
+}
+
+@MainActor
+private final class StubVideoEncoder: VideoEncoding {
+    func start() throws {}
+    func encode(sampleBuffer: CMSampleBuffer) async throws {}
+    func setTargetBitsPerSecond(_ bps: Int) throws {}
+    func requestLongTermReferenceRefresh() {}
+    func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64) {}
+    func stop() {}
 }
 
 @MainActor
@@ -203,8 +221,12 @@ private final class RecordingMediaSink: MediaStreamSink, @unchecked Sendable {
     func close() async {}
 }
 
-private final class MutableMediaCapabilityGate: MediaCapabilityGate, @unchecked Sendable {
-    var result: MediaCapabilityCheck = .allowed(envelope: MediaCapabilityEnvelope(feature: .screenShare))
+private actor MutableMediaCapabilityGate: MediaCapabilityGate {
+    private var result: MediaCapabilityCheck = .allowed(envelope: MediaCapabilityEnvelope(feature: .screenShare))
+
+    func setResult(_ result: MediaCapabilityCheck) {
+        self.result = result
+    }
 
     func check(
         feature: MediaStreamClass.Feature,

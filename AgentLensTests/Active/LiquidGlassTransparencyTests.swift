@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import XCTest
 @testable import OpenBurnBar
@@ -106,5 +107,13 @@ final class LiquidGlassTransparencyTests: XCTestCase {
             LiquidGlassStyle.regular.tint(.red).interactive().resolvedGlass(at: 1),
             Glass.clear.tint(.red).interactive()
         )
+    }
+
+    func testWindowBlendUsesBehindWindowMaterial() {
+        let view = LiquidGlassWindowBlend.makeVisualEffectView()
+
+        XCTAssertEqual(view.material, .underWindowBackground)
+        XCTAssertEqual(view.blendingMode, .behindWindow)
+        XCTAssertEqual(view.state, .active)
     }
 }

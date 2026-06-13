@@ -4,8 +4,8 @@ import OpenBurnBarCore
 
 final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
-    private let vaultKeyStore: CloudVaultKeyStore
-    private let vaultKeyPublisher: FirebaseSessionLogVaultKeyPublisher
+    private let vaultKeyStore: any SessionLogVaultKeyProviding
+    private let vaultKeyPublisher: any SessionLogVaultKeyPublishing
 
     private let state = Locked(CloudSyncDomainState())
 
@@ -15,8 +15,8 @@ final class TextExpansionSyncService: CloudSyncDomain, @unchecked Sendable {
 
     init(
         context: CloudSyncContext,
-        vaultKeyStore: CloudVaultKeyStore = CloudVaultKeyStore(),
-        vaultKeyPublisher: FirebaseSessionLogVaultKeyPublisher = FirebaseSessionLogVaultKeyPublisher()
+        vaultKeyStore: any SessionLogVaultKeyProviding = CloudVaultKeyStore(),
+        vaultKeyPublisher: any SessionLogVaultKeyPublishing = FirebaseSessionLogVaultKeyPublisher()
     ) {
         self.context = context
         self.vaultKeyStore = vaultKeyStore

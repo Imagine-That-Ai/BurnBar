@@ -163,11 +163,15 @@ def validate_cloudvault_at_rest_evidence(data: Any, *, repo_root: Path | None = 
                     f"{_path((*proof_path, 'command'))} missing required command fragment(s): "
                     + ", ".join(missing_fragments)
                 )
-        artifact_paths, path_errors = _string_list(proof.get("artifactPaths"), f"{_path((*proof_path, 'artifactPaths'))}")
+        artifact_paths, path_errors = _string_list(
+            proof.get("artifactPaths"), f"{_path((*proof_path, 'artifactPaths'))}"
+        )
         errors.extend(path_errors)
         missing_paths = sorted(required_paths.difference(artifact_paths))
         if missing_paths:
-            errors.append(f"{_path((*proof_path, 'artifactPaths'))} missing required path(s): " + ", ".join(missing_paths))
+            errors.append(
+                f"{_path((*proof_path, 'artifactPaths'))} missing required path(s): " + ", ".join(missing_paths)
+            )
         if repo_root is not None:
             for rel_path in artifact_paths:
                 if not (repo_root / rel_path).is_file():

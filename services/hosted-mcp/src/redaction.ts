@@ -16,8 +16,8 @@ const SECRET_KEYS = new Set([
 ]);
 
 export function redact(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redact);
-  if (!value || typeof value !== "object") return value;
+  if (Array.isArray(value)) {return value.map(redact);}
+  if (!value || typeof value !== "object") {return value;}
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
     if (SECRET_KEYS.has(key) || SECRET_KEYS.has(key.toLowerCase())) {
@@ -31,7 +31,7 @@ export function redact(value: unknown): unknown {
 
 export function truncateJson(value: unknown, maxBytes: number): unknown {
   const encoded = Buffer.from(JSON.stringify(value));
-  if (encoded.length <= maxBytes) return value;
+  if (encoded.length <= maxBytes) {return value;}
   return {
     content: [
       {

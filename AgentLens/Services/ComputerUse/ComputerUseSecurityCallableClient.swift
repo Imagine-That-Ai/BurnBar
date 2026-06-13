@@ -95,6 +95,40 @@ enum ComputerUseSecurityCallableClient {
         return Auth.auth().currentUser
     }
 
+    struct RevocationCloudVaultRotationRequirement: Equatable {
+        let currentVaultKeyID: String
+        let currentVaultGeneration: Int
+        let survivorDeviceIds: [String]
+
+        init(data: [String: Any], rotatingDeviceId: String) throws {
+            guard data["status"] as? String == "pending",
+                  data["rotateCallable"] as? String == "rotateCloudVaultKey",
+                  let currentVaultKeyID = data["currentVaultKeyID"] as? String,
+                  !currentVaultKeyID.isEmpty else {
+                throw ClientError.invalidResponse("Cloud Vault rotation requirement is missing or already consumed.")
+            }
+            let survivorDeviceIds = (data["survivorDeviceIds"] as? [String] ?? [])
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .sorted()
+            guard survivorDeviceIds.contains(rotatingDeviceId) else {
+                throw ClientError.invalidResponse(
+                    "This Mac is not a surviving trusted device for the required Cloud Vault rotation."
+                )
+            }
+
+            self.currentVaultKeyID = currentVaultKeyID
+            currentVaultGeneration = Self.intValue(data["currentVaultGeneration"]) ?? 1
+            self.survivorDeviceIds = survivorDeviceIds
+        }
+
+        private static func intValue(_ raw: Any?) -> Int? {
+            if let value = raw as? Int { return value }
+            if let value = raw as? NSNumber { return value.intValue }
+            return nil
+        }
+    }
+
     private static func requireSignedInUser() throws -> User {
         guard let user = signedInUser, user.isAnonymous == false else {
             throw ClientError.notAuthenticated
@@ -251,15 +285,10 @@ enum ComputerUseSecurityCallableClient {
             "deviceId": deviceId,
             "nonce": nonce
         ])
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = result.data as? [String: Any] else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
         }
-        let revocation = EscrowDeviceTrustRevocationResult(
-            revokedCloudVaultWrappers: dict["revokedCloudVaultWrappers"] as? Int ?? 0,
-            cloudVaultRotationRequired: dict["cloudVaultRotationRequired"] as? Bool ?? false,
-            cloudVaultRotationRequirementId: dict["cloudVaultRotationRequirementId"] as? String,
-            cloudVaultRotationBlockedReason: dict["cloudVaultRotationBlockedReason"] as? String
-        )
+        let revocation = try parseEscrowDeviceTrustRevocationResult(dict)
         guard revocation.cloudVaultRotationRequired else { return revocation }
         guard let requirementId = revocation.cloudVaultRotationRequirementId,
               !requirementId.isEmpty,
@@ -274,7 +303,8 @@ enum ComputerUseSecurityCallableClient {
             let rotation = try await performRevocationCloudVaultRotation(
                 uid: uid,
                 requirementId: requirementId,
-                rotatingDeviceId: rotatingDeviceId
+                rotatingDeviceId: rotatingDeviceId,
+                environment: .live(uid: uid, rotatingDeviceId: rotatingDeviceId)
             )
             return revocation.withCompletedCloudVaultRotation(jobId: rotation.jobId, progress: rotation.progress)
         } catch {
@@ -437,85 +467,227 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
-    private struct RevocationCloudVaultRotationResult {
+    static func parseEscrowDeviceTrustRevocationResult(
+        _ dict: [String: Any]
+    ) throws -> EscrowDeviceTrustRevocationResult {
+        guard dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Escrow device trust revocation failed.")
+        }
+        return EscrowDeviceTrustRevocationResult(
+            revokedCloudVaultWrappers: dict["revokedCloudVaultWrappers"] as? Int ?? 0,
+            cloudVaultRotationRequired: dict["cloudVaultRotationRequired"] as? Bool ?? false,
+            cloudVaultRotationRequirementId: dict["cloudVaultRotationRequirementId"] as? String,
+            cloudVaultRotationBlockedReason: dict["cloudVaultRotationBlockedReason"] as? String
+        )
+    }
+
+    struct RevocationCloudVaultRotationResult {
         let jobId: String
         let progress: CloudVaultRotationRewrapProgress
     }
 
-    private static func performRevocationCloudVaultRotation(
+    struct RevocationCloudVaultRotationEnvironment {
+        let loadRequirement: (String) async throws -> [String: Any]?
+        let loadCurrentKey: () async throws -> CloudVaultResolvedKey?
+        let loadLocalIdentity: () throws -> OpenBurnBarSignalIdentityKeypair
+        let publishLocalIdentity: (OpenBurnBarSignalIdentityKeypair) async throws -> Void
+        let verifiedTrustedDevice: (String, OpenBurnBarSignalIdentityKeypair) async throws -> CloudVaultVerifiedTrustedDevice
+        let issueNonce: () async throws -> String
+        let rotateCloudVaultKey: ([String: Any]) async throws -> [String: Any]
+        let saveNextKey: (Data) throws -> Void
+        let runDocumentRewrap: (String, Data, Data, String, Int) async throws -> CloudVaultRotationRewrapProgress
+        let markRotationFailed: (String, Error) async -> Void
+
+        // cov:ignore-start -- live Firebase/Firestore/keychain wiring; injected environment covers rotation logic
+        static func live(uid: String, rotatingDeviceId: String) -> Self {
+            let firestore = Firestore.firestore()
+            let userRef = firestore.collection("users").document(uid)
+            return Self(
+                loadRequirement: { requirementId in
+                    try await userRef.collection("cloud_vault_rotation_requirements")
+                        .document(requirementId)
+                        .getDocument()
+                        .data()
+                },
+                loadCurrentKey: {
+                    try await MacCloudVaultKeyAccess.keyForReading(
+                        uid: uid,
+                        deviceId: rotatingDeviceId,
+                        firestore: firestore
+                    )
+                },
+                loadLocalIdentity: {
+                    try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: rotatingDeviceId)
+                },
+                publishLocalIdentity: { localIdentity in
+                    try await SignalIdentityPublicKeyPublisher.publishIfNeeded(
+                        userRef: userRef,
+                        deviceId: rotatingDeviceId,
+                        platform: "macOS",
+                        identity: localIdentity
+                    )
+                },
+                verifiedTrustedDevice: { survivorDeviceId, localIdentity in
+                    try await CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                        uid: uid,
+                        userRef: userRef,
+                        deviceId: survivorDeviceId,
+                        localIdentity: localIdentity
+                    )
+                },
+                issueNonce: {
+                    try await ComputerUseSecurityCallableClient.issueHighRiskActionNonce()
+                },
+                rotateCloudVaultKey: { payload in
+                    let result = try await ComputerUseSecurityCallableClient.functions
+                        .httpsCallable("rotateCloudVaultKey")
+                        .call(payload)
+                    guard let dict = result.data as? [String: Any] else {
+                        return [:]
+                    }
+                    return dict
+                },
+                saveNextKey: { nextKey in
+                    try CloudVaultKeyStore().saveKey(nextKey, uid: uid)
+                },
+                runDocumentRewrap: { jobId, oldKeyData, newKeyData, nextVaultKeyID, nextVaultGeneration in
+                    var worker = CloudVaultRotationRewrapWorker()
+                    worker.firestore = firestore
+                    return try await worker.runDocumentRewrap(
+                        uid: uid,
+                        deviceId: rotatingDeviceId,
+                        jobId: jobId,
+                        oldKeyData: oldKeyData,
+                        newKeyData: newKeyData,
+                        newVaultKeyID: nextVaultKeyID,
+                        vaultGeneration: nextVaultGeneration
+                    )
+                },
+                markRotationFailed: { jobId, error in
+                    do {
+                        try await userRef.collection("cloud_vault_rotation_jobs").document(jobId).setData([
+                            "status": "failed",
+                            "failureReason": String(error.localizedDescription.prefix(500)),
+                            "failedAt": FieldValue.serverTimestamp(),
+                            "updatedAt": FieldValue.serverTimestamp()
+                        ], merge: true)
+                    } catch let statusWriteError {
+                        // The caller still receives the local rewrap failure; this best-effort
+                        // status write must not mask the actionable rotation error.
+                        _ = statusWriteError.localizedDescription
+                    }
+                }
+            )
+        }
+        // cov:ignore-end
+    }
+
+    static func performRevocationCloudVaultRotation(
         uid: String,
         requirementId: String,
-        rotatingDeviceId: String
+        rotatingDeviceId: String,
+        environment: RevocationCloudVaultRotationEnvironment
     ) async throws -> RevocationCloudVaultRotationResult {
-        let firestore = Firestore.firestore()
-        let userRef = firestore.collection("users").document(uid)
-        let requirementSnapshot = try await userRef.collection("cloud_vault_rotation_requirements")
-            .document(requirementId)
-            .getDocument()
-        guard let requirement = requirementSnapshot.data(),
-              requirement["status"] as? String == "pending",
-              requirement["rotateCallable"] as? String == "rotateCloudVaultKey",
-              let currentVaultKeyID = requirement["currentVaultKeyID"] as? String else {
+        guard let requirement = try await environment.loadRequirement(requirementId) else {
             throw ClientError.invalidResponse("Cloud Vault rotation requirement is missing or already consumed.")
         }
-        let currentVaultGeneration = intValue(requirement["currentVaultGeneration"]) ?? 1
-        let survivorDeviceIds = (requirement["survivorDeviceIds"] as? [String] ?? [])
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .sorted()
-        guard survivorDeviceIds.contains(rotatingDeviceId) else {
-            throw ClientError.invalidResponse("This Mac is not a surviving trusted device for the required Cloud Vault rotation.")
-        }
+        let rotationRequirement = try RevocationCloudVaultRotationRequirement(
+            data: requirement,
+            rotatingDeviceId: rotatingDeviceId
+        )
 
-        guard let currentKey = try await MacCloudVaultKeyAccess.keyForReading(
-            uid: uid,
-            deviceId: rotatingDeviceId,
-            firestore: firestore
-        ) else {
+        guard let currentKey = try await environment.loadCurrentKey() else {
             throw ClientError.invalidResponse("This Mac does not have the current Cloud Vault key needed to rotate after revocation.")
         }
-        guard currentKey.vaultKeyID == currentVaultKeyID else {
+        guard currentKey.vaultKeyID == rotationRequirement.currentVaultKeyID else {
             throw ClientError.invalidResponse(
-                "Cloud Vault rotation requirement expected \(currentVaultKeyID), but this Mac has \(currentKey.vaultKeyID)."
+                "Cloud Vault rotation requirement expected \(rotationRequirement.currentVaultKeyID), but this Mac has \(currentKey.vaultKeyID)."
             )
         }
 
-        let localIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: rotatingDeviceId)
-        try await SignalIdentityPublicKeyPublisher.publishIfNeeded(
-            userRef: userRef,
-            deviceId: rotatingDeviceId,
-            platform: "macOS",
-            identity: localIdentity
-        )
+        let localIdentity = try environment.loadLocalIdentity()
+        try await environment.publishLocalIdentity(localIdentity)
 
         let nextKey = CloudVaultCrypto.generateVaultKey()
         let nextVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: nextKey)
-        let nextVaultGeneration = currentVaultGeneration + 1
+        let nextVaultGeneration = rotationRequirement.currentVaultGeneration + 1
         var survivorWrappers: [[String: Any]] = []
-        for survivorDeviceId in survivorDeviceIds {
-            let survivor = try await CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
-                uid: uid,
-                userRef: userRef,
-                deviceId: survivorDeviceId,
-                localIdentity: localIdentity
-            )
-            let wrapped = try CloudVaultCrypto.wrapVaultKey(
-                nextKey,
-                recipientPublicKey: survivor.escrowPublicKeyData
-            )
-            survivorWrappers.append([
-                "wrapperId": "\(nextVaultKeyID)_\(survivor.deviceId)_\(survivor.keyVersion)",
-                "targetDeviceId": survivor.deviceId,
-                "sourceDeviceId": rotatingDeviceId,
-                "publicKeyFingerprint": survivor.escrowPublicKeyFingerprint,
-                "keyVersion": survivor.keyVersion,
-                "vaultKeyID": nextVaultKeyID,
-                "wrappedVaultKey": wrapped.base64EncodedString()
-            ])
+        for survivorDeviceId in rotationRequirement.survivorDeviceIds {
+            let survivor = try await environment.verifiedTrustedDevice(survivorDeviceId, localIdentity)
+            survivorWrappers.append(try survivorWrapper(
+                nextKey: nextKey,
+                nextVaultKeyID: nextVaultKeyID,
+                rotatingDeviceId: rotatingDeviceId,
+                survivor: survivor
+            ))
         }
 
-        let rotationNonce = try await issueHighRiskActionNonce()
-        let rotationResult = try await functions.httpsCallable("rotateCloudVaultKey").call([
+        let rotationNonce = try await environment.issueNonce()
+        let rotationDict = try await environment.rotateCloudVaultKey(rotationCallablePayload(
+            rotatingDeviceId: rotatingDeviceId,
+            currentVaultKeyID: rotationRequirement.currentVaultKeyID,
+            nextVaultKeyID: nextVaultKeyID,
+            nextVaultGeneration: nextVaultGeneration,
+            survivorWrappers: survivorWrappers,
+            requirementId: requirementId,
+            nonce: rotationNonce
+        ))
+        guard rotationDict["ok"] as? Bool == true,
+              let jobId = rotationDict["jobId"] as? String,
+              !jobId.isEmpty else {
+            throw ClientError.invalidResponse("Cloud Vault key rotation was not queued.")
+        }
+
+        try environment.saveNextKey(nextKey)
+
+        do {
+            let progress = try await environment.runDocumentRewrap(
+                jobId,
+                currentKey.keyData,
+                nextKey,
+                nextVaultKeyID,
+                nextVaultGeneration
+            )
+            return RevocationCloudVaultRotationResult(jobId: jobId, progress: progress)
+        } catch let rewrapError {
+            await environment.markRotationFailed(jobId, rewrapError)
+            throw ClientError.invalidResponse(
+                "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: \(rewrapError.localizedDescription)"
+            )
+        }
+    }
+
+    static func survivorWrapper(
+        nextKey: Data,
+        nextVaultKeyID: String,
+        rotatingDeviceId: String,
+        survivor: CloudVaultVerifiedTrustedDevice
+    ) throws -> [String: Any] {
+        let wrapped = try CloudVaultCrypto.wrapVaultKey(
+            nextKey,
+            recipientPublicKey: survivor.escrowPublicKeyData
+        )
+        return [
+            "wrapperId": "\(nextVaultKeyID)_\(survivor.deviceId)_\(survivor.keyVersion)",
+            "targetDeviceId": survivor.deviceId,
+            "sourceDeviceId": rotatingDeviceId,
+            "publicKeyFingerprint": survivor.escrowPublicKeyFingerprint,
+            "keyVersion": survivor.keyVersion,
+            "vaultKeyID": nextVaultKeyID,
+            "wrappedVaultKey": wrapped.base64EncodedString()
+        ]
+    }
+
+    static func rotationCallablePayload(
+        rotatingDeviceId: String,
+        currentVaultKeyID: String,
+        nextVaultKeyID: String,
+        nextVaultGeneration: Int,
+        survivorWrappers: [[String: Any]],
+        requirementId: String,
+        nonce: String
+    ) -> [String: Any] {
+        [
             "callerDeviceId": rotatingDeviceId,
             "currentVaultKeyID": currentVaultKeyID,
             "newVaultKeyID": nextVaultKeyID,
@@ -523,53 +695,8 @@ enum ComputerUseSecurityCallableClient {
             "survivorWrappers": survivorWrappers,
             "reason": "revocation_rewrap",
             "rotationRequirementId": requirementId,
-            "nonce": rotationNonce
-        ])
-        guard let rotationDict = rotationResult.data as? [String: Any],
-              rotationDict["ok"] as? Bool == true,
-              let jobId = rotationDict["jobId"] as? String,
-              !jobId.isEmpty else {
-            throw ClientError.invalidResponse("Cloud Vault key rotation was not queued.")
-        }
-
-        try CloudVaultKeyStore().saveKey(nextKey, uid: uid)
-
-        var worker = CloudVaultRotationRewrapWorker()
-        worker.firestore = firestore
-        do {
-            let progress = try await worker.runDocumentRewrap(
-                uid: uid,
-                deviceId: rotatingDeviceId,
-                jobId: jobId,
-                oldKeyData: currentKey.keyData,
-                newKeyData: nextKey,
-                newVaultKeyID: nextVaultKeyID,
-                vaultGeneration: nextVaultGeneration
-            )
-            return RevocationCloudVaultRotationResult(jobId: jobId, progress: progress)
-        } catch let rewrapError {
-            do {
-                try await userRef.collection("cloud_vault_rotation_jobs").document(jobId).setData([
-                    "status": "failed",
-                    "failureReason": String(rewrapError.localizedDescription.prefix(500)),
-                    "failedAt": FieldValue.serverTimestamp(),
-                    "updatedAt": FieldValue.serverTimestamp()
-                ], merge: true)
-            } catch let statusWriteError {
-                // The caller still receives the local rewrap failure below; this best-effort
-                // status write must not mask the actionable rotation error.
-                _ = statusWriteError.localizedDescription
-            }
-            throw ClientError.invalidResponse(
-                "Cloud Vault rotation job \(jobId) was queued, but local rewrap failed: \(rewrapError.localizedDescription)"
-            )
-        }
-    }
-
-    private static func intValue(_ raw: Any?) -> Int? {
-        if let value = raw as? Int { return value }
-        if let value = raw as? NSNumber { return value.intValue }
-        return nil
+            "nonce": nonce
+        ]
     }
 
     static func publishIrohPairingPublicKey(

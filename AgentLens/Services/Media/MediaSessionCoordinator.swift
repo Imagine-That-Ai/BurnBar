@@ -164,10 +164,11 @@ final class MediaSessionCoordinator: ObservableObject {
                     preferredCodec: VideoEncoder.Codec(mercuryCodec: negotiatedCodec) ?? .hevc,
                     frameRate: 30,
                     enableLongTermReference: enableLongTermReference
-                )
-            ) { [weak self] encodedFrame in
-                await self?.handleEncodedFrame(encodedFrame)
-            }
+                ),
+                { [weak self] encodedFrame in
+                    await self?.handleEncodedFrame(encodedFrame)
+                }
+            )
             try encoder.start()
             self.videoEncoder = encoder
             bitrateBitsPerSecond = bitrateController.currentBitsPerSecond

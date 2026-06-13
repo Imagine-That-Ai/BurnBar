@@ -241,6 +241,10 @@ extension View {
 /// `t == 0` callers skip it entirely, so the default window stays opaque.
 struct LiquidGlassWindowBlend: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
+        Self.makeVisualEffectView()
+    }
+
+    static func makeVisualEffectView() -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = .underWindowBackground
         view.blendingMode = .behindWindow

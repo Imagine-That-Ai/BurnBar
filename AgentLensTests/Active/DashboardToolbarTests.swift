@@ -46,6 +46,59 @@ final class DashboardToolbarTests: XCTestCase {
         XCTAssertNoThrow(try wrapped.inspect())
     }
 
+    func test_usageModeToolbarPickerRendersCurrencyAndTokenModes() throws {
+        var selection: UsageDisplayMode = .currency
+        let picker = UsageModeToolbarPicker(selection: Binding(
+            get: { selection },
+            set: { selection = $0 }
+        ))
+        XCTAssertNoThrow(try picker.inspect())
+
+        selection = .tokens
+        XCTAssertNoThrow(try picker.inspect())
+    }
+
+    func test_dashboardBackdropRendersFlatWebsiteAndConstellationBranches() throws {
+        let flatSettings = makeSettingsManager()
+        flatSettings.useWebsiteBackground = false
+        flatSettings.useConstellationBackground = false
+        XCTAssertNoThrow(try DashboardBackdrop(moodBand: .baseline)
+            .environment(flatSettings)
+            .inspect())
+
+        let websiteSettings = makeSettingsManager()
+        websiteSettings.useWebsiteBackground = true
+        websiteSettings.useConstellationBackground = false
+        XCTAssertNoThrow(try DashboardBackdrop(moodBand: .baseline)
+            .environment(websiteSettings)
+            .inspect())
+
+        let constellationSettings = makeSettingsManager()
+        constellationSettings.useWebsiteBackground = true
+        constellationSettings.useConstellationBackground = true
+        XCTAssertNoThrow(try DashboardBackdrop(moodBand: .baseline)
+            .environment(constellationSettings)
+            .inspect())
+    }
+
+    func test_dashboardDepthBackdropRendersFlatAndDynamicBranches() throws {
+        let flatSettings = makeSettingsManager()
+        flatSettings.useWebsiteBackground = false
+        flatSettings.useConstellationBackground = false
+        XCTAssertNoThrow(try DashboardDepthBackdrop(density: .full)
+            .environment(flatSettings)
+            .frame(width: 640, height: 420)
+            .inspect())
+
+        let dynamicSettings = makeSettingsManager()
+        dynamicSettings.useWebsiteBackground = true
+        dynamicSettings.useConstellationBackground = true
+        XCTAssertNoThrow(try DashboardDepthBackdrop(density: .subtle)
+            .environment(dynamicSettings)
+            .frame(width: 640, height: 420)
+            .inspect())
+    }
+
     func test_backButtonDisabledWhenOnOverview() {
         let nav = DashboardNavigationModel()
         XCTAssertFalse(nav.canGoBack)

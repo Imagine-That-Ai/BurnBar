@@ -20,6 +20,9 @@ private final class SendableVideoSampleBuffer: @unchecked Sendable {
 /// `MediaPacketCodec` and emitted to the iroh stream as one stream per
 /// GOP. Keyframe interval pinned at 2 s for fast recovery on stalled
 /// streams.
+/// Seam over the VideoToolbox-backed encoder so session-orchestration tests
+/// can run on hosts without a hardware encoder (virtualized CI Macs report
+/// kVTCouldNotFindVideoEncoderErr, -12908, from VTCompressionSessionCreate).
 @MainActor
 protocol VideoEncoding: AnyObject {
     func start() throws

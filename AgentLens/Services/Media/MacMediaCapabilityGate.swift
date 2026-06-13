@@ -55,22 +55,26 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
     typealias UsageProvider = @MainActor () -> MediaQuotaUsageSnapshot
     typealias BudgetProvider = @MainActor () -> MediaBudgetStatus
     typealias ConcurrentSessionsProvider = @MainActor (MediaStreamClass.Feature) -> Int
+    typealias KillSwitchProvider = @MainActor () -> Bool
 
     private let entitlementProvider: EntitlementProvider
     private let usageProvider: UsageProvider
     private let budgetProvider: BudgetProvider
     private let concurrentSessionsProvider: ConcurrentSessionsProvider
+    private let killSwitchProvider: KillSwitchProvider
 
     init(
         entitlementProvider: @escaping EntitlementProvider,
         usageProvider: @escaping UsageProvider,
         budgetProvider: @escaping BudgetProvider,
-        concurrentSessionsProvider: @escaping ConcurrentSessionsProvider
+        concurrentSessionsProvider: @escaping ConcurrentSessionsProvider,
+        killSwitchProvider: @escaping KillSwitchProvider = { SettingsManager.shared.mediaKillSwitch }
     ) {
         self.entitlementProvider = entitlementProvider
         self.usageProvider = usageProvider
         self.budgetProvider = budgetProvider
         self.concurrentSessionsProvider = concurrentSessionsProvider
+        self.killSwitchProvider = killSwitchProvider
     }
 
     static func entitlementState(hostedMediaIsActive: Bool, tier: MacCloudTier) -> EntitlementState {
@@ -105,7 +109,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
             }
 
             let budget = budgetProvider()
-            if SettingsManager.shared.mediaKillSwitch {
+            if killSwitchProvider() {
                 return .denied(reason: .killSwitchActive)
             }
             switch budget.level {

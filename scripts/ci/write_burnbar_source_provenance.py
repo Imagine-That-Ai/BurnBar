@@ -99,8 +99,7 @@ def run_git(args: list[str], *, repo_root: Path = ROOT, check: bool = True) -> s
         cwd=repo_root,
         check=check,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     return result.stdout.strip()
 
