@@ -55,7 +55,7 @@ final class MacFileTransferSecurityTests: XCTestCase {
 
         let downloaded = inboxURL.appendingPathComponent("blob_quarantine_hash.txt")
         XCTAssertTrue(FileManager.default.fileExists(atPath: downloaded.path))
-        XCTAssertEqual(try quarantineValue(at: downloaded).contains("OpenBurnBar"), true)
+        XCTAssertTrue(try quarantineValue(at: downloaded).contains("OpenBurnBar"))
         XCTAssertEqual(acks.count, 1)
         XCTAssertEqual(acks.first?.media?.ack?.status, .received)
         XCTAssertEqual(backend.fetchedTickets, ["blob1ticket"])

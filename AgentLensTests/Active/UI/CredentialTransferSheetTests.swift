@@ -101,9 +101,9 @@ final class CredentialTransferSheetTests: XCTestCase {
 
         XCTAssertEqual(gateway.revokedDeviceIDs, ["iphone"])
         XCTAssertEqual(vm.trustedDevices, [])
-        XCTAssertTrue(vm.lastStatusMessage?.contains("Cloud Vault rotated") == true)
-        XCTAssertTrue(vm.lastStatusMessage?.contains("2 documents") == true)
-        XCTAssertTrue(vm.lastStatusMessage?.contains("1 encrypted blob") == true)
+        XCTAssertEqual(vm.lastStatusMessage?.contains("Cloud Vault rotated"), true)
+        XCTAssertEqual(vm.lastStatusMessage?.contains("2 documents"), true)
+        XCTAssertEqual(vm.lastStatusMessage?.contains("1 encrypted blob"), true)
         XCTAssertNil(vm.lastErrorMessage)
     }
 
@@ -124,9 +124,9 @@ final class CredentialTransferSheetTests: XCTestCase {
 
         XCTAssertEqual(gateway.revokedDeviceIDs, ["iphone"])
         XCTAssertEqual(vm.trustedDevices, [])
-        XCTAssertTrue(vm.lastStatusMessage?.contains("Device revoked") == true)
-        XCTAssertTrue(vm.lastStatusMessage?.contains("still needs attention") == true)
-        XCTAssertTrue(vm.lastStatusMessage?.contains("Cloud Vault key is unavailable") == true)
+        XCTAssertEqual(vm.lastStatusMessage?.contains("Device revoked"), true)
+        XCTAssertEqual(vm.lastStatusMessage?.contains("still needs attention"), true)
+        XCTAssertEqual(vm.lastStatusMessage?.contains("Cloud Vault key is unavailable"), true)
         XCTAssertNil(vm.lastErrorMessage)
     }
 
