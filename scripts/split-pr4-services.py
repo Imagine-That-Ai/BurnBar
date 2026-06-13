@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Split monolithic SearchService + ConversationStore for PR4."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,9 +26,7 @@ def split_search() -> None:
 
     main_path = REPO / "AgentLens/Services/Search/SearchService.swift"
     main_path.write_text(
-        header
-        + query_api
-        + "\n}\n",
+        header + query_api + "\n}\n",
         encoding="utf-8",
     )
 
@@ -36,10 +35,7 @@ def split_search() -> None:
         text = (
             "import Foundation\n"
             "import OpenBurnBarCore\n\n"
-            f"extension SearchService {{\n"
-            + _indent_extension_body(body)
-            + "}\n"
-            + suffix
+            "extension SearchService {\n" + _indent_extension_body(body) + "}\n" + suffix
         )
         path.write_text(text, encoding="utf-8")
 
@@ -85,9 +81,7 @@ def split_conversation_store() -> None:
             "import GRDB\n"
             "import OpenBurnBarCore\n\n"
             f"// MARK: - ConversationStore {mark}\n\n"
-            "extension ConversationStore {\n"
-            + _indent_extension_body(body)
-            + "}\n"
+            "extension ConversationStore {\n" + _indent_extension_body(body) + "}\n"
         )
         path.write_text(text, encoding="utf-8")
 

@@ -85,14 +85,26 @@ test("verifies Ed25519 bearer tokens and disables legacy HMAC when public key is
     process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = "true";
     assert.equal(verifyBearerToken(`Bearer ${hmacToken}`).jti, "jti-hmac");
   } finally {
-    if (previousPublic === undefined) delete process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;
-    else process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 = previousPublic;
-    if (previousPrivate === undefined) delete process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64;
-    else process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 = previousPrivate;
-    if (previousLegacy === undefined) delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
-    else process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = previousLegacy;
-    if (previousHmac === undefined) delete process.env.MCP_TOKEN_HMAC_SECRET;
-    else process.env.MCP_TOKEN_HMAC_SECRET = previousHmac;
+    if (previousPublic === undefined) {
+      delete process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;
+    } else {
+      process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 = previousPublic;
+    }
+    if (previousPrivate === undefined) {
+      delete process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64;
+    } else {
+      process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 = previousPrivate;
+    }
+    if (previousLegacy === undefined) {
+      delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
+    } else {
+      process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS = previousLegacy;
+    }
+    if (previousHmac === undefined) {
+      delete process.env.MCP_TOKEN_HMAC_SECRET;
+    } else {
+      process.env.MCP_TOKEN_HMAC_SECRET = previousHmac;
+    }
   }
 });
 

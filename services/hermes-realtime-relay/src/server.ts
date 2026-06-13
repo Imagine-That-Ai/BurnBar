@@ -142,8 +142,8 @@ function upgradePath(req: { url?: string; headers: { host?: string | string[] } 
 }
 
 function httpStatus(error: unknown): number {
-  if (error instanceof RelayHttpError) return error.statusCode;
-  if (error instanceof RelayLimitError) return 429;
+  if (error instanceof RelayHttpError) {return error.statusCode;}
+  if (error instanceof RelayLimitError) {return 429;}
   return 401;
 }
 

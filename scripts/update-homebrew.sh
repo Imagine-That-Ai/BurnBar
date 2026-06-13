@@ -35,7 +35,6 @@ OWNER="Ajnunezg"
 REPO="BurnBar"
 DMG_NAME="OpenBurnBar-${VERSION}-macOS.dmg"
 RELEASE_URL="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}/${DMG_NAME}"
-CASK_URL="https://github.com/${OWNER}/${REPO}/releases/download/v#{version}/${DMG_NAME%DMG_NAME#*$VERSION}#{version}-macOS.dmg"
 
 echo "=== Updating Homebrew Cask for ${VERSION} ==="
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Register PR1 budget client files in OpenBurnBar.xcodeproj (idempotent)."""
+
 from __future__ import annotations
 
 import hashlib
 import re
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -120,7 +120,7 @@ def main() -> int:
         build_id = stable_id(path, "buildfile")
         file_line = (
             f"\t\t{file_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
-            f"path = {pbx_quote(name)}; sourceTree = \"<group>\"; }};\n"
+            f'path = {pbx_quote(name)}; sourceTree = "<group>"; }};\n'
         )
         build_line = (
             f"\t\t{build_id} /* {name} in Sources */ = {{isa = PBXBuildFile; fileRef = {file_id} /* {name} */; }};\n"

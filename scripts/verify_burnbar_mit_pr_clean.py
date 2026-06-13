@@ -108,9 +108,7 @@ def scan_path(path: str) -> list[Violation]:
 
 
 def _git(repo: Path, *args: str) -> list[str]:
-    out = subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-    ).stdout
+    out = subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
     return [line for line in out.splitlines() if line.strip()]
 
 
@@ -155,9 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also scan staged/unstaged changes and untracked files",
     )
-    parser.add_argument(
-        "--repo", default=".", help="repository root to scan (default: current directory)"
-    )
+    parser.add_argument("--repo", default=".", help="repository root to scan (default: current directory)")
     args = parser.parse_args(argv)
 
     violations = scan_repo(Path(args.repo).resolve(), args.base, args.include_working_tree)

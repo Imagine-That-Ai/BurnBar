@@ -17,6 +17,7 @@ Dry-runs by default. Pass `--apply` to actually call the API. Pass
 
 Reference: https://developer.apple.com/documentation/appstoreconnectapi/in-app_purchases_and_subscriptions
 """
+
 from __future__ import annotations
 import argparse
 import json
@@ -75,9 +76,7 @@ SUBSCRIPTIONS = [
                 ),
             }
         ],
-        "reviewNote": (
-            "Umbrella subscription that bundles three previously-separate SKUs."
-        ),
+        "reviewNote": ("Umbrella subscription that bundles three previously-separate SKUs."),
     },
 ]
 
@@ -111,6 +110,7 @@ def jwt_for_asc(key_id: str, issuer_id: str, key_path: Path) -> str:
 
 def request(method: str, path: str, body: Any, token: str, dry_run: bool) -> dict:
     import urllib.request
+
     url = f"https://api.appstoreconnect.apple.com{path}"
     if dry_run:
         print(f"[DRY-RUN] {method} {url}")
@@ -143,8 +143,7 @@ def submit(app_id: str, token: str | None, dry_run: bool) -> None:
                 },
             }
         }
-        group_resp = request("POST", "/v1/subscriptionGroups", group_body,
-                             token or "", dry_run)
+        group_resp = request("POST", "/v1/subscriptionGroups", group_body, token or "", dry_run)
         group_id = group_resp.get("data", {}).get("id", "<dry-run>")
 
         sub_body = {
@@ -156,13 +155,10 @@ def submit(app_id: str, token: str | None, dry_run: bool) -> None:
                     "subscriptionPeriod": sub["subscriptionPeriod"],
                     "reviewNote": sub["reviewNote"],
                 },
-                "relationships": {
-                    "group": {"data": {"type": "subscriptionGroups", "id": group_id}}
-                },
+                "relationships": {"group": {"data": {"type": "subscriptionGroups", "id": group_id}}},
             }
         }
-        sub_resp = request("POST", "/v1/subscriptions", sub_body,
-                           token or "", dry_run)
+        sub_resp = request("POST", "/v1/subscriptions", sub_body, token or "", dry_run)
         sub_record_id = sub_resp.get("data", {}).get("id", "<dry-run>")
 
         for loc in sub["localizations"]:
@@ -174,21 +170,15 @@ def submit(app_id: str, token: str | None, dry_run: bool) -> None:
                         "name": loc["name"],
                         "description": loc["description"],
                     },
-                    "relationships": {
-                        "subscription": {
-                            "data": {"type": "subscriptions", "id": sub_record_id}
-                        }
-                    },
+                    "relationships": {"subscription": {"data": {"type": "subscriptions", "id": sub_record_id}}},
                 }
             }
-            request("POST", "/v1/subscriptionLocalizations", loc_body,
-                    token or "", dry_run)
+            request("POST", "/v1/subscriptionLocalizations", loc_body, token or "", dry_run)
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apply", action="store_true",
-                        help="Actually call ASC. Without it, dry-runs.")
+    parser.add_argument("--apply", action="store_true", help="Actually call ASC. Without it, dry-runs.")
     parser.add_argument("--app-id", default=os.environ.get("ASC_APP_ID"))
     parser.add_argument("--key-id", default=os.environ.get("ASC_KEY_ID"))
     parser.add_argument("--issuer-id", default=os.environ.get("ASC_ISSUER_ID"))
@@ -199,8 +189,7 @@ def main(argv: list[str]) -> int:
     token = None
     if not dry_run:
         if not all([args.app_id, args.key_id, args.issuer_id, args.key_path]):
-            sys.exit("--apply requires ASC_APP_ID, ASC_KEY_ID, ASC_ISSUER_ID, "
-                     "ASC_KEY_PATH (env vars or flags)")
+            sys.exit("--apply requires ASC_APP_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH (env vars or flags)")
         token = jwt_for_asc(args.key_id, args.issuer_id, Path(args.key_path))
 
     submit(app_id=args.app_id or "<DRY-RUN-APP-ID>", token=token, dry_run=dry_run)

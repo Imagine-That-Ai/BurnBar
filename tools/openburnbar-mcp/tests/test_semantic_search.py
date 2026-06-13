@@ -300,14 +300,18 @@ def test_project_memory_local_list_and_get(tmp_path, monkeypatch):
 def test_project_memory_cloud_get_decrypts_snapshot(monkeypatch):
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(server, "_cloud_config", lambda: {
-        "status": "ok",
-        "projectID": "burnbar",
-        "region": "us-central1",
-        "idToken": "token",
-        "uid": "userA",
-        "vaultKey": b"\x00" * 32,
-    })
+    monkeypatch.setattr(
+        server,
+        "_cloud_config",
+        lambda: {
+            "status": "ok",
+            "projectID": "burnbar",
+            "region": "us-central1",
+            "idToken": "token",
+            "uid": "userA",
+            "vaultKey": b"\x00" * 32,
+        },
+    )
 
     def _fake_callable(name, payload, _config):
         called["name"] = name
@@ -332,13 +336,15 @@ def test_project_memory_cloud_get_decrypts_snapshot(monkeypatch):
     monkeypatch.setattr(
         server,
         "_open_cloud_blob_envelope",
-        lambda _envelope, _vault_key, _aad_context=None: json.dumps({
-            "projectSlug": "burnbar",
-            "projectDisplayName": "BurnBar",
-            "freshness": "fresh",
-            "sections": [{"id": "executive-summary"}],
-            "visuals": [{"id": "timeline", "kind": "timeline"}],
-        }).encode("utf-8"),
+        lambda _envelope, _vault_key, _aad_context=None: json.dumps(
+            {
+                "projectSlug": "burnbar",
+                "projectDisplayName": "BurnBar",
+                "freshness": "fresh",
+                "sections": [{"id": "executive-summary"}],
+                "visuals": [{"id": "timeline", "kind": "timeline"}],
+            }
+        ).encode("utf-8"),
     )
 
     payload = json.loads(server.burnbar_get_project_memory("burnbar", source="cloud"))
@@ -381,12 +387,14 @@ def test_project_memory_cloud_sync_encrypts_and_commits(tmp_path, monkeypatch):
         (
             "burnbar",
             "BurnBar",
-            json.dumps({
-                "projectSlug": "burnbar",
-                "projectDisplayName": "BurnBar",
-                "freshness": "needsRefresh",
-                "visuals": [{"id": "timeline", "kind": "timeline"}],
-            }),
+            json.dumps(
+                {
+                    "projectSlug": "burnbar",
+                    "projectDisplayName": "BurnBar",
+                    "freshness": "needsRefresh",
+                    "visuals": [{"id": "timeline", "kind": "timeline"}],
+                }
+            ),
             "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             5,
             3,
@@ -399,24 +407,32 @@ def test_project_memory_cloud_sync_encrypts_and_commits(tmp_path, monkeypatch):
     conn.close()
     monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
 
-    monkeypatch.setattr(server, "_cloud_config", lambda: {
-        "status": "ok",
-        "projectID": "burnbar",
-        "region": "us-central1",
-        "idToken": "token",
-        "uid": "userA",
-        "vaultKey": b"\x00" * 32,
-    })
-    monkeypatch.setattr(server, "_seal_cloud_blob_envelope", lambda _plaintext, _vault_key, key_version=1, aad_context=None: {
-        "schemaVersion": 2,
-        "algorithm": "AES-256-GCM",
-        "keyVersion": key_version,
-        "plaintextHMAC": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-        "integrityHashVersion": 1,
-        "sealedBoxBase64": "AA==",
-        "createdAt": "2026-05-15T12:06:00Z",
-        "aad": aad_context,
-    })
+    monkeypatch.setattr(
+        server,
+        "_cloud_config",
+        lambda: {
+            "status": "ok",
+            "projectID": "burnbar",
+            "region": "us-central1",
+            "idToken": "token",
+            "uid": "userA",
+            "vaultKey": b"\x00" * 32,
+        },
+    )
+    monkeypatch.setattr(
+        server,
+        "_seal_cloud_blob_envelope",
+        lambda _plaintext, _vault_key, key_version=1, aad_context=None: {
+            "schemaVersion": 2,
+            "algorithm": "AES-256-GCM",
+            "keyVersion": key_version,
+            "plaintextHMAC": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "integrityHashVersion": 1,
+            "sealedBoxBase64": "AA==",
+            "createdAt": "2026-05-15T12:06:00Z",
+            "aad": aad_context,
+        },
+    )
 
     captured: dict[str, object] = {}
 

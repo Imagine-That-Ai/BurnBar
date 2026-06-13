@@ -79,14 +79,14 @@ run() {
     if [[ "$dry_run" == "true" ]]; then
         echo "[dry-run] $*"
     else
-        eval "$@"
+        "$@"
     fi
 }
 
 remove_path() {
     local path="$1"
     if [[ -e "$path" ]]; then
-        run "rm -rf \"$path\""
+        run rm -rf "$path"
         echo "  cleared: $path"
     else
         echo "  already clean: $path"
