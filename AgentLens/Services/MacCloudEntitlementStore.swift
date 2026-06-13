@@ -185,6 +185,7 @@ final class MacCloudEntitlementStore: ObservableObject {
                     self.applyHostedComputerUse(data: data)
                 }
             }
+        // cov:ignore-start -- Firebase snapshot callback delivery is integration-only; parser/clear paths are unit-tested
         mediaListener = entitlements
             .document("hosted_media_sync")
             .addSnapshotListener { [weak self] snapshot, error in
@@ -201,6 +202,7 @@ final class MacCloudEntitlementStore: ObservableObject {
                     self.applyHostedMedia(data: data)
                 }
             }
+        // cov:ignore-end
         proMaxListener = entitlements
             .document("burnbar_pro_max")
             .addSnapshotListener { [weak self] snapshot, error in
