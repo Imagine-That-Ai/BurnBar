@@ -22,12 +22,10 @@ Prerequisites:
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from hashlib import sha256
 import re
 from urllib.parse import quote
 
@@ -184,28 +182,28 @@ def collect_cargo_dependencies(repo_root: Path) -> list[dict]:
         rel = str(lock_file.relative_to(repo_root))
         current: dict[str, str] = {}
 
-        def flush() -> None:
-            if current.get("name") and current.get("version"):
-                source = current.get("source", "")
-                url = source if source.startswith("git+") else f"https://crates.io/crates/{current['name']}"
+        def flush(package: dict[str, str], lock_rel: str) -> None:
+            if package.get("name") and package.get("version"):
+                source = package.get("source", "")
+                url = source if source.startswith("git+") else f"https://crates.io/crates/{package['name']}"
                 packages.append({
-                    "name": current["name"],
-                    "version": current["version"],
+                    "name": package["name"],
+                    "version": package["version"],
                     "url": url,
                     "type": "cargo",
-                    "source": rel,
+                    "source": lock_rel,
                 })
 
         for raw_line in lock_file.read_text().splitlines():
             line = raw_line.strip()
             if line == "[[package]]":
-                flush()
+                flush(current, rel)
                 current = {}
                 continue
             match = re.match(r'^(name|version|source)\s*=\s*"([^"]+)"$', line)
             if match:
                 current[match.group(1)] = match.group(2)
-        flush()
+        flush(current, rel)
 
     return dedupe_packages(packages)
 
@@ -321,7 +319,6 @@ def build_spdx_document(
             "relatedSpdxElement": dep_spdx_id,
         })
 
-    ns = "https://spdx.org/rdf/3.0.0"
     return {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",

@@ -39,11 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
-import socket
 import sys
-import threading
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http import HTTPStatus

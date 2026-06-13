@@ -36,7 +36,7 @@ def split_search() -> None:
         text = (
             "import Foundation\n"
             "import OpenBurnBarCore\n\n"
-            f"extension SearchService {{\n"
+            "extension SearchService {\n"
             + _indent_extension_body(body)
             + "}\n"
             + suffix

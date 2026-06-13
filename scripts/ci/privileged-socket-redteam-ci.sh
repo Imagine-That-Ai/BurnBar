@@ -29,7 +29,8 @@ PROBE="OpenBurnBarDaemon/.build/debug/OpenBurnBarPrivilegedSocketRedTeamProbe"
 
 echo "==> Starting bridge as root on $SOCKET_PATH"
 sudo rm -f "$SOCKET_PATH"
-sudo "$BRIDGE" --socket "$SOCKET_PATH" >"$BRIDGE_LOG" 2>&1 &
+sudo env BRIDGE="$BRIDGE" SOCKET_PATH="$SOCKET_PATH" BRIDGE_LOG="$BRIDGE_LOG" \
+  bash -c 'exec "$BRIDGE" --socket "$SOCKET_PATH" >"$BRIDGE_LOG" 2>&1' &
 BRIDGE_PID=$!
 cleanup() {
   sudo kill "$BRIDGE_PID" 2>/dev/null || true

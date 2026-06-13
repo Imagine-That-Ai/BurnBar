@@ -650,7 +650,7 @@ public actor BurnBarBrowserToolService {
     }
 }
 
-final class BurnBarBrowserRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class BurnBarBrowserRedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,

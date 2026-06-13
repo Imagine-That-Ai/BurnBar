@@ -204,7 +204,6 @@ fi
 test_attempt=1
 final_exit_code=0
 final_outcome="failed"
-final_xcresult=""
 
 while [ "$test_attempt" -le "$max_test_attempts" ]; do
     if [ "$test_attempt" -gt 1 ]; then
@@ -243,7 +242,6 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "passed" "$attempt_duration" "$attempt_xcresult"
         final_exit_code=0
         final_outcome="passed"
-        final_xcresult="$attempt_xcresult"
         break
     fi
 
@@ -252,7 +250,6 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
         echo ">>> xcodebuild exited $last_test_exit_code after XCTest reported Selected tests passed with 0 failures; accepting attempt as passed."
         final_exit_code=0
         final_outcome="passed"
-        final_xcresult="$attempt_xcresult"
         break
     fi
 
@@ -266,7 +263,6 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     emit_attempt_event "$test_attempt" "$last_test_exit_code" "test_failure" "$attempt_duration" "$attempt_xcresult"
     final_exit_code="$last_test_exit_code"
     final_outcome="test_failure"
-    final_xcresult="$attempt_xcresult"
     break
 done
 

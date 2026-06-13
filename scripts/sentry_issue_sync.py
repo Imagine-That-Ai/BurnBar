@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 """
 Sentry → GitHub Issue Sync
 ===========================
@@ -21,14 +19,16 @@ Optional:
   MIN_OCCURRENCES     Minimum event count to create an issue (default: 1)
 """
 
-import os
+from __future__ import annotations
+
 import json
-import urllib.request
-import urllib.error
-import urllib.parse
+import os
 import subprocess
 import sys
-from datetime import datetime, timezone, timedelta
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta, timezone
 
 SENTRY_AUTH_TOKEN = os.environ.get("SENTRY_AUTH_TOKEN", "")
 SENTRY_ORG = os.environ.get("SENTRY_ORG", "")

@@ -88,6 +88,10 @@ jobs:
         run: cargo check -p openburnbar-iroh
         working-directory: crates/openburnbar-iroh
 
+      - name: Host-side cargo clippy (deny warnings)
+        run: cargo clippy -p openburnbar-iroh --all-targets -- -D warnings
+        working-directory: crates/openburnbar-iroh
+
       - name: Host-side cargo test (datagrams + chat ALPN)
         run: cargo test -p openburnbar-iroh
         working-directory: crates/openburnbar-iroh

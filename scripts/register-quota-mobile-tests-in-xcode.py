@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import sys
 import re
-import os
 from pathlib import Path
 
 REPO = Path("/Users/albertonunez/Documents/Windsurf/BurnBar")

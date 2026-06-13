@@ -713,19 +713,21 @@ def _vector_score(lhs: list[float], rhs: list[float], metric: str) -> float:
     if len(lhs) != len(rhs) or not lhs:
         return 0.0
     if metric in {"dotProduct", "dot_product"}:
-        return sum(float(l) * float(r) for l, r in zip(lhs, rhs))
+        return sum(float(left) * float(right) for left, right in zip(lhs, rhs, strict=False))
     if metric == "euclidean":
-        return -math.sqrt(sum((float(l) - float(r)) ** 2 for l, r in zip(lhs, rhs)))
+        return -math.sqrt(
+            sum((float(left) - float(right)) ** 2 for left, right in zip(lhs, rhs, strict=False))
+        )
 
     dot = 0.0
     lhs_norm = 0.0
     rhs_norm = 0.0
-    for l_value, r_value in zip(lhs, rhs):
-        l = float(l_value)
-        r = float(r_value)
-        dot += l * r
-        lhs_norm += l * l
-        rhs_norm += r * r
+    for l_value, r_value in zip(lhs, rhs, strict=False):
+        left = float(l_value)
+        right = float(r_value)
+        dot += left * right
+        lhs_norm += left * left
+        rhs_norm += right * right
     if lhs_norm <= 0 or rhs_norm <= 0:
         return 0.0
     return dot / (math.sqrt(lhs_norm) * math.sqrt(rhs_norm))

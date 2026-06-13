@@ -35,7 +35,7 @@ OWNER="Ajnunezg"
 REPO="BurnBar"
 DMG_NAME="OpenBurnBar-${VERSION}-macOS.dmg"
 RELEASE_URL="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}/${DMG_NAME}"
-CASK_URL="https://github.com/${OWNER}/${REPO}/releases/download/v#{version}/${DMG_NAME%DMG_NAME#*$VERSION}#{version}-macOS.dmg"
+CASK_URL="https://github.com/${OWNER}/${REPO}/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"
 
 echo "=== Updating Homebrew Cask for ${VERSION} ==="
 
@@ -110,7 +110,7 @@ sed -i '' "s|version \".*\"|version \"${VERSION}\"|" "$TMP_CASK"
 sed -i '' "s|sha256 .*|sha256 \"${SHA256}\"|" "$TMP_CASK"
 
 # Update URL line — ensure it uses the #{version} template
-sed -i '' "s|url \".*/releases/download/v.*\"|url \"https://github.com/${OWNER}/${REPO}/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg\"|" "$TMP_CASK"
+sed -i '' "s|url \".*/releases/download/v.*\"|url \"${CASK_URL}\"|" "$TMP_CASK"
 
 mv "$TMP_CASK" "$CASK_FILE"
 

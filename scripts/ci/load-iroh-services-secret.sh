@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Load the iroh services API secret into the current shell.
 #
 # Resolution order (first match wins):

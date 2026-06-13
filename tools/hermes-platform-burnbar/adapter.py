@@ -1471,7 +1471,7 @@ def _public_key_base64(identity) -> str:
     relay_e2ee exposes ``public_key_base64`` as a *method* on ``RelayPrivateKey``
     and as a *property* on ``AgentRelayIdentity``; tolerate both.
     """
-    value = getattr(identity, "public_key_base64")
+    value = identity.public_key_base64
     return value() if callable(value) else str(value)
 
 
@@ -2525,6 +2525,8 @@ class BurnBarAdapter(BasePlatformAdapter):
         return raw or None
 
     def _save_current_ratchet_session_id(self, session_id: str) -> None:
+        from hermes_cli.config import save_env_value
+
         save_env_value("BURNBAR_RATCHET_CHAT_SESSION_ID", session_id)
 
     @property

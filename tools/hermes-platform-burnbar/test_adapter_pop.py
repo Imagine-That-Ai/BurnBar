@@ -17,6 +17,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from cryptography.exceptions import InvalidSignature
+
 _ADAPTER_PATH = Path(__file__).resolve().parent / "adapter.py"
 _SPEC = importlib.util.spec_from_file_location("burnbar_adapter_under_test", _ADAPTER_PATH)
 adapter = importlib.util.module_from_spec(_SPEC)
@@ -191,7 +193,7 @@ class PopSignerTests(unittest.TestCase):
             timestamp=headers["x-openburnbar-pop-timestamp"],
         )
         signature = base64.b64decode(headers["x-openburnbar-pop-signature-ed25519"])
-        with self.assertRaises(Exception):
+        with self.assertRaises(InvalidSignature):
             private_key.public_key().verify(signature, tampered)
 
     def test_nonce_generator_satisfies_server_contract(self) -> None:

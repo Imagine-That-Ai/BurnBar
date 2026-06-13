@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -117,18 +116,6 @@ def insert_into_phase(text: str, phase_id: str, build_line: str, file_name: str)
     files = m.group(2)
     separator = "" if files.endswith("\n") else "\n"
     return text[: m.start()] + m.group(1) + files + separator + f"\t\t\t\t{needle}" + m.group(3) + text[m.end() :]
-
-
-def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:
-    for line in text.splitlines():
-        if f"/* {name} */ = {{isa = PBXFileReference;" not in line:
-            continue
-        if source_root_path and f"path = {pbx_quote(source_root_path)};" not in line:
-            continue
-        if source_root_path is None and f"path = {pbx_quote(name)};" not in line:
-            continue
-        return line.strip().split(" ", 1)[0]
-    return None
 
 
 def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:
