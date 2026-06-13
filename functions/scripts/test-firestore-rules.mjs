@@ -2785,6 +2785,7 @@ test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", asy
   const db = authedDb("gina");
   const connectionPath = "users/gina/pi_agent_connections/relay-mac";
   const requestPath = "users/gina/pi_agent_relay_requests/req-1";
+  const senderPublicKey = "A".repeat(88);
 
   const connectionDoc = {
     id: "relay-mac",
@@ -2833,7 +2834,11 @@ test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", asy
       payloadCiphertext: "ciphertext",
       wrappedKey: "wrapped",
       relayEncryption: "p256-hkdf-sha256-aesgcm",
-      relayKeyVersion: 1,
+      relayKeyVersion: 2,
+      senderPublicKey,
+      senderDeviceId: "mac-device-1",
+      senderPeerNodeId: "iroh-peer-1",
+      senderCounter: 1,
       chunkCount: 0,
       createdAt: "2026-05-12T00:00:01.000Z",
       updatedAt: "2026-05-12T00:00:01.000Z",
