@@ -219,6 +219,13 @@ COVERAGE_ALLOWLIST = {
         "here (PrivilegedInputExecutionSocketServerTests, "
         "PrivilegedPeerAuthenticatorTests)."
     ),
+    "OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift": (
+        "@main entry point of the daemon executable: process bootstrap, "
+        "URLCache setup, signal handling, Sentry setup, long-running server "
+        "lifecycle, and launchd shutdown semantics cannot execute under "
+        "`swift test`. Its configuration parser and peer-auth decisions live "
+        "in OpenBurnBarDaemon and are line-gated by the daemon package tests."
+    ),
     "OpenBurnBarDaemon/Sources/OpenBurnBarVirtualHIDBridge/OpenBurnBarVirtualHIDBridgeMain.swift": (
         "@main entry point of the virtual-HID bridge executable: requires a "
         "live DriverKit/IOHIDUserDevice session and root, which no CI lane "

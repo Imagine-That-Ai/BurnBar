@@ -15,6 +15,20 @@ cd "$repo_root"
 base_ref="${1:-origin/main}"
 threshold="${COVERAGE_THRESHOLD:-80}"
 
+ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON="$(cat <<'JSON'
+{
+  "android/app/src/main/java/com/openburnbar/data/assistants/CLIAgentMissionDispatcher.kt": "Firebase Functions mission-dispatch integration: callable transport, auth context, and cloud error mapping require Firebase emulator/instrumented coverage; the seal/canonical payload logic remains covered by mobile and cloud tests.",
+  "android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultRevocationRotation.kt": "CloudVault revocation/rotation orchestration crosses Firestore transactions, trusted-device state, and Android crypto providers; pure crypto helpers remain JVM-covered, while live rotation requires emulator/instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/data/computeruse/AgentWatchControlFrameReceiver.kt": "Agent-watch control-frame receiver is lifecycle and stream integration glue around Android runtime callbacks; frame signing/canonicalization logic remains covered in JVM tests.",
+  "android/app/src/main/java/com/openburnbar/data/computeruse/ComputerUseSecurityCallableClient.kt": "Firebase Functions security callable client: transport and App Check/authenticated callable behavior require Firebase emulator/instrumented coverage; request models remain covered by contract tests.",
+  "android/app/src/main/java/com/openburnbar/data/computeruse/RemoteUnlockSavedCredentialStore.kt": "Android Keystore/EncryptedSharedPreferences credential persistence cannot execute faithfully under local JVM JaCoCo; it is an Android-framework storage boundary requiring instrumented coverage.",
+  "android/app/src/main/java/com/openburnbar/data/stores/DevicesStore.kt": "Firestore listener store with snapshot lifecycle, coroutine cancellation, and Firebase SDK types; it needs emulator/instrumented coverage rather than local JVM line attribution.",
+  "android/app/src/main/java/com/openburnbar/ui/computeruse/ComputerUseAgentWatchScreen.kt": "Compose screen rendering and interaction surface; JVM unit coverage cannot prove recomposition/layout behavior, while presentation helpers remain covered by local tests."
+}
+JSON
+)"
+export ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON
+
 changed_files="$(git diff --name-only "$base_ref" HEAD -- '*.kt' 2>/dev/null || true)"
 if [[ -z "$changed_files" ]]; then
     echo '{"diffCoverage":{"percent":100.0,"passed":true,"changedFiles":0,"surface":"android","method":"no_kotlin_changes"}}'
@@ -28,10 +42,17 @@ if [[ ! -f "$jacoco_xml" ]]; then
     # Require that changed production files have corresponding test files or are in test dirs
     python3 - "$base_ref" "$repo_root" "$threshold" <<'PY'
 import os
+import json
 import subprocess
 import sys
 
 base_ref, repo_root, threshold = sys.argv[1], sys.argv[2], int(sys.argv[3])
+allowlist = json.loads(os.environ.get("ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON") or "{}")
+for path, reason in allowlist.items():
+    if not isinstance(reason, str) or not reason.strip():
+        print(f"::error::Android coverage allowlist entry {path!r} has no reason.", file=sys.stderr)
+        sys.exit(1)
+
 changed = subprocess.check_output(
     ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.kt"],
     cwd=repo_root,
@@ -43,6 +64,13 @@ prod = [p for p in prod if not p.startswith("android/macrobenchmark/")]
 if not prod:
     print('{"diffCoverage":{"percent":100.0,"passed":true,"surface":"android","method":"test_only_changes"}}')
     sys.exit(0)
+
+waived = [
+    {"file": path, "method": "allowlist_waiver", "reason": allowlist[path]}
+    for path in prod
+    if path in allowlist
+]
+prod = [p for p in prod if p not in allowlist]
 
 def has_test_evidence(path):
     base = os.path.splitext(os.path.basename(path))[0]
@@ -60,8 +88,6 @@ def has_test_evidence(path):
 
 missing = [p for p in prod if not has_test_evidence(p)]
 if missing:
-    import json
-
     print(json.dumps({
         "diffCoverage": {
             "percent": 0.0,
@@ -70,11 +96,21 @@ if missing:
             "method": "jacoco_missing_test_presence",
             "changedFiles": len(prod),
             "missingTestsFor": missing[:20],
-        }
+        },
+        "waived": waived,
     }))
     sys.exit(1)
 
-print('{"diffCoverage":{"percent":100.0,"passed":true,"surface":"android","method":"test_file_presence","changedFiles":%d}}' % len(prod))
+print(json.dumps({
+    "diffCoverage": {
+        "percent": 100.0,
+        "passed": True,
+        "surface": "android",
+        "method": "test_file_presence",
+        "changedFiles": len(prod),
+    },
+    "waived": waived,
+}))
 sys.exit(0)
 PY
     # The presence-gate verdict is authoritative when no JaCoCo report exists;
@@ -98,6 +134,11 @@ base_ref = os.environ["BASE_REF"]
 repo_root = os.environ["REPO_ROOT"]
 jacoco_xml = os.environ["JACOCO_XML"]
 threshold = int(os.environ["COVERAGE_THRESHOLD"])
+allowlist = json.loads(os.environ.get("ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON") or "{}")
+for path, reason in allowlist.items():
+    if not isinstance(reason, str) or not reason.strip():
+        print(f"::error::Android coverage allowlist entry {path!r} has no reason.")
+        raise SystemExit(1)
 
 changed = subprocess.check_output(
     ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.kt"],
@@ -110,6 +151,20 @@ changed = [c for c in changed if not c.startswith("android/macrobenchmark/")]
 if not changed:
     print(json.dumps({"diffCoverage": {"percent": 100.0, "passed": True, "surface": "android", "method": "no_production_kotlin"}}))
     raise SystemExit(0)
+
+waived = []
+coverage_candidates = []
+for rel_path in changed:
+    reason = allowlist.get(rel_path)
+    if reason:
+        waived.append({
+            "file": rel_path,
+            "method": "allowlist_waiver",
+            "reason": reason,
+        })
+    else:
+        coverage_candidates.append(rel_path)
+changed = coverage_candidates
 
 test_evidence_details = []
 coverage_changed = []
@@ -140,6 +195,7 @@ if not changed:
             "method": "test_file_presence",
         },
         "details": test_evidence_details,
+        "waived": waived,
     }, indent=2))
     raise SystemExit(0)
 
@@ -230,6 +286,7 @@ print(json.dumps({
     },
     "details": details,
     "belowGateFloor": below_floor,
+    "waived": waived,
 }, indent=2))
 if not passed and total_exc > 0:
     raise SystemExit(1)

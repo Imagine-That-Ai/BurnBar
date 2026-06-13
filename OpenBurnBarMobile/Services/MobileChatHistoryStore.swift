@@ -300,6 +300,7 @@ protocol MobileChatCloudMirroring: AnyObject {
 final class MobileChatFileLocalStore: MobileChatLocalStoring {
     private let directory: URL
     private let fileManager: FileManager
+    private let protectedWriteObserver: ((URL, Data.WritingOptions, FileProtectionType) -> Void)?
     private let queue = DispatchQueue(label: "mobile-chat-history.local-store", qos: .utility)
     private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "MobileChatLocalStore")
     private var partitionKey: String = "local"
@@ -311,8 +312,12 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
     private var digestCache: [String: [String: Int]] = [:]
     private var migratedPartitions: Set<String> = []
 
-    init(fileManager: FileManager = .default) {
+    init(
+        fileManager: FileManager = .default,
+        protectedWriteObserver: ((URL, Data.WritingOptions, FileProtectionType) -> Void)? = nil
+    ) {
         self.fileManager = fileManager
+        self.protectedWriteObserver = protectedWriteObserver
         let base = (try? fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -324,9 +329,14 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
         self.directory = appDir
     }
 
-    init(directory: URL, fileManager: FileManager = .default) {
+    init(
+        directory: URL,
+        fileManager: FileManager = .default,
+        protectedWriteObserver: ((URL, Data.WritingOptions, FileProtectionType) -> Void)? = nil
+    ) {
         self.directory = directory
         self.fileManager = fileManager
+        self.protectedWriteObserver = protectedWriteObserver
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
@@ -430,7 +440,11 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
     /// store only reads/writes on a `.utility` queue from the foreground app, so
     /// the bytes never need to be readable while the device is locked.
     private func writeProtected(_ data: Data, to url: URL) throws {
-        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        let options: Data.WritingOptions = [.atomic, .completeFileProtection]
+        let protection = FileProtectionType.complete
+        try data.write(to: url, options: options)
+        try fileManager.setAttributes([.protectionKey: protection], ofItemAtPath: url.path)
+        protectedWriteObserver?(url, options, protection)
         excludeFromBackup(url)
     }
 

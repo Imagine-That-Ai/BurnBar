@@ -1,29 +1,48 @@
-/**
- * Fail-closed proof for the ops-alert notification-channel gate.
- *
- * Cure53 RR-4: an audited email notification channel pointing at an NXDOMAIN /
- * unresolvable domain stays `enabled` in GCP but never verifies, yet the old
- * gate counted it as live (present && enabled) so the policy read green. These
- * tests pin the stricter contract: a verifiable channel (email/sms) only counts
- * when verificationStatus === "VERIFIED", placeholder/unresolvable targets are
- * rejected outright, and unknown types or empty targets fail closed.
- *
- * Run: node --test scripts/lib/ops-alerts-gate.test.mjs
- */
-
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 
 import {
-  channelTarget,
-  isPlaceholderTarget,
-  evaluateChannel,
-  VERIFIABLE_CHANNEL_TYPES,
   ALLOWED_CHANNEL_TYPES,
+  VERIFIABLE_CHANNEL_TYPES,
+  channelTarget,
+  checkAlertPolicies,
+  evaluateChannel,
+  isPlaceholderTarget,
+  notificationChannelStatus,
 } from "./ops-alerts-gate.mjs";
 
-// Mirrors the per-channel status object built in checkAlertPolicies: the fields
-// evaluateChannel consumes, with `target` already resolved via channelTarget.
+const expectedPolicy = {
+  displayName: "OpenBurnBar Callable error spike",
+  requiredMetricTypes: ["logging.googleapis.com/user/openburnbar_callable_error"],
+};
+
+function fakeRunner({ policies, channels }) {
+  return (_command, args) => {
+    if (args[1] === "policies") {
+      return { ok: true, status: 0, stdout: JSON.stringify(policies), stderr: "" };
+    }
+    if (args[1] === "channels") {
+      return { ok: true, status: 0, stdout: JSON.stringify(channels), stderr: "" };
+    }
+    return { ok: false, status: 1, stdout: "", stderr: `unexpected gcloud args: ${args.join(" ")}` };
+  };
+}
+
+function policyWithChannel(channelName) {
+  return {
+    displayName: expectedPolicy.displayName,
+    enabled: true,
+    notificationChannels: [channelName],
+    conditions: [
+      {
+        conditionThreshold: {
+          filter: `metric.type="${expectedPolicy.requiredMetricTypes[0]}"`,
+        },
+      },
+    ],
+  };
+}
+
 function status(overrides = {}) {
   return {
     name: "projects/burnbar/notificationChannels/1",
@@ -57,7 +76,6 @@ test("isPlaceholderTarget flags empty and known unresolvable/placeholder targets
   assert.equal(isPlaceholderTarget("alerts@nxdomain.invalid"), true);
   assert.equal(isPlaceholderTarget("root@localhost"), true);
   assert.equal(isPlaceholderTarget("changeme@burnbar.ai"), true);
-  // A real routable address must pass.
   assert.equal(isPlaceholderTarget("ops@burnbar.ai"), false);
   assert.equal(isPlaceholderTarget("+15551234567"), false);
 });
@@ -66,15 +84,13 @@ test("evaluateChannel passes a verified email channel with a real target", () =>
   assert.deepEqual(evaluateChannel(status()), { ok: true, reason: null });
 });
 
-test("evaluateChannel FAILS CLOSED on an enabled-but-UNVERIFIED email channel (RR-4 NXDOMAIN case)", () => {
-  // The audited channel: enabled in GCP, real-looking domain, but verification
-  // never completes because the MX/domain does not resolve.
+test("evaluateChannel fails closed on an enabled but unverified email channel", () => {
   const result = evaluateChannel(status({ verificationStatus: "UNVERIFIED" }));
-  assert.equal(result.ok, false, "an unverified email channel must NOT count as live");
+  assert.equal(result.ok, false);
   assert.equal(result.reason, "unverified:UNVERIFIED");
 });
 
-test("evaluateChannel fails closed when verificationStatus is missing/unspecified", () => {
+test("evaluateChannel fails closed when verificationStatus is missing or unspecified", () => {
   assert.equal(evaluateChannel(status({ verificationStatus: null })).ok, false);
   assert.equal(
     evaluateChannel(status({ verificationStatus: "VERIFICATION_STATUS_UNSPECIFIED" })).reason,
@@ -82,28 +98,26 @@ test("evaluateChannel fails closed when verificationStatus is missing/unspecifie
   );
 });
 
-test("evaluateChannel rejects a placeholder target even when GCP reports VERIFIED", () => {
-  const result = evaluateChannel(status({ target: "ops@example.com", verificationStatus: "VERIFIED" }));
-  assert.equal(result.ok, false);
-  assert.equal(result.reason, "placeholder-target:ops@example.com");
+test("evaluateChannel rejects placeholder and disallowed targets", () => {
+  assert.equal(
+    evaluateChannel(status({ target: "ops@example.com", verificationStatus: "VERIFIED" })).reason,
+    "placeholder-target:ops@example.com",
+  );
+  assert.equal(
+    evaluateChannel(status({ target: "support@openburnbar.app", verificationStatus: "VERIFIED" })).reason,
+    "disallowed-email:support@openburnbar.app",
+  );
 });
 
-test("evaluateChannel fails closed on missing, disabled, and empty-target channels", () => {
+test("evaluateChannel fails closed on missing, disabled, unknown, and empty-target channels", () => {
   assert.equal(evaluateChannel(status({ present: false })).reason, "missing");
   assert.equal(evaluateChannel(status({ enabled: false })).reason, "disabled");
   assert.equal(evaluateChannel(status({ target: null })).reason, "empty-target");
-});
-
-test("evaluateChannel rejects unknown channel types", () => {
-  const result = evaluateChannel(status({ type: "carrierpigeon", target: "coop-7" }));
-  assert.equal(result.ok, false);
-  assert.equal(result.reason, "unsupported-type:carrierpigeon");
+  assert.equal(evaluateChannel(status({ type: "pager", target: "burnbar-ops" })).reason, "unsupported-type:pager");
   assert.equal(evaluateChannel(status({ type: null })).reason, "unsupported-type:null");
 });
 
 test("evaluateChannel does not demand verification for non-verifiable allowed types", () => {
-  // pubsub/slack/webhook carry no GCP verification handshake — a present,
-  // enabled, real-target channel of these types counts as live.
   assert.deepEqual(
     evaluateChannel(status({ type: "pubsub", target: "projects/burnbar/topics/ops", verificationStatus: null })),
     { ok: true, reason: null },
@@ -118,4 +132,68 @@ test("verifiable types are a subset of allowed types", () => {
   for (const type of VERIFIABLE_CHANNEL_TYPES) {
     assert.ok(ALLOWED_CHANNEL_TYPES.has(type), `${type} must also be an allowed channel type`);
   }
+});
+
+test("notificationChannelStatus rejects the historical support-address black hole", () => {
+  const channel = notificationChannelStatus(
+    "projects/burnbar/notificationChannels/dead",
+    {
+      name: "projects/burnbar/notificationChannels/dead",
+      displayName: "Old support email",
+      type: "email",
+      enabled: true,
+      verificationStatus: "VERIFIED",
+      labels: { email_address: "support@openburnbar.app" },
+    },
+  );
+
+  assert.equal(channel.ok, false);
+  assert.match(channel.problems.join("\n"), /black-hole address support@openburnbar\.app/);
+});
+
+test("checkAlertPolicies fails when a policy references a disabled channel", () => {
+  const result = checkAlertPolicies([expectedPolicy], {
+    project: "burnbar-test",
+    runner: fakeRunner({
+      policies: [policyWithChannel("projects/burnbar/notificationChannels/disabled")],
+      channels: [
+        {
+          name: "projects/burnbar/notificationChannels/disabled",
+          type: "email",
+          enabled: false,
+          verificationStatus: "VERIFIED",
+          labels: { email_address: "ops@burnbar.ai" },
+        },
+      ],
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.required[0].liveNotificationChannelCount, 0);
+  assert.deepEqual(result.required[0].notificationChannelProblems, [
+    "projects/burnbar/notificationChannels/disabled: notification channel is disabled",
+  ]);
+});
+
+test("checkAlertPolicies passes when policy, metric, and verified channel all match", () => {
+  const result = checkAlertPolicies([expectedPolicy], {
+    project: "burnbar-test",
+    runner: fakeRunner({
+      policies: [policyWithChannel("projects/burnbar/notificationChannels/operator")],
+      channels: [
+        {
+          name: "projects/burnbar/notificationChannels/operator",
+          displayName: "OpenBurnBar Ops",
+          type: "email",
+          enabled: true,
+          verificationStatus: "VERIFIED",
+          labels: { email_address: "ops@burnbar.ai" },
+        },
+      ],
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.required[0].liveNotificationChannelCount, 1);
+  assert.equal(result.required[0].notificationChannelStatuses[0].emailAddress, "ops@burnbar.ai");
 });

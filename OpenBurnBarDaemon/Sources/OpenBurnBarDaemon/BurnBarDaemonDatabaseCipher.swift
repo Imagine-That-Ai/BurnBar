@@ -233,6 +233,7 @@ enum BurnBarDaemonDatabaseCipher {
         guard let key = resolveKey() else { return false }
         guard isPlaintextDatabaseFile(at: path) else { return false }
 
+        // cov:ignore-start -- SQLCipher migration body only executes when the daemon links a SQLITE_HAS_CODEC build; current CI links stock SQLite and gates the no-codec no-op and unsafe-key rejection paths.
         let encryptedPath = path + ".sqlcipher-migrating-\(UUID().uuidString)"
         try? FileManager.default.removeItem(atPath: encryptedPath)
 
@@ -275,6 +276,7 @@ enum BurnBarDaemonDatabaseCipher {
             metadata: ["path": path]
         )
         return true
+        // cov:ignore-end
     }
 
     // MARK: - Raw SQLite Helpers

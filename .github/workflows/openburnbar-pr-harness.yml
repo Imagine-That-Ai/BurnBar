@@ -140,7 +140,7 @@ jobs:
           cache: gradle
 
       - name: Cache Gradle wrapper and dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: |
             ~/.gradle/caches
@@ -213,7 +213,7 @@ jobs:
           ./scripts/diff-coverage-android.sh origin/main
 
       - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: android-apk-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
@@ -293,7 +293,7 @@ jobs:
           submodules: recursive
 
       - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: |
             .spm-cache
@@ -346,7 +346,7 @@ jobs:
 
       - name: Upload package coverage artifacts
         if: always() && github.event_name == 'pull_request' && !env.ACT
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: package-coverage-data
           path: |
@@ -373,7 +373,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: |
             .spm-cache
@@ -506,7 +506,7 @@ jobs:
 
       - name: Upload coverage artifacts
         if: always() && !env.ACT
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: coverage-data
           path: |
@@ -535,7 +535,7 @@ jobs:
           submodules: recursive
 
       - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: |
             .spm-cache
@@ -599,7 +599,7 @@ jobs:
           submodules: recursive
 
       - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: |
             .spm-cache

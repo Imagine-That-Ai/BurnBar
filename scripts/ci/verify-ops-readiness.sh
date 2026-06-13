@@ -39,5 +39,9 @@ bash -n scripts/ops/deploy-health-functions.sh
 bash -n scripts/ops/discover-gcp-access.sh
 node --check scripts/ops/check-ops-alerts.mjs
 node --check scripts/lib/ops-alerts-gate.mjs
+node --test scripts/lib/ops-alerts-gate.test.mjs
+
+echo "==> release attestation verifier"
+bash -n scripts/ci/verify-release-attestations.sh
 
 echo "PASS: ops readiness"
