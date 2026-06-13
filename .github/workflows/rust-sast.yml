@@ -49,12 +49,16 @@ jobs:
         include:
           - crate: openburnbar-iroh
             path: crates/openburnbar-iroh
+            toolchain: stable
           - crate: burnbar-remote
             path: crates/burnbar-remote
+            toolchain: "1.94.0"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # pinned action; toolchain below
+        with:
+          toolchain: ${{ matrix.toolchain }}
 
       # Pin cargo-audit so the advisory engine itself is reproducible; a floating
       # `cargo install cargo-audit` would pull whatever the registry serves.
@@ -98,17 +102,18 @@ jobs:
         include:
           - crate: openburnbar-iroh
             path: crates/openburnbar-iroh
+            toolchain: stable
           - crate: burnbar-remote
             path: crates/burnbar-remote
+            toolchain: "1.94.0"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      # rust-toolchain.toml drives the version where present (burnbar-remote
-      # pins 1.94.0 with clippy); openburnbar-iroh has none, so fall back to a
-      # SHA-pinned stable toolchain with clippy. dtolnay/rust-toolchain respects
-      # an in-tree rust-toolchain.toml automatically.
-      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+      # Keep the SAST toolchain explicit because this workflow uses a SHA-pinned
+      # action ref rather than the @stable shorthand.
+      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # pinned action; toolchain below
         with:
+          toolchain: ${{ matrix.toolchain }}
           components: clippy
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
