@@ -694,7 +694,9 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
                 summaryProvider: nil,
                 summaryModel: nil
             ),
-            key: try conversationVaultKeyProvider.resolvedKey()
+            key: try conversationVaultKeyProvider.resolvedKey(),
+            uid: "test-uid-1",
+            docId: docId
         )
 
         let convDocPath = "users/test-uid-1/conversations/\(remoteDeviceId)_\(remoteConvId)"

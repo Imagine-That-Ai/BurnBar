@@ -53,6 +53,11 @@ extension DataStore {
         try projectionStore.compactConversationProjectionBacklog()
     }
 
+    @discardableResult
+    nonisolated func reapTerminalProjectionJobs(olderThan cutoff: Date, now: Date = Date()) throws -> Int {
+        try projectionStore.reapTerminalProjectionJobs(olderThan: cutoff, now: now)
+    }
+
     nonisolated func hasProjectionJobs(
         statuses: [ProjectionJobStatus],
         jobTypes: [ProjectionJobType]

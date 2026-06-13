@@ -39,7 +39,8 @@ struct ConstellationBackgroundView: View {
             motionSpeedMultiplier: 0.55,
             isAutoCyclingEnabled: true,
             enableSwarmSparkles: true,
-            excludeBrandShapesFromSwarm: true
+            excludeBrandShapesFromSwarm: true,
+            rendersAsynchronously: true
         )
         .ignoresSafeArea()
     }

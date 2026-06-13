@@ -9,8 +9,24 @@ auth-required QA flows in `.factory/skills/qa`.
 |--------|---------|
 | `provision-qa-firebase.js` | Create or rotate the dedicated Firebase Auth QA account (`qa+local@openburnbar.app`). Generates a shell-safe password, sets `{ qa: true, env: "local" }` custom claims, seals creds into `~/.openburnbar/qa.env` (chmod 0600) + macOS Keychain (`OpenBurnBar.QAFirebase`), and optionally mirrors them to GitHub repo secrets. |
 | `inject-app-check-debug-token.sh` | Stamps a stable Firebase App Check debug token into `AgentLens/Resources/GoogleService-Info.plist` and `OpenBurnBarMobile/Resources/GoogleService-Info.plist`, persisting the token in `~/.openburnbar/qa.env` so subsequent runs reuse it. After running, register the token in the Firebase console under **App Check → Apps → Manage debug tokens**. |
+| `run-functional-qa.sh` | Non-interactive CI runner used by `.factory/skills/qa/SKILL.md`. It writes `qa-results/report.md`, environment evidence, and command logs while failing closed on missing required QA credentials or failed smoke checks. |
 
-Both scripts are idempotent and safe to re-run.
+All scripts are idempotent and safe to re-run.
+
+## CI functional QA
+
+The GitHub `OpenBurnBar Functional QA` workflow invokes the deterministic
+checked-in runner directly:
+
+```sh
+bash tools/qa/run-functional-qa.sh
+```
+
+The runner deliberately records only secret presence/absence, never secret
+values. It requires `FACTORY_API_KEY`, `FIREBASE_PLIST_BASE64`,
+`FIREBASE_APP_CHECK_DEBUG_TOKEN`, `QA_FIREBASE_EMAIL`, and
+`QA_FIREBASE_PASSWORD`; `ANTHROPIC_API_KEY` enables deeper provider-backed flows
+when available but is not required for the deterministic CI smoke.
 
 ## First-time setup (one developer-laptop bootstrap)
 

@@ -201,7 +201,7 @@ export const FAQ: FAQItem[] = [
     category: "features",
     question: "What is Floo?",
     answer:
-      "Floo joins your phone and your Mac. From your iPhone or iPad you can see your Mac's screen, reach in and control it, send files either direction, start a voice or video call, share one clipboard across both, and even unlock your Mac with Face ID or Touch ID.\n\nIt only ever connects your own paired devices, and everything between them is end-to-end encrypted — no one in the middle can read it, and that includes us. Every connection asks first, and one tap ends it.\n\nFloo is built and rolling out now, included with OpenBurnBar. (For the curious: Floo stands for File & Live Object Overlay — or, if you prefer, Fast Link Over Owl.)"
+      "Floo joins your phone and your Mac. From your iPhone or iPad you can see your Mac's screen, reach in and control it, send files either direction, start a voice or video call, share one clipboard across both, and even unlock your Mac with Face ID or Touch ID.\n\nIt only ever connects your own paired devices. Once paired E2EE is enabled and the runtime-readiness gate is complete, the screen, control, file, and clipboard contents are sealed end-to-end between your devices — the relay sees routing metadata, never those contents. Live voice and camera frames travel over the encrypted QUIC link itself, not the per-payload seal. Every connection asks first, and one tap ends it.\n\nFloo is built and rolling out now, included with OpenBurnBar. (For the curious: Floo stands for File & Live Object Overlay — or, if you prefer, Fast Link Over Owl.)"
   },
   {
     id: "agent-control",

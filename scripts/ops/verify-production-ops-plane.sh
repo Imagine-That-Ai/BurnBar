@@ -34,6 +34,22 @@ else
   FAILED=1
 fi
 
+echo "==> verify-firestore-disaster-recovery"
+if bash scripts/ops/verify-firestore-disaster-recovery.sh; then
+  record "verify-firestore-disaster-recovery:pass"
+else
+  record "verify-firestore-disaster-recovery:fail"
+  FAILED=1
+fi
+
+echo "==> verify-github-governance"
+if bash scripts/ops/verify-github-governance.sh; then
+  record "verify-github-governance:pass"
+else
+  record "verify-github-governance:fail"
+  FAILED=1
+fi
+
 if [[ "${FULL_LAUNCH_GATE:-0}" == "1" ]]; then
   echo "==> commercial-launch-gate (FULL_LAUNCH_GATE=1)"
   if node scripts/commercial-launch-gate.mjs >"$GATE_JSON"; then
@@ -76,6 +92,8 @@ if gate_path and os.path.isfile(gate_path):
 checks = launch.get("checks", {})
 ops = checks.get("opsAlerts", {})
 ops_alerts_ok = "check-ops-alerts:pass" in steps
+firestore_dr_ok = "verify-firestore-disaster-recovery:pass" in steps
+github_governance_ok = "verify-github-governance:pass" in steps
 summary = {
     "generatedAt": datetime.now(timezone.utc).isoformat(),
     "project": os.environ.get("GCLOUD_PROJECT", "burnbar"),
@@ -83,6 +101,8 @@ summary = {
     "steps": steps,
     "launchGateVerdict": launch.get("verdict", {}).get("status"),
     "opsAlertsOk": ops_alerts_ok,
+    "firestoreDisasterRecoveryOk": firestore_dr_ok,
+    "githubGovernanceOk": github_governance_ok,
     "launchGateOpsAlertsOk": ops.get("ok"),
     "healthLiveUrl": os.environ.get("FUNCTIONS_HEALTH_LIVE_URL", ""),
     "healthReadyUrl": os.environ.get("FUNCTIONS_HEALTH_READY_URL", ""),

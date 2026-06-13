@@ -22,9 +22,9 @@ model ProviderAccountDoc {
   lastRefreshAt?: string;
   lastErrorCode?: string;
   endpointProfileID?: string;
-  region?: string;
-  tokenPlanTier?: string;
-  tokenPlanBillingCycle?: string;
+  region?: "cn" | "sgp" | "ams" | "global";
+  tokenPlanTier?: "lite" | "standard" | "pro" | "max";
+  tokenPlanBillingCycle?: "monthly" | "annual";
   authMethodID?: string;
   schemaVersion: int32;
   createdAt: string;
@@ -34,8 +34,8 @@ model ProviderAccountDoc {
 /** Connect wizard / adapter context for endpoint-profile providers. */
 model ProviderAccountConnectContext {
   endpointProfileID?: string;
-  region?: string;
-  tokenPlanTier?: string;
-  tokenPlanBillingCycle?: string;
+  region?: "cn" | "sgp" | "ams" | "global";
+  tokenPlanTier?: "lite" | "standard" | "pro" | "max";
+  tokenPlanBillingCycle?: "monthly" | "annual";
   authMethodID?: string;
 }

@@ -86,6 +86,10 @@ public struct AgentWatchView<Placeholder: View>: View {
                 onPanic: panicHalt
             )
         }
+        // RR-14: this surface mirrors the paired Mac's screen, so cover it for
+        // the app-switcher snapshot and while the screen is being recorded /
+        // mirrored — the FLAG_SECURE equivalent.
+        .screenPrivacyGuard()
     }
 
     private var phoneInputSurface: some View {

@@ -78,3 +78,10 @@ docs/pricing/gpt-pro-brief/02_CLOUD_BACKEND_AND_INFRASTRUCTURE.md ::: zero-knowl
 docs/pricing/gpt-pro-brief/03_FEATURE_COST_AND_QUOTA_MAP.md ::: zero-knowledge ::: 3
 docs/pricing/gpt-pro-brief/05_TWO_TIER_PRICING_BRIEF_FOR_GPT_PRO.md ::: zero-knowledge ::: 2
 docs/pricing/gpt-pro-brief/06_OPERATIONAL_EXECUTION_APPENDIX.md ::: zero-knowledge ::: 1
+# Cure53 §9.2 / App.E (2026-06-12): the BurnBar §9.2 honesty additions ("no one in
+# the middle" / "that includes us" / unqualified product-wide E2E) were conditioned
+# DOWN in the user-facing copy (faq.ts:204, floo.astro). This remediation note QUOTES
+# the old Floo phrase verbatim ("The 'no one in the middle, includes us' Floo claim
+# becomes fully accurate once C-1 lands") to track the finding — it is an internal
+# audit doc, NOT shipped to users, so the quote is reviewed + allowlisted.
+docs/security/SECURITY_REMEDIATION_2026-06-09.md ::: no one in the middle ::: 1

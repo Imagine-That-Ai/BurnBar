@@ -3,6 +3,7 @@ package com.openburnbar.data.insights.services
 import com.openburnbar.data.insights.InsightCitation
 import com.openburnbar.data.insights.InsightDigest
 import com.openburnbar.data.insights.InsightEvidence
+import com.openburnbar.util.Formatting
 
 internal fun buildInsightEvidenceIndex(digest: InsightDigest): List<InsightEvidence> {
     val out = mutableListOf<InsightEvidence>()
@@ -56,7 +57,7 @@ private fun appendBenchmarkEvidence(out: MutableList<InsightEvidence>, digest: I
             buildList {
                 benchmark.score?.let { add("score ${(it * 100).toInt()}/100") }
                 benchmark.rank?.let { add("rank #$it") }
-                benchmark.blendedCostPerMtoken?.let { add("$${"%.2f".format(it)}/MTok blended") }
+                benchmark.blendedCostPerMtoken?.let { add("${Formatting.formatCurrency(it)}/MTok blended") }
                     ?: benchmark.costSignal?.let { add("cost signal ${(it * 100).toInt()}/100") }
                 add("freshness ${benchmark.freshness}")
             }

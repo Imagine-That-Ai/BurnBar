@@ -699,7 +699,8 @@ final class AccountManager {
 
     private static func googleAuthPresentationWindow(
         from window: NSWindow,
-        appWindows: [NSWindow]? = nil
+        appWindows: [NSWindow]? = nil,
+        activate: Bool = true
     ) -> NSWindow {
         let resolution = resolveAuthPresentationWindow(
             from: window,

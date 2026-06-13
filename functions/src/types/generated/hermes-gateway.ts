@@ -43,40 +43,44 @@ export interface GatewaySignalCiphertextLayerDoc {
 
 export interface GatewaySignalBindingDoc {
   uid: string;
-  scope: string;
+  scope: "gateway" | "cloudvault";
   clientId?: string;
   collection?: string;
   docId?: string;
   field?: string;
   slotId?: string;
-  mode: string;
+  mode: "transport" | "at-rest";
   formatVersion: number;
 }
 
 export interface GatewaySignalAtRestWrapDoc {
-  recipientKind: string;
+  recipientKind: "device" | "escrow" | "recovery";
   recipientIdentityKeyId: string;
   recipientIdentityKeyB64: string;
   sealedContentKeyB64: string;
 }
 
-export interface GatewaySignalKeyDeliveryDoc {
-  scheme: string;
-  signalMessageType?: number;
-  signalMessageB64?: string;
-  senderIdentityKeyId?: string;
+export interface GatewaySignalTransportKeyDeliveryDoc {
+  scheme: "signal-doubleratchet-pqxdh-v1";
+  signalMessageType: 2 | 3;
+  signalMessageB64: string;
+  senderIdentityKeyId: string;
   ratchetEpochHint?: number;
-  wraps?: GatewaySignalAtRestWrapDoc[];
-  contentKeyLength?: number;
+}
+
+export interface GatewaySignalAtRestKeyDeliveryDoc {
+  scheme: "signal-hpke-identity-seal-v1";
+  wraps: GatewaySignalAtRestWrapDoc[];
+  contentKeyLength: 32;
 }
 
 export interface GatewaySignalEnvelopeDoc {
   signalEnvelopeFormatVersion: number;
-  mode: string;
+  mode: "transport" | "at-rest";
   relayKeyVersion?: number;
-  relayEncryption: string;
+  relayEncryption: "signal-doubleratchet-pqxdh-v1" | "signal-hpke-identity-seal-v1";
   ciphertextLayer: GatewaySignalCiphertextLayerDoc;
-  keyDelivery: GatewaySignalKeyDeliveryDoc;
+  keyDelivery: GatewaySignalTransportKeyDeliveryDoc | GatewaySignalAtRestKeyDeliveryDoc;
   binding: GatewaySignalBindingDoc;
 }
 
@@ -84,29 +88,25 @@ export interface HermesGatewayClientDoc {
   id: string;
   uid: string;
   displayName: string;
-  status: string;
+  status: "active" | "revoked";
   tokenHash: string;
   tokenPreview: string;
-  scopes: string[];
+  agentClientSigningPublicKeyBase64?: string;
+  agentClientSigningKeyId?: string;
+  popRequired?: boolean;
+  popVersion?: number;
+  scopes: ("hermes.gateway.read" | "hermes.gateway.write" | "hermes.gateway.manage")[];
   homeDestinationId: string;
+  expiresAt?: string;
+  rotatedAt?: string;
   lastSeenAt?: string;
-  runtimeModelId?: string;
-  runtimeProviderId?: string;
-  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
-  runtimeUpdatedAt?: string;
-  agentVersion?: string;
-  pendingModelId?: string;
-  pendingModelRequestedAt?: string;
-  oversightMode?: string;
-  relayPublicKey?: string;
-  relayKeyVersion?: number;
-  relayEncryption?: string;
   agentRelayPublicKey?: string;
   agentRelayKeyVersion?: number;
   agentRelayEncryption?: string;
   agentSupportsRelayEnvelopeVersions?: number[];
   agentPreferredRelayEnvelopeVersion?: number;
   agentSupportsHpkeV3?: boolean;
+  agentSupportsSignalEnvelope?: boolean;
   agentPlatform?: string;
   agentAppBuild?: string;
   phoneRelayPublicKey?: string;
@@ -115,6 +115,7 @@ export interface HermesGatewayClientDoc {
   phoneSupportsRelayEnvelopeVersions?: number[];
   phonePreferredRelayEnvelopeVersion?: number;
   phoneSupportsHpkeV3?: boolean;
+  phoneSupportsSignalEnvelope?: boolean;
   phonePlatform?: string;
   phoneAppBuild?: string;
   agentRatchetIdentityPublicKey?: string;
@@ -133,7 +134,16 @@ export interface HermesGatewayClientDoc {
   supportsRelayEnvelopeVersions?: number[];
   preferredRelayEnvelopeVersion?: number;
   supportsHpkeV3?: boolean;
+  supportsSignalEnvelope?: boolean;
   relayCapable?: boolean;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
+  agentVersion?: string;
+  pendingModelId?: string;
+  pendingModelRequestedAt?: string;
+  oversightMode?: "supervised" | "autonomous";
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -147,7 +157,7 @@ export interface HermesGatewayApprovalDoc {
   actionId: string;
   toolName?: string;
   summary: string;
-  status: string;
+  status: "waiting_for_approval" | "approved" | "rejected" | "expired";
   requestedAt: string;
   expiresAt: string;
   respondedAt?: string;
@@ -158,8 +168,8 @@ export interface HermesGatewayApprovalDoc {
 export interface HermesGatewayDestinationDoc {
   id: string;
   displayName: string;
-  kind: string;
-  status: string;
+  kind: "home" | "chat" | "thread";
+  status: "active" | "archived";
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -169,7 +179,7 @@ export interface HermesGatewayDestinationDoc {
 export interface HermesGatewayEventDoc {
   id: string;
   sequence: number;
-  kind: string;
+  kind: "message" | "model_switch";
   destinationId: string;
   targetClientId?: string;
   threadId?: string;
@@ -188,15 +198,15 @@ export interface HermesGatewayEventDoc {
 export interface HermesGatewayMessageDoc {
   id: string;
   clientId: string;
-  kind: string;
+  kind: "agent_message" | "typing";
   destinationId: string;
   threadId?: string;
   replyToEventId?: string;
   text?: string;
-  attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   signalEnvelope?: GatewaySignalEnvelopeDoc;
+  attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
 }
@@ -206,15 +216,19 @@ export interface HermesGatewayAttachmentManifestDoc {
   clientId: string;
   destinationId?: string;
   fileName?: string;
-  contentType?: string;
-  byteCount?: number;
-  storagePath?: string;
-  bodyStoragePath?: string;
-  status?: string;
+  contentType: string;
+  byteCount: number;
+  storagePath: string;
+  status: "pending_upload" | "uploaded" | "failed" | "expired" | "rejected";
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
+  uploadedAt?: string;
+  finalizedAt?: string;
+  sha256?: string;
+  storageGeneration?: string;
   schemaVersion: number;
 }

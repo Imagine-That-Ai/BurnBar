@@ -114,6 +114,12 @@ final class SettingsManager {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceSubStoreDidChange),
+            name: .appearanceModeDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
             name: .appearanceSkinDidChange,
             object: nil
         )
@@ -217,7 +223,7 @@ final class SettingsManager {
         "computer_use_phone_control_attestation_required": NSNumber(value: false),
         "computer_use_trust_modes_enabled": NSNumber(value: false),
         "computer_use_polish_enabled": NSNumber(value: false),
-        "computer_use_kill_switch": NSNumber(value: false),
+        "computer_use_kill_switch": NSNumber(value: true),
         // Secure default: a verified phone NEVER silently bypasses an
         // accessibility deny region (password field / system auth sheet /
         // login window). The gate also enforces this structurally — a deny
@@ -233,7 +239,7 @@ final class SettingsManager {
         // "computer_use_phone_control_allowed": NSNumber(value: true),
         // "computer_use_trusted_scopes_allowed": NSNumber(value: true),
         // "computer_use_audit_export_allowed": NSNumber(value: true),
-        "media_kill_switch": NSNumber(value: false),
+        "media_kill_switch": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
         "media_normal_file_gb_per_day": NSNumber(value: 5),
@@ -262,10 +268,16 @@ final class SettingsManager {
         let remoteConfig = RemoteConfig.remoteConfig()
         remoteConfig.setDefaults(Self.commercialRemoteConfigDefaults)
 
-        _ = await withCheckedContinuation { continuation in
+        let fetchResult = await withCheckedContinuation { continuation in
             remoteConfig.fetchAndActivate { status, error in
                 continuation.resume(returning: (status, error))
             }
+        }
+        if fetchResult.1 != nil {
+            computerUseKillSwitch = true
+            mediaKillSwitch = true
+            NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
+            return
         }
 
         computerUseWatchEnabled = remoteConfig.configValue(forKey: "computer_use_watch_enabled").boolValue
@@ -554,11 +566,9 @@ final class SettingsManager {
         set { index.databaseEncryptionEnabled = newValue }
     }
 
-    /// Set when the database had to open in plaintext despite encryption being
-    /// requested (no SQLCipher in this build, or an existing plaintext DB that
-    /// cannot be safely encrypt-migrated yet). The DB-open path writes this to
-    /// `UserDefaults.standard` before `SettingsManager` exists; surface a standing
-    /// "data is not encrypted" banner while it is true. See B-DATA-1.
+    /// Legacy banner flag from the pre-fail-closed database-encryption rollout.
+    /// Current encrypted startup must throw before opening plaintext; this remains
+    /// only so older defaults can be read/cleared without changing persisted keys.
     var plaintextDatabaseAcknowledged: Bool {
         get { index.plaintextDatabaseAcknowledged }
         set { index.plaintextDatabaseAcknowledged = newValue }

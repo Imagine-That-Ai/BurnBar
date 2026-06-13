@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 /// Garbage-collects conversation tombstones after the cross-device retention
 /// window (B-DATA-2).
@@ -35,9 +36,11 @@ final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable
     private let retentionWindow: TimeInterval
     private let now: () -> Date
 
-    private(set) var isSyncing = false
-    private(set) var lastSyncError: String?
-    private(set) var lastSyncDate: Date?
+    private let state = Locked(CloudSyncDomainState())
+
+    var isSyncing: Bool { state.read().isSyncing }
+    var lastSyncError: String? { state.read().lastSyncError }
+    var lastSyncDate: Date? { state.read().lastSyncDate }
 
     init(
         context: CloudSyncContext,
@@ -57,12 +60,10 @@ final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable
               gate.account.isSignedIn,
               gate.account.isCloudSyncEnabled,
               !gate.syncSuppressed,
-              !isSyncing,
               let uid = gate.account.uid else { return }
 
-        isSyncing = true
-        lastSyncError = nil
-        defer { isSyncing = false }
+        guard state.beginSyncingIfIdle() else { return }
+        defer { state.endSyncing() }
 
         let deviceId = gate.account.deviceId
         let cutoff = now().addingTimeInterval(-max(retentionWindow, 0))
@@ -75,7 +76,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable
             return
         }
         guard !expired.isEmpty else {
-            lastSyncDate = now()
+            state.withLock { $0.lastSyncDate = now() }
             return
         }
 
@@ -99,8 +100,10 @@ final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable
             "conversation_tombstone_gc_swept",
             metadata: ["expired": "\(expired.count)", "purged": "\(purgedCount)"]
         )
-        lastSyncDate = now()
-        lastSyncError = nil
+        state.withLock {
+            $0.lastSyncDate = now()
+            $0.lastSyncError = nil
+        }
     }
 
     /// Removes every cloud artifact backing a single tombstoned conversation.
@@ -167,7 +170,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, @unchecked Sendable
     }
 
     private func recordSyncError(_ error: Error) async {
-        lastSyncError = error.localizedDescription
+        state.withLock { $0.lastSyncError = error.localizedDescription }
 
         let nsError = error as NSError
         guard nsError.domain == FirestoreErrorDomain,

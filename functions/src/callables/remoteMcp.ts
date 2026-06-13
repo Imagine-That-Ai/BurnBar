@@ -10,7 +10,12 @@ import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestat
 import { db } from "../adminRuntime.js";
 import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
-import { REMOTE_MCP_TOKEN_HMAC_SECRET, boundedTrimmedString, assertActiveBurnBarProEntitlement } from "./shared.js";
+import {
+  REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64,
+  REMOTE_MCP_TOKEN_HMAC_SECRET,
+  boundedTrimmedString,
+  assertActiveBurnBarProEntitlement,
+} from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "../remoteMcpGrant.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -20,7 +25,7 @@ export const issueRemoteMcpGrant = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
-    secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET],
+    secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET, REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64],
   },
   wrapCallableHandler(
     "issueRemoteMcpGrant",
@@ -41,7 +46,8 @@ export const issueRemoteMcpGrant = onCall(
       await assertCloudFeatureNotSuspended(db, uid, "remote_mcp");
       await assertActiveBurnBarProEntitlement(uid);
       const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
-      if (!tokenSecret) {
+      const tokenEd25519PrivateKeyBase64PEM = REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64.value();
+      if (!tokenSecret && !tokenEd25519PrivateKeyBase64PEM) {
         throw new HttpsError("failed-precondition", "Remote MCP token signing secret is not configured.");
       }
       const scopes = Array.isArray(request.data.scopes)
@@ -66,6 +72,7 @@ export const issueRemoteMcpGrant = onCall(
         grantMode,
         entitlementFamily: "burnbar_pro",
         tokenSecret,
+        tokenEd25519PrivateKeyBase64PEM,
         audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.burnbar.ai/mcp",
       });
       logInfo({

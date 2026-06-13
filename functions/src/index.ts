@@ -113,6 +113,10 @@ export {
 } from "./callables/signalPrekeyDirectory.js";
 export { signalActivationReadiness } from "./callables/signalActivationReadiness.js";
 export { rotateCloudVaultKey } from "./callables/cloudVaultRotation.js";
+export {
+  listPendingCloudVaultRotationRequirements,
+  detectStalePendingCloudVaultRotations,
+} from "./cloudVaultRotationResilience.js";
 export { getDataDomainUsage } from "./callables/dataDomainUsage.js";
 export { searchKnowledge } from "./callables/knowledgeSearch.js";
 export { exportUserData } from "./callables/dataExport.js";

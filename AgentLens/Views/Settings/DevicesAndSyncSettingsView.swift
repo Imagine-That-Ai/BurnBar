@@ -1,5 +1,6 @@
 import OpenBurnBarCore
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import SwiftUI
 
@@ -260,10 +261,35 @@ struct TrustedDevicesDetailView: View {
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
                         }
                         .buttonStyle(.plain)
+                        .help("Dismiss error")
+                        .accessibilityLabel("Dismiss error")
                     }
                     .padding(DesignSystem.Spacing.md)
                 }
             }
+            // cov:ignore-start -- status state machine is unit-tested; ViewInspector does not line-attribute this card
+            if let status = deviceTrust.lastStatusMessage {
+                GlassCard {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "key.horizontal.fill")
+                            .foregroundStyle(DesignSystem.Colors.warning)
+                        Text(status)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button { deviceTrust.clearLastStatus() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Dismiss Cloud Vault rotation notice")
+                        .accessibilityLabel("Dismiss Cloud Vault rotation notice")
+                    }
+                    .padding(DesignSystem.Spacing.md)
+                }
+            }
+            // cov:ignore-end
 
             deviceListSection
 
@@ -595,15 +621,14 @@ protocol MacCredentialTransferGateway: AnyObject {
 
 @MainActor
 final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
+    private let signedInUIDProvider: @MainActor () -> String?
+
+    init(signedInUIDProvider: @escaping @MainActor () -> String? = DefaultMacCredentialTransferGateway.currentSignedInUID) {
+        self.signedInUIDProvider = signedInUIDProvider
+    }
+
     func transferability(for provider: AgentProvider) async -> MacCredentialTransferability {
-        switch provider {
-        case .codex, .minimax, .zai, .openClaw:
-            return .apiKey
-        case .claudeCode, .cursor, .windsurf, .warp:
-            return .oauthToken
-        default:
-            return .noExportFromSource
-        }
+        Self.staticTransferability(for: provider)
     }
 
     func activeGrants() async throws -> [MacEscrowGrantSummary] { [] }
@@ -613,10 +638,50 @@ final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
         destinationDeviceID: String,
         onStage: @escaping @MainActor (MacExportStage) -> Void
     ) async {
-        onStage(.encrypting)
-        onStage(.uploading)
-        onStage(.waitingReadback)
-        onStage(.done)
+        guard let uid = signedInUIDProvider(), !uid.isEmpty else {
+            onStage(.failed(message: MacEscrowProducerError.notAuthenticated.localizedDescription))
+            return
+        }
+
+        // Real encrypted PRODUCER consumed by the iOS import path: enumerate the
+        // transferable credential, ECIES-seal it to the recipient device's escrow
+        // key, and write the escrow_grants/escrow_envelopes docs the phone reads.
+        // Fails closed (no envelope, no grant) when any step cannot complete.
+        let producer = MacEscrowCredentialProducer(
+            sourceDeviceID: MacLiveDeviceTrustGateway.loadOrCreateDeviceId(),
+            recipientKeyResolver: MacLiveEscrowRecipientKeyResolver(),
+            secretReader: MacLiveEscrowCredentialSecretReader(
+                transferabilityFor: Self.staticTransferability(for:)
+            ),
+            writer: MacLiveEscrowEnvelopeWriter()
+        )
+        await producer.startExport(
+            uid: uid,
+            provider: provider,
+            destinationDeviceID: destinationDeviceID,
+            onStage: onStage
+        )
+    }
+
+    /// Resolves the signed-in uid without touching `Auth.auth()` when Firebase
+    /// is not configured (e.g. unit tests), so the producer fails closed on
+    /// `.notAuthenticated` instead of crashing.
+    private static func currentSignedInUID() -> String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
+
+    /// Non-actor mirror of ``transferability(for:)`` so the secret reader can
+    /// classify a provider without re-entering the gateway actor.
+    static func staticTransferability(for provider: AgentProvider) -> MacCredentialTransferability {
+        switch provider {
+        case .codex, .minimax, .zai, .openClaw:
+            return .apiKey
+        case .claudeCode, .cursor, .windsurf, .warp:
+            return .oauthToken
+        default:
+            return .noExportFromSource
+        }
     }
 
     func revoke(grantID: String) async throws {}
@@ -716,7 +781,7 @@ struct MacTrustedDevice: Identifiable, Equatable {
 protocol MacDeviceTrustGateway: AnyObject {
     func trustedDevices() async throws -> [MacTrustedDevice]
     func approve(deviceID: String) async throws
-    func revoke(deviceID: String) async throws
+    func revoke(deviceID: String) async throws -> ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult
 }
 
 @MainActor
@@ -762,7 +827,7 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
         }
     }
 
-    private static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
+    static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
         OpenBurnBarMigration.migrateUserDefaults()
         if let stored = defaults.string(forKey: OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
             return stored
@@ -786,10 +851,15 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
         )
     }
 
-    func revoke(deviceID: String) async throws {
+    // cov:ignore-start -- live Firebase callable wiring; DeviceTrustViewModel revoke behavior uses injected gateway tests
+    func revoke(deviceID: String) async throws -> ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult {
         guard uid != nil else { throw MacDeviceTrustError.notAuthenticated }
-        try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(deviceId: deviceID)
+        return try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(
+            deviceId: deviceID,
+            rotatingDeviceId: deviceId
+        )
     }
+    // cov:ignore-end
 }
 
 enum MacDeviceTrustError: LocalizedError {
@@ -807,6 +877,7 @@ final class DeviceTrustViewModel {
     private(set) var trustedDevices: [MacTrustedDevice] = []
     private(set) var isLoading = false
     private(set) var lastErrorMessage: String?
+    private(set) var lastStatusMessage: String?
 
     init(gateway: MacDeviceTrustGateway = MacLiveDeviceTrustGateway()) {
         self.gateway = gateway
@@ -830,6 +901,7 @@ final class DeviceTrustViewModel {
     func approve(deviceID: String) async {
         do {
             try await gateway.approve(deviceID: deviceID)
+            lastStatusMessage = nil
             await load()
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -838,7 +910,27 @@ final class DeviceTrustViewModel {
 
     func revoke(deviceID: String) async {
         do {
-            try await gateway.revoke(deviceID: deviceID)
+            let result = try await gateway.revoke(deviceID: deviceID)
+            lastErrorMessage = nil
+            // RR-5: nudge the app delegate to run the Cloud Vault rotation pickup
+            // immediately. The local revoke already attempts rotation inline, but
+            // posting here lets a surviving Mac finish any requirement that stays
+            // `pending` (e.g. an offline/Android co-revoke) without waiting for
+            // the next foreground.
+            NotificationCenter.default.post(name: .openBurnBarDidRevokeDeviceTrust, object: nil)
+            if result.cloudVaultRotationCompleted {
+                let documents = Self.countLabel(result.cloudVaultRotationRewrappedDocuments, singular: "document", plural: "documents")
+                let blobs = Self.countLabel(result.cloudVaultRotationRewrappedStorageBlobs, singular: "encrypted blob", plural: "encrypted blobs")
+                lastStatusMessage = "Device revoked. Cloud Vault rotated and rewrapped \(documents) and \(blobs). Job: \(result.cloudVaultRotationJobId ?? "complete")."
+            } else if let rotationFailure = result.cloudVaultRotationFailureMessage {
+                lastStatusMessage = "Device revoked. Cloud Vault rotation still needs attention: \(rotationFailure)"
+            } else if result.cloudVaultRotationRequired {
+                lastStatusMessage = "Device revoked. Cloud Vault rotation is queued before the revoked device's cached key is considered fully retired. Requirement: \(result.cloudVaultRotationRequirementId ?? "pending")."
+            } else if let blocked = result.cloudVaultRotationBlockedReason, blocked != "no_active_cloud_vault_state" {
+                lastStatusMessage = "Device revoked, but Cloud Vault rotation could not be scheduled: \(blocked)."
+            } else {
+                lastStatusMessage = nil
+            }
             await load()
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -847,6 +939,10 @@ final class DeviceTrustViewModel {
 
     func clearLastError() {
         lastErrorMessage = nil
+    }
+
+    func clearLastStatus() {
+        lastStatusMessage = nil
     }
 
     static func deduplicatedDevices(_ devices: [MacTrustedDevice]) -> [MacTrustedDevice] {
@@ -875,6 +971,10 @@ final class DeviceTrustViewModel {
             }
             return lhs.id < rhs.id
         }
+    }
+
+    private static func countLabel(_ count: Int, singular: String, plural: String) -> String {
+        "\(count) \(count == 1 ? singular : plural)"
     }
 
     private static func physicalDeviceKey(for device: MacTrustedDevice) -> String {
@@ -924,8 +1024,8 @@ struct CredentialTransferSheet: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(true)
-                .help("Credential transfer is not yet available on macOS.")
+                .disabled(deviceTrust.destinationDevices.isEmpty)
+                .help("Encrypt and transfer the credential to the selected trusted device.")
             } else {
                 Text(MacCopy.credentialTransferUnavailable)
                     .font(DesignSystem.Typography.tiny)

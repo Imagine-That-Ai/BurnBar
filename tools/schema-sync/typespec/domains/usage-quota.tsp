@@ -11,7 +11,7 @@ model UsageEventDoc {
   providerAccountID?: string;
   providerAccountLabel?: string;
   providerAccountSource?: string;
-  model?: string;
+  `model`?: string;
   sessionId?: string;
   deviceId?: string;
   sourceDeviceId?: string;
@@ -30,9 +30,9 @@ model UsageEventDoc {
 /** Firestore: users/{uid}/usage_rollups/{windowKey} */
 model UsageRollupDoc {
   today: float32;
-  @encodedName("7d") sevenDay: float32;
-  @encodedName("30d") thirtyDay: float32;
-  @encodedName("90d") ninetyDay: float32;
+  @encodedName("application/json", "7d") sevenDay: float32;
+  @encodedName("application/json", "30d") thirtyDay: float32;
+  @encodedName("application/json", "90d") ninetyDay: float32;
   all_time: float32;
   totals: Record<float32>;
   providerSummaries: ProviderSummary[];
@@ -58,7 +58,7 @@ model ProviderAccountSummary {
 }
 
 model ModelSummary {
-  model: string;
+  `model`: string;
   provider?: string;
   totalCostUSD?: float32;
   totalTokens?: int32;

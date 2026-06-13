@@ -4,6 +4,7 @@ package com.openburnbar.data.computeruse
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantLocalAuthProof
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 import java.util.UUID
@@ -125,6 +126,21 @@ object PhoneControlSignerSign {
     ): PhoneControlAuthorityEnvelope =
         signPayload(
             payloadHash = PhoneControlSignerCanonical.clipboardRequestHashHex(request),
+            peerNodeId = peerNodeId,
+            counter = counter,
+            timestampMillis = timestampMillis,
+            identity = identity,
+        )
+
+    fun signApprovalResponse(
+        response: HermesRealtimeRelayApprovalResponse,
+        peerNodeId: String,
+        counter: Long,
+        timestampMillis: Long,
+        identity: PhoneControlSigningIdentity,
+    ): PhoneControlAuthorityEnvelope =
+        signPayload(
+            payloadHash = PhoneControlSignerCanonical.approvalResponseHashHex(response),
             peerNodeId = peerNodeId,
             counter = counter,
             timestampMillis = timestampMillis,

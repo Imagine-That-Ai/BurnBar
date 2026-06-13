@@ -1,6 +1,7 @@
 
 package com.openburnbar.data.derived
 
+import com.openburnbar.util.Formatting
 import kotlin.math.abs
 
 internal fun trendSpendVelocityInsight(today: TrendDataDigest.WindowTotals?, sevenDay: TrendDataDigest.WindowTotals?): TrendInsight? {
@@ -97,7 +98,7 @@ internal fun trendLongTailVolumeInsight(thirtyDay: TrendDataDigest.WindowTotals?
     return TrendInsight(
         id = "tokens.30d",
         title = "${trendFormatTokens(thirtyDay.tokens)} tokens in 30 days",
-        detail = "$${"%.2f".format(thirtyDay.costUsd)} total spend",
+        detail = "${Formatting.formatCurrency(thirtyDay.costUsd)} total spend",
         tone = TrendInsightTone.NEUTRAL,
         symbolName = "Analytics",
         rank = 30,

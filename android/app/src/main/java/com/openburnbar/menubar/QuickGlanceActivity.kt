@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.openburnbar.MainActivity
+import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import com.openburnbar.ui.components.AuroraBadgeTone
 import com.openburnbar.ui.components.AuroraBadge
 import com.openburnbar.ui.components.AuroraBottomSheet
@@ -49,6 +50,7 @@ class QuickGlanceActivity : ComponentActivity() {
     @androidx.compose.material3.ExperimentalMaterial3Api
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableOpenBurnBarScreenPrivacy()
         setContent {
             AuroraTheme {
                 QuickGlanceContent(onClose = { finish() }, onOpenDashboard = {

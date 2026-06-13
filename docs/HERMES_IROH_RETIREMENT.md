@@ -33,7 +33,7 @@ If any gate slips, **abort** the retirement and re-enable WSS by:
 
 ```bash
 # 1. Flip the feature flag globally
-firebase remoteconfig:templates:set scripts/remoteconfig/templates/wss-fallback.json --project openburnbar-prod
+firebase remoteconfig:templates:set scripts/remoteconfig/templates/wss-fallback.json --project burnbar
 
 # 2. Confirm the Cloud Run service is healthy
 gcloud run services describe hermes-realtime-relay --region us-central1
@@ -49,7 +49,7 @@ Config (existing installs are unaffected — the flag is sticky-on once
 they've successfully used iroh).
 
 ```bash
-firebase remoteconfig:templates:set scripts/remoteconfig/templates/iroh-frozen.json --project openburnbar-prod
+firebase remoteconfig:templates:set scripts/remoteconfig/templates/iroh-frozen.json --project burnbar
 ```
 
 ### 2. Decommission Cloud Run service
@@ -58,7 +58,7 @@ After T+24h with no inbound WSS traffic:
 ```bash
 gcloud run services delete hermes-realtime-relay \
   --region us-central1 \
-  --project openburnbar-prod \
+  --project burnbar \
   --quiet
 ```
 
@@ -68,7 +68,7 @@ After T+72h to allow the Cloud Run job logs to drain:
 ```bash
 gcloud redis instances delete hermes-realtime-relay-redis-prod-secure \
   --region us-central1 \
-  --project openburnbar-prod \
+  --project burnbar \
   --quiet
 ```
 
@@ -78,7 +78,7 @@ Required only if no other Cloud Run service uses the connector:
 ```bash
 gcloud compute networks vpc-access connectors delete hermes-relay-connector \
   --region us-central1 \
-  --project openburnbar-prod \
+  --project burnbar \
   --quiet
 ```
 
@@ -101,7 +101,7 @@ gone:
 
 ```bash
 gcloud firebase appcheck keys delete hermes-relay-app-check-prod \
-  --project openburnbar-prod \
+  --project burnbar \
   --quiet
 ```
 
@@ -119,7 +119,7 @@ If a regression surfaces post-retirement, restore traffic in this order:
    (Memorystore keeps 35-day point-in-time recovery on prod).
 3. **Re-enable WSS** in Remote Config:
    ```bash
-   firebase remoteconfig:templates:set scripts/remoteconfig/templates/wss-fallback.json --project openburnbar-prod
+   firebase remoteconfig:templates:set scripts/remoteconfig/templates/wss-fallback.json --project burnbar
    ```
 4. Push an `OpenBurnBarMobile` build that reverts the
    `HermesCompositeRelayTransport` change so WSS is back in the chain.

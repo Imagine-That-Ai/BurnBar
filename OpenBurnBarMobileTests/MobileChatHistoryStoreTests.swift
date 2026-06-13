@@ -192,6 +192,84 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         XCTAssertTrue(loaded.threads.isEmpty, "Bob's partition must not see Alice's threads")
     }
 
+    func testWrittenChatFilesAreCompleteProtectedAndBackupExcluded() throws {
+        // RR-14: every body / index file the local store drops must carry
+        // NSFileProtectionComplete and be excluded from backup *at write time*,
+        // not just after the launch-only protection sweep. Assert it directly on
+        // the on-disk files.
+        let tempDir = try Self.makeDataProtectionCapableTestDirectory()
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var protectedWrites: [String: (options: Data.WritingOptions, protection: FileProtectionType)] = [:]
+        let store = MobileChatFileLocalStore(
+            directory: tempDir,
+            protectedWriteObserver: { url, options, protection in
+                protectedWrites[url.lastPathComponent] = (options, protection)
+            }
+        )
+        store.setActivePartition("at-rest")
+        let thread = Self.makeThread(id: "protected", runtime: .hermes, title: "Secret transcript")
+        try store.save(MobileChatHistorySnapshot(threads: [thread], tombstones: ["ghost": Date()]))
+
+        // Locate every JSON file the store wrote (the per-partition directory,
+        // its index, and the thread body).
+        let partitionDir = tempDir.appendingPathComponent("mobile-chat-history-at-rest", isDirectory: true)
+        let writtenFiles = try FileManager.default.contentsOfDirectory(
+            at: partitionDir,
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "json" }
+        XCTAssertFalse(writtenFiles.isEmpty, "Store must have written at least the index + one thread body")
+        XCTAssertTrue(writtenFiles.contains { $0.lastPathComponent == "index.json" })
+        XCTAssertTrue(writtenFiles.contains { $0.lastPathComponent.hasPrefix("thread-") })
+
+        for fileURL in writtenFiles {
+            let values = try fileURL.resourceValues(forKeys: [.isExcludedFromBackupKey])
+            XCTAssertEqual(
+                values.isExcludedFromBackup,
+                .some(true),
+                "\(fileURL.lastPathComponent) must be backup-excluded so chat transcripts never land in a device backup"
+            )
+
+            let protectedWrite = try XCTUnwrap(
+                protectedWrites[fileURL.lastPathComponent],
+                "\(fileURL.lastPathComponent) must be written through the protected-file path"
+            )
+            XCTAssertTrue(
+                protectedWrite.options.contains(.atomic),
+                "\(fileURL.lastPathComponent) must be written atomically"
+            )
+            XCTAssertTrue(
+                protectedWrite.options.contains(.completeFileProtection),
+                "\(fileURL.lastPathComponent) must request complete file protection at write time"
+            )
+            XCTAssertEqual(
+                protectedWrite.protection,
+                .complete,
+                "\(fileURL.lastPathComponent) must request NSFileProtectionComplete"
+            )
+
+            #if os(iOS)
+            if !Self.isRunningInIOSSimulator {
+                let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+                let resourceValues = try fileURL.resourceValues(forKeys: [.fileProtectionKey])
+                let observedProtection = (attributes[.protectionKey] as? FileProtectionType)?.rawValue
+                    ?? resourceValues.fileProtection?.rawValue
+                XCTAssertEqual(
+                    observedProtection,
+                    FileProtectionType.complete.rawValue,
+                    "\(fileURL.lastPathComponent) must be written with NSFileProtectionComplete"
+                )
+            }
+            #endif
+        }
+
+        // The partition directory itself is marked backup-excluded too, so new
+        // body files dropped between sweeps inherit the exclusion intent.
+        let dirValues = try partitionDir.resourceValues(forKeys: [.isExcludedFromBackupKey])
+        XCTAssertEqual(dirValues.isExcludedFromBackup, .some(true), "Partition directory must be backup-excluded")
+    }
+
     func testSanitizePartitionKeyStripsPathSeparators() {
         XCTAssertEqual(MobileChatFileLocalStore.sanitizePartitionKey("user/with/slashes"), "user-with-slashes")
         XCTAssertEqual(MobileChatFileLocalStore.sanitizePartitionKey(""), "local")
@@ -444,6 +522,37 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         XCTAssertEqual(decoded.messages.map(\.text), ["Message 0", "Message 1"])
     }
 
+    func testCloudMirrorLegacyPayloadIsPathBoundAndRejectsRelocation() throws {
+        let key = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let thread = Self.makeThread(id: "thread-path-bound", runtime: .pi, title: "Bound")
+        let encoded = try MobileChatFirestoreStore.encodeThreadForCloud(
+            thread,
+            uid: "user-path-bound",
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
+
+        let decoded = MobileChatFirestoreStore.decodeThread(
+            documentID: thread.id,
+            data: encoded,
+            uid: "user-path-bound",
+            vaultKey: key
+        )
+        XCTAssertEqual(decoded?.id, thread.id)
+        XCTAssertEqual(decoded?.title, "Bound")
+
+        XCTAssertNil(
+            MobileChatFirestoreStore.decodeThread(
+                documentID: "thread-relocated",
+                data: encoded,
+                uid: "user-path-bound",
+                vaultKey: key
+            ),
+            "CloudVault chat payloads must not open after being moved to another Firestore document."
+        )
+    }
+
     // MARK: - Helpers
 
     private static func makeThread(
@@ -471,6 +580,20 @@ final class MobileChatHistoryStoreTests: XCTestCase {
             updatedAt: updatedAt,
             messages: messages
         )
+    }
+
+    private static func makeDataProtectionCapableTestDirectory() throws -> URL {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return base.appendingPathComponent("mobile-chat-history-tests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private static var isRunningInIOSSimulator: Bool {
+        ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil
     }
 }
 

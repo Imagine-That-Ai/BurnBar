@@ -11,9 +11,10 @@ npm --prefix tools/openburnbar-mcp-remote run build
 node tools/openburnbar-mcp-remote/lib/index.js mcp doctor
 ```
 
-The shim reads the MCP access token from macOS Keychain when available, then
-falls back to a `0600` file under `~/.openburnbar`. Vault keys are not written
-to client config JSON.
+The shim reads the MCP access token from macOS Keychain. Plaintext env/file
+token sources are disabled by default and require
+`OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE=true` for tests or disposable CI.
+Vault keys are not written to client config JSON.
 
 ## Installers
 

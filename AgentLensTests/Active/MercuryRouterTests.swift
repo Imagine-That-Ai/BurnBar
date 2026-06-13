@@ -1867,6 +1867,7 @@ private final class RouterNoopVideoEncoder: VideoEncoding {
     func start() throws {}
     func encode(sampleBuffer: CMSampleBuffer) async throws {}
     func setTargetBitsPerSecond(_ bps: Int) throws {}
+    func requestLongTermReferenceRefresh() {}
     func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64) {}
     func stop() {}
 }

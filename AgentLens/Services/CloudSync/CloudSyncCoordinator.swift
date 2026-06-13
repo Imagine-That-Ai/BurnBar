@@ -22,6 +22,10 @@ import OpenBurnBarCore
 /// | `syncTextExpansionSnippets()` | new encrypted text-expansion mirror |
 /// | `syncCollaborationArtifacts()` | `syncSharedArtifacts()` |
 /// | `syncRemoteReplicas()` | `downloadRemoteData()` |
+/// `@MainActor`: this is the `@Observable` aggregate read by SwiftUI; main-actor
+/// isolation makes every observable read/mutation main-isolated (finding-211/gap-2).
+/// All pre-existing internal `MainActor.run` hops are kept verbatim.
+@MainActor
 @Observable
 final class CloudSyncCoordinator {
     // MARK: - Dependencies

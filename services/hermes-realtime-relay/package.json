@@ -7,13 +7,14 @@
     "node": "22"
   },
   "scripts": {
-    "prebuild": "../../scripts/build-signal-envelope-contracts.sh",
+    "prebuild": "../../scripts/build-signal-envelope-contracts.sh && ../../scripts/build-entitlements.sh",
     "build": "tsc",
     "start": "node lib/server.js",
     "test": "npm run build && node --test lib/*.test.js",
-    "lint": "eslint src --max-warnings=0 && ../../scripts/build-signal-envelope-contracts.sh && tsc --noEmit"
+    "lint": "eslint src --max-warnings=0 && ../../scripts/build-signal-envelope-contracts.sh && ../../scripts/build-entitlements.sh && tsc --noEmit"
   },
   "dependencies": {
+    "@openburnbar/entitlements": "file:../../packages/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:../../packages/signal-envelope-contracts",
     "firebase-admin": "13.10.0",
     "ioredis": "^5.4.2",

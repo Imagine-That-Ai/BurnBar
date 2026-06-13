@@ -81,4 +81,76 @@ final class MediaFrameAEADTests: XCTestCase {
         XCTAssertFalse(MediaFrameAeadNegotiation.resolveSealingEnabled(localSupports: false, remoteSupports: true))
         XCTAssertEqual(MediaFrameAeadNegotiation.capability, "media_frame_aead_v1")
     }
+
+    // MARK: RR-9 — F7 negotiation fail-closed for non-screen lanes
+
+    func testSealingExpectedForAudioCameraAndFileLanes() {
+        XCTAssertTrue(MediaFrameAeadNegotiation.sealingExpected(for: .audioOut))
+        XCTAssertTrue(MediaFrameAeadNegotiation.sealingExpected(for: .audioIn))
+        XCTAssertTrue(MediaFrameAeadNegotiation.sealingExpected(for: .videoOut))
+        XCTAssertTrue(MediaFrameAeadNegotiation.sealingExpected(for: .videoIn))
+        XCTAssertTrue(MediaFrameAeadNegotiation.sealingExpected(for: .blobAdvertise))
+        XCTAssertTrue(MediaFrameAeadNegotiation.sealingExpected(for: .blobFetch))
+    }
+
+    func testSealingNotExpectedForScreenAndAgentWatchLanes() {
+        // Screen-video / agent-watch keep interoperating with pre-F7 viewers.
+        XCTAssertFalse(MediaFrameAeadNegotiation.sealingExpected(for: .screenVideo))
+        XCTAssertFalse(MediaFrameAeadNegotiation.sealingExpected(for: .controlSurfaceFrame))
+        // Pure control / classify carry no payload.
+        XCTAssertFalse(MediaFrameAeadNegotiation.sealingExpected(for: .control))
+        XCTAssertFalse(MediaFrameAeadNegotiation.sealingExpected(for: .classify))
+    }
+
+    func testNonScreenLaneRefusesWhenRemotePeerCannotSeal() {
+        let decision = MediaFrameAeadNegotiation.resolveSealingDecision(
+            streamClass: .audioOut,
+            localSupports: true,
+            remoteSupports: false,
+            sessionKeyAvailable: true
+        )
+        XCTAssertEqual(decision, .refuseLane(reason: .remoteDoesNotSupportSealing))
+        XCTAssertTrue(decision.isRefusal)
+    }
+
+    func testNonScreenLaneRefusesWhenSessionKeyMissing() {
+        let decision = MediaFrameAeadNegotiation.resolveSealingDecision(
+            streamClass: .blobFetch,
+            localSupports: true,
+            remoteSupports: true,
+            sessionKeyAvailable: false
+        )
+        XCTAssertEqual(decision, .refuseLane(reason: .sessionKeyUnavailable))
+    }
+
+    func testNonScreenLaneSealsWhenBothSupportAndKeyPresent() {
+        let decision = MediaFrameAeadNegotiation.resolveSealingDecision(
+            streamClass: .videoOut,
+            localSupports: true,
+            remoteSupports: true,
+            sessionKeyAvailable: true
+        )
+        XCTAssertEqual(decision, .seal)
+    }
+
+    func testScreenLaneDegradesToUnsealedInsteadOfRefusing() {
+        // Screen-video stays soft: a pre-F7 viewer keeps getting frames over the
+        // iroh transport seal rather than having the lane refused.
+        let degraded = MediaFrameAeadNegotiation.resolveSealingDecision(
+            streamClass: .screenVideo,
+            localSupports: true,
+            remoteSupports: false,
+            sessionKeyAvailable: true
+        )
+        XCTAssertEqual(degraded, .allowUnsealed)
+        XCTAssertFalse(degraded.isRefusal)
+
+        let sealed = MediaFrameAeadNegotiation.resolveSealingDecision(
+            streamClass: .screenVideo,
+            localSupports: true,
+            remoteSupports: true,
+            sessionKeyAvailable: true
+        )
+        XCTAssertEqual(sealed, .seal)
+    }
 }

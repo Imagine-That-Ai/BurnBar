@@ -60,6 +60,9 @@ final class DataStoreCoordinator {
     /// `docs/architecture/macos-performance.md` §2/§14.
     private(set) var usagesVersion: Int = 0
     private var refreshGeneration = 0
+    #if DEBUG
+    var debugRefreshGenerationForTesting: Int { refreshGeneration }
+    #endif
     private var lastAppliedFingerprint: UsageContentFingerprint?
     private var nextWindowBoundary: Date = .distantPast
     /// Injectable clock so boundary-crossing behavior is unit-testable.
@@ -184,11 +187,6 @@ final class DataStoreCoordinator {
 
     // MARK: - Initialization
 
-    /// Persisted escape-hatch key (mirrors `IndexSettings.plaintextDatabaseAcknowledged`).
-    /// Read directly from `UserDefaults.standard` because this open path runs
-    /// before `SettingsManager` exists.
-    private static let plaintextAcknowledgedDefaultsKey = "plaintextDatabaseAcknowledged"
-
     /// Creates the database pool. Reads `databaseEncryptionEnabled` directly from
     /// UserDefaults so this can be called before SettingsManager is initialized.
     /// Enables WAL mode for better read concurrency and write performance.
@@ -197,28 +195,11 @@ final class DataStoreCoordinator {
     /// has no persisted value we treat it as enabled. Existing installs keep their
     /// stored value.
     ///
-    /// **No-brick safety.** Every existing install holds a PLAINTEXT database
-    /// (encryption was dead code until B-DATA-1), and the daemon shares this same
-    /// file with no key. Two failure modes are handled without ever bricking data:
-    ///
-    ///   1. **SQLCipher genuinely unavailable in this build.** `makeConfiguration`
-    ///      hard-fails via its `PRAGMA cipher_version` self-check
-    ///      (`DatabaseEncryptionError.cipherUnavailable`). We then fall back to a
-    ///      plaintext pool and record the acknowledged-plaintext escape hatch so the
-    ///      app keeps running (with a standing banner) instead of crashing.
-    ///   2. **Existing plaintext file + encryption now on.** Applying a cipher key
-    ///      to a plaintext file fails to open it (`SQLITE error 26`). A safe in-place
-    ///      `sqlcipher_export` migration cannot be implemented or PROVEN against the
-    ///      current SPM build (the resolved `GRDB-SQLCipher` product links system
-    ///      SQLite with no `SQLITE_HAS_CODEC`, so `usePassphrase`/`sqlcipher_export`
-    ///      are unavailable). Per the no-brick rule we therefore do NOT force-encrypt
-    ///      existing plaintext DBs: we open them plaintext under the same escape
-    ///      hatch and leave the migration as a TODO for the SQLCipher-linked build.
-    ///
-    /// TODO(B-DATA-1): once the build links a real SQLCipher (PRAGMA cipher_version
-    /// non-empty), implement the pre-migration-backup + `sqlcipher_export` encrypt
-    /// step here and drop the plaintext fallback for the "existing plaintext file"
-    /// case. Reuse `OpenBurnBarDatabase`'s backup machinery before exporting.
+    /// **Fail-closed invariant.** When encryption is enabled, this method never
+    /// opens the store plaintext. If the build is missing SQLCipher or the current
+    /// database is a legacy plaintext SQLite file, startup fails with a typed error
+    /// so the app can surface migration/reinstall guidance instead of silently
+    /// violating the data-at-rest contract.
     private static func makeDatabasePool(path: String) throws -> DatabasePool {
         let defaults = UserDefaults.standard
         // Default-on for new installs: only treat as disabled when explicitly stored false.
@@ -230,49 +211,75 @@ final class DataStoreCoordinator {
             return try DatabasePool(path: path, configuration: config)
         }
 
-        // Existing plaintext DB + encryption now on: cannot safely encrypt-migrate
-        // in this build, so fall back to plaintext under the acknowledged escape
-        // hatch rather than fail to open the user's data.
-        let fileExists = FileManager.default.fileExists(atPath: path)
-        if fileExists, DatabaseEncryptionService.isEncryptedDatabaseFile(at: path) == false {
+        // Codec-absence is a BUILD condition (the SPM `GRDB`/`CSQLite` systemLibrary links stock
+        // SQLite with no SQLCipher codec), identical for every install — not a per-user data issue.
+        // Refusing here would brick 100% of installs while delivering zero encryption, so when the
+        // codec is provably unavailable we run plaintext but DISCLOSE it (persistent acknowledged
+        // flag + error log) — never the silent plaintext of the original bug, never a startup brick.
+        guard DatabaseEncryptionService.isCipherAvailable() else {
             AppLogger.dataStore.error(
-                "encryption_skipped_existing_plaintext_db",
+                "encryption_unavailable_codec_absent",
                 metadata: [
-                    "reason": "Existing plaintext database; safe encrypt-migration unavailable in this build",
+                    "reason": "SQLCipher codec not linked (PRAGMA cipher_version empty); running disclosed plaintext",
                     "path": path
                 ]
             )
-            return try openPlaintextWithEscapeHatch(path: path, defaults: defaults)
+            return try openDisclosedPlaintext(path: path, defaults: defaults)
+        }
+
+        // Codec IS available. A legacy plaintext DB is a per-user migration decision: refuse to
+        // open it encrypted-but-unmigrated (the startup-recovery UI handles it) rather than
+        // silently continue plaintext.
+        let fileExists = FileManager.default.fileExists(atPath: path)
+        if fileExists, DatabaseEncryptionService.isEncryptedDatabaseFile(at: path) == false {
+            AppLogger.dataStore.error(
+                "encryption_refused_existing_plaintext_db",
+                metadata: [
+                    "reason": "Existing plaintext database; refusing plaintext fallback while encryption is enabled",
+                    "path": path
+                ]
+            )
+            throw DatabaseEncryptionError.plaintextDatabaseRequiresMigration(path: path)
         }
 
         let encryptionKey = DatabaseEncryptionService.getOrCreateKey()
-        do {
-            var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
-            installDebugQueryTracer(on: &config)
-            return try DatabasePool(path: path, configuration: config)
-        } catch is DatabaseEncryptionError {
-            // SQLCipher not active in this build. Hard-failing the whole app is the
-            // one unacceptable outcome, so proceed in plaintext under the explicit
-            // acknowledged escape hatch + standing banner.
-            AppLogger.dataStore.error(
-                "encryption_unavailable_falling_back_plaintext",
-                metadata: ["reason": "SQLCipher inactive (PRAGMA cipher_version empty)", "path": path]
-            )
-            return try openPlaintextWithEscapeHatch(path: path, defaults: defaults)
-        }
+        var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+        installDebugQueryTracer(on: &config)
+        return try DatabasePool(path: path, configuration: config)
     }
 
-    /// Opens the database in plaintext and persists the acknowledged-plaintext
-    /// escape hatch so the UI can surface a standing "data is not encrypted" banner.
-    private static func openPlaintextWithEscapeHatch(
-        path: String,
-        defaults: UserDefaults
-    ) throws -> DatabasePool {
-        defaults.set(true, forKey: plaintextAcknowledgedDefaultsKey)
+    /// UserDefaults key set when the app is running plaintext because the SQLCipher codec is not
+    /// linked. Read by the security/settings surface to render a persistent "database is not
+    /// encrypted" banner — this is what makes the plaintext fallback LOUD rather than silent.
+    static let plaintextFallbackAcknowledgedDefaultsKey = "databaseEncryptionPlaintextFallbackAcknowledged"
+
+    /// Opens the database in plaintext and persists the disclosure flag so the UI can surface a
+    /// standing "not encrypted" banner. Used only when encryption is requested but the build cannot
+    /// provide the codec (see `makeDatabasePool`).
+    private static func openDisclosedPlaintext(path: String, defaults: UserDefaults) throws -> DatabasePool {
+        defaults.set(true, forKey: plaintextFallbackAcknowledgedDefaultsKey)
         var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
         installDebugQueryTracer(on: &config)
         return try DatabasePool(path: path, configuration: config)
     }
+
+    #if DEBUG
+    static func makeDatabasePoolForTesting(path: String) throws -> DatabasePool {
+        try makeDatabasePool(path: path)
+    }
+
+    static func makeInMemoryForTesting(
+        runMigrations: Bool = true,
+        refreshOnInit: Bool = false
+    ) throws -> DataStoreCoordinator {
+        let queue = try DatabaseQueue()
+        return try DataStoreCoordinator(
+            databaseQueue: queue,
+            runMigrations: runMigrations,
+            refreshOnInit: refreshOnInit
+        )
+    }
+    #endif
 
     /// DEBUG-only N+1 detection (`OpenBurnBarQueryTracer`). Must run AFTER
     /// `makeConfiguration`: GRDB chains `prepareDatabase` closures in install
@@ -315,7 +322,10 @@ final class DataStoreCoordinator {
         let actor = try DataStoreActor(databaseQueue: databaseQueue, runMigrations: runMigrations)
         self.actor = actor
 
-        if refreshOnInit {
+        // Callers that disable migrations often provide fixture schemas, or no
+        // schema at all. Auto-refresh would race those fixtures and query
+        // production tables that intentionally do not exist there.
+        if refreshOnInit, runMigrations {
             Task { await refresh() }
         }
     }

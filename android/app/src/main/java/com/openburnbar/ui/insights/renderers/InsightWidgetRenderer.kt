@@ -51,11 +51,12 @@ import com.openburnbar.ui.insights.CitationChipRow
 import com.openburnbar.ui.insights.InsightsColors
 import com.openburnbar.ui.insights.InsightsSpacing
 import com.openburnbar.ui.theme.AuroraSpacing
+import com.openburnbar.util.Formatting
 
 // ─── Formatting helpers ─────────────────────────────────────────────────────
 
 internal fun formatValue(value: Double, format: ValueFormat?): String = when (format) {
-    ValueFormat.CURRENCY -> String.format("$%,.2f", value)
+    ValueFormat.CURRENCY -> Formatting.formatCurrency(value)
     ValueFormat.PERCENT -> String.format("%.1f%%", value * 100)
     ValueFormat.DURATION -> {
         val hours = (value / 3600).toInt()

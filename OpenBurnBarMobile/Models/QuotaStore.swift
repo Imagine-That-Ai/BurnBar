@@ -590,14 +590,6 @@ final class QuotaStore {
     }
 }
 
-private extension Optional where Wrapped == String {
-    var nilIfBlank: String? {
-        guard let value = self?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
-        return value
-    }
-}
-
 private extension Array where Element == String {
     var firstNonBlank: String? {
         first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

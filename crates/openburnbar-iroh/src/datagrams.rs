@@ -97,7 +97,9 @@ impl IrohDatagramChannel {
         handle.block_on(async move {
             let guard = self.inner.lock().await;
             let inner = guard.as_ref().ok_or(IrohFfiError::EndpointNotInitialized)?;
-            Ok(inner.conn.max_datagram_size().unwrap_or(0) as u32)
+            Ok(crate::u32_saturating_from_usize(
+                inner.conn.max_datagram_size().unwrap_or(0),
+            ))
         })
     }
 }

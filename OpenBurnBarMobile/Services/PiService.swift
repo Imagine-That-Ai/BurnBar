@@ -227,6 +227,13 @@ final class PiService {
     private let urlSession: URLSession
     private let defaults: UserDefaults
     private let history: MobileChatHistoryStore
+    /// Composition seam (WP3-IOSROOT, see `AppServices`): resolves the
+    /// CLI-runtime model-catalog provider used by the relay model-discovery
+    /// fallback. A closure — resolved at call time, not init time — so
+    /// constructing a `PiService` keeps the historical lazy
+    /// `HermesService.shared` initialization order exactly. Injectable in
+    /// tests; production default is `{ HermesService.shared }`.
+    private let runtimeCatalogProvider: @MainActor () -> any CLIRuntimeCatalogProviding
     private var currentTask: Task<Void, Never>?
 
     private let selectedConnectionDefaultsKey = "pi.selectedConnectionID"
@@ -253,12 +260,14 @@ final class PiService {
         urlSession: URLSession = .shared,
         defaults: UserDefaults = .standard,
         history: MobileChatHistoryStore = .shared,
-        toolCatalog: MobileToolCatalog = .default
+        toolCatalog: MobileToolCatalog = .default,
+        runtimeCatalogProvider: @escaping @MainActor () -> any CLIRuntimeCatalogProviding = { HermesService.shared }
     ) {
         self.urlSession = urlSession
         self.defaults = defaults
         self.history = history
         self.toolCatalog = toolCatalog
+        self.runtimeCatalogProvider = runtimeCatalogProvider
         self.selectedModelID = Self.restoredModelID(
             defaults.string(forKey: selectedModelDefaultsKey),
             defaults: defaults,
@@ -859,7 +868,7 @@ final class PiService {
     /// `HermesService.fetchCLIRuntimeModelCatalog`.
     private func loadModelsViaRelay() async {
         do {
-            let catalog = try await HermesService.shared.fetchCLIRuntimeModelCatalog(runtime: .pi)
+            let catalog = try await runtimeCatalogProvider().fetchCLIRuntimeModelCatalog(runtime: .pi)
             let relayOptions = catalog.options.map { option in
                 HermesRuntimeModelOption(
                     providerID: option.providerID,
@@ -1350,12 +1359,5 @@ extension PiService: MobileToolContext {
             messages.append(reply)
         }
         return results
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        let t = trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
     }
 }

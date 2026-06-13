@@ -205,15 +205,18 @@ impl Packetizer for DatagramPacketizer {
         }
 
         let chunk_len = max_datagram_payload - MEDIA_DATAGRAM_HEADER_LEN;
-        let packet_count = frame.bytes.len().div_ceil(chunk_len);
-        if packet_count > u16::MAX as usize {
+        let packet_count_usize = frame.bytes.len().div_ceil(chunk_len);
+        if packet_count_usize > u16::MAX as usize {
             return Err(MediaError::Packetize(format!(
-                "frame requires {packet_count} packets, exceeds u16 packet_count"
+                "frame requires {packet_count_usize} packets, exceeds u16 packet_count"
             )));
         }
+        let packet_count = u16::try_from(packet_count_usize).map_err(|_| {
+            MediaError::Packetize("packet count exceeds u16 packet_count".to_string())
+        })?;
 
         output.clear();
-        output.reserve(packet_count);
+        output.reserve(packet_count_usize);
         let flags = match frame.dependency {
             FrameDependency::Key => 0b0000_0001,
             FrameDependency::IntraRefresh => 0b0000_0010,
@@ -221,13 +224,16 @@ impl Packetizer for DatagramPacketizer {
             FrameDependency::Delta => 0,
         };
         for (idx, chunk) in frame.bytes.chunks(chunk_len).enumerate() {
+            let packet_index = u16::try_from(idx).map_err(|_| {
+                MediaError::Packetize("packet index exceeds u16 packet_index".to_string())
+            })?;
             let header = MediaDatagramHeader {
                 class: DatagramClass::Video,
                 flags,
                 stream_id: self.stream_id,
                 frame_id: frame.metadata.frame_id,
-                packet_index: idx as u16,
-                packet_count: packet_count as u16,
+                packet_index,
+                packet_count,
                 capture_timestamp: frame.metadata.captured_at,
                 payload_len: 0,
             };
@@ -705,7 +711,7 @@ impl AdaptiveQualityController {
         current_dimensions: Dimensions,
         relay: bool,
     ) {
-        self.output.target_bitrate_bps = ((self.output.target_bitrate_bps as f32) * 0.65) as u32;
+        self.output.target_bitrate_bps = self.output.target_bitrate_bps.saturating_mul(65) / 100;
         self.output.target_fps = match preference {
             QualityPreference::Quality | QualityPreference::Balanced => {
                 self.output.target_fps.min(45)
@@ -735,8 +741,9 @@ impl AdaptiveQualityController {
     }
 
     fn slow_recover(&mut self, cap: u32, current_dimensions: Dimensions) {
+        let recovered_bitrate = u64::from(self.output.target_bitrate_bps).saturating_mul(108) / 100;
         self.output.target_bitrate_bps =
-            ((self.output.target_bitrate_bps as f32) * 1.08).min(cap as f32) as u32;
+            u32::try_from(recovered_bitrate.min(u64::from(cap))).unwrap_or(cap);
         self.output.target_dimensions = Dimensions {
             width: (self.output.target_dimensions.width + 160).min(current_dimensions.width),
             height: (self.output.target_dimensions.height + 90).min(current_dimensions.height),
@@ -752,12 +759,30 @@ mod tests {
     use burnbar_remote_core::{ColorSpace, SequenceNumber};
     use burnbar_remote_observability::NetworkTelemetry;
 
+    fn must<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("{context}: {error}"),
+        }
+    }
+
+    fn must_some<T>(option: Option<T>, context: &str) -> T {
+        match option {
+            Some(value) => value,
+            None => panic!("{context}"),
+        }
+    }
+
+    fn dims(width: u32, height: u32) -> Dimensions {
+        must(Dimensions::new(width, height), "dimensions should be valid")
+    }
+
     fn frame_metadata(frame_id: u64) -> FrameMetadata {
         FrameMetadata {
             frame_id: FrameId(frame_id),
             display_id: DisplayId::new("main"),
             sequence: SequenceNumber(frame_id),
-            dimensions: Dimensions::new(1920, 1080).unwrap(),
+            dimensions: dims(1920, 1080),
             capture_started_at: TimestampMicros(10),
             captured_at: TimestampMicros(20),
             encode_started_at: TimestampMicros(30),
@@ -771,7 +796,7 @@ mod tests {
 
     #[test]
     fn relay_path_caps_bitrate() {
-        let dims = Dimensions::new(3840, 2160).unwrap();
+        let dims = dims(3840, 2160);
         let mut controller = AdaptiveQualityController::new(dims, QualityPreference::Balanced);
         let mut telemetry = NetworkTelemetry::direct_good();
         telemetry.relay = true;
@@ -791,7 +816,7 @@ mod tests {
 
     #[test]
     fn packet_loss_fast_downshifts() {
-        let dims = Dimensions::new(1920, 1080).unwrap();
+        let dims = dims(1920, 1080);
         let mut controller = AdaptiveQualityController::new(dims, QualityPreference::Balanced);
         let mut telemetry = NetworkTelemetry::direct_good();
         telemetry.packet_loss_ppm = Some(30_000);
@@ -819,16 +844,22 @@ mod tests {
         };
         let mut packetizer = DatagramPacketizer::new(3);
         let mut packets = Vec::new();
-        packetizer.packetize(frame, 1_200, &mut packets).unwrap();
+        must(
+            packetizer.packetize(frame, 1_200, &mut packets),
+            "frame should packetize",
+        );
         assert!(packets.len() > 1);
         assert!(packets.iter().all(|packet| packet.len() <= 1_200));
 
         let mut depacketizer = DatagramDepacketizer::new(8, Duration::from_millis(100));
         let mut out = None;
         for packet in packets {
-            out = depacketizer.push(packet, TimestampMicros(50)).unwrap();
+            out = must(
+                depacketizer.push(packet, TimestampMicros(50)),
+                "packet should depacketize",
+            );
         }
-        let out = out.expect("complete frame");
+        let out = must_some(out, "packets should complete a frame");
         assert_eq!(out.frame_id, FrameId(7));
         assert_eq!(out.stream_id, 3);
         assert_eq!(out.dependency, FrameDependency::Key);
@@ -845,13 +876,17 @@ mod tests {
         };
         let mut packetizer = DatagramPacketizer::new(1);
         let mut packets = Vec::new();
-        packetizer.packetize(frame, 1_200, &mut packets).unwrap();
+        must(
+            packetizer.packetize(frame, 1_200, &mut packets),
+            "frame should packetize",
+        );
 
         let mut depacketizer = DatagramDepacketizer::new(8, Duration::from_millis(10));
-        assert!(depacketizer
-            .push(packets.remove(0), TimestampMicros(1_000))
-            .unwrap()
-            .is_none());
+        assert!(must(
+            depacketizer.push(packets.remove(0), TimestampMicros(1_000)),
+            "packet should depacketize",
+        )
+        .is_none());
         assert_eq!(depacketizer.incomplete_count(), 1);
         assert_eq!(depacketizer.discard_stale(TimestampMicros(20_000)), 1);
         assert_eq!(depacketizer.incomplete_count(), 0);
@@ -867,19 +902,26 @@ mod tests {
         };
         let mut packetizer = DatagramPacketizer::new(1);
         let mut packets = Vec::new();
-        packetizer.packetize(frame, 1_200, &mut packets).unwrap();
+        must(
+            packetizer.packetize(frame, 1_200, &mut packets),
+            "frame should packetize",
+        );
 
         let mut depacketizer = DatagramDepacketizer::new(1, Duration::from_millis(100));
-        assert!(depacketizer
-            .push(packets.remove(0), TimestampMicros(1_000))
-            .unwrap()
-            .is_none());
+        assert!(must(
+            depacketizer.push(packets.remove(0), TimestampMicros(1_000)),
+            "packet should depacketize",
+        )
+        .is_none());
         assert_eq!(depacketizer.incomplete_count(), 1);
 
-        let out = depacketizer
-            .push(packets.remove(0), TimestampMicros(1_100))
-            .unwrap()
-            .expect("second packet completes the existing partial");
+        let out = must_some(
+            must(
+                depacketizer.push(packets.remove(0), TimestampMicros(1_100)),
+                "packet should depacketize",
+            ),
+            "second packet should complete the existing partial",
+        );
         assert_eq!(out.frame_id, FrameId(9));
         assert_eq!(out.stream_id, 1);
         assert_eq!(out.bytes.len(), 2_048);
@@ -904,31 +946,41 @@ mod tests {
         let mut packetizer_b = DatagramPacketizer::new(2);
         let mut packets_a = Vec::new();
         let mut packets_b = Vec::new();
-        packetizer_a
-            .packetize(frame_a, 1_200, &mut packets_a)
-            .unwrap();
-        packetizer_b
-            .packetize(frame_b, 1_200, &mut packets_b)
-            .unwrap();
+        must(
+            packetizer_a.packetize(frame_a, 1_200, &mut packets_a),
+            "stream 1 frame should packetize",
+        );
+        must(
+            packetizer_b.packetize(frame_b, 1_200, &mut packets_b),
+            "stream 2 frame should packetize",
+        );
 
         let mut depacketizer = DatagramDepacketizer::new(8, Duration::from_millis(100));
-        assert!(depacketizer
-            .push(packets_a.remove(0), TimestampMicros(1_000))
-            .unwrap()
-            .is_none());
-        assert!(depacketizer
-            .push(packets_b.remove(0), TimestampMicros(1_010))
-            .unwrap()
-            .is_none());
+        assert!(must(
+            depacketizer.push(packets_a.remove(0), TimestampMicros(1_000)),
+            "stream 1 first packet should depacketize",
+        )
+        .is_none());
+        assert!(must(
+            depacketizer.push(packets_b.remove(0), TimestampMicros(1_010)),
+            "stream 2 first packet should depacketize",
+        )
+        .is_none());
 
-        let out_a = depacketizer
-            .push(packets_a.remove(0), TimestampMicros(1_020))
-            .unwrap()
-            .expect("stream 1 frame completes independently");
-        let out_b = depacketizer
-            .push(packets_b.remove(0), TimestampMicros(1_030))
-            .unwrap()
-            .expect("stream 2 frame completes independently");
+        let out_a = must_some(
+            must(
+                depacketizer.push(packets_a.remove(0), TimestampMicros(1_020)),
+                "stream 1 second packet should depacketize",
+            ),
+            "stream 1 frame should complete independently",
+        );
+        let out_b = must_some(
+            must(
+                depacketizer.push(packets_b.remove(0), TimestampMicros(1_030)),
+                "stream 2 second packet should depacketize",
+            ),
+            "stream 2 frame should complete independently",
+        );
 
         assert_eq!(out_a.frame_id, FrameId(10));
         assert_eq!(out_a.stream_id, 1);
@@ -941,7 +993,7 @@ mod tests {
 
     #[test]
     fn codec_policy_prefers_responsiveness_over_av1_when_requested() {
-        let dims = Dimensions::new(1920, 1080).unwrap();
+        let dims = dims(1920, 1080);
         let caps = MediaCapabilitySet {
             codecs: vec![
                 CodecCapability {
@@ -981,8 +1033,8 @@ mod tests {
 
     #[test]
     fn codec_policy_never_returns_codec_that_misses_target_shape() {
-        let full_hd = Dimensions::new(1920, 1080).unwrap();
-        let uhd = Dimensions::new(3840, 2160).unwrap();
+        let full_hd = dims(1920, 1080);
+        let uhd = dims(3840, 2160);
         let caps = MediaCapabilitySet {
             codecs: vec![
                 CodecCapability {
@@ -1023,7 +1075,7 @@ mod tests {
 
     #[test]
     fn stable_samples_recover_slowly() {
-        let dims = Dimensions::new(1920, 1080).unwrap();
+        let dims = dims(1920, 1080);
         let mut controller = AdaptiveQualityController::new(dims, QualityPreference::Balanced);
         let mut bad = NetworkTelemetry::direct_good();
         bad.packet_loss_ppm = Some(40_000);

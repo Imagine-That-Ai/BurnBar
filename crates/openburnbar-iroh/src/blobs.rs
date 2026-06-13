@@ -282,7 +282,7 @@ impl IrohBlobNode {
                 })?;
 
             let bytes_total = std::fs::metadata(&abs_dest).map(|m| m.len()).unwrap_or(0);
-            let duration_millis = started.elapsed().as_millis() as u64;
+            let duration_millis = crate::u64_saturating_from_u128(started.elapsed().as_millis());
 
             Ok(BlobTransferStats {
                 bytes_total,
@@ -378,13 +378,19 @@ mod tests {
     fn parse_blob_ticket_round_trips_a_real_ticket() {
         let ticket = sample_ticket();
         let original = ticket.to_string();
-        let parsed = parse_blob_ticket(original.clone()).expect("ticket parses");
+        let parsed = match parse_blob_ticket(original.clone()) {
+            Ok(parsed) => parsed,
+            Err(error) => panic!("ticket parses: {error}"),
+        };
         assert_eq!(parsed.text, original);
     }
 
     #[test]
     fn parse_blob_ticket_rejects_garbage() {
-        let err = parse_blob_ticket("not-a-real-ticket".into()).unwrap_err();
+        let err = match parse_blob_ticket("not-a-real-ticket".into()) {
+            Ok(_) => panic!("garbage ticket must be rejected"),
+            Err(error) => error,
+        };
         match err {
             IrohFfiError::StreamFailed { detail } => {
                 assert!(detail.starts_with("invalid blob ticket"));
@@ -398,7 +404,10 @@ mod tests {
         let ticket = sample_ticket();
         let original = ticket.to_string();
         let padded = format!("  \t{original}  \n");
-        let parsed = parse_blob_ticket(padded).expect("padded ticket parses");
+        let parsed = match parse_blob_ticket(padded) {
+            Ok(parsed) => parsed,
+            Err(error) => panic!("padded ticket parses: {error}"),
+        };
         assert_eq!(parsed.text, original);
     }
 

@@ -171,6 +171,9 @@ class AgentCapabilityGrantController(
             peerNodeId = peerNodeId,
             signingIdentityProvider = { identity },
             counterStore = counterStore,
+            attestationDigestProvider = { AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope() },
+            // RR-7c: fail-closed attestation gate under the strict ramp (the agent-grant path enforces, mirror iOS).
+            attestationEnforcer = { AndroidAppCheckAttestationReader.ensureAttestationDigestOrThrow() },
             frameSink = { frame -> coordinator.send(frame) },
         ).also {
             phoneControlSender = it

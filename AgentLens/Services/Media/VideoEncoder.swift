@@ -26,8 +26,9 @@ private final class SendableVideoSampleBuffer: @unchecked Sendable {
 @MainActor
 protocol VideoEncoding: AnyObject {
     func start() throws
-    func encode(sampleBuffer: CMSampleBuffer) async throws
     func setTargetBitsPerSecond(_ bps: Int) throws
+    func encode(sampleBuffer: CMSampleBuffer) async throws
+    func requestLongTermReferenceRefresh()
     func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64)
     func stop()
 }

@@ -44,6 +44,7 @@ import com.openburnbar.ui.components.AuroraButton
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraType
+import com.openburnbar.util.Formatting
 
 @Composable
 internal fun BudgetCenterSummaryBanner(
@@ -97,14 +98,14 @@ private fun BudgetCenterSummarySpendRow(totalSpend: Double, totalLimit: Double, 
     ) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                text = "$${"%.2f".format(totalSpend)}",
+                text = Formatting.formatCurrency(totalSpend),
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = "/ $${"%.2f".format(totalLimit)}",
+                text = "/ ${Formatting.formatCurrency(totalLimit)}",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp),
@@ -173,9 +174,9 @@ private fun budgetForecastProjectionText(metrics: BudgetForecastMetrics): String
         metrics.rulesEmpty ->
             "Configure budget rules above to enable run-rate predictive forecasts and automated breach alerting."
         metrics.limitBreach -> {
-            val limit = "%.2f".format(metrics.totalLimit)
+            val limit = Formatting.formatCurrency(metrics.totalLimit)
             "⚠️ AI Projection: At your current 7-day average run rate, you are projected to breach " +
-                "your total budget limit of $$limit in approximately ${metrics.breachDays} days. " +
+                "your total budget limit of $limit in approximately ${metrics.breachDays} days. " +
                 "We recommend applying route-optimisation options listed below."
         }
         else ->
@@ -232,7 +233,7 @@ private fun BudgetCenterForecastMetricsRow(metrics: BudgetForecastMetrics, isDar
         Column {
             Text("Daily Average Run Rate", style = AuroraType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                text = "$${"%.2f".format(metrics.dailyAverage)} / day",
+                text = "${Formatting.formatCurrency(metrics.dailyAverage)} / day",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
             )
@@ -240,7 +241,7 @@ private fun BudgetCenterForecastMetricsRow(metrics: BudgetForecastMetrics, isDar
         Column(horizontalAlignment = Alignment.End) {
             Text("Projected Month End", style = AuroraType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                text = "$${"%.2f".format(metrics.monthEndSpend)}",
+                text = Formatting.formatCurrency(metrics.monthEndSpend),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 color = budgetForecastMonthEndColor(metrics, isDark),
@@ -366,7 +367,7 @@ internal fun BudgetCenterRuleCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Spent $${"%.2f".format(spend)} of $${"%.2f".format(limit)} (${(percent * 100).toInt()}%)",
+                    text = "Spent ${Formatting.formatCurrency(spend)} of ${Formatting.formatCurrency(limit)} (${(percent * 100).toInt()}%)",
                     style = AuroraType.caption,
                     fontWeight = FontWeight.SemiBold,
                     color = budgetUsageProgressColor(percent, isDark),
@@ -542,7 +543,7 @@ internal fun BudgetCenterActivityLogEvent(event: BudgetEvent, isDark: Boolean) {
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Rule ID: ${event.ruleID.take(8)} · Amount: $${"%.2f".format(event.amountAtEvent)} / limit: $${"%.2f".format(event.limitAtEvent)}",
+                text = "Rule ID: ${event.ruleID.take(8)} · Amount: ${Formatting.formatCurrency(event.amountAtEvent)} / limit: ${Formatting.formatCurrency(event.limitAtEvent)}",
                 style = AuroraType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

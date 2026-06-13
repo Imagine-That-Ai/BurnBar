@@ -71,6 +71,7 @@ internal fun ScreenShareViewerActivity.reinstallMirrorSurfaceAfterReturn() {
                     .onFailure { controlError ->
                         phoneControlSender = null
                         phoneControlConnectionID = null
+                        BurnBarApplication.activePhoneControlSender = null
                         controlStatus.value =
                             when {
                                 controlError.message?.contains("not trusted", ignoreCase = true) == true ->
@@ -81,11 +82,13 @@ internal fun ScreenShareViewerActivity.reinstallMirrorSurfaceAfterReturn() {
             } else {
                 phoneControlSender = null
                 phoneControlConnectionID = null
+                BurnBarApplication.activePhoneControlSender = null
                 controlStatus.value = "Mirror is reconnecting..."
             }
         }.onFailure { error ->
             phoneControlSender = null
             phoneControlConnectionID = null
+            BurnBarApplication.activePhoneControlSender = null
             controlStatus.value = error.message?.take(CONTROL_STATUS_SHORT_MAX) ?: "Reconnect failed"
             Log.w(ScreenShareViewerActivity.TAG, "Android screen-share return recovery failed error=${error.message}", error)
         }
@@ -397,12 +400,17 @@ internal suspend fun ScreenShareViewerActivity.ensurePhoneControlSender(): Phone
             signingIdentityProvider = { identity },
             counterStore = counterStore,
             attestationDigestProvider = { AndroidAppCheckAttestationReader.currentAttestationDigestForEnvelope() },
+            // RR-7c: fail-closed attestation gate — under the strict ramp the control-action send
+            // binds + attaches an enforceable digest or throws, so Android stops being attach-only.
+            attestationEnforcer = { AndroidAppCheckAttestationReader.ensureAttestationDigestOrThrow() },
             frameSink = sealSession
                 ?.let { ControlSealSessionEstablisher.sealingFrameSink(baseSink, it) }
                 ?: baseSink,
         ).also {
             phoneControlSender = it
             phoneControlConnectionID = pair.connectionID
+            // RR-7b: publish the live sender so the Agent Watch surface can sign + transmit approvals.
+            BurnBarApplication.activePhoneControlSender = it
         }
     }
 }
@@ -488,6 +496,7 @@ internal fun ScreenShareViewerActivity.trustThisAndroidForControl() {
             AndroidEscrowDeviceRegistry().trustSelf(uid = pair.uid)
             phoneControlSender = null
             phoneControlConnectionID = null
+            BurnBarApplication.activePhoneControlSender = null
             controlStatus.value = "Android trusted for Mac control"
             Log.i(ScreenShareViewerActivity.TAG, "Android phone-control trusted local escrow device for uid=${pair.uid}")
         }.onFailure { error ->

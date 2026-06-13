@@ -53,7 +53,7 @@ impl TimestampMicros {
     pub const ZERO: Self = Self(0);
 
     pub fn saturating_add_duration(self, duration: Duration) -> Self {
-        let micros = duration.as_micros().min(u64::MAX as u128) as u64;
+        let micros = u64::try_from(duration.as_micros()).unwrap_or(u64::MAX);
         Self(self.0.saturating_add(micros))
     }
 
@@ -90,8 +90,10 @@ impl Dimensions {
 
     pub fn scaled_by(self, numerator: u32, denominator: u32) -> Self {
         let denominator = denominator.max(1);
-        let width = ((self.width as u64 * numerator as u64) / denominator as u64).max(1) as u32;
-        let height = ((self.height as u64 * numerator as u64) / denominator as u64).max(1) as u32;
+        let width = (self.width as u64 * numerator as u64) / denominator as u64;
+        let height = (self.height as u64 * numerator as u64) / denominator as u64;
+        let width = u32::try_from(width.max(1)).unwrap_or(u32::MAX);
+        let height = u32::try_from(height.max(1)).unwrap_or(u32::MAX);
         Self { width, height }
     }
 }
@@ -332,9 +334,16 @@ impl<T> BoundedQueue<T> {
 
     pub fn push_drop_oldest(&mut self, item: T) -> QueuePushOutcome<T> {
         if self.items.len() == self.capacity {
-            let dropped = self.items.pop_front().expect("len checked");
-            self.items.push_back(item);
-            QueuePushOutcome::DroppedOldest(dropped)
+            match self.items.pop_front() {
+                Some(dropped) => {
+                    self.items.push_back(item);
+                    QueuePushOutcome::DroppedOldest(dropped)
+                }
+                None => {
+                    self.items.push_back(item);
+                    QueuePushOutcome::Enqueued
+                }
+            }
         } else {
             self.items.push_back(item);
             QueuePushOutcome::Enqueued
@@ -373,7 +382,10 @@ mod tests {
 
     #[test]
     fn bounded_queue_drops_oldest_media() {
-        let mut queue = BoundedQueue::with_capacity(2).unwrap();
+        let mut queue = match BoundedQueue::with_capacity(2) {
+            Ok(queue) => queue,
+            Err(error) => panic!("capacity is nonzero: {error}"),
+        };
         assert_eq!(queue.push_drop_oldest(1), QueuePushOutcome::Enqueued);
         assert_eq!(queue.push_drop_oldest(2), QueuePushOutcome::Enqueued);
         assert_eq!(

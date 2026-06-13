@@ -11,8 +11,10 @@ import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
 import com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeypair
+import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.cloud.CloudVaultSignalRecipient
+import com.openburnbar.data.cloud.SignalAtRestFallbackPolicy
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import java.time.Instant
 import java.util.UUID
@@ -94,22 +96,56 @@ private fun sealedMissionEventPayloadMap(payload: AndroidMissionEventPrivatePayl
         ),
     )
 
-private fun openMissionPayload(raw: Any?, vaultKey: ByteArray?): AndroidMissionPrivatePayload? {
+// RR-8 path-bound AAD contexts. These MUST match the Swift writers/readers in
+// AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift +
+// OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift byte-for-byte (see the
+// cross-language KAT CloudVaultAadParityTest). They are nil-safe: when the ids are
+// unavailable the readers fall back to legacy global-AAD docs (openPayload branches on
+// envelope.aad, so a path context is ignored for a global-AAD document).
+private fun missionRequestAadContext(uid: String?, requestID: String): CloudVaultAADContext? =
+    uid?.let {
+        runCatching {
+            CloudVaultAADContext(uid = it, collection = "cli_agent_mission_requests", docID = requestID, field = "sealedPayload")
+        }.getOrNull()
+    }
+
+private fun missionStateAadContext(uid: String?, requestID: String): CloudVaultAADContext? =
+    uid?.let {
+        runCatching {
+            CloudVaultAADContext(uid = it, collection = "cli_agent_mission_requests", docID = requestID, field = "sealedStatePayload")
+        }.getOrNull()
+    }
+
+private fun missionEventAadContext(uid: String?, requestID: String?, eventID: String?): CloudVaultAADContext? =
+    if (uid != null && requestID != null && eventID != null) {
+        runCatching {
+            CloudVaultAADContext(
+                uid = uid,
+                collection = "cli_agent_mission_requests/events",
+                docID = "$requestID/$eventID",
+                field = "sealedPayload",
+            )
+        }.getOrNull()
+    } else {
+        null
+    }
+
+private fun openMissionPayload(raw: Any?, vaultKey: ByteArray?, aadContext: CloudVaultAADContext? = null): AndroidMissionPrivatePayload? {
     val key = vaultKey ?: return null
     val envelope = CloudVaultCrypto.sealedPayloadFromMap(raw as? Map<*, *>) ?: return null
     return runCatching {
         missionCloudJson.decodeFromString<AndroidMissionPrivatePayload>(
-            CloudVaultCrypto.openPayload(envelope, key).toString(Charsets.UTF_8),
+            CloudVaultCrypto.openPayload(envelope, key, aadContext = aadContext).toString(Charsets.UTF_8),
         )
     }.getOrNull()
 }
 
-private fun openMissionEventPayload(raw: Any?, vaultKey: ByteArray?): AndroidMissionEventPrivatePayload? {
+private fun openMissionEventPayload(raw: Any?, vaultKey: ByteArray?, aadContext: CloudVaultAADContext? = null): AndroidMissionEventPrivatePayload? {
     val key = vaultKey ?: return null
     val envelope = CloudVaultCrypto.sealedPayloadFromMap(raw as? Map<*, *>) ?: return null
     return runCatching {
         missionCloudJson.decodeFromString<AndroidMissionEventPrivatePayload>(
-            CloudVaultCrypto.openPayload(envelope, key).toString(Charsets.UTF_8),
+            CloudVaultCrypto.openPayload(envelope, key, aadContext = aadContext).toString(Charsets.UTF_8),
         )
     }.getOrNull()
 }
@@ -446,7 +482,7 @@ class CLIAgentMissionDispatcher(
                         close(error)
                         return@addSnapshotListener
                     }
-                    latestEvents = snapshot?.documents.orEmpty().mapNotNull { it.toMissionEvent(vaultKey) }
+                    latestEvents = snapshot?.documents.orEmpty().mapNotNull { it.toMissionEvent(vaultKey, uid, requestID) }
                     emitLatest()
                 }
         awaitClose {
@@ -922,29 +958,47 @@ fun DocumentSnapshot.toMissionSnapshotOrNull(
     vaultKey: ByteArray? = null,
     uid: String? = null,
     signalIdentity: AndroidSignalIdentityKeypair? = null,
+    trustedSenderPublicKeys: Map<String, ByteArray> = emptyMap(),
 ): CLIAgentMissionSnapshot? =
-    toMissionSnapshot(fallbackID = id, vaultKey = vaultKey, uid = uid, signalIdentity = signalIdentity)
+    toMissionSnapshot(
+        fallbackID = id,
+        vaultKey = vaultKey,
+        uid = uid,
+        signalIdentity = signalIdentity,
+        trustedSenderPublicKeys = trustedSenderPublicKeys,
+    )
 
 /**
- * Signal-first open of a mission request doc's private payload. Returns null when no
- * envelope is present, uid/identity is missing, or anything fails — so the caller falls
- * through to the legacy AES-GCM opener (rollout compatibility, matching iOS).
+ * Signal-first open of a mission request doc's private payload. Returns null when no envelope is
+ * present, uid/identity is missing, or a failure is legacy-fallback-eligible — so the caller falls
+ * through to the legacy AES-GCM opener (rollout compatibility, matching iOS). RR-7a sender-auth:
+ * a stripped/forged/untrusted sender block or a relocated binding throws here (re-thrown) so the
+ * caller fails closed rather than decoding the unauthenticated legacy payload.
  */
 private fun DocumentSnapshot.openSignalMissionPayload(
     uid: String?,
     docId: String,
     signalIdentity: AndroidSignalIdentityKeypair?,
+    trustedSenderPublicKeys: Map<String, ByteArray>,
 ): AndroidMissionPrivatePayload? {
     if (get("signalEnvelope") == null || uid == null) return null
-    return runCatching {
-        AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
-            data = data ?: emptyMap(),
-            uid = uid,
-            collection = "cli_agent_mission_requests",
-            docId = docId,
-            localIdentity = signalIdentity,
-        )?.let { missionCloudJson.decodeFromString<AndroidMissionPrivatePayload>(it.toString(Charsets.UTF_8)) }
-    }.getOrNull()
+    val senderSetComplete = trustedSenderPublicKeys.size > 1
+    val result =
+        runCatching {
+            AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                data = data ?: emptyMap(),
+                uid = uid,
+                collection = "cli_agent_mission_requests",
+                docId = docId,
+                localIdentity = signalIdentity,
+                trustedSenderPublicKeys = trustedSenderPublicKeys,
+            )?.let { missionCloudJson.decodeFromString<AndroidMissionPrivatePayload>(it.toString(Charsets.UTF_8)) }
+        }
+    result.getOrNull()?.let { return it }
+    result.exceptionOrNull()?.let { error ->
+        if (!SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback(error, senderSetComplete)) throw error
+    }
+    return null
 }
 
 private fun DocumentSnapshot.toMissionSnapshot(
@@ -953,12 +1007,14 @@ private fun DocumentSnapshot.toMissionSnapshot(
     vaultKey: ByteArray? = null,
     uid: String? = null,
     signalIdentity: AndroidSignalIdentityKeypair? = null,
+    trustedSenderPublicKeys: Map<String, ByteArray> = emptyMap(),
 ): CLIAgentMissionSnapshot? {
     val missionDocId = getString("id") ?: fallbackID
-    // Signal-first open of the request private payload (item 3), legacy AES-GCM fallback on
-    // any failure (gate off / identity unavailable / malformed / relocated) — matches iOS.
-    val requestPrivate = requestPrivatePayload(uid, missionDocId, signalIdentity, vaultKey)
-    val statePrivate = openMissionPayload(get("sealedStatePayload"), vaultKey)
+    // Signal-first open of the request private payload (item 3). RR-7a sender-auth: a
+    // stripped/forged/untrusted sender block or relocated binding fails closed (no legacy decode);
+    // a legacy-eligible failure (gate off / identity unavailable / malformed) falls back — matches iOS.
+    val requestPrivate = requestPrivatePayload(uid, missionDocId, signalIdentity, vaultKey, trustedSenderPublicKeys)
+    val statePrivate = openMissionPayload(get("sealedStatePayload"), vaultKey, missionStateAadContext(uid, missionDocId))
     val title = missionSnapshotTitle(requestPrivate) ?: return null
     val status = getString("status") ?: return null
     val events = eventOverride ?: missionSnapshotEvents(vaultKey)
@@ -994,9 +1050,10 @@ private fun DocumentSnapshot.requestPrivatePayload(
     missionDocId: String,
     signalIdentity: AndroidSignalIdentityKeypair?,
     vaultKey: ByteArray?,
+    trustedSenderPublicKeys: Map<String, ByteArray>,
 ): AndroidMissionPrivatePayload? =
-    openSignalMissionPayload(uid, missionDocId, signalIdentity)
-        ?: openMissionPayload(get("sealedPayload"), vaultKey)
+    openSignalMissionPayload(uid, missionDocId, signalIdentity, trustedSenderPublicKeys)
+        ?: openMissionPayload(get("sealedPayload"), vaultKey, missionRequestAadContext(uid, missionDocId))
 
 private fun DocumentSnapshot.missionSnapshotTitle(requestPrivate: AndroidMissionPrivatePayload?): String? =
     requestPrivate?.title ?: getString("title")
@@ -1025,11 +1082,20 @@ private fun DocumentSnapshot.missionSnapshotText(
     else -> getString(field)
 }
 
-private fun DocumentSnapshot.toMissionEvent(vaultKey: ByteArray? = null): CLIAgentMissionEvent? = data?.toMissionEvent(vaultKey)
+private fun DocumentSnapshot.toMissionEvent(
+    vaultKey: ByteArray? = null,
+    uid: String? = null,
+    requestID: String? = null,
+): CLIAgentMissionEvent? = data?.toMissionEvent(vaultKey, uid, requestID, id)
 
-private fun Map<*, *>.toMissionEvent(vaultKey: ByteArray? = null): CLIAgentMissionEvent? {
+private fun Map<*, *>.toMissionEvent(
+    vaultKey: ByteArray? = null,
+    uid: String? = null,
+    requestID: String? = null,
+    eventID: String? = null,
+): CLIAgentMissionEvent? {
     val phase = this["phase"] as? String ?: return null
-    val privatePayload = openMissionEventPayload(this["sealedPayload"], vaultKey)
+    val privatePayload = openMissionEventPayload(this["sealedPayload"], vaultKey, missionEventAadContext(uid, requestID, eventID))
     val message = privatePayload?.message ?: this["message"] as? String ?: return null
     return CLIAgentMissionEvent(
         sequence = (this["sequence"] as? Number)?.toInt() ?: 0,

@@ -105,6 +105,11 @@ class BurnBarApplication : Application() {
 
         @Volatile internal var mediaControlCoordinator: MediaControlStreamCoordinator? = null
 
+        // RR-7b — the live PhoneControlSender for the currently paired Mac, published by the mirror
+        // surfaces (ScreenShareViewer / InlineAgentMirror) when a control stream is established and
+        // cleared when it closes. The Agent Watch surface reuses it to sign + transmit approvals.
+        @Volatile internal var activePhoneControlSender: com.openburnbar.data.computeruse.PhoneControlSender? = null
+
         @Volatile internal var fileTransferService: AndroidFileTransferService? = null
 
         @Volatile var agentCapabilityGrantController:

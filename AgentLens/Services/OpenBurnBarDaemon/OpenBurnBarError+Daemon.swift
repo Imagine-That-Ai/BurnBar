@@ -7,6 +7,8 @@ extension OpenBurnBarError {
         switch error {
         case .daemonBinaryUnavailable:
             return .daemon("binary_unavailable", message: error.localizedDescription ?? "Daemon binary unavailable.")
+        case .daemonBinarySignatureInvalid:
+            return .daemon("binary_signature_invalid", message: error.localizedDescription ?? "Daemon binary signature invalid.")
         case .daemonResourceBundleUnavailable:
             return .daemon("resource_bundle_unavailable", message: error.localizedDescription ?? "Daemon resources missing.")
         case .launchctlFailed:

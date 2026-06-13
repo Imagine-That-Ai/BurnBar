@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 /// Sync domain for uploading conversation metadata to Firestore.
 ///
@@ -10,9 +11,11 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
     private let context: CloudSyncContext
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
-    private(set) var isSyncing = false
-    private(set) var lastSyncError: String?
-    private(set) var lastSyncDate: Date?
+    private let state = Locked(CloudSyncDomainState())
+
+    var isSyncing: Bool { state.read().isSyncing }
+    var lastSyncError: String? { state.read().lastSyncError }
+    var lastSyncDate: Date? { state.read().lastSyncDate }
 
     init(
         context: CloudSyncContext,
@@ -31,18 +34,16 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
               gate.account.isCloudSyncEnabled,
               gate.settings.conversationCloudBackupEnabled,
               !gate.syncSuppressed,
-              !isSyncing,
               let uid = gate.account.uid else { return }
 
-        isSyncing = true
-        lastSyncError = nil
+        guard state.beginSyncingIfIdle() else { return }
 
-        defer { isSyncing = false }
+        defer { state.endSyncing() }
 
         do {
             let unsynced = try context.dataStore.fetchUnsyncedConversations(limit: 400)
             guard !unsynced.isEmpty else {
-                lastSyncDate = Date()
+                state.withLock { $0.lastSyncDate = Date() }
                 return
             }
 
@@ -54,7 +55,13 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             for record in unsynced {
                 let docId = "\(deviceId)_\(record.id)"
                 let docRef = collectionRef.document(docId)
-                var data = try Self.encodeConversation(record, deviceId: deviceId, vaultKey: vaultKey)
+                var data = try Self.encodeConversation(
+                    record,
+                    uid: uid,
+                    deviceId: deviceId,
+                    docId: docId,
+                    vaultKey: vaultKey
+                )
                 // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM sealedPayload
                 // is the FLOOR and is already in `data`; the additive Signal envelope is
                 // BEST-EFFORT and gated by the conversations_chat sealingScheme. On ANY seal
@@ -98,15 +105,17 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             let ids = unsynced.map(\.id)
             try context.dataStore.markConversationsSynced(ids: ids)
 
-            lastSyncDate = Date()
-            lastSyncError = nil
+            state.withLock {
+                $0.lastSyncDate = Date()
+                $0.lastSyncError = nil
+            }
         } catch {
             await recordSyncError(error)
         }
     }
 
     private func recordSyncError(_ error: Error) async {
-        lastSyncError = error.localizedDescription
+        state.withLock { $0.lastSyncError = error.localizedDescription }
 
         let nsError = error as NSError
         guard nsError.domain == FirestoreErrorDomain,
@@ -119,7 +128,9 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
 
     static func encodeConversation(
         _ record: ConversationRecord,
+        uid: String,
         deviceId: String,
+        docId: String,
         vaultKey: CloudVaultResolvedKey
     ) throws -> [String: Any] {
         var data: [String: Any] = [
@@ -136,7 +147,12 @@ final class ConversationSyncService: CloudSyncDomain, @unchecked Sendable {
             "contentSealed": true,
             "sealedSchemaVersion": ConversationCloudSealer.sealedSchemaVersion,
             "vaultKeyID": vaultKey.vaultKeyID,
-            "sealedPayload": try ConversationCloudSealer.seal(ConversationCloudPrivatePayload(record: record), key: vaultKey)
+            "sealedPayload": try ConversationCloudSealer.seal(
+                ConversationCloudPrivatePayload(record: record),
+                key: vaultKey,
+                uid: uid,
+                docId: docId
+            )
         ]
         ConversationCloudSealer.plaintextFieldDeletes.forEach { data[$0.key] = $0.value }
         // Tombstone propagation (B-DATA-2): a non-nil `deletedAt` tells every

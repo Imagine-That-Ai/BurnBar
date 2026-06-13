@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
+import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import com.openburnbar.ui.theme.AuroraTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ class SkillRunPiPActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableOpenBurnBarScreenPrivacy()
         observeMissionFromIntent()
         updatePictureInPictureParams()
         setContent {

@@ -79,23 +79,8 @@ jobs:
       - name: Install OpenBurnBar extension dependencies
         run: npm ci --prefix extensions/openburnbar
 
-      - name: Install Droid CLI (pinned)
-        if: env.INTERNAL_RUN == 'true'
-        # Version + checksum pinned: this step runs with ~15 production
-        # secrets in scope, so a mutable `curl | sh` installer was a
-        # supply-chain hole. Bumps are deliberate: update VER + SHA together.
-        run: |
-          set -euo pipefail
-          VER="0.144.2"
-          SHA="775d4a5424995ddd9b2288178c7537a32f885fb448184f06297a992aaadd14b5"
-          curl -fsSL -o /tmp/droid "https://downloads.factory.ai/factory-cli/releases/${VER}/darwin/arm64/droid"
-          echo "${SHA}  /tmp/droid" | shasum -a 256 -c -
-          install -m 0755 /tmp/droid /usr/local/bin/droid
-          droid --version
-
       # Defense-in-depth: GitHub redacts secrets for fork PRs on pull_request,
-      # but the if: guard skips droid exec entirely to avoid wasting runner
-      # minutes and prevent any edge-case exfiltration via a compromised CLI.
+      # but the if: guard skips QA entirely to avoid wasting runner minutes.
       - name: Run QA
         if: env.INTERNAL_RUN == 'true'
         id: qa
@@ -103,12 +88,10 @@ jobs:
         # the "Honest conclusion" step below re-asserts the real outcome.
         continue-on-error: true
         timeout-minutes: 20
-        # Minimum-scoped secret set (diligence H26): this step shells out to a
-        # third-party CLI, so it now receives ONLY the credentials functional QA
-        # actually needs and nothing else.
-        #   - FACTORY_API_KEY: the droid CLI's own auth (the sibling
-        #     droid-wiki-refresh.yml proves the CLI runs with this key alone;
-        #     docs/FACTORY_DROID_ROUTING.md sanitizes the env to just this).
+        # Minimum-scoped secret set (diligence H26): this step receives ONLY
+        # the credentials functional QA actually needs and nothing else.
+        #   - FACTORY_API_KEY: retained as a required QA environment preflight
+        #     because downstream agent/Hermes QA flows need Factory auth.
         #   - FIREBASE_*: build/run the app under App Check (these two also gate
         #     INTERNAL_RUN's HAS_FIREBASE_SECRETS above).
         #   - QA_FIREBASE_*: the dedicated QA Auth account the qa skill signs in
@@ -128,11 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p qa-results
-          if [[ -z "${FACTORY_API_KEY:-}" ]]; then
-            echo "::error::FACTORY_API_KEY is required for functional QA."
-            exit 1
-          fi
-          droid exec --model glm-5.1 --auto high "You are running in a non-interactive CI environment. There is NO human available. There is no Anthropic API key; use the selected Factory Droid Core model only. Do NOT use AskUser, do NOT wait for confirmations, do NOT pause for input. Run the qa skill for OpenBurnBar against the checked-out branch. This workflow is optional/informational. Write the final report to qa-results/report.md and put artifacts under qa-results/." 2>&1 | tee qa-results/qa-output.txt
+          bash tools/qa/run-functional-qa.sh 2>&1 | tee qa-results/qa-output.txt
 
       - name: Ensure report exists
         if: always()
