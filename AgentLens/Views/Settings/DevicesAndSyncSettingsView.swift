@@ -1,5 +1,6 @@
 import OpenBurnBarCore
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import SwiftUI
 
@@ -619,14 +620,7 @@ protocol MacCredentialTransferGateway: AnyObject {
 @MainActor
 final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
     func transferability(for provider: AgentProvider) async -> MacCredentialTransferability {
-        switch provider {
-        case .codex, .minimax, .zai, .openClaw:
-            return .apiKey
-        case .claudeCode, .cursor, .windsurf, .warp:
-            return .oauthToken
-        default:
-            return .noExportFromSource
-        }
+        Self.staticTransferability(for: provider)
     }
 
     func activeGrants() async throws -> [MacEscrowGrantSummary] { [] }
@@ -636,7 +630,45 @@ final class DefaultMacCredentialTransferGateway: MacCredentialTransferGateway {
         destinationDeviceID: String,
         onStage: @escaping @MainActor (MacExportStage) -> Void
     ) async {
-        onStage(.failed(message: "Mac credential export is not available until the encrypted producer is implemented. No credential was read, uploaded, or granted."))
+        // Real encrypted PRODUCER consumed by the iOS import path: enumerate the
+        // transferable credential, ECIES-seal it to the recipient device's escrow
+        // key, and write the escrow_grants/escrow_envelopes docs the phone reads.
+        // Fails closed (no envelope, no grant) when any step cannot complete.
+        let producer = MacEscrowCredentialProducer(
+            sourceDeviceID: MacLiveDeviceTrustGateway.loadOrCreateDeviceId(),
+            recipientKeyResolver: MacLiveEscrowRecipientKeyResolver(),
+            secretReader: MacLiveEscrowCredentialSecretReader(
+                transferabilityFor: Self.staticTransferability(for:)
+            ),
+            writer: MacLiveEscrowEnvelopeWriter()
+        )
+        await producer.startExport(
+            uid: Self.signedInUID(),
+            provider: provider,
+            destinationDeviceID: destinationDeviceID,
+            onStage: onStage
+        )
+    }
+
+    /// Resolves the signed-in uid without touching `Auth.auth()` when Firebase
+    /// is not configured (e.g. unit tests), so the producer fails closed on
+    /// `.notAuthenticated` instead of crashing.
+    private static func signedInUID() -> String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
+
+    /// Non-actor mirror of ``transferability(for:)`` so the secret reader can
+    /// classify a provider without re-entering the gateway actor.
+    static func staticTransferability(for provider: AgentProvider) -> MacCredentialTransferability {
+        switch provider {
+        case .codex, .minimax, .zai, .openClaw:
+            return .apiKey
+        case .claudeCode, .cursor, .windsurf, .warp:
+            return .oauthToken
+        default:
+            return .noExportFromSource
+        }
     }
 
     func revoke(grantID: String) async throws {}
@@ -782,7 +814,7 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
         }
     }
 
-    private static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
+    static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
         OpenBurnBarMigration.migrateUserDefaults()
         if let stored = defaults.string(forKey: OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
             return stored
@@ -865,6 +897,12 @@ final class DeviceTrustViewModel {
         do {
             let result = try await gateway.revoke(deviceID: deviceID)
             lastErrorMessage = nil
+            // RR-5: nudge the app delegate to run the Cloud Vault rotation pickup
+            // immediately. The local revoke already attempts rotation inline, but
+            // posting here lets a surviving Mac finish any requirement that stays
+            // `pending` (e.g. an offline/Android co-revoke) without waiting for
+            // the next foreground.
+            NotificationCenter.default.post(name: .openBurnBarDidRevokeDeviceTrust, object: nil)
             if result.cloudVaultRotationCompleted {
                 let documents = Self.countLabel(result.cloudVaultRotationRewrappedDocuments, singular: "document", plural: "documents")
                 let blobs = Self.countLabel(result.cloudVaultRotationRewrappedStorageBlobs, singular: "encrypted blob", plural: "encrypted blobs")
@@ -971,8 +1009,8 @@ struct CredentialTransferSheet: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(true)
-                .help("Credential transfer is not yet available on macOS.")
+                .disabled(deviceTrust.destinationDevices.isEmpty)
+                .help("Encrypt and transfer the credential to the selected trusted device.")
             } else {
                 Text(MacCopy.credentialTransferUnavailable)
                     .font(DesignSystem.Typography.tiny)

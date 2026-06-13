@@ -50,7 +50,10 @@ final class CredentialTransferSheetTests: XCTestCase {
         }
     }
 
-    func test_defaultMacCredentialExportGatewayFailsClosed() async {
+    func test_defaultMacCredentialExportGatewayFailsClosedWhenSignedOut() async {
+        // The real producer runs only when signed in. With no Firebase user
+        // (unit-test host), it must fail closed before reading/sealing/uploading
+        // anything — a single failed stage and no escrow write.
         let gateway = DefaultMacCredentialTransferGateway()
         var stages: [MacExportStage] = []
 
@@ -60,7 +63,7 @@ final class CredentialTransferSheetTests: XCTestCase {
 
         XCTAssertEqual(stages.count, 1)
         if case .failed(let message) = stages.first {
-            XCTAssertTrue(message.contains("No credential was read"))
+            XCTAssertTrue(message.contains("Sign in"))
         } else {
             XCTFail("Expected fail-closed export stage, got \(String(describing: stages.first))")
         }

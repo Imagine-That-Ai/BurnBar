@@ -2,6 +2,12 @@ import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
+/// Closure that decides whether an inbound peer is still permitted. The host
+/// supplies one backed by the freshly-refreshed `IrohInboundPeerPolicy` so the
+/// registry can tear down streams for a de-allowlisted / revoked peer without
+/// importing the policy type itself.
+public typealias MediaInboundPeerAllowChecker = @Sendable (_ remotePeerNodeId: String?) -> Bool
+
 /// Mac-side registry of active media-control streams keyed by paired-
 /// connection identity. iOS opens one of these streams immediately after
 /// the chat connection establishes (sending `media.classify { streamClass:
@@ -112,6 +118,40 @@ public actor MediaControlStreamRegistry {
             didInvalidate: true,
             removedLastStreamForConnection: entries.isEmpty
         )
+    }
+
+    /// RR-18 mid-stream teardown. The accept loop only checks the inbound
+    /// allowlist once, at accept; a peer that is de-allowlisted or revoked
+    /// while its control stream is live keeps mirroring until the stream
+    /// closes naturally. On every allowlist/policy refresh the host calls this
+    /// with a checker backed by the fresh policy, and the registry closes —
+    /// per-peer — any registered stream whose `remotePeerNodeId` is no longer
+    /// allowed, mirroring how `invalidate` closes a single lease. Streams whose
+    /// `remotePeerNodeId` is unknown (`nil`) are treated as not-allowed and
+    /// purged, since a stream the policy can no longer identify must not keep a
+    /// privileged media lane open. Returns the node ids that were torn down so
+    /// the caller can also cancel any sibling serve tasks it owns for the same
+    /// peers.
+    @discardableResult
+    public func purgeStreamsNotAllowed(by isAllowed: MediaInboundPeerAllowChecker) -> [String?] {
+        var purgedPeerNodeIds: [String?] = []
+        for (key, entries) in streams {
+            var survivors: [Entry] = []
+            for entry in entries {
+                if isAllowed(entry.stream.remotePeerNodeId) {
+                    survivors.append(entry)
+                } else {
+                    purgedPeerNodeIds.append(entry.stream.remotePeerNodeId)
+                    Task { await entry.stream.close() }
+                }
+            }
+            if survivors.isEmpty {
+                streams.removeValue(forKey: key)
+            } else if survivors.count != entries.count {
+                streams[key] = survivors
+            }
+        }
+        return purgedPeerNodeIds
     }
 
     public func stream(uid: String, connectionID: String) -> (any IrohRelayStream)? {

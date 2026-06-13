@@ -141,6 +141,65 @@ final class MediaControlStreamRegistryTests: XCTestCase {
         let resolved = await registry.awaitStream(uid: "u", timeout: 0.2)
         XCTAssertNil(resolved)
     }
+
+    // MARK: RR-18 — mid-stream teardown on allowlist refresh
+
+    func testPurgeClosesStreamForDeAllowlistedPeerAndKeepsAllowedPeer() async {
+        let registry = MediaControlStreamRegistry()
+        let allowed = RecordingStream(remotePeerNodeId: "ios-allowed")
+        let revoked = RecordingStream(remotePeerNodeId: "ios-revoked")
+        await registry.register(stream: allowed, uid: "u", connectionID: "c1")
+        await registry.register(stream: revoked, uid: "u", connectionID: "c1")
+
+        // Policy refresh now only allows the surviving peer.
+        let policy = IrohInboundPeerPolicy(allowedPeerNodeIds: ["ios-allowed"])
+        let purged = await registry.purgeStreamsNotAllowed { policy.allows(remotePeerNodeId: $0) }
+
+        XCTAssertEqual(purged, ["ios-revoked"])
+        let remaining = await registry.activeStreamCount()
+        XCTAssertEqual(remaining, 1)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let revokedClosed = await revoked.closedCount()
+        let allowedClosed = await allowed.closedCount()
+        XCTAssertGreaterThanOrEqual(revokedClosed, 1)
+        XCTAssertEqual(allowedClosed, 0)
+    }
+
+    func testPurgeTearsDownStreamWithUnknownPeerNodeId() async {
+        let registry = MediaControlStreamRegistry()
+        let unknown = RecordingStream(remotePeerNodeId: nil)
+        await registry.register(stream: unknown, uid: "u", connectionID: "c1")
+
+        let policy = IrohInboundPeerPolicy(allowedPeerNodeIds: ["ios-allowed"])
+        let purged = await registry.purgeStreamsNotAllowed { policy.allows(remotePeerNodeId: $0) }
+
+        XCTAssertEqual(purged.count, 1)
+        let remaining = await registry.activeStreamCount()
+        XCTAssertEqual(remaining, 0)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let closed = await unknown.closedCount()
+        XCTAssertGreaterThanOrEqual(closed, 1)
+    }
+
+    func testPurgeIsNoOpWhenEveryPeerStillAllowed() async {
+        let registry = MediaControlStreamRegistry()
+        let a = RecordingStream(remotePeerNodeId: "ios-a")
+        let b = RecordingStream(remotePeerNodeId: "ios-b")
+        await registry.register(stream: a, uid: "u", connectionID: "c1")
+        await registry.register(stream: b, uid: "u", connectionID: "c2")
+
+        let policy = IrohInboundPeerPolicy(allowedPeerNodeIds: ["ios-a", "ios-b"])
+        let purged = await registry.purgeStreamsNotAllowed { policy.allows(remotePeerNodeId: $0) }
+
+        XCTAssertTrue(purged.isEmpty)
+        let remaining = await registry.activeStreamCount()
+        XCTAssertEqual(remaining, 2)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let aClosed = await a.closedCount()
+        let bClosed = await b.closedCount()
+        XCTAssertEqual(aClosed, 0)
+        XCTAssertEqual(bClosed, 0)
+    }
 }
 
 /// Test-only `IrohRelayStream` implementation that records every

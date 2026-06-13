@@ -159,17 +159,30 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         try reopened.close()
     }
 
+    /// With encryption enabled and an existing PLAINTEXT database, behavior depends on whether the
+    /// build actually links the SQLCipher codec:
+    ///   • codec available  → refuse to open it unmigrated (migration is a per-user data decision);
+    ///   • codec ABSENT     → must NOT brick — fall back to DISCLOSED plaintext (data stays
+    ///     readable) and set the acknowledgement flag so the UI can warn the user (loud, not silent).
+    /// This is correct in both the codec-absent dev/CI build and a future codec-present release build.
     @MainActor
-    func testCoordinatorRefusesExistingPlaintextDatabaseWhenEncryptionEnabled() throws {
+    func testCoordinatorHandlesExistingPlaintextDatabaseWhenEncryptionEnabled() throws {
         let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-plain-refuse-\(UUID().uuidString).sqlite")
         let defaults = UserDefaults.standard
         let previousEncryptionDefault = defaults.object(forKey: "databaseEncryptionEnabled")
+        let previousFallbackFlag = defaults.object(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
+        defaults.removeObject(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
         defer {
             for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
             if let previousEncryptionDefault {
                 defaults.set(previousEncryptionDefault, forKey: "databaseEncryptionEnabled")
             } else {
                 defaults.removeObject(forKey: "databaseEncryptionEnabled")
+            }
+            if let previousFallbackFlag {
+                defaults.set(previousFallbackFlag, forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
             }
         }
 
@@ -182,14 +195,27 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         try plaintext.close()
 
         defaults.set(true, forKey: "databaseEncryptionEnabled")
-        do {
+
+        if DatabaseEncryptionService.isCipherAvailable() {
+            do {
+                let opened = try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
+                try opened.close()
+                XCTFail("With the SQLCipher codec available, the coordinator must refuse an unmigrated plaintext database.")
+            } catch DatabaseEncryptionError.plaintextDatabaseRequiresMigration(let refusedPath) {
+                XCTAssertEqual(refusedPath, path)
+            } catch {
+                XCTFail("Expected plaintextDatabaseRequiresMigration, got \(error)")
+            }
+        } else {
+            // Codec absent: never brick. Open disclosed plaintext, keep the data, set the flag.
             let opened = try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
-            try opened.close()
-            XCTFail("Coordinator must refuse an existing plaintext database while encryption is enabled.")
-        } catch DatabaseEncryptionError.plaintextDatabaseRequiresMigration(let refusedPath) {
-            XCTAssertEqual(refusedPath, path)
-        } catch {
-            XCTFail("Expected plaintextDatabaseRequiresMigration, got \(error)")
+            defer { try? opened.close() }
+            let value = try opened.read { db in try String.fetchOne(db, sql: "SELECT value FROM t") }
+            XCTAssertEqual(value, "plain", "Existing plaintext data must remain readable, not bricked, when the codec is unavailable.")
+            XCTAssertTrue(
+                defaults.bool(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey),
+                "Codec-absent plaintext fallback must be DISCLOSED via the acknowledgement flag (loud, not silent)."
+            )
         }
     }
 

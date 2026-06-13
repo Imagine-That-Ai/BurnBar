@@ -7,6 +7,14 @@
     <key>aps-environment</key>
     <string>$(APS_ENVIRONMENT)</string>
 
+    <!-- RR-14: default every file the app writes to NSFileProtectionComplete so
+         data-at-rest (chat transcripts, caches) is encrypted whenever the device
+         is locked, without relying on the launch-only protection sweep. The chat
+         store additionally sets `.completeFileProtection` per write for
+         belt-and-suspenders; this entitlement is the floor for everything else. -->
+    <key>com.apple.developer.default-data-protection</key>
+    <string>NSFileProtectionComplete</string>
+
     <!-- Required for `SignInWithAppleButton` and `ASAuthorizationAppleIDProvider`.
          Without this, Apple sign-in fails at runtime. -->
     <key>com.apple.developer.applesignin</key>

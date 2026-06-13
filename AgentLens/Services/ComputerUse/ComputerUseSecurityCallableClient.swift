@@ -282,6 +282,161 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    /// Outcome of one survivor-side rotation pickup pass.
+    struct CloudVaultRotationPickupResult: Sendable, Equatable {
+        /// Pending requirements this Mac was eligible to satisfy (survivor + not
+        /// already actioned this session).
+        let eligibleRequirementIds: [String]
+        /// Requirements this pass rotated successfully.
+        let completedRequirementIds: [String]
+        /// Requirements that failed this pass, with the failure message.
+        let failedRequirements: [String: String]
+
+        init(
+            eligibleRequirementIds: [String] = [],
+            completedRequirementIds: [String] = [],
+            failedRequirements: [String: String] = [:]
+        ) {
+            self.eligibleRequirementIds = eligibleRequirementIds
+            self.completedRequirementIds = completedRequirementIds
+            self.failedRequirements = failedRequirements
+        }
+    }
+
+    /// Requirement ids this process has already taken responsibility for, so a
+    /// second foreground/launch pass does not double-run the rotation chain for
+    /// the same revocation while the first is still settling.
+    private static let inFlightRotationPickups = InFlightRotationPickupTracker()
+
+    private actor InFlightRotationPickupTracker {
+        private var ids: Set<String> = []
+
+        /// Reserves `id` for this process. Returns `false` when it was already
+        /// reserved (so the caller skips it).
+        func reserve(_ id: String) -> Bool {
+            ids.insert(id).inserted
+        }
+
+        func release(_ id: String) {
+            ids.remove(id)
+        }
+    }
+
+    /// Picks up any pending Cloud Vault rotation requirements this Mac is a
+    /// survivor for and runs the rotation chain locally.
+    ///
+    /// Revocation normally rotates the vault from the revoking device. When that
+    /// device is offline or runs Android (which cannot rotate the Cloud Vault),
+    /// the rotation requirement stays `pending` and the revoked device's cached
+    /// key is not yet retired. Calling this on launch/foreground (and after any
+    /// local revoke) lets a surviving Mac finish the rotation instead, making
+    /// revocation resilient to the revoking device's availability/platform.
+    ///
+    /// Mirrors the post-revoke chain: it reuses ``performRevocationCloudVaultRotation``
+    /// (which re-validates the survivor set, the current vault key, and the
+    /// `rotateCloudVaultKey` callable's generation/requirement idempotency), and
+    /// guards against re-entrant passes within this process.
+    @discardableResult
+    static func pickUpPendingCloudVaultRotations(
+        rotatingDeviceId: String
+    ) async throws -> CloudVaultRotationPickupResult {
+        let uid = try requireSignedInUser().uid
+        let rotatingDeviceId = rotatingDeviceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rotatingDeviceId.isEmpty else {
+            return CloudVaultRotationPickupResult()
+        }
+
+        let pending = try await listPendingCloudVaultRotationRequirements()
+        let eligible = eligibleRequirements(from: pending, rotatingDeviceId: rotatingDeviceId)
+        var completed: [String] = []
+        var failed: [String: String] = [:]
+
+        for requirementId in eligible {
+            // Idempotency: skip a requirement another pass in this process owns.
+            guard await inFlightRotationPickups.reserve(requirementId) else { continue }
+            defer { Task { await inFlightRotationPickups.release(requirementId) } }
+
+            do {
+                _ = try await performRevocationCloudVaultRotation(
+                    uid: uid,
+                    requirementId: requirementId,
+                    rotatingDeviceId: rotatingDeviceId
+                )
+                completed.append(requirementId)
+            } catch {
+                failed[requirementId] = error.localizedDescription
+            }
+        }
+
+        return CloudVaultRotationPickupResult(
+            eligibleRequirementIds: eligible,
+            completedRequirementIds: completed,
+            failedRequirements: failed
+        )
+    }
+
+    /// Pure survivor filter: keeps requirements where this Mac is a listed
+    /// survivor, dropping `alreadyActioned` ids and de-duplicating repeats so a
+    /// single pass runs each requirement at most once.
+    static func eligibleRequirements(
+        from requirements: [PendingCloudVaultRotationRequirement],
+        rotatingDeviceId: String,
+        alreadyActioned: Set<String> = []
+    ) -> [String] {
+        let rotatingDeviceId = rotatingDeviceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rotatingDeviceId.isEmpty else { return [] }
+        var seen = alreadyActioned
+        var eligible: [String] = []
+        for requirement in requirements {
+            guard requirement.survivorDeviceIds.contains(rotatingDeviceId) else { continue }
+            guard seen.insert(requirement.requirementId).inserted else { continue }
+            eligible.append(requirement.requirementId)
+        }
+        return eligible
+    }
+
+    /// A pending Cloud Vault rotation requirement, as returned by S1's server
+    /// callable. Only the fields the pickup chain needs are decoded.
+    struct PendingCloudVaultRotationRequirement: Sendable, Equatable {
+        let requirementId: String
+        let survivorDeviceIds: [String]
+
+        init(requirementId: String, survivorDeviceIds: [String]) {
+            self.requirementId = requirementId
+            self.survivorDeviceIds = survivorDeviceIds
+        }
+    }
+
+    /// Lists the user's pending Cloud Vault rotation requirements via S1's
+    /// server-only callable. The server is the source of truth for which
+    /// requirements remain unconsumed; this client filters by survivor locally.
+    static func listPendingCloudVaultRotationRequirements() async throws -> [PendingCloudVaultRotationRequirement] {
+        _ = try requireSignedInUser()
+        let result = try await functions.httpsCallable("listPendingCloudVaultRotationRequirements").call([:])
+        guard let dict = result.data as? [String: Any],
+              let rawRequirements = dict["requirements"] as? [[String: Any]] else {
+            throw ClientError.invalidResponse("Could not list pending Cloud Vault rotation requirements.")
+        }
+        return parsePendingRequirements(rawRequirements)
+    }
+
+    /// Pure decoder for S1's `listPendingCloudVaultRotationRequirements` payload.
+    /// Accepts either `requirementId` or `id` for the requirement key (S1 may
+    /// name it either way; flagged for cross-check) and trims/filters survivors.
+    static func parsePendingRequirements(_ raw: [[String: Any]]) -> [PendingCloudVaultRotationRequirement] {
+        raw.compactMap { entry in
+            guard let requirementId = (entry["requirementId"] as? String ?? entry["id"] as? String),
+                  !requirementId.isEmpty else { return nil }
+            let survivors = (entry["survivorDeviceIds"] as? [String] ?? [])
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            return PendingCloudVaultRotationRequirement(
+                requirementId: requirementId,
+                survivorDeviceIds: survivors
+            )
+        }
+    }
+
     private struct RevocationCloudVaultRotationResult {
         let jobId: String
         let progress: CloudVaultRotationRewrapProgress

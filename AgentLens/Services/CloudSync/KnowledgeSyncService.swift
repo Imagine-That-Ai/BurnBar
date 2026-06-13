@@ -241,6 +241,7 @@ public final class KnowledgeSyncService: @unchecked Sendable {
                     sourcePath: item.sourcePath,
                     sourceSlug: slug,
                     vaultKey: vaultKey,
+                    uid: uid,
                     title: item.title,
                     section: item.section,
                     category: item.category
@@ -452,13 +453,26 @@ public final class KnowledgeSyncService: @unchecked Sendable {
     }
 
     private static func encode(_ sealed: CloudVaultSealedText) -> [String: Any] {
-        [
+        var dict: [String: Any] = [
             "algorithm": sealed.algorithm,
             "keyVersion": sealed.keyVersion,
             "nonce": sealed.nonce,
             "ciphertext": sealed.ciphertext,
             "tag": sealed.tag
         ]
+        // Path-bound (schemaVersion-2) chunks authenticate their AES-GCM tag over a
+        // path-derived AAD. The reader rebuilds that AAD from uid+vectorId, but it must
+        // see schemaVersion>=2 (to take the v2 branch) and the matching `aad` string (the
+        // `aadData` consistency check). Dropping either silently routes the reader into the
+        // legacy no-AAD branch and the tag check fails — making every path-bound chunk
+        // undecryptable. Carry both when present (nil on the legacy/daemon uid-less path).
+        if let schemaVersion = sealed.schemaVersion {
+            dict["schemaVersion"] = schemaVersion
+        }
+        if let aad = sealed.aad {
+            dict["aad"] = aad
+        }
+        return dict
     }
 
     /// Server-compatible slug (matches `slugify` in knowledgeMemory.ts).
