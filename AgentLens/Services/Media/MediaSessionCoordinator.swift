@@ -45,7 +45,13 @@ final class MediaSessionCoordinator: ObservableObject {
     private let capabilityGate: any MediaCapabilityGate
     private let screenCaptureFactory: ScreenCaptureSessionFactory
     private var screenCapture: (any ScreenCaptureSession)?
-    private var videoEncoder: VideoEncoder?
+    typealias VideoEncoderFactory = @MainActor (
+        VideoEncoder.Configuration,
+        @escaping VideoEncoder.EncodedHandler
+    ) -> any VideoEncoding
+
+    private var videoEncoder: (any VideoEncoding)?
+    private let videoEncoderFactory: VideoEncoderFactory
     private var bitrateController: BitrateController
     private var shadowBweController: MercuryShadowBweController
     private var streamSinks: [String: MediaStreamSink] = [:]
@@ -60,10 +66,14 @@ final class MediaSessionCoordinator: ObservableObject {
         defaultBitrateSteps: BitrateController.Steps = .screenShare,
         screenCaptureFactory: @escaping ScreenCaptureSessionFactory = { configuration, frameHandler in
             ScreenCapturePipeline(configuration: configuration, frameHandler: frameHandler)
+        },
+        videoEncoderFactory: @escaping VideoEncoderFactory = { configuration, onEncoded in
+            VideoEncoder(configuration: configuration, onEncoded: onEncoded)
         }
     ) {
         self.capabilityGate = capabilityGate
         self.screenCaptureFactory = screenCaptureFactory
+        self.videoEncoderFactory = videoEncoderFactory
         self.bitrateController = BitrateController(steps: defaultBitrateSteps)
         self.shadowBweController = MercuryShadowBweController(steps: defaultBitrateSteps)
     }
@@ -141,8 +151,8 @@ final class MediaSessionCoordinator: ObservableObject {
                 peerDeviceID: peerDeviceID
             )
             self.streamSinks = [sinkID: sink]
-            let encoder = VideoEncoder(
-                configuration: .init(
+            let encoder = videoEncoderFactory(
+                .init(
                     width: 1920,
                     height: 1080,
                     targetBitsPerSecond: bitrateController.currentBitsPerSecond,
@@ -150,10 +160,11 @@ final class MediaSessionCoordinator: ObservableObject {
                     preferredCodec: VideoEncoder.Codec(mercuryCodec: negotiatedCodec) ?? .hevc,
                     frameRate: 30,
                     enableLongTermReference: enableLongTermReference
-                )
-            ) { [weak self] encodedFrame in
-                await self?.handleEncodedFrame(encodedFrame)
-            }
+                ),
+                { [weak self] encodedFrame in
+                    await self?.handleEncodedFrame(encodedFrame)
+                }
+            )
             try encoder.start()
             self.videoEncoder = encoder
             bitrateBitsPerSecond = bitrateController.currentBitsPerSecond
