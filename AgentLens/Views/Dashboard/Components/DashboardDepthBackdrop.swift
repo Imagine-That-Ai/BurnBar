@@ -34,6 +34,7 @@ struct DashboardDepthBackdrop: View {
                     // ambient light (they are tuned for the flat plate below).
                     Color.clear
                 } else {
+                    // cov:ignore-start -- decorative GeometryReader drawing is smoke-tested but not line-attributed by ViewInspector
                     DesignSystem.Colors.background
 
                     Rectangle()
@@ -47,6 +48,7 @@ struct DashboardDepthBackdrop: View {
                         .frame(width: max(w * 0.44, 360), height: h * 1.2)
                         .rotationEffect(.degrees(17))
                         .offset(x: w * 0.34, y: h * 0.10)
+                    // cov:ignore-end
                 }
             }
             .frame(width: w, height: h, alignment: .topLeading)
