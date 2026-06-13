@@ -19,6 +19,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .providerModelVariantRemove,
         .providerModelAliasUpsert,
         .providerModelAliasRemove,
+        .providerCustomModelUpsert,
+        .providerCustomModelRemove,
         .providerModelDisplayNameSet,
         .providerModelDisplayNameClear
     ]

@@ -457,6 +457,58 @@ public struct BurnBarModelDisplayOverride: Codable, Hashable, Identifiable, Send
     }
 }
 
+/// A user-declared provider model that the bundled catalog does not know about.
+///
+/// Unlike `BurnBarModelAlias` (which points a brand-new wire id at an *existing*
+/// base model and routes through it), a custom model advertises a model id that
+/// the **provider itself serves** — the gateway routes it verbatim to the
+/// provider, exactly like a model surfaced by live `/models` discovery. This is
+/// the escape hatch for models newer than the bundled catalog when live
+/// discovery can't see them (no credential yet, or an upstream that doesn't list
+/// the id). The model presents to humans as `displayName`.
+public struct BurnBarCustomModel: Codable, Hashable, Identifiable, Sendable {
+    /// The wire id sent to the provider and advertised in `/v1/models`.
+    public var modelID: String
+    /// Human-facing label; falls back to `modelID` when blank.
+    public var displayName: String
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    /// Keyed case-insensitively by `modelID` so re-adding the same id replaces
+    /// the prior entry regardless of casing.
+    public var id: String { modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+
+    public init(
+        modelID: String,
+        displayName: String = "",
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.modelID = modelID
+        self.displayName = displayName
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// Characters allowed in a user-chosen model id. Matches the alias charset
+    /// so provider-style ids (`minimax-m3`, `glm-5.1`, `kimi-k2.6:cloud`,
+    /// `moonshotai/Kimi-K2.6`) are accepted verbatim.
+    public static let allowedModelIDCharacterSet = CharacterSet.alphanumerics
+        .union(CharacterSet(charactersIn: "._-:/"))
+
+    public static func isValidModelID(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return trimmed.unicodeScalars.allSatisfy { allowedModelIDCharacterSet.contains($0) }
+    }
+
+    public static func normalizedDisplayName(modelID: String, displayName: String) -> String {
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable {
     public let providerID: String
     public var isEnabled: Bool
@@ -473,6 +525,10 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
     public var modelAliases: [BurnBarModelAlias]
     /// User-defined display name overrides.
     public var modelDisplayOverrides: [BurnBarModelDisplayOverride]
+    /// User-declared provider models the bundled catalog does not know about.
+    /// Advertised and routed verbatim through the provider, like a live-
+    /// discovered model.
+    public var customModels: [BurnBarCustomModel]
 
     public var id: String { providerID }
 
@@ -486,7 +542,8 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         credentialSlots: [BurnBarProviderCredentialSlot] = [],
         modelVariants: [BurnBarModelVariant] = [],
         modelAliases: [BurnBarModelAlias] = [],
-        modelDisplayOverrides: [BurnBarModelDisplayOverride] = []
+        modelDisplayOverrides: [BurnBarModelDisplayOverride] = [],
+        customModels: [BurnBarCustomModel] = []
     ) {
         self.providerID = providerID
         self.isEnabled = isEnabled
@@ -498,6 +555,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         self.modelVariants = Self.normalizedModelVariants(modelVariants)
         self.modelAliases = Self.normalizedModelAliases(modelAliases)
         self.modelDisplayOverrides = Self.normalizedModelDisplayOverrides(modelDisplayOverrides)
+        self.customModels = Self.normalizedCustomModels(customModels)
     }
 
     public func isModelAdvertisementEnabled(_ modelID: String) -> Bool {
@@ -640,6 +698,38 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Insert or update a custom model, keyed case-insensitively by `modelID`.
+    /// Touches `updatedAt`.
+    public mutating func upsertCustomModel(_ model: BurnBarCustomModel) {
+        var working = customModels
+        var inserted = model
+        inserted.updatedAt = Date()
+        if let index = working.firstIndex(where: { $0.modelID.caseInsensitiveCompare(inserted.modelID) == .orderedSame }) {
+            inserted.createdAt = working[index].createdAt
+            working[index] = inserted
+        } else {
+            working.append(inserted)
+        }
+        customModels = Self.normalizedCustomModels(working)
+    }
+
+    /// Remove a custom model by id. Returns `true` if a row was removed.
+    @discardableResult
+    public mutating func removeCustomModel(modelID: String) -> Bool {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let before = customModels.count
+        customModels.removeAll { $0.modelID.caseInsensitiveCompare(trimmed) == .orderedSame }
+        return customModels.count != before
+    }
+
+    /// The custom model registered for a wire id, or `nil` when none applies.
+    public func customModel(forModelID modelID: String) -> BurnBarCustomModel? {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return customModels.first { $0.modelID.caseInsensitiveCompare(trimmed) == .orderedSame }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case providerID
         case isEnabled
@@ -651,6 +741,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         case modelVariants
         case modelAliases
         case modelDisplayOverrides
+        case customModels
     }
 
     public init(from decoder: Decoder) throws {
@@ -672,6 +763,9 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         )
         modelDisplayOverrides = Self.normalizedModelDisplayOverrides(
             try container.decodeIfPresent([BurnBarModelDisplayOverride].self, forKey: .modelDisplayOverrides) ?? []
+        )
+        customModels = Self.normalizedCustomModels(
+            try container.decodeIfPresent([BurnBarCustomModel].self, forKey: .customModels) ?? []
         )
     }
 
@@ -761,6 +855,26 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
             return BurnBarModelDisplayOverride(
                 modelID: trimmedModelID,
                 displayName: trimmedDisplayName,
+                createdAt: raw.createdAt,
+                updatedAt: raw.updatedAt
+            )
+        }
+        .sorted { lhs, rhs in
+            lhs.modelID.localizedCaseInsensitiveCompare(rhs.modelID) == .orderedAscending
+        }
+    }
+
+    private static func normalizedCustomModels(_ models: [BurnBarCustomModel]) -> [BurnBarCustomModel] {
+        var seen = Set<String>()
+        return models.compactMap { raw in
+            let trimmedID = raw.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard BurnBarCustomModel.isValidModelID(trimmedID),
+                  seen.insert(trimmedID.lowercased()).inserted else {
+                return nil
+            }
+            return BurnBarCustomModel(
+                modelID: trimmedID,
+                displayName: BurnBarCustomModel.normalizedDisplayName(modelID: trimmedID, displayName: raw.displayName),
                 createdAt: raw.createdAt,
                 updatedAt: raw.updatedAt
             )
@@ -943,6 +1057,39 @@ public struct BurnBarProviderModelAliasMutationResponse: Codable, Hashable, Send
     ) {
         self.snapshot = snapshot
         self.alias = alias
+    }
+}
+
+public struct BurnBarProviderCustomModelUpsertRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let customModel: BurnBarCustomModel
+
+    public init(providerID: String, customModel: BurnBarCustomModel) {
+        self.providerID = providerID
+        self.customModel = customModel
+    }
+}
+
+public struct BurnBarProviderCustomModelRemoveRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let modelID: String
+
+    public init(providerID: String, modelID: String) {
+        self.providerID = providerID
+        self.modelID = modelID
+    }
+}
+
+public struct BurnBarProviderCustomModelMutationResponse: Codable, Hashable, Sendable {
+    public let snapshot: BurnBarProviderConfigurationSnapshot
+    public let customModel: BurnBarCustomModel?
+
+    public init(
+        snapshot: BurnBarProviderConfigurationSnapshot,
+        customModel: BurnBarCustomModel? = nil
+    ) {
+        self.snapshot = snapshot
+        self.customModel = customModel
     }
 }
 
