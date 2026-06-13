@@ -42,6 +42,19 @@ if ! git -C "$src" cat-file -e "${pinned_commit}^{commit}" 2>/dev/null; then
   exit 1
 fi
 
+head_commit="$(git -C "$src" rev-parse HEAD)"
+if [[ "$head_commit" != "$pinned_commit" ]]; then
+  echo "ERROR: HERMES_AGENT_SRC HEAD does not match manifest pinnedCommit." >&2
+  echo "  manifest: $pinned_commit" >&2
+  echo "  HEAD    : $head_commit" >&2
+  echo "Fix: git -C $src checkout $pinned_commit." >&2
+  if [[ "${ALLOW_RUNTIME_DRIFT:-0}" == "1" ]]; then
+    echo "ALLOW_RUNTIME_DRIFT=1 set — proceeding under explicit local override." >&2
+  else
+    exit 1
+  fi
+fi
+
 # 2) Recompute the vendored-source-tree hash AT the pinned commit (independent of
 #    whatever the working tree is currently checked out to).
 IFS=',' read -r -a subtrees <<< "$subtrees_csv"

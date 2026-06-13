@@ -1604,6 +1604,67 @@ async function handleAttachmentFinalize(req: HttpRequest, res: HttpResponse): Pr
   sendJSON(res, 200, { attachment: finalized });
 }
 
+export async function handleHermesGatewayAttachmentDownloadUrl(
+  request: CallableRequest<{
+    attachmentId?: unknown;
+    clientId?: unknown;
+    destinationId?: unknown;
+  }>,
+): Promise<{ downloadURL: string; expiresAt: string; attachmentId: string; maxBytes: number }> {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in before downloading Gateway attachments.");
+  enforceAuthAndAppCheck(request, uid);
+
+  const attachmentId = requiredHttpIdentifier(request.data.attachmentId, "attachmentId");
+  const requestedClientId = requiredHttpIdentifier(request.data.clientId, "clientId");
+  const requestedDestinationId =
+    request.data.destinationId == null ? undefined : sanitizeHermesGatewayDestinationId(request.data.destinationId);
+
+  const ref = db.doc(`users/${uid}/hermes_gateway_attachments/${attachmentId}`);
+  const snap = await ref.get();
+  const manifest = snap.data();
+  if (!snap.exists || !isHermesGatewayAttachmentManifestDoc(manifest) || manifest.id !== attachmentId) {
+    throw new HttpsError("not-found", "Gateway attachment not found.");
+  }
+  if (manifest.clientId !== requestedClientId) {
+    throw new HttpsError("permission-denied", "Gateway attachment belongs to another client.");
+  }
+  if (requestedDestinationId && manifest.destinationId && manifest.destinationId !== requestedDestinationId) {
+    throw new HttpsError("permission-denied", "Gateway attachment belongs to another destination.");
+  }
+  if (manifest.status !== "uploaded") {
+    throw new HttpsError("failed-precondition", "Gateway attachment is not finalized.");
+  }
+
+  const expectedPathBase = `users/${uid}/hermes_gateway_attachments/${manifest.clientId}/${attachmentId}`;
+  if (manifest.storagePath !== expectedPathBase && !manifest.storagePath.startsWith(`${expectedPathBase}/`)) {
+    throw new HttpsError("permission-denied", "Gateway attachment storage path is outside the client namespace.");
+  }
+  if (manifest.byteCount < 1 || manifest.byteCount > HERMES_GATEWAY_MAX_ATTACHMENT_BYTES) {
+    throw new HttpsError("failed-precondition", "Gateway attachment manifest is invalid.");
+  }
+
+  const file = getStorage().bucket().file(manifest.storagePath);
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new HttpsError("not-found", "Gateway attachment body is no longer stored in the cloud.");
+  }
+
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const [downloadURL] = await file.getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: expiresAt,
+  });
+
+  return {
+    downloadURL,
+    expiresAt: expiresAt.toISOString(),
+    attachmentId,
+    maxBytes: HERMES_GATEWAY_MAX_ATTACHMENT_BYTES,
+  };
+}
+
 // Deterministic gate id so a retried arm request from the agent is idempotent
 // (same client + actionId always maps to the same approval document).
 function gatewayApprovalDocId(clientId: string, actionId: string): string {
@@ -1764,6 +1825,15 @@ export const burnBarHermesGateway = onRequest(
   async (req, res): Promise<void> => {
     await dispatchHermesGatewayRequest(toHermesHttpRequest(req), toHermesHttpResponse(res));
   },
+);
+
+export const getHermesGatewayAttachmentDownloadUrl = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler("getHermesGatewayAttachmentDownloadUrl", handleHermesGatewayAttachmentDownloadUrl),
 );
 
 export const approveHermesGatewayDeviceGrant = onCall(

@@ -127,4 +127,41 @@ tar -tzf "$archive" > "$archive_listing"
 grep -q "^OpenBurnBar-${version}-source/CORRESPONDING_SOURCE_MANIFEST.json$" "$archive_listing" \
   || { echo "ERROR: archive listing is missing CORRESPONDING_SOURCE_MANIFEST.json" >&2; exit 1; }
 
+if [[ "${OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE:-0}" == "1" || -n "${HERMES_AGENT_SRC:-}" ]]; then
+  read -r expected_hash subtrees_csv < <(python3 - "third_party/hermes-agent/manifest.json" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))
+print(m["vendoredSourceTreeSha256"], ",".join(m["vendoredSubtrees"]))
+PY
+)
+  agent_source_root="$archive_root/third_party/hermes-agent/source"
+  if [[ ! -d "$agent_source_root" ]]; then
+    echo "ERROR: corresponding source archive is missing third_party/hermes-agent/source." >&2
+    exit 1
+  fi
+  IFS=',' read -r -a subtrees <<< "$subtrees_csv"
+  for subtree in "${subtrees[@]}"; do
+    if [[ ! -d "$agent_source_root/$subtree" ]]; then
+      echo "ERROR: corresponding source archive is missing Hermes subtree $subtree." >&2
+      exit 1
+    fi
+  done
+  actual_hash="$(
+    cd "$agent_source_root"
+    find "${subtrees[@]}" -type f -name '*.py' -print \
+      | LC_ALL=C sort \
+      | while read -r f; do
+          printf '%s ' "$f"
+          shasum -a 256 "$f" | cut -d' ' -f1
+        done \
+      | shasum -a 256 | cut -d' ' -f1
+  )"
+  if [[ "$actual_hash" != "$expected_hash" ]]; then
+    echo "ERROR: corresponding source archive Hermes source hash mismatch." >&2
+    echo "  manifest: $expected_hash" >&2
+    echo "  archive : $actual_hash" >&2
+    exit 1
+  fi
+fi
+
 echo "PASS: corresponding source archive builds cleanly from HEAD ${commit}"

@@ -51,6 +51,7 @@ export {
 
 export {
   burnBarHermesGateway,
+  getHermesGatewayAttachmentDownloadUrl,
   approveHermesGatewayDeviceGrant,
   listHermesGatewayClients,
   revokeHermesGatewayClient,

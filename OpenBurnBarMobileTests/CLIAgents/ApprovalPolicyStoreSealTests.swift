@@ -34,7 +34,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
     // MARK: - encode seals private text, drops plaintext + cleartext id
 
     func test_encode_sealsPrivateText_writesNoPlaintextFieldsOrID() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let policy = samplePolicy()
 
         let docID = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: key)
@@ -87,7 +87,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
     // MARK: - opaque doc id is deterministic, opaque, collision-stable
 
     func test_opaqueDocumentID_isDeterministicOpaqueHex_andNotCleartext() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let policy = samplePolicy()
 
         let id1 = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: key)
@@ -113,7 +113,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
         // Two policies that differ ONLY in the private project name must map to
         // different opaque ids (guards against the multi-token splitter collapsing
         // the class hash to the hash of its first token).
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let a = ApprovalPolicy(
             missionKind: "shell", toolName: "bash", fileGlob: "src/**",
             runtimeID: "codex", targetProject: "ProjectAlpha",
@@ -132,15 +132,15 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
 
     func test_opaqueDocumentID_differsAcrossVaultKeys() throws {
         let policy = samplePolicy()
-        let id1 = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: CloudVaultCrypto.generateVaultKey())
-        let id2 = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: CloudVaultCrypto.generateVaultKey())
+        let id1 = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: try CloudVaultCrypto.generateVaultKey())
+        let id2 = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: try CloudVaultCrypto.generateVaultKey())
         XCTAssertNotEqual(id1, id2)
     }
 
     // MARK: - decode round-trips and keeps the matcher working
 
     func test_encodeDecode_roundTrip_preservesClassHashAndMatching() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let policy = samplePolicy()
         let docID = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: key)
         let payload = try ApprovalPolicyStore.encode(policy, uid: testUID, documentID: docID, vaultKey: key)
@@ -200,7 +200,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
 
         // Decodes with a key (sealed fields absent -> legacy path).
         let withKey = try XCTUnwrap(
-            ApprovalPolicyStore.decode(documentID: "legacy", data: legacy, vaultKey: CloudVaultCrypto.generateVaultKey())
+            ApprovalPolicyStore.decode(documentID: "legacy", data: legacy, vaultKey: try CloudVaultCrypto.generateVaultKey())
         )
         XCTAssertEqual(withKey.displayLabel, "Legacy label")
         XCTAssertEqual(withKey.targetProject, "LegacyProj")
@@ -218,7 +218,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
     // MARK: - sealed but no key -> hidden, never a leak
 
     func test_decode_sealedFields_withoutKey_doNotLeak() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let policy = samplePolicy()
         let docID = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: key)
         let payload = try ApprovalPolicyStore.encode(policy, uid: testUID, documentID: docID, vaultKey: key)
@@ -230,14 +230,14 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
     }
 
     func test_decode_sealedFields_wrongKey_doNotLeak() throws {
-        let writeKey = CloudVaultCrypto.generateVaultKey()
+        let writeKey = try CloudVaultCrypto.generateVaultKey()
         let policy = samplePolicy()
         let docID = try ApprovalPolicyStore.opaqueCloudDocumentID(forClassHash: policy.id, vaultKey: writeKey)
         let payload = try ApprovalPolicyStore.encode(policy, uid: testUID, documentID: docID, vaultKey: writeKey)
 
         // A different vault key cannot open the envelopes -> sealed fields resolve
         // to nil; the required displayLabel is unreadable so the record is dropped.
-        let decoded = ApprovalPolicyStore.decode(documentID: docID, data: payload, vaultKey: CloudVaultCrypto.generateVaultKey(), uid: testUID)
+        let decoded = ApprovalPolicyStore.decode(documentID: docID, data: payload, vaultKey: try CloudVaultCrypto.generateVaultKey(), uid: testUID)
         XCTAssertNil(decoded)
     }
 

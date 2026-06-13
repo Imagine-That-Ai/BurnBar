@@ -29,7 +29,7 @@
     "test:router-rundown": "npm run build && node scripts/test-router-rundown.mjs",
     "test:iroh-monitoring": "npm run build && node scripts/test-iroh-monitoring.mjs",
     "test:fcm-android": "npm run build && node scripts/test-fcm-android.mjs",
-    "test:security": "vitest run src/__tests__/googlePlayTokenClaims.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/irohPairingFreshness.test.ts src/__tests__/appCheckAttestationBinding.test.ts",
+    "test:security": "vitest run src/__tests__/googlePlayTokenClaims.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/irohPairingFreshness.test.ts src/__tests__/appCheckAttestationBinding.test.ts src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/hermesGatewayAttachmentInit.test.ts",
     "test:agent-notifications": "npm run build && node scripts/test-agent-notifications.mjs",
     "test:providers": "npm run build && node scripts/test-providers.mjs && node scripts/test-mimo-probe-fixture.mjs && node scripts/test-provider-account-schema.mjs",
     "test:conversation-query": "npm run build && node scripts/test-conversation-query.mjs",
