@@ -390,7 +390,8 @@ enum ComputerUseSecurityCallableClient {
                 _ = try await performRevocationCloudVaultRotation(
                     uid: uid,
                     requirementId: requirementId,
-                    rotatingDeviceId: rotatingDeviceId
+                    rotatingDeviceId: rotatingDeviceId,
+                    environment: .live(uid: uid, rotatingDeviceId: rotatingDeviceId)
                 )
                 completed.append(requirementId)
             } catch {
