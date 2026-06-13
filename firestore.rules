@@ -967,6 +967,10 @@ service cloud.firestore {
           "wrappedKey",
           "relayEncryption",
           "relayKeyVersion",
+          "senderPublicKey",
+          "senderDeviceId",
+          "senderPeerNodeId",
+          "senderCounter",
           "chunkCount",
           "createdAt",
           "updatedAt",
@@ -992,6 +996,20 @@ service cloud.firestore {
         && request.resource.data.wrappedKey.size() <= 4096
         && request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm"
         && request.resource.data.relayKeyVersion is int
+        // Sender-authentication parity with the Hermes lane
+        // (`relayRequestWrite`): a relay request is sender-bound so a malicious
+        // co-tenant cannot forge another device's identity. The lane is v2
+        // (schemaVersion >= 2), so we require these strictly rather than keep a
+        // legacy-empty backward-compat branch.
+        && request.resource.data.senderPublicKey is string
+        && request.resource.data.senderPublicKey.size() >= 80
+        && request.resource.data.senderPublicKey.size() <= 128
+        && request.resource.data.senderDeviceId is string
+        && request.resource.data.senderDeviceId.size() <= 160
+        && request.resource.data.senderPeerNodeId is string
+        && request.resource.data.senderPeerNodeId.size() <= 160
+        && request.resource.data.senderCounter is int
+        && request.resource.data.senderCounter >= 0
         && (!("claimedBy" in request.resource.data) || request.resource.data.claimedBy == request.resource.data.connectionId);
     }
 
@@ -3436,35 +3454,63 @@ service cloud.firestore {
         // Trust and cryptographic identity fields are server-only via the escrow
         // callables. Client updates are limited to display metadata so a stolen
         // owner session cannot swap fingerprints, platforms, approvers, or
-        // bootstrap state and then reuse an existing trusted document.
+        // bootstrap state and then reuse an existing trusted document. Each identity
+        // field must be byte-identical before and after: a client may neither change
+        // it, remove it, NOR INTRODUCE it where it was absent. The earlier
+        // `!("X" in resource.data) || ...` idiom permitted introducing a field on a
+        // document seeded without it (e.g. adding publicKeyFingerprint) — closed here.
         return validEscrowDeviceDocument(deviceId)
           && request.resource.data.deviceId == resource.data.deviceId
           && request.resource.data.platform == resource.data.platform
           && request.resource.data.trustState == resource.data.trustState
-          && (!("publicKeyFingerprint" in resource.data)
-            || request.resource.data.publicKeyFingerprint == resource.data.publicKeyFingerprint)
-          && (!("keyVersion" in resource.data)
-            || request.resource.data.keyVersion == resource.data.keyVersion)
-          && (!("approvedByDeviceId" in resource.data)
-            || request.resource.data.approvedByDeviceId == resource.data.approvedByDeviceId)
-          && (!("trustChainVersion" in resource.data)
-            || request.resource.data.trustChainVersion == resource.data.trustChainVersion)
-          && (!("trustChainAlgorithm" in resource.data)
-            || request.resource.data.trustChainAlgorithm == resource.data.trustChainAlgorithm)
-          && (!("trustChainSignature" in resource.data)
-            || request.resource.data.trustChainSignature == resource.data.trustChainSignature)
-          && (!("targetSignalIdentityKeyId" in resource.data)
-            || request.resource.data.targetSignalIdentityKeyId == resource.data.targetSignalIdentityKeyId)
-          && (!("targetSignalIdentityPublicKeyFingerprint" in resource.data)
-            || request.resource.data.targetSignalIdentityPublicKeyFingerprint == resource.data.targetSignalIdentityPublicKeyFingerprint)
-          && (!("approvedBySignalIdentityKeyId" in resource.data)
-            || request.resource.data.approvedBySignalIdentityKeyId == resource.data.approvedBySignalIdentityKeyId)
-          && (!("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
-            || request.resource.data.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
-          && (!("approvedAt" in resource.data)
-            || request.resource.data.approvedAt == resource.data.approvedAt)
-          && (!("createdAt" in resource.data)
-            || request.resource.data.createdAt == resource.data.createdAt);
+          && ((("publicKeyFingerprint" in resource.data)
+              && request.resource.data.publicKeyFingerprint == resource.data.publicKeyFingerprint)
+            || (!("publicKeyFingerprint" in resource.data)
+              && !("publicKeyFingerprint" in request.resource.data)))
+          && ((("keyVersion" in resource.data)
+              && request.resource.data.keyVersion == resource.data.keyVersion)
+            || (!("keyVersion" in resource.data)
+              && !("keyVersion" in request.resource.data)))
+          && ((("approvedByDeviceId" in resource.data)
+              && request.resource.data.approvedByDeviceId == resource.data.approvedByDeviceId)
+            || (!("approvedByDeviceId" in resource.data)
+              && !("approvedByDeviceId" in request.resource.data)))
+          && ((("trustChainVersion" in resource.data)
+              && request.resource.data.trustChainVersion == resource.data.trustChainVersion)
+            || (!("trustChainVersion" in resource.data)
+              && !("trustChainVersion" in request.resource.data)))
+          && ((("trustChainAlgorithm" in resource.data)
+              && request.resource.data.trustChainAlgorithm == resource.data.trustChainAlgorithm)
+            || (!("trustChainAlgorithm" in resource.data)
+              && !("trustChainAlgorithm" in request.resource.data)))
+          && ((("trustChainSignature" in resource.data)
+              && request.resource.data.trustChainSignature == resource.data.trustChainSignature)
+            || (!("trustChainSignature" in resource.data)
+              && !("trustChainSignature" in request.resource.data)))
+          && ((("targetSignalIdentityKeyId" in resource.data)
+              && request.resource.data.targetSignalIdentityKeyId == resource.data.targetSignalIdentityKeyId)
+            || (!("targetSignalIdentityKeyId" in resource.data)
+              && !("targetSignalIdentityKeyId" in request.resource.data)))
+          && ((("targetSignalIdentityPublicKeyFingerprint" in resource.data)
+              && request.resource.data.targetSignalIdentityPublicKeyFingerprint == resource.data.targetSignalIdentityPublicKeyFingerprint)
+            || (!("targetSignalIdentityPublicKeyFingerprint" in resource.data)
+              && !("targetSignalIdentityPublicKeyFingerprint" in request.resource.data)))
+          && ((("approvedBySignalIdentityKeyId" in resource.data)
+              && request.resource.data.approvedBySignalIdentityKeyId == resource.data.approvedBySignalIdentityKeyId)
+            || (!("approvedBySignalIdentityKeyId" in resource.data)
+              && !("approvedBySignalIdentityKeyId" in request.resource.data)))
+          && ((("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
+              && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
+            || (!("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
+              && !("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)))
+          && ((("approvedAt" in resource.data)
+              && request.resource.data.approvedAt == resource.data.approvedAt)
+            || (!("approvedAt" in resource.data)
+              && !("approvedAt" in request.resource.data)))
+          && ((("createdAt" in resource.data)
+              && request.resource.data.createdAt == resource.data.createdAt)
+            || (!("createdAt" in resource.data)
+              && !("createdAt" in request.resource.data)));
       }
 
       allow read: if ownsUserNamespace(userId);
