@@ -28,7 +28,15 @@ struct OpenBurnBarDaemonExecutable {
         )
         try configuration.validate()
         let logger = BurnBarDaemonLogger(category: "process")
-        let server = BurnBarDaemonServer(configuration: configuration, logger: logger)
+        let peerAuthenticator = makePeerAuthenticator(
+            environment: ProcessInfo.processInfo.environment,
+            logger: logger
+        )
+        let server = BurnBarDaemonServer(
+            configuration: configuration,
+            logger: logger,
+            peerAuthenticator: peerAuthenticator
+        )
         let pensieveWatcher = makePensieveKnowledgeWatcher(
             environment: ProcessInfo.processInfo.environment,
             logger: logger
@@ -50,6 +58,31 @@ struct OpenBurnBarDaemonExecutable {
         pensieveWatcher?.stop()
         await server.stop()
     }
+}
+
+/// RR-3: build the control-socket peer authenticator for this process.
+///
+/// Enforcement of the first-party code-signature gate is ON by default — a
+/// production daemon refuses any accepted peer that does not satisfy the
+/// canonical designated requirement. Unsigned developer builds (where no binary
+/// can carry the first-party identity) opt out with
+/// `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1`, mirroring the fail-closed-by-default
+/// escape hatch the HTTP gateway uses for unauthenticated loopback binds. The
+/// opt-out is logged loudly so a misconfiguration is never silent.
+private func makePeerAuthenticator(
+    environment: [String: String],
+    logger: BurnBarDaemonLogger
+) -> BurnBarDaemonPeerAuthenticator {
+    let disabled = environment["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
+        || environment["BURNBAR_DAEMON_DISABLE_PEER_CODESIG"] == "1"
+    if disabled {
+        logger.warning(
+            "rpc_peer_code_signature_enforcement_disabled",
+            metadata: ["reason": "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG=1"]
+        )
+        return .disabled
+    }
+    return BurnBarDaemonPeerAuthenticator(enforced: true, logger: logger)
 }
 
 private func makePensieveKnowledgeWatcher(
