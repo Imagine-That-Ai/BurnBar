@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -15,12 +15,6 @@ function validatedTokenForStorage(token: string): string {
     throw new Error("OpenBurnBar MCP access token is empty, too large, or contains control characters.");
   }
   return trimmed;
-}
-
-function fallbackPath(suffix = ""): string {
-  const dir = join(homedir(), ".openburnbar");
-  mkdirSync(dir, { recursive: true });
-  return join(dir, `mcp-remote-token${suffix}`);
 }
 
 function insecureTokenSourcesAllowed(): boolean {
@@ -49,13 +43,7 @@ function readSecret(account: string, suffix: string, envOverride?: string): stri
       // Production is Keychain-only. Insecure sources below are test/dev opt-ins.
     }
   }
-  if (!insecureTokenSourcesAllowed()) {return undefined;}
-  try {
-    const value = readFileSync(fallbackPath(suffix), "utf8").trim();
-    return value ? validatedTokenForStorage(value) : undefined;
-  } catch {
-    return undefined;
-  }
+  return undefined;
 }
 
 function writeSecret(account: string, suffix: string, token: string): void {
@@ -72,11 +60,9 @@ function writeSecret(account: string, suffix: string, token: string): void {
     }
   }
   if (!insecureTokenSourcesAllowed()) {
-    throw new Error("OpenBurnBar MCP token linking requires a secure key store. Set OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE=true only in tests or disposable CI.");
+    throw new Error("OpenBurnBar MCP token linking requires a secure key store. Use OPENBURNBAR_MCP_ACCESS_TOKEN with OPENBURNBAR_ALLOW_INSECURE_MCP_TOKEN_SOURCE=true only in tests or disposable CI.");
   }
-  const path = fallbackPath(suffix);
-  writeFileSync(path, `${safeToken}\n`, { mode: 0o600 });
-  chmodSync(path, 0o600);
+  throw new Error("OpenBurnBar MCP token linking refuses plaintext token files. Set OPENBURNBAR_MCP_ACCESS_TOKEN only for tests or disposable CI.");
 }
 
 export function readAccessToken(): string | undefined {
