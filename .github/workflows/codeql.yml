@@ -65,11 +65,11 @@ jobs:
     steps:
       - name: Checkout
         if: matrix.language != 'swift'
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Checkout with Swift submodules
         if: matrix.language == 'swift'
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
 
