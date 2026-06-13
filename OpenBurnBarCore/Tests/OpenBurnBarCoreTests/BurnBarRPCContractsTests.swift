@@ -24,6 +24,8 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .providerModelVariantRemove: "daemon.provider.model_variant.remove",
         .providerModelAliasUpsert: "daemon.provider.model_alias.upsert",
         .providerModelAliasRemove: "daemon.provider.model_alias.remove",
+        .providerCustomModelUpsert: "daemon.provider.custom_model.upsert",
+        .providerCustomModelRemove: "daemon.provider.custom_model.remove",
         .providerModelDisplayNameSet: "daemon.provider.model_display_name.set",
         .providerModelDisplayNameClear: "daemon.provider.model_display_name.clear",
         .usageRecord: "daemon.usage.record",

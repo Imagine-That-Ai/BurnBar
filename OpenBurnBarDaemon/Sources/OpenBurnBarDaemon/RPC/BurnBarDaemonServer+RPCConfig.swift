@@ -142,6 +142,41 @@ extension BurnBarDaemonServer {
                 result: BurnBarProviderModelAliasMutationResponse(snapshot: removedAliasSnapshot)
             )
             return encode(removedAliasResponse)
+        case .providerCustomModelUpsert:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderCustomModelUpsertRequest>.self,
+                from: requestData
+            )
+            let customModel = try await configStore.upsertCustomModel(
+                providerID: typedRequest.params.providerID,
+                customModel: typedRequest.params.customModel
+            )
+            let customSnapshot = try await configStore.snapshot()
+            let customResponse = BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: BurnBarProviderCustomModelMutationResponse(
+                    snapshot: customSnapshot,
+                    customModel: customModel
+                )
+            )
+            return encode(customResponse)
+        case .providerCustomModelRemove:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderCustomModelRemoveRequest>.self,
+                from: requestData
+            )
+            try await configStore.removeCustomModel(
+                providerID: typedRequest.params.providerID,
+                modelID: typedRequest.params.modelID
+            )
+            let removedCustomSnapshot = try await configStore.snapshot()
+            let removedCustomResponse = BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: BurnBarProviderCustomModelMutationResponse(snapshot: removedCustomSnapshot)
+            )
+            return encode(removedCustomResponse)
         case .providerModelDisplayNameSet:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderModelDisplayNameSetRequest>.self,

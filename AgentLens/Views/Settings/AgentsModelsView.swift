@@ -73,6 +73,13 @@ struct AgentsModelsView: View {
                         },
                         onSetProviderAdvertisement: { providerID, modelIDs, isEnabled in
                             setProviderAdvertisement(providerID, modelIDs: modelIDs, isEnabled: isEnabled)
+                        },
+                        customModelsByProvider: customModelsByProvider,
+                        onAddCustomModel: { providerID, modelID, displayName in
+                            addCustomModel(providerID: providerID, modelID: modelID, displayName: displayName)
+                        },
+                        onRemoveCustomModel: { providerID, modelID in
+                            removeCustomModel(providerID: providerID, modelID: modelID)
                         }
                     )
                     .settingsAnchor(SettingsAnchor.agentsModels)
@@ -316,6 +323,36 @@ struct AgentsModelsView: View {
             await daemonManager.removeProviderModelDisplayName(
                 providerID: model.providerID,
                 modelID: model.modelID
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private var customModelsByProvider: [String: [BurnBarCustomModel]] {
+        var result: [String: [BurnBarCustomModel]] = [:]
+        for config in daemonManager.providerConfigurations where !config.customModels.isEmpty {
+            result[config.providerID] = config.customModels
+        }
+        return result
+    }
+
+    private func addCustomModel(providerID: String, modelID: String, displayName: String) {
+        Task {
+            _ = await daemonManager.setProviderCustomModel(
+                providerID: providerID,
+                customModel: BurnBarCustomModel(modelID: modelID, displayName: displayName)
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func removeCustomModel(providerID: String, modelID: String) {
+        Task {
+            await daemonManager.removeProviderCustomModel(
+                providerID: providerID,
+                modelID: modelID
             )
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
             await viewModel.refreshWiringState(settings: settingsManager)
