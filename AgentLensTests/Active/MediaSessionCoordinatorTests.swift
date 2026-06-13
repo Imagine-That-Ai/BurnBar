@@ -1,3 +1,4 @@
+import CoreMedia
 import XCTest
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
@@ -84,7 +85,11 @@ final class MediaSessionCoordinatorTests: XCTestCase {
                     return FailingScreenCaptureSession()
                 }
                 return RecordingScreenCaptureSession()
-            }
+            },
+            // Stub encoder: virtualized CI Macs have no hardware HEVC encoder
+            // (VTCompressionSessionCreate → -12908), and this test's subject
+            // is the rollback/retry state machine, not VideoToolbox.
+            videoEncoderFactory: { _, _ in StubVideoEncoder() }
         )
 
         do {
@@ -109,6 +114,15 @@ final class MediaSessionCoordinatorTests: XCTestCase {
 
         await coordinator.stop()
     }
+}
+
+@MainActor
+private final class StubVideoEncoder: VideoEncoding {
+    func start() throws {}
+    func encode(sampleBuffer: CMSampleBuffer) async throws {}
+    func setTargetBitsPerSecond(_ bps: Int) throws {}
+    func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64) {}
+    func stop() {}
 }
 
 @MainActor
