@@ -4,7 +4,6 @@ import SwiftUI
 import UIKit
 #endif
 @preconcurrency import FirebaseFirestore
-@preconcurrency import FirebaseStorage
 import OpenBurnBarCore
 
 private let hermesSettingsLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSettings")
@@ -3139,7 +3138,7 @@ final class HermesGatewaySettingsStore {
                   !storagePath.isEmpty
             else { return nil }
 
-            let sealedBody = try await downloadGatewayAttachmentBody(storagePath: storagePath)
+            let sealedBody = try await downloadGatewayAttachmentBody(record: record)
             let keypair = try HermesGatewayRelayKeypair.loadOrCreate()
             // v2: bind the AGENT's pinned relay key so a forged attachment fails
             // the authenticated unwrap. Fail closed if unpinned.
@@ -3170,20 +3169,19 @@ final class HermesGatewaySettingsStore {
         }
     }
 
-    private func downloadGatewayAttachmentBody(storagePath: String) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            Storage.storage().reference(withPath: storagePath).getData(maxSize: Self.maxGatewayAttachmentDownloadBytes) { data, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                guard let data else {
-                    continuation.resume(throwing: FunctionsError.gatewayAttachmentUnreadable)
-                    return
-                }
-                continuation.resume(returning: data)
-            }
+    private func downloadGatewayAttachmentBody(record: HermesGatewayAttachmentRecord) async throws -> Data {
+        let url = try await repository.hermesGatewayAttachmentDownloadURL(
+            attachmentId: record.id,
+            clientId: record.clientId,
+            destinationId: record.destinationId
+        )
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse,
+              200..<300 ~= http.statusCode,
+              Int64(data.count) <= Self.maxGatewayAttachmentDownloadBytes else {
+            throw FunctionsError.gatewayAttachmentUnreadable
         }
+        return data
     }
 
     private func handleApprovalsSnapshot(snapshot: QuerySnapshot?, error: Error?) {

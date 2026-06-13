@@ -108,7 +108,41 @@ for rel in "${required[@]}"; do
   fi
 done
 
-python3 - "$archive_root/CORRESPONDING_SOURCE_MANIFEST.json" "$version" "$commit" "$dirty" <<'PY'
+agent_source_included="false"
+agent_manifest="$repo_root/third_party/hermes-agent/manifest.json"
+agent_src="${HERMES_AGENT_SRC:-}"
+if [[ "${OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE:-0}" == "1" || -n "$agent_src" ]]; then
+  if [[ -z "$agent_src" || ! -d "$agent_src" ]]; then
+    echo "ERROR: HERMES_AGENT_SRC must point to the pinned hermes-agent checkout when OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE=1." >&2
+    exit 1
+  fi
+
+  read -r agent_pin subtrees_csv < <(python3 - "$agent_manifest" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))
+print(m["pinnedCommit"], ",".join(m["vendoredSubtrees"]))
+PY
+)
+  head_commit="$(git -C "$agent_src" rev-parse HEAD)"
+  if [[ "$head_commit" != "$agent_pin" ]]; then
+    echo "ERROR: HERMES_AGENT_SRC HEAD $head_commit does not match pinnedCommit $agent_pin." >&2
+    exit 1
+  fi
+  mkdir -p "$archive_root/third_party/hermes-agent/source"
+  IFS=',' read -r -a agent_subtrees <<< "$subtrees_csv"
+  for subtree in "${agent_subtrees[@]}"; do
+    if [[ ! -d "$agent_src/$subtree" ]]; then
+      echo "ERROR: HERMES_AGENT_SRC is missing vendored subtree $subtree." >&2
+      exit 1
+    fi
+    mkdir -p "$archive_root/third_party/hermes-agent/source/$(dirname "$subtree")"
+    cp -R "$agent_src/$subtree" "$archive_root/third_party/hermes-agent/source/$subtree"
+  done
+  find "$archive_root/third_party/hermes-agent/source" -type d -name __pycache__ -prune -exec rm -rf {} +
+  agent_source_included="true"
+fi
+
+python3 - "$archive_root/CORRESPONDING_SOURCE_MANIFEST.json" "$version" "$commit" "$dirty" "$agent_source_included" <<'PY'
 import datetime
 import json
 import sys
@@ -118,6 +152,7 @@ path = Path(sys.argv[1])
 version = sys.argv[2]
 commit = sys.argv[3]
 dirty = sys.argv[4] == "true"
+agent_source_included = sys.argv[5] == "true"
 
 manifest = {
     "product": "OpenBurnBar",
@@ -139,6 +174,9 @@ manifest = {
         "official Signal libsignal pin"
     ],
 }
+if agent_source_included:
+    manifest["includes"].append("pinned Hermes agent runtime source")
+    manifest["vendoredHermesAgentSource"] = "third_party/hermes-agent/source"
 path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 

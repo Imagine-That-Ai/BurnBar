@@ -187,7 +187,7 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
 
     func testSurvivorWrapperEncryptsNextVaultKeyAndPayloadKeepsRequirementNonce() throws {
         let recipientPrivateKey = P256.KeyAgreement.PrivateKey()
-        let nextKey = CloudVaultCrypto.generateVaultKey()
+        let nextKey = try CloudVaultCrypto.generateVaultKey()
         let nextVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: nextKey)
         let survivor = CloudVaultVerifiedTrustedDevice(
             deviceId: "iphone-1",
@@ -312,7 +312,7 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
     }
 
     func testRevocationCloudVaultRotationRunsInjectedSuccessPath() async throws {
-        let currentKey = CloudVaultCrypto.generateVaultKey()
+        let currentKey = try CloudVaultCrypto.generateVaultKey()
         let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
         let survivorPrivateKey = P256.KeyAgreement.PrivateKey()
         let capture = RotationCapture()
@@ -354,7 +354,7 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
     }
 
     func testRevocationCloudVaultRotationRejectsMissingRequirementCurrentKeyAndMismatchedKey() async throws {
-        let currentKey = CloudVaultCrypto.generateVaultKey()
+        let currentKey = try CloudVaultCrypto.generateVaultKey()
         let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
 
         await XCTAssertThrowsErrorAsync({
@@ -419,7 +419,7 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
     }
 
     func testRevocationCloudVaultRotationRejectsMalformedRotateResponse() async throws {
-        let currentKey = CloudVaultCrypto.generateVaultKey()
+        let currentKey = try CloudVaultCrypto.generateVaultKey()
         let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
         let environment = makeRotationEnvironment(
             currentKey: currentKey,
@@ -445,7 +445,7 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
     }
 
     func testRevocationCloudVaultRotationMarksQueuedJobFailedWhenLocalRewrapFails() async throws {
-        let currentKey = CloudVaultCrypto.generateVaultKey()
+        let currentKey = try CloudVaultCrypto.generateVaultKey()
         let currentVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: currentKey)
         let capture = RotationCapture()
         let environment = makeRotationEnvironment(

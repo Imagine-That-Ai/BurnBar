@@ -255,6 +255,26 @@ function commitRequestForUser(uid: string, vaultKey: Buffer) {
   };
 }
 
+function makeApprovedChatMemory(req: ReturnType<typeof commitRequestForUser>) {
+  const vector = vectorForMutation(req);
+  vector.sourceKind = "chat_memory";
+  vector.reviewStatus = "approved";
+  vector.provenance = {
+    schemaVersion: 1,
+    sourceKind: "chat_memory",
+    reviewStatus: "approved",
+    sourceSlugHmac: req.data.slugHmac,
+    sourceTranscriptHash: "11".repeat(32),
+    extractorKind: "claude-cli",
+    extractorPromptHash: "22".repeat(32),
+    extractorOutputHash: "33".repeat(32),
+    extractorPromptVersion: "pensieve-chat-memory-v1",
+    createdAt: "2026-06-13T00:00:00.000Z",
+    approvedAt: "2026-06-13T00:01:00.000Z",
+  };
+  return vector;
+}
+
 function callableRun(callable: unknown): (request: unknown) => Promise<unknown> {
   const run = Reflect.get(Object(callable), "run");
   if (typeof run !== "function") {
@@ -448,6 +468,46 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
       },
     });
     expect(record.signalEnvelope).not.toHaveProperty("plaintext");
+  });
+
+  it("rejects unapproved chat_memory vectors before write", async () => {
+    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+
+    const req = commitRequestForUser("userChatQuarantine", Buffer.alloc(32, 0x51));
+    const vector = makeApprovedChatMemory(req);
+    vector.reviewStatus = "quarantined";
+    const provenance = Object(vector.provenance);
+    Reflect.set(provenance, "reviewStatus", "quarantined");
+    Reflect.deleteProperty(provenance, "approvedAt");
+
+    await expect(run(req)).rejects.toThrow(/must be explicitly approved/);
+    expect([...stored.keys()].some((k) => k.startsWith("users/userChatQuarantine/cloud_search_knowledge/"))).toBe(
+      false,
+    );
+  });
+
+  it("stores approved chat_memory provenance without plaintext path side channels", async () => {
+    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const run = callableRun(commitKnowledgeBatch);
+
+    const req = commitRequestForUser("userChatApproved", Buffer.alloc(32, 0x52));
+    makeApprovedChatMemory(req);
+
+    await run(req);
+    const record = firstKnowledgeRecord("userChatApproved");
+    expect(record.sourceKind).toBe("chat_memory");
+    expect(record.reviewStatus).toBe("approved");
+    expect(record.memoryProvenance).toMatchObject({
+      schemaVersion: 1,
+      sourceKind: "chat_memory",
+      reviewStatus: "approved",
+      sourceSlugHmac: req.data.slugHmac,
+      extractorKind: "claude-cli",
+      extractorPromptVersion: "pensieve-chat-memory-v1",
+    });
+    expect(JSON.stringify(record.memoryProvenance)).not.toContain(SOURCE_PATH);
+    expect(JSON.stringify(record.memoryProvenance)).not.toContain(PLAINTEXT);
   });
 
   it("rejects a relocated optional Signal envelope before any knowledge vector write", async () => {

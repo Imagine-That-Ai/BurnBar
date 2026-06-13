@@ -1,0 +1,3953 @@
+{
+  "schemaVersion": 1,
+  "collectedAt": "2026-06-13T19:06:31.148Z",
+  "collector": "scripts/ops/collect-firebase-security-evidence.mjs",
+  "mode": {
+    "strict": true,
+    "regions": [
+      "us-central1"
+    ],
+    "kmsLocations": [
+      "global",
+      "us",
+      "us-central1",
+      "us-east1",
+      "us-east4",
+      "northamerica-northeast1"
+    ],
+    "appCheckServices": [
+      "firestore.googleapis.com",
+      "firebasestorage.googleapis.com"
+    ]
+  },
+  "project": {
+    "ok": true,
+    "projectId": "burnbar",
+    "projectNumber": "246956661961",
+    "lifecycleState": "ACTIVE",
+    "labels": {
+      "firebase": "enabled",
+      "firebase-core": "disabled"
+    }
+  },
+  "authContext": {
+    "gcloudProject": {
+      "ok": true,
+      "command": [
+        "gcloud",
+        "config",
+        "get-value",
+        "project"
+      ],
+      "stdout": "burnbar"
+    },
+    "activeAccount": {
+      "ok": true,
+      "command": [
+        "gcloud",
+        "config",
+        "get-value",
+        "account"
+      ],
+      "stdout": "alberto8793@gmail.com"
+    },
+    "firebaseProjects": {
+      "ok": true,
+      "command": [
+        "npx",
+        "--prefix",
+        "functions",
+        "firebase",
+        "--project",
+        "burnbar",
+        "--json",
+        "projects:list"
+      ],
+      "stdout": {
+        "status": "success",
+        "result": [
+          {
+            "projectId": "ai-imagine-that",
+            "projectNumber": "419967614428",
+            "displayName": "AI Imagine That",
+            "name": "projects/ai-imagine-that",
+            "resources": {
+              "hostingSite": "ai-imagine-that"
+            },
+            "state": "ACTIVE",
+            "etag": "1_6f070b11-e7aa-40f7-b68f-0c8da8f31346"
+          },
+          {
+            "projectId": "burnbar",
+            "projectNumber": "246956661961",
+            "displayName": "BurnBar",
+            "name": "projects/burnbar",
+            "resources": {
+              "hostingSite": "burnbar"
+            },
+            "state": "ACTIVE",
+            "etag": "1_39a4f8fc-d93a-4efa-90cd-bfeda84b6c2e"
+          },
+          {
+            "projectId": "herme-s-world",
+            "projectNumber": "4655881271",
+            "displayName": "Herme's World",
+            "name": "projects/herme-s-world",
+            "resources": {
+              "hostingSite": "herme-s-world"
+            },
+            "state": "ACTIVE",
+            "etag": "1_dac5ec2d-4a46-4b8c-8522-d60759d71eaa"
+          },
+          {
+            "projectId": "hormigadormida-a6d18",
+            "projectNumber": "428336748392",
+            "displayName": "HormigaDormida",
+            "name": "projects/hormigadormida-a6d18",
+            "resources": {
+              "hostingSite": "hormigadormida-a6d18"
+            },
+            "state": "ACTIVE",
+            "etag": "1_cb191e92-7e7c-41e1-ba39-6d544a6ee285"
+          },
+          {
+            "projectId": "imaginethat-17aa7",
+            "projectNumber": "381830441534",
+            "displayName": "ImagineThat",
+            "name": "projects/imaginethat-17aa7",
+            "resources": {
+              "hostingSite": "imaginethat-17aa7"
+            },
+            "state": "ACTIVE",
+            "etag": "1_007e0cc4-6966-4ee0-8d53-c8281eb206b5"
+          },
+          {
+            "projectId": "itx-agent-13fa3",
+            "projectNumber": "883680893467",
+            "displayName": "itx-agent",
+            "name": "projects/itx-agent-13fa3",
+            "resources": {
+              "hostingSite": "itx-agent-13fa3"
+            },
+            "state": "ACTIVE",
+            "etag": "1_b211908d-765b-4259-8d2a-5a902a34c4af"
+          },
+          {
+            "projectId": "murmurx-8793",
+            "projectNumber": "397547667500",
+            "displayName": "MurmurX",
+            "name": "projects/murmurx-8793",
+            "resources": {
+              "hostingSite": "murmurx-8793"
+            },
+            "state": "ACTIVE",
+            "etag": "1_53282555-fefe-4456-b6e5-32b755f12f23"
+          }
+        ]
+      }
+    }
+  },
+  "tokenProbe": {
+    "ok": true,
+    "source": "gcloud"
+  },
+  "rules": {
+    "ok": false,
+    "firestore": {
+      "releaseName": "projects/burnbar/releases/cloud.firestore",
+      "rulesetName": "projects/burnbar/rulesets/152e50ca-3be5-4f21-b08f-6d7b16acdcc8",
+      "updateTime": "2026-06-11T12:30:51.754728Z",
+      "localSha256": "bd9613f78ce973d46787eea6107c09740b8365283f35902addb2f9303f2e702e",
+      "deployedSha256": "34459b557f5a09e2c1d61defb2a9eb4060af42db96a19b9da8ed1dd8ecd74051",
+      "drift": true
+    },
+    "firestoreIndexes": {
+      "ok": true,
+      "localSha256": "52ae83c20c96fd102dabd86c715d03e9953970dbb290958afd6b7d1797cce935",
+      "deployedSha256": "28d02d551cd8f3acbebb71cb9040f83528f6d1e042d953ebb12eba1bc2f3700d",
+      "drift": true,
+      "indexCount": 81,
+      "fieldOverrideCount": 42
+    },
+    "storage": [
+      {
+        "releaseName": "projects/burnbar/releases/firebase.storage/burnbar.firebasestorage.app",
+        "rulesetName": "projects/burnbar/rulesets/dd8e9258-d2e2-4bce-9477-9d0041855a78",
+        "updateTime": "2026-06-11T12:30:48.167808Z",
+        "localSha256": "b8ac2ecf2a9c0bfccde39a77397044df2e46773e88d5572b6c56e9233d6813ab",
+        "deployedSha256": "b8ac2ecf2a9c0bfccde39a77397044df2e46773e88d5572b6c56e9233d6813ab",
+        "drift": false
+      }
+    ]
+  },
+  "appCheck": {
+    "ok": false,
+    "services": [
+      {
+        "service": "firestore.googleapis.com",
+        "ok": true,
+        "serviceName": "projects/246956661961/services/firestore.googleapis.com",
+        "enforcementMode": "ENFORCED",
+        "updateTime": "2026-05-30T19:32:46.197567Z",
+        "probe": "live"
+      },
+      {
+        "service": "firebasestorage.googleapis.com",
+        "ok": false,
+        "serviceName": "projects/246956661961/services/firebasestorage.googleapis.com",
+        "enforcementMode": null,
+        "updateTime": "1970-01-01T00:00:00Z",
+        "probe": "live",
+        "error": "expected enforcementMode ENFORCED, got null"
+      }
+    ]
+  },
+  "iam": {
+    "ok": true,
+    "project": {
+      "etag": "BwZTVELXbYs=",
+      "version": 1,
+      "bindingCount": 38,
+      "bindings": [
+        {
+          "role": "roles/artifactregistry.admin",
+          "members": [
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/artifactregistry.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-artifactregistry.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/cloudbuild.builds.builder",
+          "members": [
+            "serviceAccount:246956661961@cloudbuild.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/cloudbuild.builds.editor",
+          "members": [
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/cloudbuild.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/cloudfunctions.developer",
+          "members": [
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/cloudfunctions.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcf-admin-robot.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/cloudscheduler.admin",
+          "members": [
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/cloudscheduler.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-cloudscheduler.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/compute.instanceGroupManagerServiceAgent",
+          "members": [
+            "serviceAccount:246956661961@cloudservices.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/compute.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@compute-system.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/container.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@container-engine-robot.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/containerregistry.ServiceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@containerregistry.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/datastore.viewer",
+          "members": [
+            "serviceAccount:hermes-realtime-relay@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/editor",
+          "members": [
+            "serviceAccount:246956661961-compute@developer.gserviceaccount.com",
+            "serviceAccount:246956661961@cloudservices.gserviceaccount.com",
+            "serviceAccount:burnbar@appspot.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/eventarc.eventReceiver",
+          "members": [
+            "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/eventarc.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-eventarc.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebase.admin",
+          "members": [
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebase.managementServiceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-firebase.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebase.sdkAdminServiceAgent",
+          "members": [
+            "serviceAccount:firebase-adminsdk-fbsvc@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebaseappcheck.admin",
+          "members": [
+            "serviceAccount:firebase-adminsdk-fbsvc@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebaseappcheck.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-firebaseappcheck.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebaseappcheck.viewer",
+          "members": [
+            "serviceAccount:hermes-realtime-relay@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebaseauth.admin",
+          "members": [
+            "serviceAccount:firebase-adminsdk-fbsvc@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebasemods.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-firebasemods.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebaserules.system",
+          "members": [
+            "serviceAccount:service-246956661961@firebase-rules.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firebasestorage.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-firebasestorage.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/firestore.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-firestore.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/iam.serviceAccountTokenCreator",
+          "members": [
+            "serviceAccount:firebase-adminsdk-fbsvc@burnbar.iam.gserviceaccount.com",
+            "serviceAccount:service-246956661961@gcp-sa-pubsub.iam.gserviceaccount.com",
+            "user:alberto8793@gmail.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/iam.serviceAccountUser",
+          "members": [
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/owner",
+          "members": [
+            "user:alberto8793@gmail.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/pubsub.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@gcp-sa-pubsub.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/redis.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@cloud-redis.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/run.admin",
+          "members": [
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/run.invoker",
+          "members": [
+            "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/run.serviceAgent",
+          "members": [
+            "serviceAccount:service-246956661961@serverless-robot-prod.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/secretmanager.admin",
+          "members": [
+            "serviceAccount:246956661961-compute@developer.gserviceaccount.com",
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        },
+        {
+          "role": "roles/serviceusage.serviceUsageConsumer",
+          "members": [
+            "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+          ],
+          "condition": null
+        }
+      ]
+    }
+  },
+  "functions": {
+    "ok": true,
+    "regions": {
+      "us-central1": {
+        "ok": true,
+        "count": 124,
+        "functions": [
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/listEncryptedProjectMemorySnapshots",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:56.918370628Z",
+            "url": "https://listencryptedprojectmemorysnapshots-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/computeTierCogsDaily",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:35.880914567Z",
+            "url": "https://computetiercogsdaily-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 540,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/burnBarHermesGateway",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-08T17:32:01.915059066Z",
+            "url": "https://burnbarhermesgateway-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": 1,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "d9e096dadfc390a5bfa3712e5daf025c2c20b86a"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/onCliSessionAgentReplyNotification",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:30.994755298Z",
+            "url": "https://onclisessionagentreplynotification-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/updateHermesConnectionStatus",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.329697319Z",
+            "url": "https://updatehermesconnectionstatus-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/createPiAgentPairing",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:48.581183546Z",
+            "url": "https://createpiagentpairing-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/pollCliLink",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:28:20.159079511Z",
+            "url": "https://pollclilink-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/connectHostedQuotaAccount",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.585847223Z",
+            "url": "https://connecthostedquotaaccount-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/deleteDomainData",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:08:32.997676866Z",
+            "url": "https://deletedomaindata-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "512Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "22c423ccf4f6122e9be697760d8dfd142b9cfe49"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/triggerVoIPCall",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:31.043588248Z",
+            "url": "https://triggervoipcall-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/commitKnowledgeBatch",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:01.553207613Z",
+            "url": "https://commitknowledgebatch-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/createStripeBurnBarProCheckoutSession",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:52.395144288Z",
+            "url": "https://createstripeburnbarprocheckoutsession-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "STRIPE_SECRET_KEY"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "d54f799fb907192fe886fc6f6b900f1f20c35027"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/deleteUserCloudData",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:25:30.419555584Z",
+            "url": "https://deleteuserclouddata-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "1024Mi",
+            "timeoutSeconds": 540,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/grantMediaGrandfather",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.899605582Z",
+            "url": "https://grantmediagrandfather-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/healthLive",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:30.636975503Z",
+            "url": "https://healthlive-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/updateProviderAccount",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:34.647877423Z",
+            "url": "https://updateprovideraccount-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/revokeProviderAccountDeviceLink",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:14.198605753Z",
+            "url": "https://revokeprovideraccountdevicelink-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/getEncryptedProjectMemorySnapshot",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:54.089555381Z",
+            "url": "https://getencryptedprojectmemorysnapshot-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/validateMediaPurchase",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:38.458770176Z",
+            "url": "https://validatemediapurchase-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/respondMissionApproval",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:07.536344433Z",
+            "url": "https://respondmissionapproval-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/anchorAuditLogHeads",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:14.612425212Z",
+            "url": "https://anchorauditlogheads-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/beginEntitlementBinding",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:15.383072682Z",
+            "url": "https://beginentitlementbinding-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": 1,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "APP_STORE_ASC_ISSUER_ID",
+              "APP_STORE_ASC_KEY_ID",
+              "APP_STORE_ASC_KEY_P8"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "2538aaca4c019f6d476f50475fb0c54e6f120758"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/verifyAuditLog",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:03.637638403Z",
+            "url": "https://verifyauditlog-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/purgeKnowledgeMemory",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:58.695820315Z",
+            "url": "https://purgeknowledgememory-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/revokeEscrowDeviceTrust",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:25:21.225033381Z",
+            "url": "https://revokeescrowdevicetrust-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/disconnectKnowledgeRepo",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:59.476676132Z",
+            "url": "https://disconnectknowledgerepo-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/completePiAgentPairing",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:52.472273637Z",
+            "url": "https://completepiagentpairing-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/evaluateMediaBudget",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:34.841906569Z",
+            "url": "https://evaluatemediabudget-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/reapHermesGatewayApprovals",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T11:44:36.071712646Z",
+            "url": "https://reaphermesgatewayapprovals-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 120,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "9fed66de68c9bccd77e09c3d4b9f9d53fce6e039"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/approveHermesGatewayDeviceGrant",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T12:21:48.078229887Z",
+            "url": "https://approvehermesgatewaydevicegrant-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "485c89082fe4c768247a9e12e93e72657905762f"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/deleteProviderAccount",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:30.665422618Z",
+            "url": "https://deleteprovideraccount-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/rebuildUsageRollups",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:17.327815315Z",
+            "url": "https://rebuildusagerollups-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 10,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/deleteKnowledgeSource",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:01.825151969Z",
+            "url": "https://deleteknowledgesource-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/appStoreServerNotificationsV2",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:25:21.596571326Z",
+            "url": "https://appstoreservernotificationsv2-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 30,
+            "minInstanceCount": 1,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "APP_STORE_ASC_ISSUER_ID",
+              "APP_STORE_ASC_KEY_ID",
+              "APP_STORE_ASC_KEY_P8"
+            ],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "2538aaca4c019f6d476f50475fb0c54e6f120758"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/completeCliLink",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:14.540410651Z",
+            "url": "https://completeclilink-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "REMOTE_MCP_TOKEN_HMAC_SECRET"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "73ba78a52e404a2a3caa53d1f222af1838e24537"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/exportUserData",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:10:52.125195172Z",
+            "url": "https://exportuserdata-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "512Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "22c423ccf4f6122e9be697760d8dfd142b9cfe49"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/revokeHermesGatewayClient",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:46.285548172Z",
+            "url": "https://revokehermesgatewayclient-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/recomputeComputerUseQuotaUsage",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:37.590028966Z",
+            "url": "https://recomputecomputerusequotausage-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 540,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/beginEncryptedSessionBlobUpload",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:51.510760576Z",
+            "url": "https://beginencryptedsessionblobupload-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/confirmRecovery",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:03.386511246Z",
+            "url": "https://confirmrecovery-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/verifyGooglePlayBurnBarProSubscription",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T11:49:43.740170556Z",
+            "url": "https://verifygoogleplayburnbarprosubscription-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "aa4575529c32ec367f4f50b9083b5479b735f902"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/adoptProviderAccountForDevice",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:15.338975068Z",
+            "url": "https://adoptprovideraccountfordevice-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/reserveFlooRelayBudget",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:32.678919467Z",
+            "url": "https://reservefloorelaybudget-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/seedAndroidDemoAccount",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:28:20.976967811Z",
+            "url": "https://seedandroiddemoaccount-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/startCliLink",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:28:19.126966384Z",
+            "url": "https://startclilink-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": 1,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/refreshProviderQuota",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:37.939626348Z",
+            "url": "https://refreshproviderquota-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "HOSTED_QUOTA_RUNNER_TOKEN"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "be2967bb222ba1dd245a9b6b62ecc02e00b58f6b"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/listRecovery",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:57.294784719Z",
+            "url": "https://listrecovery-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/listHermesGatewayClients",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T12:21:46.693515416Z",
+            "url": "https://listhermesgatewayclients-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "485c89082fe4c768247a9e12e93e72657905762f"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/insightsHostedAnswer",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:30.796977763Z",
+            "url": "https://insightshostedanswer-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "OPENROUTER_API_KEY"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "3b8d1a1e0e3e77e71742d64cb085940d9960537c"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/setHermesGatewayOversightMode",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T11:44:36.813926606Z",
+            "url": "https://sethermesgatewayoversightmode-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "9fed66de68c9bccd77e09c3d4b9f9d53fce6e039"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/rotateHermesGatewayClientToken",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T12:21:45.384546474Z",
+            "url": "https://rotatehermesgatewayclienttoken-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "485c89082fe4c768247a9e12e93e72657905762f"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/stripeBurnBarProWebhook",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:49.580092148Z",
+            "url": "https://stripeburnbarprowebhook-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": 1,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "STRIPE_SECRET_KEY",
+              "STRIPE_WEBHOOK_SECRET"
+            ],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "a8cea14624dd7bb255ff47dc23eebb60f49d51b3"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/verifyGooglePlayCloudProTopUp",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:50.089249673Z",
+            "url": "https://verifygoogleplaycloudprotopup-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/completeHermesPairing",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:39.710322788Z",
+            "url": "https://completehermespairing-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/createStripeBurnBarProPortalSession",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:53.533339609Z",
+            "url": "https://createstripeburnbarproportalsession-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "STRIPE_SECRET_KEY"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "d54f799fb907192fe886fc6f6b900f1f20c35027"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/bindAppCheckAttestation",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:04.799992806Z",
+            "url": "https://bindappcheckattestation-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/restoreHostedQuotaEntitlement",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:15.614396596Z",
+            "url": "https://restorehostedquotaentitlement-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "APP_STORE_ASC_ISSUER_ID",
+              "APP_STORE_ASC_KEY_ID",
+              "APP_STORE_ASC_KEY_P8"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "2538aaca4c019f6d476f50475fb0c54e6f120758"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/getDataDomainUsage",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:58.917294808Z",
+            "url": "https://getdatadomainusage-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/rollupMediaSessionDaily",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:36.881667912Z",
+            "url": "https://rollupmediasessiondaily-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/registerBrowserEscrowDevice",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:04.138334722Z",
+            "url": "https://registerbrowserescrowdevice-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/createHermesPairing",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:41.011786944Z",
+            "url": "https://createhermespairing-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/reserveAgentControlActionBudget",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.093033879Z",
+            "url": "https://reserveagentcontrolactionbudget-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/deleteHostedQuotaCredentials",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:31.077767480Z",
+            "url": "https://deletehostedquotacredentials-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/backfillPrivacyPlaintextScheduled",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T12:47:19.540228123Z",
+            "url": "https://backfillprivacyplaintextscheduled-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "512Mi",
+            "timeoutSeconds": 540,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "ef901631c33ce7831ebef3bc3ad5e88c44277fe8"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/rollupIrohTransportDaily",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:42.319845159Z",
+            "url": "https://rollupirohtransportdaily-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/revokeAllAccess",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:08:29.031289089Z",
+            "url": "https://revokeallaccess-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "512Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "22c423ccf4f6122e9be697760d8dfd142b9cfe49"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/listPiAgentConnections",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:47.303119582Z",
+            "url": "https://listpiagentconnections-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/sendVoIPOutbound",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.804996713Z",
+            "url": "https://sendvoipoutbound-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "APNS_KEY_ID",
+              "APNS_KEY_P8",
+              "APNS_TEAM_ID"
+            ],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "2cbd2b9ca3108500301d8d32ae0288d2970a1d92"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/verifyPasskeyRegistration",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:05.066392248Z",
+            "url": "https://verifypasskeyregistration-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 40,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/deleteProviderCredential",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:37.043030771Z",
+            "url": "https://deleteprovidercredential-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/connectProviderCredential",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:32.969145547Z",
+            "url": "https://connectprovidercredential-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/issueHighRiskActionNonce",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:07.634173076Z",
+            "url": "https://issuehighriskactionnonce-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/listHermesConnections",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:35.566054219Z",
+            "url": "https://listhermesconnections-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/getEncryptedSessionBlobDownloadUrl",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:57.085927497Z",
+            "url": "https://getencryptedsessionblobdownloadurl-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/onKnowledgeRepoPush",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:56.237210812Z",
+            "url": "https://onknowledgerepopush-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "KNOWLEDGE_GITHUB_WEBHOOK_SECRET",
+              "KNOWLEDGE_REPO_MATCH_KEY"
+            ],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "4ac0bfc5cf8da7fb112f110c9be763166bc9cfe6"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/refreshModelLandscapeBenchmarks",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:17.971309701Z",
+            "url": "https://refreshmodellandscapebenchmarks-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "ARTIFICIAL_ANALYSIS_API_KEY"
+            ],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "210caad3e4c7ae8594753a266e81abd2a970f01d"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/connectKnowledgeRepo",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:01.888760472Z",
+            "url": "https://connectknowledgerepo-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "KNOWLEDGE_REPO_MATCH_KEY"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "fa9cd6addba37df56cd297ff09580046d32027e1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/rollupComputerUseDaily",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:34.808840886Z",
+            "url": "https://rollupcomputerusedaily-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 540,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/backfillProviderAccountDeviceLinks",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:14.544172591Z",
+            "url": "https://backfillprovideraccountdevicelinks-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/respondHermesGatewayApproval",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T11:44:37.515570159Z",
+            "url": "https://respondhermesgatewayapproval-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "9fed66de68c9bccd77e09c3d4b9f9d53fce6e039"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/refreshAllProviderQuotas",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:16.226064650Z",
+            "url": "https://refreshallproviderquotas-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "HOSTED_QUOTA_RUNNER_TOKEN"
+            ],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "be2967bb222ba1dd245a9b6b62ecc02e00b58f6b"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/revokeRemoteMcpClient",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:05.205795145Z",
+            "url": "https://revokeremotemcpclient-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/commitEncryptedProjectMemorySnapshot",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:50.079718704Z",
+            "url": "https://commitencryptedprojectmemorysnapshot-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/queryConversations",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:57.989746081Z",
+            "url": "https://queryconversations-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/reconcileKnowledgeMemoryDaily",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:07.269836208Z",
+            "url": "https://reconcileknowledgememorydaily-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/reconcileHostedEntitlementsDaily",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:09:23.692299858Z",
+            "url": "https://reconcilehostedentitlementsdaily-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "512Mi",
+            "timeoutSeconds": 540,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "APP_STORE_ASC_ISSUER_ID",
+              "APP_STORE_ASC_KEY_ID",
+              "APP_STORE_ASC_KEY_P8"
+            ],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "c685a103d7c587fb7dd6640bad10724b76dc8401"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/healthReady",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.133022444Z",
+            "url": "https://healthready-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/onUsageWritten",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:17.903258652Z",
+            "url": "https://onusagewritten-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/verifyCloudProTopUp",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:15.162083928Z",
+            "url": "https://verifycloudprotopup-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "APP_STORE_ASC_ISSUER_ID",
+              "APP_STORE_ASC_KEY_ID",
+              "APP_STORE_ASC_KEY_P8"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "2538aaca4c019f6d476f50475fb0c54e6f120758"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/healthCheck",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:36.977181805Z",
+            "url": "https://healthcheck-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/searchEncryptedConversationIndex",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:56.423605027Z",
+            "url": "https://searchencryptedconversationindex-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/registerPasskey",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:05.728744441Z",
+            "url": "https://registerpasskey-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 40,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/latestRouterRundown",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:15.041076644Z",
+            "url": "https://latestrouterrundown-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/verifyHostedQuotaEntitlement",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:18.121527518Z",
+            "url": "https://verifyhostedquotaentitlement-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "APP_STORE_ASC_ISSUER_ID",
+              "APP_STORE_ASC_KEY_ID",
+              "APP_STORE_ASC_KEY_P8"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "2538aaca4c019f6d476f50475fb0c54e6f120758"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/recomputeMediaQuotaUsage",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:36.375408477Z",
+            "url": "https://recomputemediaquotausage-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/evaluateComputerUseBudget",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.540274371Z",
+            "url": "https://evaluatecomputerusebudget-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 540,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/uploadProviderQuotaSnapshot",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:34.432348278Z",
+            "url": "https://uploadproviderquotasnapshot-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/registerEscrowDevice",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:08.044321325Z",
+            "url": "https://registerescrowdevice-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/verifyPasskeyAssertion",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:08.739844210Z",
+            "url": "https://verifypasskeyassertion-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 40,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/connectSelfHostedQuotaAccount",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.055668257Z",
+            "url": "https://connectselfhostedquotaaccount-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/commitEncryptedSearchIndexBatch",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:54.165168593Z",
+            "url": "https://commitencryptedsearchindexbatch-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/revokeHermesConnection",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.177904441Z",
+            "url": "https://revokehermesconnection-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/connectProviderAccount",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:34.790543435Z",
+            "url": "https://connectprovideraccount-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": 1,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/updatePiAgentConnectionStatus",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:53.544726052Z",
+            "url": "https://updatepiagentconnectionstatus-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/refreshProviderAccountQuota",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:38.906875778Z",
+            "url": "https://refreshprovideraccountquota-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "HOSTED_QUOTA_RUNNER_TOKEN"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "be2967bb222ba1dd245a9b6b62ecc02e00b58f6b"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/approveEscrowDeviceTrust",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:04.918216791Z",
+            "url": "https://approveescrowdevicetrust-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/enqueueHermesGatewayEvent",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-08T17:31:57.572966526Z",
+            "url": "https://enqueuehermesgatewayevent-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "d9e096dadfc390a5bfa3712e5daf025c2c20b86a"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/searchKnowledge",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:58.361591851Z",
+            "url": "https://searchknowledge-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/consumeCredentialTransfer",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:59.617595098Z",
+            "url": "https://consumecredentialtransfer-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/searchStreams",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:10.745578857Z",
+            "url": "https://searchstreams-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/configureKnowledgeSource",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:00.873896597Z",
+            "url": "https://configureknowledgesource-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/beginPasskeyAssertion",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:04.683417872Z",
+            "url": "https://beginpasskeyassertion-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 40,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/getAuditLog",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:05.273941561Z",
+            "url": "https://getauditlog-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/backfillProviderAccountDeviceLinksScheduled",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:09:20.330921827Z",
+            "url": "https://backfillprovideraccountdevicelinksscheduled-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "512Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "22c423ccf4f6122e9be697760d8dfd142b9cfe49"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/issueRemoteMcpGrant",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:04.963235433Z",
+            "url": "https://issueremotemcpgrant-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "REMOTE_MCP_TOKEN_HMAC_SECRET"
+            ],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "73ba78a52e404a2a3caa53d1f222af1838e24537"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/revokePiAgentConnection",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:52.448290529Z",
+            "url": "https://revokepiagentconnection-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 100,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/submitAgentNotificationReply",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:33.716674102Z",
+            "url": "https://submitagentnotificationreply-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/retryStuckVoIPPushes",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:31.265140425Z",
+            "url": "https://retrystuckvoippushes-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [
+              "APNS_KEY_ID",
+              "APNS_KEY_P8",
+              "APNS_TEAM_ID"
+            ],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "2cbd2b9ca3108500301d8d32ae0288d2970a1d92"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/backfillPrivacyPlaintext",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T12:47:19.774093271Z",
+            "url": "https://backfillprivacyplaintext-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 300,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "ef901631c33ce7831ebef3bc3ad5e88c44277fe8"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/onMobileAssistantAgentReplyNotification",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:35.019507862Z",
+            "url": "https://onmobileassistantagentreplynotification-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/setupRecovery",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:58.534472559Z",
+            "url": "https://setuprecovery-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 50,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/sendFcmOutbound",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:23:32.946733929Z",
+            "url": "https://sendfcmoutbound-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/validateOpenTimestampsProof",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:08:28.641236420Z",
+            "url": "https://validateopentimestampsproof-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "512Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-callable": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "22c423ccf4f6122e9be697760d8dfd142b9cfe49"
+            }
+          },
+          {
+            "name": "projects/burnbar/locations/us-central1/functions/rebuildRollups",
+            "state": "ACTIVE",
+            "updateTime": "2026-06-03T08:24:15.054522173Z",
+            "url": "https://rebuildrollups-cjrjb5ckqq-uc.a.run.app",
+            "ingressSettings": "ALLOW_ALL",
+            "serviceAccountEmail": "246956661961-compute@developer.gserviceaccount.com",
+            "availableMemory": "256Mi",
+            "timeoutSeconds": 60,
+            "minInstanceCount": null,
+            "maxInstanceCount": 20,
+            "allTrafficOnLatestRevision": true,
+            "secretEnvironmentVariableNames": [],
+            "labels": {
+              "deployment-scheduled": "true",
+              "deployment-tool": "cli-firebase",
+              "firebase-functions-hash": "b71460c9ced106855279ad7192b047fe508aada1"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "storageBuckets": {
+    "ok": true,
+    "bucketCount": 7,
+    "buckets": [
+      {
+        "ok": true,
+        "name": "burnbar-firestore-exports-246956661961",
+        "url": "gs://burnbar-firestore-exports-246956661961",
+        "location": "US",
+        "storageClass": null,
+        "uniformBucketLevelAccess": null,
+        "publicAccessPrevention": null,
+        "retentionPolicy": null,
+        "encryption": null,
+        "lifecycle": null,
+        "iamPolicy": {
+          "etag": "CAM=",
+          "version": null,
+          "bindingCount": 5,
+          "bindings": [
+            {
+              "role": "roles/storage.admin",
+              "members": [
+                "serviceAccount:service-246956661961@gcp-sa-firestore.iam.gserviceaccount.com"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyBucketOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyBucketReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "burnbar-hosted-mcp-bodies-246956661961",
+        "url": "gs://burnbar-hosted-mcp-bodies-246956661961",
+        "location": "US-CENTRAL1",
+        "storageClass": null,
+        "uniformBucketLevelAccess": null,
+        "publicAccessPrevention": null,
+        "retentionPolicy": null,
+        "encryption": null,
+        "lifecycle": null,
+        "iamPolicy": {
+          "etag": "CAE=",
+          "version": null,
+          "bindingCount": 4,
+          "bindings": [
+            {
+              "role": "roles/storage.legacyBucketOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyBucketReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "burnbar.firebasestorage.app",
+        "url": "gs://burnbar.firebasestorage.app",
+        "location": "US-CENTRAL1",
+        "storageClass": null,
+        "uniformBucketLevelAccess": null,
+        "publicAccessPrevention": null,
+        "retentionPolicy": null,
+        "encryption": null,
+        "lifecycle": null,
+        "iamPolicy": {
+          "etag": "CAE=",
+          "version": null,
+          "bindingCount": 2,
+          "bindings": [
+            {
+              "role": "roles/storage.legacyBucketOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyBucketReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "burnbar_cloudbuild",
+        "url": "gs://burnbar_cloudbuild",
+        "location": "US",
+        "storageClass": null,
+        "uniformBucketLevelAccess": null,
+        "publicAccessPrevention": null,
+        "retentionPolicy": null,
+        "encryption": null,
+        "lifecycle": null,
+        "iamPolicy": {
+          "etag": "CAE=",
+          "version": null,
+          "bindingCount": 2,
+          "bindings": [
+            {
+              "role": "roles/storage.legacyBucketOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyBucketReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "gcf-v2-sources-246956661961-us-central1",
+        "url": "gs://gcf-v2-sources-246956661961-us-central1",
+        "location": "US-CENTRAL1",
+        "storageClass": null,
+        "uniformBucketLevelAccess": null,
+        "publicAccessPrevention": null,
+        "retentionPolicy": null,
+        "encryption": null,
+        "lifecycle": null,
+        "iamPolicy": {
+          "etag": "CAE=",
+          "version": null,
+          "bindingCount": 4,
+          "bindings": [
+            {
+              "role": "roles/storage.legacyBucketOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyBucketReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "gcf-v2-uploads-246956661961.us-central1.cloudfunctions.appspot.com",
+        "url": "gs://gcf-v2-uploads-246956661961.us-central1.cloudfunctions.appspot.com",
+        "location": "US-CENTRAL1",
+        "storageClass": null,
+        "uniformBucketLevelAccess": null,
+        "publicAccessPrevention": null,
+        "retentionPolicy": null,
+        "encryption": null,
+        "lifecycle": null,
+        "iamPolicy": {
+          "etag": "CAE=",
+          "version": null,
+          "bindingCount": 4,
+          "bindings": [
+            {
+              "role": "roles/storage.legacyBucketOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyBucketReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "run-sources-burnbar-us-central1",
+        "url": "gs://run-sources-burnbar-us-central1",
+        "location": "US-CENTRAL1",
+        "storageClass": null,
+        "uniformBucketLevelAccess": null,
+        "publicAccessPrevention": null,
+        "retentionPolicy": null,
+        "encryption": null,
+        "lifecycle": null,
+        "iamPolicy": {
+          "etag": "CAE=",
+          "version": null,
+          "bindingCount": 4,
+          "bindings": [
+            {
+              "role": "roles/storage.legacyBucketOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyBucketReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectOwner",
+              "members": [
+                "projectEditor:burnbar",
+                "projectOwner:burnbar"
+              ],
+              "condition": null
+            },
+            {
+              "role": "roles/storage.legacyObjectReader",
+              "members": [
+                "projectViewer:burnbar"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "secrets": {
+    "ok": true,
+    "secretCount": 27,
+    "secrets": [
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/APNS_KEY_ID",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-16T03:16:19.765483Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZR5t0xdkU=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/APNS_KEY_P8",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-16T03:16:09.792693Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZR5t0x6i4=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/APNS_TEAM_ID",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-16T03:16:22.628671Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZR5t0zAQw=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/APP_STORE_ASC_ISSUER_ID",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-05T02:19:05.290491Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZRCNSMPng=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/APP_STORE_ASC_KEY_ID",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-05T02:19:05.554723Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZRCNSOHaE=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/APP_STORE_ASC_KEY_P8",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-05T02:19:05.543330Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZRCNSNjAo=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/APP_STORE_REVIEW_PASSWORD",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-26T22:03:53.612931Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/ARTIFICIAL_ANALYSIS_API_KEY",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-13T05:36:09.573361Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZRrGA3Vhw=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/GOOGLE_PLAY_SERVICE_ACCOUNT_JSON",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-06-03T06:29:27.207111Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/HOSTED_QUOTA_RUNNER_TOKEN",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-05T02:19:05.881613Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZRCLPLd50=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/KNOWLEDGE_GITHUB_WEBHOOK_SECRET",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-06-02T18:14:13.119846Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZTSWOefgI=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/KNOWLEDGE_REPO_MATCH_KEY",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-06-03T06:59:28.375606Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZTVCcxxag=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com",
+                "serviceAccount:openburnbar-github-deploy@burnbar.iam.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/OPENBURNBAR_ANDROID_INTERNAL_APP_CHECK_DEBUG_TOKEN",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {},
+        "createTime": "2026-05-14T17:19:53.358523Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/OPENBURNBAR_ANDROID_KEYSTORE_BASE64",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-06-03T06:29:13.866488Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-06-03T06:29:17.722896Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/OPENBURNBAR_ANDROID_KEY_ALIAS",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-06-03T06:29:21.163540Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/OPENBURNBAR_ANDROID_KEY_PASSWORD",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-06-03T06:29:24.180338Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/OPENBURNBAR_IOS_INTERNAL_APP_CHECK_DEBUG_TOKEN",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {},
+        "createTime": "2026-05-14T17:19:50.641296Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/OPENBURNBAR_REVIEW_PASSWORD",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-26T22:03:50.908162Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/OPENROUTER_API_KEY",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-14T19:10:50.993065Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZRy9w5m1s=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/REMOTE_MCP_TOKEN_HMAC_SECRET",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {},
+        "createTime": "2026-05-15T04:46:19.706483Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZR0-qxRGY=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/STRIPE_SECRET_KEY",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-15T03:16:12.400095Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZR0qfqfsw=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/STRIPE_WEBHOOK_SECRET",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "firebase-managed": "functions"
+        },
+        "createTime": "2026-05-15T03:16:48.545723Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZR0qfqxGc=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/hermes-realtime-relay-redis-ca-pem",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {},
+        "createTime": "2026-05-12T14:30:52.276055Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZRn7bMRh0=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:hermes-realtime-relay@burnbar.iam.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/hermes-realtime-relay-redis-url",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {},
+        "createTime": "2026-05-12T14:30:49.916362Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "BwZRn7a0tFk=",
+          "version": 1,
+          "bindingCount": 1,
+          "bindings": [
+            {
+              "role": "roles/secretmanager.secretAccessor",
+              "members": [
+                "serviceAccount:hermes-realtime-relay@burnbar.iam.gserviceaccount.com"
+              ],
+              "condition": null
+            }
+          ]
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/obb-6YTomKTKdQdpvIJgmz6VTIrrQ4w1-minimax-minimax_default",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "account_id": "minimax_default",
+          "app": "openburnbar",
+          "provider": "minimax"
+        },
+        "createTime": "2026-05-07T04:28:02.412183Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      },
+      {
+        "ok": true,
+        "name": "projects/246956661961/secrets/obb-6YTomKTKdQdpvIJgmz6VTIrrQ4w1-zai-zai_default",
+        "replication": {
+          "automatic": {}
+        },
+        "labels": {
+          "account_id": "zai_default",
+          "app": "openburnbar",
+          "provider": "zai"
+        },
+        "createTime": "2026-05-07T04:27:34.351015Z",
+        "expireTime": null,
+        "topics": [],
+        "iamPolicy": {
+          "etag": "ACAB",
+          "version": null,
+          "bindingCount": 0,
+          "bindings": []
+        }
+      }
+    ]
+  },
+  "kms": {
+    "ok": true,
+    "locations": {
+      "global": {
+        "ok": true,
+        "keyRingCount": 0,
+        "keyCount": 0,
+        "keyRings": []
+      },
+      "us": {
+        "ok": true,
+        "keyRingCount": 0,
+        "keyCount": 0,
+        "keyRings": []
+      },
+      "us-central1": {
+        "ok": true,
+        "keyRingCount": 1,
+        "keyCount": 1,
+        "keyRings": [
+          {
+            "ok": true,
+            "name": "projects/burnbar/locations/us-central1/keyRings/openburnbar",
+            "createTime": "2026-05-02T03:42:41.188899233Z",
+            "keyCount": 1,
+            "keys": [
+              {
+                "ok": true,
+                "name": "projects/burnbar/locations/us-central1/keyRings/openburnbar/cryptoKeys/credential-encryption-key",
+                "purpose": "ENCRYPT_DECRYPT",
+                "createTime": "2026-05-02T03:43:07.586436920Z",
+                "rotationPeriod": null,
+                "nextRotationTime": null,
+                "protectionLevel": "SOFTWARE",
+                "primaryState": "ENABLED",
+                "primaryAlgorithm": "GOOGLE_SYMMETRIC_ENCRYPTION",
+                "labels": {},
+                "iamPolicy": {
+                  "etag": "BwZRMrlQ28o=",
+                  "version": 1,
+                  "bindingCount": 1,
+                  "bindings": [
+                    {
+                      "role": "roles/cloudkms.cryptoKeyEncrypterDecrypter",
+                      "members": [
+                        "serviceAccount:246956661961-compute@developer.gserviceaccount.com"
+                      ],
+                      "condition": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "us-east1": {
+        "ok": true,
+        "keyRingCount": 0,
+        "keyCount": 0,
+        "keyRings": []
+      },
+      "us-east4": {
+        "ok": true,
+        "keyRingCount": 0,
+        "keyCount": 0,
+        "keyRings": []
+      },
+      "northamerica-northeast1": {
+        "ok": true,
+        "keyRingCount": 0,
+        "keyCount": 0,
+        "keyRings": []
+      }
+    }
+  },
+  "summary": {
+    "projectCollected": true,
+    "firestoreAppCheckEnforced": true,
+    "storageAppCheckEnforced": false,
+    "firestoreRulesMatchRepo": false,
+    "storageRulesMatchRepo": true,
+    "projectIamCollected": true,
+    "functionInventoryCollected": true,
+    "storageBucketInventoryCollected": true,
+    "secretIamCollected": true,
+    "kmsInventoryCollected": true
+  },
+  "ok": false
+}
