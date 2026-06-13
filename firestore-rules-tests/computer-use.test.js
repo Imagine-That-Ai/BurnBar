@@ -81,7 +81,10 @@ const validPhoneAuthorityDoc = {
 const validAuditExportSignerDoc = {
   id: "a".repeat(64),
   userId: aliceUid,
-  deviceId: "mac-1",
+  // Distinct id (not the shared "mac-1") so the "requires a trusted macOS escrow
+  // device" negative assertion has a genuinely un-seeded parent — the emulator never
+  // clears Firestore between steps, and "mac-1" is seeded trusted/macOS earlier.
+  deviceId: "mac-audit-signer-1",
   signerIdentifier: "openburnbar-trusted-device-ed25519-keychain-v1:abc123",
   signerKind: "openburnbar_trusted_device",
   trustRoot: "openburnbar-trusted-device-keychain-v1",
