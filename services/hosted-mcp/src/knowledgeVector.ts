@@ -91,9 +91,9 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 function matchesFilters(record: KnowledgeVectorRecord, filters: KnowledgeSearchFilters): boolean {
-  if (filters.sourceKind && record.sourceKind !== filters.sourceKind) return false;
-  if (filters.sourceSlug && record.sourceSlug !== filters.sourceSlug) return false;
-  if (filters.embeddingModelVersion && record.embeddingModelVersion !== filters.embeddingModelVersion) return false;
+  if (filters.sourceKind && record.sourceKind !== filters.sourceKind) {return false;}
+  if (filters.sourceSlug && record.sourceSlug !== filters.sourceSlug) {return false;}
+  if (filters.embeddingModelVersion && record.embeddingModelVersion !== filters.embeddingModelVersion) {return false;}
   return true;
 }
 
@@ -125,14 +125,14 @@ export function createInMemoryKnowledgeVectorStore(): KnowledgeVectorStore & {
 
   return {
     async upsert(namespaceUid, records) {
-      for (const record of records) rows.set(key(namespaceUid, record.vectorId), { ns: namespaceUid, record });
+      for (const record of records) {rows.set(key(namespaceUid, record.vectorId), { ns: namespaceUid, record });}
       return { written: records.length };
     },
     async search(namespaceUid, queryVector, filters, limit) {
       const scored: KnowledgeSearchHit[] = [];
       for (const { ns, record } of rows.values()) {
-        if (ns !== namespaceUid) continue; // isolation: never cross namespaces
-        if (!matchesFilters(record, filters)) continue;
+        if (ns !== namespaceUid) {continue;} // isolation: never cross namespaces
+        if (!matchesFilters(record, filters)) {continue;}
         scored.push(toHit(record, cosineSimilarity(queryVector, record.embedding)));
       }
       scored.sort((a, b) => b.score - a.score);
@@ -164,7 +164,7 @@ export function createInMemoryKnowledgeVectorStore(): KnowledgeVectorStore & {
     },
     async count(namespaceUid) {
       let n = 0;
-      for (const { ns } of rows.values()) if (ns === namespaceUid) n += 1;
+      for (const { ns } of rows.values()) {if (ns === namespaceUid) {n += 1;}}
       return n;
     },
     size() {

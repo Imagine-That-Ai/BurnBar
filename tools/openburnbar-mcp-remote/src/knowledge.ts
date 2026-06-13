@@ -42,7 +42,7 @@ const defaultDeps: KnowledgeShimDeps = {
 // Cache the loaded embedder across calls in a long-lived shim process.
 let cachedEmbedder: Embedder | undefined;
 async function getEmbedder(deps: KnowledgeShimDeps): Promise<Embedder> {
-  if (!cachedEmbedder) cachedEmbedder = await deps.loadEmbedder();
+  if (!cachedEmbedder) {cachedEmbedder = await deps.loadEmbedder();}
   return cachedEmbedder;
 }
 /** test-only: reset the embedder cache */
@@ -70,15 +70,15 @@ export async function prepareKnowledgeRequest(
   message: unknown,
   deps: KnowledgeShimDeps = defaultDeps,
 ): Promise<{ message: unknown; postFilter?: KnowledgePostFilter }> {
-  if (!isToolCall(message, KNOWLEDGE_SEARCH_TOOL)) return { message };
+  if (!isToolCall(message, KNOWLEDGE_SEARCH_TOOL)) {return { message };}
   const params = message.params;
   const args = { ...(params.arguments ?? {}) };
 
   // An advanced caller may already supply a vector; leave it untouched.
-  if (Array.isArray(args.queryVector)) return { message };
+  if (Array.isArray(args.queryVector)) {return { message };}
 
   const query = typeof args.query === "string" ? args.query.trim() : "";
-  if (!query) return { message };
+  if (!query) {return { message };}
 
   const key = deps.vaultKey();
   if (!key) {
@@ -112,11 +112,11 @@ export async function prepareKnowledgeRequest(
  */
 export function rewriteToolsListForKnowledge(json: unknown): void {
   const tools = (json as { result?: { tools?: Array<Record<string, unknown>> } })?.result?.tools;
-  if (!Array.isArray(tools)) return;
+  if (!Array.isArray(tools)) {return;}
   for (const tool of tools) {
-    if (tool.name !== KNOWLEDGE_SEARCH_TOOL) continue;
+    if (tool.name !== KNOWLEDGE_SEARCH_TOOL) {continue;}
     const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: string[] } | undefined;
-    if (!schema || typeof schema !== "object") continue;
+    if (!schema || typeof schema !== "object") {continue;}
     const properties = { ...(schema.properties ?? {}) };
     delete properties.queryVector;
     delete properties.embeddingModelVersion;
@@ -132,16 +132,16 @@ export function rewriteToolsListForKnowledge(json: unknown): void {
 }
 
 function matchesPostFilter(metadata: Record<string, unknown> | undefined, filter?: KnowledgePostFilter): boolean {
-  if (!filter || !metadata) return true;
-  if (filter.sourcePath && metadata.source_path !== filter.sourcePath) return false;
-  if (filter.section && metadata.section !== filter.section) return false;
-  if (filter.category && metadata.category !== filter.category) return false;
+  if (!filter || !metadata) {return true;}
+  if (filter.sourcePath && metadata.source_path !== filter.sourcePath) {return false;}
+  if (filter.section && metadata.section !== filter.section) {return false;}
+  if (filter.category && metadata.category !== filter.category) {return false;}
   return true;
 }
 
 function decodeMetadata(deps: KnowledgeShimDeps, sealed: unknown): Record<string, unknown> | undefined {
   const plain = deps.decryptSealed(sealed);
-  if (!plain) return undefined;
+  if (!plain) {return undefined;}
   try {
     return JSON.parse(plain) as Record<string, unknown>;
   } catch {
@@ -161,14 +161,14 @@ export function decryptKnowledgeContent(text: string, postFilter?: KnowledgePost
   } catch {
     return text;
   }
-  if (!parsed || typeof parsed !== "object") return text;
+  if (!parsed || typeof parsed !== "object") {return text;}
   const obj = parsed as Record<string, unknown>;
 
   // Search results: hits[] each with ciphertext + sealedMetadata.
   if (Array.isArray(obj.hits)) {
     const hits = (obj.hits as Array<Record<string, unknown>>)
       .map((hit) => {
-        if (hit.ciphertext === undefined && hit.sealedMetadata === undefined) return hit; // not a knowledge hit
+        if (hit.ciphertext === undefined && hit.sealedMetadata === undefined) {return hit;} // not a knowledge hit
         const metadata = decodeMetadata(deps, hit.sealedMetadata);
         return {
           ...hit,

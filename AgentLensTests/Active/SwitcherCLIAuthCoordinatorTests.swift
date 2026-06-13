@@ -1909,14 +1909,59 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
     }
 
+    /// Window selection runs entirely over the `AuthPresentationWindow` seam —
+    /// a plain class, never a real `NSWindow` — so these are deterministic on a
+    /// headless CI runner (constructing/ordering an `NSWindow` there crashes
+    /// the test host).
+    @MainActor
+    private final class FakeAuthWindow: AuthPresentationWindow {
+        var isVisible: Bool
+        var isMiniaturized: Bool
+        var authSheetParent: AuthPresentationWindow?
+        init(visible: Bool, miniaturized: Bool = false, sheetParent: AuthPresentationWindow? = nil) {
+            self.isVisible = visible
+            self.isMiniaturized = miniaturized
+            self.authSheetParent = sheetParent
+        }
+    }
+
+    @MainActor
     func test_googleAuthPresentationWindow_returnsVisibleWindow() {
-        let window = VisiblePresentationTestWindow()
-        window.title = "Google Sign-In Presentation Test"
+        let window = FakeAuthWindow(visible: true)
+        let resolution = AccountManager.resolveAuthPresentationWindow(from: window, candidates: [])
+        XCTAssertIdentical(resolution.window, window)
+        XCTAssertTrue(resolution.shouldActivate)
+    }
 
-        let resolvedWindow = AccountManager.googleAuthPresentationWindowForTesting(from: window)
+    @MainActor
+    func test_googleAuthPresentationWindow_walksToSheetParent() {
+        let parent = FakeAuthWindow(visible: true)
+        let sheet = FakeAuthWindow(visible: true, sheetParent: parent)
+        let resolution = AccountManager.resolveAuthPresentationWindow(from: sheet, candidates: [])
+        XCTAssertIdentical(resolution.window, parent, "Resolution must surface the top of the sheet chain")
+        XCTAssertTrue(resolution.shouldActivate)
+    }
 
-        XCTAssertIdentical(resolvedWindow, window)
-        XCTAssertFalse(window.didOrderFront)
+    @MainActor
+    func test_googleAuthPresentationWindow_fallsBackToVisibleAppWindow() {
+        let hidden = FakeAuthWindow(visible: false)
+        let miniaturized = FakeAuthWindow(visible: true, miniaturized: true)
+        let sheet = FakeAuthWindow(visible: true, sheetParent: FakeAuthWindow(visible: true))
+        let visibleFallback = FakeAuthWindow(visible: true)
+        let resolution = AccountManager.resolveAuthPresentationWindow(
+            from: hidden,
+            candidates: [miniaturized, sheet, visibleFallback]
+        )
+        XCTAssertIdentical(resolution.window, visibleFallback, "Fallback skips hidden/miniaturized/sheet windows")
+        XCTAssertTrue(resolution.shouldActivate)
+    }
+
+    @MainActor
+    func test_googleAuthPresentationWindow_returnsOriginalWhenNothingVisible() {
+        let hidden = FakeAuthWindow(visible: false)
+        let resolution = AccountManager.resolveAuthPresentationWindow(from: hidden, candidates: [])
+        XCTAssertIdentical(resolution.window, hidden)
+        XCTAssertFalse(resolution.shouldActivate, "An invisible window must never be force-activated")
     }
 
     // MARK: - Shared auth keychain-recovery wrapper
@@ -2029,25 +2074,5 @@ final class AccountManagerTests: XCTestCase {
             AccountManager.userFacingAuthErrorMessageForTesting(error),
             "The password is invalid."
         )
-    }
-}
-
-private final class VisiblePresentationTestWindow: NSWindow {
-    private(set) var didOrderFront = false
-
-    override var isVisible: Bool { true }
-    override var isMiniaturized: Bool { false }
-
-    init() {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-    }
-
-    override func makeKeyAndOrderFront(_ sender: Any?) {
-        didOrderFront = true
     }
 }

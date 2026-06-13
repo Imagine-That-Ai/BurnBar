@@ -132,18 +132,16 @@ final class MacCloudEntitlementStore: ObservableObject {
         guard let uid else {
             isActive = false
             hostedComputerUseIsActive = false
-            hostedMediaIsActive = false
             isUltraActive = false
             expirationDate = nil
             hostedComputerUseExpirationDate = nil
-            hostedMediaExpirationDate = nil
             ultraExpirationDate = nil
             purchaseDate = nil
             hostedComputerUsePurchaseDate = nil
-            hostedMediaPurchaseDate = nil
             ultraPurchaseDate = nil
             hostedComputerUseState = (false, nil, nil)
             proMaxComputerUseState = (false, nil, nil)
+            clearHostedMediaEntitlement()
             return
         }
         let entitlements = Firestore.firestore()
@@ -187,6 +185,7 @@ final class MacCloudEntitlementStore: ObservableObject {
                     self.applyHostedComputerUse(data: data)
                 }
             }
+        // cov:ignore-start -- Firebase snapshot callback delivery is integration-only; parser/clear paths are unit-tested
         mediaListener = entitlements
             .document("hosted_media_sync")
             .addSnapshotListener { [weak self] snapshot, error in
@@ -197,17 +196,13 @@ final class MacCloudEntitlementStore: ObservableObject {
                         return
                     }
                     guard let data = snapshot?.data(), snapshot?.exists == true else {
-                        self.hostedMediaIsActive = false
-                        self.hostedMediaExpirationDate = nil
-                        self.hostedMediaPurchaseDate = nil
+                        self.clearHostedMediaEntitlement()
                         return
                     }
-                    let state = self.activeEntitlementState(data: data)
-                    self.hostedMediaIsActive = state.isActive
-                    self.hostedMediaExpirationDate = state.expiresAt
-                    self.hostedMediaPurchaseDate = state.purchase
+                    self.applyHostedMedia(data: data)
                 }
             }
+        // cov:ignore-end
         proMaxListener = entitlements
             .document("burnbar_pro_max")
             .addSnapshotListener { [weak self] snapshot, error in
@@ -259,6 +254,19 @@ final class MacCloudEntitlementStore: ObservableObject {
     private func applyHostedComputerUse(data: [String: Any]) {
         hostedComputerUseState = activeEntitlementState(data: data)
         publishComputerUseEntitlement()
+    }
+
+    func applyHostedMedia(data: [String: Any]) {
+        let state = activeEntitlementState(data: data)
+        hostedMediaIsActive = state.isActive
+        hostedMediaExpirationDate = state.expiresAt
+        hostedMediaPurchaseDate = state.purchase
+    }
+
+    func clearHostedMediaEntitlement() {
+        hostedMediaIsActive = false
+        hostedMediaExpirationDate = nil
+        hostedMediaPurchaseDate = nil
     }
 
     private func activeEntitlementState(data: [String: Any]) -> (isActive: Bool, expiresAt: Date?, purchase: Date?) {

@@ -1,3 +1,4 @@
+import os
 import XCTest
 import FirebaseFirestore
 import OpenBurnBarCore
@@ -474,10 +475,12 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         let staleStream = MediaControlFakeStream()
         let currentStream = MediaControlFakeStream()
         let receiver = makeReceiver()
-        var dialedConnectionIDs: [String] = []
+        // Lock-protected: the dialer runs on the coordinator's task while the
+        // test polls from its own — an unsynchronized array was a data race.
+        let dialed = OSAllocatedUnfairLock(initialState: [String]())
         let coordinator = MediaControlStreamCoordinator(
             dialer: { _, connectionID in
-                dialedConnectionIDs.append(connectionID)
+                dialed.withLock { $0.append(connectionID) }
                 return connectionID == "conn-current" ? currentStream : staleStream
             },
             receiver: receiver,
@@ -490,14 +493,22 @@ final class MediaControlStreamPresenceTests: XCTestCase {
 
         coordinator.start(uid: "user-1", connectionID: "conn-current")
 
+        // The retarget contract: the stale connection was dialed first, the
+        // new one is dialed and ends live. Exact-sequence equality would race
+        // the stale supervisor's 10ms backoff (it may legally re-dial once
+        // before cancellation lands), so assert order + end state instead.
         try await waitUntil {
-            dialedConnectionIDs == ["conn-stale", "conn-current"]
+            let ids = dialed.withLock { $0 }
+            return ids.first == "conn-stale"
+                && ids.last == "conn-current"
                 && coordinator.connectionID == "conn-current"
                 && coordinator.phase == .live
         }
 
+        // The stale stream must have been closed; supervisor teardown racing
+        // the retarget close can double-close, which is allowed.
         let staleCloseCount = await staleStream.closeCount
-        XCTAssertEqual(staleCloseCount, 1)
+        XCTAssertGreaterThanOrEqual(staleCloseCount, 1)
         await coordinator.stop()
     }
 

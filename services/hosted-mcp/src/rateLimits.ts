@@ -1,4 +1,3 @@
-import type { Firestore } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import { HttpError } from "./errors.js";
 import type { HostedMcpFirestore } from "./firestoreTypes.js";

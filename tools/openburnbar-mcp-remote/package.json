@@ -14,13 +14,16 @@
   },
   "scripts": {
     "build": "tsc",
-    "lint": "tsc --noEmit",
+    "lint": "eslint src --max-warnings=0 && tsc --noEmit",
     "test": "npm run build && node --test lib/*.test.js"
   },
-  "dependencies": {},
   "devDependencies": {
+    "@eslint/js": "9.39.4",
     "@types/node": "^24.6.0",
-    "typescript": "^5.9.3"
+    "eslint": "9.39.4",
+    "globals": "17.6.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "8.60.1"
   },
   "license": "AGPL-3.0-only"
 }

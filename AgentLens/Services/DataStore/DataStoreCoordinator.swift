@@ -60,6 +60,9 @@ final class DataStoreCoordinator {
     /// `docs/architecture/macos-performance.md` §2/§14.
     private(set) var usagesVersion: Int = 0
     private var refreshGeneration = 0
+    #if DEBUG
+    var debugRefreshGenerationForTesting: Int { refreshGeneration }
+    #endif
     private var lastAppliedFingerprint: UsageContentFingerprint?
     private var nextWindowBoundary: Date = .distantPast
     /// Injectable clock so boundary-crossing behavior is unit-testable.
@@ -264,6 +267,18 @@ final class DataStoreCoordinator {
     static func makeDatabasePoolForTesting(path: String) throws -> DatabasePool {
         try makeDatabasePool(path: path)
     }
+
+    static func makeInMemoryForTesting(
+        runMigrations: Bool = true,
+        refreshOnInit: Bool = false
+    ) throws -> DataStoreCoordinator {
+        let queue = try DatabaseQueue()
+        return try DataStoreCoordinator(
+            databaseQueue: queue,
+            runMigrations: runMigrations,
+            refreshOnInit: refreshOnInit
+        )
+    }
     #endif
 
     /// DEBUG-only N+1 detection (`OpenBurnBarQueryTracer`). Must run AFTER
@@ -307,7 +322,10 @@ final class DataStoreCoordinator {
         let actor = try DataStoreActor(databaseQueue: databaseQueue, runMigrations: runMigrations)
         self.actor = actor
 
-        if refreshOnInit {
+        // Callers that disable migrations often provide fixture schemas, or no
+        // schema at all. Auto-refresh would race those fixtures and query
+        // production tables that intentionally do not exist there.
+        if refreshOnInit, runMigrations {
             Task { await refresh() }
         }
     }

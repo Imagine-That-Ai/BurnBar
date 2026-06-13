@@ -1,3 +1,4 @@
+import CoreMedia
 import XCTest
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
@@ -53,7 +54,14 @@ final class MercuryRouterTests: XCTestCase {
             pollInterval: 999
         )
         let sessionCoordinator = MediaSessionCoordinator(
-            capabilityGate: AlwaysAllowGate()
+            capabilityGate: AlwaysAllowGate(),
+            // Keep real VideoToolbox out of the headless-CI app-test host: a
+            // hardware encoder is absent there, and the VTVideoEncoderSelection
+            // threads it spawns intermittently wedge the whole host (a sibling
+            // media test then times out at 10 minutes). These router tests
+            // assert mirror-ack decisions and capability negotiation, never
+            // encoded video, so a no-op encoder is faithful.
+            videoEncoderFactory: { _, _ in RouterNoopVideoEncoder() }
         )
         let consentStore = MercuryConsentStore(defaults: makeIsolatedDefaults())
         if consent {
@@ -1853,6 +1861,16 @@ final class MercuryRouterTests: XCTestCase {
 }
 
 // MARK: - Test doubles
+
+@MainActor
+private final class RouterNoopVideoEncoder: VideoEncoding {
+    func start() throws {}
+    func encode(sampleBuffer: CMSampleBuffer) async throws {}
+    func setTargetBitsPerSecond(_ bps: Int) throws {}
+    func requestLongTermReferenceRefresh() {}
+    func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64) {}
+    func stop() {}
+}
 
 private final class AlwaysAllowGate: MediaCapabilityGate {
     func check(

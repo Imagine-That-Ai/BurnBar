@@ -59,7 +59,8 @@ final class MacFileTransferSecurityTests: XCTestCase {
         XCTAssertTrue(try quarantineValue(at: downloaded).contains("OpenBurnBar"))
         XCTAssertEqual(acks.count, 1)
         XCTAssertEqual(acks.first?.media?.ack?.status, .received)
-        XCTAssertEqual(backend.fetchedTickets, ["blob1ticket"])
+        let fetchedTickets = await backend.fetchedTickets
+        XCTAssertEqual(fetchedTickets, ["blob1ticket"])
         XCTAssertEqual(MacMediaActiveSessionRegistry.shared.count(for: .fileTransfer), 0)
 
         try? FileManager.default.removeItem(at: temp)
@@ -95,7 +96,7 @@ final class MacFileTransferSecurityTests: XCTestCase {
         }
 
         // RR-18 — gate denial must short-circuit before the blob backend runs.
-        XCTAssertTrue(backend.fetchedTickets.isEmpty, "denied transfer must not fetch")
+        XCTAssertTrue(await backend.fetchedTickets.isEmpty, "denied transfer must not fetch")
         XCTAssertEqual(acks.count, 1)
         XCTAssertEqual(acks.first?.media?.ack?.status, .rejected)
         XCTAssertEqual(acks.first?.media?.ack?.reason, "media admission denied: killSwitchActive")
@@ -242,8 +243,12 @@ private struct DenyingCapabilityGate: MediaCapabilityGate {
     }
 }
 
-private final class QuarantineBlobBackend: IrohBlobBackend, @unchecked Sendable {
-    var fetchedTickets: [String] = []
+private actor QuarantineBlobBackend: IrohBlobBackend {
+    private var fetchedTicketStorage: [String] = []
+
+    var fetchedTickets: [String] {
+        fetchedTicketStorage
+    }
 
     func bootstrap(
         secret: Data,
@@ -258,7 +263,7 @@ private final class QuarantineBlobBackend: IrohBlobBackend, @unchecked Sendable 
     }
 
     func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
-        fetchedTickets.append(ticketText)
+        fetchedTicketStorage.append(ticketText)
         let url = URL(fileURLWithPath: destination)
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),

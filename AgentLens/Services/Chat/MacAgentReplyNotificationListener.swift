@@ -113,7 +113,7 @@ private struct MacAgentNotificationReplyPrivatePayload: Codable {
     let replyText: String
 }
 
-private enum MacAgentNotificationReplySealer {
+enum MacAgentNotificationReplySealer {
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

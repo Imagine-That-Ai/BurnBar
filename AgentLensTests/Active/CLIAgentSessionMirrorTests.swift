@@ -241,6 +241,123 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertNotNil(event["timestamp"] as? String)
     }
 
+    func test_missionEventFactory_sealsPrivateEventPayloadWithRequestBoundAAD() throws {
+        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let event = CLIAgentMissionEventFactory.event(
+            sequence: 7,
+            phase: "tool_use",
+            kind: "tool_call",
+            title: "Shell",
+            message: "ran swift tests",
+            runtime: "codex",
+            toolName: "exec_command",
+            artifactPath: "docs/report.md",
+            changedFilePath: "AgentLens/App.swift",
+            isError: false
+        )
+
+        let sealed = try CLIAgentMissionEventFactory.sealedEvent(
+            event,
+            uid: "uid-1",
+            requestID: "mission-1",
+            eventID: "000007",
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+
+        XCTAssertEqual(sealed["contentSealed"] as? Bool, true)
+        XCTAssertEqual(sealed["sealedSchemaVersion"] as? Int, 2)
+        XCTAssertEqual(sealed["vaultKeyID"] as? String, vaultKeyID)
+        XCTAssertNil(sealed["title"])
+        XCTAssertNil(sealed["message"])
+        XCTAssertNil(sealed["fullMessage"])
+        XCTAssertNil(sealed["toolName"])
+        XCTAssertNil(sealed["artifactPath"])
+        XCTAssertNil(sealed["changedFilePath"])
+
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: sealed["sealedPayload"]))
+        let expectedContext = try CloudVaultAADContext(
+            uid: "uid-1",
+            collection: "cli_agent_mission_requests/events",
+            docID: "mission-1/000007",
+            field: "sealedPayload"
+        )
+        XCTAssertEqual(envelope.aad, expectedContext.stringValue)
+        let opened = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: expectedContext)
+        let decoded = try JSONDecoder().decode(DecodedMissionEventPayload.self, from: opened)
+        XCTAssertEqual(decoded.title, "Shell")
+        XCTAssertEqual(decoded.message, "ran swift tests")
+        XCTAssertEqual(decoded.fullMessage, "ran swift tests")
+        XCTAssertEqual(decoded.toolName, "exec_command")
+        XCTAssertEqual(decoded.artifactPath, "docs/report.md")
+        XCTAssertEqual(decoded.changedFilePath, "AgentLens/App.swift")
+
+        let wrongContext = try CloudVaultAADContext(
+            uid: "uid-1",
+            collection: "cli_agent_mission_requests/events",
+            docID: "mission-1/000008",
+            field: "sealedPayload"
+        )
+        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: wrongContext))
+    }
+
+    func test_missionCloudSealer_bindsStatePayloadToMissionRequestAAD() throws {
+        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let privatePayload = CLIAgentMissionPrivatePayload(
+            title: "Launch audit",
+            prompt: "Find launch blockers.",
+            targetProject: "/repo",
+            liveSummary: "Running",
+            resultPreview: "Two issues",
+            errorMessage: nil,
+            approvalTitle: "Allow shell?",
+            approvalMessage: "Needs local tests",
+            personaScopeJSON: #"{"mode":"strict"}"#,
+            synthesisSummary: "Ready"
+        )
+        let expectedContext = try CLIAgentMissionCloudSealer.missionAADContext(
+            uid: "uid-1",
+            requestID: "mission-1",
+            field: "sealedStatePayload"
+        )
+
+        let sealedPayload = try CLIAgentMissionCloudSealer.seal(
+            privatePayload,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: expectedContext
+        )
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: sealedPayload))
+        XCTAssertEqual(envelope.aad, expectedContext.stringValue)
+
+        let opened = try XCTUnwrap(CLIAgentMissionCloudSealer.openPrivatePayload(
+            ["sealedStatePayload": sealedPayload],
+            field: "sealedStatePayload",
+            uid: "uid-1",
+            requestID: "mission-1",
+            vaultKey: vaultKey
+        ))
+        XCTAssertEqual(opened.title, "Launch audit")
+        XCTAssertEqual(opened.prompt, "Find launch blockers.")
+        XCTAssertEqual(opened.targetProject, "/repo")
+        XCTAssertEqual(opened.liveSummary, "Running")
+        XCTAssertEqual(opened.resultPreview, "Two issues")
+        XCTAssertEqual(opened.approvalTitle, "Allow shell?")
+        XCTAssertEqual(opened.approvalMessage, "Needs local tests")
+        XCTAssertEqual(opened.personaScopeJSON, #"{"mode":"strict"}"#)
+        XCTAssertEqual(opened.synthesisSummary, "Ready")
+
+        XCTAssertNil(CLIAgentMissionCloudSealer.openPrivatePayload(
+            ["sealedStatePayload": sealedPayload],
+            field: "sealedStatePayload",
+            uid: "uid-1",
+            requestID: "mission-2",
+            vaultKey: vaultKey
+        ))
+    }
+
     func test_missionEventFactory_redactsSecretsBeforeMobileStreaming() {
         let providerToken = "sk-" + "1234567890abcdef"
         let jwtToken = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiJ1c2VyLWlkLTEyMzQ1Njc4OTAifQ", "signaturepayload0987654321"].joined(separator: ".")
@@ -678,4 +795,155 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(disallowed.contains("NotebookEdit"))
         XCTAssertFalse(disallowed.contains("Bash"))
     }
+
+    func test_missionRuntimePlanner_parsesPresentationModeWithNativeDefault() {
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.presentationMode(from: ["presentationMode": "mac_visible_cli"]),
+            .macVisibleCLI
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.presentationMode(from: ["presentationMode": "  native_chat  "]),
+            .nativeChat
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.presentationMode(from: ["presentationMode": "nonsense"]),
+            .nativeChat
+        )
+        XCTAssertEqual(CLIAgentMissionRuntimePlanner.presentationMode(from: [:]), .nativeChat)
+    }
+
+    func test_missionRuntimePlanner_buildsDirectLaunchPlansForAdditionalAgentRuntimes() throws {
+        let baseData: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Developer/OpenBurnBar",
+            "depth": "deep",
+            "approvalMode": "risky_only",
+            "commandsAllowed": true,
+            "fileEditsAllowed": false,
+            "requestedModelID": "sage"
+        ]
+
+        let droidCommandPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Droid mission",
+            prompt: "Inspect the workspace.",
+            backend: CLIAgentMissionBackend(chatBackend: .droid),
+            data: baseData
+        ))
+        XCTAssertEqual(droidCommandPlan.executableName, "droid")
+        XCTAssertTrue(droidCommandPlan.arguments.contains("exec"))
+        XCTAssertTrue(droidCommandPlan.arguments.contains("--model"))
+        XCTAssertTrue(droidCommandPlan.arguments.contains("sage"))
+        XCTAssertTrue(droidCommandPlan.arguments.contains("--auto"))
+        XCTAssertTrue(droidCommandPlan.arguments.contains("medium"))
+
+        var editOnlyData = baseData
+        editOnlyData["commandsAllowed"] = false
+        editOnlyData["fileEditsAllowed"] = true
+        let droidEditPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Droid edit mission",
+            prompt: "Prepare edits without shell execution.",
+            backend: CLIAgentMissionBackend(chatBackend: .droid),
+            data: editOnlyData
+        ))
+        XCTAssertTrue(droidEditPlan.arguments.contains("low"))
+        XCTAssertTrue(droidEditPlan.arguments.contains("--disabled-tools"))
+        XCTAssertTrue(droidEditPlan.arguments.contains("execute-cli"))
+
+        let forgePlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Forge mission",
+            prompt: "Use the selected Forge agent.",
+            backend: CLIAgentMissionBackend(chatBackend: .forge),
+            data: baseData
+        ))
+        XCTAssertEqual(forgePlan.executableName, "forge")
+        XCTAssertEqual(Array(forgePlan.arguments.prefix(2)), ["--agent", "sage"])
+        XCTAssertTrue(forgePlan.arguments.contains("--prompt"))
+
+        let antigravityPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Antigravity mission",
+            prompt: "Run with AGY.",
+            backend: CLIAgentMissionBackend(chatBackend: .antigravity),
+            data: baseData
+        ))
+        XCTAssertEqual(antigravityPlan.executableName, "agy")
+        XCTAssertFalse(antigravityPlan.arguments.isEmpty)
+
+        let cursorPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Cursor mission",
+            prompt: "Run with Cursor Agent.",
+            backend: CLIAgentMissionBackend(chatBackend: .cursorAgent),
+            data: baseData
+        ))
+        XCTAssertEqual(cursorPlan.executableName, "cursor-agent")
+        XCTAssertFalse(cursorPlan.arguments.isEmpty)
+    }
+
+    func test_missionRuntimePlanner_buildsVisibleTerminalPlansForGrantBackedRuntimes() throws {
+        let data: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Documents/Windsurf/BurnBar",
+            "clientThreadID": "visible-thread-1",
+            "commandsAllowed": true,
+            "fileEditsAllowed": true,
+            "requestedModelID": "frontier-model"
+        ]
+
+        let expectedExecutables: [(ChatBackendID, String)] = [
+            (.codex, "codex"),
+            (.claude, "claude"),
+            (.droid, "droid"),
+            (.forge, "forge"),
+            (.antigravity, "agy"),
+            (.cursorAgent, "cursor-agent")
+        ]
+
+        for (backendID, executable) in expectedExecutables {
+            let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+                title: "Visible terminal mission",
+                prompt: "Run visibly with scoped permissions.",
+                backend: CLIAgentMissionBackend(chatBackend: backendID),
+                data: data
+            ))
+            XCTAssertEqual(plan.executableName, executable)
+            XCTAssertFalse(plan.arguments.isEmpty, "\(backendID.rawValue) should receive launch arguments")
+            XCTAssertEqual(plan.extraEnvironment, [:])
+        }
+    }
+
+    func test_missionRuntimePlanner_returnsNilForUnsupportedDirectAndVisibleRuntimes() {
+        let custom = CLIAgentMissionBackend(rawValue: "unknown-runtime", displayName: "Unknown")
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Unsupported",
+            prompt: "No launch plan",
+            backend: custom,
+            data: [:]
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Unsupported",
+            prompt: "No launch plan",
+            backend: custom,
+            data: [:]
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Codex native chat",
+            prompt: "Codex should route through visible terminal for CLI mode.",
+            backend: CLIAgentMissionBackend(chatBackend: .codex),
+            data: [:]
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Claude native chat",
+            prompt: "Claude should route through visible terminal for CLI mode.",
+            backend: CLIAgentMissionBackend(chatBackend: .claude),
+            data: [:]
+        ))
+    }
+}
+
+private struct DecodedMissionEventPayload: Decodable {
+    let title: String?
+    let message: String
+    let fullMessage: String?
+    let toolName: String?
+    let artifactPath: String?
+    let changedFilePath: String?
 }

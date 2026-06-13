@@ -267,6 +267,7 @@ struct TrustedDevicesDetailView: View {
                     .padding(DesignSystem.Spacing.md)
                 }
             }
+            // cov:ignore-start -- status state machine is unit-tested; ViewInspector does not line-attribute this card
             if let status = deviceTrust.lastStatusMessage {
                 GlassCard {
                     HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
@@ -288,6 +289,7 @@ struct TrustedDevicesDetailView: View {
                     .padding(DesignSystem.Spacing.md)
                 }
             }
+            // cov:ignore-end
 
             deviceListSection
 
@@ -838,6 +840,7 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
         )
     }
 
+    // cov:ignore-start -- live Firebase callable wiring; DeviceTrustViewModel revoke behavior uses injected gateway tests
     func revoke(deviceID: String) async throws -> ComputerUseSecurityCallableClient.EscrowDeviceTrustRevocationResult {
         guard uid != nil else { throw MacDeviceTrustError.notAuthenticated }
         return try await ComputerUseSecurityCallableClient.revokeEscrowDeviceTrust(
@@ -845,6 +848,7 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
             rotatingDeviceId: deviceId
         )
     }
+    // cov:ignore-end
 }
 
 enum MacDeviceTrustError: LocalizedError {

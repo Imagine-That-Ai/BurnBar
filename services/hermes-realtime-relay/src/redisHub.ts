@@ -18,7 +18,7 @@ export class RedisRelayHub implements RelayMessageBus {
   ) {
     this.subscriber.on("message", (channel, message) => {
       const channelListeners = this.listeners.get(channel);
-      if (!channelListeners) return;
+      if (!channelListeners) {return;}
       for (const listener of channelListeners) {
         listener(message);
       }
@@ -40,7 +40,7 @@ export class RedisRelayHub implements RelayMessageBus {
 
     return async () => {
       const listeners = this.listeners.get(channel);
-      if (!listeners) return;
+      if (!listeners) {return;}
       listeners.delete(listener);
       if (listeners.size === 0) {
         this.listeners.delete(channel);

@@ -3,7 +3,7 @@ import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import type { AccessTokenClaims } from "./auth.js";
 
 function hash(value: string | undefined): string | undefined {
-  if (!value) return undefined;
+  if (!value) {return undefined;}
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 

@@ -273,7 +273,11 @@ test('(6) at-rest open fails closed when the binding is tampered', async () => {
   // Tampered ciphertext (flip a byte) must also fail closed.
   const corrupted = Uint8Array.from(sealed);
   const lastIndex = corrupted.length - 1;
-  corrupted[lastIndex] = corrupted[lastIndex]! ^ 0xff;
+  const lastByte = corrupted[lastIndex];
+  if (lastByte === undefined) {
+    throw new Error('sealed payload unexpectedly empty');
+  }
+  corrupted[lastIndex] = lastByte ^ 0xff;
   await assert.rejects(
     async () => atRestOpen(corrupted, recipient, binding),
     'opening tampered ciphertext must throw',

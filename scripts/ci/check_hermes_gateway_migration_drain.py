@@ -164,7 +164,9 @@ def _validate_write_path(data: Any) -> list[str]:
         if not isinstance(url, str) or not url.startswith("https://"):
             errors.append(f"{_path((*service_path, 'url'))} must be an https:// URL")
         if service.get("signalRequired") is not True:
-            errors.append(f"{_path((*service_path, 'signalRequired'))} must be true before the write-path gate is complete")
+            errors.append(
+                f"{_path((*service_path, 'signalRequired'))} must be true before the write-path gate is complete"
+            )
 
     missing_services = sorted(REQUIRED_WRITE_PATH_SERVICES.difference(seen_services))
     if missing_services:

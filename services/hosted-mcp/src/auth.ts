@@ -157,7 +157,7 @@ export function verifyAccessTokenString(token: string, options: { allowExpired?:
   try {
     claims = parseAccessTokenClaims(JSON.parse(base64UrlDecode(body).toString("utf8")));
   } catch (error) {
-    if (error instanceof HttpError) throw error;
+    if (error instanceof HttpError) {throw error;}
     throw new HttpError(401, "Malformed OpenBurnBar MCP access token claims.", "malformed_claims");
   }
   if (!claims.sub || !claims.client_id || !claims.jti || claims.aud !== MCP_RESOURCE) {

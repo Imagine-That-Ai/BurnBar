@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Register WS4 security client files in OpenBurnBar.xcodeproj (idempotent)."""
+
 from __future__ import annotations
 
 import hashlib
 import re
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -131,18 +131,6 @@ def find_existing_file_id(text: str, name: str, source_root_path: str | None) ->
     return None
 
 
-def find_existing_file_id(text: str, name: str, source_root_path: str | None) -> str | None:
-    for line in text.splitlines():
-        if f"/* {name} */ = {{isa = PBXFileReference;" not in line:
-            continue
-        if source_root_path and f"path = {pbx_quote(source_root_path)};" not in line:
-            continue
-        if source_root_path is None and f"path = {pbx_quote(name)};" not in line:
-            continue
-        return line.strip().split(" ", 1)[0]
-    return None
-
-
 def main() -> int:
     text = PROJ.read_text(encoding="utf-8")
     mobile_services = find_mobile_services_group(text)
@@ -157,14 +145,16 @@ def main() -> int:
             if source_root_path:
                 file_line = (
                     f"\t\t{file_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
-                    f'name = {name}; path = {pbx_quote(source_root_path)}; sourceTree = SOURCE_ROOT; }};\n'
+                    f"name = {name}; path = {pbx_quote(source_root_path)}; sourceTree = SOURCE_ROOT; }};\n"
                 )
             else:
                 file_line = (
                     f"\t\t{file_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
-                    f"path = {pbx_quote(name)}; sourceTree = \"<group>\"; }};\n"
+                    f'path = {pbx_quote(name)}; sourceTree = "<group>"; }};\n'
                 )
-            text = text.replace("/* End PBXFileReference section */", file_line + "/* End PBXFileReference section */", 1)
+            text = text.replace(
+                "/* End PBXFileReference section */", file_line + "/* End PBXFileReference section */", 1
+            )
         build_line = (
             f"\t\t{build_id} /* {name} in Sources */ = {{isa = PBXBuildFile; fileRef = {file_id} /* {name} */; }};\n"
         )
