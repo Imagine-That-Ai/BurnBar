@@ -17,6 +17,7 @@
  */
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
+import type { CallableRequest } from "firebase-functions/v2/https";
 
 // ---------------------------------------------------------------------------
 // In-memory Firestore double. Supports the access patterns under test:
@@ -45,9 +46,11 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     const existing = merge ? (store.get(path) ?? {}) : {};
     const next: Record<string, unknown> = { ...existing };
     for (const [k, v] of Object.entries(data)) {
-      if (v && typeof v === "object" && "__increment" in (v as Record<string, unknown>)) {
-        const prev = typeof next[k] === "number" ? (next[k] as number) : 0;
-        next[k] = prev + (v as { __increment: number }).__increment;
+      const patch = v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v)) : undefined;
+      if (typeof patch?.__increment === "number") {
+        const previous = next[k];
+        const prev = typeof previous === "number" ? previous : 0;
+        next[k] = prev + patch.__increment;
       } else {
         next[k] = v;
       }
@@ -59,7 +62,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     const data = store.get(path);
     return {
       exists: data !== undefined,
-      id: path.split("/").pop()!,
+      id: path.split("/").pop() ?? "",
       ref: makeDocRef(path),
       get: (field: string) => data?.[field],
       data: () => data,
@@ -72,7 +75,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
       const v = data[f.field];
       if (f.op === "==") return v === f.value;
       if (f.op === "<=") return typeof v === "number" && typeof f.value === "number" && v <= f.value;
-      if (f.op === "in") return Array.isArray(f.value) && (f.value as unknown[]).includes(v);
+      if (f.op === "in") return Array.isArray(f.value) && f.value.includes(v);
       return false;
     });
 
@@ -157,11 +160,12 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     collectionGroup: (name: string) => makeGroupQuery(name, []),
     async runTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
       const tx = {
-        async get(refOrQuery: { __isDoc?: true; __isQuery?: true; path?: string } & Record<string, unknown>) {
+        async get(refOrQuery: { __isDoc?: true; __isQuery?: true; path?: string; get(): Promise<unknown> }) {
           if (refOrQuery.__isQuery) {
-            return (refOrQuery as unknown as { get: () => unknown }).get();
+            return refOrQuery.get();
           }
-          return snapshotFor(refOrQuery.path!);
+          if (!refOrQuery.path) throw new Error("transaction get requires a document path");
+          return snapshotFor(refOrQuery.path);
         },
         set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
           applyPatch(ref.path, data, opts?.merge === true);
@@ -225,8 +229,14 @@ import {
 const UID = "uidRR5";
 const HOUR_MS = 60 * 60 * 1000;
 
-function callRequest(uid: string, data: Record<string, unknown>) {
-  return { auth: { uid }, app: { appId: "1:1:ios:x" }, data, rawRequest: { headers: {} } } as never;
+function callRequest<T extends Record<string, unknown>>(uid: string, data: T): CallableRequest<T> {
+  return {
+    auth: { uid, token: Object.create(null), rawToken: "test-token" },
+    app: { appId: "1:1:ios:x", token: Object.create(null) },
+    data,
+    rawRequest: Object.assign(Object.create(null), { headers: {} }),
+    acceptsStreaming: false,
+  };
 }
 
 function seedTrustedDevice(deviceId: string, platform = "iOS") {
@@ -318,7 +328,8 @@ describe("sweepStalePendingCloudVaultRotations — stale detection + nudge", () 
     expect(outbound).toHaveLength(2);
     for (const [, doc] of outbound) {
       expect(doc.status).toBe("pending");
-      expect((doc.payload as Record<string, unknown>).type).toBe("cloud_vault_rotation_required");
+      const payload = doc.payload && typeof doc.payload === "object" ? Object.fromEntries(Object.entries(doc.payload)) : {};
+      expect(payload.type).toBe("cloud_vault_rotation_required");
       expect(doc.fcmToken === "tok-mac" || doc.fcmToken === "tok-phone").toBe(true);
     }
     // Requirement stamped with the nudge bookkeeping.
