@@ -14,7 +14,7 @@ if [[ -z "$REPO" ]]; then
 fi
 
 BRANCH="${OPENBURNBAR_GOVERNANCE_BRANCH:-main}"
-REQUIRED_CHECKS="${OPENBURNBAR_REQUIRED_BRANCH_CHECKS:-openburnbar-pr,Analyze (swift),Analyze (javascript-typescript),Analyze (python),Analyze (java-kotlin)}"
+REQUIRED_CHECKS="${OPENBURNBAR_REQUIRED_BRANCH_CHECKS:-Fast Feedback Gate,guard,BurnBar AGPL product posture,Secret Detection (gitleaks),Dependency Review (CVE check),npm Audit (Node package locks),Remote Installer Policy,Vendored Agent Provenance,Signal Activation Parity (fail-closed default),Browser Target Policy (SSRF / DNS-rebinding),OSV Scanner (open source vulnerabilities),Hosted MCP Security Smoke,Hosted MCP Isolation Proofs (local, deterministic),Firestore Security Rules Tests}"
 REQUIRED_ENVIRONMENTS="${OPENBURNBAR_REQUIRED_ENVIRONMENTS:-release,production}"
 export BRANCH REQUIRED_CHECKS REQUIRED_ENVIRONMENTS
 
