@@ -20,9 +20,9 @@ export function allowedOrigins(): Set<string> {
  */
 export function isProductionRuntime(env: NodeJS.ProcessEnv = process.env): boolean {
   const explicit = (env.MCP_RUNTIME_ENVIRONMENT ?? "").toLowerCase();
-  if (explicit === "production") return true;
-  if (explicit === "development" || explicit === "test") return false;
-  if (env.NODE_ENV === "test") return false;
+  if (explicit === "production") {return true;}
+  if (explicit === "development" || explicit === "test") {return false;}
+  if (env.NODE_ENV === "test") {return false;}
   return env.NODE_ENV === "production" || Boolean(env.K_SERVICE);
 }
 
@@ -35,7 +35,7 @@ export function isProductionRuntime(env: NodeJS.ProcessEnv = process.env): boole
  * HMAC-for-any-uid with no signal (the audit's RR-13 residual). Refuse to boot instead.
  */
 export function assertProductionTokenPosture(env: NodeJS.ProcessEnv = process.env): void {
-  if (!isProductionRuntime(env)) return;
+  if (!isProductionRuntime(env)) {return;}
   const errors: string[] = [];
   if (!env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64) {
     errors.push("MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64 must be set — asymmetric token verification is required in production");
