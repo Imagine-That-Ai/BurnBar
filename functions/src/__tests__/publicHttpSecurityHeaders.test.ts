@@ -12,7 +12,7 @@ describe("setPublicJsonSecurityHeaders", () => {
       },
     });
 
-    expect(headers.get("cache-control")).toBe("no-store");
+    expect(headers.has("cache-control")).toBe(false);
     expect(headers.get("content-security-policy")).toContain("default-src 'none'");
     expect(headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     expect(headers.get("permissions-policy")).toContain("camera=()");
