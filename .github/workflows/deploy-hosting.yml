@@ -57,6 +57,8 @@ jobs:
         run: |
           npm ci --prefix website
           npm ci --prefix apps/console
+          # functions/package-lock.json pins firebase-tools for deploy steps.
+          npm ci --prefix functions
 
       # Defense in depth for the public trust copy: even a bad merge cannot
       # deploy drifted claims. These mirror the fast-feedback gates — the
@@ -101,7 +103,7 @@ jobs:
             echo "::error::No Firebase deploy auth configured. Set GCP_SA_KEY (preferred), GOOGLE_PLAY_SERVICE_ACCOUNT_JSON, or legacy FIREBASE_TOKEN."
             exit 1
           fi
-          npx firebase-tools "${firebase_args[@]}"
+          npm --prefix functions exec -- firebase "${firebase_args[@]}"
 
       - name: Post-deploy hosting smoke
         if: ${{ github.event.inputs.dry_run != 'true' }}
