@@ -35,6 +35,7 @@ import com.openburnbar.data.derived.TrendDataDigest
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraType
+import com.openburnbar.util.Formatting
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -77,7 +78,7 @@ internal fun SelectedAnnotation(series: TrendDataDigest.DailySeries, modifier: M
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "$${"%.2f".format(series.total)}",
+                text = Formatting.formatCurrency(series.total),
                 style = AuroraType.caption,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,

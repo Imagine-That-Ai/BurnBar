@@ -19,15 +19,24 @@ final class MediaBudgetStatusStore {
 
     private let documentPath: String
     private let isSignedInProvider: () -> Bool
+    private let defaults: UserDefaults
+    private static let lastKnownStatusDefaultsKey = "com.openburnbar.media.budget.lastKnownStatus"
 
     init(
         documentPath: String = "ops/media_budget_status/state/current",
         isSignedInProvider: @escaping () -> Bool = {
             Auth.auth().currentUser != nil
-        }
+        },
+        defaults: UserDefaults = .standard
     ) {
         self.documentPath = documentPath
         self.isSignedInProvider = isSignedInProvider
+        self.defaults = defaults
+        // Rehydrate last-known-good so a cold start after a previous online
+        // session reuses the last published envelope instead of failing open
+        // to `initialNormal` (RR-9). A persisted hard-cap therefore keeps
+        // engaging across launches even before the listener reconnects.
+        self.lastKnownStatus = Self.loadPersistedLastKnownStatus(from: defaults)
     }
 
     func startListening() {
@@ -51,7 +60,11 @@ final class MediaBudgetStatusStore {
         if failClosedDueToPermissionDenied, let lastKnownStatus {
             return lastKnownStatus
         }
-        return latestStatus ?? lastKnownStatus ?? Self.initialNormal
+        // Cold-start / transient-unavailable with no value to trust resolves to
+        // the CONSERVATIVE closed status, not the most-permissive `initialNormal`
+        // (RR-9). Once a live envelope (or a rehydrated last-known-good) exists we
+        // prefer it; otherwise the caps stay engaged until the budget doc is read.
+        return latestStatus ?? lastKnownStatus ?? Self.conservativeClosed
     }
 
     func handleSnapshot(snapshot: DocumentSnapshot?, error: Error?) {
@@ -68,7 +81,34 @@ final class MediaBudgetStatusStore {
         let status = Self.parsePublicEnvelope(data)
         latestStatus = status
         lastKnownStatus = status
+        persistLastKnownStatus(status)
         onStatusChanged?(status)
+    }
+
+    private func persistLastKnownStatus(_ status: MediaBudgetStatus) {
+        do {
+            let encoded = try JSONEncoder().encode(status)
+            defaults.set(encoded, forKey: Self.lastKnownStatusDefaultsKey)
+        } catch {
+            AppLogger.sync.error(
+                "media_budget_status_persist_failed",
+                metadata: ["error": error.localizedDescription]
+            )
+        }
+    }
+
+    private static func loadPersistedLastKnownStatus(from defaults: UserDefaults) -> MediaBudgetStatus? {
+        guard let data = defaults.data(forKey: lastKnownStatusDefaultsKey) else { return nil }
+        do {
+            return try JSONDecoder().decode(MediaBudgetStatus.self, from: data)
+        } catch {
+            AppLogger.sync.error(
+                "media_budget_status_load_failed",
+                metadata: ["error": error.localizedDescription]
+            )
+            defaults.removeObject(forKey: lastKnownStatusDefaultsKey)
+            return nil
+        }
     }
 
     private func handleListenerError(_ error: Error) {
@@ -89,7 +129,16 @@ final class MediaBudgetStatusStore {
                 latestStatus = nil
             }
         case .unavailable, .deadlineExceeded, .resourceExhausted:
+            // Transient outage: hold last-known-good rather than failing open.
+            // Promote any live value into `lastKnownStatus` so a later
+            // `latestStatus` reset still resolves to the last good envelope, and
+            // when there is no good value `effectiveStatus` falls to the
+            // conservative closed default (RR-9).
             failClosedDueToPermissionDenied = false
+            if let latestStatus {
+                lastKnownStatus = latestStatus
+                persistLastKnownStatus(latestStatus)
+            }
         default:
             failClosedDueToPermissionDenied = false
         }
@@ -101,6 +150,20 @@ final class MediaBudgetStatusStore {
         monthToDateUSD: 0,
         lastEvaluatedAt: Date(timeIntervalSince1970: 0),
         activeEnvelope: .normal
+    )
+
+    /// Conservative fail-closed status used when there is nothing trustworthy to
+    /// report — cold start before the first read, or a transient-unavailable
+    /// listener with no last-known-good (RR-9). Hard cap engages the same way
+    /// the budget evaluator's hard-cap publish does, so admission control stays
+    /// closed until a real envelope arrives rather than running on the
+    /// most-permissive `initialNormal`.
+    static let conservativeClosed = MediaBudgetStatus(
+        level: .hardCap,
+        projectedMonthEndUSD: 0,
+        monthToDateUSD: 0,
+        lastEvaluatedAt: Date(timeIntervalSince1970: 0),
+        activeEnvelope: .hardCap
     )
 
     static func parsePublicEnvelope(_ data: [String: Any]) -> MediaBudgetStatus {

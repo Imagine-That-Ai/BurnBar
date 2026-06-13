@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, createPrivateKey, createPublicKey, sign as signDetached, timingSafeEqual, verify as verifyDetached } from "node:crypto";
 import { MCP_RESOURCE } from "./config.js";
 import { HttpError } from "./errors.js";
 
@@ -74,10 +74,73 @@ function base64UrlEncode(value: Buffer | string): string {
   return Buffer.from(value).toString("base64url");
 }
 
+function keyObjectFromBase64PEM(value: string, kind: "private" | "public") {
+  const material = Buffer.from(value, "base64").toString("utf8");
+  return kind === "private" ? createPrivateKey(material) : createPublicKey(material);
+}
+
+function verifyEd25519TokenString(token: string, publicKeyBase64PEM: string): { body: string } {
+  const parts = token.split(".");
+  if (parts.length === 2) {
+    throw new HttpError(401, "Legacy HMAC MCP access tokens are disabled.", "legacy_hmac_token_disabled");
+  }
+  if (parts.length !== 3 || parts[0] !== "ed25519" || !parts[1] || !parts[2]) {
+    throw new HttpError(401, "Malformed OpenBurnBar MCP Ed25519 access token.", "malformed_token");
+  }
+  const [, body, sig] = parts;
+  const ok = verifyDetached(
+    null,
+    Buffer.from(body),
+    keyObjectFromBase64PEM(publicKeyBase64PEM, "public"),
+    base64UrlDecode(sig),
+  );
+  if (!ok) {
+    throw new HttpError(401, "Invalid OpenBurnBar MCP access token signature.", "bad_token_signature");
+  }
+  return { body };
+}
+
+function verifyHmacTokenString(token: string): { body: string } {
+  const parts = token.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new HttpError(401, "Malformed OpenBurnBar MCP access token.", "malformed_token");
+  }
+  const [body, sig] = parts;
+  const secret = process.env.MCP_TOKEN_HMAC_SECRET;
+  if (!secret) {
+    throw new HttpError(503, "MCP token verifier is not configured.", "token_verifier_unconfigured");
+  }
+  const expected = createHmac("sha256", secret).update(body).digest();
+  const actual = base64UrlDecode(sig);
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw new HttpError(401, "Invalid OpenBurnBar MCP access token signature.", "bad_token_signature");
+  }
+  return { body };
+}
+
 export function mintDevelopmentToken(claims: AccessTokenClaims, secret = process.env.MCP_TOKEN_HMAC_SECRET ?? "dev-secret"): string {
   const body = base64UrlEncode(JSON.stringify(claims));
   const sig = createHmac("sha256", secret).update(body).digest("base64url");
   return `${body}.${sig}`;
+}
+
+export function mintEd25519Token(claims: AccessTokenClaims, privateKeyBase64PEM = process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64): string {
+  if (!privateKeyBase64PEM) {
+    throw new HttpError(503, "MCP Ed25519 token signer is not configured.", "token_signer_unconfigured");
+  }
+  const body = base64UrlEncode(JSON.stringify(claims));
+  const signature = signDetached(null, Buffer.from(body), keyObjectFromBase64PEM(privateKeyBase64PEM, "private")).toString("base64url");
+  return `ed25519.${body}.${signature}`;
+}
+
+export function mintAccessToken(claims: AccessTokenClaims, hmacSecret = process.env.MCP_TOKEN_HMAC_SECRET): string {
+  if (process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64) {
+    return mintEd25519Token(claims, process.env.MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64);
+  }
+  if (!hmacSecret) {
+    throw new HttpError(503, "MCP token signer is not configured.", "token_signer_unconfigured");
+  }
+  return mintDevelopmentToken(claims, hmacSecret);
 }
 
 /**
@@ -94,22 +157,16 @@ export function verifyAccessTokenString(token: string, options: { allowExpired?:
   if (trimmed.includes("?")) {
     throw new HttpError(401, "Tokens in query strings are rejected.", "token_query_string_rejected");
   }
-  const [body, sig] = trimmed.split(".");
-  if (!body || !sig) {
-    throw new HttpError(401, "Malformed OpenBurnBar MCP access token.", "malformed_token");
-  }
-  const secret = process.env.MCP_TOKEN_HMAC_SECRET;
-  if (!secret) {
-    throw new HttpError(503, "MCP token verifier is not configured.", "token_verifier_unconfigured");
-  }
-  const expected = createHmac("sha256", secret).update(body).digest();
-  const actual = base64UrlDecode(sig);
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-    throw new HttpError(401, "Invalid OpenBurnBar MCP access token signature.", "bad_token_signature");
+  let verified: { body: string };
+  const publicKeyBase64PEM = process.env.MCP_TOKEN_ED25519_PUBLIC_KEY_BASE64;
+  if (publicKeyBase64PEM) {
+    verified = verifyEd25519TokenString(trimmed, publicKeyBase64PEM);
+  } else {
+    verified = verifyHmacTokenString(trimmed);
   }
   let claims: AccessTokenClaims;
   try {
-    claims = parseAccessTokenClaims(JSON.parse(base64UrlDecode(body).toString("utf8")));
+    claims = parseAccessTokenClaims(JSON.parse(base64UrlDecode(verified.body).toString("utf8")));
   } catch (error) {
     if (error instanceof HttpError) {throw error;}
     throw new HttpError(401, "Malformed OpenBurnBar MCP access token claims.", "malformed_claims");

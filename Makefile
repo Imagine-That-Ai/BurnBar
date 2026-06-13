@@ -1,6 +1,7 @@
 # OpenBurnBar — build-from-source installation
 #
 # Usage:
+#   make bootstrap        Fresh-clone setup: init submodules + build libsignal FFI
 #   make install          Build Release .app and copy to /Applications
 #   make build            Build Release .app only (output in .derived-data)
 #   make test             Run all test suites
@@ -20,7 +21,12 @@ CONFIG       := Release
 DESTINATION  := platform=macOS,arch=arm64
 CACHE_DIR    := .spm-cache
 DERIVED_DATA := .derived-data
-OPENBURNBAR_DEVELOPMENT_TEAM ?= 4Y367DF25B
+# Apple Development team for signed local builds. Empty by default so outside
+# contributors are never blocked on someone else's team: `build-signed`
+# auto-detects an Apple Development identity in the keychain and falls back to
+# an ad-hoc-signed build when none exists. Set explicitly to override:
+#   OPENBURNBAR_DEVELOPMENT_TEAM=ABCDE12345 make install
+OPENBURNBAR_DEVELOPMENT_TEAM ?=
 APP_NAME     := OpenBurnBar.app
 INSTALL_DIR  := /Applications
 DAEMON_PACKAGE := OpenBurnBarDaemon
@@ -30,13 +36,28 @@ DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 # Built .app location inside DerivedData
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)
 
-.PHONY: preflight build build-signed release-mas release-website install uninstall clean test test-full lint debt-check ci release-checksums sbom
+.PHONY: bootstrap preflight build build-signed release-mas release-website install uninstall clean test test-full lint debt-check ci release-checksums sbom
 
 preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
 	@command -v swift >/dev/null 2>&1 || { echo "ERROR: swift not found. Install Xcode 16+ command line tools first."; exit 1; }
 
-build: preflight
+bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build the libsignal FFI XCFramework
+	@if git submodule status Vendor/libsignal 2>/dev/null | grep -q '^-'; then \
+		echo "==> Initializing Vendor/libsignal submodule…"; \
+		git submodule update --init --recursive; \
+	fi
+	@if [ -d Vendor/OpenBurnBarSignalFfi.xcframework ]; then \
+		echo "==> OpenBurnBarSignalFfi.xcframework already present — bootstrap complete."; \
+	else \
+		command -v protoc >/dev/null 2>&1 || { echo "ERROR: protoc not found. Building the vendored libsignal FFI requires it — install with 'brew install protobuf' and re-run 'make bootstrap'."; exit 1; }; \
+		{ command -v cargo >/dev/null 2>&1 || [ -x "$$HOME/.cargo/bin/cargo" ]; } || { echo "ERROR: Rust (cargo) not found. Building the vendored libsignal FFI requires it — install via https://rustup.rs and re-run 'make bootstrap'."; exit 1; }; \
+		{ command -v rustup >/dev/null 2>&1 || [ -x "$$HOME/.cargo/bin/rustup" ]; } || { echo "ERROR: rustup not found. The libsignal FFI build uses it to add Apple build targets — install via https://rustup.rs and re-run 'make bootstrap'."; exit 1; }; \
+		echo "==> Building OpenBurnBarSignalFfi.xcframework (first run can take 20+ minutes)…"; \
+		SIGNAL_FFI_BUILD_PROFILE="$${SIGNAL_FFI_BUILD_PROFILE:-release}" bash scripts/lib/prepare-signal-ffi-xcframework.sh; \
+	fi
+
+build: bootstrap preflight
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
 	xcodebuild -resolvePackageDependencies \
@@ -81,7 +102,7 @@ build: preflight
 	fi
 	@echo "==> Built: $(APP_BUNDLE)"
 
-build-signed: preflight
+build-signed: bootstrap preflight
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
 	xcodebuild -resolvePackageDependencies \
@@ -93,19 +114,45 @@ build-signed: preflight
 	@echo "==> Building daemon…"
 	swift build --package-path $(DAEMON_PACKAGE) -c release
 	@echo "==> Building signed $(SCHEME) ($(CONFIG))…"
-	xcodebuild \
-		-project $(PROJECT) \
-		-scheme $(SCHEME) \
-		-configuration $(CONFIG) \
-		-destination "$(DESTINATION)" \
-		-clonedSourcePackagesDirPath $(CACHE_DIR) \
-		-derivedDataPath $(DERIVED_DATA) \
-		ARCHS=arm64 \
-		ONLY_ACTIVE_ARCH=YES \
-		DEVELOPMENT_TEAM=$(OPENBURNBAR_DEVELOPMENT_TEAM) \
-		CODE_SIGN_STYLE=Automatic \
-		-allowProvisioningUpdates \
-		build
+	@TEAM="$(OPENBURNBAR_DEVELOPMENT_TEAM)"; \
+	if [ -z "$$TEAM" ]; then \
+		IDENTITY="$$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -n 1 || true)"; \
+		if [ -n "$$IDENTITY" ]; then \
+			TEAM="$$(security find-certificate -c "$$IDENTITY" -p 2>/dev/null | openssl x509 -noout -subject 2>/dev/null | sed -n 's/.*OU=\([A-Z0-9]\{10\}\).*/\1/p' | head -n 1 || true)"; \
+		fi; \
+	fi; \
+	if [ -n "$$TEAM" ]; then \
+		echo "    Using development team $$TEAM (set OPENBURNBAR_DEVELOPMENT_TEAM to override)."; \
+		xcodebuild \
+			-project $(PROJECT) \
+			-scheme $(SCHEME) \
+			-configuration $(CONFIG) \
+			-destination "$(DESTINATION)" \
+			-clonedSourcePackagesDirPath $(CACHE_DIR) \
+			-derivedDataPath $(DERIVED_DATA) \
+			ARCHS=arm64 \
+			ONLY_ACTIVE_ARCH=YES \
+			DEVELOPMENT_TEAM=$$TEAM \
+			CODE_SIGN_STYLE=Automatic \
+			-allowProvisioningUpdates \
+			build; \
+	else \
+		echo "    No OPENBURNBAR_DEVELOPMENT_TEAM set and no Apple Development identity found —"; \
+		echo "    building unsigned; the bundle will be ad-hoc signed for local use."; \
+		xcodebuild \
+			-project $(PROJECT) \
+			-scheme $(SCHEME) \
+			-configuration $(CONFIG) \
+			-destination "$(DESTINATION)" \
+			-clonedSourcePackagesDirPath $(CACHE_DIR) \
+			-derivedDataPath $(DERIVED_DATA) \
+			ARCHS=arm64 \
+			ONLY_ACTIVE_ARCH=YES \
+			CODE_SIGN_IDENTITY="-" \
+			CODE_SIGNING_REQUIRED=NO \
+			CODE_SIGNING_ALLOWED=NO \
+			build; \
+	fi
 	@echo "==> Embedding daemon helper…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Helpers"
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
@@ -124,8 +171,17 @@ build-signed: preflight
 	else \
 		echo "    No OpenBurnBarCore.framework produced; app is statically linked."; \
 	fi
-	@echo "==> Signing $(APP_BUNDLE) for local install…"
-	OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS=1 scripts/sign-openburnbar-local.sh "$(APP_BUNDLE)" "AgentLens/Resources/OpenBurnBar.entitlements"
+	@if security find-identity -v -p codesigning 2>/dev/null | grep -q '"Apple Development:'; then \
+		echo "==> Signing $(APP_BUNDLE) for local install…"; \
+		OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS=1 scripts/sign-openburnbar-local.sh "$(APP_BUNDLE)" "AgentLens/Resources/OpenBurnBar.entitlements"; \
+	else \
+		echo "==> Ad-hoc signing $(APP_BUNDLE) (no Apple Development identity in the keychain)…"; \
+		/usr/bin/codesign --force --deep --sign - --timestamp=none "$(APP_BUNDLE)"; \
+		/usr/bin/codesign --verify --strict --verbose=2 "$(APP_BUNDLE)"; \
+		echo "    NOTE: ad-hoc builds run locally but skip provisioned entitlements"; \
+		echo "    (e.g. keychain-backed cloud sign-in). For a developer-signed build,"; \
+		echo "    install an Apple Development certificate or set OPENBURNBAR_DEVELOPMENT_TEAM."; \
+	fi
 	@echo "==> Built signed: $(APP_BUNDLE)"
 
 release-mas: preflight ## Build/export the sandboxed Mac App Store package

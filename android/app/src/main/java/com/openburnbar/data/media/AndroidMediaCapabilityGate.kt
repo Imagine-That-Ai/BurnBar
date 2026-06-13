@@ -1,5 +1,7 @@
 package com.openburnbar.data.media
 
+import com.openburnbar.data.remoteconfig.RemoteConfigHardKillSwitches
+
 /**
  * Android-side mirror of the iOS `MediaCapabilityGate`. Decision 2 of
  * the Mercury Media master plan: the Mac is the authoritative gate;
@@ -15,7 +17,9 @@ package com.openburnbar.data.media
 class AndroidMediaCapabilityGate(
     private val entitlementProvider: () -> EntitlementState = { EntitlementState() },
     private val budgetProvider: () -> BudgetState = { BudgetState() },
-    private val killSwitchProvider: () -> Boolean = { false },
+    private val killSwitchProvider: () -> Boolean = {
+        RemoteConfigHardKillSwitches.isActive(RemoteConfigHardKillSwitches.MEDIA_KILL_SWITCH)
+    },
 ) {
     sealed class Check {
         data class Allowed(val envelope: Envelope) : Check()

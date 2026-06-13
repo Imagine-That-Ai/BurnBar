@@ -42,15 +42,18 @@ enum MacCloudTier: Int, Comparable, CaseIterable {
 final class MacCloudEntitlementStore: ObservableObject {
     @Published private(set) var isActive: Bool = false
     @Published private(set) var hostedComputerUseIsActive: Bool = false
+    @Published private(set) var hostedMediaIsActive: Bool = false
     /// True when the member holds the BurnBar Ultra entitlement (server-resolved
     /// `burnbar_ultra` doc). Ultra ⇒ Pro ⇒ Cloud, so use `currentTier` for
     /// hierarchy decisions and this flag only for the literal Ultra check.
     @Published private(set) var isUltraActive: Bool = false
     @Published private(set) var expirationDate: Date?
     @Published private(set) var hostedComputerUseExpirationDate: Date?
+    @Published private(set) var hostedMediaExpirationDate: Date?
     @Published private(set) var ultraExpirationDate: Date?
     @Published private(set) var purchaseDate: Date?
     @Published private(set) var hostedComputerUsePurchaseDate: Date?
+    @Published private(set) var hostedMediaPurchaseDate: Date?
     @Published private(set) var ultraPurchaseDate: Date?
     @Published private(set) var error: String?
 
@@ -58,6 +61,7 @@ final class MacCloudEntitlementStore: ObservableObject {
 
     private var listener: ListenerRegistration?
     private var computerUseListener: ListenerRegistration?
+    private var mediaListener: ListenerRegistration?
     private var proMaxListener: ListenerRegistration?
     private var ultraListener: ListenerRegistration?
     private nonisolated(unsafe) var authHandle: AuthStateDidChangeListenerHandle?
@@ -90,6 +94,7 @@ final class MacCloudEntitlementStore: ObservableObject {
     deinit {
         listener?.remove()
         computerUseListener?.remove()
+        mediaListener?.remove()
         proMaxListener?.remove()
         ultraListener?.remove()
         if let authHandle {
@@ -118,6 +123,8 @@ final class MacCloudEntitlementStore: ObservableObject {
         listener = nil
         computerUseListener?.remove()
         computerUseListener = nil
+        mediaListener?.remove()
+        mediaListener = nil
         proMaxListener?.remove()
         proMaxListener = nil
         ultraListener?.remove()
@@ -134,6 +141,7 @@ final class MacCloudEntitlementStore: ObservableObject {
             ultraPurchaseDate = nil
             hostedComputerUseState = (false, nil, nil)
             proMaxComputerUseState = (false, nil, nil)
+            clearHostedMediaEntitlement()
             return
         }
         let entitlements = Firestore.firestore()
@@ -177,6 +185,24 @@ final class MacCloudEntitlementStore: ObservableObject {
                     self.applyHostedComputerUse(data: data)
                 }
             }
+        // cov:ignore-start -- Firebase snapshot callback delivery is integration-only; parser/clear paths are unit-tested
+        mediaListener = entitlements
+            .document("hosted_media_sync")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.error = error.localizedDescription
+                        return
+                    }
+                    guard let data = snapshot?.data(), snapshot?.exists == true else {
+                        self.clearHostedMediaEntitlement()
+                        return
+                    }
+                    self.applyHostedMedia(data: data)
+                }
+            }
+        // cov:ignore-end
         proMaxListener = entitlements
             .document("burnbar_pro_max")
             .addSnapshotListener { [weak self] snapshot, error in
@@ -228,6 +254,19 @@ final class MacCloudEntitlementStore: ObservableObject {
     private func applyHostedComputerUse(data: [String: Any]) {
         hostedComputerUseState = activeEntitlementState(data: data)
         publishComputerUseEntitlement()
+    }
+
+    func applyHostedMedia(data: [String: Any]) {
+        let state = activeEntitlementState(data: data)
+        hostedMediaIsActive = state.isActive
+        hostedMediaExpirationDate = state.expiresAt
+        hostedMediaPurchaseDate = state.purchase
+    }
+
+    func clearHostedMediaEntitlement() {
+        hostedMediaIsActive = false
+        hostedMediaExpirationDate = nil
+        hostedMediaPurchaseDate = nil
     }
 
     private func activeEntitlementState(data: [String: Any]) -> (isActive: Bool, expiresAt: Date?, purchase: Date?) {

@@ -1916,7 +1916,6 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private let service: String
     private let legacyServices: [String]
     private let hermesCredentialPoolURL: URL?
-    private let fallbackSecretFileURL: URL?
     private let claudeOAuthRefreshSession: URLSession
 
     public init(
@@ -1932,8 +1931,12 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             service == Self.defaultService ? [Self.legacyCursorConnectorService] : []
         )
         self.hermesCredentialPoolURL = hermesCredentialPoolURL
-        self.fallbackSecretFileURL = fallbackSecretFileURL
         self.claudeOAuthRefreshSession = claudeOAuthRefreshSession
+        if let fallbackSecretFileURL {
+            // Legacy continuity vaults were plaintext JSON. They are no longer
+            // trusted as a credential source; best-effort scrub stale copies.
+            try? FileManager.default.removeItem(at: fallbackSecretFileURL)
+        }
     }
 
     public func secret(for providerID: String) async throws -> String? {
@@ -1950,9 +1953,6 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             if let secret = try secret(forService: legacyService, account: account) {
                 return try await routeSecret(from: secret, providerID: providerID)
             }
-        }
-        if let secret = fallbackSecret(for: account) {
-            return try await routeSecret(from: secret, providerID: providerID)
         }
         return hermesCredentialPoolSecret(for: providerID)
     }
@@ -2111,7 +2111,6 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             } else if addStatus != errSecSuccess {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
             }
-            try setFallbackSecret(secret, for: account)
         } else {
             let deleteStatus = withKeychainUserInteractionDisabled {
                 SecItemDelete(query as CFDictionary)
@@ -2119,48 +2118,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
-            try setFallbackSecret(nil, for: account)
         }
-    }
-
-    private func fallbackSecret(for account: String) -> String? {
-        guard let fallbackSecretFileURL,
-              let data = try? Data(contentsOf: fallbackSecretFileURL),
-              let vault = try? JSONDecoder().decode(BurnBarProviderSecretContinuityVault.self, from: data),
-              let secret = vault.secrets[account]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !secret.isEmpty else {
-            return nil
-        }
-        return secret
-    }
-
-    private func setFallbackSecret(_ secret: String?, for account: String) throws {
-        guard let fallbackSecretFileURL else { return }
-        let fileManager = FileManager.default
-        let directoryURL = fallbackSecretFileURL.deletingLastPathComponent()
-        try fileManager.createDirectory(
-            at: directoryURL,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
-
-        var vault: BurnBarProviderSecretContinuityVault
-        if let data = try? Data(contentsOf: fallbackSecretFileURL),
-           let decoded = try? JSONDecoder().decode(BurnBarProviderSecretContinuityVault.self, from: data) {
-            vault = decoded
-        } else {
-            vault = BurnBarProviderSecretContinuityVault(secrets: [:])
-        }
-
-        if let secret = secret?.trimmingCharacters(in: .whitespacesAndNewlines), !secret.isEmpty {
-            vault.secrets[account] = secret
-        } else {
-            vault.secrets.removeValue(forKey: account)
-        }
-
-        let data = try JSONEncoder().encode(vault)
-        try data.write(to: fallbackSecretFileURL, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fallbackSecretFileURL.path)
     }
 
     private func hermesCredentialPoolSecret(for providerID: String) -> String? {
@@ -2192,10 +2150,6 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         }
         return nil
     }
-}
-
-private struct BurnBarProviderSecretContinuityVault: Codable {
-    var secrets: [String: String]
 }
 
 private struct BurnBarClaudeOAuthRouteCredential {

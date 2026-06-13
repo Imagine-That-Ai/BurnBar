@@ -11,12 +11,14 @@ on:
       - "scripts/build-iroh-android-aar.sh"
       - ".github/workflows/build-iroh-android-aar.yml"
       - "android/openburnbar-iroh-relay/**"
+      - "Vendor/openburnbar-iroh.aar"
   pull_request:
     paths:
       - "crates/openburnbar-iroh/**"
       - "scripts/build-iroh-android-aar.sh"
       - ".github/workflows/build-iroh-android-aar.yml"
       - "android/openburnbar-iroh-relay/**"
+      - "Vendor/openburnbar-iroh.aar"
   workflow_dispatch:
 
 concurrency:
@@ -47,9 +49,9 @@ jobs:
           packages: "ndk;${{ env.ANDROID_NDK_VERSION }}"
 
       - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
         with:
-          toolchain: stable
+          toolchain: "1.96.0"
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Cache cargo registry + target
@@ -96,6 +98,25 @@ jobs:
           IROH_BUILD_PROFILE: release
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+
+      - name: Upload rebuilt AAR before parity
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        with:
+          name: openburnbar-iroh-aar-rebuilt
+          path: Vendor/openburnbar-iroh.aar
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify committed AAR parity
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- \
+            Vendor/openburnbar-iroh.aar \
+            android/openburnbar-iroh-relay/src/main/java/uniffi/openburnbar_iroh \
+            || {
+              echo "::error::Committed openburnbar-iroh AAR/Kotlin bindings do not match a clean source rebuild.";
+              exit 1;
+            }
 
       - name: Inspect AAR
         run: |

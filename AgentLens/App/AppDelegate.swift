@@ -68,6 +68,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var wallpaperSpaceChangeObserver: NSObjectProtocol?
     private var wallpaperColorDriverTask: Task<Void, Never>?
 
+    // RR-5: Cloud Vault rotation pickup. A revoke initiated from an offline Mac
+    // or an Android device (which cannot rotate the Cloud Vault) leaves the
+    // rotation requirement `pending`, so the revoked device's cached key is not
+    // yet retired. This surviving Mac discovers those pending requirements on
+    // foreground/launch (and right after a local revoke) and finishes the
+    // rotation when it is an eligible survivor.
+    private var cloudVaultRotationPickupObserver: NSObjectProtocol?
+    private var postRevokeCloudVaultRotationPickupObserver: NSObjectProtocol?
+    private var lastCloudVaultRotationPickupAt: TimeInterval = 0
+    /// Foreground passes within this window of the last attempt are coalesced so
+    /// rapid activate/deactivate cycles don't spam the server callable.
+    private static let cloudVaultRotationPickupDebounceInterval: TimeInterval = 30
+
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
         if AppCommandRouter.shared.handle(url) {
@@ -99,6 +112,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         updateWallpaperState()
         setupPowerMonitoring()
         setupScreenChangeObserver()
+
+        // RR-5: pick up any pending Cloud Vault rotations this Mac is a survivor
+        // for — on every foreground and once right after a local revoke.
+        observeCloudVaultRotationPickupTriggers()
+        pickUpPendingCloudVaultRotations(force: true)
+    }
+
+    /// Registers the foreground + post-revoke triggers for the RR-5 Cloud Vault
+    /// rotation pickup. Foreground passes are debounced; the post-revoke pass
+    /// fires immediately so a local revoke completes the rotation chain even when
+    /// the app stays in the foreground.
+    private func observeCloudVaultRotationPickupTriggers() {
+        guard !OpenBurnBarRuntime.isRunningTests else { return }
+        if cloudVaultRotationPickupObserver == nil {
+            cloudVaultRotationPickupObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.pickUpPendingCloudVaultRotations(force: false) }
+            }
+        }
+        if postRevokeCloudVaultRotationPickupObserver == nil {
+            postRevokeCloudVaultRotationPickupObserver = NotificationCenter.default.addObserver(
+                forName: .openBurnBarDidRevokeDeviceTrust,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.pickUpPendingCloudVaultRotations(force: true) }
+            }
+        }
+    }
+
+    /// Fire-and-forget RR-5 Cloud Vault rotation pickup. Non-fatal on any error
+    /// (signed-out, network, no eligible requirements) — it simply retries on the
+    /// next foreground/revoke. `force` bypasses the foreground debounce for the
+    /// launch and post-revoke passes.
+    private func pickUpPendingCloudVaultRotations(force: Bool) {
+        let now = Date().timeIntervalSinceReferenceDate
+        if !force,
+           now - lastCloudVaultRotationPickupAt < Self.cloudVaultRotationPickupDebounceInterval {
+            return
+        }
+        lastCloudVaultRotationPickupAt = now
+
+        let rotatingDeviceId = MacLiveDeviceTrustGateway.loadOrCreateDeviceId()
+        Task {
+            do {
+                let result = try await ComputerUseSecurityCallableClient.pickUpPendingCloudVaultRotations(
+                    rotatingDeviceId: rotatingDeviceId
+                )
+                if !result.completedRequirementIds.isEmpty || !result.failedRequirements.isEmpty {
+                    AppLogger.sync.info(
+                        "cloud_vault_rotation_pickup_complete",
+                        metadata: [
+                            "eligible": String(result.eligibleRequirementIds.count),
+                            "completed": String(result.completedRequirementIds.count),
+                            "failed": String(result.failedRequirements.count)
+                        ]
+                    )
+                }
+            } catch {
+                AppLogger.sync.error(
+                    "cloud_vault_rotation_pickup_failed",
+                    metadata: ["error": error.localizedDescription]
+                )
+            }
+        }
     }
 
     private func enforceSingleOpenBurnBarInstance() -> Bool {
@@ -1051,7 +1132,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         uninstallStatusItemMouseFallback()
         teardownWallpaperPanels()
         teardownWallpaperObservers()
+        if let observer = cloudVaultRotationPickupObserver {
+            NotificationCenter.default.removeObserver(observer)
+            cloudVaultRotationPickupObserver = nil
+        }
+        if let observer = postRevokeCloudVaultRotationPickupObserver {
+            NotificationCenter.default.removeObserver(observer)
+            postRevokeCloudVaultRotationPickupObserver = nil
+        }
     }
+}
+
+public extension Notification.Name {
+    /// Posted on the main queue right after a local device-trust revoke
+    /// completes (`DeviceTrustViewModel.revoke`). The app delegate observes this
+    /// to run the RR-5 Cloud Vault rotation pickup immediately, so the revoking
+    /// Mac finishes the rotation chain without waiting for the next foreground.
+    static let openBurnBarDidRevokeDeviceTrust = Notification.Name("openBurnBarDidRevokeDeviceTrust")
 }
 
 enum OpenBurnBarStatusItemClick {

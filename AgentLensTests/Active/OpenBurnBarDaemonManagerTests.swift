@@ -175,6 +175,39 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertFalse(manager.installedDaemonBinaryNeedsRefresh())
     }
 
+    @MainActor
+    func test_installFilesRejectsDaemonBinaryWhenSignatureValidationFails() throws {
+        let harness = try makeRuntimePathsHarness(name: "daemon-signature-reject")
+        defer { harness.cleanup() }
+
+        let sourceBinaryURL = harness.rootURL.appendingPathComponent("source-openburnbar-daemon", isDirectory: false)
+        try "#!/bin/sh\nexit 0\n".write(to: sourceBinaryURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourceBinaryURL.path)
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(
+                resolveDaemonBinary: { sourceBinaryURL },
+                validateDaemonBinary: { url in
+                    throw NSError(
+                        domain: "OpenBurnBarDaemonManagerTests",
+                        code: 42,
+                        userInfo: [NSLocalizedDescriptionKey: "rejected \(url.lastPathComponent)"]
+                    )
+                }
+            ),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        XCTAssertThrowsError(try manager.installFilesIfNeeded()) { error in
+            guard case OpenBurnBarDaemonManagerError.daemonBinarySignatureInvalid = error else {
+                return XCTFail("Expected daemonBinarySignatureInvalid, got \(error)")
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.installedBinaryURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.paths.launchAgentPlistURL.path))
+    }
+
     func test_daemonBinaryResolverPrefersBundledHelperOverBuildProductSibling() throws {
         let harness = try makeRuntimePathsHarness(name: "binary-resolver-helper")
         defer { harness.cleanup() }
@@ -838,7 +871,10 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data))
     }
 
-    private func daemonDependencies(resolveDaemonBinary: @escaping () -> URL?) -> OpenBurnBarDaemonDependencies {
+    private func daemonDependencies(
+        resolveDaemonBinary: @escaping () -> URL?,
+        validateDaemonBinary: @escaping @Sendable (URL) throws -> Void = { _ in }
+    ) -> OpenBurnBarDaemonDependencies {
         OpenBurnBarDaemonDependencies(
             fileManager: .default,
             runProcess: { _, _ in "" },
@@ -871,7 +907,8 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                         freshness: .missing
                     )
                 )
-            }
+            },
+            validateDaemonBinary: validateDaemonBinary
         )
     }
 

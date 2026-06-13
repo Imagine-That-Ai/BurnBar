@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.openburnbar.services.media.AgentReplyNotificationState
 import androidx.fragment.app.FragmentActivity
+import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import com.openburnbar.ui.navigation.BurnBarNavHost
 import com.openburnbar.ui.theme.AuroraTheme
 
@@ -32,6 +33,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableOpenBurnBarScreenPrivacy()
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),

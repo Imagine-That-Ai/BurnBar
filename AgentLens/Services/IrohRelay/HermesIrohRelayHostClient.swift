@@ -5,6 +5,7 @@ import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
+import OpenBurnBarMedia
 
 /// Mac-side host that serves Hermes Realtime Relay requests over the iroh
 /// peer-to-peer transport. Drop-in replacement for
@@ -54,6 +55,13 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// Mac can push `media.blob.advertise` frames at any time without
     /// waiting for an active iOS-initiated chat request.
     var mediaControlRegistrar: MediaControlStreamRegistrar?
+    /// RR-18 — the same persistent media-control registry the owner builds in
+    /// `HermesRelayHostService`. The host hands inbound `media.control` streams
+    /// to it via `mediaControlRegistrar`; this reference lets the heartbeat tear
+    /// those streams down per-peer the instant a peer leaves the inbound
+    /// allowlist, instead of letting a revoked peer keep a live media lane open
+    /// until the stream closes on its own.
+    var mediaControlStreamRegistry: MediaControlStreamRegistry?
     var cliChatDispatcher: CLIAgentRelayChatDispatcher?
     var cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
     var cliSessionActionDispatcher: CLIAgentSessionActionDispatcher?
@@ -67,6 +75,13 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// can cancel them deterministically instead of letting them outlive the
     /// host.
     private var serveTasks: [UUID: Task<Void, Never>] = [:]
+    /// RR-18 — per-peer index over the same serve tasks `serveTasks` tracks by
+    /// opaque id. The accept loop records each serve task here keyed by its
+    /// stream's `remotePeerNodeId`, the heartbeat purges the entries for peers
+    /// no longer allowed by the freshly-refreshed `inboundPeerPolicy`, and
+    /// `stop()` / `handleAcceptLoopTerminated` route their teardown through it
+    /// so the two views can never drift.
+    private let serveTaskTeardownRegistry = MediaServeTaskTeardownRegistry()
     private var readyUID: String?
     private var readyConnectionID: String?
     private var publishedIdentity: IrohEndpointIdentity?
@@ -204,6 +219,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     await self?.refreshPairingRecord(uid: uid, connectionID: connectionID)
                     if let self {
                         self.inboundPeerPolicy = await self.inboundPeerPolicyLoader(uid, connectionID)
+                        await self.purgeStreamsForDeallowlistedPeers()
                     }
                 }
             }
@@ -243,7 +259,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         let revokedNodeId = publishedIdentity?.nodeId
         publishedIdentity = nil
 
-        Task { [directory, auditLogger] in
+        Task { [directory, auditLogger, serveTaskTeardownRegistry] in
+            // RR-18 — drain the per-peer teardown index through the same
+            // cancel-all path `stop()` already runs over `serveTasks`.
+            await serveTaskTeardownRegistry.cancelAll()
             if let transportToStop {
                 await transportToStop.shutdown()
             }
@@ -338,9 +357,17 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         )
                         await stream.close()
                     }
-                    self?.releaseServeTask(serveID)
+                    await self?.releaseServeTask(serveID)
                 }
                 serveTasks[serveID] = task
+                // RR-18 — mirror the task into the per-peer teardown index so a
+                // mid-stream de-allowlist can cancel just this peer's tasks.
+                let remotePeerNodeId = stream.remotePeerNodeId
+                await serveTaskTeardownRegistry.register(
+                    serveID: serveID,
+                    remotePeerNodeId: remotePeerNodeId,
+                    task: task
+                )
             } catch IrohRelayTransportError.timedOut {
                 consecutiveAcceptFailures = 0
                 continue
@@ -388,8 +415,37 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         )
     }
 
-    private func releaseServeTask(_ id: UUID) {
+    private func releaseServeTask(_ id: UUID) async {
         serveTasks.removeValue(forKey: id)
+        await serveTaskTeardownRegistry.release(serveID: id)
+    }
+
+    /// RR-18 — tear down any serve task or persistent media-control stream whose
+    /// remote peer is no longer in the freshly-refreshed inbound allowlist.
+    /// Called from the heartbeat right after `inboundPeerPolicy` is reloaded, so
+    /// a peer that is de-allowlisted or revoked mid-stream loses its live lanes
+    /// within one heartbeat instead of keeping them until natural close. The
+    /// allow-checker captures the policy by value (it is `Sendable`), so the
+    /// actor registries never reach back into `@MainActor` state.
+    private func purgeStreamsForDeallowlistedPeers() async {
+        let policy = inboundPeerPolicy
+        let isAllowed: MediaInboundPeerAllowChecker = { policy.allows(remotePeerNodeId: $0) }
+        let cancelledServeIDs = await serveTaskTeardownRegistry.cancelTasks(notAllowedBy: isAllowed)
+        for serveID in cancelledServeIDs {
+            serveTasks.removeValue(forKey: serveID)
+        }
+        if let registry = mediaControlStreamRegistry {
+            let purgedPeerNodeIds = await registry.purgeStreamsNotAllowed(by: isAllowed)
+            if !cancelledServeIDs.isEmpty || !purgedPeerNodeIds.isEmpty {
+                AppLogger.network.info(
+                    "hermes_iroh_relay_inbound_peer_purged serveTasks=\(cancelledServeIDs.count) controlStreams=\(purgedPeerNodeIds.count)"
+                )
+            }
+        } else if !cancelledServeIDs.isEmpty {
+            AppLogger.network.info(
+                "hermes_iroh_relay_inbound_peer_purged serveTasks=\(cancelledServeIDs.count) controlStreams=0"
+            )
+        }
     }
 
     private func refreshPairingRecord(uid: String, connectionID: String) async {
@@ -450,6 +506,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             task.cancel()
         }
         serveTasks.removeAll()
+        // RR-18 — same cancel-all teardown for the per-peer index.
+        await serveTaskTeardownRegistry.cancelAll()
         self.transport = nil
         readyUID = nil
         readyConnectionID = nil

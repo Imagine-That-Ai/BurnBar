@@ -515,10 +515,3 @@ final class CLIAgentSessionMirror: @unchecked Sendable {
         return ""
     }
 }
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-}

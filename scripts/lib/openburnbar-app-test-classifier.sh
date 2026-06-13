@@ -42,6 +42,29 @@ openburnbar_app_test_has_concrete_xctest_failure() {
     return 1
 }
 
+openburnbar_app_test_has_assertion_failure() {
+    local log_path="$1"
+
+    grep -Eq "Test Case '-\\[[^]]+\\]' failed" "$log_path"
+}
+
+openburnbar_app_test_has_execution_timeout_restart() {
+    local log_path="$1"
+
+    grep -Fq "exceeded execution time allowance" "$log_path" || return 1
+    grep -Fq "Restarting after unexpected exit, crash, or test timeout" "$log_path" || return 1
+
+    # A timed-out/crashed test host can leave a stale "Failing tests:" footer
+    # even after Xcode relaunches the host and reports a clean selected-suite
+    # pass. Retry that infrastructure failure, but never hide a normal XCTest
+    # assertion failure that appears in the same log.
+    if openburnbar_app_test_has_assertion_failure "$log_path"; then
+        return 1
+    fi
+
+    return 0
+}
+
 openburnbar_app_test_final_selected_summary_is_green() {
     local log_path="$1"
 
@@ -82,6 +105,10 @@ openburnbar_app_test_has_final_failing_tests_section() {
 is_known_hang() {
     local log_path="$1"
     local pattern
+
+    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
+        return 0
+    fi
 
     if openburnbar_app_test_has_concrete_xctest_failure "$log_path"; then
         return 1

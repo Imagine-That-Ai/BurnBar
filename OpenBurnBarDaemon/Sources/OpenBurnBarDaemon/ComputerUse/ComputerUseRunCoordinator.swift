@@ -782,7 +782,8 @@ public actor ComputerUseRunCoordinator {
             guard let url = action.url else {
                 throw DispatchError.invalidArguments("goto requires url")
             }
-            return try await driver.goto(url: url, timeoutMillis: action.timeoutMillis)
+            let validatedURL = try OpenBurnBarBrowserTargetPolicy.validatedURL(url, allowDataURL: true)
+            return try await driver.goto(url: validatedURL.absoluteString, timeoutMillis: action.timeoutMillis)
         case .key:
             guard let key = action.key else {
                 throw DispatchError.invalidArguments("key requires key")

@@ -58,10 +58,12 @@ High-impact control paths are fail-closed:
 These are decisions, not oversights — recorded so external reviewers read them
 as such (each has a trigger that would revisit it):
 
-- **Single region (us-central1), single Redis** for the realtime relay and
-  functions. Accepted while the user base is overwhelmingly US-based and
-  pre-launch; revisit when sustained non-US traffic appears or relay p95
-  cross-region latency becomes user-visible.
+- **Single region (us-central1)** for Cloud Functions. Accepted while the user
+  base is overwhelmingly US-based and pre-launch; revisit when sustained non-US
+  traffic appears or cross-region function latency becomes user-visible. (The
+  former Cloud Run WebSocket relay and its Memorystore Redis backend were
+  retired 2026-05-28 — realtime transport is now iroh peer-to-peer with a
+  Firestore last-resort fallback — so neither is an accepted risk anymore.)
 - **Single production Firebase project** (no staging environment). Tag-gated
   functions deploys, emulator-tested rules with a CI deploy + drift gate, and
   sub-minute revision rollback are the compensating controls; a staging

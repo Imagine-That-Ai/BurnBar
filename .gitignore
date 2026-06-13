@@ -203,3 +203,5 @@ fix_silently.py
 
 # vitest/c8 output — never a source artifact
 functions/coverage/
+.build-verify/
+.build-verify-mac/

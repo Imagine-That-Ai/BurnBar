@@ -63,6 +63,7 @@ import com.openburnbar.data.square.AgentSubscriptionTopicStore
 import com.openburnbar.data.square.AgentSubscriptionUnsubscribeResult
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
+import com.openburnbar.util.Formatting
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
@@ -300,7 +301,7 @@ internal fun LastSevenDaysSection(identity: AgentIdentity) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 StatBlock(label = "Threads", value = "${stats.threadCount}")
                 StatBlock(label = "Missions", value = "${stats.missionCount}")
-                StatBlock(label = "Burn", value = "$${"%.2f".format(stats.burnUSD)}")
+                StatBlock(label = "Burn", value = Formatting.formatCurrency(stats.burnUSD))
                 StatBlock(label = "Success", value = "${(stats.successRate * 100).roundToInt()}%")
             }
         }

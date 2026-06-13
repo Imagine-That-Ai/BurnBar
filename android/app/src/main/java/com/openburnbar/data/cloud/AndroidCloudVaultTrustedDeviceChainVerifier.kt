@@ -42,6 +42,19 @@ object AndroidCloudVaultTrustedDeviceChainVerifier {
         val deviceId = deviceDocument.getString("deviceId")?.trim().takeUnless { it.isNullOrEmpty() } ?: deviceDocument.id
         return verifyTrustedDeviceChain(uid, firestore, deviceId, localIdentity, emptySet())
     }
+
+    /**
+     * RR-5 — verify a trusted device's full trust chain by device id (the rotation chain has only the
+     * survivor device ids, not their Firestore snapshots), returning its escrow public key for the
+     * survivor re-wrap. Mirrors Swift `CloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(...deviceId:)`.
+     */
+    suspend fun verifiedTrustedDeviceById(
+        uid: String,
+        firestore: FirebaseFirestore,
+        deviceId: String,
+        localIdentity: AndroidSignalIdentityKeypair,
+    ): AndroidCloudVaultVerifiedTrustedDevice =
+        verifyTrustedDeviceChain(uid, firestore, deviceId, localIdentity, emptySet())
 }
 
 private suspend fun verifyTrustedDeviceChain(

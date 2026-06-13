@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "firebase emulators:exec --only firestore --project burnbar-test 'node computer-use.test.js && node media-budget.test.js && node session-log-backup.test.js'",
-    "test:session-log-backup": "firebase emulators:exec --only firestore --project burnbar-test 'node session-log-backup.test.js'"
+    "test": "firebase emulators:exec --only firestore --project burnbar-test 'node computer-use.test.js && node media-budget.test.js && node session-log-backup.test.js && node rr12-relay-and-root.test.js'",
+    "test:ci": "firebase emulators:exec --only firestore --project burnbar-test 'node computer-use.test.js && node media-budget.test.js && node rr12-relay-and-root.test.js'",
+    "test:session-log-backup": "firebase emulators:exec --only firestore --project burnbar-test 'node session-log-backup.test.js'",
+    "test:rr12-relay-and-root": "firebase emulators:exec --only firestore --project burnbar-test 'node rr12-relay-and-root.test.js'"
   },
   "dependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",

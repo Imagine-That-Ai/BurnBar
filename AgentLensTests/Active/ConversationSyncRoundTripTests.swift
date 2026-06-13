@@ -81,6 +81,51 @@ final class ConversationSyncRoundTripTests: XCTestCase {
 
     // MARK: - Write → Read Round Trip
 
+    func test_conversationCloudPayloadIsPathBoundAndRejectsRelocation() throws {
+        let key = try vaultKeyProvider.resolvedKey()
+        let payload = ConversationCloudPrivatePayload(
+            projectName: "BoundProject",
+            keyFiles: ["Sources/App.swift"],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "AAD bound",
+            lastAssistantMessage: "Done",
+            workingDirectory: nil,
+            summary: nil,
+            summaryTitle: nil,
+            summaryProvider: nil,
+            summaryModel: nil
+        )
+        let sealed = try ConversationCloudSealer.seal(
+            payload,
+            key: key,
+            uid: "test-uid-1",
+            docId: "device-1_conv-bound"
+        )
+        let data: [String: Any] = [
+            "contentSealed": true,
+            "sealedPayload": sealed
+        ]
+
+        let opened = ConversationCloudSealer.open(
+            data,
+            keyData: key.keyData,
+            uid: "test-uid-1",
+            docId: "device-1_conv-bound"
+        )
+        XCTAssertEqual(opened?.projectName, "BoundProject")
+
+        XCTAssertNil(
+            ConversationCloudSealer.open(
+                data,
+                keyData: key.keyData,
+                uid: "test-uid-1",
+                docId: "device-1_conv-relocated"
+            ),
+            "Conversation CloudVault payloads must not open after document relocation."
+        )
+    }
+
     func test_conversationDownload_readsRemoteConversationIntoLocalStore() async throws {
         let remoteDeviceId = "remote-device-2"
         let remoteDocPath = "users/test-uid-1/conversations/\(remoteDeviceId)_conv-remote-1"
@@ -100,7 +145,9 @@ final class ConversationSyncRoundTripTests: XCTestCase {
                 summaryProvider: nil,
                 summaryModel: nil
             ),
-            key: try vaultKeyProvider.resolvedKey()
+            key: try vaultKeyProvider.resolvedKey(),
+            uid: "test-uid-1",
+            docId: "\(remoteDeviceId)_conv-remote-1"
         )
         fakeGateway.setDocumentData([
             "id": "conv-remote-1",
@@ -189,7 +236,9 @@ final class ConversationSyncRoundTripTests: XCTestCase {
                 summaryProvider: nil,
                 summaryModel: nil
             ),
-            key: try vaultKeyProvider.resolvedKey()
+            key: try vaultKeyProvider.resolvedKey(),
+            uid: "test-uid-1",
+            docId: "remote-device-2_conv-1"
         )
         fakeGateway.setDocumentData([
             "id": "conv-1",

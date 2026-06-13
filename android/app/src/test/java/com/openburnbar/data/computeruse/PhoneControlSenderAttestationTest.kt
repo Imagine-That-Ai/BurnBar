@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,6 +31,23 @@ class PhoneControlSenderAttestationTest {
         attestationDigestProvider = attestationDigestProvider,
         frameSink = { frames += it },
     )
+
+    private fun enforcingSender(
+        frames: MutableList<HermesRealtimeRelayFrame>,
+        attestationEnforcer: suspend () -> String?,
+    ) = PhoneControlSender(
+        uid = "uid-1",
+        connectionId = "conn-1",
+        peerNodeId = "android-phone-1",
+        signingIdentityProvider = { PhoneControlSigningIdentity.Ed25519(privateSeed) },
+        counterStore = InMemoryPhoneControlCounterStore(),
+        nowMillis = { 1_700_000_000_123L },
+        attestationDigestProvider = { null },
+        attestationEnforcer = attestationEnforcer,
+        frameSink = { frames += it },
+    )
+
+    private fun tap() = PhoneControlIntent(kind = PhoneControlIntentKind.TAP, normalizedX = 0.5, normalizedY = 0.5)
 
     @Test
     fun `the digest is attached to the authority envelope when the reader has one`() = runBlocking {
@@ -116,5 +134,36 @@ class PhoneControlSenderAttestationTest {
 
         assertEquals(digest, frames[0].control?.clipboardRequest?.authority?.attestationHashBlake3)
         assertEquals(digest, frames[1].control?.agentContextTarget?.authority?.attestationHashBlake3)
+    }
+
+    // RR-7c — the strict-ramp enforcer attaches an enforceable digest on the control-action path,
+    // overriding the (null) best-effort provider so Android stops being attach-only.
+    @Test
+    fun `the enforcer attaches an enforceable digest under strict mode`() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val authority = enforcingSender(frames) { digest }.send(tap())
+
+        assertEquals(digest, authority.attestationHashBlake3)
+        assertEquals(digest, frames.single().control?.inputIntent?.authority?.attestationHashBlake3)
+    }
+
+    // RR-7c — when strict mode is on and no digest can be produced, the enforcer throws and the
+    // control action is NOT sent (fail-closed), mirroring iOS `SendError.attestationRequired`.
+    @Test
+    fun `a strict-mode send fails closed when no digest can be produced`() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        assertThrows(AttestationRequiredException::class.java) {
+            runBlocking { enforcingSender(frames) { throw AttestationRequiredException() }.send(tap()) }
+        }
+        assertTrue("no frame is emitted when attestation enforcement fails", frames.isEmpty())
+    }
+
+    // RR-7c — a null enforcer (ramp off) leaves the best-effort provider in charge: the wire is
+    // byte-identical to the pre-RR-7c attach-only behavior.
+    @Test
+    fun `a null enforcer falls back to the best-effort provider`() = runBlocking {
+        val frames = mutableListOf<HermesRealtimeRelayFrame>()
+        val authority = enforcingSender(frames) { null }.send(tap())
+        assertNull(authority.attestationHashBlake3)
     }
 }

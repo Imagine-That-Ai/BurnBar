@@ -115,7 +115,10 @@ object SettingsManifest {
                     "mac control",
                     "browser driving",
                 ),
-                helpText = "Android mirrors the iPhone operator seat: watch the Mac stream, approve or reject actions, downgrade trust, and panic halt.",
+                helpText =
+                    "Android mirrors the Mac stream and can signal a panic halt. " +
+                        "Approving or rejecting individual agent actions and trust changes is confirmed on the Mac; " +
+                        "over-the-wire approval from Android is not yet enabled.",
             ),
             SettingsItem(
                 id = "root.textExpansion",

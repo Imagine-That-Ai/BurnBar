@@ -174,6 +174,25 @@ enum MobileCloudVaultKeyAccess {
         let keyStore = CloudVaultKeyStore()
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
+            if let stateVaultKeyID = try await currentVaultKeyID(userRef: userRef),
+               stateVaultKeyID != vaultKeyID {
+                if let unwrapped = try await unwrapExistingKey(deviceId: deviceId, userRef: userRef) {
+                    try keyStore.saveKey(unwrapped.keyData, uid: uid)
+                    try await publishCloudVaultKey(
+                        uid: uid,
+                        vaultKey: unwrapped.keyData,
+                        vaultKeyID: unwrapped.vaultKeyID,
+                        deviceId: deviceId,
+                        userRef: userRef
+                    )
+                    return MobileCloudVaultResolvedKey(
+                        keyData: unwrapped.keyData,
+                        vaultKeyID: unwrapped.vaultKeyID,
+                        signalIdentity: try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
+                    )
+                }
+                throw MobileCloudVaultAccessError.vaultKeyMismatch(expected: stateVaultKeyID, actual: vaultKeyID)
+            }
             try await ensureState(userRef: userRef, uid: uid, vaultKeyID: vaultKeyID, deviceId: deviceId)
             try await publishCloudVaultKey(uid: uid, vaultKey: local, vaultKeyID: vaultKeyID, deviceId: deviceId, userRef: userRef)
             return MobileCloudVaultResolvedKey(
@@ -222,6 +241,18 @@ enum MobileCloudVaultKeyAccess {
         let keyStore = CloudVaultKeyStore()
         if let local = try keyStore.loadKey(uid: uid) {
             let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: local)
+            if let stateVaultKeyID = try await currentVaultKeyID(userRef: userRef),
+               stateVaultKeyID != vaultKeyID {
+                if let unwrapped = try await unwrapExistingKey(deviceId: deviceId, userRef: userRef) {
+                    try keyStore.saveKey(unwrapped.keyData, uid: uid)
+                    return MobileCloudVaultResolvedKey(
+                        keyData: unwrapped.keyData,
+                        vaultKeyID: unwrapped.vaultKeyID,
+                        signalIdentity: try OpenBurnBarSignalIdentityKeyStore().load(uid: uid, deviceId: deviceId)
+                    )
+                }
+                throw MobileCloudVaultAccessError.vaultKeyMismatch(expected: stateVaultKeyID, actual: vaultKeyID)
+            }
             return MobileCloudVaultResolvedKey(
                 keyData: local,
                 vaultKeyID: vaultKeyID,
@@ -304,13 +335,17 @@ enum MobileCloudVaultKeyAccess {
         userRef: DocumentReference
     ) async throws {
         let keypair = try iOSDeviceKeypair()
-        let deviceName = UIDevice.current.name
-        let platform = UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS"
+        let deviceMetadata = await MainActor.run {
+            (
+                name: UIDevice.current.name,
+                platform: UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS"
+            )
+        }
 
         try await userRef.collection("devices").document(deviceId).setData([
             "deviceId": deviceId,
-            "deviceName": deviceName,
-            "platform": platform,
+            "deviceName": deviceMetadata.name,
+            "platform": deviceMetadata.platform,
             "lastActiveAt": FieldValue.serverTimestamp()
         ], merge: true)
 
@@ -326,8 +361,8 @@ enum MobileCloudVaultKeyAccess {
         let sourceIsTrusted = existingTrust == EscrowDeviceTrustState.trusted.rawValue
         var devicePayload: [String: Any] = [
             "deviceId": deviceId,
-            "deviceName": deviceName,
-            "platform": platform,
+            "deviceName": deviceMetadata.name,
+            "platform": deviceMetadata.platform,
             "publicKeyFingerprint": keypair.publicKeyFingerprint,
             "keyVersion": keypair.keyVersion,
             "updatedAt": FieldValue.serverTimestamp()
@@ -347,7 +382,7 @@ enum MobileCloudVaultKeyAccess {
         try await MobileSignalIdentityPublicKeyPublisher.publishIfNeeded(
             userRef: userRef,
             deviceId: deviceId,
-            platform: platform,
+            platform: deviceMetadata.platform,
             identity: signalIdentity
         )
         guard sourceIsTrusted else {

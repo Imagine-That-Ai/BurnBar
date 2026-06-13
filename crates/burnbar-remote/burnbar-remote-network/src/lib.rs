@@ -54,6 +54,19 @@ pub enum TransportError {
     Protocol(#[from] burnbar_remote_protocol::ProtocolError),
 }
 
+fn control_payload_len(len: usize) -> Result<u32, TransportError> {
+    u32::try_from(len)
+        .map_err(|_| TransportError::Stream(format!("frame too large: {len} > {}", u32::MAX)))
+}
+
+fn u64_saturating_from_u128(value: u128) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
+
+fn u32_saturating_from_usize(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
 #[derive(Clone, Debug)]
 pub enum RelayConfig {
     Default,
@@ -265,7 +278,7 @@ impl IrohTransportManager {
         channel
             .send_frame(
                 ReliableFramePrefix {
-                    payload_len: scratch.len() as u32,
+                    payload_len: control_payload_len(scratch.len())?,
                     kind: MessageKind::SessionRequest,
                     flags: 0,
                 },
@@ -380,7 +393,7 @@ impl IrohTransportManager {
         channel
             .send_frame(
                 ReliableFramePrefix {
-                    payload_len: scratch.len() as u32,
+                    payload_len: control_payload_len(scratch.len())?,
                     kind: MessageKind::SessionGrant,
                     flags: 0,
                 },
@@ -410,7 +423,7 @@ impl IrohTransportManager {
         channel
             .send_frame(
                 ReliableFramePrefix {
-                    payload_len: scratch.len() as u32,
+                    payload_len: control_payload_len(scratch.len())?,
                     kind: MessageKind::SessionDenied,
                     flags: 0,
                 },
@@ -511,7 +524,7 @@ impl AuthorizedConnection {
             };
             (
                 kind,
-                Some(path.rtt().as_micros().min(u64::MAX as u128) as u64),
+                Some(u64_saturating_from_u128(path.rtt().as_micros())),
                 kind == PathKind::Relay,
             )
         } else {
@@ -523,10 +536,9 @@ impl AuthorizedConnection {
             jitter_micros: None,
             packet_loss_ppm: None,
             send_queue_bytes: 0,
-            datagram_send_buffer_space: self
-                .conn
-                .datagram_send_buffer_space()
-                .min(u32::MAX as usize) as u32,
+            datagram_send_buffer_space: u32_saturating_from_usize(
+                self.conn.datagram_send_buffer_space(),
+            ),
             dropped_media_datagrams,
             relay,
         }
@@ -557,7 +569,7 @@ impl AuthorizedConnection {
                         path_id: id.to_string(),
                         remote_addr: remote_addr.to_string(),
                         kind: classify_addr(&remote_addr),
-                        rtt_micros: last_stats.rtt.as_micros().min(u64::MAX as u128) as u64,
+                        rtt_micros: u64_saturating_from_u128(last_stats.rtt.as_micros()),
                     },
                     iroh::endpoint::PathEvent::Selected { id, remote_addr } => {
                         TransportPathEvent::Selected {
@@ -700,7 +712,7 @@ impl ReliableChannel {
     ) -> Result<(), TransportError> {
         encode_control(&heartbeat, scratch)?;
         let prefix = ReliableFramePrefix {
-            payload_len: scratch.len() as u32,
+            payload_len: control_payload_len(scratch.len())?,
             kind: MessageKind::Heartbeat,
             flags: 0,
         };
@@ -835,6 +847,20 @@ mod tests {
         InMemorySessionAuthorizer, InMemoryTrustedSignerStore, TrustedSignerRecord,
     };
 
+    fn must<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("{context}: {error}"),
+        }
+    }
+
+    fn must_some<T>(option: Option<T>, context: &str) -> T {
+        match option {
+            Some(value) => value,
+            None => panic!("{context}"),
+        }
+    }
+
     fn security(
         authorizer: Arc<InMemorySessionAuthorizer>,
         signer: Arc<Ed25519SessionGrantSigner>,
@@ -888,22 +914,21 @@ mod tests {
                 workspace_id: WorkspaceId::new("workspace"),
                 revoked: false,
             })
-            .unwrap();
+            .unwrap_or_else(|error| panic!("trusted signer should insert: {error}"));
         let server_auth = Arc::new(InMemorySessionAuthorizer::default());
         let client_auth = Arc::new(InMemorySessionAuthorizer::default());
-        let server = Arc::new(
+        let server = Arc::new(must(
             IrohTransportManager::bind(
                 config(),
                 security(server_auth.clone(), signer.clone(), verifier.clone()),
             )
-            .await
-            .unwrap(),
-        );
-        let client = Arc::new(
-            IrohTransportManager::bind(config(), security(client_auth, signer, verifier))
-                .await
-                .unwrap(),
-        );
+            .await,
+            "server transport should bind",
+        ));
+        let client = Arc::new(must(
+            IrohTransportManager::bind(config(), security(client_auth, signer, verifier)).await,
+            "client transport should bind",
+        ));
         server_auth
             .upsert_device(AuthorizedDeviceRecord {
                 device_id: DeviceId::new("client-device"),
@@ -919,7 +944,7 @@ mod tests {
                 local_consent_required: true,
                 max_session_ttl_micros: 5_000_000,
             })
-            .unwrap();
+            .unwrap_or_else(|error| panic!("authorized device should insert: {error}"));
         (server, client, server_auth)
     }
 
@@ -971,7 +996,10 @@ mod tests {
             handshake_nonce: nonce,
             signed_policy_hash: "policy".to_string(),
         };
-        validate_client_grant_binding(&grant, &request, &nonce).unwrap();
+        must(
+            validate_client_grant_binding(&grant, &request, &nonce),
+            "client grant should match request",
+        );
 
         grant.handshake_nonce = [8u8; 16];
         assert!(matches!(
@@ -1006,13 +1034,15 @@ mod tests {
                 now: TimestampMicros(1),
             },
         );
-        let (server_conn, client_conn) = tokio::time::timeout(Duration::from_secs(5), async {
-            tokio::join!(accept, connect)
-        })
-        .await
-        .expect("loopback session handshake timed out");
-        let server_conn = server_conn.unwrap();
-        let client_conn = client_conn.unwrap();
+        let (server_conn, client_conn) = must(
+            tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::join!(accept, connect)
+            })
+            .await,
+            "loopback session handshake should complete",
+        );
+        let server_conn = must(server_conn, "server should accept loopback session");
+        let client_conn = must(client_conn, "client should connect loopback session");
         assert_eq!(
             client_conn.grant().descriptor.client_device_id,
             DeviceId::new("client-device")
@@ -1023,31 +1053,45 @@ mod tests {
             server_conn.grant().handshake_nonce
         );
 
-        let (server_channel, client_channel) =
+        let (server_channel, client_channel) = must(
             tokio::time::timeout(Duration::from_secs(5), async {
                 tokio::join!(
                     server_conn.accept_stream(),
                     client_conn.open_stream(StreamClass::Telemetry)
                 )
             })
-            .await
-            .expect("loopback stream open timed out");
-        let mut server_channel = server_channel.unwrap();
-        let mut client_channel = client_channel.unwrap();
-        HeartbeatDriver::new()
-            .send_now(&mut client_channel, TimestampMicros(2))
-            .await
-            .unwrap();
-        let (prefix, payload) = server_channel.recv_frame().await.unwrap().unwrap();
+            .await,
+            "loopback stream open should complete",
+        );
+        let mut server_channel = must(server_channel, "server stream should accept");
+        let mut client_channel = must(client_channel, "client stream should open");
+        must(
+            HeartbeatDriver::new()
+                .send_now(&mut client_channel, TimestampMicros(2))
+                .await,
+            "heartbeat should send",
+        );
+        let (prefix, payload) = must_some(
+            must(
+                server_channel.recv_frame().await,
+                "server channel should receive heartbeat frame",
+            ),
+            "server channel should remain open for heartbeat frame",
+        );
         assert_eq!(prefix.kind, MessageKind::Heartbeat);
-        let heartbeat: HeartbeatMessage = decode_control(&payload).unwrap();
+        let heartbeat: HeartbeatMessage = must(decode_control(&payload), "heartbeat should decode");
         assert_eq!(heartbeat.sequence, SequenceNumber(1));
 
-        client_conn
-            .try_send_media_datagram(Bytes::from_static(b"video"))
-            .unwrap();
+        must(
+            client_conn.try_send_media_datagram(Bytes::from_static(b"video")),
+            "media datagram should send",
+        );
         assert_eq!(
-            server_conn.recv_datagram().await.unwrap().as_ref(),
+            must(
+                server_conn.recv_datagram().await,
+                "server should receive media datagram",
+            )
+            .as_ref(),
             b"video"
         );
         assert!(!client_conn.path_snapshot().is_empty());
@@ -1066,18 +1110,21 @@ mod tests {
                 workspace_id: WorkspaceId::new("workspace"),
                 revoked: false,
             })
-            .unwrap();
+            .unwrap_or_else(|error| panic!("trusted signer should insert: {error}"));
         let server_auth = Arc::new(InMemorySessionAuthorizer::default());
         let client_auth = Arc::new(InMemorySessionAuthorizer::default());
-        let server = IrohTransportManager::bind(
-            config(),
-            security(server_auth, signer.clone(), verifier.clone()),
-        )
-        .await
-        .unwrap();
-        let client = IrohTransportManager::bind(config(), security(client_auth, signer, verifier))
-            .await
-            .unwrap();
+        let server = must(
+            IrohTransportManager::bind(
+                config(),
+                security(server_auth, signer.clone(), verifier.clone()),
+            )
+            .await,
+            "server transport should bind",
+        );
+        let client = must(
+            IrohTransportManager::bind(config(), security(client_auth, signer, verifier)).await,
+            "client transport should bind",
+        );
         let remote = remote_address(&server.identity());
         let accept = server.accept_next(HostSessionAuthorizationContext {
             host_device_id: DeviceId::new("host-device"),
@@ -1094,11 +1141,13 @@ mod tests {
                 now: TimestampMicros(1),
             },
         );
-        let (server_result, client_result) = tokio::time::timeout(Duration::from_secs(5), async {
-            tokio::join!(accept, connect)
-        })
-        .await
-        .expect("loopback denial handshake timed out");
+        let (server_result, client_result) = must(
+            tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::join!(accept, connect)
+            })
+            .await,
+            "loopback denial handshake should complete",
+        );
         assert!(matches!(
             server_result,
             Err(TransportError::Authorization(

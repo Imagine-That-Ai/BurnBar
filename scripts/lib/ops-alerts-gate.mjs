@@ -43,43 +43,118 @@ function disallowedAlertEmails() {
   );
 }
 
-export function notificationChannelStatus(name, channel, options = {}) {
+/**
+ * Notification channel types that carry a GCP-managed verification handshake.
+ * These must report verificationStatus === "VERIFIED" to count as live.
+ */
+export const VERIFIABLE_CHANNEL_TYPES = new Set(["email", "sms"]);
+
+/**
+ * Channel types accepted by the gate. Non-verifiable types still need a known,
+ * non-empty, non-placeholder target.
+ */
+export const ALLOWED_CHANNEL_TYPES = new Set([
+  "email",
+  "sms",
+  "slack",
+  "pubsub",
+  "webhook_tokenauth",
+  "webhook_basicauth",
+]);
+
+const CHANNEL_TARGET_LABEL = {
+  email: "email_address",
+  sms: "number",
+  slack: "channel_name",
+  pubsub: "topic",
+  webhook_tokenauth: "url",
+  webhook_basicauth: "url",
+};
+
+const PLACEHOLDER_TARGET_PATTERNS = [
+  /@example\.(com|org|net)$/i,
+  /@example\./i,
+  /@(localhost|invalid|test|local)$/i,
+  /\.(example|invalid|test|local|localhost)$/i,
+  /\b(changeme|todo|placeholder|noreply|donotreply|fixme)\b/i,
+];
+
+export function channelTarget(channel) {
+  if (!channel) return null;
+  const labelKey = CHANNEL_TARGET_LABEL[channel.type];
+  const target = labelKey ? channel.labels?.[labelKey] : null;
+  return typeof target === "string" && target.trim() !== "" ? target.trim() : null;
+}
+
+export function isPlaceholderTarget(target) {
+  if (!target) return true;
+  return PLACEHOLDER_TARGET_PATTERNS.some((pattern) => pattern.test(target));
+}
+
+function reasonMessage(reason) {
+  if (reason === "missing") return "notification channel is missing";
+  if (reason === "disabled") return "notification channel is disabled";
+  if (reason === "empty-target") return "notification channel has no routable target label";
+  if (reason.startsWith("unsupported-type:")) {
+    return `notification channel has unsupported type ${reason.slice("unsupported-type:".length)}`;
+  }
+  if (reason.startsWith("placeholder-target:")) {
+    return `notification channel uses placeholder target ${reason.slice("placeholder-target:".length)}`;
+  }
+  if (reason.startsWith("disallowed-email:")) {
+    return `email notification channel uses disallowed black-hole address ${reason.slice("disallowed-email:".length)}`;
+  }
+  if (reason.startsWith("unverified:")) {
+    return `notification channel is not verified (${reason.slice("unverified:".length)})`;
+  }
+  return reason;
+}
+
+/**
+ * Decides whether a single notification channel is trustworthy enough to count
+ * as live for the gate.
+ */
+export function evaluateChannel(channel, options = {}) {
+  if (!channel.present) return { ok: false, reason: "missing" };
+  if (!channel.enabled) return { ok: false, reason: "disabled" };
+  if (!channel.type || !ALLOWED_CHANNEL_TYPES.has(channel.type)) {
+    return { ok: false, reason: `unsupported-type:${channel.type || "null"}` };
+  }
+  if (!channel.target) return { ok: false, reason: "empty-target" };
+  if (isPlaceholderTarget(channel.target)) {
+    return { ok: false, reason: `placeholder-target:${channel.target}` };
+  }
   const blockedEmails = options.disallowedEmails || disallowedAlertEmails();
-  if (!channel) {
-    return {
-      name,
-      present: false,
-      enabled: false,
-      type: "",
-      displayName: "",
-      emailAddress: "",
-      problems: ["notification channel is missing"],
-      ok: false,
-    };
+  if (channel.type === "email" && blockedEmails.has(channel.target.toLowerCase())) {
+    return { ok: false, reason: `disallowed-email:${channel.target}` };
   }
+  if (VERIFIABLE_CHANNEL_TYPES.has(channel.type) && channel.verificationStatus !== "VERIFIED") {
+    return { ok: false, reason: `unverified:${channel.verificationStatus || "null"}` };
+  }
+  return { ok: true, reason: null };
+}
 
-  const emailAddress = String(channel.labels?.email_address || "").trim();
-  const problems = [];
-  if (channel.enabled !== true) {
-    problems.push("notification channel is disabled");
-  }
-  if (channel.type === "email" && emailAddress.length === 0) {
-    problems.push("email notification channel has no email_address label");
-  }
-  if (emailAddress && blockedEmails.has(emailAddress.toLowerCase())) {
-    problems.push(`email notification channel uses disallowed black-hole address ${emailAddress}`);
-  }
-
-  return {
+export function notificationChannelStatus(name, channel, options = {}) {
+  const status = {
     name,
-    present: true,
-    enabled: channel.enabled === true,
-    type: channel.type || "",
-    displayName: channel.displayName || "",
-    emailAddress,
-    problems,
-    ok: problems.length === 0,
+    present: Boolean(channel),
+    enabled: channel?.enabled === true,
+    type: channel?.type || null,
+    displayName: channel?.displayName || null,
+    verificationStatus: channel?.verificationStatus || null,
+    target: channelTarget(channel),
+    emailAddress: channel?.type === "email" ? channelTarget(channel) || "" : "",
+    live: false,
+    reason: null,
+    problems: [],
+    ok: false,
   };
+  const { ok, reason } = evaluateChannel(status, options);
+  status.live = ok;
+  status.reason = reason;
+  status.problems = ok ? [] : [reasonMessage(reason)];
+  status.ok = ok;
+  return status;
 }
 
 function loadNotificationChannels(runner, project) {
@@ -140,7 +215,7 @@ export function metricTypesForPolicy(policy) {
 export function checkAlertPolicies(expectedPolicies, options = {}) {
   const project = options.project || PROJECT;
   const runner = options.runner || run;
-  const blockedEmails = options.disallowedEmails || disallowedAlertEmails();
+  const disallowedEmails = options.disallowedEmails || disallowedAlertEmails();
   const result = runner("gcloud", [
     "monitoring",
     "policies",
@@ -158,6 +233,7 @@ export function checkAlertPolicies(expectedPolicies, options = {}) {
   if (!Array.isArray(policies)) {
     return { ok: false, error: "alert policies JSON was not an array", project };
   }
+
   const channelLookup = loadNotificationChannels(runner, project);
   if (!channelLookup.ok) {
     return { ok: false, error: channelLookup.error, project };
@@ -179,11 +255,15 @@ export function checkAlertPolicies(expectedPolicies, options = {}) {
     );
     const notificationChannels = policy?.notificationChannels || [];
     const notificationChannelStatuses = notificationChannels.map((name) =>
-      notificationChannelStatus(name, channelLookup.byName.get(name), { disallowedEmails: blockedEmails }),
+      notificationChannelStatus(name, channelLookup.byName.get(name), { disallowedEmails }),
     );
     const notificationChannelProblems = notificationChannelStatuses.flatMap((channel) =>
       channel.problems.map((problem) => `${channel.name}: ${problem}`),
     );
+    const liveNotificationChannelCount = notificationChannelStatuses.filter((channel) => channel.live).length;
+    const unhealthyNotificationChannels = notificationChannelStatuses
+      .filter((channel) => !channel.live)
+      .map((channel) => ({ name: channel.name, type: channel.type, reason: channel.reason }));
     return {
       displayName: expected.displayName,
       present: matches.length === 1,
@@ -192,13 +272,14 @@ export function checkAlertPolicies(expectedPolicies, options = {}) {
       notificationChannels,
       notificationChannelStatuses,
       notificationChannelProblems,
+      liveNotificationChannelCount,
+      unhealthyNotificationChannels,
       metricTypes,
       missingMetricTypes,
       ok:
         matches.length === 1
         && policy?.enabled === true
-        && notificationChannels.length > 0
-        && notificationChannelProblems.length === 0
+        && liveNotificationChannelCount > 0
         && missingMetricTypes.length === 0,
     };
   });

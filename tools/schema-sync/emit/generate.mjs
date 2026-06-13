@@ -460,13 +460,13 @@ data class FirestoreGatewaySignalCiphertextLayerDoc(
       GatewaySignalBindingDoc: {
         ts: `export interface GatewaySignalBindingDoc {
   uid: string;
-  scope: string;
+  scope: "gateway" | "cloudvault";
   clientId?: string;
   collection?: string;
   docId?: string;
   field?: string;
   slotId?: string;
-  mode: string;
+  mode: "transport" | "at-rest";
   formatVersion: number;
 }`,
         swift: `public struct FirestoreGatewaySignalBindingDoc: Codable, Sendable, Equatable {
@@ -496,7 +496,7 @@ data class FirestoreGatewaySignalBindingDoc(
       },
       GatewaySignalAtRestWrapDoc: {
         ts: `export interface GatewaySignalAtRestWrapDoc {
-  recipientKind: string;
+  recipientKind: "device" | "escrow" | "recovery";
   recipientIdentityKeyId: string;
   recipientIdentityKeyB64: string;
   sealedContentKeyB64: string;
@@ -517,14 +517,18 @@ data class FirestoreGatewaySignalAtRestWrapDoc(
 )`,
       },
       GatewaySignalKeyDeliveryDoc: {
-        ts: `export interface GatewaySignalKeyDeliveryDoc {
-  scheme: string;
-  signalMessageType?: number;
-  signalMessageB64?: string;
-  senderIdentityKeyId?: string;
+        ts: `export interface GatewaySignalTransportKeyDeliveryDoc {
+  scheme: "signal-doubleratchet-pqxdh-v1";
+  signalMessageType: 2 | 3;
+  signalMessageB64: string;
+  senderIdentityKeyId: string;
   ratchetEpochHint?: number;
-  wraps?: GatewaySignalAtRestWrapDoc[];
-  contentKeyLength?: number;
+}
+
+export interface GatewaySignalAtRestKeyDeliveryDoc {
+  scheme: "signal-hpke-identity-seal-v1";
+  wraps: GatewaySignalAtRestWrapDoc[];
+  contentKeyLength: 32;
 }`,
         swift: `public struct FirestoreGatewaySignalKeyDeliveryDoc: Codable, Sendable, Equatable {
     public var scheme: String
@@ -550,11 +554,11 @@ data class FirestoreGatewaySignalKeyDeliveryDoc(
       GatewaySignalEnvelopeDoc: {
         ts: `export interface GatewaySignalEnvelopeDoc {
   signalEnvelopeFormatVersion: number;
-  mode: string;
+  mode: "transport" | "at-rest";
   relayKeyVersion?: number;
-  relayEncryption: string;
+  relayEncryption: "signal-doubleratchet-pqxdh-v1" | "signal-hpke-identity-seal-v1";
   ciphertextLayer: GatewaySignalCiphertextLayerDoc;
-  keyDelivery: GatewaySignalKeyDeliveryDoc;
+  keyDelivery: GatewaySignalTransportKeyDeliveryDoc | GatewaySignalAtRestKeyDeliveryDoc;
   binding: GatewaySignalBindingDoc;
 }`,
         swift: `public struct FirestoreGatewaySignalEnvelopeDoc: Codable, Sendable, Equatable {
@@ -583,29 +587,25 @@ data class FirestoreGatewaySignalEnvelopeDoc(
   id: string;
   uid: string;
   displayName: string;
-  status: string;
+  status: "active" | "revoked";
   tokenHash: string;
   tokenPreview: string;
-  scopes: string[];
+  agentClientSigningPublicKeyBase64?: string;
+  agentClientSigningKeyId?: string;
+  popRequired?: boolean;
+  popVersion?: number;
+  scopes: ("hermes.gateway.read" | "hermes.gateway.write" | "hermes.gateway.manage")[];
   homeDestinationId: string;
+  expiresAt?: string;
+  rotatedAt?: string;
   lastSeenAt?: string;
-  runtimeModelId?: string;
-  runtimeProviderId?: string;
-  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
-  runtimeUpdatedAt?: string;
-  agentVersion?: string;
-  pendingModelId?: string;
-  pendingModelRequestedAt?: string;
-  oversightMode?: string;
-  relayPublicKey?: string;
-  relayKeyVersion?: number;
-  relayEncryption?: string;
   agentRelayPublicKey?: string;
   agentRelayKeyVersion?: number;
   agentRelayEncryption?: string;
   agentSupportsRelayEnvelopeVersions?: number[];
   agentPreferredRelayEnvelopeVersion?: number;
   agentSupportsHpkeV3?: boolean;
+  agentSupportsSignalEnvelope?: boolean;
   agentPlatform?: string;
   agentAppBuild?: string;
   phoneRelayPublicKey?: string;
@@ -614,6 +614,7 @@ data class FirestoreGatewaySignalEnvelopeDoc(
   phoneSupportsRelayEnvelopeVersions?: number[];
   phonePreferredRelayEnvelopeVersion?: number;
   phoneSupportsHpkeV3?: boolean;
+  phoneSupportsSignalEnvelope?: boolean;
   phonePlatform?: string;
   phoneAppBuild?: string;
   agentRatchetIdentityPublicKey?: string;
@@ -632,7 +633,16 @@ data class FirestoreGatewaySignalEnvelopeDoc(
   supportsRelayEnvelopeVersions?: number[];
   preferredRelayEnvelopeVersion?: number;
   supportsHpkeV3?: boolean;
+  supportsSignalEnvelope?: boolean;
   relayCapable?: boolean;
+  runtimeModelId?: string;
+  runtimeProviderId?: string;
+  runtimeModelOptions?: HermesGatewayModelOptionDoc[];
+  runtimeUpdatedAt?: string;
+  agentVersion?: string;
+  pendingModelId?: string;
+  pendingModelRequestedAt?: string;
+  oversightMode?: "supervised" | "autonomous";
   revokedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -645,26 +655,22 @@ data class FirestoreGatewaySignalEnvelopeDoc(
     public var status: String
     public var tokenHash: String
     public var tokenPreview: String
+    public var agentClientSigningPublicKeyBase64: String?
+    public var agentClientSigningKeyId: String?
+    public var popRequired: Bool?
+    public var popVersion: Int?
     public var scopes: [String]
     public var homeDestinationId: String
+    public var expiresAt: String?
+    public var rotatedAt: String?
     public var lastSeenAt: String?
-    public var runtimeModelId: String?
-    public var runtimeProviderId: String?
-    public var runtimeModelOptions: [FirestoreHermesGatewayModelOptionDoc]?
-    public var runtimeUpdatedAt: String?
-    public var agentVersion: String?
-    public var pendingModelId: String?
-    public var pendingModelRequestedAt: String?
-    public var oversightMode: String?
-    public var relayPublicKey: String?
-    public var relayKeyVersion: Int?
-    public var relayEncryption: String?
     public var agentRelayPublicKey: String?
     public var agentRelayKeyVersion: Int?
     public var agentRelayEncryption: String?
     public var agentSupportsRelayEnvelopeVersions: [Int]?
     public var agentPreferredRelayEnvelopeVersion: Int?
     public var agentSupportsHpkeV3: Bool?
+    public var agentSupportsSignalEnvelope: Bool?
     public var agentPlatform: String?
     public var agentAppBuild: String?
     public var phoneRelayPublicKey: String?
@@ -673,6 +679,7 @@ data class FirestoreGatewaySignalEnvelopeDoc(
     public var phoneSupportsRelayEnvelopeVersions: [Int]?
     public var phonePreferredRelayEnvelopeVersion: Int?
     public var phoneSupportsHpkeV3: Bool?
+    public var phoneSupportsSignalEnvelope: Bool?
     public var phonePlatform: String?
     public var phoneAppBuild: String?
     public var agentRatchetIdentityPublicKey: String?
@@ -691,7 +698,16 @@ data class FirestoreGatewaySignalEnvelopeDoc(
     public var supportsRelayEnvelopeVersions: [Int]?
     public var preferredRelayEnvelopeVersion: Int?
     public var supportsHpkeV3: Bool?
+    public var supportsSignalEnvelope: Bool?
     public var relayCapable: Bool?
+    public var runtimeModelId: String?
+    public var runtimeProviderId: String?
+    public var runtimeModelOptions: [FirestoreHermesGatewayModelOptionDoc]?
+    public var runtimeUpdatedAt: String?
+    public var agentVersion: String?
+    public var pendingModelId: String?
+    public var pendingModelRequestedAt: String?
+    public var oversightMode: String?
     public var revokedAt: String?
     public var createdAt: String
     public var updatedAt: String
@@ -706,26 +722,22 @@ data class FirestoreHermesGatewayClientDoc(
     val status: String = "",
     val tokenHash: String = "",
     val tokenPreview: String = "",
+    val agentClientSigningPublicKeyBase64: String? = null,
+    val agentClientSigningKeyId: String? = null,
+    val popRequired: Boolean? = null,
+    val popVersion: Long? = null,
     val scopes: List<String> = emptyList(),
     val homeDestinationId: String = "",
+    val expiresAt: String? = null,
+    val rotatedAt: String? = null,
     val lastSeenAt: String? = null,
-    val runtimeModelId: String? = null,
-    val runtimeProviderId: String? = null,
-    val runtimeModelOptions: List<FirestoreHermesGatewayModelOptionDoc> = emptyList(),
-    val runtimeUpdatedAt: String? = null,
-    val agentVersion: String? = null,
-    val pendingModelId: String? = null,
-    val pendingModelRequestedAt: String? = null,
-    val oversightMode: String? = null,
-    val relayPublicKey: String? = null,
-    val relayKeyVersion: Long? = null,
-    val relayEncryption: String? = null,
     val agentRelayPublicKey: String? = null,
     val agentRelayKeyVersion: Long? = null,
     val agentRelayEncryption: String? = null,
     val agentSupportsRelayEnvelopeVersions: List<Long> = emptyList(),
     val agentPreferredRelayEnvelopeVersion: Long? = null,
     val agentSupportsHpkeV3: Boolean? = null,
+    val agentSupportsSignalEnvelope: Boolean? = null,
     val agentPlatform: String? = null,
     val agentAppBuild: String? = null,
     val phoneRelayPublicKey: String? = null,
@@ -734,6 +746,7 @@ data class FirestoreHermesGatewayClientDoc(
     val phoneSupportsRelayEnvelopeVersions: List<Long> = emptyList(),
     val phonePreferredRelayEnvelopeVersion: Long? = null,
     val phoneSupportsHpkeV3: Boolean? = null,
+    val phoneSupportsSignalEnvelope: Boolean? = null,
     val phonePlatform: String? = null,
     val phoneAppBuild: String? = null,
     val agentRatchetIdentityPublicKey: String? = null,
@@ -752,7 +765,16 @@ data class FirestoreHermesGatewayClientDoc(
     val supportsRelayEnvelopeVersions: List<Long> = emptyList(),
     val preferredRelayEnvelopeVersion: Long? = null,
     val supportsHpkeV3: Boolean? = null,
+    val supportsSignalEnvelope: Boolean? = null,
     val relayCapable: Boolean? = null,
+    val runtimeModelId: String? = null,
+    val runtimeProviderId: String? = null,
+    val runtimeModelOptions: List<FirestoreHermesGatewayModelOptionDoc> = emptyList(),
+    val runtimeUpdatedAt: String? = null,
+    val agentVersion: String? = null,
+    val pendingModelId: String? = null,
+    val pendingModelRequestedAt: String? = null,
+    val oversightMode: String? = null,
     val revokedAt: String? = null,
     val createdAt: String = "",
     val updatedAt: String = "",
@@ -767,7 +789,7 @@ data class FirestoreHermesGatewayClientDoc(
   actionId: string;
   toolName?: string;
   summary: string;
-  status: string;
+  status: "waiting_for_approval" | "approved" | "rejected" | "expired";
   requestedAt: string;
   expiresAt: string;
   respondedAt?: string;
@@ -809,8 +831,8 @@ data class FirestoreHermesGatewayApprovalDoc(
         ts: `export interface HermesGatewayDestinationDoc {
   id: string;
   displayName: string;
-  kind: string;
-  status: string;
+  kind: "home" | "chat" | "thread";
+  status: "active" | "archived";
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -843,7 +865,7 @@ data class FirestoreHermesGatewayDestinationDoc(
         ts: `export interface HermesGatewayEventDoc {
   id: string;
   sequence: number;
-  kind: string;
+  kind: "message" | "model_switch";
   destinationId: string;
   targetClientId?: string;
   threadId?: string;
@@ -901,15 +923,15 @@ data class FirestoreHermesGatewayEventDoc(
         ts: `export interface HermesGatewayMessageDoc {
   id: string;
   clientId: string;
-  kind: string;
+  kind: "agent_message" | "typing";
   destinationId: string;
   threadId?: string;
   replyToEventId?: string;
   text?: string;
-  attachmentIds: string[];
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   signalEnvelope?: GatewaySignalEnvelopeDoc;
+  attachmentIds: string[];
   createdAt: string;
   schemaVersion: number;
 }`,
@@ -952,16 +974,20 @@ data class FirestoreHermesGatewayMessageDoc(
   clientId: string;
   destinationId?: string;
   fileName?: string;
-  contentType?: string;
-  byteCount?: number;
-  storagePath?: string;
-  bodyStoragePath?: string;
-  status?: string;
+  contentType: string;
+  byteCount: number;
+  storagePath: string;
+  status: "pending_upload" | "uploaded" | "failed" | "expired" | "rejected";
   relayEnvelope?: GatewayRelayEnvelopeDoc;
   ratchetEnvelope?: GatewayRatchetEnvelopeDoc;
   signalEnvelope?: GatewaySignalEnvelopeDoc;
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
+  uploadedAt?: string;
+  finalizedAt?: string;
+  sha256?: string;
+  storageGeneration?: string;
   schemaVersion: number;
 }`,
         swift: `public struct FirestoreHermesGatewayAttachmentManifestDoc: Codable, Sendable, Equatable {
@@ -969,16 +995,20 @@ data class FirestoreHermesGatewayMessageDoc(
     public var clientId: String
     public var destinationId: String?
     public var fileName: String?
-    public var contentType: String?
-    public var byteCount: Int?
-    public var storagePath: String?
-    public var bodyStoragePath: String?
-    public var status: String?
+    public var contentType: String
+    public var byteCount: Int
+    public var storagePath: String
+    public var status: String
     public var relayEnvelope: FirestoreGatewayRelayEnvelopeDoc?
     public var ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc?
     public var signalEnvelope: FirestoreGatewaySignalEnvelopeDoc?
     public var createdAt: String
+    public var updatedAt: String?
     public var expiresAt: String
+    public var uploadedAt: String?
+    public var finalizedAt: String?
+    public var sha256: String?
+    public var storageGeneration: String?
     public var schemaVersion: Int
 }`,
         kotlin: `@Keep
@@ -988,16 +1018,20 @@ data class FirestoreHermesGatewayAttachmentManifestDoc(
     val clientId: String = "",
     val destinationId: String? = null,
     val fileName: String? = null,
-    val contentType: String? = null,
-    val byteCount: Long? = null,
-    val storagePath: String? = null,
-    val bodyStoragePath: String? = null,
-    val status: String? = null,
+    val contentType: String = "",
+    val byteCount: Long = 0,
+    val storagePath: String = "",
+    val status: String = "",
     val relayEnvelope: FirestoreGatewayRelayEnvelopeDoc? = null,
     val ratchetEnvelope: FirestoreGatewayRatchetEnvelopeDoc? = null,
     val signalEnvelope: FirestoreGatewaySignalEnvelopeDoc? = null,
     val createdAt: String = "",
+    val updatedAt: String? = null,
     val expiresAt: String = "",
+    val uploadedAt: String? = null,
+    val finalizedAt: String? = null,
+    val sha256: String? = null,
+    val storageGeneration: String? = null,
     val schemaVersion: Long = 0,
 )`,
       },

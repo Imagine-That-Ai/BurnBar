@@ -262,6 +262,25 @@ const localScenarios = [
       expectMatch(shot.result.base64, /^[A-Za-z0-9+/=]+$/, `${this.name} screenshot base64`);
     },
   },
+  {
+    name: 'network_guard_blocks_metadata_navigation',
+    async run(client) {
+      await expectRpcFailure(
+        client,
+        'goto',
+        { url: 'http://169.254.169.254/latest/meta-data', timeoutMs: 1000 },
+        /blocked browser target|ERR_BLOCKED_BY_CLIENT|blockedbyclient/i,
+        this.name
+      );
+      await expectRpcFailure(
+        client,
+        'goto',
+        { url: 'http://2130706433/', timeoutMs: 1000 },
+        /blocked browser target|ERR_BLOCKED_BY_CLIENT|blockedbyclient/i,
+        `${this.name} decimal-localhost`
+      );
+    },
+  },
 ];
 
 const phase9PlanScenarios = [

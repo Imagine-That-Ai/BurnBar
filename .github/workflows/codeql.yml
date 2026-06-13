@@ -2,6 +2,7 @@ name: CodeQL
 
 # Nightly CodeQL scan + on every push to main. Covers:
 #   - Swift (AgentLens, OpenBurnBarDaemon, OpenBurnBarCore) — security + correctness
+#   - Java/Kotlin (Android)
 #   - JavaScript/TypeScript (VS Code extension)
 #   - Python (CI helpers, build scripts)
 #
@@ -55,6 +56,9 @@ jobs:
           - language: swift
             build-mode: manual
             runner: macos-26
+          - language: java-kotlin
+            build-mode: manual
+            runner: ubuntu-latest
           - language: javascript-typescript
             build-mode: none
             runner: ubuntu-latest
@@ -102,6 +106,21 @@ jobs:
           SIGNAL_FFI_BUILD_PROFILE=debug \
           CARGO_BUILD_JOBS=2 \
             ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Set up JDK 21 for Android CodeQL
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@387ac29b308b003ca37ba93a6cab5eb57c8f5f93 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK for CodeQL
+        if: matrix.language == 'java-kotlin'
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+
+      - name: Prepare Android Firebase placeholder
+        if: matrix.language == 'java-kotlin'
+        run: cp android/app/google-services.json.template android/app/google-services.json
 
       # init must run BEFORE the manual Swift build so CodeQL's tracer
       # observes the compiler invocations. Without this, the database
@@ -156,6 +175,10 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             SWIFT_ENABLE_EXPLICIT_MODULES=NO \
             build
+
+      - name: Build Android (CodeQL)
+        if: matrix.language == 'java-kotlin'
+        run: cd android && ./gradlew :app:assembleDebug --no-daemon
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v4

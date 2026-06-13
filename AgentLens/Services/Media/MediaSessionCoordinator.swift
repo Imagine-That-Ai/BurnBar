@@ -25,6 +25,10 @@ final class MediaSessionCoordinator: ObservableObject {
         ScreenCapturePipeline.Configuration,
         @escaping ScreenCapturePipeline.FrameHandler
     ) -> any ScreenCaptureSession
+    typealias VideoEncoderFactory = @MainActor @Sendable (
+        VideoEncoder.Configuration,
+        @escaping VideoEncoder.EncodedHandler
+    ) -> any VideoEncoding
 
     enum Phase: Equatable, Sendable {
         case idle
@@ -45,17 +49,15 @@ final class MediaSessionCoordinator: ObservableObject {
     private let capabilityGate: any MediaCapabilityGate
     private let screenCaptureFactory: ScreenCaptureSessionFactory
     private var screenCapture: (any ScreenCaptureSession)?
-    typealias VideoEncoderFactory = @MainActor (
-        VideoEncoder.Configuration,
-        @escaping VideoEncoder.EncodedHandler
-    ) -> any VideoEncoding
-
-    private var videoEncoder: (any VideoEncoding)?
     private let videoEncoderFactory: VideoEncoderFactory
+    private var videoEncoder: (any VideoEncoding)?
     private var bitrateController: BitrateController
     private var shadowBweController: MercuryShadowBweController
     private var streamSinks: [String: MediaStreamSink] = [:]
     private var sessionMetadata: MediaSessionMetadata?
+    private var activeAdmissionRequest: ActiveAdmissionRequest?
+    private var admissionMonitorTask: Task<Void, Never>?
+    private let admissionRecheckIntervalNanoseconds: UInt64
     private var codecRoute: MercuryCodecRoutingDecision?
     private var activeStreamClass: MediaStreamClass = .screenVideo
     private var cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)?
@@ -64,6 +66,7 @@ final class MediaSessionCoordinator: ObservableObject {
     init(
         capabilityGate: any MediaCapabilityGate,
         defaultBitrateSteps: BitrateController.Steps = .screenShare,
+        admissionRecheckIntervalNanoseconds: UInt64 = 5_000_000_000,
         screenCaptureFactory: @escaping ScreenCaptureSessionFactory = { configuration, frameHandler in
             ScreenCapturePipeline(configuration: configuration, frameHandler: frameHandler)
         },
@@ -72,6 +75,7 @@ final class MediaSessionCoordinator: ObservableObject {
         }
     ) {
         self.capabilityGate = capabilityGate
+        self.admissionRecheckIntervalNanoseconds = admissionRecheckIntervalNanoseconds
         self.screenCaptureFactory = screenCaptureFactory
         self.videoEncoderFactory = videoEncoderFactory
         self.bitrateController = BitrateController(steps: defaultBitrateSteps)
@@ -177,6 +181,12 @@ final class MediaSessionCoordinator: ObservableObject {
             try await pipeline.start()
             self.screenCapture = pipeline
             phase = .active(feature: .screenShare)
+            activeAdmissionRequest = ActiveAdmissionRequest(
+                feature: .screenShare,
+                sessionDurationLimitSeconds: 60 * 60,
+                sessionByteBudget: nil
+            )
+            startAdmissionMonitor()
         } catch {
             await stop(reason: .error)
             throw error
@@ -235,6 +245,9 @@ final class MediaSessionCoordinator: ObservableObject {
     }
 
     func stop(reason: MediaSessionMetadata.EndReason = .completedUserCancel) async {
+        admissionMonitorTask?.cancel()
+        admissionMonitorTask = nil
+        activeAdmissionRequest = nil
         phase = .stopping
         if let screenCapture {
             await screenCapture.stop()
@@ -274,6 +287,10 @@ final class MediaSessionCoordinator: ObservableObject {
         streamSinks.count
     }
 
+    func recheckActiveAdmissionForTesting() async {
+        await recheckActiveAdmission()
+    }
+
     private func handleEncodedFrame(_ encodedFrame: VideoEncoder.EncodedFrame) async {
         var outbound = encodedFrame.frame
         if activeStreamClass == .controlSurfaceFrame {
@@ -295,6 +312,37 @@ final class MediaSessionCoordinator: ObservableObject {
             }
         }
         sessionMetadata?.byteCountOutbound += Int64(outbound.payload.count * streamSinks.count)
+    }
+
+    private func startAdmissionMonitor() {
+        admissionMonitorTask?.cancel()
+        admissionMonitorTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: self.admissionRecheckIntervalNanoseconds)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                await self.recheckActiveAdmission()
+            }
+        }
+    }
+
+    private func recheckActiveAdmission() async {
+        guard let request = activeAdmissionRequest,
+              case .active(let feature) = phase,
+              feature == request.feature else {
+            return
+        }
+        let check = await capabilityGate.check(
+            feature: request.feature,
+            sessionDurationLimitSeconds: request.sessionDurationLimitSeconds,
+            sessionByteBudget: request.sessionByteBudget
+        )
+        guard case .denied(let reason) = check else { return }
+        await stop(reason: reason.endReason)
     }
 
     nonisolated static func makeFrameV2(
@@ -348,6 +396,12 @@ final class MediaSessionCoordinator: ObservableObject {
         let y = max(Int(Int16.min), min(Int(Int16.max), Int(location.y.rounded())))
         return MediaFrame.CursorMetadata(x: Int16(x), y: Int16(y))
     }
+}
+
+private struct ActiveAdmissionRequest {
+    var feature: MediaStreamClass.Feature
+    var sessionDurationLimitSeconds: Int?
+    var sessionByteBudget: Int64?
 }
 
 private extension VideoEncoder.Codec {

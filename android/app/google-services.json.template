@@ -12,7 +12,12 @@
           "package_name": "com.openburnbar"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "REPLACE_WITH_API_KEY"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

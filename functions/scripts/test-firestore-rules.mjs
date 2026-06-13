@@ -2088,6 +2088,47 @@ test("owners can delete old paid-backup data after entitlement lapses", async ()
   await assertSucceeds(deleteDoc(doc(db, logPath)));
 });
 
+test("root user documents allow profile metadata only and reject secret-shaped fields", async () => {
+  const db = authedDb("root-user");
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/root-user"), {
+      uid: "root-user",
+      displayName: "Root User",
+      email: "root@example.test",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/root-user"), {
+      uid: "other-user",
+      displayName: "Wrong owner",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/root-user"), {
+      uid: "root-user",
+      token: "plaintext-token",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/root-user"), {
+      uid: "root-user",
+      cloudVaultKey: "plaintext-key",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+});
+
 test("burnbar pro cloud search index writes are server-only while vault wrappers require trusted devices", async () => {
   const db = authedDb("pro-user");
   const documentPath = "users/pro-user/cloud_search_documents/device_session";
@@ -2388,6 +2429,7 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
   await assertSucceeds(
     setDoc(doc(db, wrapperPath), wrapperPayload)
   );
+  await assertFails(deleteDoc(doc(db, wrapperPath)));
 });
 
 test("CloudVault rotation jobs are server-created and client-checkpointed only", async () => {
@@ -2412,10 +2454,40 @@ test("CloudVault rotation jobs are server-created and client-checkpointed only",
       updatedAt: serverTimestamp(),
       schemaVersion: 1,
     });
+    await setDoc(doc(context.firestore(), "users/rotate-user/cloud_vault_rotation_requirements/revoke_1"), {
+      requirementId: "revoke_1",
+      uid: "rotate-user",
+      status: "pending",
+      reason: "device_revoked",
+      revokedDeviceId: "device-2",
+      currentVaultKeyID: `v1_${"a".repeat(32)}`,
+      currentVaultGeneration: 1,
+      survivorDeviceIds: ["device-1"],
+      rotateCallable: "rotateCloudVaultKey",
+      nextRotationReason: "revocation_rewrap",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    });
   });
 
   await assertSucceeds(getDoc(doc(db, jobPath)));
   await assertFails(getDoc(doc(otherDb, jobPath)));
+  await assertSucceeds(getDoc(doc(db, "users/rotate-user/cloud_vault_rotation_requirements/revoke_1")));
+  await assertFails(getDoc(doc(otherDb, "users/rotate-user/cloud_vault_rotation_requirements/revoke_1")));
+  await assertFails(
+    setDoc(doc(db, "users/rotate-user/cloud_vault_rotation_requirements/client-created"), {
+      requirementId: "client-created",
+      status: "pending",
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    updateDoc(doc(db, "users/rotate-user/cloud_vault_rotation_requirements/revoke_1"), {
+      status: "complete",
+      updatedAt: serverTimestamp(),
+    })
+  );
   await assertFails(
     setDoc(doc(db, "users/rotate-user/cloud_vault_rotation_jobs/client-created"), {
       jobId: "client-created",
@@ -2432,7 +2504,10 @@ test("CloudVault rotation jobs are server-created and client-checkpointed only",
       rewrappedDocumentCount: 4,
       changedFieldCount: 9,
       documentRewrapComplete: false,
+      storageRewrapComplete: false,
       storageRewrapPending: true,
+      processedStorageBlobCount: 2,
+      rewrappedStorageBlobCount: 1,
       updatedAt: serverTimestamp(),
     })
   );
@@ -2458,6 +2533,16 @@ test("CloudVault rotation jobs are server-created and client-checkpointed only",
       scannedDocumentCount: 10,
       rewrappedDocumentCount: 4,
       changedFieldCount: 9,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(db, `${jobPath}/checkpoints/session_logs_storage`), {
+      domainID: "session_logs_storage",
+      status: "storage_rewrapping",
+      scannedDocumentCount: 2,
+      rewrappedDocumentCount: 1,
+      changedFieldCount: 0,
       updatedAt: serverTimestamp(),
     })
   );
@@ -2700,6 +2785,7 @@ test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", asy
   const db = authedDb("gina");
   const connectionPath = "users/gina/pi_agent_connections/relay-mac";
   const requestPath = "users/gina/pi_agent_relay_requests/req-1";
+  const senderPublicKey = "A".repeat(88);
 
   const connectionDoc = {
     id: "relay-mac",
@@ -2748,7 +2834,11 @@ test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", asy
       payloadCiphertext: "ciphertext",
       wrappedKey: "wrapped",
       relayEncryption: "p256-hkdf-sha256-aesgcm",
-      relayKeyVersion: 1,
+      relayKeyVersion: 2,
+      senderPublicKey,
+      senderDeviceId: "mac-device-1",
+      senderPeerNodeId: "iroh-peer-1",
+      senderCounter: 1,
       chunkCount: 0,
       createdAt: "2026-05-12T00:00:01.000Z",
       updatedAt: "2026-05-12T00:00:01.000Z",

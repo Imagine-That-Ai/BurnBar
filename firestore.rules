@@ -74,6 +74,44 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields();
     }
 
+    function validRootUserProfileWrite(userId) {
+      return ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "displayName",
+          "email",
+          "photoURL",
+          "avatarURL",
+          "createdAt",
+          "updatedAt",
+          "lastSeenAt",
+          "sourceDeviceId",
+          "deviceId",
+          "platform",
+          "appVersion",
+          "timezone",
+          "locale",
+          "settingsVersion",
+          "schemaVersion"
+        ])
+        && (!("uid" in request.resource.data) || request.resource.data.uid == userId)
+        && (!("displayName" in request.resource.data) || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 200))
+        && (!("email" in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 320))
+        && (!("photoURL" in request.resource.data) || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2000))
+        && (!("avatarURL" in request.resource.data) || (request.resource.data.avatarURL is string && request.resource.data.avatarURL.size() <= 2000))
+        && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
+        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp)
+        && (!("lastSeenAt" in request.resource.data) || request.resource.data.lastSeenAt is timestamp)
+        && (!("sourceDeviceId" in request.resource.data) || (request.resource.data.sourceDeviceId is string && request.resource.data.sourceDeviceId.size() <= 256))
+        && (!("deviceId" in request.resource.data) || (request.resource.data.deviceId is string && request.resource.data.deviceId.size() <= 256))
+        && (!("platform" in request.resource.data) || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80))
+        && (!("appVersion" in request.resource.data) || (request.resource.data.appVersion is string && request.resource.data.appVersion.size() <= 80))
+        && (!("timezone" in request.resource.data) || (request.resource.data.timezone is string && request.resource.data.timezone.size() <= 120))
+        && (!("locale" in request.resource.data) || (request.resource.data.locale is string && request.resource.data.locale.size() <= 40))
+        && (!("settingsVersion" in request.resource.data) || (request.resource.data.settingsVersion is int && request.resource.data.settingsVersion >= 1 && request.resource.data.settingsVersion <= 10000))
+        && (!("schemaVersion" in request.resource.data) || (request.resource.data.schemaVersion is int && request.resource.data.schemaVersion >= 1 && request.resource.data.schemaVersion <= 100));
+    }
+
     function validPixelClockConfig(pixelClock) {
       return pixelClock is map
         && pixelClock.keys().hasOnly([
@@ -187,6 +225,9 @@ service cloud.firestore {
 
     function activePremiumEntitlementData(entitlement) {
       return entitlement.active == true
+        // BEGIN GENERATED: entitlement-product-ids premium — do not hand-edit.
+        // Source: packages/entitlements/src/catalog.ts (FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.premium).
+        // Regenerate: node tools/gen-rules-entitlements.mjs (CI drift gate: --check).
         && entitlement.productID in [
           "com.openburnbar.hostedQuotaSync.cloud.monthly",
           "com.openburnbar.hostedQuotaSync.monthly",
@@ -199,6 +240,7 @@ service cloud.firestore {
           "com.openburnbar.ultra.annual",
           "com.openburnbar.ultra.annual.v2"
         ]
+        // END GENERATED: entitlement-product-ids premium
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
     }
@@ -230,6 +272,9 @@ service cloud.firestore {
 
     function activeMediaEntitlementData(entitlement) {
       return entitlement.active == true
+        // BEGIN GENERATED: entitlement-product-ids media — do not hand-edit.
+        // Source: packages/entitlements/src/catalog.ts (FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.media).
+        // Regenerate: node tools/gen-rules-entitlements.mjs (CI drift gate: --check).
         && entitlement.productID in [
           "com.openburnbar.hostedMediaSync.monthly",
           "com.openburnbar.proMax.bundle.monthly",
@@ -239,6 +284,7 @@ service cloud.firestore {
           "com.openburnbar.ultra.annual",
           "com.openburnbar.ultra.annual.v2"
         ]
+        // END GENERATED: entitlement-product-ids media
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
     }
@@ -264,6 +310,9 @@ service cloud.firestore {
 
     function activeComputerUseEntitlementData(entitlement) {
 	      return entitlement.active == true
+	        // BEGIN GENERATED: entitlement-product-ids computerUse — do not hand-edit.
+	        // Source: packages/entitlements/src/catalog.ts (FIRESTORE_RULES_PRODUCT_ID_ALLOWLISTS.computerUse).
+	        // Regenerate: node tools/gen-rules-entitlements.mjs (CI drift gate: --check).
 	        && entitlement.productID in [
 	          "com.openburnbar.computerUse.monthly",
 	          "com.openburnbar.hostedComputerUseSync.monthly",
@@ -274,6 +323,7 @@ service cloud.firestore {
 	          "com.openburnbar.ultra.annual",
 	          "com.openburnbar.ultra.annual.v2"
 	        ]
+	        // END GENERATED: entitlement-product-ids computerUse
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
     }
@@ -917,6 +967,10 @@ service cloud.firestore {
           "wrappedKey",
           "relayEncryption",
           "relayKeyVersion",
+          "senderPublicKey",
+          "senderDeviceId",
+          "senderPeerNodeId",
+          "senderCounter",
           "chunkCount",
           "createdAt",
           "updatedAt",
@@ -942,6 +996,20 @@ service cloud.firestore {
         && request.resource.data.wrappedKey.size() <= 4096
         && request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm"
         && request.resource.data.relayKeyVersion is int
+        // Sender-authentication parity with the Hermes lane
+        // (`relayRequestWrite`): a relay request is sender-bound so a malicious
+        // co-tenant cannot forge another device's identity. The lane is v2
+        // (schemaVersion >= 2), so we require these strictly rather than keep a
+        // legacy-empty backward-compat branch.
+        && request.resource.data.senderPublicKey is string
+        && request.resource.data.senderPublicKey.size() >= 80
+        && request.resource.data.senderPublicKey.size() <= 128
+        && request.resource.data.senderDeviceId is string
+        && request.resource.data.senderDeviceId.size() <= 160
+        && request.resource.data.senderPeerNodeId is string
+        && request.resource.data.senderPeerNodeId.size() <= 160
+        && request.resource.data.senderCounter is int
+        && request.resource.data.senderCounter >= 0
         && (!("claimedBy" in request.resource.data) || request.resource.data.claimedBy == request.resource.data.connectionId);
     }
 
@@ -1080,7 +1148,7 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if ownsUserNamespace(userId);
-      allow write: if ownsUserNamespace(userId) && requestWithinBasicLimits();
+      allow write: if validRootUserProfileWrite(userId);
     }
 
     // Usage rows seal the project name into `sealedProjectName` (with an opaque
@@ -2183,7 +2251,7 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
-	      allow delete: if ownsUserNamespace(userId);
+	      allow delete: if false;
 	    }
 
 	    match /users/{userId}/cloud_vault_rotation_jobs/{jobId} {
@@ -2192,15 +2260,18 @@ service cloud.firestore {
 	          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
 	            "status",
 	            "clientDeviceId",
-	            "documentRewrapComplete",
-	            "storageRewrapPending",
-	            "processedDocumentCount",
-	            "rewrappedDocumentCount",
-	            "changedFieldCount",
-	            "completedAt",
-	            "failedAt",
-	            "failureReason",
-	            "updatedAt"
+		            "documentRewrapComplete",
+		            "storageRewrapComplete",
+		            "storageRewrapPending",
+		            "processedDocumentCount",
+		            "rewrappedDocumentCount",
+		            "changedFieldCount",
+		            "processedStorageBlobCount",
+		            "rewrappedStorageBlobCount",
+		            "completedAt",
+		            "failedAt",
+		            "failureReason",
+		            "updatedAt"
 	          ])
 	          && (!("status" in request.resource.data) || request.resource.data.status in [
 	            "queued",
@@ -2214,12 +2285,13 @@ service cloud.firestore {
 	            request.resource.data.clientDeviceId is string
 	            && request.resource.data.clientDeviceId.size() > 0
 	            && request.resource.data.clientDeviceId.size() <= 128
-	          ))
-	          && (!("documentRewrapComplete" in request.resource.data) || request.resource.data.documentRewrapComplete is bool)
-	          && (!("storageRewrapPending" in request.resource.data) || request.resource.data.storageRewrapPending is bool)
-	          && (!("processedDocumentCount" in request.resource.data) || (
-	            request.resource.data.processedDocumentCount is int
-	            && request.resource.data.processedDocumentCount >= 0
+		          ))
+		          && (!("documentRewrapComplete" in request.resource.data) || request.resource.data.documentRewrapComplete is bool)
+		          && (!("storageRewrapComplete" in request.resource.data) || request.resource.data.storageRewrapComplete is bool)
+		          && (!("storageRewrapPending" in request.resource.data) || request.resource.data.storageRewrapPending is bool)
+		          && (!("processedDocumentCount" in request.resource.data) || (
+		            request.resource.data.processedDocumentCount is int
+		            && request.resource.data.processedDocumentCount >= 0
 	            && request.resource.data.processedDocumentCount <= 10000000
 	          ))
 	          && (!("rewrappedDocumentCount" in request.resource.data) || (
@@ -2228,13 +2300,23 @@ service cloud.firestore {
 	            && request.resource.data.rewrappedDocumentCount <= 10000000
 	          ))
 	          && (!("changedFieldCount" in request.resource.data) || (
-	            request.resource.data.changedFieldCount is int
-	            && request.resource.data.changedFieldCount >= 0
-	            && request.resource.data.changedFieldCount <= 10000000
-	          ))
-	          && (!("failureReason" in request.resource.data) || (
-	            request.resource.data.failureReason is string
-	            && request.resource.data.failureReason.size() <= 500
+		            request.resource.data.changedFieldCount is int
+		            && request.resource.data.changedFieldCount >= 0
+		            && request.resource.data.changedFieldCount <= 10000000
+		          ))
+		          && (!("processedStorageBlobCount" in request.resource.data) || (
+		            request.resource.data.processedStorageBlobCount is int
+		            && request.resource.data.processedStorageBlobCount >= 0
+		            && request.resource.data.processedStorageBlobCount <= 10000000
+		          ))
+		          && (!("rewrappedStorageBlobCount" in request.resource.data) || (
+		            request.resource.data.rewrappedStorageBlobCount is int
+		            && request.resource.data.rewrappedStorageBlobCount >= 0
+		            && request.resource.data.rewrappedStorageBlobCount <= 10000000
+		          ))
+		          && (!("failureReason" in request.resource.data) || (
+		            request.resource.data.failureReason is string
+		            && request.resource.data.failureReason.size() <= 500
 	          ));
 	      }
 
@@ -2250,11 +2332,12 @@ service cloud.firestore {
 	          ])
 	          && request.resource.data.domainID == checkpointId
 	          && request.resource.data.status in [
-	            "documents_pending_storage",
-	            "documents_complete",
-	            "storage_complete",
-	            "failed"
-	          ]
+		            "documents_pending_storage",
+		            "documents_complete",
+		            "storage_rewrapping",
+		            "storage_complete",
+		            "failed"
+		          ]
 	          && request.resource.data.scannedDocumentCount is int
 	          && request.resource.data.scannedDocumentCount >= 0
 	          && request.resource.data.scannedDocumentCount <= 10000000
@@ -2275,6 +2358,11 @@ service cloud.firestore {
 	        allow create, update: if validCloudVaultRotationCheckpoint(checkpointId);
 	        allow delete: if false;
 	      }
+	    }
+
+	    match /users/{userId}/cloud_vault_rotation_requirements/{requirementId} {
+	      allow read: if ownsUserNamespace(userId);
+	      allow create, update, delete: if false;
 	    }
 
     match /users/{userId}/devices/{deviceId} {
@@ -3366,35 +3454,63 @@ service cloud.firestore {
         // Trust and cryptographic identity fields are server-only via the escrow
         // callables. Client updates are limited to display metadata so a stolen
         // owner session cannot swap fingerprints, platforms, approvers, or
-        // bootstrap state and then reuse an existing trusted document.
+        // bootstrap state and then reuse an existing trusted document. Each identity
+        // field must be byte-identical before and after: a client may neither change
+        // it, remove it, NOR INTRODUCE it where it was absent. The earlier
+        // `!("X" in resource.data) || ...` idiom permitted introducing a field on a
+        // document seeded without it (e.g. adding publicKeyFingerprint) — closed here.
         return validEscrowDeviceDocument(deviceId)
           && request.resource.data.deviceId == resource.data.deviceId
           && request.resource.data.platform == resource.data.platform
           && request.resource.data.trustState == resource.data.trustState
-          && (!("publicKeyFingerprint" in resource.data)
-            || request.resource.data.publicKeyFingerprint == resource.data.publicKeyFingerprint)
-          && (!("keyVersion" in resource.data)
-            || request.resource.data.keyVersion == resource.data.keyVersion)
-          && (!("approvedByDeviceId" in resource.data)
-            || request.resource.data.approvedByDeviceId == resource.data.approvedByDeviceId)
-          && (!("trustChainVersion" in resource.data)
-            || request.resource.data.trustChainVersion == resource.data.trustChainVersion)
-          && (!("trustChainAlgorithm" in resource.data)
-            || request.resource.data.trustChainAlgorithm == resource.data.trustChainAlgorithm)
-          && (!("trustChainSignature" in resource.data)
-            || request.resource.data.trustChainSignature == resource.data.trustChainSignature)
-          && (!("targetSignalIdentityKeyId" in resource.data)
-            || request.resource.data.targetSignalIdentityKeyId == resource.data.targetSignalIdentityKeyId)
-          && (!("targetSignalIdentityPublicKeyFingerprint" in resource.data)
-            || request.resource.data.targetSignalIdentityPublicKeyFingerprint == resource.data.targetSignalIdentityPublicKeyFingerprint)
-          && (!("approvedBySignalIdentityKeyId" in resource.data)
-            || request.resource.data.approvedBySignalIdentityKeyId == resource.data.approvedBySignalIdentityKeyId)
-          && (!("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
-            || request.resource.data.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
-          && (!("approvedAt" in resource.data)
-            || request.resource.data.approvedAt == resource.data.approvedAt)
-          && (!("createdAt" in resource.data)
-            || request.resource.data.createdAt == resource.data.createdAt);
+          && ((("publicKeyFingerprint" in resource.data)
+              && request.resource.data.publicKeyFingerprint == resource.data.publicKeyFingerprint)
+            || (!("publicKeyFingerprint" in resource.data)
+              && !("publicKeyFingerprint" in request.resource.data)))
+          && ((("keyVersion" in resource.data)
+              && request.resource.data.keyVersion == resource.data.keyVersion)
+            || (!("keyVersion" in resource.data)
+              && !("keyVersion" in request.resource.data)))
+          && ((("approvedByDeviceId" in resource.data)
+              && request.resource.data.approvedByDeviceId == resource.data.approvedByDeviceId)
+            || (!("approvedByDeviceId" in resource.data)
+              && !("approvedByDeviceId" in request.resource.data)))
+          && ((("trustChainVersion" in resource.data)
+              && request.resource.data.trustChainVersion == resource.data.trustChainVersion)
+            || (!("trustChainVersion" in resource.data)
+              && !("trustChainVersion" in request.resource.data)))
+          && ((("trustChainAlgorithm" in resource.data)
+              && request.resource.data.trustChainAlgorithm == resource.data.trustChainAlgorithm)
+            || (!("trustChainAlgorithm" in resource.data)
+              && !("trustChainAlgorithm" in request.resource.data)))
+          && ((("trustChainSignature" in resource.data)
+              && request.resource.data.trustChainSignature == resource.data.trustChainSignature)
+            || (!("trustChainSignature" in resource.data)
+              && !("trustChainSignature" in request.resource.data)))
+          && ((("targetSignalIdentityKeyId" in resource.data)
+              && request.resource.data.targetSignalIdentityKeyId == resource.data.targetSignalIdentityKeyId)
+            || (!("targetSignalIdentityKeyId" in resource.data)
+              && !("targetSignalIdentityKeyId" in request.resource.data)))
+          && ((("targetSignalIdentityPublicKeyFingerprint" in resource.data)
+              && request.resource.data.targetSignalIdentityPublicKeyFingerprint == resource.data.targetSignalIdentityPublicKeyFingerprint)
+            || (!("targetSignalIdentityPublicKeyFingerprint" in resource.data)
+              && !("targetSignalIdentityPublicKeyFingerprint" in request.resource.data)))
+          && ((("approvedBySignalIdentityKeyId" in resource.data)
+              && request.resource.data.approvedBySignalIdentityKeyId == resource.data.approvedBySignalIdentityKeyId)
+            || (!("approvedBySignalIdentityKeyId" in resource.data)
+              && !("approvedBySignalIdentityKeyId" in request.resource.data)))
+          && ((("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
+              && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
+            || (!("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
+              && !("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)))
+          && ((("approvedAt" in resource.data)
+              && request.resource.data.approvedAt == resource.data.approvedAt)
+            || (!("approvedAt" in resource.data)
+              && !("approvedAt" in request.resource.data)))
+          && ((("createdAt" in resource.data)
+              && request.resource.data.createdAt == resource.data.createdAt)
+            || (!("createdAt" in resource.data)
+              && !("createdAt" in request.resource.data)));
       }
 
       allow read: if ownsUserNamespace(userId);

@@ -1,6 +1,8 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 
@@ -41,6 +43,34 @@ object PhoneControlSignerCanonicalJson {
         fields["sourceDeviceId"] = PhoneControlSignerJsonEncoding.quote(request.sourceDeviceId)
         fields["threadId"] = PhoneControlSignerJsonEncoding.quote(request.threadId)
         fields["trustMode"] = PhoneControlSignerJsonEncoding.quote(request.trustMode)
+        return PhoneControlSignerJsonEncoding.sortedJson(fields)
+    }
+
+    fun canonicalApprovalRequestJson(request: HermesRealtimeRelayApprovalRequest): String {
+        val fields = linkedMapOf<String, String>()
+        fields["actionSummary"] = PhoneControlSignerJsonEncoding.quote(request.actionSummary)
+        fields["approvalId"] = PhoneControlSignerJsonEncoding.quote(request.approvalId)
+        request.beforeScreenshotBlake3?.let { fields["beforeScreenshotBlake3"] = PhoneControlSignerJsonEncoding.quote(it) }
+        request.beforeScreenshotMimeType?.let { fields["beforeScreenshotMimeType"] = PhoneControlSignerJsonEncoding.quote(it) }
+        request.beforeScreenshotSizeBytes?.let { fields["beforeScreenshotSizeBytes"] = it.toString() }
+        fields["message"] = PhoneControlSignerJsonEncoding.quote(request.message)
+        fields["requestedAt"] = PhoneControlSignerJsonEncoding.number(request.requestedAt)
+        fields["runId"] = PhoneControlSignerJsonEncoding.quote(request.runId)
+        fields["sessionId"] = PhoneControlSignerJsonEncoding.quote(request.sessionId)
+        fields["title"] = PhoneControlSignerJsonEncoding.quote(request.title)
+        fields["toolKind"] = PhoneControlSignerJsonEncoding.quote(request.toolKind)
+        request.trustMode?.let { fields["trustMode"] = PhoneControlSignerJsonEncoding.quote(it) }
+        return PhoneControlSignerJsonEncoding.sortedJson(fields)
+    }
+
+    fun canonicalApprovalResponseJson(response: HermesRealtimeRelayApprovalResponse): String {
+        val fields = linkedMapOf<String, String>()
+        fields["approvalId"] = PhoneControlSignerJsonEncoding.quote(response.approvalId)
+        fields["decision"] = PhoneControlSignerJsonEncoding.quote(response.decision.wireValue())
+        response.note?.let { fields["note"] = PhoneControlSignerJsonEncoding.quote(it) }
+        response.requestHashBlake3?.let { fields["requestHashBlake3"] = PhoneControlSignerJsonEncoding.quote(it) }
+        fields["respondedAt"] = PhoneControlSignerJsonEncoding.number(response.respondedAt)
+        fields["respondedBy"] = PhoneControlSignerJsonEncoding.quote(response.respondedBy)
         return PhoneControlSignerJsonEncoding.sortedJson(fields)
     }
 
@@ -112,5 +142,11 @@ object PhoneControlSignerCanonicalJson {
         fields["requestedAt"] = PhoneControlSignerJsonEncoding.number(request.requestedAtSwiftReferenceSeconds)
         fields["requestId"] = PhoneControlSignerJsonEncoding.quote(request.requestId)
         return PhoneControlSignerJsonEncoding.sortedJson(fields)
+    }
+
+    private fun HermesRealtimeRelayApprovalResponse.Decision.wireValue(): String = when (this) {
+        HermesRealtimeRelayApprovalResponse.Decision.APPROVE -> "approve"
+        HermesRealtimeRelayApprovalResponse.Decision.REJECT -> "reject"
+        HermesRealtimeRelayApprovalResponse.Decision.REJECT_AND_HALT -> "reject_and_halt"
     }
 }

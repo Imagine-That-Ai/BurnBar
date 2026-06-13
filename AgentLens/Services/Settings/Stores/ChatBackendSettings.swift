@@ -108,7 +108,7 @@ final class ChatBackendSettings {
         didSet { persistence.set(computerUseAuditExportEnabled, forKey: "computerUseAuditExportEnabled") }
     }
 
-    var computerUseKillSwitch: Bool = false {
+    var computerUseKillSwitch: Bool = true {
         didSet { persistence.set(computerUseKillSwitch, forKey: "computerUseKillSwitch") }
     }
 
@@ -127,7 +127,7 @@ final class ChatBackendSettings {
         }
     }
 
-    var mediaKillSwitch: Bool = false {
+    var mediaKillSwitch: Bool = true {
         didSet { persistence.set(mediaKillSwitch, forKey: "mediaKillSwitch") }
     }
 
@@ -290,12 +290,12 @@ final class ChatBackendSettings {
         )
         self.computerUseTrustedScopesEnabled = persistence.bool(forKey: "computerUseTrustedScopesEnabled")
         self.computerUseAuditExportEnabled = persistence.bool(forKey: "computerUseAuditExportEnabled")
-        self.computerUseKillSwitch = persistence.bool(forKey: "computerUseKillSwitch")
+        self.computerUseKillSwitch = persistence.bool(forKey: "computerUseKillSwitch", defaultValue: true)
         self.computerUsePhoneControlRespectsDenyRegions = persistence.bool(
             forKey: "computerUsePhoneControlRespectsDenyRegions",
             defaultValue: true
         )
-        self.mediaKillSwitch = persistence.bool(forKey: "mediaKillSwitch")
+        self.mediaKillSwitch = persistence.bool(forKey: "mediaKillSwitch", defaultValue: true)
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
         self.piAgentGatewayBaseURL = persistence.string(forKey: "piAgentGatewayBaseURL", defaultValue: "http://127.0.0.1:8765")
         self.piAgentBearerToken = secretPersistence.load(

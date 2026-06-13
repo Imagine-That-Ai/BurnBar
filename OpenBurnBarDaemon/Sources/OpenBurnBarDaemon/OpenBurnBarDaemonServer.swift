@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import Darwin
 import Foundation
 
@@ -8,6 +9,10 @@ public actor BurnBarDaemonServer {
     public let configuration: BurnBarDaemonConfiguration
 
     let logger: BurnBarDaemonLogger
+    /// RR-3: first-party code-signature gate for accepted control-socket peers.
+    /// Enforced in production (wired by `OpenBurnBarDaemonMain`); `.disabled` for
+    /// in-process tests and unsigned developer builds.
+    let peerAuthenticator: BurnBarDaemonPeerAuthenticator
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -33,10 +38,12 @@ public actor BurnBarDaemonServer {
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
-        rateLimiter: BurnBarRateLimiter? = nil
+        rateLimiter: BurnBarRateLimiter? = nil,
+        peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled
     ) {
         self.configuration = configuration
         self.logger = logger
+        self.peerAuthenticator = peerAuthenticator
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -140,6 +147,22 @@ public actor BurnBarDaemonServer {
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false,
            FileManager.default.fileExists(atPath: path) {
+            // RR-1: one-time plaintext→encrypted migration of the shared SQLite
+            // file BEFORE any service opens it. No-op on a stock-SQLite build or
+            // when no key is provisioned, so the disclosed-plaintext file is left
+            // exactly as-is (do-not-brick). On failure we log and continue —
+            // the original plaintext file is untouched and still opens below.
+            do {
+                _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+                    at: path,
+                    logger: BurnBarDaemonLogger(category: "database-cipher")
+                )
+            } catch {
+                logger.warning(
+                    "daemon_database_encrypted_migration_failed",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+            }
             do {
                 self.indexedSearch = try BurnBarIndexedSearchService(
                     databasePath: path,
@@ -549,6 +572,27 @@ public actor BurnBarDaemonServer {
         BurnBarUnixDomainSocket.configureIOTimeouts(for: clientFileDescriptor)
 
         let peerPID = Self.peerPID(for: clientFileDescriptor)
+
+        // RR-3: authenticate the peer's first-party code signature on the live
+        // socket BEFORE reading or honoring any RPC. Fail closed — a mismatched,
+        // forged, or swapped peer binary never reaches `responseData`, so the
+        // bearer token alone can no longer authorize a non-first-party process.
+        let peerAuthenticator = server.peerAuthenticator
+        do {
+            try peerAuthenticator.validatePeer(
+                socketFD: clientFileDescriptor,
+                peerPID: peerPID
+            )
+        } catch {
+            logger.warning(
+                "rpc_peer_rejected",
+                metadata: [
+                    "error": "\(error)",
+                    "peer_pid": peerPID.map(String.init) ?? "unknown"
+                ]
+            )
+            return
+        }
 
         do {
             let requestData = try BurnBarUnixDomainSocket.readRequest(

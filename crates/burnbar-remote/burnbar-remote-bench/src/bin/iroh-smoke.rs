@@ -19,6 +19,15 @@ use burnbar_remote_security::{
 };
 use bytes::Bytes;
 
+fn control_payload_len(len: usize) -> Result<u32, Box<dyn Error + Send + Sync>> {
+    u32::try_from(len)
+        .map_err(|_| format!("control payload too large: {len} > {}", u32::MAX).into())
+}
+
+fn u64_saturating_from_u128(value: u128) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     if env::var("BURNBAR_REMOTE_LIVE_RELAY").ok().as_deref() != Some("1") {
@@ -129,7 +138,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         };
         burnbar_remote_protocol::encode_control(&heartbeat, &mut scratch)?;
         let prefix = ReliableFramePrefix {
-            payload_len: scratch.len() as u32,
+            payload_len: control_payload_len(scratch.len())?,
             kind: MessageKind::Heartbeat,
             flags: 0,
         };
@@ -148,7 +157,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             )
             .into());
         }
-        samples.push(started.elapsed().as_micros().min(u64::MAX as u128) as u64);
+        samples.push(u64_saturating_from_u128(started.elapsed().as_micros()));
     }
     client_channel.finish().await?;
     echo.await??;

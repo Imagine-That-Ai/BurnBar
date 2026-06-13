@@ -81,7 +81,7 @@ export const FLOO_CAPABILITIES: Capability[] = [
     id: "unlock",
     title: "Unlock your Mac from your phone",
     blurb:
-      "Walk up to a locked Mac and unlock it from your phone with Face ID or Touch ID. Your password is sealed end to end — it never appears in a log, a server, or anywhere you didn't put it.",
+      "Walk up to a locked Mac and unlock it from your phone with Face ID or Touch ID. Your password is biometric-gated and sealed end to end between your paired devices — it never lands in a BurnBar log or on our servers; only your Mac opens it to type it locally.",
     evidence: "RemoteUnlock* (sealed credential, biometric-gated)"
   }
 ];

@@ -1064,8 +1064,10 @@ struct GlassCard<Content: View>: View {
             // fill underneath would block the refraction and read as frosted
             // plastic. The warm sheen survives as a faint wash riding on top
             // of pure glass.
+            let t = LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
             shape
                 .fill(glassSheenGradient)
+                .opacity(LiquidGlassTransparency.fallbackPlateOpacity(t))
                 .liquidGlassEffect(
                     interactive ? .regular.interactive() : .regular,
                     in: shape

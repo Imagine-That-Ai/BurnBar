@@ -53,9 +53,10 @@ struct LiquidGlassFallback: ViewModifier {
             // fill underneath would block the refraction and read as frosted
             // plastic. The variant's personality survives as the faint sheen
             // wash riding on top of pure glass.
+            let t = LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(sheenGradient)
-                .opacity(useWebsiteBackground ? 0.72 : 1.0)
+                .opacity((useWebsiteBackground ? 0.72 : 1.0) * LiquidGlassTransparency.fallbackPlateOpacity(t))
                 .liquidGlassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
             // Pre-26 plate honors the glass transparency preference the same
