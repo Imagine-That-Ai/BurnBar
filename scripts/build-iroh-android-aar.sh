@@ -320,8 +320,8 @@ cat > "${AAR_STAGING}/AndroidManifest.xml" <<EOF
 EOF
 
 # Empty classes.jar — required by AGP even though the AAR only ships .so.
-# Build it with fixed metadata so CI can byte-compare a local rebuild against
-# the committed AAR instead of failing on zip timestamps.
+# Store entries without compression so macOS and Linux Info-ZIP builds produce
+# identical bytes instead of platform-specific deflate streams.
 EMPTY_JAR_DIR="${BUILD_DIR}/empty-classes"
 rm -rf "${EMPTY_JAR_DIR}"
 mkdir -p "${EMPTY_JAR_DIR}/META-INF"
@@ -333,7 +333,7 @@ EOF
 find "${EMPTY_JAR_DIR}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 (
   cd "${EMPTY_JAR_DIR}"
-  COPYFILE_DISABLE=1 zip -X -q "${AAR_STAGING}/classes.jar" META-INF/MANIFEST.MF
+  COPYFILE_DISABLE=1 zip -0 -X -q "${AAR_STAGING}/classes.jar" META-INF/MANIFEST.MF
 )
 
 # proguard.txt + R.txt (empty) — required by AGP.
@@ -345,7 +345,7 @@ rm -f "${AAR_PATH}"
 find "${AAR_STAGING}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 (
   cd "${AAR_STAGING}"
-  find . -type f | LC_ALL=C sort | COPYFILE_DISABLE=1 zip -X -q "${AAR_PATH}" -@
+  find . -type f | LC_ALL=C sort | COPYFILE_DISABLE=1 zip -0 -X -q "${AAR_PATH}" -@
 )
 
 log "DONE: ${AAR_PATH}"
