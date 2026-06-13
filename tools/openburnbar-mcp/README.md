@@ -1,6 +1,18 @@
 # OpenBurnBar local MCP (Codex, Claude, Cursor, Hermes)
 
-Read-only access to your **OpenBurnBar SQLite** database (`conversations`, `token_usage`, `chat_messages`) so MCP-capable clients can search transcripts and usage without the in-app assistant’s trimmed system prompt.
+Default read-only access to your **OpenBurnBar SQLite** database (`conversations`, `token_usage`, `chat_messages`) so MCP-capable clients can search transcript indexes and usage without the in-app assistant’s trimmed system prompt.
+
+The local server now fails closed for higher-risk capabilities. By default it blocks cloud decrypt, cloud sync, local writes, full plaintext reads, and process spawn. Enable a capability only for the shell session that needs it:
+
+```bash
+export OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ=true  # full conversation/chat/project-memory plaintext
+export OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_DECRYPT=true   # hosted encrypted search/body/project-memory decrypt
+export OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_SYNC=true      # upload encrypted project memory snapshots
+export OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE=true     # usage ledger and budget mutation tools
+export OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN=true           # detached native/cross-harness resume processes
+```
+
+`OPENBURNBAR_LOCAL_MCP_PROFILE=operator` enables all of the above for an operator-controlled session. Policy decisions are written without prompts/results/tokens to `~/Library/Application Support/OpenBurnBar/mcp-policy-audit.jsonl` unless `OPENBURNBAR_LOCAL_MCP_DISABLE_AUDIT=true` is set.
 
 ## Setup
 
@@ -66,8 +78,10 @@ startup_timeout_sec = 15
 tool_timeout_sec = 60
 ```
 
-**C. Local SQLite — no network, no auth.** Read-only access to
-`~/Library/Application Support/OpenBurnBar/openburnbar.sqlite`.
+**C. Local SQLite — no network, no auth.** Default read-only access to
+`~/Library/Application Support/OpenBurnBar/openburnbar.sqlite`; opt-in env
+flags are required for plaintext bodies, cloud decrypt/sync, local writes, or
+process spawning.
 
 ```toml
 [mcp_servers.openburnbar-local]
@@ -141,7 +155,9 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_resume_conversation` | Compose a native command hint or deterministic cross-harness briefing |
 | `burnbar_spawn_resume` | Spawn the selected native or ported resume command after an explicit tool call |
 
-Write-capable tools are explicit and daemon-scoped. `burnbar_record_hermes_usage`
+Write-capable tools are explicit, daemon-scoped, and disabled until
+`OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE=true` or
+`OPENBURNBAR_LOCAL_MCP_PROFILE=operator` is set. `burnbar_record_hermes_usage`
 never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
 reachable on its UNIX socket
 (`~/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock`) it sends
@@ -151,8 +167,9 @@ falls back to a file-locked append against
 `~/Library/Application Support/OpenBurnBar/usage-events.jsonl`. Either way,
 re-sending the same `idempotency_key` will not double-count the spend.
 
-The cloud search tools are opt-in. Configure them only for agents you trust
-with session-log recall:
+The cloud search tools are opt-in twice: configure credentials only for agents
+you trust with session-log recall, and enable
+`OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_DECRYPT=true` for the local MCP process:
 
 ```bash
 export OPENBURNBAR_FIREBASE_PROJECT_ID=burnbar

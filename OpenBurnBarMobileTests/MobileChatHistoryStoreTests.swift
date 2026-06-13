@@ -491,7 +491,7 @@ final class MobileChatHistoryStoreTests: XCTestCase {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         let payloadData = try encoder.encode(thread)
-        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
         let sealedPayload = try CloudVaultCrypto.sealPayload(payloadData, keyData: vaultKey, vaultKeyID: vaultKeyID)
         let data: [String: Any] = [
@@ -523,7 +523,7 @@ final class MobileChatHistoryStoreTests: XCTestCase {
     }
 
     func testCloudMirrorLegacyPayloadIsPathBoundAndRejectsRelocation() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
         let thread = Self.makeThread(id: "thread-path-bound", runtime: .pi, title: "Bound")
         let encoded = try MobileChatFirestoreStore.encodeThreadForCloud(

@@ -545,10 +545,24 @@ jobs:
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout pinned Hermes agent source
+        id: hermes-agent-source
+        run: |
+          repo="$(node -e "const m=require('./third_party/hermes-agent/manifest.json'); console.log(m.forkRepository)")"
+          pin="$(node -e "const m=require('./third_party/hermes-agent/manifest.json'); console.log(m.pinnedCommit)")"
+          src="$RUNNER_TEMP/hermes-agent"
+          git clone --no-tags --filter=blob:none "$repo" "$src"
+          git -C "$src" fetch --depth=1 origin "$pin"
+          git -C "$src" checkout --detach "$pin"
+          HERMES_AGENT_SRC="$src" OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE=1 bash scripts/ci/verify-vendored-agent-source.sh
+          echo "path=$src" >> "$GITHUB_OUTPUT"
+
       - name: Build corresponding source archive
         id: corresponding-source
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          HERMES_AGENT_SRC: ${{ steps.hermes-agent-source.outputs.path }}
+          OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE: "1"
         run: |
           bash scripts/ci/verify-libsignal-pin.sh --network
           # M-6: the Vendor/libsignal fork may differ from official only in

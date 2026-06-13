@@ -403,10 +403,22 @@ public enum CloudVaultCrypto {
     public static let recoverySalt = Data("OpenBurnBar-Recovery-Salt-v1".utf8)
     public static let recoveryWrapInfo = Data("OpenBurnBar-Recovery-Wrap-v1".utf8)
 
-    public static func generateVaultKey() -> Data {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return Data(bytes)
+    internal static var secureRandomCopyBytes: (SecRandomRef?, Int, UnsafeMutableRawPointer) -> OSStatus = SecRandomCopyBytes
+
+    private static func randomBytes(count: Int) throws -> [UInt8] {
+        var bytes = [UInt8](repeating: 0, count: count)
+        let status = bytes.withUnsafeMutableBytes { buffer -> OSStatus in
+            guard let baseAddress = buffer.baseAddress else {
+                return errSecParam
+            }
+            return secureRandomCopyBytes(kSecRandomDefault, count, baseAddress)
+        }
+        guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
+        return bytes
+    }
+
+    public static func generateVaultKey() throws -> Data {
+        Data(try randomBytes(count: 32))
     }
 
     public static func vaultKeyID(for keyData: Data) throws -> String {
@@ -416,9 +428,7 @@ public enum CloudVaultCrypto {
 
     public static func generateRecoveryKey() throws -> String {
         let alphabet = Array("ABCDEFGHJKMNPQRSTVWXYZ23456789")
-        var bytes = [UInt8](repeating: 0, count: 35)
-        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        guard status == errSecSuccess else { throw CloudVaultCryptoError.keychainError(Int(status)) }
+        let bytes = try randomBytes(count: 35)
         let characters = bytes.map { alphabet[Int($0) % alphabet.count] }
         return stride(from: 0, to: characters.count, by: 7)
             .map { String(characters[$0..<min($0 + 7, characters.count)]) }
@@ -1399,7 +1409,7 @@ public struct CloudVaultKeyStore: Sendable {
         if let existing = try loadKey(uid: uid) {
             return existing
         }
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         try saveKey(key, uid: uid)
         return key
     }
