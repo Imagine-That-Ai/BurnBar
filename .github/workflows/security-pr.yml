@@ -160,35 +160,33 @@ jobs:
   vendored-agent-provenance:
     name: Vendored Agent Provenance
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
 
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
-        with:
-          repository: Ajnunezg/hermes-agent
-          # Keep this immutable: the gate runs with repo credentials in scope.
-          # To bump, update third_party/hermes-agent/manifest.json first, run
-          # scripts/ci/verify-vendored-agent-source.sh, then copy pinnedCommit
-          # here.
-          ref: bdb830070927cbb20763819f91ee930548f7da92
-          path: .ci/hermes-agent
-
-      - name: Verify vendored agent provenance
-        env:
-          HERMES_AGENT_SRC: ${{ github.workspace }}/.ci/hermes-agent
+      - name: Checkout pinned Hermes agent source
+        id: hermes-agent-source
         run: |
-          set -euo pipefail
-          manifest_pin="$(python3 -c 'import json;print(json.load(open("third_party/hermes-agent/manifest.json"))["pinnedCommit"])')"
-          checkout_head="$(git -C .ci/hermes-agent rev-parse HEAD)"
-          if [[ "$manifest_pin" != "$checkout_head" ]]; then
-            echo "ERROR: harness checkout ($checkout_head) != manifest pinnedCommit ($manifest_pin)." >&2
-            echo "The E2EE proof would run against a commit the provenance manifest does not attest." >&2
-            echo "Update this checkout ref and the manifest together." >&2
-            exit 1
-          fi
-          bash scripts/ci/verify-vendored-agent-source.sh
+          repo="$(node -e "const m=require('./third_party/hermes-agent/manifest.json'); console.log(m.forkRepository)")"
+          pin="$(node -e "const m=require('./third_party/hermes-agent/manifest.json'); console.log(m.pinnedCommit)")"
+          src="$RUNNER_TEMP/hermes-agent"
+          git clone --no-tags --filter=blob:none "$repo" "$src"
+          git -C "$src" fetch --depth=1 origin "$pin"
+          git -C "$src" checkout --detach "$pin"
+          echo "path=$src" >> "$GITHUB_OUTPUT"
+
+      - name: Verify vendored Hermes agent source pin
+        env:
+          HERMES_AGENT_SRC: ${{ steps.hermes-agent-source.outputs.path }}
+          OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE: "1"
+        run: bash scripts/ci/verify-vendored-agent-source.sh
+
+      - name: Verify corresponding-source archive includes pinned Hermes source
+        env:
+          HERMES_AGENT_SRC: ${{ steps.hermes-agent-source.outputs.path }}
+          OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE: "1"
+        run: bash scripts/ci/verify-corresponding-source-archive.sh --version ci-vendored-agent
 
   signal-activation-parity:
     name: Signal Activation Parity (fail-closed default)
@@ -229,7 +227,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Run OSV-Scanner
-        uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
         with:
           scan-args: |-
             --lockfile=functions/package-lock.json

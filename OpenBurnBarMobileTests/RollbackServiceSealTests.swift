@@ -15,7 +15,7 @@ final class RollbackServiceSealTests: XCTestCase {
     // MARK: - rollback_requests — scope
 
     func test_encodeRequest_sealsScope_writesNoPlaintextScopeJSON() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let request = RollbackRequest(
             sessionID: "sess-1",
             scope: .singleFile(path: "/Users/me/secret.swift"),
@@ -41,7 +41,7 @@ final class RollbackServiceSealTests: XCTestCase {
     }
 
     func test_encodeRequest_thenDecodeRequest_roundTripsScope() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let request = RollbackRequest(
             sessionID: "sess-1",
             scope: .singleFile(path: "/Users/me/secret.swift"),
@@ -64,7 +64,7 @@ final class RollbackServiceSealTests: XCTestCase {
     /// Android `IN_FLIGHT.token`, and every adjacent status enum) and round-trips
     /// back through `decodeRequest`.
     func test_encodeRequest_inFlightStatus_encodesSnakeCase_andRoundTrips() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let request = RollbackRequest(
             sessionID: "sess-1",
             scope: .fullSession,
@@ -177,7 +177,7 @@ final class RollbackServiceSealTests: XCTestCase {
     }
 
     func test_decodeRequest_sealedScopeUnreadableWithoutKey() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let request = RollbackRequest(
             sessionID: "sess-1",
             scope: .singleFile(path: "/Users/me/secret.swift"),
@@ -198,7 +198,7 @@ final class RollbackServiceSealTests: XCTestCase {
     // MARK: - rollback_requests — errorMessage (Mac-written, sealed on read)
 
     func test_decodeRequest_opensSealedErrorMessage_withLegacyFallback() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let scopeJSON = String(
             data: try JSONEncoder().encode(RollbackScope.fullSession), encoding: .utf8
         )!
@@ -237,7 +237,7 @@ final class RollbackServiceSealTests: XCTestCase {
     // MARK: - cli_sessions snapshots
 
     func test_decodeSnapshot_opensSealedFields() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let touchedJSON = String(
             data: try JSONEncoder().encode(["src/a.swift", "src/b.swift"]), encoding: .utf8
         )!
@@ -274,7 +274,7 @@ final class RollbackServiceSealTests: XCTestCase {
     }
 
     func test_decodeSnapshot_sealedActionLabelUnreadableWithoutKey_dropsRow() throws {
-        let key = CloudVaultCrypto.generateVaultKey()
+        let key = try CloudVaultCrypto.generateVaultKey()
         let doc: [String: Any] = [
             "sequence": 1,
             "takenAt": ISO8601DateFormatter().string(from: Date()),

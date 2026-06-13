@@ -20,7 +20,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3617 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 22 | stable (re-export) | — |
 | `functions/src/types/legacy.ts` LOC | 3158 | shrinking (TypeSpec migration) | — |
-| `functions/src/index.ts` LOC | 184 | modularize | — |
+| `functions/src/index.ts` LOC | 185 | modularize | — |
 | `import SwiftUI` in Services/ + DataStore/ | 20 | ≤ 3 | 0 |
 
 ## Top service files (lines)

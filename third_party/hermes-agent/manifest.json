@@ -1,7 +1,8 @@
 {
   "name": "hermes-agent-runtime",
   "description": "Provenance pin for the on-host Hermes agent/gateway runtime that OpenBurnBar vendors as compiled bytecode (gateway/, plugins/, tools/, hermes_cli/, tui_gateway/, agent/). Security remediation C-5: makes the most security-sensitive host-side component auditable + verifiable instead of opaque .pyc.",
-  "forkRepository": "https://github.com/NousResearch/hermes-agent",
+  "forkRepository": "https://github.com/Ajnunezg/hermes-agent",
+  "upstreamRepository": "https://github.com/NousResearch/hermes-agent",
   "forkBranch": "ajnunezg/burnbar-gateway-e2ee",
   "license": "MIT (Nous/Hermes upstream); see LICENSES/Nous-hermes-agent-MIT.txt",
   "pinnedCommit": "bdb830070927cbb20763819f91ee930548f7da92",
@@ -21,5 +22,5 @@
     "reason": "CLEARED 2026-06-11: C-4 (agent command-guard hardening: secret-read/exfil gating, fail-closed tirith, smart-mode escalation) is commit bdb830070, pushed to the public fork branch ajnunezg/burnbar-gateway-e2ee and now the pinnedCommit above. The 2026-06-11 diligence review found the previous clearance (e0ba632f5) pinned a commit that existed on no remote; this clearance is verifiable: gh api repos/Ajnunezg/hermes-agent/commits/bdb830070 resolves, and the PR harness cross-checks its checkout ref against this manifest so the gate always executes the commit the manifest attests.",
     "trackingBranch": "security/agent-sandbox-hardening"
   },
-  "auditNote": "The shipping product currently vendors this runtime as .pyc with the .py source gitignored, so the AGPL corresponding-source archive (scripts/create-corresponding-source.sh) does NOT contain it. C-5 closes that by pinning the exact source commit + hash here and verifying it in CI (verify-vendored-agent-source.sh). For full reproducibility, the corresponding-source archive should also bundle the pinned source tree."
+  "auditNote": "The shipping product vendors this runtime as .pyc while the reviewed .py source is pinned here. Release and security CI verify the pinned fork checkout with scripts/ci/verify-vendored-agent-source.sh and require scripts/create-corresponding-source.sh to bundle the pinned source tree under third_party/hermes-agent/source/ in the AGPL corresponding-source archive."
 }

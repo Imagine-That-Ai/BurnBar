@@ -55,6 +55,23 @@ from resume_core import (  # noqa: E402
 
 mcp = FastMCP("openburnbar-local")
 
+LOCAL_MCP_DEFAULT_PROFILE = "read_only"
+LOCAL_MCP_ALLOWED_PROFILES = {"read_only", "operator"}
+LOCAL_MCP_OPERATOR_CAPABILITIES = {
+    "cloud_decrypt",
+    "cloud_sync",
+    "local_write",
+    "sensitive_read",
+    "spawn_process",
+}
+LOCAL_MCP_CAPABILITY_ENV = {
+    "cloud_decrypt": "OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_DECRYPT",
+    "cloud_sync": "OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_SYNC",
+    "local_write": "OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE",
+    "sensitive_read": "OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ",
+    "spawn_process": "OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN",
+}
+
 DETERMINISTIC_EMBEDDING_PROVIDER = "openburnbar"
 DETERMINISTIC_EMBEDDING_MODEL = "deterministic-fake-embedding"
 DETERMINISTIC_EMBEDDING_DIMENSIONS = 96
@@ -352,6 +369,83 @@ def _unavailable_payload(code: str, reason: str, **extra: Any) -> dict[str, Any]
     }
     payload.update(extra)
     return payload
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _local_mcp_profile() -> str:
+    raw = os.environ.get("OPENBURNBAR_LOCAL_MCP_PROFILE", LOCAL_MCP_DEFAULT_PROFILE).strip().lower()
+    return raw if raw in LOCAL_MCP_ALLOWED_PROFILES else LOCAL_MCP_DEFAULT_PROFILE
+
+
+def _capability_enabled(capability: str) -> bool:
+    if capability not in LOCAL_MCP_CAPABILITY_ENV:
+        return False
+    if _truthy_env(LOCAL_MCP_CAPABILITY_ENV[capability]):
+        return True
+    return _local_mcp_profile() == "operator" and capability in LOCAL_MCP_OPERATOR_CAPABILITIES
+
+
+def _default_policy_audit_path() -> Path:
+    return Path.home() / "Library" / "Application Support" / "OpenBurnBar" / "mcp-policy-audit.jsonl"
+
+
+def _policy_audit_path() -> Path | None:
+    if _truthy_env("OPENBURNBAR_LOCAL_MCP_DISABLE_AUDIT"):
+        return None
+    override = os.environ.get("OPENBURNBAR_LOCAL_MCP_AUDIT_LOG", "").strip()
+    if not override:
+        return _default_policy_audit_path()
+    try:
+        return Path(override).expanduser().resolve()
+    except OSError:
+        return None
+
+
+def _append_policy_audit(tool: str, capability: str, allowed: bool) -> None:
+    path = _policy_audit_path()
+    if path is None:
+        return
+    event = {
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "tool": tool,
+        "capability": capability,
+        "allowed": allowed,
+        "profile": _local_mcp_profile(),
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event, separators=(",", ":")) + "\n")
+    except OSError:
+        # Local audit logging is defense-in-depth; do not turn a denied tool call
+        # into an exception that might mask the policy decision returned to the agent.
+        return
+
+
+def _capability_denial(tool: str, capability: str, reason: str | None = None) -> str | None:
+    if _capability_enabled(capability):
+        _append_policy_audit(tool, capability, True)
+        return None
+    _append_policy_audit(tool, capability, False)
+    return json.dumps(
+        {
+            "status": "denied",
+            "code": "MCP_CAPABILITY_DISABLED",
+            "tool": tool,
+            "capability": capability,
+            "profile": _local_mcp_profile(),
+            "requiredEnv": LOCAL_MCP_CAPABILITY_ENV[capability],
+            "reason": reason
+            or (
+                "This local MCP tool is disabled by default. Set the capability env var "
+                "for a bounded session or set OPENBURNBAR_LOCAL_MCP_PROFILE=operator."
+            ),
+        },
+        indent=2,
+    )
 
 
 def _hkdf_sha256(input_key: bytes, salt: bytes, info: bytes, length: int) -> bytes:
@@ -1197,6 +1291,10 @@ def burnbar_cloud_semantic_search_conversations(
     returned titles/snippets on this device. Required env:
     OPENBURNBAR_FIREBASE_ID_TOKEN and OPENBURNBAR_CLOUD_VAULT_KEY_BASE64.
     """
+    denied = _capability_denial("burnbar_cloud_semantic_search_conversations", "cloud_decrypt")
+    if denied:
+        return denied
+
     config = _cloud_config()
     if config.get("status") != "ok":
         return json.dumps(config, indent=2)
@@ -1284,6 +1382,10 @@ def burnbar_cloud_get_conversation_body(
     Download and decrypt one hosted encrypted session body returned by
     burnbar_cloud_semantic_search_conversations.
     """
+    denied = _capability_denial("burnbar_cloud_get_conversation_body", "cloud_decrypt")
+    if denied:
+        return denied
+
     config = _cloud_config()
     if config.get("status") != "ok":
         return json.dumps(config, indent=2)
@@ -1409,6 +1511,14 @@ def burnbar_get_project_memory(project_slug: str, source: str = "auto") -> str:
     if not slug:
         return json.dumps({"error": "project_slug is required"}, indent=2)
 
+    denied = _capability_denial(
+        "burnbar_get_project_memory",
+        "sensitive_read",
+        "Project memory snapshots can contain durable user/agent context and require explicit plaintext-read consent.",
+    )
+    if denied:
+        return denied
+
     if source_mode in {"auto", "local"}:
         path = _default_db_path()
         with _connect_ro(path) as conn:
@@ -1437,6 +1547,10 @@ def burnbar_get_project_memory(project_slug: str, source: str = "auto") -> str:
                         "local project memory snapshot was not found",
                         projectSlug=slug,
                     )
+
+    denied = _capability_denial("burnbar_get_project_memory", "cloud_decrypt")
+    if denied:
+        return denied
 
     config = _cloud_config()
     if config.get("status") != "ok":
@@ -1531,6 +1645,10 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
     Requires local project_memory_snapshots data plus cloud auth env
     (OPENBURNBAR_FIREBASE_ID_TOKEN and OPENBURNBAR_CLOUD_VAULT_KEY_BASE64).
     """
+    denied = _capability_denial("burnbar_cloud_sync_project_memory", "cloud_sync")
+    if denied:
+        return denied
+
     slug = project_slug.strip()
     if not slug:
         return json.dumps({"error": "project_slug is required"}, indent=2)
@@ -1629,6 +1747,14 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
 @mcp.tool()
 def burnbar_get_conversation(conversation_id: str, max_full_text_chars: int = 120_000) -> str:
     """Load one conversation row by id, including fullText (truncated if over max_full_text_chars)."""
+    denied = _capability_denial(
+        "burnbar_get_conversation",
+        "sensitive_read",
+        "Full conversation plaintext requires explicit local MCP sensitive-read consent.",
+    )
+    if denied:
+        return denied
+
     path = _default_db_path()
     with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
@@ -1700,6 +1826,14 @@ def burnbar_project_summary(project_name: str | None = None, days: int = 30) -> 
 @mcp.tool()
 def burnbar_chat_messages(limit: int = 80) -> str:
     """In-app assistant chat_messages rows (role + content), most recent last."""
+    denied = _capability_denial(
+        "burnbar_chat_messages",
+        "sensitive_read",
+        "Chat message plaintext requires explicit local MCP sensitive-read consent.",
+    )
+    if denied:
+        return denied
+
     lim = max(1, min(int(limit), 500))
     path = _default_db_path()
     with _connect_ro(path) as conn:
@@ -1749,6 +1883,10 @@ def burnbar_record_hermes_usage(
     Use this from Hermes whenever a model call returns provider usage and you
     want OpenBurnBar to know about it without going through the macOS app.
     """
+    denied = _capability_denial("burnbar_record_hermes_usage", "local_write")
+    if denied:
+        return denied
+
     if recorded_at_iso:
         try:
             recorded_at = datetime.fromisoformat(recorded_at_iso.replace("Z", "+00:00"))
@@ -2070,6 +2208,10 @@ def burnbar_set_budget_limit(
     For credential scope, supply provider_id (and optionally account_id).
     For project scope, supply project_name.
     """
+    denied = _capability_denial("burnbar_set_budget_limit", "local_write")
+    if denied:
+        return denied
+
     if scope not in _BUDGET_SCOPES:
         return json.dumps({"error": f"scope must be one of {sorted(_BUDGET_SCOPES)}"})
     if period not in _BUDGET_PERIODS:
@@ -2158,6 +2300,10 @@ def burnbar_pause_budget_gate(rule_id: str, until_iso: str) -> str:
     Pause a rule until until_iso (ISO 8601, e.g. "2026-05-26T09:00:00Z").
     The gate short-circuits to .paused for matching requests until that time.
     """
+    denied = _capability_denial("burnbar_pause_budget_gate", "local_write")
+    if denied:
+        return denied
+
     try:
         parsed = datetime.fromisoformat(until_iso.replace("Z", "+00:00"))
     except ValueError:
@@ -2204,6 +2350,10 @@ def burnbar_pause_budget_gate(rule_id: str, until_iso: str) -> str:
 @mcp.tool()
 def burnbar_resume_budget_gate(rule_id: str) -> str:
     """Cancel an active pause on a rule. Resumes enforcement immediately."""
+    denied = _capability_denial("burnbar_resume_budget_gate", "local_write")
+    if denied:
+        return denied
+
     now = datetime.now(UTC).isoformat(sep=" ", timespec="milliseconds")
     path = _default_db_path()
     with _connect_rw(path) as conn:
@@ -2353,6 +2503,14 @@ def burnbar_resume_conversation(
     The default is emit-only and keeps plaintext on-device. A 0600 temp briefing
     file is created only when `print_only` is false.
     """
+    denied = _capability_denial(
+        "burnbar_resume_conversation",
+        "sensitive_read",
+        "Resume briefings include prior transcript context and require explicit plaintext-read consent.",
+    )
+    if denied:
+        return denied
+
     try:
         payload = dispatch_resume(
             session_id,
@@ -2385,6 +2543,10 @@ def burnbar_spawn_resume(
     This is intentionally separate from `burnbar_resume_conversation` so the
     Phase A emit-only default stays stable for existing MCP clients.
     """
+    denied = _capability_denial("burnbar_spawn_resume", "spawn_process")
+    if denied:
+        return denied
+
     try:
         payload = spawn_resume(
             session_id,

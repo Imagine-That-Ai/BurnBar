@@ -524,6 +524,18 @@ final class FunctionsRepository: HermesGatewayRepository {
         try await hermesGateway.revokeHermesGatewayClient(clientId: clientId)
     }
 
+    func hermesGatewayAttachmentDownloadURL(
+        attachmentId: String,
+        clientId: String,
+        destinationId: String?
+    ) async throws -> URL {
+        try await hermesGateway.hermesGatewayAttachmentDownloadURL(
+            attachmentId: attachmentId,
+            clientId: clientId,
+            destinationId: destinationId
+        )
+    }
+
     func enqueueHermesGatewayEvent(
         text: String,
         destinationId: String = "burnbar:home",
