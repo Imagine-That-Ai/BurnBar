@@ -164,7 +164,7 @@ jobs:
 
       - name: Upload QA artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: qa-results-${{ github.run_number }}
           path: qa-results/**
