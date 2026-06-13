@@ -483,6 +483,24 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
 
     // MARK: - Annual value framing (store sheet price math)
 
+    func testMonthlyEquivalentUsesCurrencyNativePrecision() {
+        // Zero-fraction currencies must not grow bogus sub-units (JPY ¥658,
+        // not ¥658.33); two-fraction currencies keep their cents.
+        let jpy = Decimal.FormatStyle.Currency(code: "JPY", locale: Locale(identifier: "ja_JP"))
+        let jpyLine = HostedQuotaSubscriptionStore.monthlyEquivalent(annualPrice: 7900, format: jpy)
+        XCTAssertTrue(jpyLine.contains("658"), jpyLine)
+        XCTAssertFalse(jpyLine.contains("."), "JPY must not render sub-unit decimals: \(jpyLine)")
+
+        let usd = Decimal.FormatStyle.Currency(code: "USD", locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(HostedQuotaSubscriptionStore.monthlyEquivalent(annualPrice: 249, format: usd), "$20.75")
+    }
+
+    func testAnnualSealTextSelection() {
+        XCTAssertEqual(CloudTierCard.annualSealText(freeMonths: nil), "BEST VALUE")
+        XCTAssertEqual(CloudTierCard.annualSealText(freeMonths: 1), "1 MONTH FREE")
+        XCTAssertEqual(CloudTierCard.annualSealText(freeMonths: 2), "2 MONTHS FREE")
+    }
+
     func testMonthlyEquivalentDisplayPriceFallsBackToCatalogPrices() {
         let store = makeHostedQuotaSubscriptionStore(
             functions: FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)

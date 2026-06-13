@@ -14,7 +14,20 @@ fi
 live_report="$(mktemp "${TMPDIR:-/tmp}/unsafe-cast-live.XXXXXX")"
 trap 'rm -f "${live_report}"' EXIT
 
-node "${scanner_path}" --repo-root "${repo_root}" --format json --ts-mode token-fallback > "${live_report}"
+# The scanner writes the file itself (--out): shell `>` redirection proved
+# fragile under sandboxed $TMPDIR (0-byte reports despite exit 0). Belt and
+# suspenders: if the report still lands empty (sandbox file interception),
+# retry via a repo-local path, and fail LOUDLY rather than parse air.
+node "${scanner_path}" --repo-root "${repo_root}" --ts-mode token-fallback --out "${live_report}"
+if [[ ! -s "${live_report}" ]]; then
+  live_report="${repo_root}/.unsafe-cast-live.json"
+  trap 'rm -f "${live_report}"' EXIT
+  node "${scanner_path}" --repo-root "${repo_root}" --ts-mode token-fallback --out "${live_report}"
+fi
+if [[ ! -s "${live_report}" ]]; then
+  echo "unsafe-cast scanner produced an empty report — refusing to compare" >&2
+  exit 1
+fi
 
 node - "${baseline_path}" "${live_report}" <<'NODE'
 const fs = require("node:fs");

@@ -76,7 +76,7 @@ private struct SessionTileMicro: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 if let providerEnum {
-                    ProviderAuroraAvatar(provider: providerEnum, size: 32, animated: false)
+                    ProviderAuroraAvatar(provider: providerEnum, size: 32, animated: false, glassInCard: true)
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text(providerEnum?.displayName ?? usage.provider.rawValue)

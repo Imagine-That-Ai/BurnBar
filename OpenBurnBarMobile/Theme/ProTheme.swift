@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import OpenBurnBarCore
 
 // MARK: - Pro Theme
@@ -177,14 +178,30 @@ enum ProTheme {
     /// utilitarian SF Pro Rounded body voice. Body copy stays Rounded for
     /// legibility; serif is reserved for headlines and posters.
     enum Typography {
+        /// The Pro voice scales with Dynamic Type: base point sizes are
+        /// preserved at the default content size and grow/shrink with the
+        /// user's setting via UIFontMetrics (plain `Font.system(size:)` would
+        /// ignore accessibility text sizes entirely).
+        private static func scaled(
+            _ size: CGFloat,
+            weight: UIFont.Weight,
+            design: UIFontDescriptor.SystemDesign,
+            relativeTo style: UIFont.TextStyle
+        ) -> Font {
+            let base = UIFont.systemFont(ofSize: size, weight: weight)
+            let designed = base.fontDescriptor.withDesign(design)
+                .map { UIFont(descriptor: $0, size: size) } ?? base
+            return Font(UIFontMetrics(forTextStyle: style).scaledFont(for: designed))
+        }
+
         /// 44pt heavy serif — the Pro voice. Hero headlines and posters.
-        static let displaySerif = Font.system(size: 44, weight: .heavy, design: .serif)
+        static var displaySerif: Font { scaled(44, weight: .heavy, design: .serif, relativeTo: .largeTitle) }
         /// 28pt bold serif — secondary hero on poster cards.
-        static let titleSerif = Font.system(size: 28, weight: .bold, design: .serif)
+        static var titleSerif: Font { scaled(28, weight: .bold, design: .serif, relativeTo: .title1) }
         /// 20pt semibold serif — section headers inside posters.
-        static let headlineSerif = Font.system(size: 20, weight: .semibold, design: .serif)
+        static var headlineSerif: Font { scaled(20, weight: .semibold, design: .serif, relativeTo: .headline) }
         /// 22pt semibold monospaced — price strings ("$4.99 / mo").
-        static let priceMono = Font.system(size: 22, weight: .semibold, design: .monospaced)
+        static var priceMono: Font { scaled(22, weight: .semibold, design: .monospaced, relativeTo: .title2) }
     }
 
     // MARK: - Motion
