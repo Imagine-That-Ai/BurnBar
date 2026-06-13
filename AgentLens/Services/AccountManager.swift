@@ -670,8 +670,15 @@ final class AccountManager {
         }
     }
 
-    private static func googleAuthPresentationWindow(from window: NSWindow, activate: Bool = true) -> NSWindow {
-        let presentationWindow = googleAuthPresentationWindowCandidate(from: window, windows: NSApp.windows)
+    private static func googleAuthPresentationWindow(
+        from window: NSWindow,
+        appWindows: [NSWindow]? = nil,
+        activate: Bool = true
+    ) -> NSWindow {
+        let presentationWindow = googleAuthPresentationWindowCandidate(
+            from: window,
+            appWindows: appWindows ?? NSApp.windows
+        )
         guard activate, presentationWindow.isVisible, !presentationWindow.isMiniaturized else {
             return presentationWindow
         }
@@ -680,7 +687,10 @@ final class AccountManager {
         return presentationWindow
     }
 
-    private static func googleAuthPresentationWindowCandidate(from window: NSWindow, windows: [NSWindow]) -> NSWindow {
+    private static func googleAuthPresentationWindowCandidate(
+        from window: NSWindow,
+        appWindows: [NSWindow]
+    ) -> NSWindow {
         var candidate = window
         while let parent = candidate.sheetParent {
             candidate = parent
@@ -688,7 +698,9 @@ final class AccountManager {
         if candidate.isVisible, !candidate.isMiniaturized {
             return candidate
         }
-        let fallback = windows.first { $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil }
+        let fallback = appWindows.first {
+            $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil
+        }
         if let fallback {
             return fallback
         }
@@ -1028,8 +1040,11 @@ final class AccountManager {
         firebaseAuthLegacyDefaultStoredUserDeleteQuery(appName: appName)
     }
 
-    static func googleAuthPresentationWindowForTesting(from window: NSWindow) -> NSWindow {
-        googleAuthPresentationWindow(from: window, activate: false)
+    static func googleAuthPresentationWindowForTesting(
+        from window: NSWindow,
+        appWindows: [NSWindow]? = nil
+    ) -> NSWindow {
+        googleAuthPresentationWindow(from: window, appWindows: appWindows, activate: false)
     }
     #endif
 }
