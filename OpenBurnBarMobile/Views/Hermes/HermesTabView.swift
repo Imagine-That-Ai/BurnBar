@@ -1479,8 +1479,10 @@ struct HermesChatView: View {
                     }
             }
         }
-        // Tells the swarm background (inside AuroraBackdrop) to throttle its
-        // frame rate while a reply streams — see WebsiteBackgroundView.
+        // Tells the swarm background to throttle its frame rate while a reply
+        // streams — see WebsiteBackgroundView. Only the swarm/editorial skins
+        // react; the default Aurora mesh is already paused at `.subtle`
+        // visibility on this screen.
         .environment(\.hermesStreamingActive, service.isStreaming)
         .onChange(of: inputFocused) { _, focused in
             NotificationCenter.default.post(
@@ -3799,6 +3801,9 @@ struct HermesMessageBubble: View {
                     // read as visible jank while the swarm formed shapes.
                     assistantTextBody
                         .padding(.vertical, 2)
+                        // Soften the one-frame re-measure when the cheap
+                        // streaming renderer hands off to the rich bubble.
+                        .animation(.easeInOut(duration: 0.18), value: message.isStreaming)
                 } else {
                     // Non-normal outcomes (errors, refusals, length caps…)
                     // keep a tinted container so they read as different.
@@ -3807,6 +3812,7 @@ struct HermesMessageBubble: View {
                         .padding(.vertical, 10)
                         .background(assistantBubbleShape.fill(bubbleFill))
                         .overlay(assistantBubbleShape.stroke(bubbleStroke, lineWidth: bubbleStrokeWidth))
+                        .animation(.easeInOut(duration: 0.18), value: message.isStreaming)
                 }
             }
 
