@@ -1,10 +1,12 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { allowedOrigins, MAX_REQUEST_BYTES, MCP_PROTOCOL_VERSION } from "./config.js";
+import { allowedOrigins, assertProductionTokenPosture, MAX_REQUEST_BYTES, MCP_PROTOCOL_VERSION } from "./config.js";
 import { verifyBearerToken } from "./auth.js";
 import { firestore } from "./entitlements.js";
 import { HttpError, jsonRpcError } from "./errors.js";
 import { handleMcpRequest } from "./mcp.js";
+import type { StorageBodyDownloader } from "./resources.js";
+import type { HostedMcpFirestore } from "./firestoreTypes.js";
 import { handleRefreshTokenGrant, type RefreshFirestore } from "./oauthToken.js";
 import { authorizationServerMetadata, protectedResourceMetadata } from "./oauthMetadata.js";
 import { logError, logInfo, logWarn } from "./logging.js";
@@ -86,7 +88,23 @@ function validateProtocol(req: IncomingMessage): void {
   if (version !== MCP_PROTOCOL_VERSION) throw new HttpError(400, "Unsupported MCP protocol version.", "unsupported_protocol_version");
 }
 
-async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+/**
+ * Runtime seams the server resolves once and threads into every request. The
+ * defaults are the live `firestore()` client and the real Cloud Storage
+ * downloader; the deterministic local adversarial harness injects a seeded
+ * in-memory Firestore + storage so the isolation/revocation/abuse proofs run
+ * against the real route/auth/dispatch/gate code paths without prod secrets.
+ */
+export interface ServerOverrides {
+  db?: HostedMcpFirestore;
+  download?: StorageBodyDownloader;
+}
+
+async function route(req: IncomingMessage, res: ServerResponse, overrides: ServerOverrides): Promise<void> {
+  // Resolve the Firestore client lazily so the health/readiness/well-known paths
+  // stay free of firebase-admin initialization exactly as before; only the
+  // token + MCP paths touch it.
+  const resolveDb = (): HostedMcpFirestore => overrides.db ?? firestore();
   const url = new URL(req.url ?? "/", "http://localhost");
   if (url.pathname === "/healthz") {
     sendJson(res, 200, { ok: true, service: "openburnbar-hosted-mcp", ...sourceMetadata() });
@@ -112,7 +130,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     }
     validateOrigin(req);
     const fields = parseTokenRequest(await readRawBody(req), req.headers["content-type"]);
-    const tokenResponse = await handleRefreshTokenGrant(firestore() as unknown as RefreshFirestore, fields);
+    const tokenResponse = await handleRefreshTokenGrant(resolveDb() as unknown as RefreshFirestore, fields);
     sendJson(res, 200, tokenResponse, { "cache-control": "no-store", pragma: "no-cache" });
     return;
   }
@@ -139,10 +157,10 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   }
   const started = Date.now();
   const claims = verifyBearerToken(req.headers.authorization);
-  const db = firestore();
+  const db = resolveDb();
   const body = await readBody(req);
-  const response = await handleMcpRequest(db, claims, body);
-  void writeAuditEvent(db, claims, {
+  const response = await handleMcpRequest(db, claims, body, { download: overrides.download });
+  void writeAuditEvent(db as unknown as import("firebase-admin/firestore").Firestore, claims, {
     kind: "mcp_request",
     toolName: requestToolName(body),
     latencyMs: Date.now() - started,
@@ -155,9 +173,9 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   });
 }
 
-export function createServer() {
+export function createServer(overrides: ServerOverrides = {}) {
   return http.createServer((req, res) => {
-    route(req, res).catch((err) => {
+    route(req, res, overrides).catch((err) => {
       if (err instanceof HttpError) {
         const headers: Record<string, string> = err.status === 401
           ? { "WWW-Authenticate": 'Bearer resource_metadata="https://mcp.burnbar.ai/.well-known/oauth-protected-resource"' }
@@ -183,6 +201,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 if (process.env.NODE_ENV !== "test") {
+  // Fail closed before binding: in production we must verify asymmetric Ed25519
+  // tokens and must not silently accept the legacy symmetric HMAC form.
+  assertProductionTokenPosture();
   const port = Number(process.env.PORT ?? 8080);
   createServer().listen(port, () => logInfo("hosted_mcp_started", { port }));
 }

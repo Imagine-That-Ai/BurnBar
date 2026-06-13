@@ -6,6 +6,18 @@ import type { HostedMcpFirestore } from "./firestoreTypes.js";
 
 const RESOURCE_RE = /^burnbar:\/\/conversation\/([A-Za-z0-9_.:-]+)$/u;
 
+/**
+ * Downloads an owner-scoped sealed session body. Defaults to the live Cloud
+ * Storage bucket; a deterministic local harness can inject a seeded fixture so
+ * the at-rest "stored payload is sealed" proof runs without a real bucket.
+ */
+export type StorageBodyDownloader = (storagePath: string) => Promise<Buffer>;
+
+const liveStorageDownloader: StorageBodyDownloader = async (storagePath) => {
+  const [bytes] = await getStorage().bucket().file(storagePath).download();
+  return bytes;
+};
+
 export async function listResources(db: HostedMcpFirestore, uid: string) {
   const docs = await db.collection(`users/${uid}/cloud_search_documents`).limit(50).get();
   return {
@@ -21,7 +33,8 @@ export async function listResources(db: HostedMcpFirestore, uid: string) {
 export async function readConversationBody(
   db: HostedMcpFirestore,
   uid: string,
-  args: { resourceUri?: string; maxChars?: number; cursor?: string }
+  args: { resourceUri?: string; maxChars?: number; cursor?: string },
+  download: StorageBodyDownloader = liveStorageDownloader
 ) {
   const uri = typeof args.resourceUri === "string" ? args.resourceUri : "";
   const match = RESOURCE_RE.exec(uri);
@@ -41,7 +54,7 @@ export async function readConversationBody(
   if (!storagePath.startsWith(`users/${uid}/session_logs/${docId}/bodies/`) || !bodyHash) {
     throw new HttpError(403, "Conversation body path is not owner-scoped.", "invalid_storage_path");
   }
-  const [bytes] = await getStorage().bucket().file(storagePath).download();
+  const bytes = await download(storagePath);
   const encoded = bytes.toString("utf8");
   const page = encoded.slice(offset, offset + maxChars);
   return {
