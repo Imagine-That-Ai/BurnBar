@@ -241,6 +241,67 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertNotNil(event["timestamp"] as? String)
     }
 
+    func test_missionEventFactory_sealsPrivateEventPayloadWithRequestBoundAAD() throws {
+        let vaultKey = CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let event = CLIAgentMissionEventFactory.event(
+            sequence: 7,
+            phase: "tool_use",
+            kind: "tool_call",
+            title: "Shell",
+            message: "ran swift tests",
+            runtime: "codex",
+            toolName: "exec_command",
+            artifactPath: "docs/report.md",
+            changedFilePath: "AgentLens/App.swift",
+            isError: false
+        )
+
+        let sealed = try CLIAgentMissionEventFactory.sealedEvent(
+            event,
+            uid: "uid-1",
+            requestID: "mission-1",
+            eventID: "000007",
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+
+        XCTAssertEqual(sealed["contentSealed"] as? Bool, true)
+        XCTAssertEqual(sealed["sealedSchemaVersion"] as? Int, 2)
+        XCTAssertEqual(sealed["vaultKeyID"] as? String, vaultKeyID)
+        XCTAssertNil(sealed["title"])
+        XCTAssertNil(sealed["message"])
+        XCTAssertNil(sealed["fullMessage"])
+        XCTAssertNil(sealed["toolName"])
+        XCTAssertNil(sealed["artifactPath"])
+        XCTAssertNil(sealed["changedFilePath"])
+
+        let envelope = try XCTUnwrap(CloudVaultCrypto.sealedPayload(from: sealed["sealedPayload"]))
+        let expectedContext = try CloudVaultAADContext(
+            uid: "uid-1",
+            collection: "cli_agent_mission_requests/events",
+            docID: "mission-1/000007",
+            field: "sealedPayload"
+        )
+        XCTAssertEqual(envelope.aad, expectedContext.stringValue)
+        let opened = try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: expectedContext)
+        let decoded = try JSONDecoder().decode(DecodedMissionEventPayload.self, from: opened)
+        XCTAssertEqual(decoded.title, "Shell")
+        XCTAssertEqual(decoded.message, "ran swift tests")
+        XCTAssertEqual(decoded.fullMessage, "ran swift tests")
+        XCTAssertEqual(decoded.toolName, "exec_command")
+        XCTAssertEqual(decoded.artifactPath, "docs/report.md")
+        XCTAssertEqual(decoded.changedFilePath, "AgentLens/App.swift")
+
+        let wrongContext = try CloudVaultAADContext(
+            uid: "uid-1",
+            collection: "cli_agent_mission_requests/events",
+            docID: "mission-1/000008",
+            field: "sealedPayload"
+        )
+        XCTAssertThrowsError(try CloudVaultCrypto.openPayload(envelope, keyData: vaultKey, aadContext: wrongContext))
+    }
+
     func test_missionEventFactory_redactsSecretsBeforeMobileStreaming() {
         let providerToken = "sk-" + "1234567890abcdef"
         let jwtToken = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiJ1c2VyLWlkLTEyMzQ1Njc4OTAifQ", "signaturepayload0987654321"].joined(separator: ".")
@@ -678,4 +739,13 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(disallowed.contains("NotebookEdit"))
         XCTAssertFalse(disallowed.contains("Bash"))
     }
+}
+
+private struct DecodedMissionEventPayload: Decodable {
+    let title: String?
+    let message: String
+    let fullMessage: String?
+    let toolName: String?
+    let artifactPath: String?
+    let changedFilePath: String?
 }
