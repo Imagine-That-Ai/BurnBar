@@ -99,13 +99,14 @@ emit_summary_event() {
     local attempts="$2"
     local total_duration="$3"
     local final_exit="$4"
+    local final_result="$5"
     local timestamp
     timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    python3 - "$outcome" "$attempts" "$total_duration" "$final_exit" "$timestamp" "$attempt_log_path" <<'PY'
+    python3 - "$outcome" "$attempts" "$total_duration" "$final_exit" "$final_result" "$timestamp" "$attempt_log_path" <<'PY'
 import json
 import sys
 
-outcome, attempts, duration, final_exit, timestamp, dest = sys.argv[1:]
+outcome, attempts, duration, final_exit, final_result, timestamp, dest = sys.argv[1:]
 record = {
     "kind": "summary",
     "timestamp": timestamp,
@@ -113,6 +114,7 @@ record = {
     "attempts": int(attempts),
     "totalDurationSeconds": int(duration),
     "finalExitCode": int(final_exit),
+    "finalXcresultPath": final_result,
 }
 with open(dest, "a", encoding="utf-8") as handle:
     handle.write(json.dumps(record) + "\n")
@@ -281,6 +283,6 @@ fi
 
 invocation_end_epoch="$(date +%s)"
 total_duration=$((invocation_end_epoch - invocation_start_epoch))
-emit_summary_event "$final_outcome" "$test_attempt" "$total_duration" "$final_exit_code"
+emit_summary_event "$final_outcome" "$test_attempt" "$total_duration" "$final_exit_code" "$final_xcresult"
 
 exit "$final_exit_code"

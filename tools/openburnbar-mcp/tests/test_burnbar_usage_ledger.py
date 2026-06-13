@@ -11,6 +11,7 @@ Or directly:
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
 import os
@@ -20,7 +21,7 @@ import threading
 import time
 import unittest
 from typing import Any  # noqa: F401  — re-imported for clarity at top level
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -58,14 +59,14 @@ class UsageLedgerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def _event(self, **overrides) -> "ledger_mod.UsageEvent":
+    def _event(self, **overrides) -> ledger_mod.UsageEvent:
         kwargs = dict(
             provider_id="hermes",
             model_id="minimax-m2.7-highspeed",
             input_tokens=300,
             output_tokens=110,
             cost=0.012,
-            recorded_at=datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc),
+            recorded_at=datetime(2025, 6, 1, 12, 0, tzinfo=UTC),
             session_id="session-1",
             project_name="Hermes (proxy)",
             confidence="exact",
@@ -96,7 +97,7 @@ class UsageLedgerTests(unittest.TestCase):
         # JSONDecoder rejects ISO strings as `Double` mismatches), and must
         # match `unix_seconds - 978_307_200` for 2025-06-01T12:00:00Z.
         self.assertIsInstance(loaded["event"]["recordedAt"], (int, float))
-        unix_seconds = datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc).timestamp()
+        unix_seconds = datetime(2025, 6, 1, 12, 0, tzinfo=UTC).timestamp()
         self.assertAlmostEqual(
             loaded["event"]["recordedAt"],
             unix_seconds - ledger_mod.APPLE_REFERENCE_DATE_OFFSET,
@@ -151,7 +152,7 @@ class UsageLedgerTests(unittest.TestCase):
             )
 
     def test_derive_idempotency_key_is_stable(self) -> None:
-        when = datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc)
+        when = datetime(2025, 6, 1, 12, 0, tzinfo=UTC)
         key1 = ledger_mod.derive_idempotency_key(
             provider_id="hermes",
             model_id="minimax-m2.7-highspeed",
@@ -185,9 +186,7 @@ class DaemonSocketRoutingTests(unittest.TestCase):
         self._tmp = TemporaryDirectory()
         self.ledger_path = Path(self._tmp.name) / "usage-events.jsonl"
         self.socket_path = Path(self._tmp.name) / "openburnbar-daemon.sock"
-        self._server_thread, self._stop_event, self.captured = self._start_fake_daemon(
-            self.socket_path
-        )
+        self._server_thread, self._stop_event, self.captured = self._start_fake_daemon(self.socket_path)
         # Point the writer at our fake socket without leaning on the user's
         # real `~/Library/Application Support/OpenBurnBar` directory.
         os.environ["OPENBURNBAR_DAEMON_SOCKET_PATH"] = str(self.socket_path)
@@ -195,16 +194,11 @@ class DaemonSocketRoutingTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._stop_event.set()
-        try:
-            # Unblock any pending accept() by connecting once.
+        # Unblock any pending accept() by connecting once.
+        with contextlib.suppress(OSError):
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as poke:
                 poke.settimeout(0.5)
-                try:
-                    poke.connect(str(self.socket_path))
-                except OSError:
-                    pass
-        except Exception:
-            pass
+                poke.connect(str(self.socket_path))
         self._server_thread.join(timeout=2)
         os.environ.pop("OPENBURNBAR_DAEMON_SOCKET_PATH", None)
         os.environ.pop("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN", None)
@@ -227,7 +221,7 @@ class DaemonSocketRoutingTests(unittest.TestCase):
                 while not stop_event.is_set():
                     try:
                         client, _ = srv.accept()
-                    except socket.timeout:
+                    except TimeoutError:
                         continue
                     except OSError:
                         return
@@ -311,15 +305,11 @@ class HermesProxyTests(unittest.TestCase):
         os.environ["OPENBURNBAR_USAGE_LEDGER_PATH"] = str(self.ledger_path)
         # Force the writer onto its file path so a real daemon running on the
         # test machine cannot intercept the proxy's records.
-        os.environ["OPENBURNBAR_DAEMON_SOCKET_PATH"] = str(
-            self.ledger_path.with_name("nonexistent-daemon.sock")
-        )
+        os.environ["OPENBURNBAR_DAEMON_SOCKET_PATH"] = str(self.ledger_path.with_name("nonexistent-daemon.sock"))
         self._upstream_port = self._reserve_port()
         self._proxy_port = self._reserve_port()
         self._upstream = self._start_fake_hermes(self._upstream_port)
-        self._proxy_thread, self._proxy_server = self._start_proxy(
-            self._proxy_port, self._upstream_port
-        )
+        self._proxy_thread, self._proxy_server = self._start_proxy(self._proxy_port, self._upstream_port)
 
     def tearDown(self) -> None:
         self._proxy_server.shutdown()
@@ -355,25 +345,19 @@ class HermesProxyTests(unittest.TestCase):
                             "id": "chatcmpl-fake-stream",
                             "object": "chat.completion.chunk",
                             "model": "minimax-m2.7-highspeed",
-                            "choices": [
-                                {"index": 0, "delta": {"role": "assistant", "content": "Hello"}}
-                            ],
+                            "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hello"}}],
                         },
                         {
                             "id": "chatcmpl-fake-stream",
                             "object": "chat.completion.chunk",
                             "model": "minimax-m2.7-highspeed",
-                            "choices": [
-                                {"index": 0, "delta": {"content": " from"}}
-                            ],
+                            "choices": [{"index": 0, "delta": {"content": " from"}}],
                         },
                         {
                             "id": "chatcmpl-fake-stream",
                             "object": "chat.completion.chunk",
                             "model": "minimax-m2.7-highspeed",
-                            "choices": [
-                                {"index": 0, "delta": {"content": " stream."}, "finish_reason": "stop"}
-                            ],
+                            "choices": [{"index": 0, "delta": {"content": " stream."}, "finish_reason": "stop"}],
                             "usage": {
                                 "prompt_tokens": 11,
                                 "completion_tokens": 7,
@@ -388,7 +372,7 @@ class HermesProxyTests(unittest.TestCase):
                     self.send_header("X-Request-Id", "req-fake-stream")
                     self.end_headers()
                     for chunk in chunks:
-                        line = f"data: {json.dumps(chunk)}\n\n".encode("utf-8")
+                        line = f"data: {json.dumps(chunk)}\n\n".encode()
                         try:
                             self.wfile.write(line)
                             self.wfile.flush()

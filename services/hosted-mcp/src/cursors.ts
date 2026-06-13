@@ -50,7 +50,7 @@ export function signCursor(payload: CursorPayload): string {
 
 export function verifyCursor(cursor: string, uid: string, tool: string): CursorPayload {
   const [body, sig] = cursor.split(".");
-  if (!body || !sig) throw new HttpError(400, "Malformed cursor.", "malformed_cursor");
+  if (!body || !sig) {throw new HttpError(400, "Malformed cursor.", "malformed_cursor");}
   const expected = createHmac("sha256", CURSOR_SECRET()).update(body).digest();
   const actual = Buffer.from(sig, "base64url");
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {

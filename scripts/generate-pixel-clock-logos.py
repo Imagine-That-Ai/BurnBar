@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -16,13 +15,7 @@ ASSET_ROOTS = [
     REPO_ROOT / "AgentLens" / "Resources" / "Assets.xcassets",
     REPO_ROOT / "OpenBurnBarMobile" / "Resources" / "Assets.xcassets",
 ]
-OUTPUT = (
-    REPO_ROOT
-    / "OpenBurnBarCore"
-    / "Sources"
-    / "OpenBurnBarCore"
-    / "PixelClockProviderLogoAssets.generated.swift"
-)
+OUTPUT = REPO_ROOT / "OpenBurnBarCore" / "Sources" / "OpenBurnBarCore" / "PixelClockProviderLogoAssets.generated.swift"
 
 
 @dataclass(frozen=True)
@@ -471,10 +464,7 @@ def manual_pixels(logo: LogoSource) -> list[list[str | None]]:
     for row in logo.pixel_rows:
         if len(row) != 8:
             raise SystemExit(f"{logo.property_name} pixel row must be exactly 8 columns: {row}")
-        rows.append([
-            None if cell == "." else logo.pixel_colors[cell]
-            for cell in row
-        ])
+        rows.append([None if cell == "." else logo.pixel_colors[cell] for cell in row])
     if len(rows) != 8:
         raise SystemExit(f"{logo.property_name} must define exactly 8 pixel rows.")
     return rows

@@ -4,6 +4,7 @@
 Same pattern as `register-quota-tab-in-xcode.py` but targets the test
 sources phase (E35F1758B10CAD71B485DA35).
 """
+
 from __future__ import annotations
 import hashlib
 import sys
@@ -51,9 +52,7 @@ def main() -> int:
             f"\t\t{build_file_id} /* {file_name} in Sources */ = "
             f"{{isa = PBXBuildFile; fileRef = {file_ref_id} /* {file_name} */; }};"
         )
-        phase_lines.append(
-            f"\t\t\t\t{build_file_id} /* {file_name} in Sources */,"
-        )
+        phase_lines.append(f"\t\t\t\t{build_file_id} /* {file_name} in Sources */,")
 
     if not (file_ref_lines or build_file_lines or phase_lines):
         print("nothing to add — all files already registered")
@@ -82,14 +81,16 @@ def main() -> int:
             raise RuntimeError(f"could not find Sources phase {phase_id}")
         head, body, tail = m.group(1), m.group(2), m.group(3)
         new_body = body + "\n" + "\n".join(lines)
-        contents = contents[: m.start()] + head + new_body + tail + contents[m.end():]
+        contents = contents[: m.start()] + head + new_body + tail + contents[m.end() :]
 
     inject_into_phase(TESTS_SOURCES_PHASE, phase_lines)
 
     PROJ.write_text(contents)
-    print(f"registered {len(file_ref_lines)} file refs, "
-          f"{len(build_file_lines)} build files, "
-          f"{len(phase_lines)} phase entries")
+    print(
+        f"registered {len(file_ref_lines)} file refs, "
+        f"{len(build_file_lines)} build files, "
+        f"{len(phase_lines)} phase entries"
+    )
     return 0
 
 

@@ -150,9 +150,9 @@ function requireQueryVector(raw: unknown): number[] {
 }
 
 function boundedString(raw: unknown, max: number): string | undefined {
-  if (typeof raw !== "string") return undefined;
+  if (typeof raw !== "string") {return undefined;}
   const trimmed = raw.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) {return undefined;}
   return trimmed.slice(0, max);
 }
 
@@ -186,9 +186,9 @@ export async function searchKnowledge(db: KnowledgeSearchFirestore, uid: string,
   let query: KnowledgeVectorQuery = db
     .collection(`users/${uid}/cloud_search_knowledge`)
     .where("dedupHashVersion", "==", 1);
-  if (sourceKind) query = query.where("sourceKind", "==", sourceKind);
-  if (slugHmac) query = query.where("slugHmac", "==", slugHmac);
-  if (embeddingModelVersion) query = query.where("embeddingModelVersion", "==", embeddingModelVersion);
+  if (sourceKind) {query = query.where("sourceKind", "==", sourceKind);}
+  if (slugHmac) {query = query.where("slugHmac", "==", slugHmac);}
+  if (embeddingModelVersion) {query = query.where("embeddingModelVersion", "==", embeddingModelVersion);}
 
   // Fetch one extra beyond the page so we can tell whether a nextCursor is warranted
   // (findNearest caps the result set, so "is there more?" must be probed explicitly).
@@ -252,7 +252,7 @@ export async function readKnowledgeDocument(
   // Firestore doc (no Cloud Storage coupling, no string paging) — the doc id is
   // the only owner-scoped lookup needed. The shim decrypts the returned envelope.
   const snap = await db.doc(`users/${uid}/cloud_search_knowledge/${docId}`).get();
-  if (!snap.exists) throw new HttpError(404, "Knowledge resource not found.", "resource_not_found");
+  if (!snap.exists) {throw new HttpError(404, "Knowledge resource not found.", "resource_not_found");}
   const data = snap.data() ?? {};
 
   return {

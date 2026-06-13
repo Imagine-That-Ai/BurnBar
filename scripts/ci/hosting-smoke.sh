@@ -109,7 +109,6 @@ console.log(read("macUpdateFeedFile", "latest-macos.json"));
 console.log(read("macAppcastFile", "appcast.xml"));
 NODE
 )"
-download_base_url="$(printf "%s\n" "$download_values" | sed -n "1p" | sed 's:/*$::')"
 update_base_url="$(printf "%s\n" "$download_values" | sed -n "2p" | sed 's:/*$::')"
 latest_file="$(printf "%s\n" "$download_values" | sed -n "3p")"
 appcast_file="$(printf "%s\n" "$download_values" | sed -n "4p")"

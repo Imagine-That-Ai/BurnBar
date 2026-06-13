@@ -79,10 +79,10 @@ function makeDb(opts: {
                       {
                         id: "rmg_int",
                         get(f: string) {
-                          if (f === "refreshTokenHash") return grantState.refreshTokenHash;
-                          if (f === "clientId") return opts.clientId;
-                          if (f === "scopes") return SCOPES;
-                          if (f === "revokedAt") return opts.grantRevoked ? new Date().toISOString() : undefined;
+                          if (f === "refreshTokenHash") {return grantState.refreshTokenHash;}
+                          if (f === "clientId") {return opts.clientId;}
+                          if (f === "scopes") {return SCOPES;}
+                          if (f === "revokedAt") {return opts.grantRevoked ? new Date().toISOString() : undefined;}
                           if (f === "expiresAt") {
                             return { toMillis: () => opts.grantExpiresAtMs ?? Date.now() + 90 * 24 * 3_600_000 };
                           }
@@ -92,7 +92,7 @@ function makeDb(opts: {
                           async set(value: unknown) {
                             grantState.sets.push(value);
                             const v = value as { refreshTokenHash?: string };
-                            if (typeof v.refreshTokenHash === "string") grantState.refreshTokenHash = v.refreshTokenHash;
+                            if (typeof v.refreshTokenHash === "string") {grantState.refreshTokenHash = v.refreshTokenHash;}
                           },
                         },
                       },

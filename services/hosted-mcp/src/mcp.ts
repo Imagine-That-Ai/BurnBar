@@ -26,7 +26,7 @@ export async function handleMcpRequest(db: HostedMcpFirestore, claims: AccessTok
     const result = await dispatch(db, claims, req);
     return { jsonrpc: "2.0", id: req.id ?? null, result: truncateJson(result, MAX_OUTPUT_BYTES) };
   } catch (err) {
-    if (err instanceof McpError) return jsonRpcError(req.id, err.code, err.message, err.data);
+    if (err instanceof McpError) {return jsonRpcError(req.id, err.code, err.message, err.data);}
     throw err;
   }
 }
