@@ -54,35 +54,56 @@ type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B 
 type Assert<T extends true> = T;
 
 // Generated canon ≡ runtime registry (functions/src/hermesGateway.ts).
-export type AssertModelOptionDocParity = Assert<
+type AssertModelOptionDocParity = Assert<
   Equals<Generated.HermesGatewayModelOptionDoc, HermesGatewayModelOptionDoc>
 >;
-export type AssertRelayEnvelopeDocParity = Assert<Equals<Generated.GatewayRelayEnvelopeDoc, GatewayRelayEnvelopeDoc>>;
-export type AssertRatchetHeaderDocParity = Assert<Equals<Generated.GatewayRatchetHeaderDoc, GatewayRatchetHeaderDoc>>;
-export type AssertRatchetEnvelopeDocParity = Assert<
+type AssertRelayEnvelopeDocParity = Assert<Equals<Generated.GatewayRelayEnvelopeDoc, GatewayRelayEnvelopeDoc>>;
+type AssertRatchetHeaderDocParity = Assert<Equals<Generated.GatewayRatchetHeaderDoc, GatewayRatchetHeaderDoc>>;
+type AssertRatchetEnvelopeDocParity = Assert<
   Equals<Generated.GatewayRatchetEnvelopeDoc, GatewayRatchetEnvelopeDoc>
 >;
-export type AssertClientDocParity = Assert<Equals<Generated.HermesGatewayClientDoc, HermesGatewayClientDoc>>;
-export type AssertApprovalDocParity = Assert<Equals<Generated.HermesGatewayApprovalDoc, HermesGatewayApprovalDoc>>;
-export type AssertDestinationDocParity = Assert<
+type AssertClientDocParity = Assert<Equals<Generated.HermesGatewayClientDoc, HermesGatewayClientDoc>>;
+type AssertApprovalDocParity = Assert<Equals<Generated.HermesGatewayApprovalDoc, HermesGatewayApprovalDoc>>;
+type AssertDestinationDocParity = Assert<
   Equals<Generated.HermesGatewayDestinationDoc, HermesGatewayDestinationDoc>
 >;
-export type AssertEventDocParity = Assert<Equals<Generated.HermesGatewayEventDoc, HermesGatewayEventDoc>>;
-export type AssertMessageDocParity = Assert<Equals<Generated.HermesGatewayMessageDoc, HermesGatewayMessageDoc>>;
-export type AssertAttachmentManifestDocParity = Assert<
+type AssertEventDocParity = Assert<Equals<Generated.HermesGatewayEventDoc, HermesGatewayEventDoc>>;
+type AssertMessageDocParity = Assert<Equals<Generated.HermesGatewayMessageDoc, HermesGatewayMessageDoc>>;
+type AssertAttachmentManifestDocParity = Assert<
   Equals<Generated.HermesGatewayAttachmentManifestDoc, HermesGatewayAttachmentManifestDoc>
 >;
 
 // Generated canon ≡ @openburnbar/signal-envelope-contracts.
-export type AssertSignalCiphertextLayerParity = Assert<
+type AssertSignalCiphertextLayerParity = Assert<
   Equals<Generated.GatewaySignalCiphertextLayerDoc, SignalCiphertextLayer>
 >;
-export type AssertSignalBindingParity = Assert<Equals<Generated.GatewaySignalBindingDoc, SignalBinding>>;
-export type AssertSignalAtRestWrapParity = Assert<Equals<Generated.GatewaySignalAtRestWrapDoc, SignalAtRestWrap>>;
-export type AssertSignalTransportKeyDeliveryParity = Assert<
+type AssertSignalBindingParity = Assert<Equals<Generated.GatewaySignalBindingDoc, SignalBinding>>;
+type AssertSignalAtRestWrapParity = Assert<Equals<Generated.GatewaySignalAtRestWrapDoc, SignalAtRestWrap>>;
+type AssertSignalTransportKeyDeliveryParity = Assert<
   Equals<Generated.GatewaySignalTransportKeyDeliveryDoc, SignalTransportKeyDelivery>
 >;
-export type AssertSignalAtRestKeyDeliveryParity = Assert<
+type AssertSignalAtRestKeyDeliveryParity = Assert<
   Equals<Generated.GatewaySignalAtRestKeyDeliveryDoc, SignalAtRestKeyDelivery>
 >;
-export type AssertSignalEnvelopeParity = Assert<Equals<Generated.GatewaySignalEnvelopeDoc, SignalEnvelope>>;
+type AssertSignalEnvelopeParity = Assert<Equals<Generated.GatewaySignalEnvelopeDoc, SignalEnvelope>>;
+
+type SchemaParityAssertions = [
+  AssertModelOptionDocParity,
+  AssertRelayEnvelopeDocParity,
+  AssertRatchetHeaderDocParity,
+  AssertRatchetEnvelopeDocParity,
+  AssertClientDocParity,
+  AssertApprovalDocParity,
+  AssertDestinationDocParity,
+  AssertEventDocParity,
+  AssertMessageDocParity,
+  AssertAttachmentManifestDocParity,
+  AssertSignalCiphertextLayerParity,
+  AssertSignalBindingParity,
+  AssertSignalAtRestWrapParity,
+  AssertSignalTransportKeyDeliveryParity,
+  AssertSignalAtRestKeyDeliveryParity,
+  AssertSignalEnvelopeParity,
+];
+
+void (null as unknown as SchemaParityAssertions);

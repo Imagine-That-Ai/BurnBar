@@ -6,8 +6,8 @@ use burnbar_remote_observability::{
     BenchmarkReport, BenchmarkStage, NetworkTelemetry, PipelineTiming,
 };
 
-fn main() {
-    let dimensions = Dimensions::new(1920, 1080).expect("valid dimensions");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let dimensions = Dimensions::new(1920, 1080)?;
     let mut controller = AdaptiveQualityController::new(dimensions, QualityPreference::Balanced);
     let mut report = BenchmarkReport::default();
 
@@ -51,19 +51,19 @@ fn main() {
         });
     }
 
-    for (stage, summary) in report.summarize() {
+    let summaries = report.summarize();
+    for (stage, summary) in &summaries {
         println!(
             "{stage:?}: p50={}us p95={}us p99={}us",
             summary.p50_micros, summary.p95_micros, summary.p99_micros
         );
     }
-    let glass = report
-        .summarize()
+    let glass = summaries
         .get(&BenchmarkStage::GlassToGlass)
-        .cloned()
-        .expect("glass-to-glass summary");
+        .ok_or("missing glass-to-glass summary")?;
     println!(
         "synthetic glass-to-glass p95 upper bound: {}us",
         glass.p95_micros
     );
+    Ok(())
 }

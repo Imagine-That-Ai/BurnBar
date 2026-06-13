@@ -1,7 +1,7 @@
 {
-  "loc": 3262,
-  "exportedInterfaces": 388,
-  "fileCount": 184,
-  "generatedAt": "2026-06-12T23:32:24.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3589 -> 3262 on 2026-06-12 to lock in Wave 5 gateway re-export reduction plus CloudVault sealed-payload internalization (WP7-RATCHETS). Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
+  "loc": 3232,
+  "exportedInterfaces": 372,
+  "fileCount": 188,
+  "generatedAt": "2026-06-13T12:24:20.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3589 -> 3262 on 2026-06-12 to lock in Wave 5 gateway re-export reduction plus CloudVault sealed-payload internalization, then 3262 -> 3232 on 2026-06-13 after converting schema parity and CloudVault rotation helper types back to internal aliases. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
 }
