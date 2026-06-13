@@ -161,6 +161,7 @@ vi.mock("../logging.js", async () => {
 vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
 
 import { publishPhoneControlAuthority, publishAgentGrantAuthority, revokeEscrowDeviceTrust } from "../callables/computerUseSecurity.js";
+import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
 import { APP_CHECK_ATTESTATION_CLAIM_KEY } from "../appCheckAttestation.js";
 
 const APP_ID = "1:123:ios:abc";
@@ -351,6 +352,125 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
     expect(receipts[0][1].revokedCloudVaultWrappers).toBe(1);
     expect(receipts[0][1].cloudVaultRotationRequired).toBe(true);
     expect(receipts[0][1].cloudVaultRotationRequirementId).toBe(res.receiptId);
+  });
+});
+
+describe("F2 rotateCloudVaultKey requirement handoff", () => {
+  const MAC = "mac-1";
+  const CURRENT_KEY = `v1_${"a".repeat(32)}`;
+  const NEXT_KEY = `v1_${"b".repeat(32)}`;
+  const REQUIREMENT_ID = "revoke_receipt_1";
+
+  beforeEach(() => {
+    store.clear();
+    store.set(`users/${UID}/escrow_devices/${MAC}`, { platform: "macOS", trustState: "trusted", keyVersion: 1 });
+    store.set(`users/${UID}/escrow_devices/${DEVICE}`, { platform: "iOS", trustState: "revoked", keyVersion: 1 });
+    store.set(`users/${UID}/cloud_vault_state/current`, {
+      uid: UID,
+      status: "active",
+      vaultKeyID: CURRENT_KEY,
+      vaultGeneration: 7,
+    });
+    store.set(`users/${UID}/cloud_vault_key_wrappers/wrap-phone-old`, {
+      uid: UID,
+      targetDeviceId: DEVICE,
+      sourceDeviceId: MAC,
+      status: "active",
+      vaultKeyID: CURRENT_KEY,
+    });
+    store.set(`users/${UID}/cloud_vault_key_wrappers/wrap-mac-old`, {
+      uid: UID,
+      targetDeviceId: MAC,
+      sourceDeviceId: DEVICE,
+      status: "active",
+      vaultKeyID: CURRENT_KEY,
+    });
+    store.set(`users/${UID}/cloud_vault_rotation_requirements/${REQUIREMENT_ID}`, {
+      status: "pending",
+      rotateCallable: "rotateCloudVaultKey",
+      currentVaultKeyID: CURRENT_KEY,
+      currentVaultGeneration: 7,
+      survivorDeviceIds: [MAC],
+    });
+  });
+
+  function survivorWrapper(targetDeviceId = MAC): Record<string, unknown> {
+    return {
+      wrapperId: `wrap-${targetDeviceId}-next`,
+      targetDeviceId,
+      sourceDeviceId: MAC,
+      publicKeyFingerprint: "sha256:mac",
+      keyVersion: 2,
+      vaultKeyID: NEXT_KEY,
+      wrappedVaultKey: Buffer.from("next-vault-key").toString("base64"),
+    };
+  }
+
+  function rotationRequest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      callerDeviceId: MAC,
+      currentVaultKeyID: CURRENT_KEY,
+      newVaultKeyID: NEXT_KEY,
+      expectedVaultGeneration: 8,
+      reason: "revocation_rewrap",
+      rotationRequirementId: REQUIREMENT_ID,
+      survivorWrappers: [survivorWrapper()],
+      ...overrides,
+    };
+  }
+
+  it("queues a matching revocation rotation requirement and revokes old wrappers", async () => {
+    const res = await invokeCallable<{
+      ok: boolean;
+      jobId: string;
+      newVaultKeyID: string;
+      vaultGeneration: number;
+      status: string;
+    }>(rotateCloudVaultKey, rotationRequest());
+
+    expect(res.ok).toBe(true);
+    expect(res.status).toBe("queued");
+    expect(res.newVaultKeyID).toBe(NEXT_KEY);
+    expect(res.vaultGeneration).toBe(8);
+
+    const state = store.get(`users/${UID}/cloud_vault_state/current`);
+    expect(state?.vaultKeyID).toBe(NEXT_KEY);
+    expect(state?.previousVaultKeyID).toBe(CURRENT_KEY);
+    expect(state?.vaultGeneration).toBe(8);
+    expect(state?.rotationJobId).toBe(res.jobId);
+
+    const requirement = store.get(`users/${UID}/cloud_vault_rotation_requirements/${REQUIREMENT_ID}`);
+    expect(requirement?.status).toBe("queued");
+    expect(requirement?.rotationJobId).toBe(res.jobId);
+
+    const nextWrapper = store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-${MAC}-next`);
+    expect(nextWrapper?.status).toBe("active");
+    expect(nextWrapper?.vaultKeyID).toBe(NEXT_KEY);
+    expect(nextWrapper?.rotationJobId).toBe(res.jobId);
+
+    expect(store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-phone-old`)?.status).toBe("revoked");
+    expect(store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-mac-old`)?.status).toBe("revoked");
+
+    const job = store.get(`users/${UID}/cloud_vault_rotation_jobs/${res.jobId}`);
+    expect(job?.reason).toBe("revocation_rewrap");
+    expect(job?.survivorDeviceIds).toEqual([MAC]);
+    expect(job?.revokedDeviceIds).toEqual([DEVICE]);
+  });
+
+  it("rejects a stale or mismatched rotation requirement", async () => {
+    store.set(`users/${UID}/cloud_vault_rotation_requirements/${REQUIREMENT_ID}`, {
+      status: "pending",
+      rotateCallable: "rotateCloudVaultKey",
+      currentVaultKeyID: CURRENT_KEY,
+      currentVaultGeneration: 6,
+      survivorDeviceIds: [MAC],
+    });
+
+    await expect(invokeCallable(rotateCloudVaultKey, rotationRequest())).rejects.toThrow(
+      /CloudVault rotation requirement does not match/,
+    );
+    expect(store.get(`users/${UID}/cloud_vault_state/current`)?.vaultKeyID).toBe(CURRENT_KEY);
+    expect(store.get(`users/${UID}/cloud_vault_rotation_requirements/${REQUIREMENT_ID}`)?.status).toBe("pending");
   });
 });
 
