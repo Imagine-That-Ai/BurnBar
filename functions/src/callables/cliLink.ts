@@ -24,6 +24,7 @@ import {
   recordCallableApprovalFailure,
 } from "./publicRateLimit.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
+import { setPublicJsonSecurityHeaders } from "../publicHttpSecurityHeaders.js";
 
 interface CliLinkSessionDoc {
   deviceSecretHash: string;
@@ -79,6 +80,7 @@ export const startCliLink = onRequest(
     ...HOT_PATH_OPTIONS,
   },
   async (req, res) => {
+    setPublicJsonSecurityHeaders(res);
     if (req.method !== "POST") {
       res.status(405).json({ error: "method_not_allowed" });
       return;
@@ -133,6 +135,7 @@ export const pollCliLink = onRequest(
     cors: true,
   },
   async (req, res) => {
+    setPublicJsonSecurityHeaders(res);
     if (req.method !== "POST") {
       res.status(405).json({ error: "method_not_allowed" });
       return;
