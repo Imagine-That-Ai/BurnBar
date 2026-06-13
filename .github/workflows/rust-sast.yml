@@ -1,0 +1,140 @@
+name: Rust SAST
+
+# Static security analysis for the in-tree Rust surfaces (Cure53 RR-16).
+#
+# The CodeQL matrix (codeql.yml) covers swift / java-kotlin / js-ts / python but
+# NOT Rust — CodeQL has no GA-stable Rust analyzer here. cargo-deny already gates
+# licenses + bans (fast-feedback.yml `rust-deny-fast`, license-posture.yml), but
+# advisory *vulnerabilities* were scanned in ZERO workflows. This lane closes
+# that gap with cargo-audit (RustSec advisory DB) over BOTH Rust crates, plus
+# clippy security lints, failing closed on any new advisory:
+#   - crates/openburnbar-iroh  (iroh QUIC FFI shipped into the Swift/Android app)
+#   - crates/burnbar-remote    (gen-2 remote-control engine workspace)
+#
+# cargo-audit fails the job on any advisory except the four unmaintained
+# transitive deps already accepted (with justification) in
+# crates/openburnbar-iroh/deny.toml. Keep that ignore set in lockstep with the
+# deny.toml ignore list so the two tools agree on the accepted-risk boundary.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+  push:
+    branches: [main]
+  # Re-run on a weekly cadence so a *newly disclosed* advisory against an
+  # already-merged dependency turns the lane red even with no code change.
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: rust-sast-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cargo-audit:
+    name: cargo-audit (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: openburnbar-iroh
+            path: crates/openburnbar-iroh
+          - crate: burnbar-remote
+            path: crates/burnbar-remote
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+
+      # Pin cargo-audit so the advisory engine itself is reproducible; a floating
+      # `cargo install cargo-audit` would pull whatever the registry serves.
+      # Retry mirrors the cargo-deny install in fast-feedback.yml (transient
+      # crates.io / network flakes must not mask a real advisory signal).
+      - name: Install cargo-audit (pinned)
+        run: |
+          for attempt in 1 2 3; do
+            if cargo install cargo-audit --version 0.21.2 --locked; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+
+      # Fail closed on advisories (RR-16). `--deny warnings` escalates every
+      # advisory class — vulnerabilities AND unmaintained/yanked — to a hard
+      # failure, EXCEPT the four unmaintained transitive deps already accepted
+      # (with no safe upgrade path) in crates/openburnbar-iroh/deny.toml. Any new
+      # advisory, or a change that drops one of these transitive deps, turns the
+      # lane red. Keep this --ignore list in sync with that deny.toml.
+      - name: cargo audit (${{ matrix.crate }})
+        working-directory: ${{ matrix.path }}
+        run: |
+          cargo audit \
+            --deny warnings \
+            --ignore RUSTSEC-2023-0089 \
+            --ignore RUSTSEC-2025-0141 \
+            --ignore RUSTSEC-2024-0436 \
+            --ignore RUSTSEC-2024-0370
+
+  clippy-security:
+    name: clippy security lints (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: openburnbar-iroh
+            path: crates/openburnbar-iroh
+          - crate: burnbar-remote
+            path: crates/burnbar-remote
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      # rust-toolchain.toml drives the version where present (burnbar-remote
+      # pins 1.94.0 with clippy); openburnbar-iroh has none, so fall back to a
+      # SHA-pinned stable toolchain with clippy. dtolnay/rust-toolchain respects
+      # an in-tree rust-toolchain.toml automatically.
+      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: ${{ matrix.path }}
+
+      # Security posture: deny ALL default + correctness + suspicious clippy
+      # findings (-D warnings is the same bar rust-remote-engine.yml already
+      # enforces and the burnbar-remote workspace already meets), and additionally
+      # deny the correctness lints that are the genuine FFI/memory footguns for a
+      # crate compiled into the shipping app. These are *correctness*-group lints
+      # (already on-by-default at warn), not restriction-group style lints
+      # (unwrap/expect/panic), so promoting them to -D surfaces real undefined /
+      # truncating behaviour without falsely failing on the deliberate panics the
+      # existing code already vets. The wider restriction lints stay at -W so they
+      # show up as advisories in the job log without breaking pre-existing,
+      # accepted patterns the crate owners control.
+      - name: cargo clippy (security lints, deny warnings)
+        working-directory: ${{ matrix.path }}
+        run: |
+          cargo clippy --workspace --all-targets -- \
+            -D warnings \
+            -D clippy::transmute_ptr_to_ref \
+            -D invalid_reference_casting \
+            -D invalid_from_utf8_unchecked \
+            -W clippy::unwrap_used \
+            -W clippy::expect_used \
+            -W clippy::cast_possible_truncation \
+            -W clippy::cast_sign_loss

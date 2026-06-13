@@ -22,7 +22,7 @@ export const FEATURES: Feature[] = [
     id: "log-reader",
     title: "Reads logs, not API keys",
     blurb:
-      "OpenBurnBar reads the JSONL crumbs Claude Code, Codex, Factory and friends drop on disk. Your API keys never leave the providers you already trust.",
+      "OpenBurnBar reads the JSONL crumbs Claude Code, Codex, Factory and friends drop on disk. Your BYOK keys are stored in the macOS Keychain and sent only to the providers you choose — BurnBar's servers never receive them in plaintext.",
     evidence: "AgentLens/Services/LogParser/; README.md:54-67",
     category: "tracking"
   },

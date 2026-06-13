@@ -87,4 +87,13 @@ jobs:
     if: needs.detect-secrets.outputs.has-gcp-sa-key == 'false'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "::notice::GCP_SA_KEY not set — ops plane verify skipped"
+      # Fail CLOSED on the scheduled production run: a missing GCP_SA_KEY there means
+      # the Firestore DR + GitHub governance posture went UNVERIFIED, and a silent green
+      # would hide that gap (audit RR-4). Manual workflow_dispatch dry-runs may soft-skip.
+      - name: Fail closed on scheduled runs; soft-skip manual dry-runs
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "::error::GCP_SA_KEY is not set — production DR/governance verification could not run. Failing closed so the gap is visible instead of reporting a false green." >&2
+            exit 1
+          fi
+          echo "::notice::GCP_SA_KEY not set — ops plane verify skipped (manual dispatch dry-run)."
