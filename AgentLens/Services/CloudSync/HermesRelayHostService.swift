@@ -91,7 +91,22 @@ final class HermesRelayHostService {
                         settingsProvider: { @MainActor [settingsManager] in
                             settingsManager.mediaBlobTransferEnabled
                         },
-                        controlStreamRegistry: controlRegistry
+                        controlStreamRegistry: controlRegistry,
+                        // RR-18 — admit inbound transfers through the same
+                        // authoritative media gate (entitlement + daily cap +
+                        // kill switch + concurrency) that screen-share / video
+                        // sessions consult, instead of only bumping the active
+                        // session count.
+                        capabilityGate: MacMediaCapabilityGate.shared,
+                        // RR-18 — at-rest seal hook. File receive runs from
+                        // `uid`/`connectionID` only (there is no live mirror
+                        // request carrying a `mediaSealKey` wrap at fetch time),
+                        // and no per-connection media-seal key is resolvable on
+                        // this path today, so the provider returns nil: the seal
+                        // param is wired and the inbox keeps its prior
+                        // quarantine-only behaviour until a per-connection seal
+                        // session exists to open.
+                        frameSealKeyProvider: { _, _ in nil }
                     )
                     macFileTransfer.setComputerUseControlDispatcher(computerUseControlDispatcher)
                     // Per-request dispatch (chat-piggyback path) — used
@@ -113,6 +128,11 @@ final class HermesRelayHostService {
                             connectionID: connectionID
                         )
                     }
+                    // RR-18 — hand the same persistent control registry to the
+                    // iroh host so its heartbeat can purge a de-allowlisted /
+                    // revoked peer's live `media.control` streams per-peer,
+                    // matching the serve-task teardown it already runs.
+                    irohClient.mediaControlStreamRegistry = controlRegistry
                     self.mercuryFileTransfer = macFileTransfer
                 }
                 irohClient.cliChatDispatcher = cliChatDispatcher

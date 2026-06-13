@@ -208,6 +208,25 @@ final class DataStoreCoordinator {
             return try DatabasePool(path: path, configuration: config)
         }
 
+        // Codec-absence is a BUILD condition (the SPM `GRDB`/`CSQLite` systemLibrary links stock
+        // SQLite with no SQLCipher codec), identical for every install — not a per-user data issue.
+        // Refusing here would brick 100% of installs while delivering zero encryption, so when the
+        // codec is provably unavailable we run plaintext but DISCLOSE it (persistent acknowledged
+        // flag + error log) — never the silent plaintext of the original bug, never a startup brick.
+        guard DatabaseEncryptionService.isCipherAvailable() else {
+            AppLogger.dataStore.error(
+                "encryption_unavailable_codec_absent",
+                metadata: [
+                    "reason": "SQLCipher codec not linked (PRAGMA cipher_version empty); running disclosed plaintext",
+                    "path": path
+                ]
+            )
+            return try openDisclosedPlaintext(path: path, defaults: defaults)
+        }
+
+        // Codec IS available. A legacy plaintext DB is a per-user migration decision: refuse to
+        // open it encrypted-but-unmigrated (the startup-recovery UI handles it) rather than
+        // silently continue plaintext.
         let fileExists = FileManager.default.fileExists(atPath: path)
         if fileExists, DatabaseEncryptionService.isEncryptedDatabaseFile(at: path) == false {
             AppLogger.dataStore.error(
@@ -222,6 +241,21 @@ final class DataStoreCoordinator {
 
         let encryptionKey = DatabaseEncryptionService.getOrCreateKey()
         var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+        installDebugQueryTracer(on: &config)
+        return try DatabasePool(path: path, configuration: config)
+    }
+
+    /// UserDefaults key set when the app is running plaintext because the SQLCipher codec is not
+    /// linked. Read by the security/settings surface to render a persistent "database is not
+    /// encrypted" banner — this is what makes the plaintext fallback LOUD rather than silent.
+    static let plaintextFallbackAcknowledgedDefaultsKey = "databaseEncryptionPlaintextFallbackAcknowledged"
+
+    /// Opens the database in plaintext and persists the disclosure flag so the UI can surface a
+    /// standing "not encrypted" banner. Used only when encryption is requested but the build cannot
+    /// provide the codec (see `makeDatabasePool`).
+    private static func openDisclosedPlaintext(path: String, defaults: UserDefaults) throws -> DatabasePool {
+        defaults.set(true, forKey: plaintextFallbackAcknowledgedDefaultsKey)
+        var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
         installDebugQueryTracer(on: &config)
         return try DatabasePool(path: path, configuration: config)
     }

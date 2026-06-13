@@ -30,6 +30,7 @@ extension OpenBurnBarDaemonManager {
         await performBusyWork {
             try installFilesIfNeeded()
             try writeLaunchAgentPlist()
+            try revalidateInstalledBinaryBeforeLaunch()
             try await bootoutIfNeeded()
             try await runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
             try await runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
@@ -42,12 +43,27 @@ extension OpenBurnBarDaemonManager {
         await performBusyWork {
             try installFilesIfNeeded()
             try writeLaunchAgentPlist()
+            try revalidateInstalledBinaryBeforeLaunch()
             try await bootoutIfNeeded()
             try await runLaunchctl(["bootstrap", launchctlDomain, paths.launchAgentPlistURL.path])
             try await runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
             supervisionState = OpenBurnBarDaemonSupervisor.resetAfterRepair()
             try await awaitHealthy()
         }
+    }
+
+    /// RR-3: re-validate the on-disk installed daemon binary's code signature
+    /// immediately before we ask launchd to (re)launch it.
+    ///
+    /// `installFilesIfNeeded()` validates the binary at install time, but a
+    /// same-user attacker can swap the user-writable installed binary in the
+    /// window between install and launch. Re-checking here refuses to bootstrap
+    /// a binary that no longer satisfies the first-party requirement. The launchd
+    /// `KeepAlive` re-exec we cannot intercept is mitigated by the daemon socket's
+    /// peer code-signature gate (RR-3, daemon side) — that is the load-bearing
+    /// fix; this is the install/launch-path complement.
+    func revalidateInstalledBinaryBeforeLaunch() throws {
+        try validateDaemonBinary(at: paths.installedBinaryURL)
     }
 
     func installedDaemonBinaryNeedsRefresh() -> Bool {

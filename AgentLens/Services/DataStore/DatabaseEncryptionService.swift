@@ -355,6 +355,25 @@ extension DatabaseEncryptionService {
         return config
     }
 
+    /// Probes whether the linked SQLite actually provides the SQLCipher codec, i.e.
+    /// `PRAGMA cipher_version` is non-empty after `PRAGMA key`. On a build that links stock
+    /// SQLite (the SPM `GRDB`/`CSQLite` systemLibrary path links `sqlite3`, which has no codec)
+    /// this returns `false`, so callers can fall back to a LOUD, disclosed plaintext mode rather
+    /// than bricking 100% of installs while delivering zero encryption. The probe opens a throwaway
+    /// in-memory database; the result is cached for the process lifetime.
+    static func isCipherAvailable() -> Bool { cipherAvailabilityProbe }
+
+    private static let cipherAvailabilityProbe: Bool = {
+        do {
+            let config = try makeConfiguration(encryptionKey: String(repeating: "a", count: 64))
+            let queue = try DatabaseQueue(path: ":memory:", configuration: config)
+            try queue.read { _ in } // forces prepareDatabase → the cipher_version self-check
+            return true
+        } catch {
+            return false
+        }
+    }()
+
     // MARK: - Plaintext vs Encrypted File Detection
 
     /// Reports whether the file at `path` is an *encrypted* SQLCipher database, by

@@ -295,7 +295,7 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
             }
         }
         let legacyText = Self.decodeSealed(raw["ciphertext"]).flatMap {
-            try? CloudVaultCrypto.openText($0, keyData: vaultKey)
+            try? PensieveKnowledgeChunker.openChunkText($0, keyData: vaultKey, uid: uid, vectorId: stableDocumentID)
         }
         guard let text = signalText ?? legacyText else { return nil }
 
@@ -303,7 +303,7 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
         var title: String?
         var category: String?
         if let sealedMetadata = Self.decodeSealed(raw["sealedMetadata"]),
-           let metadataString = try? CloudVaultCrypto.openText(sealedMetadata, keyData: vaultKey),
+           let metadataString = try? PensieveKnowledgeChunker.openChunkMetadata(sealedMetadata, keyData: vaultKey, uid: uid, vectorId: stableDocumentID),
            let metadata = try? JSONSerialization.jsonObject(with: Data(metadataString.utf8)) as? [String: Any] {
             sourcePath = metadata["source_path"] as? String
             title = metadata["page_title"] as? String
@@ -327,12 +327,19 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
               let ciphertext = dict["ciphertext"] as? String,
               let tag = dict["tag"] as? String else { return nil }
         let keyVersion = (dict["keyVersion"] as? NSNumber)?.intValue ?? CloudVaultCrypto.currentKeyVersion
+        // Carry schemaVersion + aad through so path-bound (schemaVersion-2) chunks take the
+        // v2 branch and rebuild their path-derived AAD; without these the open falls back to
+        // the legacy no-AAD branch and the GCM tag check fails (the hit is silently dropped).
+        let schemaVersion = (dict["schemaVersion"] as? NSNumber)?.intValue
+        let aad = dict["aad"] as? String
         return CloudVaultSealedText(
+            schemaVersion: schemaVersion,
             algorithm: algorithm,
             keyVersion: keyVersion,
             nonce: nonce,
             ciphertext: ciphertext,
-            tag: tag
+            tag: tag,
+            aad: aad
         )
     }
 }
