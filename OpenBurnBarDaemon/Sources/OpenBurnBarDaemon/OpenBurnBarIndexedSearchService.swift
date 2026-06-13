@@ -68,6 +68,15 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
                 userInfo: [NSLocalizedDescriptionKey: "Failed to open SQLite database: \(message)"]
             )
         }
+        // RR-1: key the shared SQLite with the same app Keychain key WHEN a
+        // SQLCipher codec is linked. On a stock-SQLite build this is a deliberate
+        // no-op (the file stays disclosed-plaintext) so we never brick the open.
+        do {
+            try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: handle)
+        } catch {
+            sqlite3_close(handle)
+            throw error
+        }
         self.db = handle
         // Shared file with the AgentLens app and the daemon's switcher store.
         // Without a busy timeout, concurrent writers raise SQLITE_BUSY (error 5).
