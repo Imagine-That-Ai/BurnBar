@@ -109,7 +109,9 @@ impl IrohFfiError {
 fn assert_openburnbar_frame_length(length: usize) -> Result<(), IrohFfiError> {
     if length > OPENBURNBAR_MAX_FRAME_BYTES {
         return Err(IrohFfiError::StreamFailed {
-            detail: format!("frame too large: {length} bytes exceeds {OPENBURNBAR_MAX_FRAME_BYTES} bytes"),
+            detail: format!(
+                "frame too large: {length} bytes exceeds {OPENBURNBAR_MAX_FRAME_BYTES} bytes"
+            ),
         });
     }
     Ok(())

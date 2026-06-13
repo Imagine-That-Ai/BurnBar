@@ -22,12 +22,10 @@ Prerequisites:
 
 import argparse
 import json
-import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from hashlib import sha256
 import re
 from urllib.parse import quote
 
@@ -111,13 +109,15 @@ def collect_spm_dependencies(repo_root: Path) -> list[dict]:
             version = state.get("version") or state.get("revision") or state.get("branch") or "unknown"
             if not name:
                 continue
-            packages.append({
-                "name": name,
-                "version": str(version),
-                "url": location,
-                "type": "spm",
-                "source": rel,
-            })
+            packages.append(
+                {
+                    "name": name,
+                    "version": str(version),
+                    "url": location,
+                    "type": "spm",
+                    "source": rel,
+                }
+            )
 
     return dedupe_packages(packages)
 
@@ -141,14 +141,16 @@ def collect_npm_dependencies(repo_root: Path) -> list[dict]:
             version = meta.get("version")
             if not name or not version:
                 continue
-            packages.append({
-                "name": name,
-                "version": str(version),
-                "url": npm_package_url(name, package_path, meta),
-                "type": "npm",
-                "license": meta.get("license"),
-                "source": rel,
-            })
+            packages.append(
+                {
+                    "name": name,
+                    "version": str(version),
+                    "url": npm_package_url(name, package_path, meta),
+                    "type": "npm",
+                    "license": meta.get("license"),
+                    "source": rel,
+                }
+            )
 
     # Include direct manifest dependencies for small internal packages that have
     # no lockfile yet; exact transitive pins will be added once a lock exists.
@@ -164,14 +166,16 @@ def collect_npm_dependencies(repo_root: Path) -> list[dict]:
             for dep_name, dep_version_spec in pkg_data.get(dep_type, {}).items():
                 if str(dep_version_spec).startswith("file:"):
                     continue
-                packages.append({
-                    "name": dep_name,
-                    "version": str(dep_version_spec).lstrip("^~><= "),
-                    "url": f"https://www.npmjs.com/package/{dep_name}",
-                    "type": "npm",
-                    "license": "NOASSERTION",
-                    "source": rel,
-                })
+                packages.append(
+                    {
+                        "name": dep_name,
+                        "version": str(dep_version_spec).lstrip("^~><= "),
+                        "url": f"https://www.npmjs.com/package/{dep_name}",
+                        "type": "npm",
+                        "license": "NOASSERTION",
+                        "source": rel,
+                    }
+                )
 
     return dedupe_packages(packages)
 
@@ -184,28 +188,30 @@ def collect_cargo_dependencies(repo_root: Path) -> list[dict]:
         rel = str(lock_file.relative_to(repo_root))
         current: dict[str, str] = {}
 
-        def flush() -> None:
-            if current.get("name") and current.get("version"):
-                source = current.get("source", "")
-                url = source if source.startswith("git+") else f"https://crates.io/crates/{current['name']}"
-                packages.append({
-                    "name": current["name"],
-                    "version": current["version"],
-                    "url": url,
-                    "type": "cargo",
-                    "source": rel,
-                })
+        def flush(package: dict[str, str], source_rel: str) -> None:
+            if package.get("name") and package.get("version"):
+                source = package.get("source", "")
+                url = source if source.startswith("git+") else f"https://crates.io/crates/{package['name']}"
+                packages.append(
+                    {
+                        "name": package["name"],
+                        "version": package["version"],
+                        "url": url,
+                        "type": "cargo",
+                        "source": source_rel,
+                    }
+                )
 
         for raw_line in lock_file.read_text().splitlines():
             line = raw_line.strip()
             if line == "[[package]]":
-                flush()
+                flush(current, rel)
                 current = {}
                 continue
             match = re.match(r'^(name|version|source)\s*=\s*"([^"]+)"$', line)
             if match:
                 current[match.group(1)] = match.group(2)
-        flush()
+        flush(current, rel)
 
     return dedupe_packages(packages)
 
@@ -220,21 +226,25 @@ def collect_gradle_dependencies(repo_root: Path) -> list[dict]:
         rel = str(gradle_file.relative_to(repo_root))
         text = gradle_file.read_text()
         for group, artifact, version in coordinate_re.findall(text):
-            packages.append({
-                "name": f"{group}:{artifact}",
-                "version": version,
-                "url": f"https://mvnrepository.com/artifact/{group}/{artifact}",
-                "type": "gradle",
-                "source": rel,
-            })
+            packages.append(
+                {
+                    "name": f"{group}:{artifact}",
+                    "version": version,
+                    "url": f"https://mvnrepository.com/artifact/{group}/{artifact}",
+                    "type": "gradle",
+                    "source": rel,
+                }
+            )
         for plugin_id, version in plugin_re.findall(text):
-            packages.append({
-                "name": plugin_id,
-                "version": version,
-                "url": f"https://plugins.gradle.org/plugin/{plugin_id}",
-                "type": "gradle-plugin",
-                "source": rel,
-            })
+            packages.append(
+                {
+                    "name": plugin_id,
+                    "version": version,
+                    "url": f"https://plugins.gradle.org/plugin/{plugin_id}",
+                    "type": "gradle-plugin",
+                    "source": rel,
+                }
+            )
 
     return dedupe_packages(packages)
 
@@ -249,7 +259,7 @@ def build_spdx_document(
 ) -> dict:
     """Build an SPDX 2.3 JSON document."""
     spdx_id = "SPDXRef-DOCUMENT"
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     commit = run(["git", "rev-parse", "HEAD"], cwd=str(repo_root), check=False) or "unknown"
 
     packages = [
@@ -315,13 +325,14 @@ def build_spdx_document(
         }
         packages.append(pkg)
 
-        relationships.append({
-            "spdxElementId": "SPDXRef-Package-openburnbar",
-            "relationshipType": "DEPENDS_ON",
-            "relatedSpdxElement": dep_spdx_id,
-        })
+        relationships.append(
+            {
+                "spdxElementId": "SPDXRef-Package-openburnbar",
+                "relationshipType": "DEPENDS_ON",
+                "relatedSpdxElement": dep_spdx_id,
+            }
+        )
 
-    ns = "https://spdx.org/rdf/3.0.0"
     return {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",

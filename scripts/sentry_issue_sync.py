@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 """
 Sentry → GitHub Issue Sync
 ===========================
@@ -21,14 +19,16 @@ Optional:
   MIN_OCCURRENCES     Minimum event count to create an issue (default: 1)
 """
 
-import os
+from __future__ import annotations
+
 import json
-import urllib.request
-import urllib.error
-import urllib.parse
+import os
 import subprocess
 import sys
-from datetime import datetime, timezone, timedelta
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta, UTC
 
 SENTRY_AUTH_TOKEN = os.environ.get("SENTRY_AUTH_TOKEN", "")
 SENTRY_ORG = os.environ.get("SENTRY_ORG", "")
@@ -43,27 +43,30 @@ if not SENTRY_AUTH_TOKEN or not SENTRY_ORG:
 
 # Maps Sentry project slug → GitHub area label.
 PROJECTS = {
-    "openburnbar-macos":     "area:macOS",
+    "openburnbar-macos": "area:macOS",
     "openburnbar-functions": "area:functions",
     "openburnbar-extension": "area:extension",
-    "openburnbar-android":   "area:Android",
-    "burnbar-website":       "area:website",
+    "openburnbar-android": "area:Android",
+    "burnbar-website": "area:website",
 }
 
 # Sentry level → GitHub priority label.
 LEVEL_TO_PRIORITY = {
-    "fatal":   "P0",
-    "error":   "P1",
+    "fatal": "P0",
+    "error": "P1",
     "warning": "P2",
 }
 
 
 def sentry_get(path: str) -> list:
     url = f"https://sentry.io/api/0{path}"
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {SENTRY_AUTH_TOKEN}",
-        "Content-Type": "application/json",
-    })
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {SENTRY_AUTH_TOKEN}",
+            "Content-Type": "application/json",
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
@@ -78,12 +81,19 @@ def find_existing_issue(sentry_id: str) -> int | None:
     marker = f"sentry-id: {sentry_id}"
     result = subprocess.run(
         [
-            "gh", "issue", "list",
-            "--repo", GH_REPO,
-            "--state", "open",
-            "--search", f"in:body {marker}",
-            "--json", "number,body",
-            "--limit", "5",
+            "gh",
+            "issue",
+            "list",
+            "--repo",
+            GH_REPO,
+            "--state",
+            "open",
+            "--search",
+            f"in:body {marker}",
+            "--json",
+            "number,body",
+            "--limit",
+            "5",
         ],
         capture_output=True,
     )
@@ -151,7 +161,7 @@ def build_issue_body(project_slug: str, issue: dict) -> str:
 
 
 def main() -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     cutoff = now - timedelta(hours=LOOKBACK_HOURS)
     cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -207,10 +217,15 @@ def main() -> None:
             print(f"  Creating GH issue: {gh_title[:80]}")
 
             cmd = [
-                "gh", "issue", "create",
-                "--repo", GH_REPO,
-                "--title", gh_title,
-                "--body", gh_body,
+                "gh",
+                "issue",
+                "create",
+                "--repo",
+                GH_REPO,
+                "--title",
+                gh_title,
+                "--body",
+                gh_body,
             ]
             for label in labels:
                 cmd += ["--label", label]
@@ -225,11 +240,17 @@ def main() -> None:
                 # Label-not-found is non-fatal; retry without optional labels.
                 if "could not add label" in stderr.lower() or "label" in stderr.lower():
                     cmd_minimal = [
-                        "gh", "issue", "create",
-                        "--repo", GH_REPO,
-                        "--title", gh_title,
-                        "--body", gh_body,
-                        "--label", "type:bug",
+                        "gh",
+                        "issue",
+                        "create",
+                        "--repo",
+                        GH_REPO,
+                        "--title",
+                        gh_title,
+                        "--body",
+                        gh_body,
+                        "--label",
+                        "type:bug",
                     ]
                     result2 = subprocess.run(cmd_minimal, capture_output=True)
                     if result2.returncode == 0:

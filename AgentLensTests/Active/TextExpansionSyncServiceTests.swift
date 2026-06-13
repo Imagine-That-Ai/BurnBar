@@ -9,7 +9,7 @@ final class TextExpansionSyncServiceTests: XCTestCase {
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
-    private var vaultKeyStore: FakeTextExpansionVaultKeyStore!
+    private var vaultKeyStore: StaticSessionLogVaultKeyStore!
     private var vaultKeyPublisher: FakeTextExpansionVaultKeyPublisher!
     private var originalSharedCloudSyncEnabled = true
 
@@ -18,7 +18,7 @@ final class TextExpansionSyncServiceTests: XCTestCase {
         accountManager = FakeAccountManager.makeSignedIn()
         settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         fakeGateway = CloudSyncFirestoreFakeGateway()
-        vaultKeyStore = FakeTextExpansionVaultKeyStore()
+        vaultKeyStore = StaticSessionLogVaultKeyStore(keyData: Data(repeating: 0x33, count: 32))
         vaultKeyPublisher = FakeTextExpansionVaultKeyPublisher()
         context = CloudSyncContext(
             dataStore: dataStore,
@@ -85,19 +85,6 @@ final class TextExpansionSyncServiceTests: XCTestCase {
 
         let unsynced = try dataStore.fetchUnsyncedTextExpansionSnippets()
         XCTAssertTrue(unsynced.isEmpty)
-    }
-}
-
-@MainActor
-private final class FakeTextExpansionVaultKeyStore: SessionLogVaultKeyProviding {
-    private let key = Data(repeating: 0x33, count: 32)
-
-    func loadKey(uid: String) throws -> Data? {
-        key
-    }
-
-    func getOrCreateKey(uid: String) throws -> Data {
-        key
     }
 }
 

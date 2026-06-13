@@ -55,7 +55,7 @@ function randomSecret(prefix: string): string {
 }
 
 function safeEqualHash(raw: string, expectedHash: unknown): boolean {
-  if (typeof expectedHash !== "string" || expectedHash.length === 0) return false;
+  if (typeof expectedHash !== "string" || expectedHash.length === 0) {return false;}
   let expected: Buffer;
   try {
     expected = Buffer.from(expectedHash, "hex");
@@ -70,12 +70,12 @@ function toMillis(raw: unknown): number | undefined {
   if (raw && typeof raw === "object" && "toMillis" in raw && typeof (raw as { toMillis: unknown }).toMillis === "function") {
     return (raw as { toMillis(): number }).toMillis();
   }
-  if (raw instanceof Date) return raw.getTime();
+  if (raw instanceof Date) {return raw.getTime();}
   if (typeof raw === "string") {
     const ms = new Date(raw).getTime();
     return Number.isNaN(ms) ? undefined : ms;
   }
-  if (typeof raw === "number") return raw;
+  if (typeof raw === "number") {return raw;}
   return undefined;
 }
 

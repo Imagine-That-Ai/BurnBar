@@ -206,9 +206,11 @@ jobs:
           java-version: "21"
           distribution: "temurin"
 
-      - name: Inject Firebase config (template)
-        run: |
-          cp android/app/google-services.json.template android/app/google-services.json
+      - name: Inject Android Firebase config
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          OPENBURNBAR_ANDROID_FIREBASE_STRICT: "true"
+        run: bash ./scripts/ci/inject-firebase-config-android.sh
 
       - name: Run dependency-analysis buildHealth
         run: |

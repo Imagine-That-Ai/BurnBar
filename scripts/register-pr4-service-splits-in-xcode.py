@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Register PR4 service split files in OpenBurnBar.xcodeproj (idempotent)."""
+
 from __future__ import annotations
 
 import hashlib
@@ -122,7 +123,9 @@ def main() -> int:
 
     if phase_lines:
         pattern = re.compile(
-            r"(" + re.escape(MAC_SOURCES_PHASE) + r"\s*/\*\s*Sources\s*\*/\s*=\s*\{[^}]*?files\s*=\s*\(\n)(.*?)(\n\s*\);)",
+            r"("
+            + re.escape(MAC_SOURCES_PHASE)
+            + r"\s*/\*\s*Sources\s*\*/\s*=\s*\{[^}]*?files\s*=\s*\(\n)(.*?)(\n\s*\);)",
             re.DOTALL,
         )
         m = pattern.search(contents)
@@ -133,8 +136,7 @@ def main() -> int:
 
     PROJ.write_text(contents)
     print(
-        f"PR4 pbxproj: added {len(file_ref_lines)} refs, "
-        f"removed root monolith refs for {len(REMOVE_ROOT_PATHS)} files"
+        f"PR4 pbxproj: added {len(file_ref_lines)} refs, removed root monolith refs for {len(REMOVE_ROOT_PATHS)} files"
     )
     return 0
 

@@ -27,7 +27,7 @@ import struct
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -83,9 +83,32 @@ OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
 OPENBURNBAR_CLOUD_VAULT_HMAC_SALT = b"OpenBurnBar-CloudVault-HMAC-Salt-v1"
 OPENBURNBAR_CLOUD_VAULT_HMAC_INFO_PREFIX = b"OpenBurnBar-CloudVault-HMAC-v1"
 OPENBURNBAR_STOPWORDS = {
-    "the", "and", "for", "with", "that", "this", "from", "how", "what", "where",
-    "when", "why", "are", "was", "were", "you", "your", "have", "has", "had",
-    "into", "onto", "can", "could", "should", "would",
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "from",
+    "how",
+    "what",
+    "where",
+    "when",
+    "why",
+    "are",
+    "was",
+    "were",
+    "you",
+    "your",
+    "have",
+    "has",
+    "had",
+    "into",
+    "onto",
+    "can",
+    "could",
+    "should",
+    "would",
 }
 
 
@@ -104,9 +127,7 @@ def _sanitize_db_path(raw: str) -> Path:
     if not candidate.is_absolute():
         raise ValueError("BURNBAR_DB_PATH must resolve to an absolute path.")
     if not re.fullmatch(r"[A-Za-z0-9._-]+\.sqlite[0-9]?", candidate.name):
-        raise ValueError(
-            "BURNBAR_DB_PATH basename must match [A-Za-z0-9._-]+\\.sqlite[0-9]?"
-        )
+        raise ValueError("BURNBAR_DB_PATH basename must match [A-Za-z0-9._-]+\\.sqlite[0-9]?")
     return candidate
 
 
@@ -160,15 +181,118 @@ def fts5_safe_query(user_input: str) -> str:
     """
     # Common English stopwords
     stopwords = {
-        "a", "an", "the", "and", "or", "but", "if", "then", "else", "when", "where", "why", "how",
-        "what", "who", "which", "is", "are", "was", "were", "be", "been", "being", "to", "of", "in",
-        "on", "for", "with", "about", "into", "from", "at", "by", "as", "it", "its", "this", "that",
-        "these", "those", "i", "you", "we", "they", "he", "she", "my", "your", "our", "their", "me",
-        "him", "her", "them", "do", "does", "did", "have", "has", "had", "can", "could", "would",
-        "should", "will", "just", "not", "no", "yes", "so", "very", "too", "also", "only", "even",
-        "there", "here", "some", "any", "all", "each", "every", "both", "few", "more", "most", "other",
-        "such", "than", "up", "out", "off", "over", "under", "again", "once", "ever", "please", "tell",
-        "give", "show", "find", "search", "look", "get", "got", "make", "made", "using", "use", "used"
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "if",
+        "then",
+        "else",
+        "when",
+        "where",
+        "why",
+        "how",
+        "what",
+        "who",
+        "which",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "to",
+        "of",
+        "in",
+        "on",
+        "for",
+        "with",
+        "about",
+        "into",
+        "from",
+        "at",
+        "by",
+        "as",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "you",
+        "we",
+        "they",
+        "he",
+        "she",
+        "my",
+        "your",
+        "our",
+        "their",
+        "me",
+        "him",
+        "her",
+        "them",
+        "do",
+        "does",
+        "did",
+        "have",
+        "has",
+        "had",
+        "can",
+        "could",
+        "would",
+        "should",
+        "will",
+        "just",
+        "not",
+        "no",
+        "yes",
+        "so",
+        "very",
+        "too",
+        "also",
+        "only",
+        "even",
+        "there",
+        "here",
+        "some",
+        "any",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "such",
+        "than",
+        "up",
+        "out",
+        "off",
+        "over",
+        "under",
+        "again",
+        "once",
+        "ever",
+        "please",
+        "tell",
+        "give",
+        "show",
+        "find",
+        "search",
+        "look",
+        "get",
+        "got",
+        "make",
+        "made",
+        "using",
+        "use",
+        "used",
     }
 
     trimmed = user_input.strip()
@@ -324,7 +448,7 @@ def _session_log_document_id(storage_path: str, uid: str) -> str | None:
     prefix = f"users/{uid}/session_logs/"
     if not storage_path.startswith(prefix):
         return None
-    remainder = storage_path[len(prefix):]
+    remainder = storage_path[len(prefix) :]
     parts = remainder.split("/")
     if len(parts) >= 3 and parts[1] == "bodies":
         return parts[0]
@@ -357,8 +481,20 @@ def _cloud_token_hashes(text: str, vault_key: bytes, limit: int = 10) -> list[st
 
 def _simple_semantic_stem(token: str) -> str:
     suffixes = [
-        "ization", "ations", "ation", "ments", "ment", "ingly", "edly",
-        "ing", "ies", "ied", "ers", "er", "ed", "s",
+        "ization",
+        "ations",
+        "ation",
+        "ments",
+        "ment",
+        "ingly",
+        "edly",
+        "ing",
+        "ies",
+        "ied",
+        "ers",
+        "er",
+        "ed",
+        "s",
     ]
     for suffix in suffixes:
         if len(token) > len(suffix) + 3 and token.endswith(suffix):
@@ -571,7 +707,7 @@ def _seal_cloud_blob_envelope(
         "plaintextHMAC": _cloud_vault_hmac_hex(plaintext, vault_key, "blob-integrity"),
         "integrityHashVersion": 1,
         "sealedBoxBase64": base64.b64encode(combined).decode("utf-8"),
-        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "createdAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "aad": aad_context or OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT,
     }
 
@@ -660,9 +796,7 @@ def _parse_project_memory_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _table_names(conn: sqlite3.Connection) -> set[str]:
-    rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
-    ).fetchall()
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')").fetchall()
     return {str(row[0]) for row in rows}
 
 
@@ -713,19 +847,19 @@ def _vector_score(lhs: list[float], rhs: list[float], metric: str) -> float:
     if len(lhs) != len(rhs) or not lhs:
         return 0.0
     if metric in {"dotProduct", "dot_product"}:
-        return sum(float(l) * float(r) for l, r in zip(lhs, rhs))
+        return sum(float(left) * float(right) for left, right in zip(lhs, rhs, strict=True))
     if metric == "euclidean":
-        return -math.sqrt(sum((float(l) - float(r)) ** 2 for l, r in zip(lhs, rhs)))
+        return -math.sqrt(sum((float(left) - float(right)) ** 2 for left, right in zip(lhs, rhs, strict=True)))
 
     dot = 0.0
     lhs_norm = 0.0
     rhs_norm = 0.0
-    for l_value, r_value in zip(lhs, rhs):
-        l = float(l_value)
-        r = float(r_value)
-        dot += l * r
-        lhs_norm += l * l
-        rhs_norm += r * r
+    for left_value, right_value in zip(lhs, rhs, strict=True):
+        left = float(left_value)
+        right = float(right_value)
+        dot += left * right
+        lhs_norm += left * left
+        rhs_norm += right * right
     if lhs_norm <= 0 or rhs_norm <= 0:
         return 0.0
     return dot / (math.sqrt(lhs_norm) * math.sqrt(rhs_norm))
@@ -863,6 +997,7 @@ def _semantic_search_payload(
         conv_start_expr = "conv.startTime" if "startTime" in conv_cols else "NULL"
         conv_title_expr = "conv.inferredTaskTitle" if "inferredTaskTitle" in conv_cols else "NULL"
 
+    # S608: selected expressions are fixed schema-column literals derived from local schema inspection.
     sql = f"""
         SELECT
             e.chunkID,
@@ -962,9 +1097,7 @@ def burnbar_list_providers() -> str:
     path = _default_db_path()
     with _connect_ro(path) as conn:
         conn.row_factory = sqlite3.Row
-        cur = conn.execute(
-            "SELECT DISTINCT provider FROM conversations ORDER BY provider"
-        )
+        cur = conn.execute("SELECT DISTINCT provider FROM conversations ORDER BY provider")
         rows = [r[0] for r in cur.fetchall()]
     return json.dumps({"providers": rows}, indent=2)
 
@@ -1086,7 +1219,7 @@ def burnbar_cloud_semantic_search_conversations(
         result = _call_firebase_callable("searchEncryptedConversationIndex", payload, config)
         raw_hits = result.get("hits") if isinstance(result, dict) else []
         hits: list[dict[str, Any]] = []
-        for hit in (raw_hits if isinstance(raw_hits, list) else []):
+        for hit in raw_hits if isinstance(raw_hits, list) else []:
             if not isinstance(hit, dict):
                 continue
             try:
@@ -1105,33 +1238,39 @@ def burnbar_cloud_semantic_search_conversations(
                 )
             except (KeyError, TypeError, ValueError, RuntimeError):
                 continue
-            hits.append({
-                "id": hit.get("id"),
-                "chunkID": hit.get("chunkID"),
-                "documentID": hit.get("documentID"),
-                "title": title,
-                "snippet": snippet,
-                "provider": hit.get("provider"),
-                "projectName": hit.get("projectName"),
-                "score": hit.get("score"),
-                "tokenScore": hit.get("tokenScore"),
-                "semanticScore": hit.get("semanticScore"),
-                "matchKind": hit.get("matchKind"),
-                "storagePath": hit.get("storagePath"),
-                "bodyHash": hit.get("bodyHash"),
-                "bodyHashVersion": hit.get("bodyHashVersion"),
-                "indexVersion": hit.get("indexVersion"),
-                "semanticHashVersion": hit.get("semanticHashVersion"),
-            })
+            hits.append(
+                {
+                    "id": hit.get("id"),
+                    "chunkID": hit.get("chunkID"),
+                    "documentID": hit.get("documentID"),
+                    "title": title,
+                    "snippet": snippet,
+                    "provider": hit.get("provider"),
+                    "projectName": hit.get("projectName"),
+                    "score": hit.get("score"),
+                    "tokenScore": hit.get("tokenScore"),
+                    "semanticScore": hit.get("semanticScore"),
+                    "matchKind": hit.get("matchKind"),
+                    "storagePath": hit.get("storagePath"),
+                    "bodyHash": hit.get("bodyHash"),
+                    "bodyHashVersion": hit.get("bodyHashVersion"),
+                    "indexVersion": hit.get("indexVersion"),
+                    "semanticHashVersion": hit.get("semanticHashVersion"),
+                }
+            )
     except RuntimeError as exc:
         return _json_unavailable("CLOUD_SEARCH_FAILED", "hosted encrypted search failed", error=str(exc))
 
-    return json.dumps({
-        "status": "ok",
-        "query": query,
-        "results": hits,
-        "privacy": "query plaintext and vault key stayed local; Firebase received only keyed token/semantic hashes",
-    }, indent=2, default=str)
+    return json.dumps(
+        {
+            "status": "ok",
+            "query": query,
+            "results": hits,
+            "privacy": "query plaintext and vault key stayed local; Firebase received only keyed token/semantic hashes",
+        },
+        indent=2,
+        default=str,
+    )
 
 
 @mcp.tool()
@@ -1162,11 +1301,7 @@ def burnbar_cloud_get_conversation_body(
             envelope = json.loads(response.read().decode("utf-8"))
         uid = str(config.get("uid") or "")
         document_id = _session_log_document_id(storage_path, uid)
-        expected_aad = (
-            _cloud_vault_aad_context(uid, "session_logs", document_id, "sealedBody")
-            if document_id
-            else None
-        )
+        expected_aad = _cloud_vault_aad_context(uid, "session_logs", document_id, "sealedBody") if document_id else None
         plaintext = _open_cloud_blob_envelope(envelope, config["vaultKey"], expected_aad)
         effective_hash_version = int(
             body_hash_version
@@ -1182,21 +1317,26 @@ def burnbar_cloud_get_conversation_body(
             raise RuntimeError("decrypted body hash did not match the search hit")
         full_text = plaintext.decode("utf-8")
     except (RuntimeError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
-        return _json_unavailable("CLOUD_BODY_DECRYPT_FAILED", "hosted encrypted body could not be decrypted", error=str(exc))
+        return _json_unavailable(
+            "CLOUD_BODY_DECRYPT_FAILED", "hosted encrypted body could not be decrypted", error=str(exc)
+        )
 
     truncated = False
     max_chars = max(1, min(int(max_full_text_chars), 500_000))
     if len(full_text) > max_chars:
         full_text = full_text[: max_chars // 2] + "\n… [truncated] …\n" + full_text[-max_chars // 2 :]
         truncated = True
-    return json.dumps({
-        "status": "ok",
-        "storagePath": storage_path,
-        "bodyHash": body_hash,
-        "bodyHashVersion": effective_hash_version,
-        "fullText": full_text,
-        "fullTextTruncated": truncated,
-    }, indent=2)
+    return json.dumps(
+        {
+            "status": "ok",
+            "storagePath": storage_path,
+            "bodyHash": body_hash,
+            "bodyHashVersion": effective_hash_version,
+            "fullText": full_text,
+            "fullTextTruncated": truncated,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -1237,12 +1377,16 @@ def burnbar_list_project_memory(limit: int = 20) -> str:
     snapshots = [_parse_project_memory_row(row) for row in rows]
     for item in snapshots:
         item.pop("snapshot", None)
-    return json.dumps({
-        "status": "ok",
-        "source": "local",
-        "count": len(snapshots),
-        "snapshots": snapshots,
-    }, indent=2, default=str)
+    return json.dumps(
+        {
+            "status": "ok",
+            "source": "local",
+            "count": len(snapshots),
+            "snapshots": snapshots,
+        },
+        indent=2,
+        default=str,
+    )
 
 
 @mcp.tool()
@@ -1278,11 +1422,15 @@ def burnbar_get_project_memory(project_slug: str, source: str = "auto") -> str:
                 row = _project_memory_row(conn, slug)
                 if row is not None:
                     payload = _parse_project_memory_row(row)
-                    return json.dumps({
-                        "status": "ok",
-                        "source": "local",
-                        **payload,
-                    }, indent=2, default=str)
+                    return json.dumps(
+                        {
+                            "status": "ok",
+                            "source": "local",
+                            **payload,
+                        },
+                        indent=2,
+                        default=str,
+                    )
                 if source_mode == "local":
                     return _json_unavailable(
                         "PROJECT_MEMORY_NOT_FOUND",
@@ -1336,34 +1484,43 @@ def burnbar_get_project_memory(project_slug: str, source: str = "auto") -> str:
         )
 
     visuals = snapshot.get("visuals")
-    visual_kinds = sorted(
-        {
-            str(item.get("kind"))
-            for item in visuals
-            if isinstance(item, dict) and isinstance(item.get("kind"), str) and item.get("kind")
-        }
-    ) if isinstance(visuals, list) else []
+    visual_kinds = (
+        sorted(
+            {
+                str(item.get("kind"))
+                for item in visuals
+                if isinstance(item, dict) and isinstance(item.get("kind"), str) and item.get("kind")
+            }
+        )
+        if isinstance(visuals, list)
+        else []
+    )
     sections = snapshot.get("sections")
     section_count = len(sections) if isinstance(sections, list) else 0
 
-    return json.dumps({
-        "status": "ok",
-        "source": "cloud",
-        "docID": cloud_snapshot.get("docID") or doc_id,
-        "projectSlug": cloud_snapshot.get("projectSlug") or snapshot.get("projectSlug") or slug,
-        "projectDisplayName": cloud_snapshot.get("projectDisplayName") or snapshot.get("projectDisplayName"),
-        "contentHash": cloud_snapshot.get("contentHash") or snapshot.get("contentHash"),
-        "contentHashVersion": cloud_snapshot.get("contentHashVersion"),
-        "sourceSessionCount": cloud_snapshot.get("sourceSessionCount") or snapshot.get("sourceSessionCount"),
-        "sourceConversationCount": cloud_snapshot.get("sourceConversationCount") or snapshot.get("sourceConversationCount"),
-        "generatedAt": cloud_snapshot.get("generatedAt") or snapshot.get("generatedAt"),
-        "updatedAt": cloud_snapshot.get("updatedAt"),
-        "schemaVersion": cloud_snapshot.get("schemaVersion"),
-        "freshness": cloud_snapshot.get("freshness") or snapshot.get("freshness"),
-        "visualKinds": cloud_snapshot.get("visualKinds") or visual_kinds,
-        "sectionCount": section_count,
-        "snapshot": snapshot,
-    }, indent=2, default=str)
+    return json.dumps(
+        {
+            "status": "ok",
+            "source": "cloud",
+            "docID": cloud_snapshot.get("docID") or doc_id,
+            "projectSlug": cloud_snapshot.get("projectSlug") or snapshot.get("projectSlug") or slug,
+            "projectDisplayName": cloud_snapshot.get("projectDisplayName") or snapshot.get("projectDisplayName"),
+            "contentHash": cloud_snapshot.get("contentHash") or snapshot.get("contentHash"),
+            "contentHashVersion": cloud_snapshot.get("contentHashVersion"),
+            "sourceSessionCount": cloud_snapshot.get("sourceSessionCount") or snapshot.get("sourceSessionCount"),
+            "sourceConversationCount": cloud_snapshot.get("sourceConversationCount")
+            or snapshot.get("sourceConversationCount"),
+            "generatedAt": cloud_snapshot.get("generatedAt") or snapshot.get("generatedAt"),
+            "updatedAt": cloud_snapshot.get("updatedAt"),
+            "schemaVersion": cloud_snapshot.get("schemaVersion"),
+            "freshness": cloud_snapshot.get("freshness") or snapshot.get("freshness"),
+            "visualKinds": cloud_snapshot.get("visualKinds") or visual_kinds,
+            "sectionCount": section_count,
+            "snapshot": snapshot,
+        },
+        indent=2,
+        default=str,
+    )
 
 
 @mcp.tool()
@@ -1418,13 +1575,17 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
             aad_context=_cloud_vault_aad_context(uid, "project_memory_snapshots", doc_id, "sealedSnapshot"),
         )
         visuals = snapshot.get("visuals")
-        visual_kinds = sorted(
-            {
-                str(item.get("kind"))
-                for item in visuals
-                if isinstance(item, dict) and isinstance(item.get("kind"), str) and item.get("kind")
-            }
-        ) if isinstance(visuals, list) else []
+        visual_kinds = (
+            sorted(
+                {
+                    str(item.get("kind"))
+                    for item in visuals
+                    if isinstance(item, dict) and isinstance(item.get("kind"), str) and item.get("kind")
+                }
+            )
+            if isinstance(visuals, list)
+            else []
+        )
         legacy_doc_id = _normalize_project_slug(project_slug)
         payload = {
             "docID": doc_id,
@@ -1449,16 +1610,20 @@ def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
             projectSlug=slug,
         )
 
-    return json.dumps({
-        "status": "ok",
-        "source": "cloud-sync",
-        "docID": doc_id,
-        "projectSlug": parsed.get("projectSlug"),
-        "projectDisplayName": parsed.get("projectDisplayName"),
-        "contentHash": payload.get("contentHash"),
-        "contentHashVersion": payload.get("contentHashVersion"),
-        "result": result,
-    }, indent=2, default=str)
+    return json.dumps(
+        {
+            "status": "ok",
+            "source": "cloud-sync",
+            "docID": doc_id,
+            "projectSlug": parsed.get("projectSlug"),
+            "projectDisplayName": parsed.get("projectDisplayName"),
+            "contentHash": payload.get("contentHash"),
+            "contentHashVersion": payload.get("contentHashVersion"),
+            "result": result,
+        },
+        indent=2,
+        default=str,
+    )
 
 
 @mcp.tool()
@@ -1593,7 +1758,7 @@ def burnbar_record_hermes_usage(
                 indent=2,
             )
     else:
-        recorded_at = datetime.now(timezone.utc)
+        recorded_at = datetime.now(UTC)
 
     try:
         event = UsageEvent(
@@ -1725,6 +1890,7 @@ def burnbar_query_spend(
         args.append(filter_project)
     where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
 
+    # S608: column comes from column_map and where_sql uses only fixed clauses with bound parameters.
     sql = f"""
         SELECT {column} AS label,
                COALESCE(SUM(cost), 0) AS totalCost,
@@ -1793,7 +1959,8 @@ def burnbar_budget_status(
                 spend_args.append(rule["projectName"])
             spend_where = ("WHERE " + " AND ".join(spend_clauses)) if spend_clauses else ""
             spend_row = conn.execute(
-                f"SELECT COALESCE(SUM(cost), 0) AS total FROM token_usage {spend_where}",
+                # S608: spend_where uses only fixed scope clauses with bound parameters.
+                f"SELECT COALESCE(SUM(cost), 0) AS total FROM token_usage {spend_where}",  # noqa: S608
                 spend_args,
             ).fetchone()
             used = spend_row["total"] if spend_row else 0
@@ -1845,7 +2012,8 @@ def burnbar_spend_forecast(
             args.append(project_name)
         where_sql = "WHERE " + " AND ".join(clauses)
         row = conn.execute(
-            f"SELECT COALESCE(SUM(cost), 0) AS total FROM token_usage {where_sql}",
+            # S608: where_sql is assembled only from fixed clauses with bound parameters.
+            f"SELECT COALESCE(SUM(cost), 0) AS total FROM token_usage {where_sql}",  # noqa: S608
             args,
         ).fetchone()
         trailing_total = row["total"] if row else 0
@@ -1913,7 +2081,7 @@ def burnbar_set_budget_limit(
 
     import uuid
 
-    now = datetime.now(timezone.utc).isoformat(sep=" ", timespec="milliseconds")
+    now = datetime.now(UTC).isoformat(sep=" ", timespec="milliseconds")
     rid = rule_id or str(uuid.uuid4())
     path = _default_db_path()
     with _connect_rw(path) as conn:
@@ -1979,7 +2147,9 @@ def burnbar_set_budget_limit(
             ),
         )
         conn.commit()
-    return json.dumps({"ruleID": rid, "scope": scope, "amountUSD": amount_usd, "period": period, "behavior": behavior}, indent=2)
+    return json.dumps(
+        {"ruleID": rid, "scope": scope, "amountUSD": amount_usd, "period": period, "behavior": behavior}, indent=2
+    )
 
 
 @mcp.tool()
@@ -1993,14 +2163,12 @@ def burnbar_pause_budget_gate(rule_id: str, until_iso: str) -> str:
     except ValueError:
         return json.dumps({"error": "until_iso must be ISO 8601 (e.g. 2026-05-26T09:00:00Z)"})
 
-    now = datetime.now(timezone.utc).isoformat(sep=" ", timespec="milliseconds")
+    now = datetime.now(UTC).isoformat(sep=" ", timespec="milliseconds")
     until_str = parsed.isoformat(sep=" ", timespec="milliseconds")
 
     path = _default_db_path()
     with _connect_rw(path) as conn:
-        rule_row = conn.execute(
-            "SELECT amountUSD FROM budget_rules WHERE id = ?", (rule_id,)
-        ).fetchone()
+        rule_row = conn.execute("SELECT amountUSD FROM budget_rules WHERE id = ?", (rule_id,)).fetchone()
         if rule_row is None:
             return json.dumps({"error": f"no rule with id {rule_id}"})
         conn.execute(
@@ -2036,12 +2204,10 @@ def burnbar_pause_budget_gate(rule_id: str, until_iso: str) -> str:
 @mcp.tool()
 def burnbar_resume_budget_gate(rule_id: str) -> str:
     """Cancel an active pause on a rule. Resumes enforcement immediately."""
-    now = datetime.now(timezone.utc).isoformat(sep=" ", timespec="milliseconds")
+    now = datetime.now(UTC).isoformat(sep=" ", timespec="milliseconds")
     path = _default_db_path()
     with _connect_rw(path) as conn:
-        rule_row = conn.execute(
-            "SELECT amountUSD FROM budget_rules WHERE id = ?", (rule_id,)
-        ).fetchone()
+        rule_row = conn.execute("SELECT amountUSD FROM budget_rules WHERE id = ?", (rule_id,)).fetchone()
         if rule_row is None:
             return json.dumps({"error": f"no rule with id {rule_id}"})
         conn.execute(
@@ -2113,6 +2279,7 @@ def burnbar_org_spend(
     if window:
         clauses.append(f"startTime >= {window}")
     where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    # S608: column comes from column_map and where_sql uses only fixed period clauses.
     sql = f"""
         SELECT {column} AS label,
                COALESCE(SUM(cost), 0) AS totalCost,

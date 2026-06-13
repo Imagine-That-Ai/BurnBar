@@ -82,7 +82,7 @@ interface SearchHitRecord {
 }
 
 function requireVaultKey(): void {
-  if (hasVaultKey()) return;
+  if (hasVaultKey()) {return;}
   throw new ResumeCliError(JSON.stringify({
     kind: "error",
     code: "vault_key_unavailable",
@@ -123,7 +123,7 @@ async function callHostedTool(name: string, args: Record<string, unknown>, endpo
     throw new ResumeCliError(json.error.message ?? "Hosted MCP resume failed.", 1);
   }
   const text = json.result?.content?.find((item) => item.type === "text")?.text;
-  if (!text) throw new ResumeCliError("Hosted MCP resume returned no text content.", 1);
+  if (!text) {throw new ResumeCliError("Hosted MCP resume returned no text content.", 1);}
   return JSON.parse(text) as unknown;
 }
 
@@ -175,10 +175,10 @@ function tokenHashes(text: string, vaultKey: Buffer, limit: number): string[] {
   const hashes: string[] = [];
   const seen = new Set<string>();
   for (const token of normalizedTokens(text)) {
-    if (seen.has(token)) continue;
+    if (seen.has(token)) {continue;}
     seen.add(token);
     hashes.push(createHmac("sha256", searchKey).update(token).digest().subarray(0, 16).toString("hex"));
-    if (hashes.length >= limit) break;
+    if (hashes.length >= limit) {break;}
   }
   return hashes;
 }
@@ -197,15 +197,15 @@ function semanticFeatures(tokens: string[]): Array<{ name: string; weight: numbe
   const features: Array<{ name: string; weight: number }> = [];
   const seen = new Set<string>();
   const append = (name: string, weight: number) => {
-    if (!name || seen.has(name)) return;
+    if (!name || seen.has(name)) {return;}
     seen.add(name);
     features.push({ name, weight });
   };
   for (const token of tokens) {
     append(`token:${token}`, 2.4);
     const stem = simpleSemanticStem(token);
-    if (stem !== token) append(`stem:${stem}`, 1.8);
-    if (token.length >= 5) append(`prefix:${token.slice(0, 5)}`, 0.8);
+    if (stem !== token) {append(`stem:${stem}`, 1.8);}
+    if (token.length >= 5) {append(`prefix:${token.slice(0, 5)}`, 0.8);}
   }
   for (let index = 0; index < tokens.length - 1; index += 1) {
     append(`bigram:${tokens[index]}_${tokens[index + 1]}`, 1.3);
@@ -215,7 +215,7 @@ function semanticFeatures(tokens: string[]): Array<{ name: string; weight: numbe
 
 function semanticHashes(text: string, vaultKey: Buffer, limit: number): string[] {
   const tokens = normalizedTokens(text);
-  if (tokens.length === 0 || limit <= 0) return [];
+  if (tokens.length === 0 || limit <= 0) {return [];}
   const searchKey = hkdfSha256(vaultKey, SEMANTIC_SEARCH_SALT, SEMANTIC_SEARCH_INFO, 32);
   const accumulator = Array.from({ length: 64 }, () => 0);
   const features = semanticFeatures(tokens);
@@ -227,16 +227,16 @@ function semanticHashes(text: string, vaultKey: Buffer, limit: number): string[]
   const hashes: string[] = [];
   const seen = new Set<string>();
   const appendBucket = (bucket: string) => {
-    if (hashes.length >= limit) return;
+    if (hashes.length >= limit) {return;}
     const hash = createHmac("sha256", searchKey).update(bucket).digest().subarray(0, 16).toString("hex");
-    if (seen.has(hash)) return;
+    if (seen.has(hash)) {return;}
     seen.add(hash);
     hashes.push(hash);
   };
   for (let band = 0; band < 8; band += 1) {
     let value = 0;
     for (let bit = 0; bit < 8; bit += 1) {
-      if (accumulator[band * 8 + bit] >= 0) value |= 1 << bit;
+      if (accumulator[band * 8 + bit] >= 0) {value |= 1 << bit;}
     }
     appendBucket(`simhash:v1:band:${band}:${value.toString(16).padStart(2, "0")}`);
   }
@@ -247,14 +247,14 @@ function semanticHashes(text: string, vaultKey: Buffer, limit: number): string[]
 }
 
 function stableJson(value: unknown): string {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return JSON.stringify(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {return JSON.stringify(value);}
   const record = value as Record<string, unknown>;
   return JSON.stringify(Object.fromEntries(Object.keys(record).sort().map((key) => [key, record[key]])));
 }
 
 function decryptRequired(value: unknown, field: string): string {
   const opened = decryptSealedText(value);
-  if (opened === undefined) throw new ResumeCliError(`error: could not decrypt sealed resume field '${field}'`, 3);
+  if (opened === undefined) {throw new ResumeCliError(`error: could not decrypt sealed resume field '${field}'`, 3);}
   return opened;
 }
 
@@ -273,9 +273,9 @@ function normalizeHarness(value: unknown): string {
 }
 
 function displayDate(value: unknown): string {
-  if (typeof value !== "string" || !value) return "unknown date";
+  if (typeof value !== "string" || !value) {return "unknown date";}
   const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
+  if (Number.isNaN(date.valueOf())) {return value;}
   return date.toLocaleString("en-US", {
     year: "numeric",
     month: "short",
@@ -287,7 +287,7 @@ function displayDate(value: unknown): string {
 
 function oneLine(value: string | undefined, fallback: string, max = 180): string {
   const text = (value ?? "").replace(/\s+/gu, " ").trim();
-  if (!text) return fallback;
+  if (!text) {return fallback;}
   return text.length > max ? `${text.slice(0, max - 3).trimEnd()}...` : text;
 }
 
@@ -347,8 +347,8 @@ function isSessionNotFound(response: unknown): boolean {
 }
 
 function modelArgs(targetHarness: string | undefined, targetModel: string | undefined): string[] {
-  if (!targetModel) return [];
-  if (targetHarness === "claude_code" || targetHarness === "codex") return ["--model", targetModel];
+  if (!targetModel) {return [];}
+  if (targetHarness === "claude_code" || targetHarness === "codex") {return ["--model", targetModel];}
   return [];
 }
 
@@ -498,7 +498,7 @@ function assertLocalResumeMarkdown(text: string): void {
 }
 
 function scheduleDelete(path: string | undefined, seconds = DEFAULT_CLEANUP_AFTER_SECONDS): void {
-  if (!path) return;
+  if (!path) {return;}
   const timer = setTimeout(() => {
     import("node:fs").then(({ rmSync }) => {
       try {
@@ -564,7 +564,7 @@ export function buildResumeSpawnCommand(rendered: RenderedResume): ResumeSpawnCo
   }
   if (targetHarness === "codex") {
     const args = [...model];
-    if (rendered.workingDirectory) args.push("-C", rendered.workingDirectory);
+    if (rendered.workingDirectory) {args.push("-C", rendered.workingDirectory);}
     args.push(rendered.text);
     return { command: "codex", args, cwd: rendered.workingDirectory };
   }
@@ -614,8 +614,8 @@ export async function resumeViaShim(options: ResumeViaShimOptions): Promise<void
     const vaultKey = readVaultKeyBytes();
     args.tokenHashes = tokenHashes(options.query, vaultKey, 10);
     args.semanticHashes = semanticHashes(options.query, vaultKey, 12);
-    if (options.provider) args.provider = options.provider;
-    if (options.projectName) args.projectName = options.projectName;
+    if (options.provider) {args.provider = options.provider;}
+    if (options.projectName) {args.projectName = options.projectName;}
   }
   const fuzzyListFirst = options.query && (!options.sessionId || /\s/u.test(options.query));
   let rendered: RenderedResume;

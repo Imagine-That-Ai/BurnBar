@@ -12,7 +12,6 @@
 #
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
 HOOK_DIR="$(git rev-parse --git-path hooks)"
 HOOK="$HOOK_DIR/post-commit"
 

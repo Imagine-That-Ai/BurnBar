@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import sqlite3
 import stat
 import sys
@@ -125,18 +124,52 @@ def _insert_conv(
 ) -> str:
     conversation_id = conversation_id or f"{provider}:{session_id}"
     columns = [
-        "id", "provider", "sessionId", "projectName", "startTime", "endTime",
-        "messageCount", "userWordCount", "assistantWordCount", "keyFiles",
-        "keyCommands", "keyTools", "inferredTaskTitle", "lastAssistantMessage",
-        "fullText", "indexedAt", "summary", "summaryTitle", "summaryModel",
-        "sourceDeviceId", "sourceDeviceName", "isRemote",
+        "id",
+        "provider",
+        "sessionId",
+        "projectName",
+        "startTime",
+        "endTime",
+        "messageCount",
+        "userWordCount",
+        "assistantWordCount",
+        "keyFiles",
+        "keyCommands",
+        "keyTools",
+        "inferredTaskTitle",
+        "lastAssistantMessage",
+        "fullText",
+        "indexedAt",
+        "summary",
+        "summaryTitle",
+        "summaryModel",
+        "sourceDeviceId",
+        "sourceDeviceName",
+        "isRemote",
     ]
     values: list[object] = [
-        conversation_id, provider, session_id, "FixtureApp", "2026-05-01 10:00:00.000", "2026-05-01 11:00:00.000",
-        3, 10, 20, json.dumps(["/tmp/project/src/auth.ts"]),
-        json.dumps(["npm test"]), json.dumps(["Bash", "Edit"]), title, "Next, add a 401 test.",
-        full_text, "2026-05-01 11:01:00.000", "Short summary", title, "fixture-model",
-        "mac-fixture", "Mac Fixture", 0,
+        conversation_id,
+        provider,
+        session_id,
+        "FixtureApp",
+        "2026-05-01 10:00:00.000",
+        "2026-05-01 11:00:00.000",
+        3,
+        10,
+        20,
+        json.dumps(["/tmp/project/src/auth.ts"]),
+        json.dumps(["npm test"]),
+        json.dumps(["Bash", "Edit"]),
+        title,
+        "Next, add a 401 test.",
+        full_text,
+        "2026-05-01 11:01:00.000",
+        "Short summary",
+        title,
+        "fixture-model",
+        "mac-fixture",
+        "Mac Fixture",
+        0,
     ]
     if with_working_dir:
         columns.append("workingDirectory")
@@ -150,7 +183,9 @@ def _insert_conv(
     return conversation_id
 
 
-def _fixture(tmp_path: Path, *, with_working_dir: bool = True) -> tuple[resume_core.ResumeEnvironment, sqlite3.Connection]:
+def _fixture(
+    tmp_path: Path, *, with_working_dir: bool = True
+) -> tuple[resume_core.ResumeEnvironment, sqlite3.Connection]:
     db_path = tmp_path / "openburnbar.sqlite"
     conn = sqlite3.connect(db_path)
     conn.executescript(_schema(with_working_dir=with_working_dir))
@@ -223,7 +258,10 @@ def _golden_ccms() -> dict[str, dict[str, object]]:
                     {"role": "assistant", "content": "Updated middleware.", "timestamp": None},
                 ],
             },
-            "hand_off": {"last_assistant_message": "Next, add a 401 test.", "open_threads_inferred": ["add a 401 test."]},
+            "hand_off": {
+                "last_assistant_message": "Next, add a 401 test.",
+                "open_threads_inferred": ["add a 401 test."],
+            },
             "source": {"composite_id": "Claude Code:uuid-1", "native_handle_validated": True},
         },
         "briefing_goose_cross_port.md": {
@@ -247,7 +285,10 @@ def _golden_ccms() -> dict[str, dict[str, object]]:
                     {"role": "assistant", "content": "Use the iroh pairing notes.", "timestamp": None},
                 ],
             },
-            "hand_off": {"last_assistant_message": "Follow up on relay cleanup.", "open_threads_inferred": ["relay cleanup."]},
+            "hand_off": {
+                "last_assistant_message": "Follow up on relay cleanup.",
+                "open_threads_inferred": ["relay cleanup."],
+            },
             "source": {"composite_id": "Goose:goose-1", "native_handle_validated": False},
         },
         "briefing_fulltext_paragraphs.md": {
@@ -528,7 +569,10 @@ def test_renderer_is_deterministic_fast_redacts_secrets_and_infers_threads():
             "total_messages": 500,
             "messages": [{"role": "assistant", "content": f"message {idx}", "timestamp": None} for idx in range(500)],
         },
-        "hand_off": {"last_assistant_message": "Done", "open_threads_inferred": resume_core.infer_open_threads("Next: add tests\nTODO: update docs")},
+        "hand_off": {
+            "last_assistant_message": "Done",
+            "open_threads_inferred": resume_core.infer_open_threads("Next: add tests\nTODO: update docs"),
+        },
         "source": {"composite_id": "Factory:fixture", "native_handle_validated": False},
     }
 
