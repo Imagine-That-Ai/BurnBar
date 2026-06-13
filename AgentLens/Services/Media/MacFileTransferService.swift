@@ -91,6 +91,21 @@ final class MacFileTransferService: ObservableObject {
     private let service: MediaFileTransferService
     private let settingsProvider: @MainActor () -> Bool
     private let controlStreamRegistry: MediaControlStreamRegistry?
+    /// RR-18 — authoritative media admission gate (entitlement + daily cap +
+    /// kill switch + concurrency). Inbound file receive and outbound send both
+    /// consult it for `.fileTransfer` exactly as `MediaSessionCoordinator` does
+    /// for `.screenShare` / `.videoCall`, instead of only bumping the active
+    /// session count. Optional so loopback/dev builds without a wired gate keep
+    /// working (they pass `AlwaysAllowMediaCapabilityGate`).
+    private let capabilityGate: any MediaCapabilityGate
+    /// RR-18 — when a media-seal session key exists for the receiving
+    /// connection, received blob bytes are sealed at rest (AES-256-GCM under the
+    /// same F7 session key the screen lane uses, manifest-bound AAD) instead of
+    /// landing as plaintext in the sandbox Caches inbox. Returns nil when no
+    /// session key is negotiated; in that case the file keeps only the
+    /// quarantine xattr, matching pre-F7 behaviour.
+    private let frameSealKeyProvider: @MainActor (_ uid: String, _ connectionID: String) -> SymmetricKey?
+    private let frameSealAEAD = MediaFrameAEAD()
     private let advertiseTimeout: TimeInterval
     private var advertiseSenderOverride: AdvertiseSender?
     private var mercuryDispatcher: MercuryControlFrameDispatcher?
@@ -108,11 +123,15 @@ final class MacFileTransferService: ObservableObject {
         service: MediaFileTransferService,
         settingsProvider: @escaping @MainActor () -> Bool,
         controlStreamRegistry: MediaControlStreamRegistry? = nil,
+        capabilityGate: any MediaCapabilityGate = AlwaysAllowMediaCapabilityGate(),
+        frameSealKeyProvider: @escaping @MainActor (_ uid: String, _ connectionID: String) -> SymmetricKey? = { _, _ in nil },
         advertiseTimeout: TimeInterval = 6.0
     ) {
         self.service = service
         self.settingsProvider = settingsProvider
         self.controlStreamRegistry = controlStreamRegistry
+        self.capabilityGate = capabilityGate
+        self.frameSealKeyProvider = frameSealKeyProvider
         self.advertiseTimeout = advertiseTimeout
     }
 
@@ -363,6 +382,27 @@ final class MacFileTransferService: ObservableObject {
             return
         }
 
+        // RR-18 — admit the inbound transfer through the authoritative gate
+        // (entitlement + daily cap + kill switch + concurrency) before touching
+        // the blob backend, exactly as screen-share/video sessions are admitted.
+        // The advertised manifest size feeds the per-day byte cap so a transfer
+        // that would blow the daily-in budget is refused with a denial ack
+        // rather than fetched first and charged after.
+        let admission = await capabilityGate.check(
+            feature: .fileTransfer,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: manifest.size
+        )
+        if case .denied(let reason) = admission {
+            await sendDenialAck(
+                for: manifest,
+                frame: frame,
+                reason: "media admission denied: \(reason.rawValue)",
+                ackSender: ackSender
+            )
+            return
+        }
+
         incrementFileTransferCount()
         defer { decrementFileTransferCount() }
 
@@ -371,6 +411,15 @@ final class MacFileTransferService: ObservableObject {
 
         do {
             let result = try await service.fetch(ticketText: ticket, manifest: manifest)
+            // RR-18 — seal the received bytes at rest under the media session
+            // key when one is negotiated, so the file is not plaintext in the
+            // sandbox Caches inbox. No key ⇒ keep the prior quarantine-only
+            // behaviour rather than failing the transfer. Seal BEFORE the
+            // quarantine xattr so the marker lands on the file that survives the
+            // atomic replace rather than on the discarded plaintext.
+            if let sealKey = frameSealKeyProvider(frame.uid, frame.connectionId) {
+                try sealReceivedFileAtRest(at: result.destinationURL, manifest: manifest, key: sealKey)
+            }
             try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)
             lastReceivedManifestID = manifest.manifestId
         } catch let serviceError as MediaFileTransferService.ServiceError {
@@ -383,12 +432,45 @@ final class MacFileTransferService: ObservableObject {
             lastError = .fetchFailed(reason ?? "")
         }
 
+        try? await ackSender(Self.makeAckFrame(
+            for: manifest,
+            frame: frame,
+            status: status,
+            reason: reason
+        ))
+    }
+
+    /// Emit a `.rejected` ack without touching the blob backend — used when the
+    /// capability gate refuses the inbound transfer (RR-18). The peer sees the
+    /// same denial-reason shape it would for a fetch failure, so the chat row
+    /// surfaces "media paused" instead of silently dropping the advertise.
+    private func sendDenialAck(
+        for manifest: HermesRealtimeRelayAttachmentManifest,
+        frame: HermesRealtimeRelayFrame,
+        reason: String,
+        ackSender: AdvertiseSender
+    ) async {
+        lastError = .fetchFailed(reason)
+        try? await ackSender(Self.makeAckFrame(
+            for: manifest,
+            frame: frame,
+            status: .rejected,
+            reason: reason
+        ))
+    }
+
+    private static func makeAckFrame(
+        for manifest: HermesRealtimeRelayAttachmentManifest,
+        frame: HermesRealtimeRelayFrame,
+        status: HermesRealtimeRelayMediaAck.Status,
+        reason: String?
+    ) -> HermesRealtimeRelayFrame {
         let ack = HermesRealtimeRelayMediaAck(
             manifestId: manifest.manifestId,
             status: status,
             reason: reason
         )
-        let ackFrame = HermesRealtimeRelayFrame(
+        return HermesRealtimeRelayFrame(
             type: .mediaBlobAck,
             uid: frame.uid,
             connectionId: frame.connectionId,
@@ -398,7 +480,6 @@ final class MacFileTransferService: ObservableObject {
                 ack: ack
             )
         )
-        try? await ackSender(ackFrame)
     }
 
     private func incrementFileTransferCount() {
@@ -409,6 +490,45 @@ final class MacFileTransferService: ObservableObject {
     private func decrementFileTransferCount() {
         inFlightCount = max(0, inFlightCount - 1)
         MacMediaActiveSessionRegistry.shared.setCount(inFlightCount, for: .fileTransfer)
+    }
+
+    /// RR-18 — overwrite the freshly-fetched plaintext blob in place with its
+    /// `MediaFrameAEAD` (OBMFA1) sealed envelope. The AAD binds the manifest id
+    /// + blob hash via the position fields so a sealed inbox file cannot be
+    /// swapped for another transfer's bytes. The write goes through a sibling
+    /// temp file + atomic replace so a crash mid-seal never leaves a truncated
+    /// (and unreadable) plaintext file. `protectionKey` rotates with the media
+    /// session, so the bytes are unreadable once the session key is gone.
+    private func sealReceivedFileAtRest(
+        at url: URL,
+        manifest: HermesRealtimeRelayAttachmentManifest,
+        key: SymmetricKey
+    ) throws {
+        let plaintext = try Data(contentsOf: url)
+        // Already sealed (idempotent re-fetch) — leave it.
+        guard !MediaFrameAEAD.isSealedEnvelope(plaintext) else { return }
+        let sealed = try frameSealAEAD.seal(
+            plaintext: plaintext,
+            key: key,
+            streamClass: MediaStreamClass.blob.rawValue,
+            kind: 0,
+            gopID: Self.atRestGopID(for: manifest),
+            frameIndex: 0
+        )
+        let tempURL = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).obmfa1-tmp")
+        try sealed.write(to: tempURL, options: .atomic)
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+    }
+
+    /// Stable 32-bit AAD discriminator derived from the manifest id so the
+    /// at-rest seal is bound to this exact transfer.
+    private static func atRestGopID(for manifest: HermesRealtimeRelayAttachmentManifest) -> UInt32 {
+        var hash: UInt32 = 2_166_136_261 // FNV-1a offset basis
+        for byte in manifest.manifestId.utf8 {
+            hash = (hash ^ UInt32(byte)) &* 16_777_619
+        }
+        return hash
     }
 
     private static func applyInboundQuarantine(

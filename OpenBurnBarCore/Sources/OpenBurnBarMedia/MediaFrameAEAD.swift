@@ -148,4 +148,83 @@ public enum MediaFrameAeadNegotiation {
     public static func resolveSealingEnabled(localSupports: Bool, remoteSupports: Bool) -> Bool {
         localSupports && remoteSupports
     }
+
+    /// What the negotiator decided for a lane once it weighed the lane's
+    /// sealing expectation against what both peers advertised.
+    public enum SealingDecision: Equatable, Sendable {
+        /// Both peers advertised support — emit sealed frames.
+        case seal
+        /// Sealing is not expected for this lane (or this lane cannot carry a
+        /// sealed envelope), so unsealed-over-QUIC is the negotiated outcome.
+        case allowUnsealed
+        /// Sealing was expected for this lane but could not be established —
+        /// fail CLOSED by refusing the lane rather than silently downgrading
+        /// to plaintext-over-QUIC.
+        case refuseLane(reason: RefusalReason)
+
+        public enum RefusalReason: String, Equatable, Sendable {
+            case remoteDoesNotSupportSealing
+            case localDoesNotSupportSealing
+            case sessionKeyUnavailable
+        }
+
+        public var isRefusal: Bool {
+            if case .refuseLane = self { return true }
+            return false
+        }
+    }
+
+    /// Whether a lane is *expected* to seal once F7 is rolled out. Screen-video
+    /// shipped first and degrades to unsealed-over-QUIC for pre-F7 viewers, so
+    /// it stays soft (`allowUnsealed` when a peer is too old). Every other lane
+    /// that can carry a sealed envelope — audio, camera/call video, and file
+    /// blobs — defaults to expecting a seal so a de-negotiated peer fails
+    /// CLOSED instead of leaking that lane's bytes in cleartext to a transport
+    /// fallback. Pure-control/classify lanes carry no frame payload and never
+    /// seal.
+    public static func sealingExpected(for streamClass: MediaStreamClass) -> Bool {
+        switch streamClass.feature {
+        case .videoCall, .fileTransfer:
+            return true
+        case .screenShare, .computerUse:
+            // Screen-video / agent-watch keep interoperating with pre-F7
+            // viewers over the iroh transport seal; they negotiate up to a
+            // seal but never refuse the lane for lack of one.
+            return false
+        case nil:
+            return false
+        }
+    }
+
+    /// Lane-aware negotiation outcome. Seals when both peers support F7; for a
+    /// lane whose `sealingExpected` is true, refuses the lane (fail CLOSED)
+    /// when sealing cannot be established; otherwise degrades to
+    /// unsealed-over-QUIC. `sessionKeyAvailable` reflects whether a derived
+    /// media-seal key actually exists on this side (a peer can advertise the
+    /// capability yet fail to wrap/open a session key) — when sealing is
+    /// expected and the key is missing, the lane is refused.
+    public static func resolveSealingDecision(
+        streamClass: MediaStreamClass,
+        localSupports: Bool,
+        remoteSupports: Bool,
+        sessionKeyAvailable: Bool
+    ) -> SealingDecision {
+        let expected = sealingExpected(for: streamClass)
+        guard localSupports else {
+            return expected
+                ? .refuseLane(reason: .localDoesNotSupportSealing)
+                : .allowUnsealed
+        }
+        guard remoteSupports else {
+            return expected
+                ? .refuseLane(reason: .remoteDoesNotSupportSealing)
+                : .allowUnsealed
+        }
+        guard sessionKeyAvailable else {
+            return expected
+                ? .refuseLane(reason: .sessionKeyUnavailable)
+                : .allowUnsealed
+        }
+        return .seal
+    }
 }

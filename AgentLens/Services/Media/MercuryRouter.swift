@@ -915,6 +915,17 @@ final class MercuryRouter: ObservableObject {
               let factory = mirrorSinkFactory else {
             throw MediaSessionError.captureFailed
         }
+        // F7 — refuse the lane (fail CLOSED) when sealing is expected for this
+        // stream class but cannot be established. Screen-video / agent-watch
+        // keep `sealingExpected == false`, so they still degrade to
+        // unsealed-over-QUIC for pre-F7 viewers and are never refused here; only
+        // audio, camera/call video, and file lanes refuse a de-negotiated peer
+        // rather than leak that lane's bytes in cleartext on a transport
+        // fallback.
+        try await refuseLaneIfSealingNotEstablished(
+            mirrorRequest: mirrorRequest,
+            frame: viewer.frame
+        )
         let sink = try await factory(mirrorRequest, viewer.frame, viewer.replySender)
         let capabilities = streamingCapabilities(
             for: mirrorRequest,
@@ -931,6 +942,42 @@ final class MercuryRouter: ObservableObject {
             capabilities.remote,
             .production
         )
+    }
+
+    /// F7 — consult `MediaFrameAeadNegotiation` for the requested lane and throw
+    /// when it decides `.refuseLane`. The Mac always advertises
+    /// `MediaFrameAeadNegotiation.capability` (see `macPresenceCapabilities`),
+    /// so `localSupports` is true; the phone only wraps a `mediaSealKey` into
+    /// its mirror request once both peers advertise F7, so its presence is the
+    /// remote-support signal; and `sessionKeyAvailable` reflects whether the
+    /// Mac can actually open that wrap into a usable session key. For lanes
+    /// whose `sealingExpected` is false (screen-video / agent-watch) the
+    /// negotiation never refuses, so this is a no-op for them.
+    private func refuseLaneIfSealingNotEstablished(
+        mirrorRequest: HermesRealtimeRelayMirrorRequest,
+        frame: HermesRealtimeRelayFrame
+    ) async throws {
+        let streamClass = MediaStreamClass(rawValue: mirrorRequest.streamClass)
+        let remoteSupports = mirrorRequest.mediaSealKey != nil
+        let sessionKeyAvailable: Bool
+        if remoteSupports {
+            sessionKeyAvailable = await MacMediaSealKeyOpener.frameSealKey(
+                for: mirrorRequest,
+                frame: frame
+            ) != nil
+        } else {
+            sessionKeyAvailable = false
+        }
+        let decision = MediaFrameAeadNegotiation.resolveSealingDecision(
+            streamClass: streamClass,
+            localSupports: true,
+            remoteSupports: remoteSupports,
+            sessionKeyAvailable: sessionKeyAvailable
+        )
+        guard case .refuseLane(let reason) = decision else { return }
+        Self.log.error("router_lane_refused_sealing streamClass=\(streamClass.rawValue, privacy: .public) reason=\(reason.rawValue, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
+        Self.debugTrace("router_lane_refused_sealing streamClass=\(streamClass.rawValue) reason=\(reason.rawValue)")
+        throw MercuryLaneSealingError.refused(reason: reason)
     }
 
     private static func effectiveFocusFollowMode(
@@ -2093,6 +2140,29 @@ private struct MercuryRemoteAccessAgentRequest: Encodable, Sendable {
 
 private struct MercuryRemoteAccessAgentResponse: Decodable, Sendable {
     var ok: Bool
+}
+
+/// F7 — thrown when `MediaFrameAeadNegotiation` refuses a lane because sealing
+/// was expected but could not be established. Surfaced to the viewer as an
+/// `.unsupported` mirror ack (via `failAcceptedMirrorRuntime`) so a de-negotiated
+/// peer sees a clean "media unavailable" banner instead of the lane silently
+/// degrading to plaintext-over-QUIC.
+private enum MercuryLaneSealingError: LocalizedError {
+    case refused(reason: MediaFrameAeadNegotiation.SealingDecision.RefusalReason)
+
+    var errorDescription: String? {
+        switch self {
+        case .refused(let reason):
+            switch reason {
+            case .remoteDoesNotSupportSealing:
+                return "This media lane requires per-frame encryption that the other device does not support."
+            case .localDoesNotSupportSealing:
+                return "This media lane requires per-frame encryption that this Mac cannot provide."
+            case .sessionKeyUnavailable:
+                return "This media lane requires per-frame encryption, but a media-seal session key could not be established."
+            }
+        }
+    }
 }
 
 private enum MercuryRemoteAccessAgentClientError: Error {

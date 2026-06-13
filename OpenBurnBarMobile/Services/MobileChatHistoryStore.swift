@@ -379,6 +379,11 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
     private func saveSnapshotLocked(_ snapshot: MobileChatHistorySnapshot, for partition: String) throws {
         let dir = partitionDirectory(for: partition)
         try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        // RR-14: belt-and-suspenders to the launch-time sweep — the partition
+        // directory itself is marked backup-excluded so any new body file we drop
+        // inherits the exclusion intent and the directory never lands in an
+        // iTunes/iCloud backup even between sweeps.
+        excludeFromBackup(dir)
         let encoder = Self.makeEncoder()
 
         var nextDigests: [String: Int] = [:]
@@ -394,7 +399,7 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
                fileManager.fileExists(atPath: threadFileURL(for: partition, threadID: thread.id).path) {
                 continue // Unchanged body already on disk — skip the rewrite.
             }
-            try data.write(to: threadFileURL(for: partition, threadID: thread.id), options: [.atomic])
+            try writeProtected(data, to: threadFileURL(for: partition, threadID: thread.id))
         }
 
         // 2. Remove thread files that are no longer part of the snapshot.
@@ -408,9 +413,35 @@ final class MobileChatFileLocalStore: MobileChatLocalStoring {
             tombstones: snapshot.tombstones
         )
         let indexData = try encoder.encode(index)
-        try indexData.write(to: indexFileURL(for: partition), options: [.atomic])
+        try writeProtected(indexData, to: indexFileURL(for: partition))
 
         digestCache[partition] = nextDigests
+    }
+
+    /// Writes sensitive chat bytes at rest with NSFileProtectionComplete and
+    /// marks the file backup-excluded *at write time* (RR-14). This closes the
+    /// window the launch-only `MobileDataProtectionBootstrap` sweep can miss for
+    /// files created mid-session (and beyond its 2 000-item cap): every body /
+    /// index file is encrypted-at-rest the instant it touches disk, regardless of
+    /// the default-data-protection entitlement, so a device backup or a lost
+    /// unlocked-once device never exposes a freshly written thread.
+    ///
+    /// `.completeFileProtection` (not `.completeUnlessOpen`) is correct here: the
+    /// store only reads/writes on a `.utility` queue from the foreground app, so
+    /// the bytes never need to be readable while the device is locked.
+    private func writeProtected(_ data: Data, to url: URL) throws {
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        excludeFromBackup(url)
+    }
+
+    /// Sets `isExcludedFromBackup` on a file or directory, mirroring the
+    /// resource-value path used by `MobileDataProtectionBootstrap`. Best-effort:
+    /// a failure here never blocks the durable write above.
+    private func excludeFromBackup(_ url: URL) {
+        var target = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? target.setResourceValues(values)
     }
 
     private func loadIndexLocked(for partition: String, decoder: JSONDecoder) throws -> MobileChatHistoryIndex {
