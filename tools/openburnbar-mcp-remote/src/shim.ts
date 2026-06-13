@@ -21,9 +21,9 @@ export function validatedMcpEndpoint(endpoint: string): URL {
   if (url.username || url.password) {
     throw new Error("OpenBurnBar MCP endpoint must not include URL credentials.");
   }
-  if (url.protocol === "https:" && TRUSTED_HTTPS_HOSTS.has(url.hostname.toLowerCase())) return url;
-  if (url.protocol === "https:" && process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT === "true") return url;
-  if (url.protocol === "http:" && isLoopbackHost(url.hostname)) return url;
+  if (url.protocol === "https:" && TRUSTED_HTTPS_HOSTS.has(url.hostname.toLowerCase())) {return url;}
+  if (url.protocol === "https:" && process.env.OPENBURNBAR_MCP_ALLOW_CUSTOM_ENDPOINT === "true") {return url;}
+  if (url.protocol === "http:" && isLoopbackHost(url.hostname)) {return url;}
   throw new Error("OpenBurnBar MCP endpoint must be https://mcp.burnbar.ai, an explicitly allowed custom HTTPS endpoint, or loopback HTTP for local development.");
 }
 
@@ -35,7 +35,7 @@ export function validatedMcpEndpoint(endpoint: string): URL {
  */
 async function refreshAccessToken(target: URL, expiredAccessToken: string): Promise<string | undefined> {
   const refreshToken = readRefreshToken();
-  if (!refreshToken) return undefined;
+  if (!refreshToken) {return undefined;}
   const tokenUrl = new URL("/oauth/token", target.origin);
   let res: Response;
   try {
@@ -51,14 +51,14 @@ async function refreshAccessToken(target: URL, expiredAccessToken: string): Prom
   } catch {
     return undefined;
   }
-  if (!res.ok) return undefined;
+  if (!res.ok) {return undefined;}
   let payload: { access_token?: unknown; refresh_token?: unknown };
   try {
     payload = await res.json() as { access_token?: unknown; refresh_token?: unknown };
   } catch {
     return undefined;
   }
-  if (typeof payload.access_token !== "string" || payload.access_token.length === 0) return undefined;
+  if (typeof payload.access_token !== "string" || payload.access_token.length === 0) {return undefined;}
   writeAccessToken(payload.access_token);
   if (typeof payload.refresh_token === "string" && payload.refresh_token.length > 0) {
     writeRefreshToken(payload.refresh_token);
@@ -154,7 +154,7 @@ export async function runStdioShim(): Promise<void> {
     const lines = buffer.split(/\n/u);
     buffer = lines.pop() ?? "";
     for (const line of lines) {
-      if (!line.trim()) continue;
+      if (!line.trim()) {continue;}
       void handleLine(line);
     }
   });

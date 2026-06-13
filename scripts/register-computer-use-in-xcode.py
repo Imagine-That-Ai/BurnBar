@@ -11,6 +11,7 @@ Each file becomes:
 
 Idempotent: re-runs detect existing entries by path and skip.
 """
+
 from __future__ import annotations
 import hashlib
 import sys
@@ -149,8 +150,7 @@ def main() -> int:
     for path in IOS_TEST_FILES:
         register(path, "ios_tests")
 
-    if not (file_ref_lines or build_file_lines or mac_phase_lines
-            or ios_phase_lines or ios_test_phase_lines):
+    if not (file_ref_lines or build_file_lines or mac_phase_lines or ios_phase_lines or ios_test_phase_lines):
         print("nothing to add — all files already registered")
         return 0
 
@@ -181,18 +181,20 @@ def main() -> int:
             raise RuntimeError(f"could not find Sources phase {phase_id}")
         head, body, tail = m.group(1), m.group(2), m.group(3)
         new_body = body + "\n" + "\n".join(lines)
-        contents = contents[: m.start()] + head + new_body + tail + contents[m.end():]
+        contents = contents[: m.start()] + head + new_body + tail + contents[m.end() :]
 
     inject_into_phase(MAC_SOURCES_PHASE, mac_phase_lines)
     inject_into_phase(IOS_SOURCES_PHASE, ios_phase_lines)
     inject_into_phase(IOS_TESTS_PHASE, ios_test_phase_lines)
 
     PROJ.write_text(contents)
-    print(f"registered {len(file_ref_lines)} file refs, "
-          f"{len(build_file_lines)} build files, "
-          f"{len(mac_phase_lines)} mac-phase entries, "
-          f"{len(ios_phase_lines)} ios-phase entries, "
-          f"{len(ios_test_phase_lines)} ios-tests-phase entries")
+    print(
+        f"registered {len(file_ref_lines)} file refs, "
+        f"{len(build_file_lines)} build files, "
+        f"{len(mac_phase_lines)} mac-phase entries, "
+        f"{len(ios_phase_lines)} ios-phase entries, "
+        f"{len(ios_test_phase_lines)} ios-tests-phase entries"
+    )
     return 0
 
 

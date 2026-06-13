@@ -917,6 +917,22 @@
     "systems/retrieval/index.md#7": {
       "memory_id": "adc61186-e9b3-4718-92fd-73d24eec7a1b",
       "content_hash": "39c4f3b709a53a36a6737c850fd56026eeaa6831a94ee933ade03dc3aa940e88"
+    },
+    "systems/ui-motion-glass-streaming.md#0": {
+      "memory_id": "b94f76da-ff67-4e1e-adb9-23cac22b3470",
+      "content_hash": "20f6416e852cd08d1ad8fe4ac3b087d64369aedb4b9680f91fc2fb3f2a90d133"
+    },
+    "systems/ui-motion-glass-streaming.md#1": {
+      "memory_id": "1d5caa40-29e3-49ea-8c3a-3cd4e7a9984a",
+      "content_hash": "b109d2900ba6986ab75ee779be08b98d9a109e24c4a74c6507f9c093a0cbd01e"
+    },
+    "systems/ui-motion-glass-streaming.md#2": {
+      "memory_id": "82a4a6db-4c73-4981-9c35-ad6bc70d2a36",
+      "content_hash": "a4f651c4ad920f96122a15956c2c0b4c5d7ec60f1eca085f84b64b2bb890f55c"
+    },
+    "systems/ui-motion-glass-streaming.md#3": {
+      "memory_id": "7ff8542a-3a52-4e67-a67f-352b6c267351",
+      "content_hash": "2214386014c1a6766630626d93ec59aedca661c85f41fb27a1bb818d1666c747"
     }
   }
 }

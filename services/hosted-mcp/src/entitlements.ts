@@ -3,7 +3,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { NEGATIVE_ENTITLEMENT_CACHE_MS, POSITIVE_ENTITLEMENT_CACHE_MS, REMOTE_MCP_LAST_USED_WRITE_INTERVAL_MS } from "./config.js";
 import { HttpError } from "./errors.js";
-import type { HostedMcpFirestore, RemoteMcpClientFirestore } from "./firestoreTypes.js";
+import type { RemoteMcpClientFirestore } from "./firestoreTypes.js";
 
 export interface EntitlementState {
   active: boolean;
@@ -29,8 +29,8 @@ export function firestore(): Firestore {
 }
 
 function dateFromRaw(raw: unknown): Date | undefined {
-  if (raw instanceof Timestamp) return raw.toDate();
-  if (raw instanceof Date) return raw;
+  if (raw instanceof Timestamp) {return raw.toDate();}
+  if (raw instanceof Date) {return raw;}
   if (typeof raw === "string") {
     const date = new Date(raw);
     return Number.isNaN(date.getTime()) ? undefined : date;
@@ -39,15 +39,15 @@ function dateFromRaw(raw: unknown): Date | undefined {
 }
 
 function isActive(data: FirebaseFirestore.DocumentData | undefined): { active: boolean; expiresAt?: Date } {
-  if (!data || data.active !== true) return { active: false };
+  if (!data || data.active !== true) {return { active: false };}
   const expiresAt = dateFromRaw(data.expireAt ?? data.expiresAt);
-  if (!expiresAt || expiresAt.getTime() <= Date.now()) return { active: false, expiresAt };
+  if (!expiresAt || expiresAt.getTime() <= Date.now()) {return { active: false, expiresAt };}
   return { active: true, expiresAt };
 }
 
 export async function getEntitlementState(uid: string, db: RemoteMcpClientFirestore = firestore()): Promise<EntitlementState> {
   const cached = cache.get(uid);
-  if (cached && cached.expiresAtMs > Date.now()) return cached.state;
+  if (cached && cached.expiresAtMs > Date.now()) {return cached.state;}
 
   // Ultra (source) + Cloud Pro (proMax) are read alongside legacy Pro + hosted-quota
   // so Cloud-Pro/Ultra members can use the hosted MCP, and Ultra unlocks its rate tier.

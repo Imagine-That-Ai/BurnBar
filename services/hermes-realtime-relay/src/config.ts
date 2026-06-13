@@ -58,18 +58,18 @@ export function loadRelayConfig(env: NodeJS.ProcessEnv = process.env): RelayConf
 }
 
 function numberEnv(value: string | undefined, fallback: number): number {
-  if (value === undefined || value.trim() === "") return fallback;
+  if (value === undefined || value.trim() === "") {return fallback;}
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function boolEnv(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined || value.trim() === "") return fallback;
+  if (value === undefined || value.trim() === "") {return fallback;}
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
 function listEnv(value: string | undefined, fallback: string[]): string[] {
-  if (value === undefined || value.trim() === "") return fallback;
+  if (value === undefined || value.trim() === "") {return fallback;}
   const parsed = value
     .split(",")
     .map((item) => item.trim())
@@ -78,12 +78,12 @@ function listEnv(value: string | undefined, fallback: string[]): string[] {
 }
 
 function textEnv(value: string | undefined): string | undefined {
-  if (value === undefined || value.trim() === "") return undefined;
+  if (value === undefined || value.trim() === "") {return undefined;}
   return value.replace(/\\n/g, "\n").trim();
 }
 
 function base64TextEnv(value: string | undefined): string | undefined {
   const encoded = textEnv(value);
-  if (!encoded) return undefined;
+  if (!encoded) {return undefined;}
   return Buffer.from(encoded, "base64").toString("utf8").replace(/\\n/g, "\n").trim();
 }
