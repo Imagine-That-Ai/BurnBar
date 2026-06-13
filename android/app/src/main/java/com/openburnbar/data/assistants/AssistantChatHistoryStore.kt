@@ -16,6 +16,7 @@ import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeypair
 import com.openburnbar.data.cloud.CloudVaultAADContext
 import com.openburnbar.data.cloud.CloudVaultCrypto
+import com.openburnbar.data.cloud.CloudVaultSealedPayload
 import com.openburnbar.data.cloud.SignalAtRestFallbackPolicy
 import java.io.File
 import java.lang.IllegalStateException
@@ -685,6 +686,16 @@ internal class AssistantChatFirestoreMirror(
                 resolvedKey.vaultKeyID,
                 aadContext = aadContext,
             )
+        val payload = firestorePayload(thread, resolvedKey.vaultKeyID, sealedPayload)
+        addSignalEnvelopeIfAvailable(uid, thread.id, plaintextBytes, payload)
+        collection(uid).document(thread.id).set(payload).await()
+    }
+
+    private fun firestorePayload(
+        thread: AssistantChatThread,
+        vaultKeyID: String,
+        sealedPayload: CloudVaultSealedPayload,
+    ): MutableMap<String, Any?> {
         val payload =
             mutableMapOf<String, Any?>(
                 "id" to thread.id,
@@ -694,7 +705,7 @@ internal class AssistantChatFirestoreMirror(
                 "messageCount" to thread.messageCount,
                 "contentSealed" to true,
                 "sealedSchemaVersion" to 2,
-                "vaultKeyID" to resolvedKey.vaultKeyID,
+                "vaultKeyID" to vaultKeyID,
                 "sealedPayload" to CloudVaultCrypto.sealedPayloadMap(sealedPayload),
             )
         thread.messages.lastOrNull()?.let { payload["lastMessageRole"] = it.role }
@@ -706,6 +717,15 @@ internal class AssistantChatFirestoreMirror(
         if (thread.priorityOrder != null) {
             payload["priorityOrder"] = thread.priorityOrder
         }
+        return payload
+    }
+
+    private suspend fun addSignalEnvelopeIfAvailable(
+        uid: String,
+        threadID: String,
+        plaintextBytes: ByteArray,
+        payload: MutableMap<String, Any?>,
+    ) {
         // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM "sealedPayload" already
         // in `payload` is the FLOOR; the additive "signalEnvelope" is gated by the
         // conversations_chat sealingScheme and is BEST-EFFORT. On ANY seal failure (e.g. a
@@ -726,7 +746,7 @@ internal class AssistantChatFirestoreMirror(
                         domainID = SIGNAL_CHAT_DOMAIN,
                         uid = uid,
                         collection = "mobile_assistant_chats",
-                        docId = thread.id,
+                        docId = threadID,
                         plaintext = plaintextBytes,
                         localIdentity = identity,
                         otherRecipients = recipients,
@@ -734,7 +754,6 @@ internal class AssistantChatFirestoreMirror(
                 )?.let { payload["signalEnvelope"] = it }
             }
         }.onFailure { Log.w("AssistantChatFirestoreMirror", "Signal at-rest seal failed; writing chat legacy-only", it) }
-        collection(uid).document(thread.id).set(payload).await()
     }
 
     override suspend fun delete(threadID: String) {
