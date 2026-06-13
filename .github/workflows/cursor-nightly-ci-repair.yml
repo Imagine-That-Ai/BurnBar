@@ -147,6 +147,7 @@ jobs:
             '{
               name: "OpenBurnBar nightly CI repair",
               prompt: { text: $prompt },
+              model: { id: "composer-2.5" },
               repos: [
                 {
                   url: $repo,
