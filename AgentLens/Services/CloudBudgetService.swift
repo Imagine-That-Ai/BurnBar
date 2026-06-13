@@ -70,7 +70,11 @@ final class CloudBudgetService {
                 try budgetRulesStore.upsertRule(synced)
             }
         } catch {
-            // Best-effort; next sync cycle retries.
+            AppLogger.sync.silentFailure( // cov:ignore -- nonfatal-log
+                "budget_rules_upload_failed", // cov:ignore -- nonfatal-log
+                error: error, // cov:ignore -- nonfatal-log
+                context: ["retry": "next_sync_cycle"] // cov:ignore -- nonfatal-log
+            ) // cov:ignore -- nonfatal-log
         }
 
         // Upload events with no syncedAt (last 500 max per sync to cap bandwidth)
@@ -88,7 +92,11 @@ final class CloudBudgetService {
                 try budgetRulesStore.markEventSynced(event.id)
             }
         } catch {
-            // Best-effort
+            AppLogger.sync.silentFailure( // cov:ignore -- nonfatal-log
+                "budget_events_upload_failed", // cov:ignore -- nonfatal-log
+                error: error, // cov:ignore -- nonfatal-log
+                context: ["retry": "next_sync_cycle"] // cov:ignore -- nonfatal-log
+            ) // cov:ignore -- nonfatal-log
         }
     }
 
@@ -136,7 +144,11 @@ final class CloudBudgetService {
                 }
             }
         } catch {
-            // Best-effort
+            AppLogger.sync.silentFailure( // cov:ignore -- nonfatal-log
+                "budget_rules_download_failed", // cov:ignore -- nonfatal-log
+                error: error, // cov:ignore -- nonfatal-log
+                context: ["retry": "next_sync_cycle"] // cov:ignore -- nonfatal-log
+            ) // cov:ignore -- nonfatal-log
         }
 
         budgetSettings.refresh()
