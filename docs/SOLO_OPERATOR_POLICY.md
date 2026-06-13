@@ -12,10 +12,16 @@ is never acceptable.
 ## The default
 
 - `enforce_admins` stays **on**. It is not toggled to merge.
-- Every PR runs the full required-check suite. A red required check is fixed,
-  not redefined. **Changing a gate's definition in the same PR the gate is
-  failing on is prohibited** — gate changes ship in their own PR, with the
-  rationale in the PR description, and apply to the *next* change.
+- Every PR runs the required fast merge suite: `Fast Feedback Gate`,
+  confidentiality guard, product-license posture, and PR security gates. A red
+  required check is fixed, not redefined. **Changing a gate's definition in the
+  same PR the gate is failing on is prohibited** — gate changes ship in their
+  own PR, with the rationale in the PR description, and apply to the *next*
+  change.
+- Full-confidence lanes (`openburnbar-pr-harness.yml`, `nightly-e2e.yml`, and
+  full CodeQL) run after merge, nightly, or by manual dispatch. They are not
+  daily PR blockers, but a red nightly older than 24 hours is active repair
+  work, not background noise.
 - Live governance proof is not a screenshot or memory. Run
   `bash scripts/ops/verify-github-governance.sh` before any release or
   commercial launch gate; it reads GitHub's branch-protection and environment
@@ -31,8 +37,8 @@ A solo merge (no second human review) is acceptable only when **all** hold:
    (`functions/src/callables/stripe.ts`, `shared.ts` entitlement writes),
    Firestore/storage security rules, release/deploy workflows, or the
    provenance manifest (`third_party/hermes-agent/`).
-2. All required checks are green **without any gate definition having changed
-   in the same PR**.
+2. All required fast merge checks are green **without any gate definition
+   having changed in the same PR**.
 3. An AI review (e.g. `/code-review`) ran on the final diff and its findings
    were addressed or explicitly dispositioned in the PR description.
 
