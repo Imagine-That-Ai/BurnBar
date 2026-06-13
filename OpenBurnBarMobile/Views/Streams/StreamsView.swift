@@ -441,7 +441,7 @@ private struct AuroraSessionRow: View {
             HStack(spacing: 12) {
                 providerRail
                 if let providerEnum {
-                    ProviderAuroraAvatar(provider: providerEnum, size: 40, animated: false)
+                    ProviderAuroraAvatar(provider: providerEnum, size: 40, animated: false, glassInCard: true)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(usage.model)
@@ -1715,7 +1715,7 @@ private struct CockpitConversationRowView: View {
     private var header: some View {
         HStack(spacing: 10) {
             if let provider = row.providerEnum {
-                ProviderAuroraAvatar(provider: provider, size: 36, animated: false)
+                ProviderAuroraAvatar(provider: provider, size: 36, animated: false, glassInCard: true)
             } else {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)

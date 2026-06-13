@@ -54,32 +54,30 @@ struct ConnectedDevicesRow: View {
 
     private var deviceChips: some View {
         let visible = Array(devices.prefix(4))
-        // The chips overlap (spacing -8), so on iOS 26 they must share one
-        // GlassEffectContainer — glass cannot sample other glass. Pre-26 the
-        // group passes content through unchanged.
-        return LiquidGlassGroup {
-            HStack(spacing: -8) {
-                ForEach(visible) { device in
-                    ZStack {
-                        // Passive glass badge. On iOS 26 the disc is pure
-                        // Liquid Glass (no fill underneath, so it samples the
-                        // real background); on iOS 17–25 the adapter falls
-                        // back to the same ultra-thin material this chip
-                        // always used.
-                        Circle()
-                            .fill(Color.clear)
-                            .frame(width: 30, height: 30)
-                            .liquidGlassSurface(in: .circle)
-                        Circle()
-                            .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5)
-                            .frame(width: 30, height: 30)
-                        Image(systemName: deviceIcon(device))
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(deviceColor(device))
-                    }
+        // These chips live INSIDE an AuroraGlassCard, whose iOS 26 background
+        // is itself Liquid Glass — and glass cannot sample other glass (see
+        // Theme/LiquidGlass.swift). A `.liquidGlassSurface` disc here would
+        // sample the scroll backdrop behind the card and punch a hole through
+        // it, so each chip uses a plain ultra-thin material circle on every OS
+        // version instead. The card glass already carries the Liquid Glass
+        // identity for this surface; material-on-glass reads cleanly. With no
+        // glass discs left there is nothing to share a GlassEffectContainer,
+        // so the former LiquidGlassGroup wrapper is gone.
+        return HStack(spacing: -8) {
+            ForEach(visible) { device in
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 30, height: 30)
+                    Circle()
+                        .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5)
+                        .frame(width: 30, height: 30)
+                    Image(systemName: deviceIcon(device))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(deviceColor(device))
                 }
-                overflowChip
             }
+            overflowChip
         }
     }
 

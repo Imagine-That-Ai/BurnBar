@@ -1209,7 +1209,11 @@ struct ScreenShareViewerView: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                     .padding(7)
-                    .liquidGlassInteractive(in: .circle, fallback: .thinMaterial)
+                    // Material, not glass: this dismiss button is nested inside
+                    // the coach-mark's own `.liquidGlassSurface` capsule below,
+                    // and glass cannot sample other glass. Material-on-glass
+                    // reads cleanly; a nested glass disc would punch through.
+                    .background(.ultraThinMaterial, in: .circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss tip")

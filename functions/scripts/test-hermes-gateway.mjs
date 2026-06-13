@@ -423,14 +423,24 @@ assert.match(source, /async function handleListApprovals/);
 // The agent's write scope arms a gate but can NEVER self-approve: resolution is a
 // signed-in callable bound to a trusted native escrow device + approvedByDeviceId,
 // hardened with a per-request nonce and a device-signed action proof (B1).
-assert.match(source, /enforceHighRiskComputerUseCallableWithNonce\(request, uid, nonce\)/);
-assert.match(source, /requireTrustedDeviceActionProof\(\{/);
-assert.match(source, /actionKind: "hermes_gateway_approval"/);
-assert.match(source, /trustState"\) !== "trusted"/);
-assert.match(source, /NATIVE_ESCROW_PLATFORMS\.has\(deviceSnap\.get\("platform"\)\)/);
-assert.match(source, /approvedByDeviceId: deviceId/);
-assert.match(source, /has already been resolved/); // single-resolution idempotency guard
-assert.match(source, /Oversight request has expired/); // expiry guard in the resolver
+//
+// TAMPER RESISTANCE: these guards are asserted INSIDE the resolver's own body
+// slice, not file-globally — moving them into a dead helper elsewhere in the
+// file (a realistic downgrade) fails this contract.
+const resolverStart = source.indexOf("export const respondHermesGatewayApproval");
+assert.ok(resolverStart >= 0, "respondHermesGatewayApproval resolver is missing");
+const resolverEndRel = source.slice(resolverStart + 1).search(/\nexport (const|function|async) /);
+const resolverBody = resolverEndRel === -1
+  ? source.slice(resolverStart)
+  : source.slice(resolverStart, resolverStart + 1 + resolverEndRel);
+assert.match(resolverBody, /enforceHighRiskComputerUseCallableWithNonce\(request, uid, nonce\)/);
+assert.match(resolverBody, /requireTrustedDeviceActionProof\(\{/);
+assert.match(resolverBody, /actionKind: "hermes_gateway_approval"/);
+assert.match(resolverBody, /trustState"\) !== "trusted"/);
+assert.match(resolverBody, /NATIVE_ESCROW_PLATFORMS\.has\(deviceSnap\.get\("platform"\)\)/);
+assert.match(resolverBody, /approvedByDeviceId: deviceId/);
+assert.match(resolverBody, /has already been resolved/); // single-resolution idempotency guard
+assert.match(resolverBody, /Oversight request has expired/); // expiry guard in the resolver
 assert.match(source, /export const reapHermesGatewayApprovals = onSchedule/);
 // PRIVACY BOUNDARY (sealed-gateway consistency): the oversight gate is
 // CONTROL-PLANE only — the server must NEVER persist a client-supplied free-text

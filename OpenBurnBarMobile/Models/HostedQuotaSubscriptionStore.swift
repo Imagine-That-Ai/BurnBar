@@ -740,7 +740,7 @@ final class HostedQuotaSubscriptionStore {
     func monthlyEquivalentDisplayPrice(for catalogProduct: OpenBurnBarStoreProduct) -> String? {
         guard catalogProduct.cadence == "Annual" else { return nil }
         if let product = storeProduct(for: catalogProduct.id)?.storeKitProduct {
-            return (product.price / 12).formatted(product.priceFormatStyle.precision(.fractionLength(2)))
+            return Self.monthlyEquivalent(annualPrice: product.price, format: product.priceFormatStyle)
         }
         guard let value = Self.numericPrice(from: catalogProduct.fallbackDisplayPrice), value > 0 else { return nil }
         let symbol = catalogProduct.fallbackDisplayPrice.prefix(while: { !$0.isNumber })
@@ -775,6 +775,17 @@ final class HostedQuotaSubscriptionStore {
         return months >= 1 ? months : nil
     }
 
+    /// Per-month equivalent of an annual price, formatted with the currency's
+    /// OWN precision — JPY/KRW render whole units, USD renders two decimals.
+    /// Never force a fraction length here: zero-fraction currencies would show
+    /// bogus sub-units. Internal so tests can pin the behavior per currency.
+    static func monthlyEquivalent(annualPrice: Decimal, format: Decimal.FormatStyle.Currency) -> String {
+        (annualPrice / 12).formatted(format)
+    }
+
+    /// Parses the CATALOG FALLBACK price strings only — those are hardcoded
+    /// US-format ("$249") by construction. Do not feed localized strings in:
+    /// comma decimal separators and suffix symbols would parse to garbage.
     private static func numericPrice(from display: String) -> Decimal? {
         Decimal(string: display.filter { $0.isNumber || $0 == "." })
     }
