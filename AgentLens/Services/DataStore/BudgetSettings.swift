@@ -65,7 +65,11 @@ final class BudgetSettings {
             ))
             loadFromStore()
         } catch {
-            // Surface via signpost / debug-log if a metrics hook is present.
+            AppLogger.dataStore.silentFailure( // cov:ignore -- nonfatal-log
+                "budget_rule_upsert_failed", // cov:ignore -- nonfatal-log
+                error: error, // cov:ignore -- nonfatal-log
+                context: ["source": source] // cov:ignore -- nonfatal-log
+            ) // cov:ignore -- nonfatal-log
         }
         return stamped
     }
