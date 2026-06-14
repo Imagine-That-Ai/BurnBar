@@ -2,5 +2,7 @@
   "total": 808,
   "scope": "AgentLens/Services",
   "generatedAt": "2026-06-12T23:52:38Z",
-  "note": "try? occurrences in AgentLens/Services. CI fails on increase."
+  "note": "try? occurrences in AgentLens/Services. CEILING, not a target: this number must only DECREASE. CI (scripts/debt/check-try-optional-budget.sh) fails when live > total. Lowering total requires deleting try? sites first; raising it is forbidden (it was loosened 797->800->808 by re-running scripts/debt/update-try-optional-baseline.sh, which blindly captures the live count in either direction). Only edit total downward, and only after the code drops below it.",
+  "direction": "decrease-only",
+  "ratchetPolicy": "Re-baseline ONLY when live count is BELOW this total (debt was paid down). Never bump up to absorb new try? usages."
 }

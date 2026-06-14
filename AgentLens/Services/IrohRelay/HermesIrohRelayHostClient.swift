@@ -87,6 +87,18 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var publishedIdentity: IrohEndpointIdentity?
     private var inboundPeerPolicy = IrohInboundPeerPolicy(allowedPeerNodeIds: [])
     private let pairingPublishInterval: TimeInterval
+    // remediation(handshake-before-allowlist DoS amplifier): per-source cooldown
+    // over inbound connections that fail the allowlist. The Rust transport
+    // (`openburnbar-iroh`, `AcceptSourceRateLimiter`) already drops repeat
+    // sources cheaply *before* the QUIC handshake; this Swift-side throttle is
+    // the second, defence-in-depth layer that suppresses repeated allowlist
+    // rejections from the same NodeId — it stops a non-allowlisted peer that
+    // does clear the Rust window from spamming the Firestore audit log on every
+    // reconnect. It is purely anti-abuse: it never admits a peer the allowlist
+    // would reject, it only collapses duplicate rejections.
+    private var rejectedPeerLastSeen: [String: Date] = [:]
+    private static let rejectedPeerCooldown: TimeInterval = 5
+    private static let rejectedPeerTableCap = 1024
 
     private static func publicErrorClass(_ error: Error) -> String {
         let nsError = error as NSError
@@ -290,17 +302,29 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             do {
                 let stream = try await transport.accept(timeout: 30)
                 if !inboundPeerPolicy.allows(remotePeerNodeId: stream.remotePeerNodeId) {
-                    await auditLogger.record(
-                        event: .pairingRejected,
-                        uid: uid,
-                        connectionId: connectionID,
-                        transport: .irohDirect,
-                        rttMillis: nil,
-                        detail: [
-                            "reason": "inbound_peer_not_allowlisted",
-                            "remoteNodeId": stream.remotePeerNodeId ?? "unknown"
-                        ]
+                    // remediation(handshake-before-allowlist DoS amplifier): close
+                    // the rejected stream immediately, and only emit the audit
+                    // record when this source has not been rejected within the
+                    // cooldown window — a non-allowlisted peer that keeps dialing
+                    // must not be able to flood the audit log. The allowlist
+                    // decision itself is unchanged; this throttles the logging /
+                    // bookkeeping of repeat rejections, not the rejection.
+                    let shouldAudit = registerAllowlistRejection(
+                        remotePeerNodeId: stream.remotePeerNodeId
                     )
+                    if shouldAudit {
+                        await auditLogger.record(
+                            event: .pairingRejected,
+                            uid: uid,
+                            connectionId: connectionID,
+                            transport: .irohDirect,
+                            rttMillis: nil,
+                            detail: [
+                                "reason": "inbound_peer_not_allowlisted",
+                                "remoteNodeId": stream.remotePeerNodeId ?? "unknown"
+                            ]
+                        )
+                    }
                     await stream.close()
                     continue
                 }
@@ -418,6 +442,33 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private func releaseServeTask(_ id: UUID) async {
         serveTasks.removeValue(forKey: id)
         await serveTaskTeardownRegistry.release(serveID: id)
+    }
+
+    /// remediation(handshake-before-allowlist DoS amplifier): records an
+    /// allowlist rejection for `remotePeerNodeId` and reports whether the
+    /// caller should emit an audit record. Returns `true` (audit) the first
+    /// time a source is rejected and again only once its cooldown has lapsed;
+    /// returns `false` for rapid repeat rejections so a non-allowlisted flooder
+    /// cannot spam the audit log. The map is bounded so the flood cannot grow
+    /// memory without limit. Runs on `@MainActor` like the rest of the accept
+    /// bookkeeping, so no extra synchronization is needed.
+    private func registerAllowlistRejection(remotePeerNodeId: String?) -> Bool {
+        let key = remotePeerNodeId ?? "unknown"
+        let now = Date()
+        if let previous = rejectedPeerLastSeen[key],
+           now.timeIntervalSince(previous) < Self.rejectedPeerCooldown {
+            // Refresh so a sustained flood stays suppressed instead of slipping
+            // through once the original window lapses mid-burst.
+            rejectedPeerLastSeen[key] = now
+            return false
+        }
+        if rejectedPeerLastSeen[key] == nil,
+           rejectedPeerLastSeen.count >= Self.rejectedPeerTableCap,
+           let oldest = rejectedPeerLastSeen.min(by: { $0.value < $1.value })?.key {
+            rejectedPeerLastSeen.removeValue(forKey: oldest)
+        }
+        rejectedPeerLastSeen[key] = now
+        return true
     }
 
     /// RR-18 — tear down any serve task or persistent media-control stream whose

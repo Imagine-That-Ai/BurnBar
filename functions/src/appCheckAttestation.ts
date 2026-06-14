@@ -211,10 +211,11 @@ export async function consumeHighRiskNonceForUid(
  *
  * `nonceConsumed` reports whether a single-use nonce was actually presented and
  * atomically consumed on this call. It is `false` only when App Check is not
- * enforced (local/emulator) or when `requireHighRiskNonce` is off AND the client
- * supplied no nonce (staged-rollout back-compat). Callers that need a HARD nonce
- * requirement for a specific branch — e.g. bootstrap self-approval — must reject
- * when this is `false`, independent of the global flag.
+ * enforced (local/emulator) or when `requireHighRiskNonce` has been explicitly
+ * turned OFF (it now defaults ON in production, see config.ts) AND the client
+ * supplied no nonce (operator-opted-in staged-ramp back-compat). Callers that
+ * need a HARD nonce requirement for a specific branch — e.g. bootstrap
+ * self-approval — must reject when this is `false`, independent of the global flag.
  */
 export type HighRiskNonceEnforcementResult = { nonceConsumed: boolean };
 
@@ -222,9 +223,10 @@ export type HighRiskNonceEnforcementResult = { nonceConsumed: boolean };
  * High-risk enforcement layered with single-use nonce replay defense.
  *
  * Runs the existing synchronous guard, then (when App Check is enforced)
- * consumes a supplied nonce. Staged rollout: with `requireHighRiskNonce` off a
- * missing nonce is tolerated for back-compat with in-flight clients; with the
- * flag on a missing nonce is rejected. A supplied-but-invalid nonce is ALWAYS
+ * consumes a supplied nonce. `requireHighRiskNonce` defaults ON in production
+ * (config.ts): a missing nonce is rejected. Only when an operator has explicitly
+ * turned the flag OFF (controlled staged ramp) is a missing nonce tolerated for
+ * back-compat with in-flight clients. A supplied-but-invalid nonce is ALWAYS
  * rejected (fail-closed) regardless of the flag.
  *
  * Returns whether a nonce was actually consumed so a caller can additionally
