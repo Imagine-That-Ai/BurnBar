@@ -1,5 +1,4 @@
 import SwiftUI
-import os
 @preconcurrency import AVKit
 @preconcurrency import MediaPlayer
 #if canImport(UIKit)
@@ -4219,7 +4218,7 @@ enum ScreenShareStreamStateOverlayPolicy {
 }
 
 private struct VolumeButtonScrollBridge: UIViewRepresentable {
-    let onVolumeStep: @MainActor (Double) -> Void
+    let onVolumeStep: @MainActor @Sendable (Double) -> Void
 
     func makeUIView(context: Context) -> MPVolumeView {
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -4230,65 +4229,33 @@ private struct VolumeButtonScrollBridge: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: MPVolumeView, context: Context) {
-        context.coordinator.updateOnVolumeStep(onVolumeStep)
+        context.coordinator.onVolumeStep = onVolumeStep
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
-    final class Coordinator: NSObject, Sendable {
-        // The AVAudioSession KVO callback fires off the main thread, so the mutable
-        // state (a MainActor closure + a non-Sendable KVO token + last volume) is
-        // confined to an OSAllocatedUnfairLock — making the coordinator Sendable.
-        private struct State {
-            var onVolumeStep: (@MainActor @Sendable (Double) -> Void)?
-            var observation: NSKeyValueObservation?
-            var lastVolume: Float
-        }
-
-        private let state = OSAllocatedUnfairLock<State>(
-            uncheckedState: State(lastVolume: AVAudioSession.sharedInstance().outputVolume)
-        )
+    @MainActor
+    final class Coordinator: NSObject {
+        var onVolumeStep: (@MainActor @Sendable (Double) -> Void)?
+        private var observation: NSKeyValueObservation?
+        private var lastVolume: Float = AVAudioSession.sharedInstance().outputVolume
 
         func start(onVolumeStep: @escaping @MainActor @Sendable (Double) -> Void) {
-            state.withLockUnchecked {
-                $0.onVolumeStep = onVolumeStep
-                $0.lastVolume = AVAudioSession.sharedInstance().outputVolume
-            }
-            let observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, change in
-                guard let self, let newValue = change.newValue else { return }
-                let resolved = self.state.withLockUnchecked { state -> (delta: Float, callback: SendableVolumeStepCallback) in
-                    let delta = newValue - state.lastVolume
-                    state.lastVolume = newValue
-                    return (delta, SendableVolumeStepCallback(state.onVolumeStep))
-                }
-                guard abs(resolved.delta) > 0.001 else { return }
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        resolved.callback.call(resolved.delta > 0 ? -0.28 : 0.28)
-                    }
+            self.onVolumeStep = onVolumeStep
+            lastVolume = AVAudioSession.sharedInstance().outputVolume
+            observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, change in
+                guard let newValue = change.newValue else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let delta = newValue - self.lastVolume
+                    self.lastVolume = newValue
+                    guard abs(delta) > 0.001 else { return }
+                    self.onVolumeStep?(delta > 0 ? -0.28 : 0.28)
                 }
             }
-            state.withLockUnchecked { $0.observation = observation }
         }
-
-        func updateOnVolumeStep(_ onVolumeStep: (@MainActor @Sendable (Double) -> Void)?) {
-            state.withLockUnchecked { $0.onVolumeStep = onVolumeStep }
-        }
-    }
-}
-
-private struct SendableVolumeStepCallback: Sendable {
-    private let callback: (@MainActor @Sendable (Double) -> Void)?
-
-    init(_ callback: (@MainActor @Sendable (Double) -> Void)?) {
-        self.callback = callback
-    }
-
-    @MainActor
-    func call(_ value: Double) {
-        callback?(value)
     }
 }
 
