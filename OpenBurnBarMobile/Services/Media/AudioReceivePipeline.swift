@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import AVFoundation
+import os
 import OpenBurnBarMedia
 
 /// iOS Opus → PCM decode + playback path. Adaptive jitter buffer
@@ -114,24 +115,36 @@ final class AudioReceivePipeline {
     }
 }
 
-private final class AudioConverterPacketSource: @unchecked Sendable {
-    private let buffer: AVAudioCompressedBuffer
-    private var supplied = false
+private final class AudioConverterPacketSource: Sendable {
+    // `AVAudioCompressedBuffer` is a CoreAudio reference type that is not
+    // `Sendable`, and the one-time `supplied` flag guards single packet
+    // delivery. Both live behind an unfair lock with `withLockUnchecked`, giving
+    // the type genuine `Sendable` conformance without `@unchecked`. In practice
+    // the buffer is created and consumed within the `@MainActor`-isolated
+    // `AudioReceivePipeline`, so the lock only ever serialises a single caller.
+    private struct State {
+        var buffer: AVAudioCompressedBuffer
+        var supplied = false
+    }
+
+    private let state: OSAllocatedUnfairLock<State>
 
     init(buffer: AVAudioCompressedBuffer) {
-        self.buffer = buffer
+        self.state = OSAllocatedUnfairLock(uncheckedState: State(buffer: buffer))
     }
 
     func nextPacket(
         _ packetCount: AVAudioPacketCount,
         _ outStatus: UnsafeMutablePointer<AVAudioConverterInputStatus>
     ) -> AVAudioBuffer? {
-        if supplied {
-            outStatus.pointee = .noDataNow
-            return nil
+        state.withLockUnchecked { state in
+            if state.supplied {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            state.supplied = true
+            outStatus.pointee = .haveData
+            return state.buffer
         }
-        supplied = true
-        outStatus.pointee = .haveData
-        return buffer
     }
 }

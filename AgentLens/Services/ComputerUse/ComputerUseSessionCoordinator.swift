@@ -16,7 +16,7 @@ import OpenBurnBarMedia
 /// contracts, scope matcher, capability gate, and audit chain stay in
 /// `OpenBurnBarComputerUseCore`.
 @MainActor
-public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked Sendable {
+public final class ComputerUseSessionCoordinator: ObservableObject {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "ComputerUse")
     private static let phoneControlActionCap = 10_000
     private static func debugTrace(_ message: String) {

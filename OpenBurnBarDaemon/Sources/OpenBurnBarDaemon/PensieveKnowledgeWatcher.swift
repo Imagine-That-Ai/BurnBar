@@ -71,18 +71,18 @@ private final class PensieveWatcherGate: Sendable {
 /// FS event still gets reconciled (the daemon already runs that heartbeat loop;
 /// this watcher piggybacks on the same support directory + atomic-write pattern).
 ///
-/// AUDIT(@unchecked Sendable): the watcher's mutable state (dispatch sources,
-/// descriptors, debounce/backstop work items, enqueued-ID set) is only mutated on
-/// its private serial `workQueue`, and it also stores a non-Sendable `FileManager`.
-/// The queue confinement plus Foundation's thread-safe `FileManager` make sharing
-/// safe; this audited conformance reflects that manual isolation.
+/// AUDIT(@unchecked Sendable): lifecycle state (dispatch sources, descriptors,
+/// debounce/backstop work items, enqueued-ID set) is mutated only on the private
+/// serial `workQueue`. TODO(sendable-zero): box this plus the public status vars in
+/// `Locked<State>` (every field is Sendable) to make the type plainly Sendable and
+/// close the off-queue read race on `lastEnqueueDate`/`lastEnqueuedCount`/`lastError`.
 public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     private let roots: [PensieveWatchRoot]
     private let queueDirectoryURL: URL
     private let vaultKeyProvider: @Sendable () -> Data?
     private let debounceInterval: TimeInterval
     private let backstopInterval: TimeInterval
-    private let fileManager: FileManager
+    private let fileSystem: any SendableFileSystem
 
     private let gate = PensieveWatcherGate()
     private let workQueue = DispatchQueue(label: "com.openburnbar.daemon.pensieve.watch", qos: .utility)
@@ -104,14 +104,14 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         vaultKeyProvider: @escaping @Sendable () -> Data?,
         debounceInterval: TimeInterval = 2.0,
         backstopInterval: TimeInterval = 15 * 60,
-        fileManager: FileManager = .default
+        fileSystem: any SendableFileSystem = DefaultSendableFileSystem()
     ) {
         self.roots = roots
         self.queueDirectoryURL = queueDirectoryURL
         self.vaultKeyProvider = vaultKeyProvider
         self.debounceInterval = debounceInterval
         self.backstopInterval = backstopInterval
-        self.fileManager = fileManager
+        self.fileSystem = fileSystem
     }
 
     /// Convenience: watch the standard repo-docs / notes / Claude-session roots.
@@ -161,7 +161,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
 
     private func installSources() {
         for root in roots {
-            try? fileManager.createDirectory(at: root.url, withIntermediateDirectories: true)
+            try? fileSystem.createDirectory(at: root.url, withIntermediateDirectories: true)
             let fd = open(root.url.path, O_EVTONLY)
             guard fd >= 0 else { continue }
             let source = DispatchSource.makeFileSystemObjectSource(
@@ -263,17 +263,17 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     private func signalSessionEnds(in root: PensieveWatchRoot) -> Int {
         guard let files = eligibleFiles(in: root) else { return 0 }
         let sentinelDir = queueDirectoryURL.appendingPathComponent("session-end-signals", isDirectory: true)
-        try? fileManager.createDirectory(at: sentinelDir, withIntermediateDirectories: true)
+        try? fileSystem.createDirectory(at: sentinelDir, withIntermediateDirectories: true)
         var signalled = 0
         for fileURL in files {
-            guard let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
+            guard let attrs = try? fileSystem.attributesOfItem(atPath: fileURL.path),
                   let modified = attrs[.modificationDate] as? Date else { continue }
             // Only consider sessions that have settled (no write in the last
             // debounce window) — a still-active session keeps getting touched.
             guard Date().timeIntervalSince(modified) >= debounceInterval else { continue }
             let key = PensieveKnowledgeChunker.sha256Hex(fileURL.path + "@" + ISO8601DateFormatter().string(from: modified))
             let sentinelURL = sentinelDir.appendingPathComponent("\(key).json", isDirectory: false)
-            guard !fileManager.fileExists(atPath: sentinelURL.path) else { continue }
+            guard !fileSystem.fileExists(atPath: sentinelURL.path) else { continue }
             let payload: [String: Any] = [
                 "sessionPath": fileURL.path,
                 "modifiedAt": ISO8601DateFormatter().string(from: modified),
@@ -282,7 +282,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
             ]
             if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) {
                 try? data.write(to: sentinelURL, options: .atomic)
-                try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sentinelURL.path)
+                try? fileSystem.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sentinelURL.path)
                 signalled += 1
             }
         }
@@ -292,7 +292,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     /// Atomically write one prepared batch into the commit queue with 0600 perms,
     /// matching the TS `defaultCommitQueue` filename scheme.
     private func writeBatch(_ batch: PensieveKnowledgeBatch) -> Bool {
-        try? fileManager.createDirectory(at: queueDirectoryURL, withIntermediateDirectories: true)
+        try? fileSystem.createDirectory(at: queueDirectoryURL, withIntermediateDirectories: true)
         let idsHash = PensieveKnowledgeChunker.sha256Hex(batch.vectors.map(\.vectorId).joined(separator: ","))
         let fileURL = queueDirectoryURL.appendingPathComponent("\(batch.sourceSlug)-\(idsHash).json", isDirectory: false)
         guard let data = try? JSONSerialization.data(
@@ -301,7 +301,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
         ) else { return false }
         do {
             try data.write(to: fileURL, options: .atomic)
-            try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            try? fileSystem.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
             return true
         } catch {
             lastError = error.localizedDescription
@@ -312,7 +312,7 @@ public final class PensieveKnowledgeWatcher: @unchecked Sendable {
     // MARK: - File enumeration
 
     private func eligibleFiles(in root: PensieveWatchRoot) -> [URL]? {
-        guard let enumerator = fileManager.enumerator(
+        guard let enumerator = fileSystem.enumerator(
             at: root.url,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]

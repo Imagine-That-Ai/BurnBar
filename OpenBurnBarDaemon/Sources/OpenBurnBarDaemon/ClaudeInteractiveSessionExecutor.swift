@@ -30,13 +30,7 @@ import OpenBurnBarCore
 /// real token usage from the freshly-written `~/.claude/projects/<encoded>/*.jsonl`
 /// — far more reliable than parsing the ANSI render. ANSI scraping remains as a
 /// fallback. Concurrency is bounded by an async semaphore (the "pool").
-///
-/// AUDIT(@unchecked Sendable): every stored property is immutable and Sendable
-/// (mutable warn-once flag is already a `Locked` box) except `fileManager:
-/// FileManager`, which Foundation does not yet mark Sendable. `FileManager` is
-/// documented as safe for concurrent use, so sharing the value is safe; drop this
-/// conformance once Foundation annotates `FileManager: Sendable`.
-public final class ClaudeInteractiveSessionExecutor: @unchecked Sendable {
+public final class ClaudeInteractiveSessionExecutor: Sendable {
 
     public struct Configuration: Sendable {
         public var maxConcurrentSessions: Int
@@ -60,18 +54,18 @@ public final class ClaudeInteractiveSessionExecutor: @unchecked Sendable {
     private let configuration: Configuration
     private let semaphore: AsyncSemaphore
     private let logger: BurnBarDaemonLogger
-    private let fileManager: FileManager
+    private let fileSystem: any SendableFileSystem
     private let warnedOnce = Locked(false)
 
     public init(
         configuration: Configuration = Configuration(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "claude-interactive-executor"),
-        fileManager: FileManager = .default
+        fileSystem: any SendableFileSystem = DefaultSendableFileSystem()
     ) {
         self.configuration = configuration
         self.semaphore = AsyncSemaphore(value: configuration.maxConcurrentSessions)
         self.logger = logger
-        self.fileManager = fileManager
+        self.fileSystem = fileSystem
     }
 
     /// Constructs the executor only when the experimental opt-in env var is set
@@ -201,10 +195,10 @@ public final class ClaudeInteractiveSessionExecutor: @unchecked Sendable {
         let claudeURL = try resolveClaude()
 
         // Unique cwd → unique Claude project dir → clean per-turn JSONL.
-        let cwd = fileManager.temporaryDirectory
+        let cwd = fileSystem.temporaryDirectory
             .appendingPathComponent("obb-claude-interactive-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.createDirectory(at: cwd, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        defer { try? fileManager.removeItem(at: cwd) }
+        try fileSystem.createDirectory(at: cwd, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? fileSystem.removeItem(at: cwd) }
 
         let projectDir = ClaudeInteractiveHandoffService.claudeProjectDirectory(for: cwd.path)
 

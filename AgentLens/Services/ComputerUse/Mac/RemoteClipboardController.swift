@@ -3,6 +3,7 @@ import AppKit
 import CryptoKit
 import Darwin
 import Foundation
+import os
 import OSLog
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
@@ -22,20 +23,30 @@ public protocol RemoteClipboardContextInspecting: Sendable {
     func focusedDenyReason() -> ComputerUseAccessibilityDenyReason?
 }
 
-public final class GeneralRemoteClipboardPasteboard: RemoteClipboardPasteboard, @unchecked Sendable {
-    private let pasteboard: NSPasteboard
+public final class GeneralRemoteClipboardPasteboard: RemoteClipboardPasteboard, Sendable {
+    private struct State {
+        var pasteboard: NSPasteboard
+    }
+
+    // `NSPasteboard` is an AppKit reference type that is not `Sendable`, and the
+    // conformed-to `RemoteClipboardPasteboard` protocol is nonisolated, so the
+    // type cannot be `@MainActor`. The lock fully mediates access to the stored
+    // reference, yielding genuine `Sendable` conformance without `@unchecked`.
+    private let state: OSAllocatedUnfairLock<State>
 
     public init(pasteboard: NSPasteboard = .general) {
-        self.pasteboard = pasteboard
+        self.state = OSAllocatedUnfairLock(uncheckedState: State(pasteboard: pasteboard))
     }
 
     public func readString() -> String? {
-        pasteboard.string(forType: .string)
+        state.withLockUnchecked { $0.pasteboard.string(forType: .string) }
     }
 
     public func writeString(_ text: String) throws {
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        state.withLockUnchecked { state in
+            state.pasteboard.clearContents()
+            state.pasteboard.setString(text, forType: .string)
+        }
     }
 }
 

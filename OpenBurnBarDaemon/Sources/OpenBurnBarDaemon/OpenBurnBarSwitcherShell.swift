@@ -832,22 +832,18 @@ public protocol BurnBarCLIShellShimInstalling: Sendable {
     func installShims(invokedExecutablePath: String) throws -> BurnBarCLIShellShimInstallResult
 }
 
-// AUDIT(@unchecked Sendable): the only non-Sendable stored property is
-// `fileManager: FileManager`, which Foundation does not yet mark Sendable but is
-// documented as thread-safe for the path operations this installer performs. Drop
-// this conformance once Foundation annotates `FileManager: Sendable`.
-public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, @unchecked Sendable {
+public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, Sendable {
     public static let defaultInstallDirectory = BurnBarDaemonPaths.supportDirectoryURL
         .appendingPathComponent("bin", isDirectory: true)
 
-    private let fileManager: FileManager
+    private let fileSystem: any SendableFileSystem
     private let installDirectory: URL
 
     public init(
-        fileManager: FileManager = .default,
+        fileSystem: any SendableFileSystem = DefaultSendableFileSystem(),
         installDirectory: URL = Self.defaultInstallDirectory
     ) {
-        self.fileManager = fileManager
+        self.fileSystem = fileSystem
         self.installDirectory = installDirectory
     }
 
@@ -856,7 +852,7 @@ public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, @unch
             throw BurnBarSwitcherShellError.shimInstallFailed("Could not resolve the OpenBurnBarCLI executable path.")
         }
 
-        try fileManager.createDirectory(at: installDirectory, withIntermediateDirectories: true)
+        try fileSystem.createDirectory(at: installDirectory, withIntermediateDirectories: true)
 
         let commands = SwitcherCLIProfileType.allCases.map(\.executableName)
         for command in commands {
@@ -866,7 +862,7 @@ public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, @unch
             exec "\(invokedExecutablePath)" exec \(command) "$@"
             """
             try script.write(to: shimURL, atomically: true, encoding: .utf8)
-            try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shimURL.path)
+            try fileSystem.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shimURL.path)
         }
 
         return BurnBarCLIShellShimInstallResult(

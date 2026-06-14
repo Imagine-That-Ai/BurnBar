@@ -2,20 +2,33 @@ import AppKit
 import CryptoKit
 import Foundation
 import Network
+import os
 import SQLite3
 
 #if canImport(OpenBurnBarCore)
 import OpenBurnBarCore
 #endif
 
-private final class CursorConnectorSecretBroker: @unchecked Sendable {
+private final class CursorConnectorSecretBroker: Sendable {
+    // `NWListener` is a Network-framework reference type bound to a queue and is
+    // not `Sendable`, so the listener and its derived port live behind an unfair
+    // lock with `withLockUnchecked`. Every other stored property is an immutable
+    // `let`, giving the type genuine `Sendable` conformance without `@unchecked`.
+    private struct BrokerState {
+        var listener: NWListener?
+        var port: UInt16 = 0
+    }
+
     private let keychain: KeychainStore
     private let routeAccounts: [String: String]
     private let queue = DispatchQueue(label: "openburnbar.cursor.secret-broker")
-    private var listener: NWListener?
+    private let brokerState = OSAllocatedUnfairLock<BrokerState>(uncheckedState: BrokerState())
 
     let bearerToken: String
-    private(set) var port: UInt16 = 0
+
+    var port: UInt16 {
+        brokerState.withLockUnchecked { $0.port }
+    }
 
     var baseURLString: String {
         "http://127.0.0.1:\(port)"
@@ -73,8 +86,10 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
                     )
                     continue
                 }
-                self.listener = listener
-                self.port = candidate
+                brokerState.withLockUnchecked { state in
+                    state.listener = listener
+                    state.port = candidate
+                }
                 return
             } catch {
                 lastError = error
@@ -88,9 +103,11 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
     }
 
     func stop() {
-        listener?.cancel()
-        listener = nil
-        port = 0
+        brokerState.withLockUnchecked { state in
+            state.listener?.cancel()
+            state.listener = nil
+            state.port = 0
+        }
     }
 
     private func handle(_ connection: NWConnection) {

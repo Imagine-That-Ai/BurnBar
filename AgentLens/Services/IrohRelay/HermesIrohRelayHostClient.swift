@@ -3,6 +3,7 @@ import FirebaseAppCheck
 import FirebaseCore
 import FirebaseRemoteConfig
 import Foundation
+import os
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
@@ -647,21 +648,28 @@ private enum HermesIrohHostedRelayConfig {
             || normalized(UserDefaults.standard.string(forKey: userDefaultsKey)) != nil
     }
 
-    private final class ContinuationGate: @unchecked Sendable {
-        private let lock = NSLock()
-        private var didResume = false
-        private let continuation: CheckedContinuation<Void, Never>
+    private final class ContinuationGate: Sendable {
+        // `CheckedContinuation` is not `Sendable`, so the once-only flag and the
+        // continuation share a single unfair-lock-protected `State`. Resuming
+        // inside the lock keeps the resume-exactly-once guarantee the prior
+        // `NSLock` version provided.
+        private struct State {
+            var didResume = false
+            let continuation: CheckedContinuation<Void, Never>
+        }
+
+        private let state: OSAllocatedUnfairLock<State>
 
         init(_ continuation: CheckedContinuation<Void, Never>) {
-            self.continuation = continuation
+            state = OSAllocatedUnfairLock(uncheckedState: State(continuation: continuation))
         }
 
         func resume() {
-            lock.lock()
-            defer { lock.unlock() }
-            guard !didResume else { return }
-            didResume = true
-            continuation.resume()
+            state.withLockUnchecked { state in
+                guard !state.didResume else { return }
+                state.didResume = true
+                state.continuation.resume()
+            }
         }
     }
 }
