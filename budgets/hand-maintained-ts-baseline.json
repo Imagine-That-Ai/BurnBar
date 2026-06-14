@@ -1,7 +1,7 @@
 {
-  "loc": 3226,
-  "exportedInterfaces": 348,
-  "fileCount": 190,
-  "generatedAt": "2026-06-14T03:41:00.000Z",
-  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3265 -> 3226 on 2026-06-14 after Swarm 6 knownDrift zero + dead-code burn. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
+  "loc": 2702,
+  "exportedInterfaces": 258,
+  "fileCount": 191,
+  "generatedAt": "2026-06-14T04:40:00.000Z",
+  "note": "Hand-maintained functions/src/**/*.ts schema/type surface, counted by check-legacy-budget.mjs (exported interface/type spans, excluding types/generated/**). Ratcheted 3226 -> 2702 on 2026-06-14 after Swarm 6 knip unexports + unsafe-cast cleanup. Lower it intentionally whenever hand-maintained schema surface shrinks (TypeSpec strangler progress)."
 }

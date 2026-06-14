@@ -61,8 +61,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  */
 function mergeValue(existing: unknown, value: unknown, merge: boolean): unknown {
   if (value instanceof FieldValue) {
-    if ("operand" in (value as object)) {
-      const operand = (value as unknown as { operand: number }).operand;
+    const operand = Object.getOwnPropertyDescriptor(value, "operand")?.value;
+    if (typeof operand === "number") {
       return (typeof existing === "number" ? existing : 0) + operand;
     }
     return DELETE;
@@ -228,8 +228,9 @@ class FakeFirestore {
 
   asFirestore(): Firestore {
     // The engine takes the nominal admin `Firestore` class, which a
-    // structural in-memory fake can never satisfy; widen through `unknown`.
-    return this as unknown as Firestore;
+    // structural in-memory fake can never satisfy.
+    // @ts-expect-error in-memory fake is structurally sufficient for rollup tests
+    return this;
   }
 }
 
@@ -262,7 +263,7 @@ function usageEvent(sessionId: string, tokens = 10): UsageEventDoc {
 function seedUsage(fake: FakeFirestore, count: number): void {
   for (let i = 0; i < count; i += 1) {
     const id = String(i).padStart(6, "0");
-    fake.store.set(`users/${UID}/usage/${id}`, usageEvent(`session-${id}`) as unknown as Doc);
+    fake.store.set(`users/${UID}/usage/${id}`, { ...usageEvent(`session-${id}`) });
   }
 }
 
@@ -271,7 +272,7 @@ function seedQueue(fake: FakeFirestore, count: number): void {
     const id = String(i).padStart(6, "0");
     const delta = buildPendingCounterDelta(`usage-${id}`, undefined, usageEvent(`queued-${id}`), NOW_ISO);
     if (!delta) throw new Error(`expected a pending delta for usage-${id}`);
-    fake.store.set(`${QUEUE_PATH}/${id}`, delta as unknown as Doc);
+    fake.store.set(`${QUEUE_PATH}/${id}`, delta);
   }
 }
 

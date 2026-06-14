@@ -28,12 +28,12 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
-import { stripUndefinedObject } from "../guards.js";
+import { isRecord, stripUndefinedObject } from "../guards.js";
 import { boundedTrimmedString, requireHexDigest, requireBoundedNumber, requireRecordArray, nowISO } from "./shared.js";
 import { appendAuditEvent, appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
-export const RECOVERY_SCHEMA_VERSION = 2;
+const RECOVERY_SCHEMA_VERSION = 2;
 const RECOVERY_COLLECTION = "account_recovery_methods";
 // Confirmation-verifier scheme version (security remediation M-5). v2 stores a
 // one-way commitment SHA-256(salt || verificationHash) instead of the raw
@@ -92,10 +92,10 @@ function parseRecoveryKeyPayload(raw: unknown): {
   keyVersion: number;
   algorithm: string;
 } {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     throw new HttpsError("invalid-argument", "payload must be a recovery-key envelope.");
   }
-  const payload = raw as Record<string, unknown>;
+  const payload = raw;
   const algorithm = boundedTrimmedString(payload.algorithm, "payload.algorithm", 64, true);
   if (algorithm !== "AES-256-GCM") {
     throw new HttpsError("invalid-argument", "payload.algorithm must be AES-256-GCM.");
@@ -109,22 +109,23 @@ function parseRecoveryKeyPayload(raw: unknown): {
 }
 
 function parseRecoveryContactPayload(raw: unknown): { contacts: RecoveryContactShare[]; threshold: number } {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isRecord(raw)) {
     throw new HttpsError("invalid-argument", "payload must be a recovery-contact envelope.");
   }
-  const payload = raw as Record<string, unknown>;
+  const payload = raw;
   const rawContacts = requireRecordArray(payload.contacts, "payload.contacts", MAX_RECOVERY_CONTACTS);
   if (rawContacts.length === 0) {
     throw new HttpsError("invalid-argument", "At least one recovery contact is required.");
   }
-  const contacts: RecoveryContactShare[] = rawContacts.map(
-    (contact, idx) =>
-      stripUndefinedObject({
-        contactId: boundedTrimmedString(contact.contactId, `payload.contacts[${idx}].contactId`, 160, true),
-        sealedShare: requireSealedBlob(contact.sealedShare, `payload.contacts[${idx}].sealedShare`),
-        contactHint: boundedTrimmedString(contact.contactHint, `payload.contacts[${idx}].contactHint`, 256, false),
-      }) as RecoveryContactShare,
-  );
+  const contacts: RecoveryContactShare[] = rawContacts.map((contact, idx) => {
+    const share: RecoveryContactShare = {
+      contactId: boundedTrimmedString(contact.contactId, `payload.contacts[${idx}].contactId`, 160, true),
+      sealedShare: requireSealedBlob(contact.sealedShare, `payload.contacts[${idx}].sealedShare`),
+    };
+    const contactHint = boundedTrimmedString(contact.contactHint, `payload.contacts[${idx}].contactHint`, 256, false);
+    if (contactHint) share.contactHint = contactHint;
+    return share;
+  });
   const threshold = requireBoundedNumber(payload.threshold ?? contacts.length, "payload.threshold", 1, contacts.length);
   return { contacts, threshold };
 }
@@ -136,13 +137,13 @@ function parseRecoveryContactPayload(raw: unknown): { contacts: RecoveryContactS
  * real delayed re-verification (Apple ADP), not a flag flip — catching users who
  * never saved the key. recovery_contact methods confirm out-of-band per contact.
  */
-export function verifyRecoveryConfirmation(data: Record<string, unknown>, suppliedHash: string | undefined): void {
+function verifyRecoveryConfirmation(data: Record<string, unknown>, suppliedHash: string | undefined): void {
   const kind = typeof data.kind === "string" ? data.kind : "recovery_key";
   if (kind !== "recovery_key") return;
   if (!suppliedHash) {
     throw new HttpsError("failed-precondition", "Re-enter your recovery key to confirm (verificationHash required).");
   }
-  const recoveryKey = data.recoveryKey as Record<string, unknown> | undefined;
+  const recoveryKey = isRecord(data.recoveryKey) ? data.recoveryKey : undefined;
 
   // v2 (security remediation M-5): non-replayable commitment. The server stored
   // SHA-256(confirmSalt || verificationHash); recompute it from the SUPPLIED
@@ -189,10 +190,11 @@ export const setupRecovery = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before setting up recovery.");
     enforceAuthAndAppCheck(request, uid);
 
-    const method = boundedTrimmedString(request.data?.method, "method", 40, true) as RecoveryMethodKind;
-    if (method !== "recovery_key" && method !== "recovery_contact") {
+    const methodRaw = boundedTrimmedString(request.data?.method, "method", 40, true);
+    if (methodRaw !== "recovery_key" && methodRaw !== "recovery_contact") {
       throw new HttpsError("invalid-argument", "method must be recovery_key or recovery_contact.");
     }
+    const method: RecoveryMethodKind = methodRaw;
 
     const recoveryId = `rec_${Date.now().toString(36)}_${randomBytes(8).toString("hex")}`;
     const now = nowISO();

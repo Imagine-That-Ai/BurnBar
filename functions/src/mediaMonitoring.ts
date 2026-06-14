@@ -94,12 +94,12 @@ function bucketBitsPerSecond(b: string | undefined): number | undefined {
   }
 }
 
-export interface RollupOptions {
+interface RollupOptions {
   dateUTC: Date;
   firestore?: Firestore;
 }
 
-export async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {
+async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {
   const firestore = options.firestore ?? getFirestore();
   const window = utcDayWindow(options.dateUTC);
 

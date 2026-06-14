@@ -36,13 +36,13 @@ interface TierInputs {
   netRevenuePerSubscriberDayUSD: number;
 }
 
-export interface TierCogsDailyInput {
+interface TierCogsDailyInput {
   dayKey: string;
   cloud: TierInputs;
   cloudPro: TierInputs;
 }
 
-export interface TierCogsBucket {
+interface TierCogsBucket {
   activeSubscribers: number;
   netRevenueUSD: number;
   cogsUSD: number;
@@ -50,7 +50,7 @@ export interface TierCogsBucket {
   grossMarginRatio: number | null;
 }
 
-export interface TierCogsDailyDoc {
+interface TierCogsDailyDoc {
   id: string;
   dayKey: string;
   unitCosts: typeof TIER_COGS_UNIT_COSTS;

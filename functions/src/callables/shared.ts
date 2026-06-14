@@ -10,11 +10,10 @@ import type { Firestore } from "firebase-admin/firestore";
 import { createHash, randomBytes } from "node:crypto";
 import Stripe from "stripe";
 
-import {
-  entitlementExpiryMillis as sharedEntitlementExpiryMillis,
-  isActiveEntitlement,
-  type EntitlementCatalog,
-} from "@openburnbar/entitlements";
+import * as entitlementsPackage from "@openburnbar/entitlements";
+import type { EntitlementCatalog } from "@openburnbar/entitlements";
+
+const { isActiveEntitlement } = entitlementsPackage;
 import { getConfig } from "../config.js";
 import { stripeWithResilience } from "../resilienceHelpers.js";
 import { storeCredential } from "../secrets.js";
@@ -687,18 +686,6 @@ export async function assertActiveBurnBarCloudProEntitlement(uid: string): Promi
 }
 
 /**
- * Ultra gate. Ultra mirrors proMax (the reconciler dual-writes burnbar_pro_max),
- * so the Cloud Pro surface stays suspendable; we additionally read the
- * burnbar_ultra source doc for the 10x Pensieve limits. Throws if not Ultra.
- */
-export async function assertActiveBurnBarUltraEntitlement(uid: string): Promise<void> {
-  await assertCloudFeatureNotSuspended(db, uid, "burnbar_cloud_pro");
-  const ultraSnap = await db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get();
-  if (isActiveBurnBarUltraEntitlement(ultraSnap.data())) return;
-  throw new HttpsError("permission-denied", "BurnBar Ultra is required for this capability.");
-}
-
-/**
  * Builds the {@link EntitlementCatalog} the shared predicate matches against from
  * this backend's resolved config. The product IDs are env / remote-config overridable
  * (see `functions/src/config.ts`), so the catalog is resolved per call rather than
@@ -753,7 +740,7 @@ export function isActiveBurnBarUltraEntitlement(raw: Record<string, unknown> | u
  * expiry, since existing callers branch on `Number.isFinite(expiry) && expiry > now`.
  */
 export function entitlementExpiryMillis(raw: Record<string, unknown>): number {
-  const millis = sharedEntitlementExpiryMillis(raw);
+  const millis = entitlementsPackage.entitlementExpiryMillis(raw);
   return Number.isFinite(millis) ? millis : 0;
 }
 
@@ -1074,9 +1061,10 @@ export async function applyStripeCheckoutSession(
     return;
   }
   let subscription: Stripe.Subscription | undefined;
-  if (typeof session.subscription === "string") {
+  const subscriptionId = session.subscription;
+  if (typeof subscriptionId === "string") {
     subscription = await stripeWithResilience("subscriptions.retrieve", () =>
-      stripe.subscriptions.retrieve(session.subscription as string),
+      stripe.subscriptions.retrieve(subscriptionId),
     );
   } else if (session.subscription && typeof session.subscription === "object") {
     subscription = session.subscription;
@@ -1231,7 +1219,7 @@ function stripeSubscriptionProductID(subscription: Stripe.Subscription, entitlem
   return entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID ? cfg.burnBarProMaxProductID : cfg.burnBarProProductID;
 }
 
-export async function uidForStripeSubscription(subscription: Stripe.Subscription): Promise<string | undefined> {
+async function uidForStripeSubscription(subscription: Stripe.Subscription): Promise<string | undefined> {
   const metadataUID = subscription.metadata?.firebaseUID;
   if (metadataUID) return metadataUID;
   const customerID = stripeCustomerID(subscription.customer);

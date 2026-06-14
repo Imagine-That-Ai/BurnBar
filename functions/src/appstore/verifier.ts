@@ -167,11 +167,6 @@ function normalizeAppleEnvironment(env: AppStoreEnvironment | string): AppStoreE
 // AppleJWSVerifier
 // ---------------------------------------------------------------------------
 
-export interface VerifyAutoEnvResult<T> {
-  payload: T;
-  environment: AppStoreEnvironment;
-}
-
 /**
  * Decoded view of a JWS. The library exposes payload-only types; we
  * keep the raw token alongside so the reconciler/audit layers can hash
@@ -183,19 +178,19 @@ export interface DecodedTransaction {
   environment: AppStoreEnvironment;
 }
 
-export interface DecodedRenewalInfo {
+interface DecodedRenewalInfo {
   raw: string;
   payload: JWSRenewalInfoDecodedPayload;
   environment: AppStoreEnvironment;
 }
 
-export interface DecodedNotification {
+interface DecodedNotification {
   raw: string;
   payload: ResponseBodyV2DecodedPayload;
   environment: AppStoreEnvironment;
 }
 
-export interface DecodedAppTransaction {
+interface DecodedAppTransaction {
   raw: string;
   payload: AppTransaction;
   environment: AppStoreEnvironment;

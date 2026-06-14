@@ -35,7 +35,7 @@ type DemoUsageSeed = {
   reasoningTokens: number;
 };
 
-export type SeedAndroidDemoAccountResult = {
+type SeedAndroidDemoAccountResult = {
   success: true;
   seeded: true;
   usageCount: number;

@@ -36,7 +36,15 @@ function headFor(chain: Array<AuditEventCore & { hash: string }>, anchoredSeq?: 
 }
 
 describe("auditActorLabel — self-reported platform hint is clamped", () => {
-  const withHeader = (v: unknown) => auditActorLabel({ rawRequest: { headers: { "x-burnbar-platform": v } } } as never);
+  const withHeader = (v: unknown) => {
+    const headers =
+      v === undefined || v === null
+        ? {}
+        : { "x-burnbar-platform": typeof v === "string" ? v : String(v) };
+    const request = { rawRequest: { headers } };
+    // @ts-expect-error partial CallableRequest stub for auditActorLabel
+    return auditActorLabel(request);
+  };
 
   it("accepts a clean platform hint", () => {
     expect(withHeader("web")).toBe("user:web");

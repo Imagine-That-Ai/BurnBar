@@ -25,7 +25,7 @@ const REDACT_PATTERNS: ReadonlyArray<[RegExp, string | ((match: string) => strin
 function scrub(value: string): string {
   let result = value;
   for (const [pattern, replacement] of REDACT_PATTERNS) {
-    result = result.replace(pattern, replacement as Parameters<string['replace']>[1]);
+    result = result.replace(pattern, replacement);
   }
   return result;
 }

@@ -26,7 +26,7 @@ const DESIGN_ARENA_MODELS_URL = "https://www.designarena.ai/api/v1/models";
 
 type UnknownRecord = Record<string, unknown>;
 
-export interface ModelLandscapeRefreshResult {
+interface ModelLandscapeRefreshResult {
   snapshots: ModelBenchmarkSnapshotDoc[];
   statuses: ModelBenchmarkSourceStatusDoc[];
 }

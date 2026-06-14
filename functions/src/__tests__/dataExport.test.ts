@@ -10,10 +10,7 @@ import {
   HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
   HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
 } from "../hermesGateway.js";
-import type {
-  GatewaySignalAtRestKeyDeliveryDoc,
-  GatewaySignalEnvelopeDoc,
-} from "../types/generated/hermes-gateway.js";
+import type { GatewaySignalEnvelopeDoc } from "../types/generated/hermes-gateway.js";
 
 // vitest runs from the functions/ package root; the registry is a sibling package.
 const registry = JSON.parse(
@@ -199,7 +196,10 @@ const signalAtRestEnvelope: GatewaySignalEnvelopeDoc = {
     formatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
   },
 };
-const signalAtRestKeyDelivery = signalAtRestEnvelope.keyDelivery as GatewaySignalAtRestKeyDeliveryDoc;
+if (signalAtRestEnvelope.keyDelivery.scheme !== HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION) {
+  throw new Error("expected at-rest key delivery fixture");
+}
+const signalAtRestKeyDelivery = signalAtRestEnvelope.keyDelivery;
 
 describe("isSealedEnvelope structural detection", () => {
   it("detects AES-256-GCM text + blob envelopes regardless of key name", () => {

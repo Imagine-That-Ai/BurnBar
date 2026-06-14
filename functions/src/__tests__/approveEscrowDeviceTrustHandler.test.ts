@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
+import type { CallableRequest } from "firebase-functions/v2/https";
 
 // ---------------------------------------------------------------------------
 // In-memory Firestore double. Supports the handler's access patterns:
@@ -68,13 +69,13 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
           filters.every((f) => {
             const v = data[f.field];
             if (f.op === "==") return v === f.value;
-            if (f.op === "in") return Array.isArray(f.value) && (f.value as unknown[]).includes(v);
+            if (f.op === "in") return Array.isArray(f.value) && f.value.includes(v);
             return false;
           }),
         )
         .map(([path, data]) => ({
           ...snapshotFor(path),
-          id: path.split("/").pop()!,
+          id: path.split("/").pop() ?? "",
           ref: makeDocRef(path),
           _data: data,
         }));
@@ -99,10 +100,10 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
     async runTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
       const tx = {
         async get(refOrQuery: { __isDoc?: true; __isQuery?: true; path?: string } & Record<string, unknown>) {
-          if (refOrQuery.__isQuery) {
-            return (refOrQuery as unknown as { run: () => unknown }).run();
+          if (refOrQuery.__isQuery && typeof refOrQuery.run === "function") {
+            return refOrQuery.run();
           }
-          return snapshotFor(refOrQuery.path!);
+          return snapshotFor(refOrQuery.path ?? "");
         },
         set(ref: { path: string }, data: Record<string, unknown>, _opts?: unknown) {
           const existing = store.get(ref.path) ?? {};
@@ -176,8 +177,11 @@ const BOOT = {
   signatureB64: "3IW40fVG9jkGPaGI4Tsc7XmNR5GfUME8LQhDijY1AGMaz1BFnSN0hPJHEjf3Tt8lWOOq1qLyw3TAzuqlLckzAA==",
 };
 
-function callRequest(uid: string, data: Record<string, unknown>) {
-  return {
+function callRequest(
+  uid: string,
+  data: Record<string, unknown>,
+): CallableRequest<{ deviceId?: unknown; approverDeviceId?: unknown; nonce?: unknown; trustChain?: unknown }> {
+  const request = {
     auth: {
       uid,
       // Fresh App Check attestation-bound claim so `assertAppAttestBoundClaims`
@@ -189,7 +193,10 @@ function callRequest(uid: string, data: Record<string, unknown>) {
     app: { appId: APP_ID },
     data,
     rawRequest: { headers: {} },
-  } as never;
+    acceptsStreaming: false,
+  };
+  // @ts-expect-error partial CallableRequest stub for escrow trust handler tests
+  return request;
 }
 
 // Seed Firestore for the NON-BOOTSTRAP scenario: an untrusted target "mac-1" and

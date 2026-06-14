@@ -77,6 +77,15 @@ assert.equal(
   "2026-06-09T12:00:00.000Z",
 );
 
+assert.equal(
+  parseUsageEventDoc({
+    provider: "kimi",
+    totalTokens: 42,
+    startTime: { seconds: 1_718_000_000, nanoseconds: 500_000_000 },
+  })?.recordedAt,
+  "2024-06-10T06:13:20.500Z",
+);
+
 assert.equal(parseEntitlementBindingDoc({
   id: "binding",
   uid: "user_1",

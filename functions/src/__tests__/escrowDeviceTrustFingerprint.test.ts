@@ -55,7 +55,7 @@ describe("escrow device fingerprint enforcement (Stream 6)", () => {
       expect(recomputeEscrowFingerprint(null)).toBeNull();
       expect(recomputeEscrowFingerprint("")).toBeNull();
       expect(recomputeEscrowFingerprint("   ")).toBeNull();
-      expect(recomputeEscrowFingerprint(123 as unknown)).toBeNull();
+      expect(recomputeEscrowFingerprint(123)).toBeNull();
       // Valid base64 but wrong length / wrong prefix.
       expect(recomputeEscrowFingerprint(Buffer.from([0x04, 0x01, 0x02]).toString("base64"))).toBeNull();
       const wrongPrefix = Buffer.concat([Buffer.from([0x05]), Buffer.alloc(64, 0xab)]);

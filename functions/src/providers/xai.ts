@@ -41,46 +41,6 @@ function redact(token: string): string {
   return `xai_${trimmed.slice(0, 6)}***${trimmed.slice(-4)}`;
 }
 
-interface TeamRecord {
-  id?: string;
-  name?: string;
-}
-
-export interface TeamsResponse {
-  teams?: TeamRecord[];
-}
-
-interface ValWrapper {
-  val?: string;
-}
-
-export interface PrepaidBalanceResponse {
-  total?: ValWrapper;
-  changes?: Array<{
-    createTime?: string;
-    amount?: ValWrapper;
-    changeOrigin?: string;
-  }>;
-}
-
-interface UsageDataPoint {
-  timestamp?: string;
-  values?: Array<{ name?: string; value?: number }>;
-}
-
-interface UsageTimeSeries {
-  dataPoints?: UsageDataPoint[];
-}
-
-export interface UsageResponse {
-  timeSeries?: UsageTimeSeries[];
-}
-
-export interface XAIFetchError {
-  error?: { message?: string; code?: string };
-  message?: string;
-}
-
 interface XAIFetchResult {
   ok: boolean;
   status?: number;
@@ -276,7 +236,7 @@ function buildUsageBody(): unknown {
   };
 }
 
-export function extractBalanceBuckets(payload: Record<string, unknown> | undefined): QuotaBucket[] {
+function extractBalanceBuckets(payload: Record<string, unknown> | undefined): QuotaBucket[] {
   const total = recordOrUndefined(payload?.total);
   const raw = total?.val;
   if (raw === undefined || raw === null) return [];
@@ -295,7 +255,7 @@ export function extractBalanceBuckets(payload: Record<string, unknown> | undefin
   ];
 }
 
-export function extractUsageBuckets(payload: Record<string, unknown> | undefined): QuotaBucket[] {
+function extractUsageBuckets(payload: Record<string, unknown> | undefined): QuotaBucket[] {
   const timeSeries = Array.isArray(payload?.timeSeries) ? payload.timeSeries : [];
   const points = timeSeries.flatMap((series) => {
     const row = recordOrUndefined(series);

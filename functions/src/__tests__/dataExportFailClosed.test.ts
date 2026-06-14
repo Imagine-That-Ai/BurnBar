@@ -20,7 +20,7 @@ process.env.ENFORCE_APP_CHECK = "false";
 
 // Empty Firestore: every domain collection read returns no docs.
 const emptyCollection = {
-  limit: () => ({ get: async () => ({ docs: [] as unknown[] }) }),
+  limit: () => ({ get: async () => ({ docs: [] }) }),
 };
 vi.mock("../adminRuntime.js", () => ({
   db: { collection: () => emptyCollection },
@@ -48,7 +48,7 @@ vi.mock("../callables/auditLog.js", () => ({
 
 import { exportUserData } from "../callables/dataExport.js";
 
-type Runnable = { run: (request: unknown) => Promise<unknown> };
+
 
 function authedRequest() {
   return {
@@ -65,7 +65,8 @@ describe("exportUserData — fail-closed on required audit write", () => {
   });
 
   it("propagates the error when the required audit write fails", async () => {
-    await expect((exportUserData as unknown as Runnable).run(authedRequest())).rejects.toThrow(/audit append failed/);
+    // @ts-expect-error onCall harness exposes .run for tests
+    await expect(exportUserData.run(authedRequest())).rejects.toThrow(/audit append failed/);
     expect(appendAuditEventRequired).toHaveBeenCalledTimes(1);
   });
 });

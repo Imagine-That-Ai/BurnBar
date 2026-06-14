@@ -39,7 +39,7 @@ import {
  * not the raw value" hole that was previously enforced only by this doc comment.
  */
 declare const SANITIZED_SIGNAL_ENVELOPE_BRAND: unique symbol;
-export type SanitizedSignalEnvelope = CloudVaultSignalEnvelope & {
+type SanitizedSignalEnvelope = CloudVaultSignalEnvelope & {
   readonly [SANITIZED_SIGNAL_ENVELOPE_BRAND]: true;
 };
 
@@ -51,7 +51,7 @@ export interface SignalAtRestExpectedBinding {
   field: string;
 }
 
-export type SignalAtRestWriteRejectReason =
+type SignalAtRestWriteRejectReason =
   | "not-an-object"
   | "invalid-envelope-shape"
   | "binding-uid-mismatch"
@@ -59,7 +59,7 @@ export type SignalAtRestWriteRejectReason =
   | "binding-docid-mismatch"
   | "binding-field-mismatch";
 
-export type SignalAtRestWriteValidation =
+type SignalAtRestWriteValidation =
   | { ok: true; envelope: SanitizedSignalEnvelope; aad: string }
   | { ok: false; reason: SignalAtRestWriteRejectReason };
 

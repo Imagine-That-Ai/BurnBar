@@ -50,10 +50,6 @@ export function stringValue(raw: unknown): string | undefined {
   return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }
 
-export function numberValue(raw: unknown): number | undefined {
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
-}
-
 export function isTimestampWithToMillis(value: unknown): value is TimestampWithToMillis {
   return isRecord(value) && typeof value.toMillis === "function";
 }
@@ -398,7 +394,8 @@ export function parseModelBenchmarkSourceStatusDoc(raw: unknown): ModelBenchmark
   };
 }
 
-function coerceUsageEventDate(value: unknown): Date | undefined {
+/** Shared Firestore date coercion — mirrors rollup `coerceDate` wire-shape handling. */
+export function coerceFirestoreDate(value: unknown): Date | undefined {
   if (value == null) return undefined;
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? undefined : value;
@@ -415,6 +412,14 @@ function coerceUsageEventDate(value: unknown): Date | undefined {
     const parsed = new Date(value.toMillis());
     return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
+  if (isRecord(value)) {
+    const seconds = typeof value.seconds === "number" ? value.seconds : value._seconds;
+    const nanos = typeof value.nanoseconds === "number" ? value.nanoseconds : (value._nanoseconds ?? 0);
+    if (typeof seconds === "number") {
+      const parsed = new Date(seconds * 1000 + Math.floor(Number(nanos) / 1_000_000));
+      return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+    }
+  }
   return undefined;
 }
 
@@ -424,11 +429,11 @@ function synthesizeRecordedAt(raw: Record<string, unknown>): string | undefined 
     return raw.recordedAt;
   }
   const date =
-    coerceUsageEventDate(raw.timestamp) ??
-    coerceUsageEventDate(raw.startTime) ??
-    coerceUsageEventDate(raw.endTime) ??
-    coerceUsageEventDate(raw.createdAt) ??
-    coerceUsageEventDate(raw.updatedAt);
+    coerceFirestoreDate(raw.timestamp) ??
+    coerceFirestoreDate(raw.startTime) ??
+    coerceFirestoreDate(raw.endTime) ??
+    coerceFirestoreDate(raw.createdAt) ??
+    coerceFirestoreDate(raw.updatedAt);
   return date?.toISOString();
 }
 

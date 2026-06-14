@@ -8,7 +8,7 @@ const FUTURE = new Date(Date.now() + 86_400_000).toISOString();
 
 /** Minimal Firestore stub returning the given per-path entitlement docs. */
 function stubDb(docs: Record<string, Record<string, unknown> | undefined>): RemoteMcpClientFirestore {
-  return {
+  const firestore = {
     doc(path: string) {
       return {
         async get() {
@@ -18,7 +18,9 @@ function stubDb(docs: Record<string, Record<string, unknown> | undefined>): Remo
         async set() {},
       };
     },
-  } as unknown as RemoteMcpClientFirestore;
+  };
+  // @ts-expect-error in-memory Firestore stub for entitlement tier tests
+  return firestore;
 }
 
 function entPath(uid: string, id: string) {

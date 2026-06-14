@@ -17,19 +17,19 @@ import { assertAppCheck, assertAuth, assertOwnership } from "./auth.js";
 import { isRecord, recordOrUndefined } from "./guards.js";
 
 /** Matches Swift `AppCheckAttestationBinding.canonicalPrefix`. */
-export const APP_CHECK_ATTESTATION_DIGEST_PREFIX = "openburnbar.appcheck.v1";
+const APP_CHECK_ATTESTATION_DIGEST_PREFIX = "openburnbar.appcheck.v1";
 
 export const APP_CHECK_ATTESTATION_CLAIM_KEY = "obb_app_check" as const;
-export const APP_CHECK_ATTESTATION_CLAIM_VERSION = 1 as const;
+const APP_CHECK_ATTESTATION_CLAIM_VERSION = 1 as const;
 /** Re-bind after this many days so stale device attestations expire. */
 export const APP_CHECK_ATTESTATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Per-call replay-resistance nonce TTL (single-use, short-lived). */
 export const HIGH_RISK_NONCE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 /** Firestore subcollection holding outstanding single-use high-risk nonces. */
-export const HIGH_RISK_NONCE_COLLECTION = "high_risk_action_nonces" as const;
+const HIGH_RISK_NONCE_COLLECTION = "high_risk_action_nonces" as const;
 
-export interface OpenBurnBarAppCheckAttestationClaim {
+interface OpenBurnBarAppCheckAttestationClaim {
   v: typeof APP_CHECK_ATTESTATION_CLAIM_VERSION;
   appId: string;
   boundAtMillis: number;
@@ -100,7 +100,7 @@ export async function bindAppCheckAttestationForUid(
  *
  * Skipped when `enforceAppCheck` is false (local emulation).
  */
-export function assertAppAttestBoundClaims(request: CallableRequest): void {
+function assertAppAttestBoundClaims(request: CallableRequest): void {
   if (!getConfig().enforceAppCheck) return;
 
   assertAuth(request);
@@ -216,7 +216,7 @@ export async function consumeHighRiskNonceForUid(
  * requirement for a specific branch — e.g. bootstrap self-approval — must reject
  * when this is `false`, independent of the global flag.
  */
-export type HighRiskNonceEnforcementResult = { nonceConsumed: boolean };
+type HighRiskNonceEnforcementResult = { nonceConsumed: boolean };
 
 /**
  * High-risk enforcement layered with single-use nonce replay defense.
