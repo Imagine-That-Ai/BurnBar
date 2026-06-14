@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": ["src/index.ts", "src/types/generatedParity.ts"],
+  "project": ["src/**/*.ts"],
+  "ignore": [
+    "lib/**",
+    "scripts/**",
+    "node_modules/**",
+    "src/types/generated/**",
+    ".dependency-cruiser.cjs"
+  ]
+}
