@@ -162,7 +162,7 @@ export interface BurnBarCatalogResponse {
   catalog: BurnBarCatalog;
 }
 
-export interface BurnBarProviderSettings {
+interface BurnBarProviderSettings {
   providerID: string;
   isEnabled: boolean;
   baseURL: string;
@@ -265,7 +265,7 @@ export interface BurnBarToolCallSnapshot {
   error?: BurnBarToolExecutionError | null;
 }
 
-export type BurnBarAgentLoopActionKind =
+type BurnBarAgentLoopActionKind =
   | 'complete'
   | 'search_workspace'
   | 'read_file'
@@ -274,7 +274,7 @@ export type BurnBarAgentLoopActionKind =
   | 'request_approval'
   | 'fail';
 
-export interface BurnBarAgentContextSnapshot {
+interface BurnBarAgentContextSnapshot {
   candidatePaths: string[];
   activeFilePath?: string | null;
   lastReadFilePath?: string | null;
@@ -284,7 +284,7 @@ export interface BurnBarAgentContextSnapshot {
   searchResultPaths: string[];
 }
 
-export interface BurnBarAgentLoopDecision {
+interface BurnBarAgentLoopDecision {
   action: BurnBarAgentLoopActionKind;
   requestedTool?: BurnBarToolKind | null;
   arguments?: BurnBarJSONValue | null;
@@ -429,8 +429,8 @@ export type BurnBarMissionStatus =
   | 'cancelled';
 export type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
 export type BurnBarMissionPacketStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
-export type BurnBarMissionResultStatus = 'pending' | 'success' | 'failed' | 'partial';
-export type BurnBarAutoTakeoverStatus = 'requested' | 'in_progress' | 'completed' | 'declined' | 'failed';
+type BurnBarMissionResultStatus = 'pending' | 'success' | 'failed' | 'partial';
+type BurnBarAutoTakeoverStatus = 'requested' | 'in_progress' | 'completed' | 'declined' | 'failed';
 export type BurnBarPRLinkageState = 'opened' | 'merged' | 'closed';
 
 export interface BurnBarPRLinkageSnapshot {
@@ -543,21 +543,6 @@ export interface BurnBarMissionGetRequest {
   missionID: string;
 }
 
-export interface BurnBarMissionCreateRequest {
-  projectSlug: string;
-  title: string;
-  summary: string;
-  objective: string;
-  riskLevel?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface BurnBarMissionCancelRequest {
-  missionID: string;
-  actor: string;
-  reason?: string;
-}
-
 // Question types
 export type BurnBarPendingQuestionStatus = 'pending' | 'answered' | 'dismissed';
 export type BurnBarPendingQuestionPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -637,43 +622,8 @@ export interface BurnBarQuestionsListResponse {
   questions: BurnBarPendingQuestionSnapshot[];
 }
 
-export interface BurnBarQuestionGetRequest {
-  questionID: string;
-}
-
-export interface BurnBarQuestionResponse {
-  question?: BurnBarPendingQuestionSnapshot;
-}
-
-// Followup types
-export type BurnBarFollowupStatus = 'open' | 'snoozed' | 'done' | 'cancelled';
-
-export interface BurnBarFollowupSnapshot {
-  id: string;
-  projectSlug: string;
-  questionID?: string;
-  title: string;
-  note?: string;
-  status: BurnBarFollowupStatus;
-  dueAt?: string;
-  snoozedUntilAt?: string;
-  createdAt: string;
-  updatedAt: string;
-  metadata: Record<string, unknown>;
-}
-
-export interface BurnBarFollowupsListRequest {
-  projectSlug?: string;
-  statuses?: BurnBarFollowupStatus[];
-  limit?: number;
-}
-
-export interface BurnBarFollowupsListResponse {
-  followups: BurnBarFollowupSnapshot[];
-}
-
 // Controller summary types
-export interface BurnBarControllerCounts {
+interface BurnBarControllerCounts {
   projectCount: number;
   pendingQuestionCount: number;
   openFollowupCount: number;
@@ -681,8 +631,7 @@ export interface BurnBarControllerCounts {
   staleProjectCount: number;
 }
 
-export type BurnBarProjectFreshness = 'fresh' | 'provisional' | 'stale';
-export type BurnBarProjectStatus = 'onboarding' | 'healthy' | 'needsAttention' | 'paused' | 'stale';
+type BurnBarProjectFreshness = 'fresh' | 'provisional' | 'stale';
 
 export interface BurnBarControllerSummary {
   activeProjectSlug?: string;
