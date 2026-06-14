@@ -51,10 +51,38 @@ struct OpenBurnBarDaemonExecutable {
             throw error
         }
 
+        // T-DMN-04: the daemon's INDEPENDENT local-auth-proof verifier is wired
+        // into the high-risk computer-use RPC handlers (`computerUseSessionStart` /
+        // `computerUseInvoke`) inside `BurnBarDaemonServer`. Passing a non-`nil`
+        // verifier flips those methods to fail-closed: the request must carry a
+        // fresh, op-hash-bound proof that verifies against the PINNED phone key.
+        //
+        // It is intentionally NOT flipped on here yet. Activating it requires two
+        // changes that live OUTSIDE the `OpenBurnBarDaemon/**` SwiftPM subtree and
+        // so are tracked Deferred (mirroring how the SMAppService install-location
+        // seam in `DaemonSelfCodeSignatureVerifier` is Deferred to the installer):
+        //   1. A daemon-side PINNED phone local-auth verifying-key store, populated
+        //      at pairing. Today the phone verifying key is pinned in the Mac app's
+        //      keychain (`AgentLens/**`), not reachable from this executable target.
+        //   2. The Mac app coordinator (`ComputerUseSessionCoordinator`, the only
+        //      first-party caller) populating `localAuthProof` / `sourceDeviceId` /
+        //      `intentHashHex` on the socket request — also `AgentLens/**`.
+        // Wiring a resolver that cannot yet find the phone key would fail-close the
+        // ONLY trusted first-party caller, breaking the trusted controller path, so
+        // enforcement stays `nil` until both seams land. The mechanism, its
+        // fail-closed semantics, and its unit coverage are complete in-tree so the
+        // production flip is a one-line change once the key store exists:
+        //
+        //   let proofVerifier = peerAuthenticator.isEnforced
+        //       ? DaemonLocalAuthProofVerifier(resolvePinnedKey: <pairing key store>,
+        //                                       consumeProof: ledger.consume)
+        //       : nil
+        let localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil
         let server = BurnBarDaemonServer(
             configuration: configuration,
             logger: logger,
-            peerAuthenticator: peerAuthenticator
+            peerAuthenticator: peerAuthenticator,
+            localAuthProofVerifier: localAuthProofVerifier
         )
         let pensieveWatcher = makePensieveKnowledgeWatcher(
             environment: ProcessInfo.processInfo.environment,
