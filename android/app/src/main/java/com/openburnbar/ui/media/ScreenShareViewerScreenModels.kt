@@ -2,31 +2,31 @@
 
 package com.openburnbar.ui.media
 
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.Alignment
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.fillMaxSize
 import android.content.Context
 import android.view.SurfaceHolder
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.material.icons.filled.AdsClick
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mouse
-import androidx.compose.material.icons.filled.SwipeVertical
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.SwipeVertical
 import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.IntSize
@@ -307,14 +307,13 @@ internal fun mirrorGroupActive(
     typingOpen: Boolean,
     autoKeyboardOnTextFocus: Boolean,
     statsVisible: Boolean,
-): Boolean =
-    when (group) {
-        MirrorControlGroup.MODE -> controlMode != ScreenMirrorControlMode.VIEW
-        MirrorControlGroup.ZOOM -> smartZoomMode != SmartZoomMode.OFF
-        MirrorControlGroup.SCROLL -> false
-        MirrorControlGroup.KEYS -> typingOpen || autoKeyboardOnTextFocus
-        MirrorControlGroup.SCREEN -> statsVisible
-    }
+): Boolean = when (group) {
+    MirrorControlGroup.MODE -> controlMode != ScreenMirrorControlMode.VIEW
+    MirrorControlGroup.ZOOM -> smartZoomMode != SmartZoomMode.OFF
+    MirrorControlGroup.SCROLL -> false
+    MirrorControlGroup.KEYS -> typingOpen || autoKeyboardOnTextFocus
+    MirrorControlGroup.SCREEN -> statsVisible
+}
 
 internal data class MirrorDockUiState(
     val collapsed: Boolean,
@@ -540,37 +539,36 @@ data class ScreenShareViewerScreenOptions(
 
 internal fun ScreenShareViewerScreenOptions.toScreenParams(
     pipeline: VideoReceivePipeline,
-): Pair<ScreenShareViewerScreenInputs, ScreenShareViewerScreenRouteCallbacks> =
-    screenShareViewerScreenParams(
-        pipeline = pipeline,
-        lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
-        availableDisplays = availableDisplays,
-        selectedDisplayId = selectedDisplayId,
-        latestFocusContext = latestFocusContext,
-        remoteUnlockState = remoteUnlockState,
-        savedRemoteUnlockCredentialAvailable = savedRemoteUnlockCredentialAvailable,
-        controlStatus = controlStatus,
-        onSelectDisplay = onSelectDisplay,
-        onClose = onClose,
-        onEnterPictureInPicture = onEnterPictureInPicture,
-        onReconnect = onReconnect,
-        onTapNormalized = onTapNormalized,
-        onScrollDragNormalized = onScrollDragNormalized,
-        onScrollNormalized = onScrollNormalized,
-        onPointerMove = onPointerMove,
-        onPointerClick = onPointerClick,
-        onTypeText = onTypeText,
-        onShortcut = onShortcut,
-        onPanic = onPanic,
-        onAgentContextTargetNormalized = onAgentContextTargetNormalized,
-        onPasteClipboardToMac = onPasteClipboardToMac,
-        onGrabClipboardFromMac = onGrabClipboardFromMac,
-        onSendRemoteUnlockPassword = onSendRemoteUnlockPassword,
-        onSaveRemoteUnlockPassword = onSaveRemoteUnlockPassword,
-        onSendSavedRemoteUnlockPassword = onSendSavedRemoteUnlockPassword,
-        onDeleteSavedRemoteUnlockPassword = onDeleteSavedRemoteUnlockPassword,
-        onTrustControlDevice = onTrustControlDevice,
-    )
+): Pair<ScreenShareViewerScreenInputs, ScreenShareViewerScreenRouteCallbacks> = screenShareViewerScreenParams(
+    pipeline = pipeline,
+    lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
+    availableDisplays = availableDisplays,
+    selectedDisplayId = selectedDisplayId,
+    latestFocusContext = latestFocusContext,
+    remoteUnlockState = remoteUnlockState,
+    savedRemoteUnlockCredentialAvailable = savedRemoteUnlockCredentialAvailable,
+    controlStatus = controlStatus,
+    onSelectDisplay = onSelectDisplay,
+    onClose = onClose,
+    onEnterPictureInPicture = onEnterPictureInPicture,
+    onReconnect = onReconnect,
+    onTapNormalized = onTapNormalized,
+    onScrollDragNormalized = onScrollDragNormalized,
+    onScrollNormalized = onScrollNormalized,
+    onPointerMove = onPointerMove,
+    onPointerClick = onPointerClick,
+    onTypeText = onTypeText,
+    onShortcut = onShortcut,
+    onPanic = onPanic,
+    onAgentContextTargetNormalized = onAgentContextTargetNormalized,
+    onPasteClipboardToMac = onPasteClipboardToMac,
+    onGrabClipboardFromMac = onGrabClipboardFromMac,
+    onSendRemoteUnlockPassword = onSendRemoteUnlockPassword,
+    onSaveRemoteUnlockPassword = onSaveRemoteUnlockPassword,
+    onSendSavedRemoteUnlockPassword = onSendSavedRemoteUnlockPassword,
+    onDeleteSavedRemoteUnlockPassword = onDeleteSavedRemoteUnlockPassword,
+    onTrustControlDevice = onTrustControlDevice,
+)
 
 internal data class ScreenShareViewerScreenInputs(
     val pipeline: VideoReceivePipeline,
@@ -612,39 +610,38 @@ internal fun screenShareViewerScreenParams(
     onSendSavedRemoteUnlockPassword: () -> Unit,
     onDeleteSavedRemoteUnlockPassword: () -> Unit,
     onTrustControlDevice: () -> Unit,
-): Pair<ScreenShareViewerScreenInputs, ScreenShareViewerScreenRouteCallbacks> =
-    ScreenShareViewerScreenInputs(
-        pipeline = pipeline,
-        lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
-        availableDisplays = availableDisplays,
-        selectedDisplayId = selectedDisplayId,
-        latestFocusContext = latestFocusContext,
-        remoteUnlockState = remoteUnlockState,
-        savedRemoteUnlockCredentialAvailable = savedRemoteUnlockCredentialAvailable,
-        controlStatus = controlStatus,
-    ) to
-        ScreenShareViewerScreenRouteCallbacks(
-            onSelectDisplay = onSelectDisplay,
-            onClose = onClose,
-            onEnterPictureInPicture = onEnterPictureInPicture,
-            onReconnect = onReconnect,
-            onTapNormalized = onTapNormalized,
-            onScrollDragNormalized = onScrollDragNormalized,
-            onScrollNormalized = onScrollNormalized,
-            onPointerMove = onPointerMove,
-            onPointerClick = onPointerClick,
-            onTypeText = onTypeText,
-            onShortcut = onShortcut,
-            onPanic = onPanic,
-            onAgentContextTargetNormalized = onAgentContextTargetNormalized,
-            onPasteClipboardToMac = onPasteClipboardToMac,
-            onGrabClipboardFromMac = onGrabClipboardFromMac,
-            onSendRemoteUnlockPassword = onSendRemoteUnlockPassword,
-            onSaveRemoteUnlockPassword = onSaveRemoteUnlockPassword,
-            onSendSavedRemoteUnlockPassword = onSendSavedRemoteUnlockPassword,
-            onDeleteSavedRemoteUnlockPassword = onDeleteSavedRemoteUnlockPassword,
-            onTrustControlDevice = onTrustControlDevice,
-        )
+): Pair<ScreenShareViewerScreenInputs, ScreenShareViewerScreenRouteCallbacks> = ScreenShareViewerScreenInputs(
+    pipeline = pipeline,
+    lastPeerHeartbeatAtMillis = lastPeerHeartbeatAtMillis,
+    availableDisplays = availableDisplays,
+    selectedDisplayId = selectedDisplayId,
+    latestFocusContext = latestFocusContext,
+    remoteUnlockState = remoteUnlockState,
+    savedRemoteUnlockCredentialAvailable = savedRemoteUnlockCredentialAvailable,
+    controlStatus = controlStatus,
+) to
+    ScreenShareViewerScreenRouteCallbacks(
+        onSelectDisplay = onSelectDisplay,
+        onClose = onClose,
+        onEnterPictureInPicture = onEnterPictureInPicture,
+        onReconnect = onReconnect,
+        onTapNormalized = onTapNormalized,
+        onScrollDragNormalized = onScrollDragNormalized,
+        onScrollNormalized = onScrollNormalized,
+        onPointerMove = onPointerMove,
+        onPointerClick = onPointerClick,
+        onTypeText = onTypeText,
+        onShortcut = onShortcut,
+        onPanic = onPanic,
+        onAgentContextTargetNormalized = onAgentContextTargetNormalized,
+        onPasteClipboardToMac = onPasteClipboardToMac,
+        onGrabClipboardFromMac = onGrabClipboardFromMac,
+        onSendRemoteUnlockPassword = onSendRemoteUnlockPassword,
+        onSaveRemoteUnlockPassword = onSaveRemoteUnlockPassword,
+        onSendSavedRemoteUnlockPassword = onSendSavedRemoteUnlockPassword,
+        onDeleteSavedRemoteUnlockPassword = onDeleteSavedRemoteUnlockPassword,
+        onTrustControlDevice = onTrustControlDevice,
+    )
 
 internal data class ScreenShareViewerScreenRouteCallbacks(
     val onSelectDisplay: (String) -> Unit = {},
@@ -722,12 +719,7 @@ internal class ScreenShareViewerLocals(
             System.currentTimeMillis() + ScreenShareSmartZoomReducer.MANUAL_OVERRIDE_HOLD_MILLIS
     }
 
-    fun recomputeSmartZoom(
-        latestFocusContext: ScreenShareSmartZoomContext?,
-        smartZoomMode: SmartZoomMode,
-        fit: ScreenMirrorFit,
-        aspect: Float,
-    ) {
+    fun recomputeSmartZoom(latestFocusContext: ScreenShareSmartZoomContext?, smartZoomMode: SmartZoomMode, fit: ScreenMirrorFit, aspect: Float) {
         val bounds = ScreenMirrorInputPolicy.surfaceBounds(surfaceLayoutSize, fit, aspect) ?: return
         val viewportSize = IntSize(bounds.width.toInt(), bounds.height.toInt())
         val contentRect = Rect(0f, 0f, bounds.width, bounds.height)
@@ -756,36 +748,35 @@ internal class ScreenShareViewerLocals(
         inputs: ScreenShareViewerScreenInputs,
         route: ScreenShareViewerScreenRouteCallbacks,
         derived: ScreenShareViewerDerivedUi,
-    ): ScreenShareViewerLifecycleParams =
-        ScreenShareViewerLifecycleParams(
-            pipeline = pipeline,
-            lastInteractionTime = lastInteractionTime,
-            toolsCollapsed = toolsCollapsed.value,
-            openGroup = openGroup,
-            typingOpen = typingOpen.value,
-            onAutoCollapseTools = { toolsCollapsed.value = true },
-            latestFocusContext = inputs.latestFocusContext,
-            smartZoomMode = derived.smartZoomMode,
-            activeDisplayId = activeDisplayId,
-            aspect = derived.aspect,
-            fit = derived.fit,
-            surfaceLayoutSize = surfaceLayoutSize,
-            smartZoomManualOverrideUntilMillis = smartZoomManualOverrideUntilMillis,
-            smartZoomDecision = smartZoomDecision,
-            onSmartZoomDecision = { smartZoomDecision = it },
-            autoKeyboardOnTextFocus = autoKeyboardOnTextFocus,
-            controlMode = derived.controlMode,
-            standardControlEnabled = derived.standardControlEnabled,
-            autoTypeManualDismissUntilMillis = autoTypeManualDismissUntilMillis,
-            onTypingOpenChange = { typingOpen.value = it },
-            onControlModeNameChange = { controlModeName.value = it },
-            nowMillis = nowMillis,
-            onNowMillis = { nowMillis = it },
-            streamNeedsRecovery = derived.streamNeedsRecovery,
-            lastAutomaticReconnectAtMillis = lastAutomaticReconnectAtMillis,
-            onLastAutomaticReconnectAtMillis = { lastAutomaticReconnectAtMillis = it },
-            onReconnect = route.onReconnect,
-        )
+    ): ScreenShareViewerLifecycleParams = ScreenShareViewerLifecycleParams(
+        pipeline = pipeline,
+        lastInteractionTime = lastInteractionTime,
+        toolsCollapsed = toolsCollapsed.value,
+        openGroup = openGroup,
+        typingOpen = typingOpen.value,
+        onAutoCollapseTools = { toolsCollapsed.value = true },
+        latestFocusContext = inputs.latestFocusContext,
+        smartZoomMode = derived.smartZoomMode,
+        activeDisplayId = activeDisplayId,
+        aspect = derived.aspect,
+        fit = derived.fit,
+        surfaceLayoutSize = surfaceLayoutSize,
+        smartZoomManualOverrideUntilMillis = smartZoomManualOverrideUntilMillis,
+        smartZoomDecision = smartZoomDecision,
+        onSmartZoomDecision = { smartZoomDecision = it },
+        autoKeyboardOnTextFocus = autoKeyboardOnTextFocus,
+        controlMode = derived.controlMode,
+        standardControlEnabled = derived.standardControlEnabled,
+        autoTypeManualDismissUntilMillis = autoTypeManualDismissUntilMillis,
+        onTypingOpenChange = { typingOpen.value = it },
+        onControlModeNameChange = { controlModeName.value = it },
+        nowMillis = nowMillis,
+        onNowMillis = { nowMillis = it },
+        streamNeedsRecovery = derived.streamNeedsRecovery,
+        lastAutomaticReconnectAtMillis = lastAutomaticReconnectAtMillis,
+        onLastAutomaticReconnectAtMillis = { lastAutomaticReconnectAtMillis = it },
+        onReconnect = route.onReconnect,
+    )
 
     fun mainUiState(input: ScreenShareViewerMainUiStateBuildInput): ScreenShareViewerMainUiState {
         val derived = input.derived
@@ -835,9 +826,7 @@ internal class ScreenShareViewerLocals(
     }
 }
 
-internal fun screenShareViewerMainUiCallbacks(
-    source: ScreenShareViewerMainUiCallbacksSource,
-): ScreenShareViewerMainUiCallbacks {
+internal fun screenShareViewerMainUiCallbacks(source: ScreenShareViewerMainUiCallbacksSource): ScreenShareViewerMainUiCallbacks {
     val route = source.route
     val context = source.context
     val latestFocusContext = source.latestFocusContext
@@ -1031,42 +1020,39 @@ internal data class MirrorDockActionsBuildInput(
     val zoomHandlers: ScreenShareZoomHandlers,
 )
 
-internal fun ScreenShareViewerLifecycleParams.smartZoomFollowParams(): ScreenShareViewerSmartZoomFollowParams =
-    ScreenShareViewerSmartZoomFollowParams(
-        latestFocusContext = latestFocusContext,
-        smartZoomMode = smartZoomMode,
-        activeDisplayId = activeDisplayId,
-        aspect = aspect,
-        fit = fit,
-        surfaceLayoutSize = surfaceLayoutSize,
-        smartZoomManualOverrideUntilMillis = smartZoomManualOverrideUntilMillis,
-        smartZoomDecision = smartZoomDecision,
-        onSmartZoomDecision = onSmartZoomDecision,
-    )
+internal fun ScreenShareViewerLifecycleParams.smartZoomFollowParams(): ScreenShareViewerSmartZoomFollowParams = ScreenShareViewerSmartZoomFollowParams(
+    latestFocusContext = latestFocusContext,
+    smartZoomMode = smartZoomMode,
+    activeDisplayId = activeDisplayId,
+    aspect = aspect,
+    fit = fit,
+    surfaceLayoutSize = surfaceLayoutSize,
+    smartZoomManualOverrideUntilMillis = smartZoomManualOverrideUntilMillis,
+    smartZoomDecision = smartZoomDecision,
+    onSmartZoomDecision = onSmartZoomDecision,
+)
 
-internal fun ScreenShareViewerLifecycleParams.autoTypeParams(): ScreenShareViewerAutoTypeParams =
-    ScreenShareViewerAutoTypeParams(
-        latestFocusContext = latestFocusContext,
-        autoKeyboardOnTextFocus = autoKeyboardOnTextFocus,
-        controlMode = controlMode,
-        standardControlEnabled = standardControlEnabled,
-        typingOpen = typingOpen,
-        activeDisplayId = activeDisplayId,
-        autoTypeManualDismissUntilMillis = autoTypeManualDismissUntilMillis,
-        onTypingOpenChange = onTypingOpenChange,
-        onControlModeNameChange = onControlModeNameChange,
-    )
+internal fun ScreenShareViewerLifecycleParams.autoTypeParams(): ScreenShareViewerAutoTypeParams = ScreenShareViewerAutoTypeParams(
+    latestFocusContext = latestFocusContext,
+    autoKeyboardOnTextFocus = autoKeyboardOnTextFocus,
+    controlMode = controlMode,
+    standardControlEnabled = standardControlEnabled,
+    typingOpen = typingOpen,
+    activeDisplayId = activeDisplayId,
+    autoTypeManualDismissUntilMillis = autoTypeManualDismissUntilMillis,
+    onTypingOpenChange = onTypingOpenChange,
+    onControlModeNameChange = onControlModeNameChange,
+)
 
-internal fun ScreenShareViewerLifecycleParams.pipelineClockParams(): ScreenShareViewerPipelineClockParams =
-    ScreenShareViewerPipelineClockParams(
-        pipeline = pipeline,
-        onNowMillis = onNowMillis,
-        streamNeedsRecovery = streamNeedsRecovery,
-        nowMillis = nowMillis,
-        lastAutomaticReconnectAtMillis = lastAutomaticReconnectAtMillis,
-        onLastAutomaticReconnectAtMillis = onLastAutomaticReconnectAtMillis,
-        onReconnect = onReconnect,
-    )
+internal fun ScreenShareViewerLifecycleParams.pipelineClockParams(): ScreenShareViewerPipelineClockParams = ScreenShareViewerPipelineClockParams(
+    pipeline = pipeline,
+    onNowMillis = onNowMillis,
+    streamNeedsRecovery = streamNeedsRecovery,
+    nowMillis = nowMillis,
+    lastAutomaticReconnectAtMillis = lastAutomaticReconnectAtMillis,
+    onLastAutomaticReconnectAtMillis = onLastAutomaticReconnectAtMillis,
+    onReconnect = onReconnect,
+)
 
 internal data class ScreenShareViewerLifecycleParams(
     val pipeline: VideoReceivePipeline,

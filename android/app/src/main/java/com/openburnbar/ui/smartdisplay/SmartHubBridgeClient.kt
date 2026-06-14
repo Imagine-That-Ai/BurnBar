@@ -72,7 +72,7 @@ enum class PixelClockTimeFormat { HOUR_12, HOUR_24 }
 
 object SmartHubBridgeClient {
     private const val ACTIONS_COLLECTION = "smart_display_actions"
-    private const val CAST_ACTIONS_COLLECTION = "cast_actions"
+    internal const val CAST_ACTIONS_COLLECTION = "cast_actions"
     internal const val LIVE_BRIDGE_MAX_AGE_MS = 60_000L
 
     private val _state = MutableStateFlow(SmartHubSnapshot())
@@ -81,7 +81,6 @@ object SmartHubBridgeClient {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     internal val firestore get() = Firebase.firestore
     internal val bridgeScope get() = scope
-    internal const val castActionsCollection = CAST_ACTIONS_COLLECTION
 
     private var configListener: ListenerRegistration? = null
     private var listenedUid: String? = null
@@ -198,13 +197,7 @@ object SmartHubBridgeClient {
         }
     }
 
-    internal fun runSmartDisplayAction(
-        type: String,
-        progress: String,
-        success: String,
-        timeoutMs: Long = 45_000,
-        includePixelClock: Boolean = false,
-    ) {
+    internal fun runSmartDisplayAction(type: String, progress: String, success: String, timeoutMs: Long = 45_000, includePixelClock: Boolean = false) {
         scope.launch {
             _state.update {
                 it.copy(actionInFlight = true, actionMessage = progress, actionError = null)
@@ -252,5 +245,4 @@ object SmartHubBridgeClient {
                 }
             }
     }
-
 }

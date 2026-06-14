@@ -68,7 +68,8 @@ class HermesCompositeRelayTransport(
     private suspend fun auditFallback(payload: HermesRelayPayload, err: IrohRelayTransportError) {
         auditLogger.record(
             event = IrohTransportAuditEvent.FALLBACK_TO_FIRESTORE,
-            uid = "", // composite doesn't know uid; the inner transport already recorded STREAM_FAILED for full attribution.
+            // composite doesn't know uid; the inner transport already recorded STREAM_FAILED for full attribution.
+            uid = "",
             connectionId = payload.connectionID,
             transport = IrohTransportSelection.FIRESTORE,
             rttMillis = null,

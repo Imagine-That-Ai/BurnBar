@@ -100,8 +100,10 @@ class CloudVaultSignalSenderAuthTest {
                 "forged approval policy".toByteArray(),
                 recipients = listOf(CloudVaultSignalRecipient("device", "victim-device_1", victim.publicKeyData)),
                 binding = binding,
-                senderIdentityKeyId = "victim-device_1", // server LIES about who sent it
-                senderIdentityPrivateKey = server.privateKeyData, // but can only sign with its own key
+                // server LIES about who sent it
+                senderIdentityKeyId = "victim-device_1",
+                // but can only sign with its own key
+                senderIdentityPrivateKey = server.privateKeyData,
                 senderIdentityPublicKey = server.publicKeyData,
             )
         val error =

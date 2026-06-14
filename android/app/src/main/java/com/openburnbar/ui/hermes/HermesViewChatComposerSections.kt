@@ -41,11 +41,7 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 
 @Composable
-internal fun HermesChatComposer(
-    content: HermesChatContent,
-    attachments: HermesChatAttachmentState,
-    local: HermesChatViewLocalState,
-) {
+internal fun HermesChatComposer(content: HermesChatContent, attachments: HermesChatAttachmentState, local: HermesChatViewLocalState) {
     Surface(
         modifier =
         Modifier

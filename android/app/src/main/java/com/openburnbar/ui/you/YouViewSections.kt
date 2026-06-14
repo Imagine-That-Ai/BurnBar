@@ -178,11 +178,7 @@ private fun youRootOpenCloudHandler(context: android.content.Context): () -> Uni
 }
 
 @Composable
-private fun YouRootScrollColumn(
-    useWebsiteBackground: Boolean,
-    isDark: Boolean,
-    content: @Composable () -> Unit,
-) {
+private fun YouRootScrollColumn(useWebsiteBackground: Boolean, isDark: Boolean, content: @Composable () -> Unit) {
     Column(
         modifier =
         Modifier
@@ -197,19 +193,15 @@ private fun YouRootScrollColumn(
                 },
             )
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
         content = { content() },
     )
 }
 
 @Composable
-private fun YouRootScrollContent(
-    state: YouRootScrollState,
-    navigation: YouRootNavigation,
-    onSignOut: () -> Unit,
-) {
-    Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
+private fun YouRootScrollContent(state: YouRootScrollState, navigation: YouRootNavigation, onSignOut: () -> Unit) {
+    Spacer(modifier = Modifier.height(AuroraSpacing.LG.dp))
 
     IdentityHero(
         displayName = state.displayName,
@@ -238,7 +230,7 @@ private fun YouRootScrollContent(
 
 @Composable
 private fun YouRootSignOutButton(onSignOut: () -> Unit) {
-    Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+    Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
 
     AuroraSecondaryButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) {
         Icon(
@@ -246,20 +238,15 @@ private fun YouRootSignOutButton(onSignOut: () -> Unit) {
             contentDescription = null,
             modifier = Modifier.size(18.dp),
         )
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+        Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
         Text("Sign Out", fontWeight = FontWeight.SemiBold)
     }
 
-    Spacer(modifier = Modifier.height(AuroraSpacing.xxxl.dp))
+    Spacer(modifier = Modifier.height(AuroraSpacing.XXXL.dp))
 }
 
 @Composable
-private fun YouRootMembershipSection(
-    isCloudMember: Boolean,
-    cloudPurchaseDate: Long?,
-    cloudExpirationDate: Long?,
-    openCloud: () -> Unit,
-) {
+private fun YouRootMembershipSection(isCloudMember: Boolean, cloudPurchaseDate: Long?, cloudExpirationDate: Long?, openCloud: () -> Unit) {
     if (isCloudMember) {
         CloudMemberCrestRow(
             purchaseDateMs = cloudPurchaseDate,
@@ -278,12 +265,7 @@ private fun YouRootMembershipSection(
 }
 
 @Composable
-private fun YouRootSettingsRows(
-    syncHealthLabel: String,
-    devices: List<DeviceRecord>,
-    navigation: YouRootNavigation,
-    openCloud: () -> Unit,
-) {
+private fun YouRootSettingsRows(syncHealthLabel: String, devices: List<DeviceRecord>, navigation: YouRootNavigation, openCloud: () -> Unit) {
     YouSettingsRow(
         icon = Icons.Filled.ShoppingBag,
         title = "Store & Top-ups",
@@ -489,23 +471,18 @@ private fun RowScope.CloudMemberCrestLabels(meta: String) {
 }
 
 @Composable
-internal fun YouSettingsRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit = {},
-) {
+internal fun YouSettingsRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit = {}) {
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AuroraRadius.lg.dp),
+        shape = RoundedCornerShape(AuroraRadius.LG.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
     ) {
         Row(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(AuroraSpacing.md.dp),
+                .padding(AuroraSpacing.MD.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -514,7 +491,7 @@ internal fun YouSettingsRow(
                 modifier = Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.width(AuroraSpacing.MD.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,

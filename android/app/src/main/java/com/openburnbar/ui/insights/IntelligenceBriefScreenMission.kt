@@ -61,11 +61,10 @@ data class MissionLaunchAction(
     val tone: MissionTone,
     val prompt: String,
 ) {
-    fun followUpQuestion(): InsightFollowUpQuestion =
-        InsightFollowUpQuestion(
-            question = prompt.trimIndent(),
-            rationale = "Turns the current brief into a local-agent mission.",
-        )
+    fun followUpQuestion(): InsightFollowUpQuestion = InsightFollowUpQuestion(
+        question = prompt.trimIndent(),
+        rationale = "Turns the current brief into a local-agent mission.",
+    )
 }
 
 enum class MissionTone {
@@ -226,12 +225,9 @@ internal val missionLaunchActions = listOf(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun MissionRuntimeSelector(
-    selectedRuntime: MissionRuntimeTarget,
-    onRuntimeSelected: (MissionRuntimeTarget) -> Unit,
-) {
+internal fun MissionRuntimeSelector(selectedRuntime: MissionRuntimeTarget, onRuntimeSelected: (MissionRuntimeTarget) -> Unit) {
     LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         items(MissionRuntimeTarget.values().asList()) { runtime ->
@@ -242,8 +238,11 @@ internal fun MissionRuntimeSelector(
                 Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .background(
-                        if (selected) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+                        if (selected) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                        },
                     )
                     .testTag("insights.mission.runtime.${runtime.firestoreValue}")
                     .semantics { contentDescription = "Run mission on ${runtime.label}" },
@@ -276,7 +275,7 @@ internal fun MissionLaunchpad(onSelect: (MissionLaunchAction, MissionLaunchOptio
     )
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SectionHeader(title = "MISSION CONTROL")
         Text(
@@ -308,8 +307,8 @@ internal fun MissionLaunchpad(onSelect: (MissionLaunchAction, MissionLaunchOptio
         )
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         ) {
             missionLaunchActions.forEach { action ->
                 MissionLaunchButton(action = action, options = launchOptions, onSelect = onSelect)
@@ -336,16 +335,13 @@ internal data class MissionOptionsCallbacks(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun MissionOptionsPanel(
-    state: MissionOptionsState,
-    callbacks: MissionOptionsCallbacks,
-) {
+internal fun MissionOptionsPanel(state: MissionOptionsState, callbacks: MissionOptionsCallbacks) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(AuroraRadius.sm.dp))
-            .padding(AuroraSpacing.sm.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            .border(BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(AuroraRadius.SM.dp))
+            .padding(AuroraSpacing.SM.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         OutlinedTextField(
             value = state.targetProject,
@@ -372,8 +368,8 @@ internal fun MissionOptionsPanel(
             onSelect = callbacks.onApprovalModeChange,
         )
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp),
         ) {
             MissionBooleanChip(
                 label = "Commands",
@@ -392,20 +388,14 @@ internal fun MissionOptionsPanel(
 }
 
 @Composable
-internal fun <T> MissionOptionChips(
-    title: String,
-    entries: List<T>,
-    selected: T,
-    label: (T) -> String,
-    onSelect: (T) -> Unit,
-) {
+internal fun <T> MissionOptionChips(title: String, entries: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = title,
             style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.XS.dp)) {
             items(entries) { entry ->
                 MissionBooleanChip(
                     label = label(entry),
@@ -419,19 +409,17 @@ internal fun <T> MissionOptionChips(
 }
 
 @Composable
-internal fun MissionBooleanChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    tag: String?,
-) {
+internal fun MissionBooleanChip(label: String, selected: Boolean, onClick: () -> Unit, tag: String?) {
     TextButton(
         onClick = onClick,
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
             .background(
-                if (selected) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                if (selected) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                },
             )
             .then(if (tag != null) Modifier.testTag(tag) else Modifier),
     ) {
@@ -493,22 +481,18 @@ private fun RowScope.MissionLaunchButtonLabels(action: MissionLaunchAction, opti
 }
 
 @Composable
-internal fun MissionLaunchButton(
-    action: MissionLaunchAction,
-    options: MissionLaunchOptions,
-    onSelect: (MissionLaunchAction, MissionLaunchOptions) -> Unit,
-) {
+internal fun MissionLaunchButton(action: MissionLaunchAction, options: MissionLaunchOptions, onSelect: (MissionLaunchAction, MissionLaunchOptions) -> Unit) {
     val visual = missionToneVisual(action.tone)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.sm.dp))
-            .border(BorderStroke(0.75.dp, visual.color.copy(alpha = 0.32f)), RoundedCornerShape(AuroraRadius.sm.dp))
+            .clip(RoundedCornerShape(AuroraRadius.SM.dp))
+            .border(BorderStroke(0.75.dp, visual.color.copy(alpha = 0.32f)), RoundedCornerShape(AuroraRadius.SM.dp))
             .clickable { onSelect(action, options) }
-            .padding(AuroraSpacing.md.dp)
+            .padding(AuroraSpacing.MD.dp)
             .testTag("insights.mission.${action.tone.firestoreValue()}")
             .semantics { contentDescription = action.title },
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
@@ -527,7 +511,6 @@ internal fun MissionLaunchButton(
     }
 }
 
-
 // ─── Mission Board ────────────────────────────────────────────────────────
 
 @Composable
@@ -542,7 +525,7 @@ internal fun MissionBoardSection(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_MISSIONS),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         SectionHeader(title = SECTION_MISSIONS_TITLE)
         missions.forEach { mission ->
@@ -558,15 +541,10 @@ internal fun MissionBoardSection(
 }
 
 @Composable
-private fun MissionCardHeader(
-    mission: InsightMissionCandidate,
-    lensColor: Color,
-    expanded: Boolean,
-    onLaunch: () -> Unit,
-) {
+private fun MissionCardHeader(mission: InsightMissionCandidate, lensColor: Color, expanded: Boolean, onLaunch: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -604,15 +582,12 @@ private fun MissionCardHeader(
 }
 
 @Composable
-private fun MissionCardExpandedBody(
-    mission: InsightMissionCandidate,
-    onCitationTap: (InsightCitation) -> Unit,
-) {
+private fun MissionCardExpandedBody(mission: InsightMissionCandidate, onCitationTap: (InsightCitation) -> Unit) {
     if (mission.expectedImpact.isNotBlank()) {
         ActionStripe(text = mission.expectedImpact)
     }
     mission.acceptanceCriteria.take(5).forEachIndexed { index, criterion ->
-        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
             Text(
                 text = "${index + 1}.",
                 style = AuroraType.monoTiny,
@@ -642,17 +617,17 @@ internal fun MissionCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.sm.dp))
+            .clip(RoundedCornerShape(AuroraRadius.SM.dp))
             .border(
                 BorderStroke(if (expanded) 1.dp else 0.5.dp, lensColor.copy(alpha = if (expanded) 0.55f else 0.28f)),
-                RoundedCornerShape(AuroraRadius.sm.dp),
+                RoundedCornerShape(AuroraRadius.SM.dp),
             )
             .clickable(onClick = onToggle)
-            .padding(AuroraSpacing.md.dp)
+            .padding(AuroraSpacing.MD.dp)
             .semantics {
                 contentDescription = "Mission ${missionLensLabel(mission.lens)}, ${missionPriorityLabel(mission.priority)} priority, ${mission.title}"
             },
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
     ) {
         MissionCardHeader(
             mission = mission,
@@ -678,8 +653,7 @@ internal fun MissionCard(
     }
 }
 
-internal fun missionRuntimeLabel(rawValue: String): String =
-    MissionRuntimeTarget.entries.firstOrNull { it.firestoreValue == rawValue }?.label ?: rawValue
+internal fun missionRuntimeLabel(rawValue: String): String = MissionRuntimeTarget.entries.firstOrNull { it.firestoreValue == rawValue }?.label ?: rawValue
 
 internal fun InsightMissionCandidate.launchAction(): MissionLaunchAction {
     val kind = dispatchMetadata["missionKind"] ?: when (lens) {
@@ -710,41 +684,36 @@ internal fun InsightMissionCandidate.launchAction(): MissionLaunchAction {
     )
 }
 
-internal fun missionLensLabel(lens: InsightMissionCandidate.Lens): String =
-    when (lens) {
-        InsightMissionCandidate.Lens.ACCRETION -> "Accretion"
-        InsightMissionCandidate.Lens.DILIGENCE -> "Diligence"
-        InsightMissionCandidate.Lens.TECH_DEBT -> "Debt"
-        InsightMissionCandidate.Lens.ROUTING -> "Routing"
-        InsightMissionCandidate.Lens.QUOTA -> "Quota"
-        InsightMissionCandidate.Lens.FOCUS -> "Focus"
-    }
+internal fun missionLensLabel(lens: InsightMissionCandidate.Lens): String = when (lens) {
+    InsightMissionCandidate.Lens.ACCRETION -> "Accretion"
+    InsightMissionCandidate.Lens.DILIGENCE -> "Diligence"
+    InsightMissionCandidate.Lens.TECH_DEBT -> "Debt"
+    InsightMissionCandidate.Lens.ROUTING -> "Routing"
+    InsightMissionCandidate.Lens.QUOTA -> "Quota"
+    InsightMissionCandidate.Lens.FOCUS -> "Focus"
+}
 
-internal fun missionPriorityLabel(priority: InsightMissionCandidate.Priority): String =
-    when (priority) {
-        InsightMissionCandidate.Priority.LOW -> "Low"
-        InsightMissionCandidate.Priority.MEDIUM -> "Medium"
-        InsightMissionCandidate.Priority.HIGH -> "High"
-        InsightMissionCandidate.Priority.CRITICAL -> "Critical"
-    }
+internal fun missionPriorityLabel(priority: InsightMissionCandidate.Priority): String = when (priority) {
+    InsightMissionCandidate.Priority.LOW -> "Low"
+    InsightMissionCandidate.Priority.MEDIUM -> "Medium"
+    InsightMissionCandidate.Priority.HIGH -> "High"
+    InsightMissionCandidate.Priority.CRITICAL -> "Critical"
+}
 
 @Composable
-internal fun missionLensColor(lens: InsightMissionCandidate.Lens): Color =
-    when (lens) {
-        InsightMissionCandidate.Lens.ACCRETION -> InsightsColors.kpiPositive
-        InsightMissionCandidate.Lens.DILIGENCE -> if (isSystemInDarkTheme()) AuroraColors.goldDark else AuroraColors.gold
-        InsightMissionCandidate.Lens.TECH_DEBT -> AuroraColors.ember(isSystemInDarkTheme())
-        InsightMissionCandidate.Lens.ROUTING -> MaterialTheme.colorScheme.primary
-        InsightMissionCandidate.Lens.QUOTA -> InsightsColors.kpiNeutral
-        InsightMissionCandidate.Lens.FOCUS -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
+internal fun missionLensColor(lens: InsightMissionCandidate.Lens): Color = when (lens) {
+    InsightMissionCandidate.Lens.ACCRETION -> InsightsColors.kpiPositive
+    InsightMissionCandidate.Lens.DILIGENCE -> if (isSystemInDarkTheme()) AuroraColors.goldDark else AuroraColors.gold
+    InsightMissionCandidate.Lens.TECH_DEBT -> AuroraColors.ember(isSystemInDarkTheme())
+    InsightMissionCandidate.Lens.ROUTING -> MaterialTheme.colorScheme.primary
+    InsightMissionCandidate.Lens.QUOTA -> InsightsColors.kpiNeutral
+    InsightMissionCandidate.Lens.FOCUS -> MaterialTheme.colorScheme.onSurfaceVariant
+}
 
 @Composable
-internal fun missionPriorityColor(priority: InsightMissionCandidate.Priority): Color =
-    when (priority) {
-        InsightMissionCandidate.Priority.LOW -> MaterialTheme.colorScheme.onSurfaceVariant
-        InsightMissionCandidate.Priority.MEDIUM -> InsightsColors.kpiNeutral
-        InsightMissionCandidate.Priority.HIGH -> AuroraColors.ember(isSystemInDarkTheme())
-        InsightMissionCandidate.Priority.CRITICAL -> InsightsColors.kpiNegative
-    }
-
+internal fun missionPriorityColor(priority: InsightMissionCandidate.Priority): Color = when (priority) {
+    InsightMissionCandidate.Priority.LOW -> MaterialTheme.colorScheme.onSurfaceVariant
+    InsightMissionCandidate.Priority.MEDIUM -> InsightsColors.kpiNeutral
+    InsightMissionCandidate.Priority.HIGH -> AuroraColors.ember(isSystemInDarkTheme())
+    InsightMissionCandidate.Priority.CRITICAL -> InsightsColors.kpiNegative
+}

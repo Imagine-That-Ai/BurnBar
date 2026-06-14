@@ -109,19 +109,14 @@ object AndroidSignalIdentityKeyStore {
      * The published-doc field set (minus server timestamps). Pure + unit-tested so the
      * client-direct write can never drift from the L41 rules `keys().hasOnly([...])`.
      */
-    fun signalIdentityPublicKeyDoc(
-        deviceId: String,
-        identity: AndroidSignalIdentityKeypair,
-        platform: String,
-    ): Map<String, Any> =
-        mapOf(
-            "deviceId" to deviceId,
-            "platform" to platform,
-            "identityKeyId" to identity.identityKeyId,
-            "publicKeyFingerprint" to CloudVaultCrypto.sha256Base64(identity.publicKeyData),
-            "publicKeyData" to CloudVaultCryptoSupport.encodeBase64(identity.publicKeyData),
-            "keyVersion" to identity.keyVersion,
-            "keyVersionLabel" to identity.keyVersion.toString(),
-            "algorithm" to CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION,
-        )
+    fun signalIdentityPublicKeyDoc(deviceId: String, identity: AndroidSignalIdentityKeypair, platform: String): Map<String, Any> = mapOf(
+        "deviceId" to deviceId,
+        "platform" to platform,
+        "identityKeyId" to identity.identityKeyId,
+        "publicKeyFingerprint" to CloudVaultCrypto.sha256Base64(identity.publicKeyData),
+        "publicKeyData" to CloudVaultCryptoSupport.encodeBase64(identity.publicKeyData),
+        "keyVersion" to identity.keyVersion,
+        "keyVersionLabel" to identity.keyVersion.toString(),
+        "algorithm" to CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION,
+    )
 }

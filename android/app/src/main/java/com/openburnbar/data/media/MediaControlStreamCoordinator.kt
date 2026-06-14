@@ -4,18 +4,18 @@ package com.openburnbar.data.media
 
 import android.util.Log
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
+import com.openburnbar.irohrelay.HermesRealtimeRelayAgentTerminalRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
+import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
+import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
+import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
-import com.openburnbar.irohrelay.HermesRealtimeRelayCallInvite
-import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
-import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
-import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
-import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayLongTermReferenceAck
-import com.openburnbar.irohrelay.HermesRealtimeRelayFocusContext
+import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorRequest
-import com.openburnbar.irohrelay.HermesRealtimeRelayAgentTerminalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorStop
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockResult
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
@@ -23,6 +23,9 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockState
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.time.Instant
 import java.util.UUID
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -40,9 +43,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.min
-import kotlin.math.pow
-import kotlin.random.Random
 
 /**
  * Android-side owner of the persistent media control stream. 1:1 port
@@ -237,10 +237,7 @@ class MediaControlStreamCoordinator(
         stream.send(frame)
     }
 
-    suspend fun ensureResponsive(
-        freshnessIntervalMillis: Long = 2_000L,
-        probeTimeoutMillis: Long = 1_000L,
-    ): Boolean {
+    suspend fun ensureResponsive(freshnessIntervalMillis: Long = 2_000L, probeTimeoutMillis: Long = 1_000L): Boolean {
         val now = System.currentTimeMillis()
         val lastHeartbeat = _lastPeerHeartbeatAtMillis.value
         if (_phase.value == Phase.Live && lastHeartbeat > 0L && now - lastHeartbeat <= freshnessIntervalMillis) {
@@ -331,7 +328,7 @@ class MediaControlStreamCoordinator(
                 connectionId = connectionID,
                 requestId = requestID,
                 media = HermesRealtimeRelayMediaPayload(mirrorRequest = request),
-            )
+            ),
         )
         logInfo("Mercury mirror request sent requestID=$requestID connectionID=$connectionID")
         return requestID
@@ -352,17 +349,14 @@ class MediaControlStreamCoordinator(
                         sessionId = sessionID,
                         stoppedAt = swiftReferenceDateSecondsNow(),
                         reason = reason,
-                    )
+                    ),
                 ),
-            )
+            ),
         )
         logInfo("Mercury mirror stop sent requestID=$requestID connectionID=$connectionID reason=${reason.orEmpty()}")
     }
 
-    suspend fun sendLongTermReferenceAcknowledgement(
-        token: MediaFrameV2LongTermReferenceToken,
-        requestID: String? = null,
-    ) {
+    suspend fun sendLongTermReferenceAcknowledgement(token: MediaFrameV2LongTermReferenceToken, requestID: String? = null) {
         val uid = activeUID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
         val connectionID = activeConnectionID ?: throw IllegalStateException("Mercury control stream is not paired yet.")
         send(
@@ -376,9 +370,9 @@ class MediaControlStreamCoordinator(
                         requestId = requestID,
                         tokenValue = token.value,
                         decodedAt = Instant.now().toString(),
-                    )
+                    ),
                 ),
-            )
+            ),
         )
     }
 
@@ -399,7 +393,7 @@ class MediaControlStreamCoordinator(
                 connectionId = connectionID,
                 requestId = requestID,
                 media = HermesRealtimeRelayMediaPayload(callInvite = invite),
-            )
+            ),
         )
         return requestID
     }
@@ -487,8 +481,7 @@ class MediaControlStreamCoordinator(
         _activePair.value = null
     }
 
-    private fun swiftReferenceDateSecondsNow(): Double =
-        System.currentTimeMillis() / 1_000.0 - SWIFT_REFERENCE_DATE_UNIX_SECONDS
+    private fun swiftReferenceDateSecondsNow(): Double = System.currentTimeMillis() / 1_000.0 - SWIFT_REFERENCE_DATE_UNIX_SECONDS
 
     private fun nextBackoff(attempt: Int): Long {
         val exp = min(

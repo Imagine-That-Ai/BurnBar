@@ -10,8 +10,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.ui.res.painterResource
-import com.openburnbar.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,11 +45,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.R
 import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.HostedQuotaStoreProduct
 import com.openburnbar.data.stores.HostedQuotaStoreProductRole
@@ -573,11 +573,7 @@ private fun BoxScope.TierHoloAura(holo: TierHolo, shape: RoundedCornerShape) {
 }
 
 @Composable
-internal fun TierPlanCardBody(
-    presentation: TierPlanPresentation,
-    commerce: TierPlanCommerce,
-    options: List<CloudPlanOption>,
-) {
+internal fun TierPlanCardBody(presentation: TierPlanPresentation, commerce: TierPlanCommerce, options: List<CloudPlanOption>) {
     val accent = presentation.accent
     val enabled = commerce.enabled
     val onPurchase = commerce.onPurchase

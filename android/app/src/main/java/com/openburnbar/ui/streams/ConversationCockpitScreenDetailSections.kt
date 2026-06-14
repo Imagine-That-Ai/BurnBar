@@ -3,9 +3,9 @@
 package com.openburnbar.ui.streams
 
 import android.content.Intent
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -114,7 +114,6 @@ internal fun EntitledCockpitOverlays(
     }
 }
 
-
 @Composable
 internal fun CockpitPaginatingIndicator() {
     Box(
@@ -178,26 +177,20 @@ internal fun CockpitConversationDetailSheet(store: ConversationCockpitStore, row
 }
 
 @Composable
-private fun CockpitDetailSheetBody(
-    row: CockpitConversationRow,
-    transcript: String?,
-    isLoading: Boolean,
-    loadError: String?,
-    onRetry: () -> Unit,
-) {
+private fun CockpitDetailSheetBody(row: CockpitConversationRow, transcript: String?, isLoading: Boolean, loadError: String?, onRetry: () -> Unit) {
     val context = LocalContext.current
     Column(
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(bottom = AuroraSpacing.xl.dp)
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(bottom = AuroraSpacing.XL.dp)
             .verticalScroll(rememberScrollState()),
     ) {
         CockpitDetailSheetHeader(row = row, transcript = transcript, context = context)
-        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+        Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
         CockpitDetailFacetsGrid(row = row)
-        HorizontalDivider(modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = AuroraSpacing.SM.dp))
         CockpitDetailTranscriptSection(
             row = row,
             transcript = transcript,
@@ -210,7 +203,7 @@ private fun CockpitDetailSheetBody(
 
 @Composable
 private fun CockpitDetailSheetHeader(row: CockpitConversationRow, transcript: String?, context: android.content.Context) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         row.providerEnum?.let { ProviderAvatar(providerKey = it.key, size = 40) }
         Column(modifier = Modifier.weight(1f)) {
             Text(row.displayTitle, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
@@ -235,7 +228,7 @@ private fun CockpitDetailSheetHeader(row: CockpitConversationRow, transcript: St
 private fun CockpitDetailFacetsGrid(row: CockpitConversationRow) {
     val facets = cockpitDetailFacets(row)
     facets.chunked(2).forEach { pair ->
-        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp), modifier = Modifier.padding(bottom = AuroraSpacing.sm.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp), modifier = Modifier.padding(bottom = AuroraSpacing.SM.dp)) {
             pair.forEach { (title, value) ->
                 CockpitFacetCell(title = title, value = value, modifier = Modifier.weight(1f))
             }
@@ -244,34 +237,27 @@ private fun CockpitDetailFacetsGrid(row: CockpitConversationRow) {
     }
 }
 
-private fun cockpitDetailFacets(row: CockpitConversationRow): List<Pair<String, String>> =
-    buildList {
-        add("Cost" to Formatting.formatCurrency(row.costUSD))
-        add("Tokens" to Formatting.formatTokens(row.totalTokens.toLong()))
-        if (row.inputTokens > 0 || row.outputTokens > 0) {
-            add("In · Out" to "${Formatting.formatTokens(row.inputTokens.toLong())} · ${Formatting.formatTokens(row.outputTokens.toLong())}")
-        }
-        if (row.messageCount > 0) add("Messages" to row.messageCount.toString())
-        row.model?.takeIf { it.isNotBlank() }?.let { add("Model" to it) }
-        row.durationSeconds?.takeIf { it > 0 }?.let { add("Duration" to cockpitFormatDuration(it)) }
-        (row.startTimeMs ?: row.updatedAtMs)?.takeIf { it > 0 }?.let { add("Started" to Formatting.formatRelativeTime(it)) }
-        row.sourceType?.takeIf { it.isNotBlank() }?.let { add("Source" to it.replaceFirstChar { c -> c.uppercase() }) }
+private fun cockpitDetailFacets(row: CockpitConversationRow): List<Pair<String, String>> = buildList {
+    add("Cost" to Formatting.formatCurrency(row.costUSD))
+    add("Tokens" to Formatting.formatTokens(row.totalTokens.toLong()))
+    if (row.inputTokens > 0 || row.outputTokens > 0) {
+        add("In · Out" to "${Formatting.formatTokens(row.inputTokens.toLong())} · ${Formatting.formatTokens(row.outputTokens.toLong())}")
     }
+    if (row.messageCount > 0) add("Messages" to row.messageCount.toString())
+    row.model?.takeIf { it.isNotBlank() }?.let { add("Model" to it) }
+    row.durationSeconds?.takeIf { it > 0 }?.let { add("Duration" to cockpitFormatDuration(it)) }
+    (row.startTimeMs ?: row.updatedAtMs)?.takeIf { it > 0 }?.let { add("Started" to Formatting.formatRelativeTime(it)) }
+    row.sourceType?.takeIf { it.isNotBlank() }?.let { add("Source" to it.replaceFirstChar { c -> c.uppercase() }) }
+}
 
 @Composable
-private fun CockpitDetailTranscriptSection(
-    row: CockpitConversationRow,
-    transcript: String?,
-    isLoading: Boolean,
-    loadError: String?,
-    onRetry: () -> Unit,
-) {
+private fun CockpitDetailTranscriptSection(row: CockpitConversationRow, transcript: String?, isLoading: Boolean, loadError: String?, onRetry: () -> Unit) {
     when {
         isLoading -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-                modifier = Modifier.padding(vertical = AuroraSpacing.lg.dp),
+                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
+                modifier = Modifier.padding(vertical = AuroraSpacing.LG.dp),
             ) {
                 CircularProgressIndicator(color = AuroraColors.ember, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
                 Text("Opening encrypted transcript…", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -310,12 +296,12 @@ private fun CockpitDetailTranscriptSection(
 internal fun CockpitFacetCell(title: String, value: String, modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
         modifier =
         modifier
-            .clip(RoundedCornerShape(AuroraRadius.md.dp))
+            .clip(RoundedCornerShape(AuroraRadius.MD.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
-            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(AuroraRadius.md.dp))
+            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(AuroraRadius.MD.dp))
             .padding(10.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -336,13 +322,7 @@ internal fun CockpitFacetCell(title: String, value: String, modifier: Modifier =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CockpitFilterSheet(
-    dateFrom: Long?,
-    dateTo: Long?,
-    onApply: (Long?, Long?) -> Unit,
-    onReset: () -> Unit,
-    onDismiss: () -> Unit,
-) {
+internal fun CockpitFilterSheet(dateFrom: Long?, dateTo: Long?, onApply: (Long?, Long?) -> Unit, onReset: () -> Unit, onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var fromDraft by remember { mutableStateOf(dateFrom) }
     var toDraft by remember { mutableStateOf(dateTo) }
@@ -395,19 +375,16 @@ private data class CockpitFilterSheetFormCallbacks(
 )
 
 @Composable
-private fun CockpitFilterSheetForm(
-    state: CockpitFilterSheetFormState,
-    callbacks: CockpitFilterSheetFormCallbacks,
-) {
+private fun CockpitFilterSheetForm(state: CockpitFilterSheetFormState, callbacks: CockpitFilterSheetFormCallbacks) {
     val fromDraft = state.fromDraft
     val toDraft = state.toDraft
     Column(
         modifier =
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = AuroraSpacing.lg.dp)
-            .padding(bottom = AuroraSpacing.xl.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+            .padding(horizontal = AuroraSpacing.LG.dp)
+            .padding(bottom = AuroraSpacing.XL.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
         Text("Cockpit Filters", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         CockpitFilterDateRangeRow(
@@ -416,7 +393,7 @@ private fun CockpitFilterSheetForm(
             onOpenRangePicker = callbacks.onOpenRangePicker,
             onClearRange = callbacks.onClearRange,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = callbacks.onReset, modifier = Modifier.weight(1f)) { Text("Reset") }
             Button(
                 onClick = callbacks.onApply,
@@ -428,13 +405,8 @@ private fun CockpitFilterSheetForm(
 }
 
 @Composable
-private fun CockpitFilterDateRangeRow(
-    fromDraft: Long?,
-    toDraft: Long?,
-    onOpenRangePicker: () -> Unit,
-    onClearRange: () -> Unit,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+private fun CockpitFilterDateRangeRow(fromDraft: Long?, toDraft: Long?, onOpenRangePicker: () -> Unit, onClearRange: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         Column(modifier = Modifier.weight(1f)) {
             Text("Start date range", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
             Text(
@@ -456,12 +428,7 @@ private fun CockpitFilterDateRangeRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CockpitFilterDateRangePicker(
-    fromDraft: Long?,
-    toDraft: Long?,
-    onDismiss: () -> Unit,
-    onConfirm: (Long?, Long?) -> Unit,
-) {
+private fun CockpitFilterDateRangePicker(fromDraft: Long?, toDraft: Long?, onDismiss: () -> Unit, onConfirm: (Long?, Long?) -> Unit) {
     val rangeState =
         rememberDateRangePickerState(
             initialSelectedStartDateMillis = fromDraft,
@@ -482,7 +449,7 @@ private fun CockpitFilterDateRangePicker(
 
 @Composable
 private fun CockpitSaveQueryDialogForm(name: String, onNameChange: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp)) {
         Text(
             "Recall this provider, model, date, and sort combination from the saved-query rail.",
             fontSize = 12.sp,
@@ -529,17 +496,17 @@ internal fun CockpitTeaserBackground() {
         Modifier
             .fillMaxSize()
             .background(base)
-            .padding(AuroraSpacing.lg.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+            .padding(AuroraSpacing.LG.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp)) {
             repeat(3) {
                 Box(
                     modifier =
                     Modifier
                         .weight(1f)
                         .height(76.dp)
-                        .clip(RoundedCornerShape(AuroraRadius.lg.dp))
+                        .clip(RoundedCornerShape(AuroraRadius.LG.dp))
                         .background(tile),
                 )
             }
@@ -550,7 +517,7 @@ internal fun CockpitTeaserBackground() {
                 Modifier
                     .fillMaxWidth()
                     .height(70.dp)
-                    .clip(RoundedCornerShape(AuroraRadius.lg.dp))
+                    .clip(RoundedCornerShape(AuroraRadius.LG.dp))
                     .background(tile.copy(alpha = 0.7f)),
             )
         }

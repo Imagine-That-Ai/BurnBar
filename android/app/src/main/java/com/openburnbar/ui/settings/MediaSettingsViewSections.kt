@@ -89,10 +89,7 @@ internal fun MediaSettingsSectionLabel(text: String) {
 }
 
 @Composable
-internal fun MediaSettingsAutoKeyboardRow(
-    enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
-) {
+internal fun MediaSettingsAutoKeyboardRow(enabled: Boolean, onEnabledChange: (Boolean) -> Unit) {
     MediaSettingsToggleRow(
         title = "Auto keyboard on text focus",
         detail = "Opens the phone keyboard when your Mac focuses a text field. Smart Zoom still controls framing.",
@@ -102,10 +99,7 @@ internal fun MediaSettingsAutoKeyboardRow(
 }
 
 @Composable
-internal fun MediaSettingsPairedMacTileRow(
-    enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
-) {
+internal fun MediaSettingsPairedMacTileRow(enabled: Boolean, onEnabledChange: (Boolean) -> Unit) {
     MediaSettingsToggleRow(
         title = "Show My Mac on Hermes Square",
         detail = "Keep screen share, calls, and file transfer one tap away while Mercury connects.",
@@ -147,11 +141,7 @@ internal fun LazyListScope.mediaSettingsPartnerItems(
 }
 
 @Composable
-private fun MediaSettingsPartnerRow(
-    peerId: String,
-    pref: MediaPartnerSavePreferenceStore.SavePreference,
-    onForget: () -> Unit,
-) {
+private fun MediaSettingsPartnerRow(peerId: String, pref: MediaPartnerSavePreferenceStore.SavePreference, onForget: () -> Unit) {
     val isDark = isSystemInDarkTheme()
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -174,12 +164,7 @@ private fun MediaSettingsPartnerRow(
 }
 
 @Composable
-private fun MediaSettingsToggleRow(
-    title: String,
-    detail: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
+private fun MediaSettingsToggleRow(title: String, detail: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val isDark = isSystemInDarkTheme()
     val cardBackground = if (isDark) AuroraColors.darkSurfaceElevated.copy(alpha = 0.64f) else AuroraColors.lightSurfaceElevated.copy(alpha = 0.64f)
     val cardBorder = if (isDark) AuroraColors.darkBorderSubtle else AuroraColors.lightBorderSubtle
@@ -205,9 +190,7 @@ private fun MediaSettingsToggleRow(
     }
 }
 
-internal suspend fun mediaSettingsKillSwitchReason(
-    capabilityGate: AndroidMediaCapabilityGate,
-): String? {
+internal suspend fun mediaSettingsKillSwitchReason(capabilityGate: AndroidMediaCapabilityGate): String? {
     val result = capabilityGate.check(com.openburnbar.data.media.MediaStreamClass.Feature.FILE_TRANSFER)
     return when (result) {
         is AndroidMediaCapabilityGate.Check.Allowed -> null

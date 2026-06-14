@@ -34,12 +34,7 @@ internal object MediaControlPresence {
         }
     }
 
-    fun makeHeartbeat(
-        uid: String,
-        connectionID: String,
-        peerDeviceIdProvider: () -> String,
-        displayNameProvider: () -> String,
-    ): HermesRealtimeRelayFrame =
+    fun makeHeartbeat(uid: String, connectionID: String, peerDeviceIdProvider: () -> String, displayNameProvider: () -> String): HermesRealtimeRelayFrame =
         HermesRealtimeRelayFrame(
             type = HermesRealtimeRelayFrameType.MEDIA_PRESENCE_HEARTBEAT,
             uid = uid,

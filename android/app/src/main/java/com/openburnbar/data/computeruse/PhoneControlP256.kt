@@ -112,14 +112,13 @@ internal object PhoneControlP256 {
         return verifyDerSignature(publicKey, signature, payload)
     }
 
-    private fun verifyDerSignature(publicKey: ECPublicKey, der: ByteArray, payload: ByteArray): Boolean =
-        runCatching {
-            Signature.getInstance(PhoneControlSigningIdentity.P256_JCA_SIGNATURE_ALGORITHM).run {
-                initVerify(publicKey)
-                update(payload)
-                verify(der)
-            }
-        }.getOrDefault(false)
+    private fun verifyDerSignature(publicKey: ECPublicKey, der: ByteArray, payload: ByteArray): Boolean = runCatching {
+        Signature.getInstance(PhoneControlSigningIdentity.P256_JCA_SIGNATURE_ALGORITHM).run {
+            initVerify(publicKey)
+            update(payload)
+            verify(der)
+        }
+    }.getOrDefault(false)
 
     private fun fixedLength(value: BigInteger): ByteArray {
         val bytes = value.toByteArray()
@@ -151,10 +150,9 @@ internal object PhoneControlP256 {
         return byteArrayOf(DER_INTEGER_TAG, body.size.toByte()) + body
     }
 
-    private fun derLength(length: Int): ByteArray =
-        if (length <= DER_SHORT_FORM_MAX_LENGTH) {
-            byteArrayOf(length.toByte())
-        } else {
-            byteArrayOf(DER_LONG_FORM_ONE_LENGTH_BYTE, length.toByte())
-        }
+    private fun derLength(length: Int): ByteArray = if (length <= DER_SHORT_FORM_MAX_LENGTH) {
+        byteArrayOf(length.toByte())
+    } else {
+        byteArrayOf(DER_LONG_FORM_ONE_LENGTH_BYTE, length.toByte())
+    }
 }

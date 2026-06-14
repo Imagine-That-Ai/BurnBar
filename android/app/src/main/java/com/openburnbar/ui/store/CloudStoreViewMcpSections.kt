@@ -4,8 +4,6 @@ package com.openburnbar.ui.store
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.ui.res.painterResource
-import com.openburnbar.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,11 +38,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.R
 import com.openburnbar.data.stores.RemoteMcpClientRecord
 import com.openburnbar.ui.theme.AuroraColors
 import java.util.Locale
@@ -235,11 +235,7 @@ internal fun RemoteMcpRevokeDialog(clientName: String, onDismiss: () -> Unit, on
 }
 
 @Composable
-internal fun RemoteMcpClientRowContent(
-    client: RemoteMcpClientRecord,
-    isRevoking: Boolean,
-    onRequestRevoke: () -> Unit,
-) {
+internal fun RemoteMcpClientRowContent(client: RemoteMcpClientRecord, isRevoking: Boolean, onRequestRevoke: () -> Unit) {
     Column(
         modifier =
         Modifier
@@ -272,11 +268,7 @@ internal fun RemoteMcpClientRowContent(
 }
 
 @Composable
-internal fun RemoteMcpClientRowHeader(
-    client: RemoteMcpClientRecord,
-    isRevoking: Boolean,
-    onRequestRevoke: () -> Unit,
-) {
+internal fun RemoteMcpClientRowHeader(client: RemoteMcpClientRecord, isRevoking: Boolean, onRequestRevoke: () -> Unit) {
     Row(verticalAlignment = Alignment.Top) {
         Icon(
             if (client.isRevoked) Icons.Filled.Close else Icons.Filled.VerifiedUser,

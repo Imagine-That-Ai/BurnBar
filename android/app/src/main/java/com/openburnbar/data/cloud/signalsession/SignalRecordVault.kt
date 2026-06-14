@@ -41,13 +41,12 @@ class AndroidEncryptedSignalRecordVault(
         prefs.edit().remove(storageKey(account)).apply()
     }
 
-    override fun accounts(prefix: String): List<String> =
-        prefs.all.keys
-            .asSequence()
-            .filter { it.startsWith(KEY_PREFIX) }
-            .map { it.removePrefix(KEY_PREFIX) }
-            .filter { it.startsWith(prefix) }
-            .toList()
+    override fun accounts(prefix: String): List<String> = prefs.all.keys
+        .asSequence()
+        .filter { it.startsWith(KEY_PREFIX) }
+        .map { it.removePrefix(KEY_PREFIX) }
+        .filter { it.startsWith(prefix) }
+        .toList()
 
     private fun storageKey(account: String): String {
         require(!account.contains("\u0000")) { "account contains forbidden NUL" }

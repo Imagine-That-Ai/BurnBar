@@ -47,12 +47,11 @@ class HermesServiceMessageLaunchTest {
         }
     }
 
-    private fun relayConnection(): HermesConnectionRecord =
-        HermesConnectionRecord(
-            id = "conn-expired",
-            displayName = "Mac Relay",
-            mode = HermesConnectionMode.RELAY_LINK,
-            status = HermesConnectionStatus.ONLINE,
-            relayPublicKey = "relay-public-key",
-        )
+    private fun relayConnection(): HermesConnectionRecord = HermesConnectionRecord(
+        id = "conn-expired",
+        displayName = "Mac Relay",
+        mode = HermesConnectionMode.RELAY_LINK,
+        status = HermesConnectionStatus.ONLINE,
+        relayPublicKey = "relay-public-key",
+    )
 }

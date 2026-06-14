@@ -21,12 +21,11 @@ data class AndroidSignalIdentityKeypair(
     val keyVersion: Int,
 ) {
     /** This identity as a Signal at-rest recipient (so it can open its own writes). */
-    fun asRecipient(): CloudVaultSignalRecipient =
-        CloudVaultSignalRecipient(
-            recipientKind = "device",
-            recipientIdentityKeyId = identityKeyId,
-            publicKeyData = publicKeyData,
-        )
+    fun asRecipient(): CloudVaultSignalRecipient = CloudVaultSignalRecipient(
+        recipientKind = "device",
+        recipientIdentityKeyId = identityKeyId,
+        publicKeyData = publicKeyData,
+    )
 
     // data class auto-equals/hashCode compare ByteArray by reference; override so two
     // keypairs with the same bytes compare equal (used in dedupe + tests).

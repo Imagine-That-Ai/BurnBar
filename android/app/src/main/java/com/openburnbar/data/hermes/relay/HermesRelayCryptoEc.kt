@@ -19,11 +19,16 @@ internal object HermesRelayCryptoEc {
      */
     private val P256_SPKI_PREFIX: ByteArray =
         byteArrayOf(
-            0x30, 0x59, // SEQUENCE, 89 bytes: SubjectPublicKeyInfo
-            0x30, 0x13, // SEQUENCE, 19 bytes: AlgorithmIdentifier
-            0x06, 0x07, 0x2a, 0x86.toByte(), 0x48, 0xce.toByte(), 0x3d, 0x02, 0x01, // OID 1.2.840.10045.2.1 (id-ecPublicKey)
-            0x06, 0x08, 0x2a, 0x86.toByte(), 0x48, 0xce.toByte(), 0x3d, 0x03, 0x01, 0x07, // OID 1.2.840.10045.3.1.7 (prime256v1)
-            0x03, 0x42, 0x00, // BIT STRING, 66 bytes; leading 0x00 = no unused bits
+            // SEQUENCE, 89 bytes: SubjectPublicKeyInfo
+            0x30, 0x59,
+            // SEQUENCE, 19 bytes: AlgorithmIdentifier
+            0x30, 0x13,
+            // OID 1.2.840.10045.2.1 (id-ecPublicKey)
+            0x06, 0x07, 0x2a, 0x86.toByte(), 0x48, 0xce.toByte(), 0x3d, 0x02, 0x01,
+            // OID 1.2.840.10045.3.1.7 (prime256v1)
+            0x06, 0x08, 0x2a, 0x86.toByte(), 0x48, 0xce.toByte(), 0x3d, 0x03, 0x01, 0x07,
+            // BIT STRING, 66 bytes; leading 0x00 = no unused bits
+            0x03, 0x42, 0x00,
         )
 
     private val secureRandom = SecureRandom()
@@ -105,11 +110,7 @@ internal object HermesRelayCryptoEc {
         return result ?: java.security.spec.ECPoint.POINT_INFINITY
     }
 
-    private fun ecPointAdd(
-        a: java.security.spec.ECPoint?,
-        b: java.security.spec.ECPoint,
-        p: java.math.BigInteger,
-    ): java.security.spec.ECPoint {
+    private fun ecPointAdd(a: java.security.spec.ECPoint?, b: java.security.spec.ECPoint, p: java.math.BigInteger): java.security.spec.ECPoint {
         if (a == null || a == java.security.spec.ECPoint.POINT_INFINITY) return b
         if (b == java.security.spec.ECPoint.POINT_INFINITY) return a
         val two = BIG_TWO

@@ -59,33 +59,31 @@ class AgentWatchControlFrameReceiver(
  * can be signed against it. `requestedAt` is Swift-reference seconds (2001-01-01 epoch); convert
  * back to Unix millis for the reducer's millis-based timeline.
  */
-internal fun HermesRealtimeRelayApprovalRequest.toApprovalRequest(): ComputerUseApprovalRequest =
-    ComputerUseApprovalRequest(
-        approvalId = approvalId,
-        sessionId = sessionId,
-        toolKind = toolKind,
-        actionSummary = actionSummary,
-        requestedAtMillis = ((requestedAt + APPLE_REFERENCE_DATE_EPOCH_SECONDS) * MILLIS_PER_SECOND).toLong(),
-        wireRequest = this,
-    )
+internal fun HermesRealtimeRelayApprovalRequest.toApprovalRequest(): ComputerUseApprovalRequest = ComputerUseApprovalRequest(
+    approvalId = approvalId,
+    sessionId = sessionId,
+    toolKind = toolKind,
+    actionSummary = actionSummary,
+    requestedAtMillis = ((requestedAt + APPLE_REFERENCE_DATE_EPOCH_SECONDS) * MILLIS_PER_SECOND).toLong(),
+    wireRequest = this,
+)
 
 /** Stable string the watch surface shows for a deny reason; matches the relay `@SerialName`s. */
-internal fun HermesRealtimeRelayControlDenied.Reason.denyReasonValue(): String =
-    when (this) {
-        HermesRealtimeRelayControlDenied.Reason.ENTITLEMENT -> "entitlement"
-        HermesRealtimeRelayControlDenied.Reason.SESSION_LIMIT -> "session_limit"
-        HermesRealtimeRelayControlDenied.Reason.DAILY_LIMIT -> "daily_limit"
-        HermesRealtimeRelayControlDenied.Reason.SOFT_CAP -> "soft_cap"
-        HermesRealtimeRelayControlDenied.Reason.HARD_CAP -> "hard_cap"
-        HermesRealtimeRelayControlDenied.Reason.SCOPE -> "scope"
-        HermesRealtimeRelayControlDenied.Reason.DENY_REGION -> "deny_region"
-        HermesRealtimeRelayControlDenied.Reason.KILL_SWITCH -> "kill_switch"
-        HermesRealtimeRelayControlDenied.Reason.SIGNATURE_FAILURE -> "signature_failure"
-        HermesRealtimeRelayControlDenied.Reason.COUNTER_REPLAY -> "counter_replay"
-        HermesRealtimeRelayControlDenied.Reason.STALE_TIMESTAMP -> "stale_timestamp"
-        HermesRealtimeRelayControlDenied.Reason.AGENT_UNAVAILABLE -> "agent_unavailable"
-        else -> "scope"
-    }
+internal fun HermesRealtimeRelayControlDenied.Reason.denyReasonValue(): String = when (this) {
+    HermesRealtimeRelayControlDenied.Reason.ENTITLEMENT -> "entitlement"
+    HermesRealtimeRelayControlDenied.Reason.SESSION_LIMIT -> "session_limit"
+    HermesRealtimeRelayControlDenied.Reason.DAILY_LIMIT -> "daily_limit"
+    HermesRealtimeRelayControlDenied.Reason.SOFT_CAP -> "soft_cap"
+    HermesRealtimeRelayControlDenied.Reason.HARD_CAP -> "hard_cap"
+    HermesRealtimeRelayControlDenied.Reason.SCOPE -> "scope"
+    HermesRealtimeRelayControlDenied.Reason.DENY_REGION -> "deny_region"
+    HermesRealtimeRelayControlDenied.Reason.KILL_SWITCH -> "kill_switch"
+    HermesRealtimeRelayControlDenied.Reason.SIGNATURE_FAILURE -> "signature_failure"
+    HermesRealtimeRelayControlDenied.Reason.COUNTER_REPLAY -> "counter_replay"
+    HermesRealtimeRelayControlDenied.Reason.STALE_TIMESTAMP -> "stale_timestamp"
+    HermesRealtimeRelayControlDenied.Reason.AGENT_UNAVAILABLE -> "agent_unavailable"
+    else -> "scope"
+}
 
 private const val MILLIS_PER_SECOND = 1_000.0
 

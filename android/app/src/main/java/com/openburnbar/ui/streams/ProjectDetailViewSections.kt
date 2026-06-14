@@ -42,8 +42,8 @@ import com.openburnbar.util.Formatting
 @Composable
 internal fun ProjectDetailHeroCard(project: ProjectSummary) {
     val providerColor = AuroraColors.ember
-    AuroraGlassCard(cornerRadius = AuroraRadius.xl) {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+    AuroraGlassCard(cornerRadius = AuroraRadius.XL) {
+        Column(modifier = Modifier.padding(AuroraSpacing.LG.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier =
@@ -76,7 +76,7 @@ internal fun ProjectDetailHeroCard(project: ProjectSummary) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
 
             Text(
                 text = Formatting.formatCurrency(project.totalCost),
@@ -111,14 +111,14 @@ internal fun ProjectDetailStatRow(project: ProjectSummary, sessions: List<TokenU
 internal fun ProjectDetailTopModelsCard(topModels: List<Pair<String, Int>>) {
     if (topModels.isEmpty()) return
     AuroraGlassCard {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.LG.dp)) {
             Text(
                 text = "Top models",
                 fontSize = AuroraTypography.caption.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = AuroraColors.amber,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
             topModels.forEach { (model, tokens) ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -148,7 +148,7 @@ internal fun ProjectDetailTopModelsCard(topModels: List<Pair<String, Int>>) {
 internal fun ProjectDetailSessionsCard(sessions: List<TokenUsage>, onSessionClick: (TokenUsage) -> Unit) {
     val providerColor = AuroraColors.ember
     AuroraGlassCard {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column(modifier = Modifier.padding(AuroraSpacing.LG.dp)) {
             Text(
                 text = "Sessions",
                 fontSize = AuroraTypography.caption.sp,
@@ -160,7 +160,7 @@ internal fun ProjectDetailSessionsCard(sessions: List<TokenUsage>, onSessionClic
                 fontSize = AuroraTypography.tiny.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
+            Spacer(modifier = Modifier.height(AuroraSpacing.SM.dp))
 
             sessions.take(20).forEach { session ->
                 ProjectDetailSessionRow(

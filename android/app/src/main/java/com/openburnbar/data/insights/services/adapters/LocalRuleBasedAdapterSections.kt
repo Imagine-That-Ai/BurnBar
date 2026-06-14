@@ -102,7 +102,9 @@ internal fun localRuleBasedOverviewWidget(digest: InsightDigest): InsightWidget 
         InsightWidgetData.Narrative(
             headline = "Spent \$${String.format(java.util.Locale.US, "%.2f", digest.totals.costUSD)} across ${digest.providers.size} provider(s)",
             body = "${digest.totals.sessionCount} sessions, ${digest.totals.totalTokens} tokens. Cache hit rate: $cacheRate%.",
-            bullets = digest.providers.take(OVERVIEW_PROVIDER_BULLET_LIMIT).map { "${it.displayName}: \$${String.format(java.util.Locale.US, "%.2f", it.costUSD)}" },
+            bullets = digest.providers.take(
+                OVERVIEW_PROVIDER_BULLET_LIMIT,
+            ).map { "${it.displayName}: \$${String.format(java.util.Locale.US, "%.2f", it.costUSD)}" },
             tone = InsightWidgetData.Narrative.Tone.NEUTRAL,
             sparkline = digest.daily.map { it.costUSD },
         )
@@ -123,18 +125,17 @@ internal fun localRuleBasedOverviewWidget(digest: InsightDigest): InsightWidget 
     )
 }
 
-private fun localRuleBasedKpi(label: String, metric: String, value: Double, format: ValueFormat, digest: InsightDigest): InsightWidget =
-    InsightWidget(
-        kind = InsightWidgetKind.KPI_TILE,
-        title = label,
-        spec = InsightWidgetSpec.KPITile(InsightWidgetSpec.KPITileSpec(metricLabel = metric)),
-        dataBinding = InsightDataBinding.Kpi(metric = metric, window = com.openburnbar.data.insights.InsightTimeWindow.Last7d),
-        data =
-        InsightWidgetData.KPI(
-            metricLabel = label,
-            value = value,
-            valueFormat = format,
-            sparkline = digest.daily.map { it.costUSD },
-        ),
-        freshness = InsightFreshness.FRESH,
-    )
+private fun localRuleBasedKpi(label: String, metric: String, value: Double, format: ValueFormat, digest: InsightDigest): InsightWidget = InsightWidget(
+    kind = InsightWidgetKind.KPI_TILE,
+    title = label,
+    spec = InsightWidgetSpec.KPITile(InsightWidgetSpec.KPITileSpec(metricLabel = metric)),
+    dataBinding = InsightDataBinding.Kpi(metric = metric, window = com.openburnbar.data.insights.InsightTimeWindow.Last7d),
+    data =
+    InsightWidgetData.KPI(
+        metricLabel = label,
+        value = value,
+        valueFormat = format,
+        sparkline = digest.daily.map { it.costUSD },
+    ),
+    freshness = InsightFreshness.FRESH,
+)

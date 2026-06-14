@@ -86,15 +86,21 @@ object InsightDigestBuilder {
                 providers = providers.sortedByDescending { it.costUSD }.take(MAX_PROVIDER_SNAPSHOTS),
                 models = models.sortedByDescending { it.costUSD }.take(MAX_MODEL_SNAPSHOTS),
                 projects = projects,
-                devices = emptyList(), // Android doesn't sync device data
+                // Android doesn't sync device data
+                devices = emptyList(),
                 daily = daily.takeLast(DAYS_PER_QUARTER),
                 hourly = computeHourly(daily),
-                useCaseHistogram = emptyList(), // Requires local macOS session data
-                agentFocusSignals = emptyList(), // Requires local macOS session data
-                modelFocusSignals = emptyList(), // Requires local macOS session data
+                // Requires local macOS session data
+                useCaseHistogram = emptyList(),
+                // Requires local macOS session data
+                agentFocusSignals = emptyList(),
+                // Requires local macOS session data
+                modelFocusSignals = emptyList(),
                 quotaSnapshots = quotaSnapshots.take(MAX_QUOTA_SNAPSHOTS),
-                operatingActions = emptyList(), // macOS-only
-                summaryRunsLog = emptyList(), // macOS-only
+                // macOS-only
+                operatingActions = emptyList(),
+                // macOS-only
+                summaryRunsLog = emptyList(),
                 modelBenchmarks =
                 modelBenchmarks
                     .filter { it.score != null || it.rank != null || it.costSignal != null }
@@ -153,18 +159,17 @@ object InsightDigestBuilder {
         return candidate
     }
 
-    private fun shrinkWithProgressiveLimits(digest: InsightDigest): InsightDigest? =
-        shrinkLimitCombinations().firstNotNullOfOrNull { limits ->
-            val candidate =
-                shrunkDigestCandidate(
-                    digest = digest,
-                    dailyLimit = limits.daily,
-                    providerLimit = limits.provider,
-                    modelLimit = limits.model,
-                    quotaLimit = limits.quota,
-                )
-            candidate.takeIf { encodedSize(it) <= MAX_ENCODED_BYTES }
-        }
+    private fun shrinkWithProgressiveLimits(digest: InsightDigest): InsightDigest? = shrinkLimitCombinations().firstNotNullOfOrNull { limits ->
+        val candidate =
+            shrunkDigestCandidate(
+                digest = digest,
+                dailyLimit = limits.daily,
+                providerLimit = limits.provider,
+                modelLimit = limits.model,
+                quotaLimit = limits.quota,
+            )
+        candidate.takeIf { encodedSize(it) <= MAX_ENCODED_BYTES }
+    }
 
     private data class ShrinkLimits(val daily: Int, val provider: Int, val model: Int, val quota: Int)
 
@@ -184,13 +189,7 @@ object InsightDigestBuilder {
         }
     }
 
-    private fun shrunkDigestCandidate(
-        digest: InsightDigest,
-        dailyLimit: Int,
-        providerLimit: Int,
-        modelLimit: Int,
-        quotaLimit: Int,
-    ): InsightDigest {
+    private fun shrunkDigestCandidate(digest: InsightDigest, dailyLimit: Int, providerLimit: Int, modelLimit: Int, quotaLimit: Int): InsightDigest {
         val trimmedDaily = digest.daily.takeLast(dailyLimit)
         return digest.copy(
             providers = digest.providers.take(providerLimit),
