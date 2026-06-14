@@ -372,10 +372,10 @@ describe("L2 — gateway PoP v2 query binding", () => {
     };
 
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
-    const dispatch = dispatchHermesGatewayRequest as unknown as (
+    const dispatch: (
       req: TestHttpRequest,
       res: TestHttpResponse,
-    ) => Promise<void>;
+    ) => Promise<void> = dispatchHermesGatewayRequest;
     const { res, captured } = makeRes();
     const req = {
       method: "GET",
@@ -391,12 +391,12 @@ describe("L2 — gateway PoP v2 query binding", () => {
     await dispatch(req, res);
     expect(captured.status).toBe(200);
 
-    const nonceDoc = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}/pop_nonces/${fixedNonce}`) as
-      | { expireAt?: { toMillis(): number } }
-      | undefined;
+    const nonceDoc = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}/pop_nonces/${fixedNonce}`);
     expect(nonceDoc).toBeDefined();
+    const expireAt = nonceDoc?.expireAt;
+    if (!isRecord(expireAt) || typeof expireAt.toMillis !== "function") throw new Error("Expected nonce expiry timestamp.");
     const expectedExpire = futureTime.getTime() + 5 * 60 * 1000;
-    expect((nonceDoc?.expireAt as { toMillis(): number })?.toMillis()).toBe(expectedExpire);
+    expect(expireAt.toMillis()).toBe(expectedExpire);
 
     dateNowSpy.mockRestore();
   });

@@ -1,6 +1,7 @@
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
+import { jsonObject } from "../guards.js";
 import { requireTrustedDeviceActionProof } from "./computerUseSecurity.js";
 import { boundedTrimmedString } from "./shared.js";
 
@@ -32,7 +33,7 @@ export async function enforceHighRiskOwnerAction(
     approve?: boolean;
   },
 ): Promise<void> {
-  const data = (request.data ?? {}) as Record<string, unknown>;
+  const data = jsonObject(request.data);
   const nonce = boundedTrimmedString(data.nonce, "nonce", 256, true);
   const { nonceConsumed } = await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
   if (!nonceConsumed) {

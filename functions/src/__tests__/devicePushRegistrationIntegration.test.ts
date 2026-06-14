@@ -4,12 +4,19 @@
  * devices.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { CallableRequest } from "firebase-functions/v2/https";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-const state = vi.hoisted(() => ({
-  escrowDevice: null as Record<string, unknown> | null,
-  storedDocs: [] as Array<{ path: string; data: Record<string, unknown> }>,
+type StoredDoc = { path: string; data: Record<string, unknown> };
+type TestState = {
+  escrowDevice: Record<string, unknown> | null;
+  storedDocs: StoredDoc[];
+};
+
+const state = vi.hoisted<TestState>(() => ({
+  escrowDevice: null,
+  storedDocs: [],
 }));
 
 vi.mock("firebase-admin/firestore", async () => {
@@ -89,15 +96,33 @@ vi.mock("../logging.js", () => ({
 
 import { registerDevicePushEndpoint } from "../callables/devicePushRegistration.js";
 
-type Runnable = { run: (request: unknown) => Promise<unknown> };
+type DevicePushRequest = Parameters<typeof registerDevicePushEndpoint.run>[0];
 
-function authedRequest(data: Record<string, unknown>) {
-  return {
-    auth: { uid: "u1", token: {} },
-    app: { appId: "test-app" },
-    rawRequest: { headers: {} },
-    data,
-  };
+function decodedIdToken(uid: string) {
+  return Object.assign(Object.create(null), {
+    aud: "burnbar-test",
+    auth_time: 1,
+    exp: 2,
+    firebase: { identities: {}, sign_in_provider: "custom" },
+    iat: 1,
+    iss: "https://securetoken.google.com/burnbar-test",
+    sub: uid,
+    uid,
+  });
+}
+
+function callableRequest(data: Record<string, unknown>): CallableRequest<Record<string, unknown>> {
+  const request: CallableRequest<Record<string, unknown>> = Object.create(null);
+  request.auth = { uid: "u1", token: decodedIdToken("u1"), rawToken: "test-id-token" };
+  request.app = { appId: "test-app", token: Object.create(null) };
+  request.rawRequest = Object.assign(Object.create(null), { headers: {} });
+  request.acceptsStreaming = false;
+  request.data = data;
+  return request;
+}
+
+function authedRequest(data: Record<string, unknown>): DevicePushRequest {
+  return callableRequest(data);
 }
 
 const trustedIOSDevice = {
@@ -114,7 +139,7 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
   });
 
   it("registers an APNs token for a trusted device with matching platform", async () => {
-    await (registerDevicePushEndpoint as unknown as Runnable).run(
+    await registerDevicePushEndpoint.run(
       authedRequest({
         deviceId: "iphone-1",
         platform: "iOS",
@@ -132,7 +157,7 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
   it("rejects registration for a non-existent escrow device", async () => {
     state.escrowDevice = null;
     await expect(
-      (registerDevicePushEndpoint as unknown as Runnable).run(
+      registerDevicePushEndpoint.run(
         authedRequest({ deviceId: "orphan-1", apnsToken: "a".repeat(64) }),
       ),
     ).rejects.toThrow(/registered escrow device/);
@@ -142,7 +167,7 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
   it("rejects registration for a revoked device", async () => {
     state.escrowDevice = { ...trustedIOSDevice, trustState: "revoked" };
     await expect(
-      (registerDevicePushEndpoint as unknown as Runnable).run(
+      registerDevicePushEndpoint.run(
         authedRequest({ deviceId: "iphone-1", apnsToken: "a".repeat(64) }),
       ),
     ).rejects.toThrow(/trusted devices may register/);
@@ -152,7 +177,7 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
   it("rejects registration for a pending device", async () => {
     state.escrowDevice = { ...trustedIOSDevice, trustState: "pending" };
     await expect(
-      (registerDevicePushEndpoint as unknown as Runnable).run(
+      registerDevicePushEndpoint.run(
         authedRequest({ deviceId: "iphone-1", apnsToken: "a".repeat(64) }),
       ),
     ).rejects.toThrow(/trusted devices may register/);
@@ -161,7 +186,7 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
 
   it("rejects registration when the platform does not match the escrow device", async () => {
     await expect(
-      (registerDevicePushEndpoint as unknown as Runnable).run(
+      registerDevicePushEndpoint.run(
         authedRequest({ deviceId: "iphone-1", platform: "android", fcmToken: "token" }),
       ),
     ).rejects.toThrow(/does not match escrow device platform/);
@@ -169,7 +194,7 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
   });
 
   it("infers the platform from the escrow device when not supplied", async () => {
-    await (registerDevicePushEndpoint as unknown as Runnable).run(
+    await registerDevicePushEndpoint.run(
       authedRequest({
         deviceId: "iphone-1",
         apnsToken: "a".repeat(64),

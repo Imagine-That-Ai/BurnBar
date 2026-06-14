@@ -16,13 +16,27 @@ vi.mock("../callables/computerUseSecurity.js", () => ({
 
 import { enforceHighRiskOwnerAction } from "../callables/highRiskOwnerAction.js";
 
-function request(data: Record<string, unknown>): CallableRequest {
-  return {
-    auth: { uid: "u1", token: {} },
-    app: { appId: "app-1" },
-    rawRequest: { headers: {} },
-    data,
-  } as unknown as CallableRequest;
+function decodedIdToken(uid: string) {
+  return Object.assign(Object.create(null), {
+    aud: "burnbar-test",
+    auth_time: 1,
+    exp: 2,
+    firebase: { identities: {}, sign_in_provider: "custom" },
+    iat: 1,
+    iss: "https://securetoken.google.com/burnbar-test",
+    sub: uid,
+    uid,
+  });
+}
+
+function request(data: Record<string, unknown>): CallableRequest<Record<string, unknown>> {
+  const callableRequest: CallableRequest<Record<string, unknown>> = Object.create(null);
+  callableRequest.auth = { uid: "u1", token: decodedIdToken("u1"), rawToken: "test-id-token" };
+  callableRequest.app = { appId: "app-1", token: Object.create(null) };
+  callableRequest.rawRequest = Object.assign(Object.create(null), { headers: {} });
+  callableRequest.acceptsStreaming = false;
+  callableRequest.data = data;
+  return callableRequest;
 }
 
 describe("enforceHighRiskOwnerAction", () => {

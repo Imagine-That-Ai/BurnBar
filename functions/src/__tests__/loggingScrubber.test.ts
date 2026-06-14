@@ -128,7 +128,7 @@ describe("logging discipline guards (F-RR09-002)", () => {
 
   it("no production source interpolates a bare UID into a log message/detail string", () => {
     // Bare `${uid}` in a free-form string is NOT a `users/<uid>` path, so the
-    // scrubber's path redaction cannot catch it — pass uid as a discrete field.
+    // scrubber's path redaction cannot catch it — pass uid through a discrete field.
     const offenders = files.filter((f) => {
       const src = readFileSync(f, "utf8");
       return /(message|detail|note):\s*`[^`]*\$\{\s*uid\s*\}/.test(src);
