@@ -100,8 +100,9 @@ public struct CloudVaultAADContext: Codable, Hashable, Sendable {
 public enum CloudVaultV1AADRejectionFlag {
     public static let userDefaultsKey = "openburnbar.cloudVault.rejectLegacyV1AAD.enabled"
 
-    /// Off by default: reads still accept v1 until the backfill completes.
-    public nonisolated(unsafe) static var defaultEnabled = false
+    /// On by default after the RR-8 cutover; set the UserDefaults key to false
+    /// only as an emergency rollback for legacy v1 ciphertext recovery.
+    public nonisolated(unsafe) static var defaultEnabled = true
 
     public static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
         if defaults.object(forKey: userDefaultsKey) != nil {

@@ -530,13 +530,12 @@ final class CloudVaultCryptoTests: XCTestCase {
 
     // MARK: - T-CVS-06: enforced v1 (global) AAD cutover
 
-    func test_v1AADRejectionFlag_defaultsOffAndOverridable() {
-        // Default off so reads do not regress before the backfill re-seals to v2.
-        XCTAssertFalse(CloudVaultV1AADRejectionFlag.defaultEnabled)
+    func test_v1AADRejectionFlag_defaultsOnAndOverridable() {
+        // RR-8 cutover: legacy v1 AAD acceptance is closed by default, with an
+        // explicit local rollback override for emergency recovery.
+        XCTAssertTrue(CloudVaultV1AADRejectionFlag.defaultEnabled)
 
         let defaults = ephemeralDefaults()
-        XCTAssertFalse(CloudVaultV1AADRejectionFlag.isEnabled(defaults: defaults))
-        defaults.set(true, forKey: CloudVaultV1AADRejectionFlag.userDefaultsKey)
         XCTAssertTrue(CloudVaultV1AADRejectionFlag.isEnabled(defaults: defaults))
         defaults.set(false, forKey: CloudVaultV1AADRejectionFlag.userDefaultsKey)
         XCTAssertFalse(CloudVaultV1AADRejectionFlag.isEnabled(defaults: defaults))

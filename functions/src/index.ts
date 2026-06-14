@@ -23,7 +23,11 @@ export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
 export { sendVoIPOutbound, retryStuckVoIPPushes } from "./apnsSender.js";
 export { retryStuckFcmPushes, sendFcmOutbound } from "./fcmAndroidSender.js";
-export { onCliSessionAgentReplyNotification, onMobileAssistantAgentReplyNotification, retryStuckAgentReplyEvents } from "./agentNotifications.js";
+export {
+  onCliSessionAgentReplyNotification,
+  onMobileAssistantAgentReplyNotification,
+  retryStuckAgentReplyEvents,
+} from "./agentNotifications.js";
 export { submitAgentNotificationReply } from "./callables/agentNotifications.js";
 
 export {
@@ -179,6 +183,7 @@ export {
 } from "./appstore/index.js";
 
 export { startCliLink, pollCliLink, completeCliLink } from "./callables/cliLink.js";
+export { getProfileAvatarDownloadUrl } from "./callables/profileAvatar.js";
 
 // Privacy-leak remediation: idempotent backfill that strips legacy plaintext
 // fields once a sealed copy exists + bumps a per-user reseal watermark.
