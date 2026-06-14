@@ -456,13 +456,17 @@ final class CursorConnectorManager {
         }
     }
 
+    /// `nonisolated` probe runs the blocking executable lookups off the main
+    /// actor (SE-0338); results are applied back on the main actor by the caller.
+    private nonisolated static func probeSystemHealth() async -> (cloudflaredInstalled: Bool, homebrewInstalled: Bool) {
+        (
+            cloudflaredInstalled: findExecutable(named: "cloudflared") != nil,
+            homebrewInstalled: findHomebrew() != nil
+        )
+    }
+
     func refreshSystemHealth() async {
-        let snapshot = await Task.detached(priority: .utility) {
-            (
-                cloudflaredInstalled: Self.findExecutable(named: "cloudflared") != nil,
-                homebrewInstalled: Self.findHomebrew() != nil
-            )
-        }.value
+        let snapshot = await Self.probeSystemHealth()
         health.cloudflaredInstalled = snapshot.cloudflaredInstalled
         health.homebrewInstalled = snapshot.homebrewInstalled
         health.routerListening = false

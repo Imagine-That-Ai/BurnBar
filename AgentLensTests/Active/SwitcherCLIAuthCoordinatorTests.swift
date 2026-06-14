@@ -1146,6 +1146,34 @@ final class SwitcherAuthStoreTests: XCTestCase {
         try store.deleteCredentials(forProfileID: "nonexistent-profile")
     }
 
+    // MARK: - Keychain Error Handling (try? -> logged do/catch conversion)
+
+    func test_apiKey_returnsNilAndStaysSilentOnUnexpectedKeychainError() {
+        // An unexpected keychain fault (not item-not-found) must not surface as
+        // a crash or thrown error to callers — it is logged and read returns nil.
+        testBackend.readErrors["com.openburnbar.switcher-auth"] =
+            KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = makeStore()
+        XCTAssertNil(store.apiKey(forProfileID: "profile-1", cliType: .codex))
+    }
+
+    func test_oauthToken_returnsNilAndStaysSilentOnUnexpectedKeychainError() {
+        testBackend.readErrors["com.openburnbar.switcher-auth"] =
+            KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = makeStore()
+        XCTAssertNil(store.oauthToken(forProfileID: "profile-1", provider: "google"))
+    }
+
+    func test_deleteCredentials_toleratesDeleteFailuresWithoutThrowing() {
+        // A failing delete leaves a live credential, so it is logged — but the
+        // failure is swallowed so one stuck account never aborts the sweep of
+        // the remaining api-key and oauth-token accounts.
+        testBackend.deleteErrors["com.openburnbar.switcher-auth"] =
+            KeychainStoreError.unhandled(errSecNotAvailable)
+        let store = makeStore()
+        XCTAssertNoThrow(try store.deleteCredentials(forProfileID: "profile-x"))
+    }
+
     // MARK: - Claude Code OAuth Import Tests
 
     func test_claudeCodeOAuthImporter_readsClaudeCodeKeychainPayload() throws {
@@ -1601,6 +1629,7 @@ final class SwitcherAuthStoreTests: XCTestCase {
 private final class SwitcherAuthStoreTestKeychainBackend: KeychainStoreBackend {
     var storage: [String: [String: Data]] = [:]
     var readErrors: [String: Error] = [:]
+    var deleteErrors: [String: Error] = [:]
 
     func set(_ value: Data, service: String, account: String) throws {
         storage[service, default: [:]][account] = value
@@ -1614,6 +1643,9 @@ private final class SwitcherAuthStoreTestKeychainBackend: KeychainStoreBackend {
     }
 
     func delete(service: String, account: String) throws {
+        if let error = deleteErrors[service] {
+            throw error
+        }
         storage[service]?[account] = nil
     }
 }

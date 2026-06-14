@@ -23,9 +23,15 @@ swift build --package-path OpenBurnBarDaemon \
   --product OpenBurnBarPrivilegedSocketRedTeamProbe \
   -c debug
 
-BRIDGE="OpenBurnBarDaemon/.build/debug/OpenBurnBarVirtualHIDBridge"
-PROBE="OpenBurnBarDaemon/.build/debug/OpenBurnBarPrivilegedSocketRedTeamProbe"
-[[ -x "$BRIDGE" && -x "$PROBE" ]] || { echo "FAIL: binaries missing"; exit 2; }
+BIN_PATH="$(swift build --package-path OpenBurnBarDaemon -c debug --show-bin-path)"
+BRIDGE="${BIN_PATH}/OpenBurnBarVirtualHIDBridge"
+PROBE="${BIN_PATH}/OpenBurnBarPrivilegedSocketRedTeamProbe"
+if [[ ! -x "$BRIDGE" || ! -x "$PROBE" ]]; then
+  echo "FAIL: binaries missing"
+  echo "bridge_path=${BRIDGE}"
+  echo "probe_path=${PROBE}"
+  exit 2
+fi
 
 echo "==> Starting bridge as root on $SOCKET_PATH"
 sudo rm -f "$SOCKET_PATH"
@@ -60,7 +66,7 @@ if [[ "$PROBE_EXIT" -eq 0 ]]; then
 fi
 
 echo "==> Running PrivilegedSocketRedTeamIntegrationTests against the live socket"
-RUN_PRIVILEGED_SOCKET_REDTEAM=1 swift test \
+RUN_PRIVILEGED_SOCKET_REDTEAM=1 OPENBURNBAR_REDTEAM_PROBE_PATH="$PROBE" swift test \
   --package-path OpenBurnBarDaemon \
   --filter PrivilegedSocketRedTeamIntegrationTests
 

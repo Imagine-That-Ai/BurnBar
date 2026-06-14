@@ -786,18 +786,18 @@ private struct RemoteAccessAgentClient: Sendable {
         self.socketPath = socketPath
     }
 
+    /// Blocking socket send runs off the main actor: this is a `nonisolated`
+    /// `async` method (the type is `Sendable`), so callers leave the main actor at
+    /// the `await` (SE-0338).
     func typeCredential(_ password: String) async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try send(
-                RemoteAccessAgentRequest(operation: "typeCredential", password: password)
-            )
-        }.value
+        try send(
+            RemoteAccessAgentRequest(operation: "typeCredential", password: password)
+        )
     }
 
+    /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     func wakeDisplay() async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
-        }.value
+        try send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
     }
 
     private func send(_ request: RemoteAccessAgentRequest) throws {

@@ -231,6 +231,7 @@ final class CloudBudgetService {
         var fallbacks: [String] = []
         if let json = data["fallbackCredentialIDsJSON"] as? String,
            let jsonData = json.data(using: .utf8),
+           // try?-ok(optional decode fallback)
            let decoded = try? JSONDecoder().decode([String].self, from: jsonData) {
             fallbacks = decoded
         }

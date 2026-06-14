@@ -252,7 +252,7 @@ struct ClaudeOAuthUsageFetcher {
         // OAuth usage edge is picky about non-CLI-looking clients.
         request.setValue(Self.claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
 
-        guard let (data, response) = try? await session.data(for: request),
+        guard let (data, response) = try? await session.data(for: request), // try?-ok(network fetch skip)
               let http = response as? HTTPURLResponse else {
             return .failed
         }
@@ -324,7 +324,7 @@ struct ClaudeOAuthUsageFetcher {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let output = String(data: data, encoding: .utf8) else { return nil }
         let pattern = #"\b\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?\b"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
+        guard let regex = try? NSRegularExpression(pattern: pattern), // try?-ok(literal regex pattern)
               let match = regex.firstMatch(in: output, range: NSRange(output.startIndex..., in: output)),
               let range = Range(match.range, in: output) else {
             return nil
@@ -366,10 +366,10 @@ struct ClaudeOAuthUsageFetcher {
         request.setValue(Self.claudeCodeUserAgent(), forHTTPHeaderField: "User-Agent")
         request.httpBody = Data(bodyString.utf8)
 
-        guard let (data, response) = try? await session.data(for: request),
+        guard let (data, response) = try? await session.data(for: request), // try?-ok(network fetch skip)
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional refresh parse)
               let newAccess = quotaNonEmpty(json["access_token"] as? String) else {
             return nil
         }
@@ -410,8 +410,8 @@ struct ClaudeOAuthUsageFetcher {
     }
 
     private func readCache() -> CacheEntry? {
-        guard let data = try? Data(contentsOf: cacheURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let data = try? Data(contentsOf: cacheURL), // try?-ok(best-effort cache read)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional cache parse)
             return nil
         }
         let formatter = ISO8601DateFormatter()
@@ -445,9 +445,9 @@ struct ClaudeOAuthUsageFetcher {
             envelope["sevenDayResetsAt"] = formatter.string(from: reset)
         }
         let parent = cacheURL.deletingLastPathComponent()
-        try? fileManager.value.createDirectory(at: parent, withIntermediateDirectories: true)
-        if let data = try? JSONSerialization.data(withJSONObject: envelope, options: [.prettyPrinted]) {
-            try? data.write(to: cacheURL, options: [.atomic])
+        try? fileManager.value.createDirectory(at: parent, withIntermediateDirectories: true) // try?-ok(idempotent mkdir)
+        if let data = try? JSONSerialization.data(withJSONObject: envelope, options: [.prettyPrinted]) { // try?-ok(best-effort cache encode)
+            try? data.write(to: cacheURL, options: [.atomic]) // try?-ok(best-effort cache write)
         }
     }
 
@@ -463,8 +463,8 @@ struct ClaudeOAuthUsageFetcher {
     }
 
     private func readLastFetchAttempt() -> Date? {
-        guard let data = try? Data(contentsOf: attemptMarkerURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let data = try? Data(contentsOf: attemptMarkerURL), // try?-ok(best-effort marker read)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional marker parse)
               let iso = json["lastAttempt"] as? String else { return nil }
         return ISO8601DateFormatter().date(from: iso)
     }
@@ -474,9 +474,9 @@ struct ClaudeOAuthUsageFetcher {
             "lastAttempt": ISO8601DateFormatter().string(from: now)
         ]
         let parent = attemptMarkerURL.deletingLastPathComponent()
-        try? fileManager.value.createDirectory(at: parent, withIntermediateDirectories: true)
-        if let data = try? JSONSerialization.data(withJSONObject: envelope) {
-            try? data.write(to: attemptMarkerURL, options: [.atomic])
+        try? fileManager.value.createDirectory(at: parent, withIntermediateDirectories: true) // try?-ok(idempotent mkdir)
+        if let data = try? JSONSerialization.data(withJSONObject: envelope) { // try?-ok(best-effort marker encode)
+            try? data.write(to: attemptMarkerURL, options: [.atomic]) // try?-ok(best-effort marker write)
         }
     }
 }
@@ -505,7 +505,7 @@ struct ClaudeRateLimits: Sendable, Equatable {
     private let _rawJSON: Data
 
     var rawDictionary: [String: Any] {
-        (try? JSONSerialization.jsonObject(with: _rawJSON) as? [String: Any]) ?? [:]
+        (try? JSONSerialization.jsonObject(with: _rawJSON) as? [String: Any]) ?? [:] // try?-ok(optional decode fallback)
     }
 
     var isEmpty: Bool { windows.isEmpty }
@@ -534,7 +534,7 @@ struct ClaudeRateLimits: Sendable, Equatable {
     /// `{"rate_limits": {...}}` or the bare `{...}` map — we accept
     /// both for forward-compatibility.
     init(from data: Data) {
-        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional decode fallback)
             self = .empty
             return
         }
@@ -564,7 +564,7 @@ struct ClaudeRateLimits: Sendable, Equatable {
         // Persist the original payload so the disk cache round-trips
         // unknown fields. Falls back to a synthetic encoding when the
         // dictionary contains non-JSON-encodable values.
-        let raw = (try? JSONSerialization.data(withJSONObject: dictionary)) ?? Data("{}".utf8)
+        let raw = (try? JSONSerialization.data(withJSONObject: dictionary)) ?? Data("{}".utf8) // try?-ok(optional encode fallback)
         self.init(windows: parsed, rawJSON: raw)
     }
 

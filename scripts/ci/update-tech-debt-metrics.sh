@@ -140,8 +140,14 @@ PY
 done
 
 unsafe_cast_total="n/a"
-if [[ -f "${repo_root}/budgets/unsafe-cast-baseline.json" ]]; then
-  unsafe_cast_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${repo_root}/budgets/unsafe-cast-baseline.json")"
+unsafe_cast_report="$(mktemp "${TMPDIR:-/tmp}/unsafe-cast-metrics.XXXXXX")"
+trap 'rm -f "${unsafe_cast_report}"' EXIT
+node "${repo_root}/tools/type-debt/audit-unsafe-casts.mjs" \
+  --repo-root "${repo_root}" \
+  --ts-mode token-fallback \
+  --out "${unsafe_cast_report}"
+if [[ -s "${unsafe_cast_report}" ]]; then
+  unsafe_cast_total="$(node -e "const fs=require('node:fs'); console.log(JSON.parse(fs.readFileSync(process.argv[1],'utf8')).total)" "${unsafe_cast_report}")"
 fi
 
 knip_functions_total="n/a"
@@ -238,7 +244,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Empty \`catch {}\` blocks (app + daemon) | ${empty_catch_blocks} | 0 | 0 |
 | \`Task.detached\` in \`AgentLens/Services/\` | ${task_detached_services} | ≤ 10 | 0 |
 | \`try?\` in \`AgentLens/Services/\` | ${try_optional_services} | ≤ 120 | ≤ 50 |
-| Unsafe cast budget (\`budgets/unsafe-cast-baseline.json\`) | ${unsafe_cast_total} | 0 | 0 |
+| Unsafe cast assert-zero gate | ${unsafe_cast_total} | 0 | 0 |
 | Knip dead-code budget (\`budgets/knip-baseline.json\`, functions) | ${knip_functions_total} | 0 | 0 |
 | Schema \`knownDrift\` tokens (\`tools/schema-sync/manifest.json\`) | ${schema_known_drift_total} | 0 | 0 |
 | \`@unchecked Sendable\` budget (\`budgets/unchecked-sendable-baseline.json\`) | ${unchecked_sendable_total} | ≤ 120 | 0 |

@@ -12,29 +12,30 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
     private static let requestIOTimeoutSeconds: time_t = 4
     private static let xpcClient = PrivilegedInputXPCClient()
 
+    /// Blocking XPC/socket dispatch runs off the main actor: this is a
+    /// `nonisolated` `async` method (the type is `Sendable`), so callers leave the
+    /// main actor at the `await` (SE-0338).
     func dispatch(_ action: MacInputAction, capabilityToken: CapabilityToken? = nil) async throws -> BurnBarJSONValue {
-        try await Task.detached(priority: .userInitiated) {
-            let request = PrivilegedInputDispatchRequest(
-                operation: "input",
-                kind: action.kind.rawValue,
-                displayX: action.displayX,
-                displayY: action.displayY,
-                dragEndX: action.dragEndX,
-                dragEndY: action.dragEndY,
-                deltaX: action.deltaX,
-                deltaY: action.deltaY,
-                mouseButton: action.mouseButton,
-                text: action.text,
-                key: action.key,
-                modifiers: action.modifiers
-            )
-            let envelope = PrivilegedInputDispatchEnvelope(request: request, capabilityToken: capabilityToken)
-            if (try? Self.xpcClient.perform(envelope)) != nil {
-                return Self.successPayload(for: action)
-            }
-            try Self.sendSocket(Self.legacyRequest(from: request, capabilityToken: capabilityToken))
+        let request = PrivilegedInputDispatchRequest(
+            operation: "input",
+            kind: action.kind.rawValue,
+            displayX: action.displayX,
+            displayY: action.displayY,
+            dragEndX: action.dragEndX,
+            dragEndY: action.dragEndY,
+            deltaX: action.deltaX,
+            deltaY: action.deltaY,
+            mouseButton: action.mouseButton,
+            text: action.text,
+            key: action.key,
+            modifiers: action.modifiers
+        )
+        let envelope = PrivilegedInputDispatchEnvelope(request: request, capabilityToken: capabilityToken)
+        if (try? Self.xpcClient.perform(envelope)) != nil {
             return Self.successPayload(for: action)
-        }.value
+        }
+        try Self.sendSocket(Self.legacyRequest(from: request, capabilityToken: capabilityToken))
+        return Self.successPayload(for: action)
     }
 
     private static func successPayload(for action: MacInputAction) -> BurnBarJSONValue {

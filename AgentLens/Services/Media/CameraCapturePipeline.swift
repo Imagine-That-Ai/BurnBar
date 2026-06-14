@@ -60,7 +60,12 @@ final class CameraCapturePipeline: NSObject {
         if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
         session.commitConfiguration()
 
-        await Task.detached { [session] in session.startRunning() }.value
+        // Run the blocking `startRunning()` off the main actor in a structured
+        // child task; `withTaskGroup` awaits it before returning and it cannot
+        // outlive this scope (replaces an unstructured detached task).
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { [session] in session.startRunning() }
+        }
     }
 
     func stop() {

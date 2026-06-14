@@ -51,7 +51,7 @@ final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
         guard pixelClock.completionLocalNotificationsEnabled else { return }
 
         let center = UNUserNotificationCenter.current()
-        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false // try?-ok(default false fallback)
         guard granted else { return }
 
         let content = UNMutableNotificationContent()
@@ -65,7 +65,7 @@ final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
             trigger: nil
         )
 
-        try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in // try?-ok(fire-and-forget notification post)
             center.add(request) { error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -112,7 +112,7 @@ enum AgentCompletionNotificationParser {
             #"(?i)\busing\s+([A-Za-z0-9][A-Za-z0-9._:/+-]*)"#
         ]
         for pattern in patterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue } // try?-ok(literal regex pattern)
             let range = NSRange(combined.startIndex..<combined.endIndex, in: combined)
             guard let match = regex.firstMatch(in: combined, range: range),
                   let captureRange = Range(match.range(at: 1), in: combined) else {

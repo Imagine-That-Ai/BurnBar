@@ -98,6 +98,7 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         switch runtime {
         case .codex:
             let executable = try await executable(named: "codex")
+            // try?-ok(fire-and-forget probe, default fallback)
             if let output = try? await run(executable: executable, arguments: ["debug", "models"], timeoutSeconds: 12),
                let data = output.data(using: .utf8) {
                 let discovered = CLIRuntimeModelCatalog.parseCodexDebugModels(data)
@@ -132,10 +133,10 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         case .grok:
             let executable = try await executable(named: "grok")
             var discovered: [CLIRuntimeModelOption] = []
-            if let output = try? await run(executable: executable, arguments: ["models"], timeoutSeconds: 12) {
+            if let output = try? await run(executable: executable, arguments: ["models"], timeoutSeconds: 12) { // try?-ok(fire-and-forget probe, skip on fail)
                 discovered.append(contentsOf: CLIRuntimeModelCatalog.parseGrokModels(output))
             }
-            if let cacheData = try? Data(contentsOf: Self.grokModelsCacheURL()) {
+            if let cacheData = try? Data(contentsOf: Self.grokModelsCacheURL()) { // try?-ok(best-effort cache read)
                 discovered.append(contentsOf: CLIRuntimeModelCatalog.parseGrokModelsCache(cacheData))
             }
             let deduplicated = Self.deduplicated(discovered)
@@ -168,8 +169,8 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
     private static func antigravitySelectedModelName() -> String? {
         let settingsURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".gemini/antigravity-cli/settings.json")
-        guard let data = try? Data(contentsOf: settingsURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let data = try? Data(contentsOf: settingsURL), // try?-ok(optional settings read)
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional json parse)
               let selectedModel = object["model"] as? String else {
             return nil
         }
@@ -198,45 +199,46 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         return executable
     }
 
+    /// Blocking `Process` work runs off the main actor: this is a `nonisolated`
+    /// `async` method (the type is `Sendable`), so callers leave the main actor at
+    /// the `await` (SE-0338); cancellation propagates from the awaiting task.
     private func run(
         executable: String,
         arguments: [String],
         timeoutSeconds: TimeInterval
     ) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
-            process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
-            process.standardInput = FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.standardInput = FileHandle.nullDevice
 
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-            try process.run()
-            let deadline = Date().addingTimeInterval(timeoutSeconds)
-            while process.isRunning && Date() < deadline {
-                try await Task.sleep(nanoseconds: 50_000_000)
-            }
-            if process.isRunning {
-                process.terminate()
-                throw CLIRuntimeModelCatalogDiscoveryError.timeout(URL(fileURLWithPath: executable).lastPathComponent)
-            }
+        try process.run()
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while process.isRunning && Date() < deadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        if process.isRunning {
+            process.terminate()
+            throw CLIRuntimeModelCatalogDiscoveryError.timeout(URL(fileURLWithPath: executable).lastPathComponent)
+        }
 
-            let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            guard process.terminationStatus == 0 else {
-                throw CLIRuntimeModelCatalogDiscoveryError.processFailed(
-                    URL(fileURLWithPath: executable).lastPathComponent,
-                    Int(process.terminationStatus),
-                    errorOutput.nonEmpty ?? output
-                )
-            }
-            return output
-        }.value
+        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else {
+            throw CLIRuntimeModelCatalogDiscoveryError.processFailed(
+                URL(fileURLWithPath: executable).lastPathComponent,
+                Int(process.terminationStatus),
+                errorOutput.nonEmpty ?? output
+            )
+        }
+        return output
     }
 }
 

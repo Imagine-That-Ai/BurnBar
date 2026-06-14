@@ -32,7 +32,8 @@ swift build \
   --product OpenBurnBarPrivilegedSocketRedTeamProbe \
   -c debug 2>&1 | tee -a "${EVIDENCE_FILE}"
 
-PROBE_PATH="${repo_root}/OpenBurnBarDaemon/.build/debug/OpenBurnBarPrivilegedSocketRedTeamProbe"
+BIN_PATH="$(swift build --package-path OpenBurnBarDaemon -c debug --show-bin-path)"
+PROBE_PATH="${BIN_PATH}/OpenBurnBarPrivilegedSocketRedTeamProbe"
 if [[ -x "${PROBE_PATH}" ]]; then
   log "probe_built=yes path=${PROBE_PATH}"
   set +e
@@ -50,7 +51,7 @@ log "==> Running PrivilegedSocketRedTeamIntegrationTests"
 set +e
 (
   cd "${repo_root}/OpenBurnBarDaemon"
-  swift test --filter PrivilegedSocketRedTeamIntegrationTests
+  OPENBURNBAR_REDTEAM_PROBE_PATH="${PROBE_PATH}" swift test --filter PrivilegedSocketRedTeamIntegrationTests
 ) 2>&1 | tee -a "${EVIDENCE_FILE}"
 XCTEST_EXIT=$?
 set -e
