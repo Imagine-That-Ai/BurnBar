@@ -15,12 +15,7 @@
  *     keeping cross-module API surface tight.
  */
 
-import {
-  AppStoreServerAPIClient,
-  Environment,
-  type StatusResponse,
-  type TransactionInfoResponse,
-} from "@apple/app-store-server-library";
+import { AppStoreServerAPIClient, type StatusResponse } from "@apple/app-store-server-library";
 
 import type { AppStoreConfig, AppStoreEnvironment } from "../types.js";
 import { toLibEnvironment } from "./verifier.js";
@@ -47,7 +42,7 @@ function cacheKey(k: ClientCacheKey): string {
  * Build (or fetch from cache) an `AppStoreServerAPIClient` for the given
  * environment. `cfg.asc.privateKeyP8` must be a complete PEM body.
  */
-export function getAppStoreServerAPIClient(
+function getAppStoreServerAPIClient(
   cfg: AppStoreConfig,
   environment: AppStoreEnvironment = cfg.environment,
 ): AppStoreServerAPIClient {
@@ -84,7 +79,7 @@ export function getAppStoreServerAPIClient(
  * The reconciler re-verifies each through `AppleJWSVerifier` before
  * trusting any decoded field.
  */
-export interface SignedSubscriptionPair {
+interface SignedSubscriptionPair {
   signedTransactionInfo: string;
   signedRenewalInfo?: string;
 }
@@ -115,19 +110,4 @@ export async function fetchLiveSubscriptionStatus(
   return { status, pairs };
 }
 
-/**
- * Fetch the latest known transaction info for a given transaction id.
- * Useful when we have only a transactionId (not original) and need to
- * dereference its current signed payload.
- */
-export async function fetchLatestTransactionInfo(
-  cfg: AppStoreConfig,
-  environment: AppStoreEnvironment,
-  transactionId: string,
-): Promise<TransactionInfoResponse> {
-  const client = getAppStoreServerAPIClient(cfg, environment);
-  return client.getTransactionInfo(transactionId);
-}
 
-/** Convenience: shape compatibility for tests that mock `Environment`. */
-export const ASC_ENVIRONMENT = Environment;

@@ -116,15 +116,15 @@ class GlobalVisualSettingsTest {
     private fun resetStyle(style: BackgroundStyle) {
         val styleField = GlobalVisualSettings::class.java.getDeclaredField("_backgroundStyle")
         styleField.isAccessible = true
-        (styleField.get(GlobalVisualSettings) as MutableState<Any?>).value = style
+        (styleField.get(GlobalVisualSettings) as? MutableState<Any?>)?.value = style
         val legacyField = GlobalVisualSettings::class.java.getDeclaredField("_useWebsiteBackground")
         legacyField.isAccessible = true
-        (legacyField.get(GlobalVisualSettings) as MutableState<Any?>).value = style.usesCustomBackdrop
+        (legacyField.get(GlobalVisualSettings) as? MutableState<Any?>)?.value = style.usesCustomBackdrop
     }
 
     private fun setProviderGlyphsState(value: Set<AgentProvider>) {
         val field = GlobalVisualSettings::class.java.getDeclaredField("_providerGlyphs")
         field.isAccessible = true
-        (field.get(GlobalVisualSettings) as MutableState<Any?>).value = value
+        (field.get(GlobalVisualSettings) as? MutableState<Any?>)?.value = value
     }
 }

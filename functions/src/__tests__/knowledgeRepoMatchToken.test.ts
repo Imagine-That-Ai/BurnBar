@@ -80,7 +80,8 @@ function expectedToken(fullName: string): string {
 }
 
 async function runTestCallable<TResponse>(run: (request: never) => Promise<TResponse>, request: unknown): Promise<TResponse> {
-  return run(request as never);
+    // @ts-expect-error reason: partial CallableRequest stub for knowledge repo match tests
+    return run(request);
 }
 
 function expectRepoResponse(raw: unknown): RepoResponse {

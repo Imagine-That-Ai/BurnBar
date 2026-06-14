@@ -8,7 +8,7 @@ import { remoteConfigStringValue } from "./remoteConfigGuards.js";
 
 const KILL_SWITCH_PARAM = "media_kill_switch";
 
-export async function publishMediaKillSwitch(enabled: boolean, reason: string): Promise<void> {
+async function publishMediaKillSwitch(enabled: boolean, reason: string): Promise<void> {
   const rc = getRemoteConfig();
   const template: RemoteConfigTemplate = await rc.getTemplate();
   const parameters = template.parameters ?? {};

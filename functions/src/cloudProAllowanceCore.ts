@@ -4,11 +4,11 @@
 
 export const CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION = 1;
 export const CLOUD_PRO_INCLUDED_HOSTED_ACTIONS_MONTHLY = 500;
-export const CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY = 50;
+const CLOUD_PRO_INCLUDED_RELAY_GB_MONTHLY = 50;
 export const CLOUD_PRO_ACTION_TOP_UP_UNIT = 100;
 export const CLOUD_PRO_RELAY_TOP_UP_UNIT_GB = 50;
 export const CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP = 2000;
-export const CLOUD_PRO_MONTHLY_RELAY_GB_CAP = 300;
+const CLOUD_PRO_MONTHLY_RELAY_GB_CAP = 300;
 
 export type CloudProAllowanceMeter = "hosted_actions" | "relay_gb";
 export type CloudProTopUpKind = "agent_control_actions_100" | "floo_relay_50gb";
@@ -31,18 +31,18 @@ export const DEFAULT_CLOUD_PRO_ALLOWANCE_CONFIG: CloudProAllowanceConfig = Objec
   monthlyRelayGBCap: CLOUD_PRO_MONTHLY_RELAY_GB_CAP,
 });
 
-export interface CloudProAllowanceSnapshot {
+interface CloudProAllowanceSnapshot {
   includedUnits: number;
   usedUnits: number;
   topUpUnits: number;
   monthlyCap: number;
 }
 
-export interface CloudProAllowanceReservationInput extends CloudProAllowanceSnapshot {
+interface CloudProAllowanceReservationInput extends CloudProAllowanceSnapshot {
   requestedUnits: number;
 }
 
-export interface CloudProAllowanceReservationResult {
+interface CloudProAllowanceReservationResult {
   ok: boolean;
   reason?: "invalid_request" | "allowance_exhausted" | "monthly_cap_exceeded";
   requestedUnits: number;

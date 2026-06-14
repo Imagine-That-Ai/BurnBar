@@ -29,7 +29,7 @@ const CLOUD_PRO_PRODUCT_IDS = new Set([
   "com.openburnbar.proMax.bundle.monthly",
 ]);
 
-export interface TriggerRequest {
+interface TriggerRequest {
   callId: string;
   connectionId: string;
   pairedDeviceId: string;

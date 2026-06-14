@@ -48,18 +48,18 @@ const OPENBURNBAR_OTS_STAMP_URL_PARAM = defineString("OPENBURNBAR_OTS_STAMP_URL"
 const OTS_DIGEST_BYTES = 32;
 
 /** Outcome of an OTS stamp: the detached `.ots` proof bytes, or why it was skipped. */
-export interface OtsStampResult {
+interface OtsStampResult {
   status: "stamped" | "ots_stamper_unavailable" | "ots_stamp_failed";
   proofBytes?: Buffer;
   output?: string;
 }
 
-export type ComputerUseOpenTimestampsVerifier = (
+type ComputerUseOpenTimestampsVerifier = (
   proofBytes: Buffer,
   chainBytes?: Buffer,
 ) => Promise<Pick<ComputerUseOpenTimestampsValidationResponse, "status" | "verified" | "otsVerifierOutput">>;
 
-export type ComputerUseOpenTimestampsServerHeadLookup = (
+type ComputerUseOpenTimestampsServerHeadLookup = (
   uid: string,
   sessionId: string,
   claimedHead: string,
@@ -68,7 +68,7 @@ export type ComputerUseOpenTimestampsServerHeadLookup = (
   serverAuditHeadHashHex?: string;
 }>;
 
-export interface ComputerUseOpenTimestampsValidationDependencies {
+interface ComputerUseOpenTimestampsValidationDependencies {
   verifyProof?: ComputerUseOpenTimestampsVerifier;
   serverHeadStatus?: ComputerUseOpenTimestampsServerHeadLookup;
   now?: () => Date;
@@ -384,7 +384,7 @@ export async function runOtsStamp(digest: Buffer): Promise<OtsStampResult> {
   }
 }
 
-export async function serverHeadStatus(
+async function serverHeadStatus(
   uid: string,
   sessionId: string,
   claimedHead: string,

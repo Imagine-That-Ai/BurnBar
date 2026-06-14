@@ -33,7 +33,7 @@ import { isRecord, parseModelBenchmarkSnapshotDoc, parseModelBenchmarkSourceStat
 import { logError, logWarn } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
-export const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
+const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
 
 type TaskCategoryID = ModelBenchmarkTaskCategory;
 
@@ -133,12 +133,12 @@ const WEIGHTS = {
 const TIER_MULTIPLIER = { flagship: 1.0, mid: 0.96, mini: 0.88, unknown: 0.98 } as const;
 const ROUTABLE_MULTIPLIER = { yes: 1.0, no: 0.8 } as const;
 export const FAVORITE_POLICY_VERSION = "2026-05-13.stable-favorites";
-export const FAVORITE_MIN_FRESHNESS = 0.55;
-export const EVIDENCE_DETHRONING_MARGIN = 0.08;
-export const BENCHMARK_DETHRONING_MARGIN = 0.05;
-export const SELECTION_SCORE_TOP = 0.99;
-export const SELECTION_SCORE_STEP = 0.03;
-export const SELECTION_SCORE_FLOOR = 0.05;
+const FAVORITE_MIN_FRESHNESS = 0.55;
+const EVIDENCE_DETHRONING_MARGIN = 0.08;
+const BENCHMARK_DETHRONING_MARGIN = 0.05;
+const SELECTION_SCORE_TOP = 0.99;
+const SELECTION_SCORE_STEP = 0.03;
+const SELECTION_SCORE_FLOOR = 0.05;
 
 const FAVORITE_LADDER: FavoriteEntry[] = [
   {
@@ -965,7 +965,7 @@ function topPickRationale(
  *
  * Operators bump this doc whenever the model landscape shifts.
  */
-export async function loadRundownCatalog(db: Firestore): Promise<{
+async function loadRundownCatalog(db: Firestore): Promise<{
   models: ModelMeta[];
   runtime: Record<string, RuntimeMeta>;
 }> {
@@ -994,7 +994,7 @@ export async function loadRundownCatalog(db: Firestore): Promise<{
  * Default catalog seeded on first deploy. Operators can update Firestore at
  * `router_rundown_catalog/current` without redeploying functions.
  */
-export const DEFAULT_CATALOG: { models: ModelMeta[]; runtime: Record<string, RuntimeMeta> } = {
+const DEFAULT_CATALOG: { models: ModelMeta[]; runtime: Record<string, RuntimeMeta> } = {
   models: [],
   runtime: {},
 };
@@ -1076,7 +1076,7 @@ const rundownResponseCache = new Map<string, RundownCacheEntry>();
  * unbounded key space (e.g. 9999-99-99) that would defeat both the Hosting CDN
  * cache and this in-memory cache while still costing a Firestore read per key.
  */
-export function isPlausibleRundownDate(candidate: string, now: Date): boolean {
+function isPlausibleRundownDate(candidate: string, now: Date): boolean {
   const [year, month, day] = candidate.split("-").map(Number);
   const utc = new Date(Date.UTC(year, month - 1, day));
   if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) return false;

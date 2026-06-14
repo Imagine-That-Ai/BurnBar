@@ -64,8 +64,11 @@ internal object PhoneControlP256 {
         val x = BigInteger(1, coordinates.copyOfRange(0, COORDINATE_BYTES))
         val y = BigInteger(1, coordinates.copyOfRange(COORDINATE_BYTES, 2 * COORDINATE_BYTES))
         return runCatching {
-            KeyFactory.getInstance("EC")
-                .generatePublic(ECPublicKeySpec(ECPoint(x, y), curveParameters)) as ECPublicKey
+            val key =
+                KeyFactory.getInstance("EC")
+                    .generatePublic(ECPublicKeySpec(ECPoint(x, y), curveParameters))
+            require(key is ECPublicKey) { "expected EC public key" }
+            key
         }.getOrNull()
     }
 

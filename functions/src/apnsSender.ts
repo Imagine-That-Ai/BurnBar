@@ -103,7 +103,7 @@ export interface SendResult {
 }
 
 /** Thrown for transient APNs outcomes so pushWithResilience can retry; mapped to SendResult at boundary. */
-export class ApnsRetryableError extends Error {
+class ApnsRetryableError extends Error {
   constructor(
     message: string,
     readonly apnsStatusCode?: number,
@@ -319,7 +319,7 @@ export function nextVoIPRetryDelayMs(attempt: number): number {
 }
 
 /** Outcome of processing a single stuck document — surfaced for tests + logging. */
-export type StuckPushOutcome = "sent" | "rejected" | "rescheduled" | "skipped";
+type StuckPushOutcome = "sent" | "rejected" | "rescheduled" | "skipped";
 
 type VoIPPushFn = (args: {
   deviceTokenHex: string;

@@ -437,8 +437,8 @@ internal fun CockpitKpiHeader(aggregates: ConversationQueryAggregates?, rows: Li
     val providerMix =
         remember(rows) {
             rows.asSequence()
-                .filter { !it.provider.isNullOrBlank() }
-                .groupBy { it.provider!! }
+                .mapNotNull { row -> row.provider?.takeIf { it.isNotBlank() }?.let { provider -> provider to row } }
+                .groupBy({ it.first }, { it.second })
                 .mapValues { entry -> entry.value.sumOf { it.totalTokens.toLong() } }
                 .entries.sortedByDescending { it.value }
                 .take(6)
@@ -831,10 +831,11 @@ internal fun CockpitVaultNotice() {
 internal fun CockpitConversationRowView(row: CockpitConversationRow, onClick: () -> Unit) {
     AuroraGlassCard(cornerRadius = AuroraRadius.LG, interactive = true, onClick = onClick) {
         CockpitConversationRowHeader(row = row)
-        if (!row.preview.isNullOrBlank()) {
+        val preview = row.preview
+        if (!preview.isNullOrBlank()) {
             Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
             Text(
-                row.preview!!,
+                preview,
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,

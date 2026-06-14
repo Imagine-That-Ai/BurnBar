@@ -9,25 +9,25 @@
 import type { CollectionReference, DocumentReference, Firestore, WriteBatch } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
-export interface AccountDeletionSummary {
+interface AccountDeletionSummary {
   destroyedSecrets: number;
   failedSecretDestroys: number;
   deletedDocuments: number;
 }
 
-export interface AccountDeletionResult extends AccountDeletionSummary {
+interface AccountDeletionResult extends AccountDeletionSummary {
   deletedAuthUser: boolean;
   authUserAlreadyMissing: boolean;
 }
 
-export interface AccountDeletionOptions {
+interface AccountDeletionOptions {
   destroyCredential: (secretVersionName: string) => Promise<void>;
   logger?: Pick<typeof console, "warn">;
   /** Delete a Cloud Storage prefix (objects). Injectable for tests; defaults to the live bucket. */
   deleteStorageObjects?: (prefix: string) => Promise<void>;
 }
 
-export interface DeleteUserAccountOptions extends AccountDeletionOptions {
+interface DeleteUserAccountOptions extends AccountDeletionOptions {
   deleteAuthUser: (uid: string) => Promise<void>;
 }
 

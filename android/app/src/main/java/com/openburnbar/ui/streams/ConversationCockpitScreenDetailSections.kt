@@ -272,9 +272,10 @@ private fun CockpitDetailTranscriptSection(row: CockpitConversationRow, transcri
             )
         }
         !transcript.isNullOrBlank() -> {
+            val transcriptText = transcript
             SelectionContainer {
                 Text(
-                    transcript!!,
+                    transcriptText,
                     fontSize = 12.sp,
                     lineHeight = 17.sp,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,

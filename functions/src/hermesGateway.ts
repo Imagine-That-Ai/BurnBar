@@ -7,24 +7,13 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   SIGNAL_AT_REST_ENCRYPTION,
   SIGNAL_ENVELOPE_FORMAT_VERSION,
-  SIGNAL_MAX_KEY_WRAP_B64,
-  SIGNAL_MAX_MESSAGE_B64,
-  SIGNAL_MAX_RECIPIENT_WRAPS,
   SIGNAL_RELAY_KEY_VERSION,
   SIGNAL_TRANSPORT_ENCRYPTION,
   sanitizeSignalEnvelope,
-  type SignalAtRestKeyDelivery,
-  type SignalAtRestWrap,
-  type SignalBinding,
-  type SignalCiphertextLayer,
   type SignalEnvelope,
   type SignalEnvelopeMode,
-  type SignalEnvelopeScope,
-  type SignalMessageType,
-  type SignalRecipientKind,
-  type SignalTransportKeyDelivery,
 } from "@openburnbar/signal-envelope-contracts";
-import { isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
+import { recordOrUndefined, stripUndefinedObject } from "./guards.js";
 import type {
   GatewayRatchetEnvelopeDoc,
   GatewayRatchetHeaderDoc,
@@ -40,7 +29,7 @@ import type {
 
 export const HERMES_GATEWAY_SCHEMA_VERSION = 2;
 export const HERMES_GATEWAY_DEVICE_SESSION_TTL_MS = 10 * 60 * 1000;
-export const HERMES_GATEWAY_TOKEN_BYTES = 32;
+const HERMES_GATEWAY_TOKEN_BYTES = 32;
 // Gateway access tokens are only bearer-compatible as an index hint; every HTTP
 // request must also prove possession of the client signing key pinned at pairing.
 // Tokens without expiresAt/signing-key material are legacy credentials and fail
@@ -50,7 +39,7 @@ export const HERMES_GATEWAY_MAX_EVENT_TEXT = 32_000;
 export const HERMES_GATEWAY_MAX_MESSAGE_TEXT = 64_000;
 export const HERMES_GATEWAY_MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 export const HERMES_GATEWAY_DEFAULT_DESTINATION_ID = "burnbar:home";
-export const HERMES_GATEWAY_DEFAULT_DESTINATION_DOC_ID = "home";
+const HERMES_GATEWAY_DEFAULT_DESTINATION_DOC_ID = "home";
 
 // Wire protocol version of the gateway HTTP surface, surfaced verbatim by the
 // /state route. Distinct from HERMES_GATEWAY_SCHEMA_VERSION (which versions the
@@ -77,8 +66,8 @@ export const HERMES_GATEWAY_PENDING_MODEL_TTL_MS = 2 * 60 * 1000;
 // "expired" so a risky action never blocks the agent forever.
 export const HERMES_GATEWAY_APPROVAL_TTL_MS = 5 * 60 * 1000;
 export const HERMES_GATEWAY_MIN_APPROVAL_TTL_MS = 5 * 1000;
-export const HERMES_GATEWAY_MAX_APPROVAL_TTL_MS = HERMES_GATEWAY_APPROVAL_TTL_MS;
-export const HERMES_GATEWAY_MAX_APPROVAL_SUMMARY = 2_000;
+const HERMES_GATEWAY_MAX_APPROVAL_TTL_MS = HERMES_GATEWAY_APPROVAL_TTL_MS;
+const HERMES_GATEWAY_MAX_APPROVAL_SUMMARY = 2_000;
 
 // ---------------------------------------------------------------------------
 // Gateway relay E2EE envelope (schema 2+). The phone seals event bodies to the
@@ -95,17 +84,17 @@ export const HERMES_GATEWAY_MAX_APPROVAL_SUMMARY = 2_000;
 export const HERMES_GATEWAY_RELAY_ENCRYPTION = "p256-hkdf-sha256-aesgcm";
 export const HERMES_GATEWAY_RELAY_ENCRYPTION_V3 = "hpke-auth-p256-hkdfsha256-aes256gcm";
 // X9.63 uncompressed P-256 public key: 65 bytes (0x04 ‖ X(32) ‖ Y(32)), base64.
-export const HERMES_GATEWAY_RELAY_PUBLIC_KEY_BYTES = 65;
+const HERMES_GATEWAY_RELAY_PUBLIC_KEY_BYTES = 65;
 // payloadCiphertext base64 cap (matches the relay-request precedent in
 // firestore.rules). A sealed event/message/manifest payload is small; the cap is
 // generous so a full 32 KB event body plus GCM overhead fits comfortably.
-export const HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64 = 900_000;
+const HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64 = 900_000;
 // wrappedKey base64 cap. The wrapped symmetric key is a fixed ~125 bytes
 // (ephPubX963(65) ‖ nonce(12) ‖ ct(32) ‖ tag(16)); 4096 leaves ample headroom.
-export const HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 = 4_096;
+const HERMES_GATEWAY_MAX_RELAY_WRAPPED_KEY_B64 = 4_096;
 // HPKE v3 `enc` is a 65-byte P-256 public key; this leaves base64 padding room
 // while still rejecting unbounded relay-controlled strings.
-export const HERMES_GATEWAY_MAX_RELAY_ENC_B64 = 256;
+const HERMES_GATEWAY_MAX_RELAY_ENC_B64 = 256;
 // The DEFAULT relay key version a freshly published key / envelope advertises
 // when none is supplied. v2 adds an optional senderPublicKey wire HINT (the
 // sealing peer's ephemeral/identity X9.63 key); clients bind the PINNED key, not
@@ -123,9 +112,9 @@ export const HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS = new Set([2, 3]);
 export const HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS = new Set([1, 2, 3]);
 export const HERMES_GATEWAY_RATCHET_PROTOCOL_VERSION = 1;
 export const HERMES_GATEWAY_RATCHET_ALGORITHM = "OpenBurnBar-HermesRatchet-v1-P256-HKDFSHA256-AESGCM";
-export const HERMES_GATEWAY_MAX_RATCHET_CIPHERTEXT_B64 = HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64;
-export const HERMES_GATEWAY_MAX_RATCHET_ID = 160;
-export const HERMES_GATEWAY_MAX_RATCHET_COUNTER = 1_000_000_000;
+const HERMES_GATEWAY_MAX_RATCHET_CIPHERTEXT_B64 = HERMES_GATEWAY_MAX_RELAY_PAYLOAD_B64;
+const HERMES_GATEWAY_MAX_RATCHET_ID = 160;
+const HERMES_GATEWAY_MAX_RATCHET_COUNTER = 1_000_000_000;
 export const HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION = SIGNAL_ENVELOPE_FORMAT_VERSION;
 export const HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION = SIGNAL_RELAY_KEY_VERSION;
 // The official-libsignal transport envelope rides relay key VERSION 4 — the next
@@ -151,13 +140,6 @@ export const HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION = SIGNAL_AT_REST_ENCRYPTIO
 export const HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS = new Set([HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL]);
 export const HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS = new Set<number>();
 export const HERMES_GATEWAY_SIGNAL_REQUIRED_ENV = "OPENBURNBAR_GATEWAY_SIGNAL_REQUIRED";
-export const HERMES_GATEWAY_MAX_SIGNAL_MESSAGE_B64 = SIGNAL_MAX_MESSAGE_B64;
-export const HERMES_GATEWAY_MAX_SIGNAL_KEY_WRAP_B64 = SIGNAL_MAX_KEY_WRAP_B64;
-export const HERMES_GATEWAY_MAX_SIGNAL_RECIPIENT_WRAPS = SIGNAL_MAX_RECIPIENT_WRAPS;
-// Historical cutoff for the now-closed schema-1 plaintext migration. New writes
-// are sealed-only; reads keep a legacy plaintext fallback so old queued docs can
-// still render while backfills/scrubbers drain them.
-export const HERMES_GATEWAY_GRACE_WINDOW_CUTOFF = "2026-06-03T00:00:00.000Z";
 
 /**
  * The plaintext grace window is closed. Keep the helper for old callers/tests,
@@ -190,22 +172,15 @@ export function gatewayPlaintextWriteAllowed(_relayCapable: unknown, _now = Date
 }
 
 export const HERMES_GATEWAY_SCOPES = ["hermes.gateway.read", "hermes.gateway.write", "hermes.gateway.manage"] as const;
-export const HERMES_GATEWAY_DEFAULT_SCOPES = ["hermes.gateway.read", "hermes.gateway.write"] as const;
+const HERMES_GATEWAY_DEFAULT_SCOPES = ["hermes.gateway.read", "hermes.gateway.write"] as const;
 
 export type HermesGatewayScope = (typeof HERMES_GATEWAY_SCOPES)[number];
 
-export type HermesGatewayClientStatus = "active" | "revoked";
-export type HermesGatewayDeviceSessionStatus = "pending" | "approved" | "denied" | "expired";
-export type HermesGatewayDestinationKind = "home" | "chat" | "thread";
-export type HermesGatewayEventKind = "message" | "model_switch";
-export type HermesGatewayMessageKind = "agent_message" | "typing";
-export type HermesGatewayAttachmentStatus = "pending_upload" | "uploaded" | "failed" | "expired" | "rejected";
 // Human-in-the-loop oversight toggle. "supervised" arms an approval gate before
 // each risky agent action; "autonomous" lets the agent run unattended. The safe
 // default (supervised) applies whenever the field is unset.
-export type HermesGatewayOversightMode = "supervised" | "autonomous";
-export const HERMES_GATEWAY_DEFAULT_OVERSIGHT_MODE: HermesGatewayOversightMode = "supervised";
-export type HermesGatewayApprovalStatus = "waiting_for_approval" | "approved" | "rejected" | "expired";
+type HermesGatewayOversightMode = "supervised" | "autonomous";
+const HERMES_GATEWAY_DEFAULT_OVERSIGHT_MODE: HermesGatewayOversightMode = "supervised";
 
 // ---------------------------------------------------------------------------
 // Firestore document shapes (hermes-gateway domain) — re-exported verbatim from
@@ -323,16 +298,8 @@ export type {
   HermesGatewayModelOptionDoc,
 };
 
-export type GatewaySignalEnvelopeMode = SignalEnvelopeMode;
-export type GatewaySignalEnvelopeScope = SignalEnvelopeScope;
-export type GatewaySignalMessageType = SignalMessageType;
-export type GatewaySignalCiphertextLayerDoc = SignalCiphertextLayer;
-export type GatewaySignalBindingDoc = SignalBinding;
-export type GatewaySignalTransportKeyDeliveryDoc = SignalTransportKeyDelivery;
-export type GatewaySignalRecipientKind = SignalRecipientKind;
-export type GatewaySignalAtRestWrapDoc = SignalAtRestWrap;
-export type GatewaySignalAtRestKeyDeliveryDoc = SignalAtRestKeyDelivery;
-export type GatewaySignalEnvelopeDoc = SignalEnvelope;
+type GatewaySignalEnvelopeMode = SignalEnvelopeMode;
+type GatewaySignalEnvelopeDoc = SignalEnvelope;
 
 const USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const TOKEN_PREFIX = "obb_hgw_";
@@ -816,7 +783,7 @@ export function requireProductionGatewayRelayEnvelope(raw: unknown, fieldName: s
   return envelope;
 }
 
-export const requireV2GatewayRelayEnvelope = requireProductionGatewayRelayEnvelope;
+
 
 /**
  * Non-throwing shape check used by read-side serializers (serializeHermesGateway-
@@ -1442,8 +1409,4 @@ export function publicApprovalView(approval: HermesGatewayApprovalDoc, now = Dat
     approvedByDeviceId: approval.approvedByDeviceId,
     schemaVersion: approval.schemaVersion,
   };
-}
-
-export function isRecordWithString(value: unknown, key: string): boolean {
-  return isRecord(value) && typeof value[key] === "string" && value[key].trim().length > 0;
 }

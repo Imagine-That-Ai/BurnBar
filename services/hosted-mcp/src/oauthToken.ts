@@ -134,8 +134,9 @@ export async function handleRefreshTokenGrant(
   await requireActiveRemoteMcpClient(uid, clientId, db);
   const entitlement = await requireActiveBurnBarPro(uid, db);
 
-  const grantScopes = Array.isArray(grant.get("scopes"))
-    ? (grant.get("scopes") as unknown[]).filter((s): s is string => typeof s === "string")
+  const rawGrantScopes = grant.get("scopes");
+  const grantScopes = Array.isArray(rawGrantScopes)
+    ? rawGrantScopes.filter((s): s is string => typeof s === "string")
     : presented.scopes;
 
   // Rotate the refresh token: a used refresh token must never be replayable.

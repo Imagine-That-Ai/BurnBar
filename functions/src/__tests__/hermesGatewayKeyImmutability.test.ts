@@ -110,7 +110,10 @@ const CLIENT_ID = "hgw_runtime_client";
 const TOKEN = `obb_hgw_${"A".repeat(20)}`;
 const { publicKey: AGENT_SIGNING_PUBLIC_KEY, privateKey: AGENT_SIGNING_PRIVATE_KEY } = generateKeyPairSync("ed25519");
 const AGENT_SIGNING_PUBLIC_KEY_BASE64 = Buffer.from(
-  AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" }) as Buffer,
+  (() => {
+    const exported = AGENT_SIGNING_PUBLIC_KEY.export({ format: "der", type: "spki" });
+    return Buffer.isBuffer(exported) ? exported : Buffer.from(exported);
+  })(),
 )
   .subarray(-32)
   .toString("base64");

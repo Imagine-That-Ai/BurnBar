@@ -394,6 +394,12 @@ export interface ComputerUsePhoneAuthorityDoc {
 
   /** Document schema version for forward compatibility. */
   schemaVersion: number;
+
+  /** ISO 8601 creation timestamp (schema-sync canon). */
+  createdAt: string;
+
+  /** ISO 8601 last-update timestamp (schema-sync canon). */
+  updatedAt: string;
 }
 
 /**
@@ -659,7 +665,7 @@ export interface HermesRelayRequestDoc {
   claimedBy?: string;
   completedAt?: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
   expiresAt: string;
   expireAt?: import("firebase-admin/firestore").Timestamp;
   schemaVersion: number;
@@ -668,6 +674,10 @@ export interface HermesRelayRequestDoc {
 export interface HermesRelayChunkDoc {
   id: string;
   requestId: string;
+  /** Schema-sync canon chunk index. */
+  chunkIndex: number;
+  /** Schema-sync canon base64 payload. */
+  payloadBase64: string;
   sequence: number;
   kind: "sse" | "data" | "error";
   data?: string;
@@ -758,7 +768,7 @@ export interface PiAgentConnectionDoc {
   models?: PiAgentRuntimeModelDoc[];
   lastSeenAt?: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
   schemaVersion: number;
 }
 
@@ -849,10 +859,16 @@ export interface QuotaBucket {
   name: string;
 
   /** Used amount (same unit as limit). */
-  used: number;
+  used?: number;
 
   /** Granted limit, or -1 if unlimited/unknown. */
-  limit: number;
+  limit?: number;
+
+  /** Provider-reported unit label (schema-sync canon). */
+  unit?: string;
+
+  /** ISO 8601 refill moment (schema-sync canon; legacy clients may use resetsAt). */
+  resetAt?: string;
 
   /** Remaining computed as max(0, limit - used) when limit >= 0. */
   remaining: number;
@@ -900,6 +916,15 @@ export interface QuotaSnapshotDoc {
   /** Human-readable source label. */
   source: string;
 
+  /** Schema-sync alias for {@link source}. */
+  sourceLabel?: string;
+
+  /** ISO 8601 next reset for the snapshot (schema-sync canon). */
+  resetAt?: string;
+
+  /** Provider plan tier at fetch time (schema-sync canon). */
+  planTier?: string;
+
   /** Confidence level: "high" | "medium" | "low" | "stale". */
   confidence: "high" | "medium" | "low" | "stale";
 
@@ -910,7 +935,7 @@ export interface QuotaSnapshotDoc {
   statusMessage?: string;
 
   /** Quota buckets. */
-  buckets: QuotaBucket[];
+  buckets?: QuotaBucket[];
 
   /** Schema version. */
   schemaVersion: number;
@@ -1340,6 +1365,9 @@ export interface UsageEventDoc {
   /** Number of cache read tokens. */
   cacheReadTokens?: number;
 
+  /** Number of cache write tokens (schema-sync canon). */
+  cacheWriteTokens?: number;
+
   /** Number of reasoning/thinking tokens. */
   reasoningTokens?: number;
 
@@ -1349,8 +1377,23 @@ export interface UsageEventDoc {
   /** Estimated cost in USD (optional, canonical field). */
   costUsd?: number;
 
+  /** Schema-sync alias for {@link costUsd}. */
+  costUSD?: number;
+
+  /** ISO 4217 currency code when cost is present (schema-sync canon). */
+  currency?: string;
+
   /** Cost in USD (legacy field written by desktop UsageSyncService). */
   cost?: number;
+
+  /** ISO 8601 ingestion timestamp (schema-sync canon). */
+  recordedAt: string;
+
+  /** Event classification (schema-sync canon). */
+  eventKind?: string;
+
+  /** Idempotency key for duplicate suppression (schema-sync canon). */
+  idempotencyKey?: string;
 
   /** Parser/source confidence used to choose the best copy of a duplicate. */
   provenanceConfidence?: string;
@@ -1633,6 +1676,8 @@ export interface HostedQuotaEntitlementDoc {
 export interface EntitlementBindingDoc {
   id: string;
   uid: string;
+  /** StoreKit 2 app account token minted at purchase time (schema-sync canon). */
+  appAccountToken: string;
   productID: string;
   clientPlatform?: "ios" | "ipados" | "macos";
   consumedAt?: string;

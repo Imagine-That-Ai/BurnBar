@@ -1995,7 +1995,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
         request.data.displayName,
         String(session.clientName ?? "Hermes Agent"),
       );
-      const clientDoc: HermesGatewayClientDoc = stripUndefinedObject({
+      const clientDocPayload: HermesGatewayClientDoc = {
         id: clientId,
         uid,
         displayName,
@@ -2048,13 +2048,14 @@ export const approveHermesGatewayDeviceGrant = onCall(
         createdAt: now,
         updatedAt: now,
         schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
-      }) as HermesGatewayClientDoc;
+      };
+      const clientDoc = stripUndefinedObject(clientDocPayload);
 
       await ensureDefaultDestination(uid, now);
       await Promise.all([
         db
           .doc(`users/${uid}/hermes_gateway_clients/${clientId}`)
-          .set(stripUndefinedObject(clientDoc), { merge: false }),
+          .set(clientDoc, { merge: false }),
         db
           .doc(`hermes_gateway_token_index/${tokenHash}`)
           .set({ uid, clientId, status: "active", createdAt: now, expiresAt: tokenExpiresAt }),
@@ -2089,7 +2090,7 @@ export const approveHermesGatewayDeviceGrant = onCall(
       // Echo the agent's relay key back so the phone can seal its first event
       // without waiting for a /state round-trip. publicClientView already carries
       // both keys, so the phone reads agentRelayPublicKey straight off `client`.
-      return { client: publicClientView(clientDoc), homeDestinationId };
+      return { client: publicClientView(clientDocPayload), homeDestinationId };
     },
   ),
 );
