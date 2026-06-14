@@ -241,6 +241,7 @@ describe("OpenBurnBarExtensionController", () => {
   });
 
   it("VAL-EXT-001: daemon-unavailable state surfaces actionable reconnect/repair recovery guidance", async () => {
+    const alertDaemonUnreachable = vi.fn();
     const controller = new OpenBurnBarExtensionController(
       {
         client: {
@@ -266,7 +267,8 @@ describe("OpenBurnBarExtensionController", () => {
           repair: vi.fn().mockResolvedValue({
             message: "OpenBurnBar daemon restart requested."
           })
-        }
+        },
+        alertDaemonUnreachable
       },
       {
         clientID: "test-client"
@@ -283,6 +285,7 @@ describe("OpenBurnBarExtensionController", () => {
     expect(controller.snapshot.lastError).toContain("socket missing");
     expect(controller.snapshot.runs[0]?.note).toContain("Repair Daemon");
     expect(controller.snapshot.workspace?.gatedTools).toEqual(["apply_patch", "run_terminal"]);
+    expect(alertDaemonUnreachable).toHaveBeenCalledWith("local OpenBurnBar daemon socket");
 
     expect(buildHealthRows(controller.snapshot)).toContainEqual(
       expect.objectContaining({
@@ -300,6 +303,8 @@ describe("OpenBurnBarExtensionController", () => {
     const vm = buildPanelViewModel(controller.snapshot);
     expect(vm.recoveryMessage).toContain("Reconnect");
     expect(vm.recoveryMessage).toContain("Repair Daemon");
+    await controller.refresh();
+    expect(alertDaemonUnreachable).toHaveBeenCalledTimes(1);
   });
 
   it("runs repair and refreshes daemon-backed state", async () => {
