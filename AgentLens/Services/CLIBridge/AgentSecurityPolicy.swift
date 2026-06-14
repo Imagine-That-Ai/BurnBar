@@ -149,9 +149,12 @@ public enum AgentSecretScrubber {
             // JWTs.
             ("jwt", #"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"#)
         ]
-        return specs.compactMap { label, pattern in
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-            return Pattern(label: label, regex: regex)
+        return specs.map { label, pattern in
+            do {
+                return Pattern(label: label, regex: try NSRegularExpression(pattern: pattern))
+            } catch {
+                preconditionFailure("Invalid AgentSecurityPolicy regex \(label): \(error)")
+            }
         }
     }()
 
