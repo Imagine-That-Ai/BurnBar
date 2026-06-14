@@ -1072,14 +1072,26 @@ final class HermesRelayHostService {
             "updatedAt": now
         ]
         if let context {
-            _ = try? await writeRelayChunk( // try?-ok(best-effort error chunk)
-                reference: reference,
-                context: context,
-                sequence: 0,
-                kind: .error,
-                error: String(message.prefix(2_000))
-            )
-            statusUpdate["chunkCount"] = 1
+            // Only declare chunkCount=1 if the error chunk actually persisted: the
+            // client's ChunkReassemblyValidator treats a missing chunk in
+            // 0..<chunkCount as a dropped/withheld-chunk (relay tamper) signal, so a
+            // host-side write failure must not be recorded as that integrity
+            // violation. (The error text is still delivered via the status doc.)
+            do {
+                try await writeRelayChunk(
+                    reference: reference,
+                    context: context,
+                    sequence: 0,
+                    kind: .error,
+                    error: String(message.prefix(2_000))
+                )
+                statusUpdate["chunkCount"] = 1
+            } catch {
+                AppLogger.network.error(
+                    "hermes_relay_error_chunk_write_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
         } else {
             // The schemaVersion drives a CONFIDENTIALITY decision: a raw,
             // plaintext error string is only safe to persist into the cloud
