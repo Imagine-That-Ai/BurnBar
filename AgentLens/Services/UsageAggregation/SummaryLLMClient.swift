@@ -57,13 +57,13 @@ struct SummaryLLMClient: Sendable {
             body["reasoning_effort"] = "high"
         }
 
-        guard let requestBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        guard let requestBody = try? JSONSerialization.data(withJSONObject: body) else { return nil } // try?-ok(encode request, skip)
         request.httpBody = requestBody
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await URLSession.shared.data(for: request), // try?-ok(network fetch, skip)
               let http = response as? HTTPURLResponse,
               (200 ..< 300).contains(http.statusCode),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
               let choices = root["choices"] as? [[String: Any]],
               let first = choices.first,
               let message = first["message"] as? [String: Any]
@@ -120,7 +120,7 @@ struct SummaryLLMClient: Sendable {
             ]
         ]
 
-        guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { // try?-ok(encode request, skip)
             return (nil, false)
         }
         request.httpBody = body
@@ -142,7 +142,7 @@ struct SummaryLLMClient: Sendable {
             return (nil, cooldown)
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
               let text = json["response"] as? String
         else {
             return (nil, false)
@@ -160,7 +160,7 @@ struct SummaryLLMClient: Sendable {
         guard !trimmed.isEmpty else { return nil }
 
         if let data = trimmed.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(SessionSummaryPayload.self, from: data) {
+           let decoded = try? JSONDecoder().decode(SessionSummaryPayload.self, from: data) { // try?-ok(parse LLM output)
             return decoded
         }
 
@@ -171,7 +171,7 @@ struct SummaryLLMClient: Sendable {
         }
         let candidate = String(trimmed[start ... end])
         guard let data = candidate.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(SessionSummaryPayload.self, from: data)
+        return try? JSONDecoder().decode(SessionSummaryPayload.self, from: data) // try?-ok(parse LLM output)
     }
 
     /// Validates and cleans a summary payload, applying title/summary length limits

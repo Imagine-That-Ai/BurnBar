@@ -260,6 +260,99 @@ final class DirectDownloadArtifactVerifierTests: XCTestCase {
 }
 
 extension DirectDownloadArtifactVerifierTests {
+    // MARK: - Public-key construction (trust-anchor) fail-closed
+
+    /// The pinned `SUPublicEDKey` is the trust anchor for the whole signature
+    /// check. Constructing the `Curve25519.Signing.PublicKey` from its raw bytes
+    /// used to be a `try?` that collapsed any CryptoKit error to `nil` — silently
+    /// discarding *why* the key was rejected while (correctly) failing closed.
+    /// The conversion to an explicit `do/catch` must keep failing closed:
+    /// whenever the 32 bytes do not yield a usable key, verification still throws
+    /// `.malformedPublicKey` and never falls open.
+    func testPublicKeyConstructionFailureFailsClosed() throws {
+        let fixture = try makeFixture()
+        // Inputs that decode to *exactly* 32 bytes (so they clear the length
+        // guard and reach the construction step) but are adversarial / arbitrary
+        // key material rather than the pinned key. Under any CryptoKit behavior
+        // — construction throws, or construction succeeds but the key cannot
+        // validate the real signature — verification must reject the update.
+        let thirtyTwoByteKeys: [Data] = [
+            Data(repeating: 0x00, count: 32),
+            Data(repeating: 0xFF, count: 32),
+            Data((0..<32).map { UInt8($0) })
+        ]
+        for keyBytes in thirtyTwoByteKeys {
+            let verifier = DirectDownloadArtifactVerifier(
+                publicKeyBase64: keyBytes.base64EncodedString()
+            )
+            XCTAssertThrowsError(
+                try verifier.verify(
+                    data: fixture.payload,
+                    expectedLength: fixture.payload.count,
+                    expectedSHA256: Self.sha256Hex(fixture.payload),
+                    edSignatureBase64: fixture.signatureBase64
+                ),
+                "A 32-byte non-pinned key must never let a foreign signature verify"
+            ) { error in
+                let verificationError = error as? DirectDownloadVerificationError
+                XCTAssertTrue(
+                    verificationError == .malformedPublicKey
+                        || verificationError == .signatureInvalid,
+                    "Expected fail-closed (.malformedPublicKey or .signatureInvalid), got \(error)"
+                )
+            }
+        }
+    }
+
+    /// Regression guard for the exact bug the `try?` masked: a key whose bytes
+    /// are well-formed base64 but decode to the wrong length must fail closed
+    /// with `.malformedPublicKey` *before* any signature math, never returning a
+    /// permissive default. Covers 31 and 33 bytes — the off-by-one neighbours of
+    /// a valid raw Ed25519 key — to lock the length gate in place.
+    func testNearLengthPublicKeyBytesFailClosed() throws {
+        let fixture = try makeFixture()
+        for length in [0, 1, 16, 31, 33, 64] {
+            let verifier = DirectDownloadArtifactVerifier(
+                publicKeyBase64: Data(repeating: 0xAB, count: length).base64EncodedString()
+            )
+            XCTAssertThrowsError(
+                try verifier.verify(
+                    data: fixture.payload,
+                    expectedLength: fixture.payload.count,
+                    expectedSHA256: Self.sha256Hex(fixture.payload),
+                    edSignatureBase64: fixture.signatureBase64
+                )
+            ) { error in
+                // A 0-byte key is an absent (empty) pinned key -> .missingPublicKey;
+                // any present-but-wrong-length key -> .malformedPublicKey. Both fail
+                // closed before any signature math.
+                let expected: DirectDownloadVerificationError =
+                    length == 0 ? .missingPublicKey : .malformedPublicKey
+                XCTAssertEqual(
+                    error as? DirectDownloadVerificationError,
+                    expected,
+                    "A \(length)-byte key must fail closed as \(expected)"
+                )
+            }
+        }
+    }
+
+    /// The previously-pinned key still verifies the real signature after the
+    /// construction path changed from `try?` to `do/catch` — proving the fix is
+    /// behaviour-preserving on the happy path and did not over-tighten into a
+    /// false reject of legitimate updates.
+    func testGenuinePinnedKeyStillVerifiesAfterConstructionHardening() throws {
+        let fixture = try makeFixture()
+        XCTAssertNoThrow(
+            try fixture.verifier.verify(
+                data: fixture.payload,
+                expectedLength: fixture.payload.count,
+                expectedSHA256: Self.sha256Hex(fixture.payload),
+                edSignatureBase64: fixture.signatureBase64
+            )
+        )
+    }
+
     /// The error copy is the security-honest UX the update design demands:
     /// every failure names what was being verified and why opening stopped.
     func testEveryVerificationErrorExplainsItselfSpecifically() {

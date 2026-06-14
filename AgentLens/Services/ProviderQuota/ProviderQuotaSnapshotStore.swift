@@ -277,7 +277,7 @@ struct ProviderQuotaSnapshotStore {
     func loadScratchString(forKey key: String) -> String? {
         let url = scratchURL(forKey: key)
         guard fileManager.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url),
+              let data = try? Data(contentsOf: url), // try?-ok(scratch cache read)
               let text = String(data: data, encoding: .utf8) else {
             return nil
         }
@@ -337,7 +337,7 @@ struct ProviderQuotaSnapshotStore {
     }
 
     func modificationDate(for url: URL) -> Date? {
-        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]) // try?-ok(file mtime read)
         return values?.contentModificationDate
     }
 }

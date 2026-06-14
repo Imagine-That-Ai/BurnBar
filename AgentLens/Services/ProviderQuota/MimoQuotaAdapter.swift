@@ -3,6 +3,17 @@ import OpenBurnBarCore
 
 @MainActor
 struct MimoQuotaAdapter: ProviderQuotaAdapter {
+    /// Factory for the Keychain store used to resolve the Cursor connector key.
+    /// Defaults to the live store; tests inject a store backed by a fake
+    /// `KeychainStoreBackend` to exercise the credential-read fault path.
+    private let keychainStoreProvider: @Sendable () -> KeychainStore
+
+    // nonisolated so the adapter registry can construct it from a nonisolated
+    // context (the keychain seam carries no main-actor state).
+    nonisolated init(keychainStoreProvider: @escaping @Sendable () -> KeychainStore = { KeychainStore() }) {
+        self.keychainStoreProvider = keychainStoreProvider
+    }
+
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         guard let apiKey = resolveMimoAPIKey(context: context) else {
             return unavailableSnapshot(
@@ -118,8 +129,12 @@ struct MimoQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func cursorConnectorKey(for account: String) -> String? {
-        let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account, allowUserInteraction: false)
-        return quotaNonEmpty(raw ?? nil)
+        let keychain = keychainStoreProvider()
+        let raw = keychain.credentialIfPresent(
+            for: account,
+            allowUserInteraction: false,
+            event: "mimo_quota_connector_key_read_failed"
+        )
+        return quotaNonEmpty(raw)
     }
 }

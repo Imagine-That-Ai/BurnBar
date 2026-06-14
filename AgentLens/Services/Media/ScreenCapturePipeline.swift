@@ -176,7 +176,7 @@ final class ScreenCapturePipeline: NSObject {
     func stop() async {
         #if canImport(ScreenCaptureKit)
         if let stream {
-            try? await stream.stopCapture()
+            try? await stream.stopCapture() // try?-ok(stream teardown)
         }
         stream = nil
         #endif

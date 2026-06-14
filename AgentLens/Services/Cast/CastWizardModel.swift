@@ -63,7 +63,7 @@ final class CastWizardModel {
 
         noDevicesTimeoutTask?.cancel()
         noDevicesTimeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            try? await Task.sleep(nanoseconds: 10_000_000_000) // try?-ok(sleep cancellation only)
             guard let self else { return }
             if case .discover = self.step, self.devices.isEmpty {
                 self.step = .noDevices

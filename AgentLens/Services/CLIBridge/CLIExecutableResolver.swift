@@ -225,7 +225,7 @@ struct CLIExecutableResolver: Sendable {
         appending suffix: String,
         fileManager: FileManager
     ) -> [String] {
-        guard let entries = try? fileManager.contentsOfDirectory(atPath: path) else {
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: path) else { // try?-ok(optional dir enumeration)
             return []
         }
 

@@ -136,12 +136,12 @@ final class SwitcherCLIAuthCoordinator {
             )
             try await dependencies.openScriptInTerminal(scriptURL)
         } catch {
-            try? dependencies.fileManager.removeItem(at: tempDirectory)
+            try? dependencies.fileManager.removeItem(at: tempDirectory) // try?-ok(temp cleanup)
             return .failed("Failed to start \(cliType.displayName) login in Terminal: \(error.localizedDescription)")
         }
 
         defer {
-            try? dependencies.fileManager.removeItem(at: tempDirectory)
+            try? dependencies.fileManager.removeItem(at: tempDirectory) // try?-ok(temp cleanup)
         }
 
         let terminationStatus = await waitForCompletion(markerURL: markerURL, timeout: 300)
@@ -431,7 +431,7 @@ final class SwitcherCLIAuthCoordinator {
                 return value
             }
 
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
         }
 
         return 124

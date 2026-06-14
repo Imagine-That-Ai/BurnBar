@@ -10,7 +10,26 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
     private static let socketPath = RemoteUnlockSetupProbe.virtualHIDBridgeSocketPath
     private static let maximumResponseBytes = 16 * 1024
     private static let requestIOTimeoutSeconds: time_t = 4
-    private static let xpcClient = PrivilegedInputXPCClient()
+    private static let sharedXPCClient = PrivilegedInputXPCClient()
+
+    /// Performs a privileged-input envelope over the preferred (XPC/socket) lane.
+    /// Injectable so tests can drive the trust-classification logic without a live helper.
+    typealias EnvelopePerformer = @Sendable (PrivilegedInputDispatchEnvelope) throws -> Void
+
+    private let performEnvelope: EnvelopePerformer
+
+    /// Default production seam: dispatch through the shared `PrivilegedInputXPCClient`.
+    init() {
+        self.performEnvelope = { envelope in
+            _ = try Self.sharedXPCClient.perform(envelope)
+        }
+    }
+
+    /// Test seam: inject a custom envelope performer (e.g. one that throws a specific
+    /// `PrivilegedInputXPCClient.ClientError`) to exercise the fail-closed classification.
+    init(performEnvelope: @escaping EnvelopePerformer) {
+        self.performEnvelope = performEnvelope
+    }
 
     /// Blocking XPC/socket dispatch runs off the main actor: this is a
     /// `nonisolated` `async` method (the type is `Sendable`), so callers leave the
@@ -31,11 +50,60 @@ struct RemoteUnlockVirtualHIDInputClient: Sendable {
             modifiers: action.modifiers
         )
         let envelope = PrivilegedInputDispatchEnvelope(request: request, capabilityToken: capabilityToken)
-        if (try? Self.xpcClient.perform(envelope)) != nil {
+        // This method is `nonisolated async` (SE-0338), so the blocking dispatch
+        // already runs off the main actor without a detached task.
+        do {
+            try performEnvelope(envelope)
             return Self.successPayload(for: action)
+        } catch let error as PrivilegedInputXPCClient.ClientError {
+            // Trust / authorization outcomes are TERMINAL — never silently downgrade
+            // to the legacy socket. `rejected` means the authenticated helper refused
+            // this action; `serverUntrusted` means the socket peer failed UID /
+            // code-signature validation (something is impersonating the helper).
+            // Retrying the SAME action — which can carry the macOS login credential —
+            // on a weaker lane would convert a denial into a fail-open. Fail closed.
+            switch error {
+            case .rejected, .serverUntrusted:
+                AppLogger.daemon.error(
+                    "remote_unlock_privileged_input_trust_failure",
+                    metadata: [
+                        "errorClass": "\(String(describing: type(of: error)))",
+                        "outcome": Self.trustOutcome(for: error)
+                    ]
+                )
+                throw error
+            case .connectionUnavailable, .remoteProxyUnavailable, .invalidResponse, .timedOut:
+                // Genuine transport faults on the preferred lane are recoverable: the
+                // helper may simply be absent on a legacy install. Record the
+                // degradation, then attempt the legacy socket lane.
+                AppLogger.daemon.notice(
+                    "remote_unlock_privileged_input_lane_unavailable",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
+            }
+        } catch {
+            // Any non-`ClientError` failure is a raw transport fault. Trust and
+            // authorization decisions are expressed exclusively as ClientError
+            // .rejected / .serverUntrusted, so these are safe to treat as
+            // recoverable — log the degradation and try the legacy lane.
+            AppLogger.daemon.notice(
+                "remote_unlock_privileged_input_lane_unavailable",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
         }
         try Self.sendSocket(Self.legacyRequest(from: request, capabilityToken: capabilityToken))
         return Self.successPayload(for: action)
+    }
+
+    private static func trustOutcome(for error: PrivilegedInputXPCClient.ClientError) -> String {
+        switch error {
+        case .rejected:
+            return "rejected"
+        case .serverUntrusted:
+            return "server_untrusted"
+        default:
+            return "unknown"
+        }
     }
 
     private static func successPayload(for action: MacInputAction) -> BurnBarJSONValue {

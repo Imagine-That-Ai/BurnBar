@@ -18,8 +18,8 @@ enum OpenBurnBarDaemonHeartbeatReader {
     }()
 
     static func readSnapshot(from fileURL: URL) -> OpenBurnBarDaemonHeartbeatSnapshot? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? decoder.decode(OpenBurnBarDaemonHeartbeatSnapshot.self, from: data)
+        guard let data = try? Data(contentsOf: fileURL) else { return nil } // try?-ok(missing heartbeat sidecar)
+        return try? decoder.decode(OpenBurnBarDaemonHeartbeatSnapshot.self, from: data) // try?-ok(malformed heartbeat skipped)
     }
 
     static func isStale(

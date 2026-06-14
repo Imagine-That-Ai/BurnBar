@@ -28,12 +28,12 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         // 1. Try the billing API first (org billing data is authoritative for plan limits)
-        if let exactSnapshot = try? await fetchFactoryExactSnapshot(context: context) {
+        if let exactSnapshot = try? await fetchFactoryExactSnapshot(context: context) { // try?-ok(fallback to next source)
             return exactSnapshot
         }
 
         // 2. Try dashboard scraper for personal accounts (cookie-based, same pattern as Ollama Cloud)
-        if let personalSnapshot = try? await fetchFactoryPersonalSnapshot(context: context) {
+        if let personalSnapshot = try? await fetchFactoryPersonalSnapshot(context: context) { // try?-ok(fallback to next source)
             return personalSnapshot
         }
 
@@ -110,8 +110,8 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
 
             filesScanned += 1
 
-            guard let data = try? Data(contentsOf: fileURL),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            guard let data = try? Data(contentsOf: fileURL), // try?-ok(skip unreadable session)
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed json)
                   let usage = json["tokenUsage"] as? [String: Any] else { continue }
 
             let total = FactorySessionClassifier.totalTokens(in: usage)
@@ -130,7 +130,7 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
                     fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                     return fmt.date(from: ts) ?? ISO8601DateFormatter().date(from: ts)
                 }
-                return (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+                return (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate // try?-ok(skip if no mtime)
             }()
 
             guard let sessionDate else { continue }

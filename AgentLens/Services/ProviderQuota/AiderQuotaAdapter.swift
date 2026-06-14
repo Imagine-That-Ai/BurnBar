@@ -45,15 +45,15 @@ struct AiderQuotaAdapter: ProviderQuotaAdapter {
         var latestTimestamp: Date?
 
         for fileURL in analyticsFiles {
-            guard let handle = try? FileHandle(forReadingFrom: fileURL) else { continue }
-            defer { try? handle.close() }
+            guard let handle = try? FileHandle(forReadingFrom: fileURL) else { continue } // try?-ok(skip unreadable analytics file)
+            defer { try? handle.close() } // try?-ok(handle teardown)
 
             var currentSessionTokens = 0
             var currentSessionCost = 0.0
 
             for line in handle.readAllUTF8Lines() {
                 guard let data = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed JSONL line)
                       let event = json["event"] as? String else { continue }
 
                 let time = json["time"] as? Double

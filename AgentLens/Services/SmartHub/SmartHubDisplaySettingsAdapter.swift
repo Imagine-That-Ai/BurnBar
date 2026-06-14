@@ -76,7 +76,7 @@ final class MacSmartHubDisplayOperationsAdapter: SmartHubDisplayOperations {
         request.httpMethod = "POST"
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.timeoutInterval = 5
-        _ = try? await URLSession.shared.data(for: request)
+        _ = try? await URLSession.shared.data(for: request) // try?-ok(fire-and-forget identify ping)
     }
 
     func stopBridge() async {

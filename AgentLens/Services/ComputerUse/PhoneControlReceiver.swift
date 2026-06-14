@@ -249,7 +249,7 @@ public final class PhoneControlReceiver: Sendable {
             connectionId: connectionId,
             control: payload
         )
-        try? await denyFrameSink(frame)
+        try? await denyFrameSink(frame) // try?-ok(best-effort deny notify)
     }
 
     private func deniedReason(for error: PhoneControlAuthorityValidator.ValidationError) -> HermesRealtimeRelayControlDenied.Reason {

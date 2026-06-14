@@ -27,7 +27,7 @@ final class FactoryDroidParser: LogParser, Sendable {
             schemaVersion: 3,
             logLabel: "FactoryDroidParser"
         )
-        _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+        _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
     }
 
     func parse() async throws -> ParseResult {
@@ -46,7 +46,7 @@ final class FactoryDroidParser: LogParser, Sendable {
         var cacheMutated = false
 
         let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir filtered out)
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
@@ -70,6 +70,7 @@ final class FactoryDroidParser: LogParser, Sendable {
                 } else {
                     let parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?
                     if fileManager.fileExists(atPath: settingsFile.path) {
+                        // try?-ok(best-effort session parse)
                         parsed = try? parseSession(
                             sessionId: baseName,
                             jsonlFile: jsonlFile,
@@ -160,8 +161,8 @@ final class FactoryDroidParser: LogParser, Sendable {
         // VAL-TOKEN-003: Settings/metadata exact totals suppress per-message fallback accumulation
         // VAL-TOKEN-011: Cache-only exact totals also suppress fallback (any non-zero bucket counts)
         if let settingsFileURL = settingsFile {
-            if let data = try? Data(contentsOf: settingsFileURL),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let data = try? Data(contentsOf: settingsFileURL), // try?-ok(missing settings skipped)
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
                 if let model = json["model"] as? String {
                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
                 }
@@ -188,8 +189,8 @@ final class FactoryDroidParser: LogParser, Sendable {
         if !usedSettingsTotals {
             let metadataURL = jsonlFile.deletingLastPathComponent()
                 .appendingPathComponent("\(sessionId).metadata.json")
-            if let data = try? Data(contentsOf: metadataURL),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let data = try? Data(contentsOf: metadataURL), // try?-ok(missing metadata skipped)
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
                 if tokenData.model == "unknown", let model = json["model"] as? String {
                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
                 }
@@ -210,11 +211,11 @@ final class FactoryDroidParser: LogParser, Sendable {
         let mtime = modificationDate(of: jsonlFile)
         let conv = ClaudeConversationAccumulator()
 
-        if let handle = try? FileHandle(forReadingFrom: jsonlFile) {
-            defer { try? handle.close() }
+        if let handle = try? FileHandle(forReadingFrom: jsonlFile) { // try?-ok(unreadable log skipped)
+            defer { try? handle.close() } // try?-ok(handle teardown)
             for line in handle.readAllUTF8Lines() {
                 guard let data = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(bad log line skipped)
                     continue
                 }
 
@@ -340,7 +341,7 @@ final class FactoryDroidParser: LogParser, Sendable {
     }
 
     private func modificationDate(of url: URL) -> Date? {
-        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(mtime fallback to now)
     }
 
     private func cachePath(for file: URL) -> String {

@@ -113,7 +113,7 @@ struct ProjectionChunker {
 
     private func markdownHeadingAnchors(in text: String) -> [(offset: Int, path: String)] {
         let nsText = text as NSString
-        guard let regex = try? NSRegularExpression(pattern: #"(?m)^(#{1,6})\s+(.+?)\s*$"#) else { return [] }
+        guard let regex = try? NSRegularExpression(pattern: #"(?m)^(#{1,6})\s+(.+?)\s*$"#) else { return [] } // try?-ok(literal regex pattern)
         let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
         guard matches.isEmpty == false else { return [] }
 

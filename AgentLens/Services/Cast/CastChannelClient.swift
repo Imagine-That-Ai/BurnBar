@@ -131,7 +131,7 @@ final class CastChannelClient {
         // Brief settle: DashCast occasionally drops the very first
         // LOAD if it lands on the wire before the transport CONNECT
         // has been processed, leaving the Hub stuck on the splash.
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        try? await Task.sleep(nanoseconds: 250_000_000) // try?-ok(sleep cancellation only)
 
         // Send the LOAD three times with growing spacing. DashCast
         // treats duplicate LOADs to the same URL as a no-op once it
@@ -165,7 +165,7 @@ final class CastChannelClient {
         let delays: [UInt64] = [0, 600_000_000, 1_500_000_000]
         for (index, delay) in delays.enumerated() {
             if delay > 0 {
-                try? await Task.sleep(nanoseconds: delay)
+                try? await Task.sleep(nanoseconds: delay) // try?-ok(sleep cancellation only)
             }
             // First attempt uses force:false so existing pages survive;
             // retries use force:true so a wedged splash is forced to
@@ -283,7 +283,7 @@ final class CastChannelClient {
         // Brief settle so the receiver finishes tearing down before
         // we ask it to launch again. Without this the LAUNCH often
         // races the STOP and lands on a stale session.
-        try? await Task.sleep(nanoseconds: 800_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000) // try?-ok(sleep cancellation only)
 
         // Fresh LAUNCH of DashCast.
         let launch = await request(
@@ -306,7 +306,7 @@ final class CastChannelClient {
             "userAgent": "OpenBurnBar/1.0"
         ], destination: transportId)
 
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        try? await Task.sleep(nanoseconds: 250_000_000) // try?-ok(sleep cancellation only)
 
         // Repeat-send LOAD to defeat receiver-side message drop on a
         // fresh transport — same rationale as in `cast(url:)`.
@@ -326,7 +326,7 @@ final class CastChannelClient {
             switch connection.state {
             case .ready, .failed, .cancelled: return
             default:
-                try? await Task.sleep(nanoseconds: 80_000_000)
+                try? await Task.sleep(nanoseconds: 80_000_000) // try?-ok(sleep cancellation only)
             }
         }
     }
@@ -378,7 +378,7 @@ final class CastChannelClient {
             currentSessionId = nil
             currentTransportId = nil
             currentAppId = nil
-            try? await Task.sleep(nanoseconds: 600_000_000)
+            try? await Task.sleep(nanoseconds: 600_000_000) // try?-ok(sleep cancellation only)
         }
 
         // LAUNCH DashCast fresh.
@@ -410,7 +410,7 @@ final class CastChannelClient {
 
             // Timeout watchdog.
             Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) // try?-ok(sleep cancellation only)
                 guard let self else { return }
                 if let cb = self.pending.removeValue(forKey: id) {
                     cb(.timeout)
@@ -420,8 +420,15 @@ final class CastChannelClient {
     }
 
     private func sendVirtual(namespace: String, payload: [String: Any], destination: String) {
-        guard let json = try? JSONSerialization.data(withJSONObject: payload, options: []),
-              let utf8 = String(data: json, encoding: .utf8) else { return }
+        // A serialization failure here silently drops a Cast control-channel
+        // message. That is not inconsequential: `request(...)` registers a
+        // pending continuation BEFORE calling `sendVirtual`, so a dropped
+        // message means the caller blocks until the timeout watchdog fires
+        // (4–8 s) and resolves `.timeout` — with no diagnostic explaining
+        // that we never actually put a frame on the wire. On a security
+        // product's control channel, a write whose loss is invisible is a
+        // liability, so we log the cause and still skip the send.
+        guard let utf8 = Self.serializedPayload(payload, namespace: namespace) else { return }
         let msg = CastMessage(
             sourceId: CastMessage.defaultSource,
             destinationId: destination,
@@ -429,6 +436,45 @@ final class CastChannelClient {
             payloadUTF8: utf8
         )
         connection.send(msg)
+    }
+
+    /// Encode a Cast payload to the UTF-8 JSON string the wire format needs.
+    /// Returns `nil` (so the caller skips the send) when the payload cannot
+    /// be represented as JSON or the resulting bytes are not valid UTF-8,
+    /// logging the failure so a dropped control message is observable rather
+    /// than presenting only as a downstream timeout.
+    static func serializedPayload(_ payload: [String: Any], namespace: String) -> String? {
+        // `JSONSerialization.data(withJSONObject:)` raises an ObjC `NSException`
+        // (NOT a Swift error) for non-finite numbers like NaN/Infinity, which a
+        // `do/catch` cannot intercept. Pre-validate so an unserializable payload
+        // fails closed (return nil, logged) instead of crashing the process.
+        guard JSONSerialization.isValidJSONObject(payload) else {
+            AppLogger.network.error(
+                "cast_send_payload_not_serializable",
+                metadata: ["namespace": namespace]
+            )
+            return nil
+        }
+        do {
+            let json = try JSONSerialization.data(withJSONObject: payload, options: [])
+            guard let utf8 = String(data: json, encoding: .utf8) else {
+                AppLogger.network.error(
+                    "cast_send_payload_not_utf8",
+                    metadata: ["namespace": namespace]
+                )
+                return nil
+            }
+            return utf8
+        } catch {
+            AppLogger.network.error(
+                "cast_send_payload_serialization_failed",
+                metadata: [
+                    "namespace": namespace,
+                    "errorClass": "\(String(describing: type(of: error)))"
+                ]
+            )
+            return nil
+        }
     }
 
     static func dashCastLoadPayload(
@@ -464,7 +510,7 @@ final class CastChannelClient {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // try?-ok(sleep cancellation only)
                 _ = await self?.ping()
             }
         }
@@ -474,7 +520,7 @@ final class CastChannelClient {
 
     private func handle(message: CastMessage) {
         guard let data = message.payloadUTF8.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return } // try?-ok(malformed inbound skipped)
 
         // requestId-based correlation.
         if let requestId = obj["requestId"] as? Int, let cb = pending.removeValue(forKey: requestId) {

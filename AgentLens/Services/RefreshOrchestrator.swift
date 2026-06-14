@@ -177,11 +177,19 @@ actor RefreshOrchestrator {
         await sessionMirror?.syncIfNeeded()
 
         // 5. Projection compaction
-        var pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+        var pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
         if pendingProjectionJobs >= ProjectionWorkerPolicy.backlogCompactionThreshold {
-            let removed = (try? dataStore.compactConversationProjectionBacklog()) ?? 0
+            // Best-effort GC, but a *persistent* failure to drain a runaway backlog is a
+            // correctness signal (the work queue starves and the table grows unbounded),
+            // so surface the throw via telemetry instead of swallowing it. Preserve the
+            // graceful `0`-removed fallback so a transient DB hiccup never breaks refresh.
+            let removed = AppLogger.dataStore.silently(
+                "projection_backlog_compaction_failed",
+                try dataStore.compactConversationProjectionBacklog(),
+                fallback: 0
+            )
             if removed > 0 {
-                pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? pendingProjectionJobs
+                pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? pendingProjectionJobs // try?-ok(opportunistic sweep gate)
             }
         }
         result.pendingProjectionJobs = pendingProjectionJobs

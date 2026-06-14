@@ -902,7 +902,37 @@ enum ProjectMemoryService {
         if #available(macOS 10.13, iOS 11.0, *) {
             encoder.outputFormatting = [.sortedKeys]
         }
-        let data = (try? encoder.encode(value)) ?? Data()
+        // The hash is a change-detection token that gates the Project Memory cloud
+        // backup (see ProjectsView: `previousContentHash != snapshot.contentHash`).
+        // A silent `?? Data()` fallback would hash to the constant empty-SHA256, so
+        // *every* encode failure — and any later distinct snapshot — would collide on
+        // the same digest, silently suppressing the backup of changed content
+        // (a fail-open on a sync/integrity decision). Instead: log the failure and
+        // fall back to a guaranteed-unique, diagnostic input so the digest is always
+        // distinct. A distinct hash forces an upload (the safe direction) rather than
+        // a skip, and never aliases a real snapshot's content.
+        let data = AppLogger.sync.silently(
+            "project_memory_content_hash_encode_failed",
+            try encoder.encode(value),
+            fallback: Self.uniqueHashFallbackInput()
+        )
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
+
+    /// Guaranteed-unique, non-colliding input for `contentHash` when the canonical
+    /// encode fails. Each call yields distinct bytes (random UUID), so a hash built
+    /// from it can never alias another snapshot and never suppress a cloud backup.
+    private static func uniqueHashFallbackInput() -> Data {
+        let marker = "project-memory-content-hash-encode-failure:\(UUID().uuidString)"
+        return Data(marker.utf8)
+    }
+
+    #if DEBUG
+    /// Test-only seam exposing the private `contentHash` so tests can drive the
+    /// encode-failure fallback (which is unreachable through the always-encodable
+    /// production payload) and assert the fail-distinct / non-colliding contract.
+    static func contentHashForTesting<T: Encodable>(_ value: T) -> String {
+        contentHash(for: value)
+    }
+    #endif
 }

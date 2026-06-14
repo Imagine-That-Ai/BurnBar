@@ -69,6 +69,41 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
         XCTAssertTrue(requestedURLs.first?.contains("coding_plan/remains") ?? false)
     }
 
+    // MARK: - Cursor-connector keychain fallback (credential-read fault path)
+
+    /// A genuinely absent Cursor-connector key must degrade gracefully: the
+    /// adapter falls through to the "add a key" unavailable snapshot without
+    /// throwing. This proves the migrated `credentialIfPresent` accessor
+    /// preserves the nil-on-absent contract.
+    func testFetch_absentCursorConnectorKey_yieldsUnavailableWithoutThrowing() async throws {
+        let adapter = MiniMaxQuotaAdapter(keychain: KeychainStore(backend: EmptyKeychainBackend()))
+        let context = try makeContext(apiKey: nil)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        XCTAssertEqual(snapshot.provider, .minimax)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.statusMessage.contains("Add a MiniMax Token Plan API key"))
+    }
+
+    /// A broken/locked keychain (real OSStatus fault) must NOT crash the fetch
+    /// and must NOT be misread as a configured credential. The migrated
+    /// accessor logs the fault and returns nil, so the adapter resolves no key
+    /// and reports the same graceful "add a key" unavailable snapshot — but
+    /// crucially `fetch` completes without throwing the keychain error.
+    func testFetch_faultingKeychain_isObservedAsNilWithoutThrowing() async throws {
+        let faultingBackend = FaultingKeychainBackend(error: .unhandled(errSecNotAvailable))
+        let adapter = MiniMaxQuotaAdapter(keychain: KeychainStore(backend: faultingBackend))
+        let context = try makeContext(apiKey: nil)
+
+        let snapshot = try await adapter.fetch(context: context)
+
+        XCTAssertTrue(faultingBackend.didAttemptRead, "Expected the keychain fallback to be exercised")
+        XCTAssertEqual(snapshot.provider, .minimax)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.statusMessage.contains("Add a MiniMax Token Plan API key"))
+    }
+
     func testFetch_tokenPlanEndpointUsedWhenCodingPlanFails() async throws {
         let remainsJSON = """
         {"model_remains":[{"model_name":"MiniMax-M2.7","remains":500,"total":1000}]}
@@ -94,7 +129,7 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
     }
 
     private func makeContext(
-        apiKey: String,
+        apiKey: String?,
         mode: MiniMaxQuotaMode = .tokenPlan
     ) throws -> ProviderQuotaAdapterContext {
         let appPaths = OpenBurnBarAppPaths.live()
@@ -131,9 +166,41 @@ final class MiniMaxQuotaAdapterTests: XCTestCase {
             updateCodexRolloutScanCache: { _, _ in },
             refreshClaudeBridgeStatus: { ClaudeQuotaBridgeStatus(state: .notInstalled, wrapperPath: "", detailText: "Not installed", lastPayloadAt: nil) },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
-            resolvedAPIKeys: ["minimax": apiKey]
+            resolvedAPIKeys: apiKey.map { ["minimax": $0] } ?? [:]
         )
     }
+}
+
+/// Backend that holds no items: `data(for:)` always returns nil so every read
+/// resolves to "genuinely absent" rather than a fault.
+private final class EmptyKeychainBackend: KeychainStoreBackend {
+    func set(_ value: Data, service: String, account: String) throws {}
+
+    func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data? {
+        nil
+    }
+
+    func delete(service: String, account: String) throws {}
+}
+
+/// Backend that simulates a broken/locked keychain: `data(for:)` throws a real
+/// `KeychainStoreError`, exercising the fault path that `try?` used to swallow.
+private final class FaultingKeychainBackend: KeychainStoreBackend, @unchecked Sendable {
+    let error: KeychainStoreError
+    private(set) var didAttemptRead = false
+
+    init(error: KeychainStoreError) {
+        self.error = error
+    }
+
+    func set(_ value: Data, service: String, account: String) throws {}
+
+    func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data? {
+        didAttemptRead = true
+        throw error
+    }
+
+    func delete(service: String, account: String) throws {}
 }
 
 private final class MiniMaxMockURLProtocol: URLProtocol {

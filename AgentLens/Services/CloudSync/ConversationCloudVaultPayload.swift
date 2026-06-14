@@ -164,7 +164,7 @@ enum ConversationCloudSealer {
                 if let bytes = try MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
                     data, uid: uid, collection: "conversations", docId: docId,
                     signalIdentity: signalIdentity, trustedSenderPublicKeys: trustedSenderPublicKeys
-                ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) {
+                ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) { // try?-ok(decode verified bytes, legacy fallback)
                     return payload
                 }
             } catch let signalError as OpenBurnBarSignalCoreError

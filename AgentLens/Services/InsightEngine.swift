@@ -290,7 +290,7 @@ final class WorkflowInsightRollupService {
     }
 
     private nonisolated func loadHealthRecord() -> RetrievalHealthRecord? {
-        guard let rows = try? dataStore.fetchRetrievalHealth() else { return nil }
+        guard let rows = try? dataStore.fetchRetrievalHealth() else { return nil } // try?-ok(cache read recovered)
         return rows.first(where: { $0.subsystem == .insightRollups })
     }
 
@@ -298,7 +298,7 @@ final class WorkflowInsightRollupService {
         from record: RetrievalHealthRecord?
     ) -> MaterializedInsightRollupPayload? {
         guard let json = record?.detailsJSON?.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(MaterializedInsightRollupPayload.self, from: json)
+        return try? JSONDecoder().decode(MaterializedInsightRollupPayload.self, from: json) // try?-ok(optional cache decode)
     }
 
     /// Persists the insight-rollup health row only when its semantic content

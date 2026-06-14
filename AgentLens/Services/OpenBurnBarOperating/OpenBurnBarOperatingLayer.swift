@@ -71,8 +71,8 @@ final class OpenBurnBarOperatingLayer {
             return cachedSnapshot
         }
 
-        let actionRecords = (try? dataStore.fetchOperatingActionRecords(limit: 200)) ?? []
-        let cachedControllerRuntime = (try? dataStore.fetchControllerRuntimeMirror()) ?? nil
+        let actionRecords = (try? dataStore.fetchOperatingActionRecords(limit: 200)) ?? [] // try?-ok(display read fallback)
+        let cachedControllerRuntime = (try? dataStore.fetchControllerRuntimeMirror()) ?? nil // try?-ok(display read fallback)
         let composed = OpenBurnBarOperatingComposer.build(
             dataStore: dataStore,
             settingsManager: settingsManager,

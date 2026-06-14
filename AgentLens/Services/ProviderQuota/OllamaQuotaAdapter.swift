@@ -68,7 +68,7 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
             let loadedModels: [String]
             if let psURL = URL(string: endpoint.absoluteString + "/api/ps"),
                let psRequest = buildRequest(url: psURL, apiKey: apiKey),
-               let (psData, psResponse) = try? await context.session.data(for: psRequest),
+               let (psData, psResponse) = try? await context.session.data(for: psRequest), // try?-ok(loaded-models skip)
                let psHTTP = psResponse as? HTTPURLResponse, psHTTP.statusCode == 200 {
                 loadedModels = modelNames(in: psData)
             } else {
@@ -263,7 +263,7 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func modelEntries(in data: Data) -> [ModelEntry] {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional JSON decode)
               let models = json["models"] as? [[String: Any]] else {
             return []
         }

@@ -40,7 +40,7 @@ final class DailyDigestManager {
     }
 
     func requestAuthorization() async {
-        _ = try? await notificationCenter.requestAuthorization(options: [.alert, .sound])
+        _ = try? await notificationCenter.requestAuthorization(options: [.alert, .sound]) // try?-ok(notification auth best-effort)
     }
 
     func scheduleDigest(from dataStore: DataStore, at hour: Int = 18) {

@@ -297,6 +297,7 @@ final class VideoEncoder: VideoEncoding {
             parameterSets.append(Data(bytes: pointer, count: size))
         }
         guard !parameterSets.isEmpty else { return nil }
+        // try?-ok(optional encode, raw-payload fallback)
         return try? VideoDecoderConfigurationPayload(
             codec: .hevc,
             parameterSets: parameterSets,
@@ -337,6 +338,7 @@ final class VideoEncoder: VideoEncoding {
             parameterSets.append(Data(bytes: pointer, count: size))
         }
         guard !parameterSets.isEmpty else { return nil }
+        // try?-ok(optional encode, raw-payload fallback)
         return try? VideoDecoderConfigurationPayload(
             codec: .h264,
             parameterSets: parameterSets,

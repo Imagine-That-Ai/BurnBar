@@ -147,6 +147,7 @@ final class AgentContextTargetReceiver: Sendable {
             ]
 
             let metadataString: String
+            // try?-ok(fallback to {} below)
             if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys, .withoutEscapingSlashes]),
                let str = String(data: data, encoding: .utf8) {
                 metadataString = str
@@ -206,12 +207,20 @@ final class AgentContextTargetReceiver: Sendable {
                 windowTitle: snapshot?.title
             )
 
-            if let entry = try? logger.makeEntry(
-                for: action,
-                approvedBy: .phone,
-                scopeContext: scopeContext
-            ) {
-                _ = try? logger.append(entry)
+            do {
+                let entry = try logger.makeEntry(
+                    for: action,
+                    approvedBy: .phone,
+                    scopeContext: scopeContext
+                )
+                try logger.append(entry)
+            } catch {
+                // A dropped phone-intent entry is a gap in the tamper-evident
+                // audit chain — surface it instead of swallowing.
+                AppLogger.chat.error(
+                    "computer_use_phone_intent_audit_entry_failed",
+                    metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+                )
             }
         }
 
@@ -227,7 +236,7 @@ final class AgentContextTargetReceiver: Sendable {
             connectionId: frame.connectionId,
             control: ackPayload
         )
-        try? await replyFrameSink(ackFrame)
+        try? await replyFrameSink(ackFrame) // try?-ok(fire-and-forget ack)
     }
 
     private func denormalize(_ nx: Double?, _ ny: Double?, displayId: String?) -> (Int, Int)? {
@@ -269,7 +278,7 @@ final class AgentContextTargetReceiver: Sendable {
             connectionId: connectionId,
             control: payload
         )
-        try? await replyFrameSink(frame)
+        try? await replyFrameSink(frame) // try?-ok(notify already-enforced deny)
     }
 
     private func deniedReason(for error: PhoneControlAuthorityValidator.ValidationError) -> HermesRealtimeRelayControlDenied.Reason {

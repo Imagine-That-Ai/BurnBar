@@ -56,7 +56,7 @@ final class CastReconnectStrategy {
                 lastError = "Hub didn't respond in time"
                 await client.stop()
             }
-            try? await Task.sleep(nanoseconds: backoff[attempt])
+            try? await Task.sleep(nanoseconds: backoff[attempt]) // try?-ok(backoff sleep cancellation)
         }
 
         switch await recoveryClient.trigger(

@@ -195,7 +195,7 @@ enum ContextBuilder {
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
 
-        let allUsages = (try? await dataStore.actor.fetchAllUsage()) ?? []
+        let allUsages = (try? await dataStore.actor.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
         let recentUsages = allUsages
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }
@@ -207,7 +207,7 @@ enum ContextBuilder {
 
         lines.append("## Recent work (last 7 days)")
 
-        let conversations = (try? await dataStore.actor.fetchConversations(limit: 80)) ?? []
+        let conversations = (try? await dataStore.actor.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         for usage in recentUsages.prefix(24) {
@@ -335,12 +335,12 @@ enum ContextBuilder {
             "High-level usage from OpenBurnBar tables—not a substitute for retrieved excerpts. Use for spend/time questions when retrieval is thin."
         )
 
-        let allUsages = (try? await dataStore.actor.fetchAllUsage()) ?? []
+        let allUsages = (try? await dataStore.actor.fetchAllUsage()) ?? [] // try?-ok(optional usage rollup)
         let recentUsages = allUsages
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }
 
-        let conversations = (try? await dataStore.actor.fetchConversations(limit: 80)) ?? []
+        let conversations = (try? await dataStore.actor.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         lines.append("")
