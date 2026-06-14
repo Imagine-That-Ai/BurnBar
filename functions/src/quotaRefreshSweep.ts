@@ -53,7 +53,7 @@ export type SweepAccountDoc = {
   get(field: string): unknown;
 };
 
-export type SweepQuerySnapshot<Doc> = { readonly docs: readonly Doc[] };
+type SweepQuerySnapshot<Doc> = { readonly docs: readonly Doc[] };
 
 /** Subset of `Query` used for both the ordered pass and the backfill scan. */
 export type SweepQuery<Doc> = {
@@ -65,7 +65,7 @@ export type SweepQuery<Doc> = {
 };
 
 /** Subset of `DocumentSnapshot` used for marker and cursor docs. */
-export type SweepMarkerSnapshot = {
+type SweepMarkerSnapshot = {
   readonly exists: boolean;
   /** Cursor resume position — real snapshots expose their location here. */
   readonly ref: { readonly path: string };

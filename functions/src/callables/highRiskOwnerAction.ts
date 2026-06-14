@@ -6,7 +6,7 @@ import { boundedTrimmedString } from "./shared.js";
 
 const HIGH_RISK_OWNER_ACTION_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 
-export type HighRiskOwnerActionKind =
+type HighRiskOwnerActionKind =
   | "data_export"
   | "revoke_all_access"
   | "provider_account_connect"

@@ -34,12 +34,16 @@ import {
   runQuotaRefreshSweep,
   type SweepDb,
   type SweepDocRef,
-  type SweepMarkerSnapshot,
   type SweepQuery,
-  type SweepQuerySnapshot,
 } from "../quotaRefreshSweep.js";
 
 type Doc = Record<string, unknown>;
+type FakeSweepMarkerSnapshot = {
+  readonly exists: boolean;
+  readonly ref: { readonly path: string };
+  data(): Record<string, unknown> | undefined;
+};
+type FakeSweepQuerySnapshot<Doc> = { readonly docs: readonly Doc[] };
 
 /**
  * Minimal in-memory model of the `provider_accounts` /
@@ -66,7 +70,7 @@ class FakeSweepDb {
   doc(path: string): SweepDocRef {
     const store = this.store;
     return {
-      async get(): Promise<SweepMarkerSnapshot> {
+      async get(): Promise<FakeSweepMarkerSnapshot> {
         const data = store.get(path);
         return {
           exists: data !== undefined,
@@ -166,7 +170,7 @@ class FakeQuery implements SweepQuery<FakeSweepDoc> {
     return new FakeQuery(this.db, this.group, this.filters, this.orderField, this.limitCount, path);
   }
 
-  async get(): Promise<SweepQuerySnapshot<FakeSweepDoc>> {
+  async get(): Promise<FakeSweepQuerySnapshot<FakeSweepDoc>> {
     this.db.queryLog.push({
       group: this.group,
       filters: this.filters.map((f) => `${f.field}${f.op}${JSON.stringify(f.value)}`),

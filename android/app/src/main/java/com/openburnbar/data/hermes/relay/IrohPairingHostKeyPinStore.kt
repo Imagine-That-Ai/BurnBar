@@ -2,11 +2,16 @@ package com.openburnbar.data.hermes.relay
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Base64
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 private const val IROH_PAIRING_HOST_KEY_BYTES = 32
 
@@ -25,14 +30,14 @@ interface IrohPairingHostKeyPinStore {
 /**
  * Persistent trust-on-first-use pin for the Mac's iroh pairing host key.
  *
- * **M-006 — at-rest encryption.** The pin is stored in an
- * [EncryptedSharedPreferences] store whose key/value entries are sealed with
- * an AES-256 master key held in the Android Keystore (hardware-backed where the
- * device offers a TEE/StrongBox). A plaintext `MODE_PRIVATE` XML pin file was
- * readable by anything that obtained the app's private storage (rooted device,
- * backup extraction, forensic image); encrypting it raises the bar for an
- * attacker trying to *read* or *forge* the pinned host-key fingerprint, which
- * the iroh transport treats as the root of trust for the QUIC dial.
+ * **M-006 — at-rest encryption.** The pin is stored in a `MODE_PRIVATE`
+ * preferences file whose values are sealed directly with an AES-256-GCM key held
+ * in the Android Keystore (hardware-backed where the device offers a TEE). A
+ * plaintext XML pin file was readable by anything that obtained the app's
+ * private storage (rooted device, backup extraction, forensic image); encrypting
+ * it raises the bar for an attacker trying to *read* or *forge* the pinned
+ * host-key fingerprint, which the iroh transport treats as the root of trust for
+ * the QUIC dial.
  *
  * The scoping and key-change semantics are unchanged from the previous plaintext
  * store: the fingerprint is keyed by a SHA-256 scoped uid, the first observed key
@@ -46,7 +51,7 @@ class SharedPreferencesIrohPairingHostKeyPinStore internal constructor(
     private val persistence: IrohPairingHostKeyPinPersistence,
 ) : IrohPairingHostKeyPinStore {
     constructor(context: Context) : this(
-        EncryptedSharedPreferencesPinPersistence(context.applicationContext, PREFS_NAME),
+        KeystoreEncryptedPinPersistence(context.applicationContext, PREFS_NAME),
     )
 
     @Synchronized
@@ -107,8 +112,8 @@ class SharedPreferencesIrohPairingHostKeyPinStore internal constructor(
 
 /**
  * Storage seam for [SharedPreferencesIrohPairingHostKeyPinStore]. Production uses
- * [EncryptedSharedPreferencesPinPersistence]; unit tests use an in-memory fake so
- * the pin/key-change logic is verifiable without an Android Keystore.
+ * [KeystoreEncryptedPinPersistence]; unit tests use an in-memory fake so the
+ * pin/key-change logic is verifiable without an Android Keystore.
  */
 internal interface IrohPairingHostKeyPinPersistence {
     fun getString(key: String): String?
@@ -119,26 +124,28 @@ internal interface IrohPairingHostKeyPinPersistence {
 }
 
 /**
- * Android Keystore-backed at-rest storage for the host-key pin. Entries are
- * sealed by [EncryptedSharedPreferences] under an AES-256-GCM [MasterKey]. If the
- * encrypted store cannot be opened (corrupted keyset / Keystore migration), the
- * backing file + keyset are dropped once and recreated so a poisoned/corrupt
- * store can never masquerade as a valid pin — the caller then re-pins on first
- * use, which the directory verification still guards.
+ * Android Keystore-backed at-rest storage for the host-key pin.
+ *
+ * This intentionally avoids AndroidX Security Crypto: the stable 1.1.0 APIs are
+ * deprecated by AndroidX. The store uses the platform Keystore directly and
+ * treats malformed or undecryptable payloads as persistence failures so a
+ * corrupted/forged pin cannot silently repin a substituted host key.
  */
-internal class EncryptedSharedPreferencesPinPersistence(
+internal class KeystoreEncryptedPinPersistence(
     private val context: Context,
     private val prefsName: String,
 ) : IrohPairingHostKeyPinPersistence {
-    private val prefs: SharedPreferences by lazy { openEncryptedPrefs() }
+    private val prefs: SharedPreferences by lazy {
+        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+    }
+    private val secretKey: SecretKey by lazy { loadOrCreateSecretKey() }
 
-    override fun getString(key: String): String? = prefs.getString(key, null)
+    override fun getString(key: String): String? = prefs.getString(key, null)?.let(::decrypt)
 
-    override fun putPin(pinKey: String, fingerprint: String, firstSeenKey: String, firstSeenMillis: Long): Boolean =
-        prefs.edit()
-            .putString(pinKey, fingerprint)
-            .putLong(firstSeenKey, firstSeenMillis)
-            .commit()
+    override fun putPin(pinKey: String, fingerprint: String, firstSeenKey: String, firstSeenMillis: Long): Boolean = prefs.edit()
+        .putString(pinKey, encrypt(fingerprint))
+        .putString(firstSeenKey, encrypt(firstSeenMillis.toString()))
+        .commit()
 
     override fun remove(vararg keys: String) {
         val editor = prefs.edit()
@@ -146,31 +153,52 @@ internal class EncryptedSharedPreferencesPinPersistence(
         editor.commit()
     }
 
-    private fun openEncryptedPrefs(): SharedPreferences {
-        val masterKey =
-            MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-        return try {
-            createEncryptedPrefs(masterKey)
-        } catch (_: Exception) {
-            // A corrupt keyset or a Keystore migration can make the existing
-            // encrypted store unreadable. Drop it once and recreate so we never
-            // silently fall back to an unencrypted/forged pin file; the next
-            // first-use pin re-establishes trust.
-            context.deleteSharedPreferences(prefsName)
-            createEncryptedPrefs(masterKey)
-        }
+    private fun encrypt(value: String): String {
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv = cipher.iv
+        val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        return listOf(PAYLOAD_VERSION, base64(iv), base64(ciphertext)).joinToString(".")
     }
 
-    private fun createEncryptedPrefs(masterKey: MasterKey): SharedPreferences =
-        EncryptedSharedPreferences.create(
-            context,
-            prefsName,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
+    private fun decrypt(payload: String): String {
+        val parts = payload.split(".")
+        require(parts.size == 3 && parts[0] == PAYLOAD_VERSION) { "Unsupported iroh host-key pin payload." }
+        val iv = Base64.decode(parts[1], Base64.NO_WRAP)
+        val ciphertext = Base64.decode(parts[2], Base64.NO_WRAP)
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }
+
+    private fun loadOrCreateSecretKey(): SecretKey {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+        val spec =
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build()
+        generator.init(spec)
+        return generator.generateKey()
+    }
+
+    private fun base64(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)
+
+    private companion object {
+        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val AES_GCM_TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val GCM_TAG_BITS = 128
+        private const val KEY_ALIAS = "openburnbar.iroh_pairing_host_key_pins.v1"
+        private const val PAYLOAD_VERSION = "v1"
+    }
 }
 
 class InMemoryIrohPairingHostKeyPinStore : IrohPairingHostKeyPinStore {
@@ -209,6 +237,5 @@ object IrohPairingHostKeyPinning {
 
     private fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
 
-    private fun base64UrlNoPadding(bytes: ByteArray): String =
-        Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING)
+    private fun base64UrlNoPadding(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING)
 }

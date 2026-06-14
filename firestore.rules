@@ -2398,28 +2398,28 @@ service cloud.firestore {
         + "_" + string(request.resource.data.keyVersion);
     }
 
-    match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableHostedCloudBackup(userId)
-        && validKeyWrapperDocId(wrapperId)
+    function validCloudVaultKeyWrapper(userId, wrapperId) {
+      return validKeyWrapperDocId(wrapperId)
         && request.resource.data.keys().hasOnly([
           "uid",
+          "wrapperId",
           "targetDeviceId",
           "sourceDeviceId",
           "publicKeyFingerprint",
-	          "keyVersion",
-	          "wrappedVaultKey",
-	          "vaultKeyID",
-	          "vaultGeneration",
-	          "rotationJobId",
-	          "revokedByRotationJobId",
-	          "algorithm",
-	          "status",
+          "keyVersion",
+          "wrappedVaultKey",
+          "vaultKeyID",
+          "vaultGeneration",
+          "rotationJobId",
+          "revokedByRotationJobId",
+          "algorithm",
+          "status",
           "createdAt",
           "updatedAt",
           "schemaVersion"
         ])
         && request.resource.data.uid == userId
+        && (!("wrapperId" in request.resource.data) || request.resource.data.wrapperId == wrapperId)
         && validVaultKeyID(request.resource.data.vaultKeyID)
         && matchesCurrentVaultKey(userId, request.resource.data.vaultKeyID)
         && request.resource.data.targetDeviceId is string
@@ -2430,22 +2430,34 @@ service cloud.firestore {
         && request.resource.data.publicKeyFingerprint.size() <= 128
         && request.resource.data.keyVersion is int
         && request.resource.data.keyVersion >= 1
-	        && request.resource.data.keyVersion <= 1000
-	        && (!("vaultGeneration" in request.resource.data) || (request.resource.data.vaultGeneration is int && request.resource.data.vaultGeneration >= 1 && request.resource.data.vaultGeneration <= 10000))
-	        && (!("rotationJobId" in request.resource.data) || (request.resource.data.rotationJobId is string && request.resource.data.rotationJobId.size() <= 200))
-	        && (!("revokedByRotationJobId" in request.resource.data) || (request.resource.data.revokedByRotationJobId is string && request.resource.data.revokedByRotationJobId.size() <= 200))
-	        && request.resource.data.wrappedVaultKey is string
+        && request.resource.data.keyVersion <= 1000
+        && (!("vaultGeneration" in request.resource.data) || (request.resource.data.vaultGeneration is int && request.resource.data.vaultGeneration >= 1 && request.resource.data.vaultGeneration <= 10000))
+        && (!("rotationJobId" in request.resource.data) || (request.resource.data.rotationJobId is string && request.resource.data.rotationJobId.size() <= 200))
+        && (!("revokedByRotationJobId" in request.resource.data) || (request.resource.data.revokedByRotationJobId is string && request.resource.data.revokedByRotationJobId.size() <= 200))
+        && request.resource.data.wrappedVaultKey is string
         && request.resource.data.wrappedVaultKey.size() <= 8192
         && request.resource.data.wrappedVaultKey.matches("^[A-Za-z0-9+/=]+$")
         && request.resource.data.algorithm == "ECIES-P256-AESGCM"
-        && request.resource.data.status in ["active", "revoked"]
-	        && request.resource.data.schemaVersion in [2, 3]
+        && request.resource.data.status == "active"
+        && request.resource.data.schemaVersion in [2, 3]
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
-	      allow delete: if false;
-	    }
+    }
+
+    match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableHostedCloudBackup(userId)
+        && validCloudVaultKeyWrapper(userId, wrapperId);
+      allow update: if ownerWritableHostedCloudBackup(userId)
+        && validCloudVaultKeyWrapper(userId, wrapperId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "wrappedVaultKey",
+          "updatedAt"
+        ]);
+      allow delete: if false;
+    }
 
 	    match /users/{userId}/cloud_vault_rotation_jobs/{jobId} {
 	      function validCloudVaultRotationJobClientUpdate() {

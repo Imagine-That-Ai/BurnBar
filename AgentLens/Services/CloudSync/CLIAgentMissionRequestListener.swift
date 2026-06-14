@@ -1900,7 +1900,7 @@ final class CLIAgentMissionRequestListener {
         let sessionURL = rootURL.appendingPathComponent(sessionID, isDirectory: true)
         
         defer {
-            try? fileManager.removeItem(at: sessionURL)
+            try? fileManager.removeItem(at: sessionURL) // try?-ok(best-effort visible-terminal temp cleanup)
         }
         
         try fileManager.createDirectory(at: sessionURL, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
