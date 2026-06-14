@@ -96,11 +96,35 @@ entries are structural.
 
 ## Swift 6 language mode
 
-With the ratchet at zero, each SwiftPM target is now eligible for
-`swiftLanguageMode(.v6)` once its remaining allowlist exceptions are confirmed to
-compile under it (they are `@unchecked`, which Swift 6 still permits). That flip is
-the natural follow-up PR; the genuine-`Sendable` conversions here are its
-prerequisite.
+**SwiftPM packages are now on the Swift 6 language mode** (`swiftLanguageModes: [.v6]`,
+tools-version 6.0): OpenBurnBarCore and OpenBurnBarDaemon production targets build
+clean under v6 (Core verified on both macOS and iOS slices), so data-race safety is
+compiler-enforced for the shared core + daemon TCB. CI already runs Swift jobs on
+macos-26, which supports the flip.
+
+Pinned to Swift 5 (each with an in-manifest rationale): the generated UniFFI bindings
+target (`OpenBurnBarIrohFFI`, never hand-edited / AAR parity) and all SwiftPM test
+targets (harness-only code; the Swift 6.3 region-isolation checker has known gaps —
+e.g. `Task`-handle hand-off — that would force contorting correct tests).
+
+v6 fix patterns used (no behavior change, no new ratchet `@unchecked`): real
+`Sendable` conformances / protocol refinements; `@Sendable` closures; route formatters
+through `ThreadSafeISO8601DateFormatter` or a fresh-per-call formatter; `Locked`
+boxes; `sending` ownership transfer; `nonisolated(unsafe)` only for immutable
+constants / lock-guarded statics / test seams; and `@unchecked Sendable` +
+`sendable-allowlist: firebase-sdk-handle|apple-media-buffer|foundation-sdk-shim` for
+inherently-non-Sendable Apple/Firebase SDK handles.
+
+**App targets (AgentLens macOS, OpenBurnBarMobile iOS) remain on Swift 5** — they build
+clean against the v6 packages. Flipping them is a larger, genuinely-architectural
+effort (e.g. `CloudSyncService` is a non-Sendable `@Observable` class sent across
+actor/async boundaries and referenced in ~31 files — making it `@MainActor`/`Sendable`
+ripples through the CloudSync subsystem), so it is staged as its own PR rather than
+forced into this one. A work-in-progress patch capturing the ~24 mechanical app-source
+fixes already derived (media/NetService boxes, provider-closure `@Sendable`, protocol
+refinements) is saved at `.agent/runs/swift6-language-mode/app-mobile-v6-wip.patch` for
+that follow-up; the remaining work is the service-isolation decisions + a full
+app/mobile test pass.
 
 ## Verification
 
