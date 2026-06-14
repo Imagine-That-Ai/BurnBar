@@ -53,7 +53,8 @@ final class CLIBridgeGrantRevocationKillTests: XCTestCase {
         store.activate(grant)
 
         guard let poll = CLIBridge.spawnedCLIGrantPoll(for: grant) else {
-            return XCTFail("an active grant must produce a non-nil poll closure")
+            XCTFail("an active grant must produce a non-nil poll closure")
+            return
         }
 
         let activeBeforeRevocation = await poll()
