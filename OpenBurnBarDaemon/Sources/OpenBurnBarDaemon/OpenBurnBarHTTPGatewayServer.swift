@@ -3265,21 +3265,6 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
-    private struct ChatCompletionsRequest: Decodable {
-        let model: String
-        let stream: Bool?
-    }
-
-    private struct ResponsesRequest: Decodable {
-        let model: String
-        let stream: Bool?
-    }
-
-    private struct AnthropicMessagesRequest: Decodable {
-        let model: String
-        let stream: Bool?
-    }
-
 }
 
 // remediation(gateway decomposition): `BurnBarHTTPGatewayError` moved verbatim

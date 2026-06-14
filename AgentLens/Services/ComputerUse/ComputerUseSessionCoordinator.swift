@@ -1143,36 +1143,13 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         }
     }
 
-    private struct VirtualHIDCapabilityDispatch: Sendable {
-        var token: CapabilityToken
-        var presentingEscrowDeviceId: String?
-        var requiredAttestationHashBlake3: String?
-    }
-
     private func mintVirtualHIDCapabilityDispatch(actionKind: String) async throws -> VirtualHIDCapabilityDispatch {
         let peerNodeId = phoneControlAuthorizedPeerNodeProvider?()
         let sessionId = activeSessionId?.rawValue ?? latestControlConnectionID
-        let scopeHash = SHA256.hash(data: Data("remote_unlock:\(sessionId ?? "none")".utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
-        let binding = MacRemoteUnlockReadinessService.shared.activeRemoteUnlockBinding(
-            sessionId: sessionId,
-            peerNodeId: peerNodeId
-        )
-        guard let token = try await RemoteUnlockCapabilityTokenBroker.shared.mintInputToken(
+        return try await mintVirtualHIDCapabilityDispatch(
             actionKind: actionKind,
-            scopeHash: scopeHash,
-            attestationHashBlake3: binding?.attestationHashBlake3,
-            boundEscrowDeviceId: binding?.viewerDeviceId,
             sessionId: sessionId,
             peerNodeId: peerNodeId
-        ) else {
-            throw CoordinatorError.noActiveSession
-        }
-        return VirtualHIDCapabilityDispatch(
-            token: token,
-            presentingEscrowDeviceId: binding?.viewerDeviceId,
-            requiredAttestationHashBlake3: binding?.attestationHashBlake3
         )
     }
 

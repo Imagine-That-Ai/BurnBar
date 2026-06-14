@@ -5,13 +5,13 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
-import com.openburnbar.data.cloud.AndroidCloudVaultRevocationRotation
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
+import com.openburnbar.data.cloud.AndroidCloudVaultRevocationRotation
 import com.openburnbar.data.cloud.AndroidSignalIdentityKeyStore
+import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProof
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProofPayload
 import com.openburnbar.data.cloud.CloudVaultTrustedDeviceActionProofSigner
-import com.openburnbar.data.cloud.CloudVaultCrypto
 import kotlinx.coroutines.tasks.await
 
 data class RelaySenderKeyPublishRequest(

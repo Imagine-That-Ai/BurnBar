@@ -53,7 +53,7 @@ export type SweepAccountDoc = {
   get(field: string): unknown;
 };
 
-export type SweepQuerySnapshot<Doc> = { readonly docs: readonly Doc[] };
+type SweepQuerySnapshot<Doc> = { readonly docs: readonly Doc[] };
 
 /** Subset of `Query` used for both the ordered pass and the backfill scan. */
 export type SweepQuery<Doc> = {

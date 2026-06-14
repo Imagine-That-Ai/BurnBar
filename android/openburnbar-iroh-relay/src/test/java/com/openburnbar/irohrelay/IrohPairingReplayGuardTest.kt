@@ -1,6 +1,5 @@
 package com.openburnbar.irohrelay
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.util.Base64

@@ -134,11 +134,10 @@ internal class EncryptedSharedPreferencesPinPersistence(
 
     override fun getString(key: String): String? = prefs.getString(key, null)
 
-    override fun putPin(pinKey: String, fingerprint: String, firstSeenKey: String, firstSeenMillis: Long): Boolean =
-        prefs.edit()
-            .putString(pinKey, fingerprint)
-            .putLong(firstSeenKey, firstSeenMillis)
-            .commit()
+    override fun putPin(pinKey: String, fingerprint: String, firstSeenKey: String, firstSeenMillis: Long): Boolean = prefs.edit()
+        .putString(pinKey, fingerprint)
+        .putLong(firstSeenKey, firstSeenMillis)
+        .commit()
 
     override fun remove(vararg keys: String) {
         val editor = prefs.edit()
@@ -163,14 +162,13 @@ internal class EncryptedSharedPreferencesPinPersistence(
         }
     }
 
-    private fun createEncryptedPrefs(masterKey: MasterKey): SharedPreferences =
-        EncryptedSharedPreferences.create(
-            context,
-            prefsName,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
+    private fun createEncryptedPrefs(masterKey: MasterKey): SharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        prefsName,
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
 }
 
 class InMemoryIrohPairingHostKeyPinStore : IrohPairingHostKeyPinStore {
@@ -209,6 +207,5 @@ object IrohPairingHostKeyPinning {
 
     private fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
 
-    private fun base64UrlNoPadding(bytes: ByteArray): String =
-        Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING)
+    private fun base64UrlNoPadding(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING)
 }

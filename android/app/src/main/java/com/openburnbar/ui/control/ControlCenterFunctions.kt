@@ -25,6 +25,7 @@ internal class ControlCenterFunctions(
     private val securityClient: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(functions),
 ) {
     private fun localDeviceId(): String = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+
     // ── Usage snapshot (already implemented server-side: dataDomainUsage.ts) ──
     suspend fun getDataDomainUsage(): Map<String, Any> = callMap("getDataDomainUsage", emptyMap())
 
@@ -53,14 +54,13 @@ internal class ControlCenterFunctions(
     suspend fun listRecovery(): Map<String, Any> = callMap("listRecovery", emptyMap())
 
     // ── Panic — revoke everything ──
-    suspend fun revokeAllAccess(scope: String): Map<String, Any> =
-        securityClient.callHighRiskOwnerAction(
-            callableName = "revokeAllAccess",
-            deviceId = localDeviceId(),
-            actionKind = "revoke_all_access",
-            subjectId = scope,
-            payload = mapOf("scope" to scope),
-        ).asStringAnyMap() ?: emptyMap()
+    suspend fun revokeAllAccess(scope: String): Map<String, Any> = securityClient.callHighRiskOwnerAction(
+        callableName = "revokeAllAccess",
+        deviceId = localDeviceId(),
+        actionKind = "revoke_all_access",
+        subjectId = scope,
+        payload = mapOf("scope" to scope),
+    ).asStringAnyMap() ?: emptyMap()
 
     // ── Tamper-evident audit log ──
     suspend fun getAuditLog(cursor: String? = null, limit: Int? = null): Map<String, Any> {
