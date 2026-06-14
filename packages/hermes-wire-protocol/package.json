@@ -1,0 +1,13 @@
+{
+  "name": "@openburnbar/hermes-wire-protocol",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Canonical source of truth for the Hermes/iroh realtime wire protocol (frame types + wire constants), with codegen and a cross-language parity gate.",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "codegen": "node codegen.mjs",
+    "parity": "node parity.mjs",
+    "test": "node --test"
+  }
+}

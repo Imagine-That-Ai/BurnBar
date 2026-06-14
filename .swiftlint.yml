@@ -205,6 +205,8 @@ type_body_length:
 # above the measured 5,914 max). CI `--strict` promotes warnings to errors, so
 # the warning level must stay above max too. In-flight decomposition will shrink
 # the max; ratchet DOWN again (warning+error together) once it lands.
+# The lower target is enforced by budgets/swift-file-size-baseline.json: no new
+# file may cross 2,000 lines and no baselined file may grow.
 file_length:
   warning: 5950
   error: 6200

@@ -1,0 +1,14 @@
+# Pin the toolchain for the SHIPPING iroh transport so the iOS xcframework and
+# the Android AAR are built identically and reproducibly. Both build scripts
+# (scripts/build-iroh-xcframework.sh, scripts/build-iroh-android-aar.sh) cd into
+# this crate before invoking cargo, so rustup honors this file for the real
+# artifacts as well as the CI host-side `cargo check`/`cargo test` lanes.
+#
+# Closes the skew where the xcframework CI lane floated on `stable` while the
+# Android lane pinned 1.96.0 — a stray `stable` bump could have shipped the two
+# platforms on different rustc versions against the `iroh =1.0.0-rc.0` pin.
+# Source of truth: keep the explicit `toolchain:` in .github/workflows/
+# iroh-xcframework.yml and build-iroh-android-aar.yml in sync with this channel.
+[toolchain]
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]
