@@ -102,6 +102,37 @@ openburnbar_app_test_has_final_failing_tests_section() {
     ' "$log_path"
 }
 
+openburnbar_app_test_has_runner_restart() {
+    local log_path="$1"
+
+    grep -Fq "Restarting after unexpected exit, crash, or test timeout" "$log_path"
+}
+
+openburnbar_app_test_has_concrete_failure_after_final_selected_start() {
+    local log_path="$1"
+
+    awk '
+        /Test Suite '\''Selected tests'\'' started/ {
+            saw_selected = 1
+            failed = 0
+            next
+        }
+        saw_selected && /Test Case '\''-\[[^]]+\]'\'' failed/ {
+            failed = 1
+            next
+        }
+        saw_selected && /Test Suite '\''Selected tests'\'' failed/ {
+            failed = 1
+            next
+        }
+        saw_selected && /Executed [0-9]+ tests?, with ([0-9]+ tests? skipped and )?[1-9][0-9]* failures?/ {
+            failed = 1
+            next
+        }
+        END { exit failed ? 0 : 1 }
+    ' "$log_path"
+}
+
 is_known_hang() {
     local log_path="$1"
     local pattern
@@ -128,11 +159,21 @@ is_xcode_false_negative_pass() {
     # Xcode can occasionally return 65 and print "** TEST FAILED **" after the
     # selected XCTest suite has already reported a clean run. Accept that as
     # success only when the final selected-suite summary is unambiguously green
-    # and Xcode did not append a final failing-tests section.
+    # and the final selected-suite execution itself has no concrete failures.
+    #
+    # On macOS runners Xcode can also relaunch the test host after an unexpected
+    # exit, then leave a stale "Failing tests:" footer from the dead host even
+    # though the final selected-suite pass is clean. That is still an
+    # infrastructure false negative, but only when a runner restart is present.
     openburnbar_app_test_final_selected_summary_is_green "$log_path" || return 1
 
-    if openburnbar_app_test_has_final_failing_tests_section "$log_path"; then
+    if openburnbar_app_test_has_concrete_failure_after_final_selected_start "$log_path"; then
         return 1
+    fi
+
+    if openburnbar_app_test_has_final_failing_tests_section "$log_path"; then
+        openburnbar_app_test_has_runner_restart "$log_path" || return 1
+        return 0
     fi
 
     return 0
