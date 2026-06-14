@@ -230,6 +230,28 @@ impl IrohBlobNode {
         ticket_text: String,
         destination: String,
     ) -> Result<BlobTransferStats, IrohFfiError> {
+        self.fetch_blob_internal(ticket_text, destination, None)
+    }
+
+    /// Same as `fetch_blob`, but aborts the download stream as soon as progress
+    /// exceeds the caller's expected byte count. This gives Swift/iOS callers
+    /// the same forced-download protection Android already has at the blob
+    /// backend boundary.
+    pub fn fetch_blob_with_expected_size(
+        self: Arc<Self>,
+        ticket_text: String,
+        destination: String,
+        expected_size_bytes: u64,
+    ) -> Result<BlobTransferStats, IrohFfiError> {
+        self.fetch_blob_internal(ticket_text, destination, Some(expected_size_bytes))
+    }
+
+    fn fetch_blob_internal(
+        self: Arc<Self>,
+        ticket_text: String,
+        destination: String,
+        expected_size_bytes: Option<u64>,
+    ) -> Result<BlobTransferStats, IrohFfiError> {
         let (endpoint, store) = block_on(async {
             let guard = self.inner.lock().await;
             let inner = guard.as_ref().ok_or(IrohFfiError::EndpointNotInitialized)?;
@@ -266,10 +288,23 @@ impl IrohBlobNode {
                     detail: format!("blob download stream: {err}"),
                 })?;
             while let Some(item) = progress.next().await {
-                if let iroh_blobs::api::downloader::DownloadProgressItem::Error(err) = item {
-                    return Err(IrohFfiError::StreamFailed {
-                        detail: format!("blob download: {err}"),
-                    });
+                match item {
+                    iroh_blobs::api::downloader::DownloadProgressItem::Error(err) => {
+                        return Err(IrohFfiError::StreamFailed {
+                            detail: format!("blob download: {err}"),
+                        });
+                    }
+                    iroh_blobs::api::downloader::DownloadProgressItem::Progress(bytes)
+                        if expected_size_bytes.is_some_and(|expected| bytes > expected) =>
+                    {
+                        return Err(IrohFfiError::StreamFailed {
+                            detail: format!(
+                                "blob download exceeded expected size: {bytes} bytes > {} bytes",
+                                expected_size_bytes.unwrap()
+                            ),
+                        });
+                    }
+                    _ => {}
                 }
             }
 
@@ -282,6 +317,16 @@ impl IrohBlobNode {
                 })?;
 
             let bytes_total = std::fs::metadata(&abs_dest).map(|m| m.len()).unwrap_or(0);
+            if let Some(expected) = expected_size_bytes {
+                if bytes_total > expected {
+                    let _ = std::fs::remove_file(&abs_dest);
+                    return Err(IrohFfiError::StreamFailed {
+                        detail: format!(
+                            "blob export exceeded expected size: {bytes_total} bytes > {expected} bytes"
+                        ),
+                    });
+                }
+            }
             let duration_millis = crate::u64_saturating_from_u128(started.elapsed().as_millis());
 
             Ok(BlobTransferStats {

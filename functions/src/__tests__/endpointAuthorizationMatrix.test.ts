@@ -101,11 +101,14 @@ describe("endpoint authorization matrix", () => {
   it("maps every highRiskComputerUse endpoint to a callable source that enforces the guard", () => {
     for (const entry of endpointAuthorizationMatrix) {
       if (!entry.highRiskComputerUse) continue;
-      const file = HIGH_RISK_ACTION_KIND_TO_FILE[entry.actionKind];
-      expect(file, `${entry.exportedName} has known actionKind ${entry.actionKind}`).toBeTruthy();
+      const actionKind = entry.actionKind;
+      expect(actionKind, `actionKind must be defined for high-risk endpoint ${entry.exportedName}`).toBeDefined();
+      if (!actionKind) continue;
+      const file = HIGH_RISK_ACTION_KIND_TO_FILE[actionKind];
+      expect(file, `${entry.exportedName} has known actionKind ${actionKind}`).toBeTruthy();
       const source = readCallableSource(file);
       expect(source, entry.exportedName).toContain("enforceHighRiskOwnerAction");
-      expect(source, entry.exportedName).toContain(`"${entry.actionKind}"`);
+      expect(source, entry.exportedName).toContain(`"${actionKind}"`);
     }
   });
 });

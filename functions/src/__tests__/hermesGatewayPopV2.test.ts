@@ -343,7 +343,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
       };
     };
 
-    const headers = {
+    const headers: Record<string, string> = {
       authorization: `Bearer ${TOKEN}`,
       ...popHeadersFuture({
         version: 2,
@@ -356,7 +356,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
     };
 
     const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
-    const dispatch = dispatchHermesGatewayRequest as never;
+    const dispatch = dispatchHermesGatewayRequest as any;
     const { res, captured } = makeRes();
     const req = {
       method: "GET",
@@ -375,7 +375,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
     const nonceDoc = stored.get(`users/${UID}/hermes_gateway_clients/${CLIENT_ID}/pop_nonces/${fixedNonce}`);
     expect(nonceDoc).toBeDefined();
     const expectedExpire = futureTime.getTime() + 5 * 60 * 1000;
-    expect(nonceDoc?.expireAt?.toMillis()).toBe(expectedExpire);
+    expect((nonceDoc as any)?.expireAt?.toMillis()).toBe(expectedExpire);
 
     dateNowSpy.mockRestore();
   });
