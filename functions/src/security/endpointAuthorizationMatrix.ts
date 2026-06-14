@@ -270,6 +270,7 @@ const HIGH_RISK_ENDPOINTS: Record<string, string> = {
   updateProviderAccount: "provider_account_update",
   revokeRemoteMcpClient: "remote_mcp_grant_revoke",
   deleteHostedQuotaCredentials: "hosted_quota_credential_delete",
+  deleteProviderAccount: "provider_account_delete",
   completeHermesPairing: "hermes_pairing_complete",
   completePiAgentPairing: "pi_agent_pairing_complete",
 };

@@ -36,7 +36,6 @@ function entitlementGranted() {
 function wrapper(overrides = {}) {
   return {
     uid: aliceUid,
-    wrapperId,
     targetDeviceId: "iphone-1",
     sourceDeviceId: "mac-1",
     publicKeyFingerprint: "fpr-iphone-1",

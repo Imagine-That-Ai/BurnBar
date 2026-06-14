@@ -34,6 +34,7 @@ const EXPECTED_GUARDS: Array<{
   { exportedName: "updateProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_update" },
   { exportedName: "revokeRemoteMcpClient", file: "remoteMcp.ts", actionKind: "remote_mcp_grant_revoke" },
   { exportedName: "deleteHostedQuotaCredentials", file: "providerAccounts.ts", actionKind: "hosted_quota_credential_delete" },
+  { exportedName: "deleteProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_delete" },
   { exportedName: "completeHermesPairing", file: "hermes.ts", actionKind: "hermes_pairing_complete" },
   { exportedName: "completePiAgentPairing", file: "piAgent.ts", actionKind: "pi_agent_pairing_complete" },
 ];
