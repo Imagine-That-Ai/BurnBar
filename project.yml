@@ -100,8 +100,12 @@ targets:
           # chat surface. Keep it out until the owning refactor lands.
           - Views/Chat/ChatEngineUIStubs.swift
           - "**/Views/Chat/ChatEngineUIStubs.swift"
+          - Resources/GoogleService-Info.plist
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
+      - path: AgentLens/Resources/GoogleService-Info.plist
+        buildPhase: resources
+        optional: true
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar
