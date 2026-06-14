@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRelayChunkKind as RelayChunkKind
@@ -522,11 +523,18 @@ class FirestoreIrohPairingPublicKeyProvider(
 ) : IrohPairingPublicKeyProviding {
     override suspend fun fetchPublicKey(uid: String): ByteArray {
         val snap =
-            firestore.collection("users").document(uid)
-                .collection("iroh_pairing_keys")
-                .document("host")
-                .get()
-                .await()
+            try {
+                firestore.collection("users").document(uid)
+                    .collection("iroh_pairing_keys")
+                    .document("host")
+                    .get(Source.SERVER)
+                    .await()
+            } catch (err: Exception) {
+                throw HermesRelayException(
+                    "Unable to fetch iroh pairing host key from server.",
+                    err,
+                )
+            }
         return decodeIrohPairingPublicKey(snap.data.orEmpty())
     }
 }

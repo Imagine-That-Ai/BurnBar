@@ -15,6 +15,10 @@ public final class ComputerUsePanicHaltCoordinator: NSObject {
     public private(set) var isInstalled: Bool = false
     public let halt: HaltHandler
 
+    private let accessibilityTrustProvider: @Sendable () -> Bool
+    private var lastAccessibilityTrusted: Bool = false
+    private var accessibilityTimer: Timer?
+
     // nonisolated(unsafe): installed/removed on the main actor; the nonisolated
     // deinit reads them exclusively at dealloc to remove the monitors (NSEvent /
     // NotificationCenter removal is thread-safe).
@@ -22,7 +26,11 @@ public final class ComputerUsePanicHaltCoordinator: NSObject {
     private nonisolated(unsafe) var localMonitor: Any?
     private nonisolated(unsafe) var workspaceObservers: [NSObjectProtocol] = []
 
-    public init(halt: @escaping HaltHandler) {
+    public init(
+        accessibilityTrustProvider: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
+        halt: @escaping HaltHandler
+    ) {
+        self.accessibilityTrustProvider = accessibilityTrustProvider
         self.halt = halt
         super.init()
     }
@@ -40,12 +48,23 @@ public final class ComputerUsePanicHaltCoordinator: NSObject {
     /// Wire up all three kill paths. Idempotent.
     public func install() {
         guard !isInstalled else { return }
+        lastAccessibilityTrusted = accessibilityTrustProvider()
         installHotkey()
         installAuthGateListeners()
+        
+        accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.pollAccessibilityTrustNow()
+            }
+        }
+        
         isInstalled = true
     }
 
     public func uninstall() {
+        accessibilityTimer?.invalidate()
+        accessibilityTimer = nil
+        
         if let monitor = globalMonitor {
             NSEvent.removeMonitor(monitor)
             globalMonitor = nil
@@ -129,12 +148,25 @@ public final class ComputerUsePanicHaltCoordinator: NSObject {
         }
     }
 
+    @discardableResult
+    public func pollAccessibilityTrustNow() -> Bool {
+        let trusted = accessibilityTrustProvider()
+        if lastAccessibilityTrusted && !trusted {
+            halt(.accessibilityRevoked)
+        }
+        lastAccessibilityTrusted = trusted
+        return trusted
+    }
+
     private func handleWorkspaceNotification(name: Notification.Name, activatedBundleID: String?) {
         switch name {
         case NSWorkspace.screensDidSleepNotification,
              NSWorkspace.sessionDidResignActiveNotification:
             halt(.macLock)
         case NSWorkspace.didActivateApplicationNotification:
+            // Check accessibility trust whenever application activation changes (e.g. settings app).
+            pollAccessibilityTrustNow()
+            
             // If loginwindow / SecurityAgent activates we treat that
             // as a lock-equivalent. `activatedBundleID` is the bundle id of
             // the `NSRunningApplication` that just became frontmost.
