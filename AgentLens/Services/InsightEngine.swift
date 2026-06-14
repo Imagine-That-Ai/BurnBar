@@ -134,9 +134,18 @@ final class WorkflowInsightRollupService {
     /// on a background task so the main thread never blocks on SQLite.
     func snapshotAsync(refreshIfStale: Bool = true) async -> WorkflowInsightRollupSnapshot {
         let inputs = captureInputs()
-        return await Task.detached { [self] in
-            buildSnapshot(inputs: inputs, refreshIfStale: refreshIfStale)
-        }.value
+        return await buildSnapshotOffMainActor(inputs: inputs, refreshIfStale: refreshIfStale)
+    }
+
+    /// `nonisolated` async bridge so `snapshotAsync` leaves the main actor here
+    /// (SE-0338); the synchronous `buildSnapshot` (and all its GRDB work) then
+    /// runs entirely off the main actor. `buildSnapshot` stays synchronous for
+    /// its other, on-actor caller.
+    private nonisolated func buildSnapshotOffMainActor(
+        inputs: MainActorInputs,
+        refreshIfStale: Bool
+    ) async -> WorkflowInsightRollupSnapshot {
+        buildSnapshot(inputs: inputs, refreshIfStale: refreshIfStale)
     }
 
     private nonisolated func buildSnapshot(

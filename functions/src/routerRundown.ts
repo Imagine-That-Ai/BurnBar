@@ -31,6 +31,7 @@ import type {
 } from "./types.js";
 import { isRecord, parseModelBenchmarkSnapshotDoc, parseModelBenchmarkSourceStatusDoc } from "./guards.js";
 import { logError, logWarn } from "./logging.js";
+import { setPublicJsonSecurityHeaders } from "./publicHttpSecurityHeaders.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
 const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
@@ -1131,6 +1132,7 @@ export const latestRouterRundown = onRequest(
     maxInstances: 10,
   },
   async (req, res) => {
+    setPublicJsonSecurityHeaders(res);
     if (req.method !== "GET") {
       res.status(405).json({ error: "method_not_allowed" });
       return;

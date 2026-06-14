@@ -312,30 +312,30 @@ struct PixelClockFirmwareFlasher {
         return "awtrix_" + parts.suffix(3).joined().lowercased()
     }
 
+    /// Blocking `Process` work runs off the main actor (`nonisolated` `async`,
+    /// SE-0338); cancellation propagates from the awaiting task.
     private static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            try process.run()
-            let deadline = Date().addingTimeInterval(timeout)
-            while process.isRunning && Date() < deadline {
-                usleep(100_000)
-            }
-            if process.isRunning { process.terminate() }
-            process.waitUntilExit()
-            let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            guard process.terminationStatus == 0 else {
-                let message = [output, error].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                throw FlashError.commandFailed(message.isEmpty ? "\(executable) failed." : message)
-            }
-            return output.trimmingCharacters(in: .whitespacesAndNewlines)
-        }.value
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        try process.run()
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            usleep(100_000)
+        }
+        if process.isRunning { process.terminate() }
+        process.waitUntilExit()
+        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else {
+            let message = [output, error].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            throw FlashError.commandFailed(message.isEmpty ? "\(executable) failed." : message)
+        }
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func validateHTTP(_ response: URLResponse) throws {
@@ -417,12 +417,11 @@ struct PixelClockNetworkProvisioner {
         await visibleSetupSSIDs().first
     }
 
+    /// Blocking Wi-Fi scan runs off the main actor (`nonisolated` `async`, SE-0338).
     static func visibleSetupSSIDs() async -> [String] {
-        await Task.detached(priority: .userInitiated) {
-            guard let interface = primaryWiFiInterface() else { return [] }
-            let networks = (try? interface.scanForNetworks(withName: nil)) ?? []
-            return setupSSIDs(fromNetworkNames: networks.compactMap { $0.ssid })
-        }.value
+        guard let interface = primaryWiFiInterface() else { return [] }
+        let networks = (try? interface.scanForNetworks(withName: nil)) ?? []
+        return setupSSIDs(fromNetworkNames: networks.compactMap { $0.ssid })
     }
 
     static func setupSSIDs(fromNetworkNames names: [String]) -> [String] {
@@ -457,17 +456,16 @@ struct PixelClockNetworkProvisioner {
             ?? CWWiFiClient.shared().interfaces()?.first
     }
 
+    /// Blocking Wi-Fi scan/associate runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func join(ssid: String, password: String?) async throws {
-        try await Task.detached(priority: .userInitiated) {
-            guard let interface = primaryWiFiInterface() else {
-                throw ProvisionError.connectFailed("Wi-Fi is not available on this Mac.")
-            }
-            let networks = try interface.scanForNetworks(withName: ssid)
-            guard let network = networks.min(by: { $0.rssiValue > $1.rssiValue }) else {
-                throw ProvisionError.joinFailed(ssid)
-            }
-            try interface.associate(to: network, password: password)
-        }.value
+        guard let interface = primaryWiFiInterface() else {
+            throw ProvisionError.connectFailed("Wi-Fi is not available on this Mac.")
+        }
+        let networks = try interface.scanForNetworks(withName: ssid)
+        guard let network = networks.min(by: { $0.rssiValue > $1.rssiValue }) else {
+            throw ProvisionError.joinFailed(ssid)
+        }
+        try interface.associate(to: network, password: password)
     }
 
     private static func waitForSetupPortal() async throws {
@@ -500,10 +498,9 @@ struct PixelClockNetworkProvisioner {
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
+    /// Blocking `Process` work runs off the main actor (`nonisolated` `async`, SE-0338).
     private static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval) async throws -> String {
-        try await Task.detached(priority: .userInitiated) {
-            try runSync(executable, arguments, timeout: timeout)
-        }.value
+        try runSync(executable, arguments, timeout: timeout)
     }
 
     private static func runSync(_ executable: String, _ arguments: [String], timeout: TimeInterval = 8) throws -> String {
