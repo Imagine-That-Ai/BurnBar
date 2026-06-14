@@ -156,16 +156,19 @@ function fakeRes(): FakeRes {
 }
 
 function postRequest(path: string, body: Record<string, unknown>, headers: Record<string, string> = {}) {
+  // T-GW-02: PoP-signed write routes require an application/json content type
+  // (a real signing client always sets it). Default it here; callers can override.
+  const mergedHeaders: Record<string, string> = { "content-type": "application/json", ...headers };
   return {
     method: "POST",
     path,
     url: path,
     body,
     query: {},
-    headers,
+    headers: mergedHeaders,
     socket: { remoteAddress: "127.0.0.1" },
     get(name: string) {
-      return headers[name.toLowerCase()];
+      return mergedHeaders[name.toLowerCase()];
     },
   };
 }

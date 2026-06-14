@@ -49,6 +49,100 @@ enum OpenBurnBarBrowserTargetPolicy {
         return url
     }
 
+    /// T-AI-04 — post-DNS (anti-rebind) enforcement.
+    ///
+    /// `validatedURL`/`isBlockedHost` reject a *literal* private/metadata host,
+    /// but a hostname can resolve to a private/link-local/metadata IP (classic
+    /// DNS-rebinding SSRF: `evil.example.com → 169.254.169.254`). This resolves the
+    /// host through the system resolver and rejects the navigation if ANY resolved
+    /// address is in the blocked ranges, so the agent's browser cannot be steered
+    /// onto the loopback/metadata plane via DNS.
+    ///
+    /// `resolver` is injectable so the security decision is unit-testable without
+    /// real DNS. The default resolver uses `getaddrinfo`. A host that is already a
+    /// literal IP short-circuits (the literal check above already covered it). A
+    /// resolution failure is treated as fail-closed (`blocked`) for http/https.
+    static func validatedResolvedURL(
+        _ rawValue: String,
+        allowDataURL: Bool = false,
+        resolver: (String) -> [String] = OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
+    ) throws -> URL {
+        let url = try validatedURL(rawValue, allowDataURL: allowDataURL)
+        // data: URLs (when allowed) and schemes without a host have no DNS to
+        // rebind; the literal validation already accepted them.
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host, host.isEmpty == false else {
+            return url
+        }
+
+        let normalized = host
+            .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            .lowercased()
+        // A literal IP was already range-checked by `isBlockedHost`; no DNS step.
+        if ipv4Bytes(from: normalized) != nil || ipv6Bytes(from: normalized) != nil {
+            return url
+        }
+
+        let resolved = resolver(host)
+        guard resolved.isEmpty == false else {
+            throw NSError(
+                domain: "OpenBurnBarBrowserTargetPolicy",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Browser action host could not be resolved; refusing navigation."]
+            )
+        }
+        for address in resolved where isBlockedHost(address) {
+            throw NSError(
+                domain: "OpenBurnBarBrowserTargetPolicy",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Browser action host resolves to a blocked local, private, or metadata address (anti-rebind)."]
+            )
+        }
+        return url
+    }
+
+    /// Resolve `host` to its A/AAAA addresses via `getaddrinfo`. Returns the
+    /// numeric address strings (empty on failure).
+    static func systemResolvedAddresses(_ host: String) -> [String] {
+        #if canImport(Darwin) || canImport(Glibc)
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        var result: UnsafeMutablePointer<addrinfo>?
+        let status = getaddrinfo(host, nil, &hints, &result)
+        guard status == 0, let first = result else { return [] }
+        defer { freeaddrinfo(first) }
+
+        var addresses: [String] = []
+        var node: UnsafeMutablePointer<addrinfo>? = first
+        while let current = node {
+            if let sockaddr = current.pointee.ai_addr {
+                var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                let nameStatus = getnameinfo(
+                    sockaddr,
+                    current.pointee.ai_addrlen,
+                    &buffer,
+                    socklen_t(buffer.count),
+                    nil,
+                    0,
+                    NI_NUMERICHOST
+                )
+                if nameStatus == 0 {
+                    let address = String(cString: buffer)
+                    if address.isEmpty == false {
+                        addresses.append(address)
+                    }
+                }
+            }
+            node = current.pointee.ai_next
+        }
+        return addresses
+        #else
+        return []
+        #endif
+    }
+
     static func isBlockedHost(_ host: String) -> Bool {
         let normalized = host
             .trimmingCharacters(in: .whitespacesAndNewlines)

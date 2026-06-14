@@ -40,6 +40,8 @@ final class CLIProfileStreamFailoverRunner: Sendable {
                 workspaceDirectory: attempt.workingDirectory,
                 capabilityGrant: capabilityGrant,
                 environmentOverrides: attempt.environmentOverrides,
+                // T-TOOL-03: mid-run grant poll also covers the failover lane.
+                grantStillActive: CLIBridge.spawnedCLIGrantPoll(for: capabilityGrant),
                 continuation: continuation
             )
         }

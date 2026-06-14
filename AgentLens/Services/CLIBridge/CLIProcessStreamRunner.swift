@@ -11,16 +11,24 @@ struct CLIProcessStreamRunner: Sendable {
         model: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         await runProcess(
             invocation: CLIProcessInvocation(
                 executable: executable,
-                arguments: CLIArgumentBuilder.claudeArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant),
+                arguments: CLIArgumentBuilder.claudeArguments(
+                    prompt: prompt,
+                    model: model,
+                    capabilityGrant: capabilityGrant,
+                    hasFreshLocalAuthProof: hasFreshLocalAuthProof
+                ),
                 environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .claude
             ),
+            grantStillActive: grantStillActive,
             continuation: continuation
         ) { line in
             (ClaudeCodeStreamJSONParser.events(fromLine: line), nil, false)
@@ -33,14 +41,21 @@ struct CLIProcessStreamRunner: Sendable {
         model: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false,
         environmentOverrides: [String: String] = [:],
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         var parser = CodexExecJSONLParser()
         await runProcess(
             invocation: CLIProcessInvocation(
                 executable: executable,
-                arguments: CLIArgumentBuilder.codexArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant),
+                arguments: CLIArgumentBuilder.codexArguments(
+                    prompt: prompt,
+                    model: model,
+                    capabilityGrant: capabilityGrant,
+                    hasFreshLocalAuthProof: hasFreshLocalAuthProof
+                ),
                 environment: Self.mergedEnvironment(
                     executablePath: executable,
                     overrides: environmentOverrides
@@ -48,6 +63,7 @@ struct CLIProcessStreamRunner: Sendable {
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .codex
             ),
+            grantStillActive: grantStillActive,
             continuation: continuation
         ) { line in
             let result = parser.events(fromLine: line)
@@ -61,6 +77,7 @@ struct CLIProcessStreamRunner: Sendable {
         model: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         var parser = GenericCLIJSONOrTextParser()
@@ -77,6 +94,7 @@ struct CLIProcessStreamRunner: Sendable {
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .droid
             ),
+            grantStillActive: grantStillActive,
             continuation: continuation
         ) { line in
             (parser.events(fromLine: line), nil, false)
@@ -89,6 +107,7 @@ struct CLIProcessStreamRunner: Sendable {
         model: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         var parser = GenericCLIJSONOrTextParser()
@@ -105,6 +124,7 @@ struct CLIProcessStreamRunner: Sendable {
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .forge
             ),
+            grantStillActive: grantStillActive,
             continuation: continuation
         ) { line in
             (parser.events(fromLine: line), nil, false)
@@ -116,6 +136,8 @@ struct CLIProcessStreamRunner: Sendable {
         prompt: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         var parser = GenericCLIJSONOrTextParser()
@@ -125,12 +147,14 @@ struct CLIProcessStreamRunner: Sendable {
                 arguments: CLIArgumentBuilder.antigravityArguments(
                     prompt: prompt,
                     workspaceDirectory: workspaceDirectory,
-                    capabilityGrant: capabilityGrant
+                    capabilityGrant: capabilityGrant,
+                    hasFreshLocalAuthProof: hasFreshLocalAuthProof
                 ),
                 environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .antigravity
             ),
+            grantStillActive: grantStillActive,
             continuation: continuation
         ) { line in
             (parser.events(fromLine: line), nil, false)
@@ -142,6 +166,8 @@ struct CLIProcessStreamRunner: Sendable {
         prompt: String,
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
+        hasFreshLocalAuthProof: Bool = false,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         var parser = GenericCLIJSONOrTextParser()
@@ -151,12 +177,14 @@ struct CLIProcessStreamRunner: Sendable {
                 arguments: CLIArgumentBuilder.cursorAgentArguments(
                     prompt: prompt,
                     workspaceDirectory: workspaceDirectory,
-                    capabilityGrant: capabilityGrant
+                    capabilityGrant: capabilityGrant,
+                    hasFreshLocalAuthProof: hasFreshLocalAuthProof
                 ),
                 environment: CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable),
                 workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
                 cliType: .cursorAgent
             ),
+            grantStillActive: grantStillActive,
             continuation: continuation
         ) { line in
             (parser.events(fromLine: line), nil, false)
@@ -165,6 +193,7 @@ struct CLIProcessStreamRunner: Sendable {
 
     private func runProcess(
         invocation: CLIProcessInvocation,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
         parseLine: (String) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?, terminate: Bool)
     ) async {
@@ -195,6 +224,26 @@ struct CLIProcessStreamRunner: Sendable {
             }
         }
 
+        // T-TOOL-03: mid-run grant poll. When this CLI was spawned under a
+        // desktop-control grant, poll its validity and terminate the process the
+        // moment the grant is revoked or expires, rather than letting an in-flight
+        // agent finish executing under capabilities the operator just pulled.
+        let grantPollTask: Task<Void, Never>?
+        if let grantStillActive {
+            grantPollTask = Task.detached(priority: .utility) {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2))
+                    if Task.isCancelled { return }
+                    if await grantStillActive() == false {
+                        await runtime.cancelRunningProcess(token: processToken)
+                        return
+                    }
+                }
+            }
+        } else {
+            grantPollTask = nil
+        }
+
         do {
             try Task.checkCancellation()
             try process.run()
@@ -204,6 +253,7 @@ struct CLIProcessStreamRunner: Sendable {
                 } // cov:ignore -- nonfatal-log
             } // cov:ignore -- nonfatal-log
         } catch {
+            grantPollTask?.cancel()
             await runtime.clearRunningProcess(token: processToken)
             continuation.finish(throwing: error)
             return
@@ -264,6 +314,7 @@ struct CLIProcessStreamRunner: Sendable {
         }
 
         process.waitUntilExit()
+        grantPollTask?.cancel()
         stderrTask.cancel()
         await stderrTask.value
         await runtime.clearRunningProcess(token: processToken)

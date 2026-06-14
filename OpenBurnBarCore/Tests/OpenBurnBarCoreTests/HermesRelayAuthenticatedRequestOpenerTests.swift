@@ -151,12 +151,128 @@ final class HermesRelayAuthenticatedRequestOpenerTests: XCTestCase {
         )
     }
 
+    // MARK: - T-CRY-03: replay high-water-mark survives file deletion
+
+    func testReplayHighWaterMarkSurvivesFileDeletionViaKeychainAnchor() async throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hermes-replay-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let anchor = InMemoryHermesReplayCounterAnchorBacking()
+        let sender = HermesRelayAuthenticatedSender(
+            publicKeyBase64: "pub",
+            deviceID: "phone-1",
+            peerNodeID: "node-1",
+            counter: 7,
+            keyID: "relay-sender-key-1"
+        )
+
+        // 1. Record a fresh request at counter 7 through the file-backed cache.
+        let cache = HermesRelayReplayCache(persistenceURL: fileURL, counterAnchor: anchor)
+        try await cache.recordFresh(
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-7",
+            sender: sender
+        )
+
+        // 2. Simulate an attacker deleting the plaintext JSON high-water-mark file.
+        try FileManager.default.removeItem(at: fileURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+
+        // 3. A fresh cache rebuilt from the (now missing) file but the SAME anchor
+        //    must still refuse a replay of counter 7 — the anchor preserved the mark.
+        let rebuilt = HermesRelayReplayCache(persistenceURL: fileURL, counterAnchor: anchor)
+        await assertReplayRejected {
+            try await rebuilt.recordFresh(
+                uid: "uid-1",
+                connectionID: "connection-1",
+                requestID: "request-7-replay",
+                sender: sender
+            )
+        }
+        // A stale counter (< anchor) is likewise refused.
+        await assertReplayRejected {
+            try await rebuilt.recordFresh(
+                uid: "uid-1",
+                connectionID: "connection-1",
+                requestID: "request-3",
+                sender: HermesRelayAuthenticatedSender(
+                    publicKeyBase64: "pub",
+                    deviceID: "phone-1",
+                    peerNodeID: "node-1",
+                    counter: 3,
+                    keyID: "relay-sender-key-1"
+                )
+            )
+        }
+        // A genuinely newer counter still advances past the anchored mark.
+        try await rebuilt.recordFresh(
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-8",
+            sender: HermesRelayAuthenticatedSender(
+                publicKeyBase64: "pub",
+                deviceID: "phone-1",
+                peerNodeID: "node-1",
+                counter: 8,
+                keyID: "relay-sender-key-1"
+            )
+        )
+    }
+
+    func testReplayCacheWithoutAnchorRegressesAfterFileDeletion() async throws {
+        // Control: without the anchor seam, deleting the file DOES reset the mark —
+        // this is exactly the regression the Keychain anchor closes.
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hermes-replay-noanchor-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let sender = HermesRelayAuthenticatedSender(
+            publicKeyBase64: "pub",
+            deviceID: "phone-1",
+            peerNodeID: "node-1",
+            counter: 7,
+            keyID: "relay-sender-key-1"
+        )
+        let cache = HermesRelayReplayCache(persistenceURL: fileURL, counterAnchor: nil)
+        try await cache.recordFresh(
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-7",
+            sender: sender
+        )
+        try FileManager.default.removeItem(at: fileURL)
+
+        let rebuilt = HermesRelayReplayCache(persistenceURL: fileURL, counterAnchor: nil)
+        // Without the anchor the replayed counter is (wrongly) re-admitted.
+        try await rebuilt.recordFresh(
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-7-replay",
+            sender: sender
+        )
+    }
+
+    private func assertReplayRejected(
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ body: () async throws -> Void
+    ) async {
+        do {
+            try await body()
+            XCTFail("Expected replay to be rejected.", file: file, line: line)
+        } catch HermesRelayAuthenticatedRequestError.rejected(let reason) {
+            XCTAssertEqual(reason, .senderReplay, file: file, line: line)
+        } catch {
+            XCTFail("Expected senderReplay rejection, got \(error)", file: file, line: line)
+        }
+    }
+
     private func makeOpener(
         pinnedSenderPublicKey: String,
         signalVerified: Bool = true
     ) -> HermesRelayAuthenticatedRequestOpener {
         HermesRelayAuthenticatedRequestOpener(
-            replayCache: HermesRelayReplayCache(),
+            replayCache: HermesRelayReplayCache(counterAnchor: InMemoryHermesReplayCounterAnchorBacking()),
             trustResolver: StaticRelaySenderTrustResolver(
                 pinnedPublicKey: pinnedSenderPublicKey,
                 signalVerified: signalVerified

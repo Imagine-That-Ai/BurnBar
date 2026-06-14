@@ -377,8 +377,18 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
             // Registration may already exist; ignore failed-precondition for trusted devices.
         }
         if let keypair {
-            try? await db.collection("users").document(uid)
+            let escrowRef = db.collection("users").document(uid)
                 .collection("escrow_devices").document(deviceId)
+            let escrowSnapshot = try? await escrowRef.getDocument()
+            let existing = escrowSnapshot?.data()
+            let storedFingerprint = existing?["publicKeyFingerprint"] as? String
+            let storedKeyVersion = existing?["keyVersion"] as? Int
+            let localIdentityMatchesStored = storedFingerprint == keypair.publicKeyFingerprint
+                && storedKeyVersion == keypair.keyVersion
+            let shouldPublishEscrowIdentity = escrowSnapshot?.exists == false || localIdentityMatchesStored
+            guard shouldPublishEscrowIdentity else { return }
+
+            try? await escrowRef
                 .setData([
                     "publicKeyFingerprint": keypair.publicKeyFingerprint,
                     "keyVersion": keypair.keyVersion,

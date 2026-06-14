@@ -6,6 +6,10 @@ import SwiftUI
 struct IncomingCallSheet: View {
     let pairedDeviceName: String
     let initial: String
+    /// Profile photo of the account requesting access. When present it fills
+    /// the avatar circle; while it loads (or if it fails / is `nil`) the view
+    /// falls back to the monogram `initial`.
+    let avatarURL: URL?
     let subtitle: String
     let actionNoun: String
     let secondaryAcceptTitle: String?
@@ -17,6 +21,7 @@ struct IncomingCallSheet: View {
     init(
         pairedDeviceName: String,
         initial: String,
+        avatarURL: URL? = nil,
         subtitle: String = "Pair-debug call",
         actionNoun: String = "call",
         secondaryAcceptTitle: String? = nil,
@@ -27,6 +32,7 @@ struct IncomingCallSheet: View {
     ) {
         self.pairedDeviceName = pairedDeviceName
         self.initial = initial
+        self.avatarURL = avatarURL
         self.subtitle = subtitle
         self.actionNoun = actionNoun
         self.secondaryAcceptTitle = secondaryAcceptTitle
@@ -43,6 +49,7 @@ struct IncomingCallSheet: View {
         VStack(spacing: 24) {
             VStack(spacing: 12) {
                 ZStack {
+                    avatar
                     Circle()
                         .strokeBorder(borderGradient, lineWidth: 1.5)
                         .frame(width: 96, height: 96)
@@ -53,10 +60,6 @@ struct IncomingCallSheet: View {
                                 : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
                             value: pulseTrigger
                         )
-                    Text(initial)
-                        .font(.system(size: 36, weight: .semibold))
-                        .foregroundStyle(borderGradient)
-                        .accessibilityHidden(true)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Incoming \(actionNoun) from \(pairedDeviceName)")
@@ -123,6 +126,37 @@ struct IncomingCallSheet: View {
         .onAppear {
             if !reduceMotion { pulseTrigger.toggle() }
         }
+    }
+
+    /// The 96pt circular avatar: the requester's profile photo when available,
+    /// otherwise (and while it loads or fails) the monogram fallback.
+    @ViewBuilder
+    private var avatar: some View {
+        if let avatarURL {
+            AsyncImage(url: avatarURL) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    monogram
+                }
+            }
+            .frame(width: 96, height: 96)
+            .clipShape(Circle())
+        } else {
+            monogram
+        }
+    }
+
+    private var monogram: some View {
+        Text(initial)
+            .font(.system(size: 36, weight: .semibold))
+            .foregroundStyle(borderGradient)
+            .frame(width: 96, height: 96)
+            .background(Circle().fill(borderGradient.opacity(0.12)))
+            .accessibilityHidden(true)
     }
 
     private var borderGradient: LinearGradient {

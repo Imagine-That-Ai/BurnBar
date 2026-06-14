@@ -104,7 +104,14 @@ struct OpenBurnBarMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            AuthGateView()
+            // T-IOS-02 — app-wide LocalAuthentication (Face ID / passcode) gate.
+            // Wraps the whole tree so chat + vault data are never revealed at
+            // launch or after backgrounding until the device owner re-auths.
+            // Default-on with a graceful fallback (fails open when no passcode
+            // is enrolled so the user is never locked out of their own app).
+            AppLockGate {
+                AuthGateView()
+            }
                 .environment(\.appServices, appServices)
                 .tint(resolvedTint)
                 .preferredColorScheme(appearanceOverride)
@@ -120,6 +127,13 @@ struct OpenBurnBarMobileApp: App {
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }
+                #if DEBUG
+                .task {
+                    if let url = DebugLaunchURLArguments.consumeBurnBarURL() {
+                        handleDeepLink(url)
+                    }
+                }
+                #endif
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     agentNotifications.updateLifecycle("active")
                     // Sync any snippets the user added straight from the keyboard.
@@ -146,9 +160,11 @@ struct OpenBurnBarMobileApp: App {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let threadParam = components?.queryItems?.first(where: { $0.name == "threadId" })?.value
             ?? components?.queryItems?.first(where: { $0.name == "threadID" })?.value
-        let threadTrimmed = threadParam?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nilIfEmpty()
+        // T-IOS-07 — sanitize threadId before it reaches the Firestore-scoped
+        // chat view. A malformed / path-traversing / overlong value is rejected
+        // (treated as nil) so the deep link opens the chat tab unscoped rather
+        // than constructing an invalid or attacker-chosen Firestore path.
+        let threadTrimmed = DeepLinkThreadID.sanitize(threadParam)
 
         switch url.host {
         case "dashboard":
@@ -157,6 +173,28 @@ struct OpenBurnBarMobileApp: App {
             NotificationCenter.default.post(name: .init("ShowSettings"), object: nil)
         case "agent-watch", "agent-live", "computer-use":
             NotificationCenter.default.post(name: .init("ShowAgentWatch"), object: nil)
+        #if DEBUG
+        case "mercury":
+            let connectionID = components?.queryItems?.first(where: { $0.name == "connectionID" })?.value
+                ?? components?.queryItems?.first(where: { $0.name == "connectionId" })?.value
+            let trimmedConnectionID = connectionID?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty()
+            NSLog("OpenBurnBarMercury deep_link_mercury connectionID=\(trimmedConnectionID ?? "nil")")
+            var userInfo: [AnyHashable: Any] = [
+                "runtime": AssistantRuntimeID.hermes.rawValue,
+                "openMercury": true
+            ]
+            if let trimmedConnectionID {
+                userInfo["connectionID"] = trimmedConnectionID
+            }
+            NotificationCenter.default.post(
+                name: .init("ShowAssistantsTab"),
+                object: nil,
+                userInfo: userInfo
+            )
+            HermesSquarePendingThreadRoute.openMercuryWithRetries(connectionID: trimmedConnectionID)
+        #endif
         case "chat", "hermes":
             // Public URL handlers navigate only. Prompt-bearing deep links are
             // never auto-submitted; in-process AppIntents may still stash prompts.
@@ -211,3 +249,53 @@ struct OpenBurnBarMobileApp: App {
 private extension String {
     func nilIfEmpty() -> String? { isEmpty ? nil : self }
 }
+
+/// T-IOS-07 — validates a `threadId` deep-link parameter before it is used to
+/// scope a Firestore query / document path. Mirrors Firestore's document-ID
+/// rules and rejects anything that could traverse paths or smuggle an
+/// unexpected segment. Pure + `static` so the decision is unit-testable.
+enum DeepLinkThreadID {
+    /// Firestore caps document IDs at 1500 bytes; we use a conservative,
+    /// human-plausible thread-ID ceiling well under that.
+    static let maxLength = 256
+
+    /// Returns a sanitized thread ID, or `nil` when the input is missing,
+    /// empty, or malformed. Fails closed: an unrecognized value yields `nil`
+    /// (open the chat tab unscoped) rather than a guessed/attacker path.
+    static func sanitize(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        guard trimmed.utf8.count <= maxLength else { return nil }
+        // No path separators (no traversal / extra segments).
+        guard !trimmed.contains("/") else { return nil }
+        // Reject relative-path tokens.
+        guard trimmed != "." && trimmed != ".." else { return nil }
+        // Reject Firestore-reserved `__name__`-style IDs.
+        guard !(trimmed.hasPrefix("__") && trimmed.hasSuffix("__")) else { return nil }
+        // Allowlist: identifiers, dashes, dots — the shapes real thread IDs use.
+        let allowed = CharacterSet(charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.")
+        guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return trimmed
+    }
+}
+
+#if DEBUG
+@MainActor
+private enum DebugLaunchURLArguments {
+    private static var didConsume = false
+
+    static func consumeBurnBarURL() -> URL? {
+        guard !didConsume else { return nil }
+        didConsume = true
+
+        return ProcessInfo.processInfo.arguments
+            .dropFirst()
+            .lazy
+            .compactMap(URL.init(string:))
+            .first { $0.scheme?.lowercased() == "burnbar" }
+    }
+}
+#endif

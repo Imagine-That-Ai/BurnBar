@@ -85,6 +85,7 @@ internal fun ScreenShareViewerActivity.sendSavedRemoteUnlockPassword(
             authenticateForRemoteUnlock(
                 title = "Unlock Mac",
                 subtitle = "Confirm this Android before one-tap Remote Unlock submits the saved credential.",
+                credentialStore = store,
             )
             val credential =
                 store.load(storeKey)
@@ -231,6 +232,7 @@ internal fun ScreenShareViewerActivity.remoteUnlockCredentialStoreKey(state: Her
 internal suspend fun ScreenShareViewerActivity.authenticateForRemoteUnlock(
     title: String = "Send Mac password",
     subtitle: String = "Confirm this Android before Remote Unlock submits the credential.",
+    credentialStore: RemoteUnlockSavedCredentialStore? = null,
 ) {
     withContext(Dispatchers.Main) {
         val authenticators =
@@ -247,6 +249,9 @@ internal suspend fun ScreenShareViewerActivity.authenticateForRemoteUnlock(
                     ContextCompat.getMainExecutor(this@authenticateForRemoteUnlock),
                     object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            // T-AND-05: mint the single-use ticket that gates the saved-credential
+                            // store's load() so the read is code-level coupled to THIS success.
+                            credentialStore?.recordAuthenticationSuccess()
                             if (continuation.isActive) continuation.resume(Unit)
                         }
 

@@ -19,6 +19,7 @@ final class PiAgentCloudRelayHostService {
     private let settingsManager: SettingsManager
     private let urlSession: URLSession
     private let relayKeyStore: PiAgentRelayKeyStore
+    private let senderAuthorizer: PiAgentRelaySenderAuthorizing
     private var heartbeatTask: Task<Void, Never>?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
@@ -30,13 +31,15 @@ final class PiAgentCloudRelayHostService {
         accountManager: AccountManager = .shared,
         settingsManager: SettingsManager = .shared,
         urlSession: URLSession = .shared,
-        relayKeyStore: PiAgentRelayKeyStore = PiAgentRelayKeyStore()
+        relayKeyStore: PiAgentRelayKeyStore = PiAgentRelayKeyStore(),
+        senderAuthorizer: PiAgentRelaySenderAuthorizing = PiAgentRelaySenderAuthorizers.shared
     ) {
         self.db = db
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.urlSession = urlSession
         self.relayKeyStore = relayKeyStore
+        self.senderAuthorizer = senderAuthorizer
     }
 
     var connectionID: String {
@@ -307,7 +310,7 @@ final class PiAgentCloudRelayHostService {
                 ], merge: true)
                 return
             }
-            let prepared = try decryptRelayRequest(data, uid: uid, requestID: requestID)
+            let prepared = try await decryptRelayRequest(data, uid: uid, requestID: requestID)
             context = prepared.context
             switch operation {
             case .chatCompletions:
@@ -324,7 +327,7 @@ final class PiAgentCloudRelayHostService {
         _ data: [String: Any],
         uid: String,
         requestID: String
-    ) throws -> (data: [String: Any], context: PiAgentRelayRequestContext) {
+    ) async throws -> (data: [String: Any], context: PiAgentRelayRequestContext) {
         guard uid.isEmpty == false,
               data["relayEncryption"] as? String == PiAgentRelayCrypto.algorithm,
               let wrappedKey = data["wrappedKey"] as? String,
@@ -332,6 +335,32 @@ final class PiAgentCloudRelayHostService {
             throw PiAgentRelayHostError.encryptionRequired
         }
         let connectionID = (data["connectionId"] as? String) ?? self.connectionID
+
+        // T-CRY-02 — sender authentication + replay defense. Before T-CRY-02 the
+        // Pi relay open path performed an UNAUTHENTICATED ECIES unwrap: the
+        // recipient public key is published in `pi_agent_connections`, so ANY
+        // writer of `users/{uid}/pi_agent_relay_requests/*` could wrap a key and
+        // mint a ciphertext that opens. We now require the same pinned-sender +
+        // monotonic-counter contract the main Hermes relay enforces via
+        // `openKeyV3`. The lane carries no published v3 sender today, so the
+        // default authorizer fails closed (the lane is effectively retired until
+        // a trusted Pi sender is published), but a real sender will authenticate
+        // through the injected resolver + shared replay cache rather than this
+        // path ever admitting an anonymous ciphertext again.
+        let sender = PiAgentRelaySender(
+            publicKeyBase64: (data["senderPublicKey"] as? String) ?? "",
+            deviceID: (data["senderDeviceId"] as? String) ?? "",
+            peerNodeID: (data["senderPeerNodeId"] as? String) ?? "",
+            counter: Self.int64Value(data["senderCounter"]) ?? -1,
+            keyID: (data["keyId"] as? String) ?? ""
+        )
+        try await senderAuthorizer.authorize(
+            sender: sender,
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID
+        )
+
         let privateKey = try relayKeyStore.privateKey()
         let keyData = try PiAgentRelayCrypto.unwrapSymmetricKey(
             wrappedKey,
@@ -638,6 +667,13 @@ final class PiAgentCloudRelayHostService {
         return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-")).isEmpty ? "mac" : collapsed
     }
 
+    static func int64Value(_ value: Any?) -> Int64? {
+        if let int64 = value as? Int64 { return int64 }
+        if let int = value as? Int { return Int64(int) }
+        if let number = value as? NSNumber { return number.int64Value }
+        return nil
+    }
+
     private static let iso8601: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -674,6 +710,176 @@ private enum PiAgentRelayHostError: LocalizedError {
             return "Pi Agent relay requests must be encrypted."
         }
     }
+}
+
+// MARK: - T-CRY-02: Pi relay sender authentication + replay defense
+
+/// An authenticated sender claim attached to a `pi_agent_relay_requests`
+/// document. Mirrors `HermesRelayAuthenticatedSender` so the Pi lane inherits
+/// the same pinned-key + monotonic-counter contract the main Hermes relay
+/// enforces via `openKeyV3`.
+struct PiAgentRelaySender: Sendable, Equatable {
+    var publicKeyBase64: String
+    var deviceID: String
+    var peerNodeID: String
+    var counter: Int64
+    var keyID: String
+}
+
+enum PiAgentRelaySenderAuthorizationError: LocalizedError, Equatable {
+    /// The request carried no (or incomplete) authenticated-sender fields.
+    case senderAuthRequired
+    /// The sender key is not pinned/trusted for this user + connection.
+    case senderKeyUntrusted
+    /// The `(counter, requestID)` pair was already seen — a replay.
+    case senderReplay
+
+    var errorDescription: String? {
+        switch self {
+        case .senderAuthRequired:
+            return "Pi Agent relay requests must be sender-authenticated."
+        case .senderKeyUntrusted:
+            return "Pi Agent relay sender key is not trusted."
+        case .senderReplay:
+            return "Pi Agent relay request was already seen (replay rejected)."
+        }
+    }
+}
+
+/// Resolves the pinned/trusted relay-sender public key for a Pi relay request.
+/// A real implementation reads the user's published Pi relay sender-key record
+/// (the analogue of `relay_sender_keys` for Hermes); the default ships denying,
+/// because no trusted Pi sender is published today.
+protocol PiAgentRelaySenderPinResolving: Sendable {
+    func pinnedSenderPublicKeyBase64(
+        uid: String,
+        connectionID: String,
+        sender: PiAgentRelaySender
+    ) async throws -> String
+}
+
+/// Authorizes a Pi relay sender: requires the authenticated-sender fields, pins
+/// the sender key, and records the monotonic counter / request id in a replay
+/// cache. Fails closed.
+protocol PiAgentRelaySenderAuthorizing: Sendable {
+    func authorize(
+        sender: PiAgentRelaySender,
+        uid: String,
+        connectionID: String,
+        requestID: String
+    ) async throws
+}
+
+/// Production authorizer. Combines a pinned-sender resolver with the shared
+/// `HermesRelayReplayCache` (the same deletion-resistant, Keychain-anchored
+/// monotonic-counter store the Hermes lane uses), so a Pi sender — once one is
+/// published — authenticates exactly like a Hermes sender and a replayed
+/// `(counter, requestID)` is rejected. The pure `requireAuthenticatedFields`
+/// decision is unit-testable without Firestore or a Keychain.
+struct PiAgentRelaySenderAuthorizer: PiAgentRelaySenderAuthorizing {
+    let pinResolver: any PiAgentRelaySenderPinResolving
+    let replayCache: HermesRelayReplayCache
+
+    /// Pure precondition check: every authenticated-sender field must be present
+    /// and the counter non-negative, otherwise the request is anonymous and is
+    /// rejected. Static + pure so the fail-closed decision is testable.
+    static func requireAuthenticatedFields(_ sender: PiAgentRelaySender) throws {
+        let trimmedKey = sender.publicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDevice = sender.deviceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPeer = sender.peerNodeID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedKeyID = sender.keyID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty,
+              !trimmedDevice.isEmpty,
+              !trimmedPeer.isEmpty,
+              !trimmedKeyID.isEmpty,
+              sender.counter >= 0,
+              Data(base64Encoded: trimmedKey) != nil else {
+            throw PiAgentRelaySenderAuthorizationError.senderAuthRequired
+        }
+    }
+
+    func authorize(
+        sender: PiAgentRelaySender,
+        uid: String,
+        connectionID: String,
+        requestID: String
+    ) async throws {
+        try Self.requireAuthenticatedFields(sender)
+
+        let pinned: String
+        do {
+            pinned = try await pinResolver.pinnedSenderPublicKeyBase64(
+                uid: uid,
+                connectionID: connectionID,
+                sender: sender
+            )
+        } catch let error as PiAgentRelaySenderAuthorizationError {
+            throw error
+        } catch {
+            throw PiAgentRelaySenderAuthorizationError.senderKeyUntrusted
+        }
+        guard Self.samePublicKey(sender.publicKeyBase64, pinned) else {
+            throw PiAgentRelaySenderAuthorizationError.senderKeyUntrusted
+        }
+
+        // Reuse the Hermes replay cache (Keychain-anchored monotonic counter +
+        // request-id de-dup). A replayed request throws here.
+        do {
+            try await replayCache.recordFresh(
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                sender: HermesRelayAuthenticatedSender(
+                    publicKeyBase64: sender.publicKeyBase64,
+                    deviceID: sender.deviceID,
+                    peerNodeID: sender.peerNodeID,
+                    counter: sender.counter,
+                    keyID: sender.keyID
+                )
+            )
+        } catch {
+            throw PiAgentRelaySenderAuthorizationError.senderReplay
+        }
+    }
+
+    private static func samePublicKey(_ lhs: String, _ rhs: String) -> Bool {
+        guard let lhsData = Data(base64Encoded: lhs.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let rhsData = Data(base64Encoded: rhs.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return false
+        }
+        return lhsData == rhsData
+    }
+}
+
+/// Default deny-all pin resolver. No trusted Pi relay sender is published today,
+/// so every sender fails the pin check — this retires the previously
+/// unauthenticated open path (T-CRY-02) until a real Pi sender-key record and
+/// resolver are wired, at which point this is swapped for a Firestore-backed
+/// resolver mirroring `FirestoreHermesRelaySenderTrustResolver`.
+struct DenyingPiAgentRelaySenderPinResolver: PiAgentRelaySenderPinResolving {
+    func pinnedSenderPublicKeyBase64(
+        uid: String,
+        connectionID: String,
+        sender: PiAgentRelaySender
+    ) async throws -> String {
+        throw PiAgentRelaySenderAuthorizationError.senderKeyUntrusted
+    }
+}
+
+enum PiAgentRelaySenderAuthorizers {
+    static let sharedReplayCache = HermesRelayReplayCache(
+        persistenceURL: FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("OpenBurnBar", isDirectory: true)
+            .appendingPathComponent("PiAgentRelay", isDirectory: true)
+            .appendingPathComponent("authenticated-request-replay-cache.json")
+    )
+
+    static let shared: PiAgentRelaySenderAuthorizing = PiAgentRelaySenderAuthorizer(
+        pinResolver: DenyingPiAgentRelaySenderPinResolver(),
+        replayCache: sharedReplayCache
+    )
 }
 
 private struct PiAgentRelayRequestContext {

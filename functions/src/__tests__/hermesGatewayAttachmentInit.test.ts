@@ -218,7 +218,13 @@ interface TestHttpResponse {
 }
 
 function makeReq(path: string, body: Record<string, unknown>) {
-  const headers: Record<string, string> = { authorization: `Bearer ${TOKEN}`, ...popHeaders("POST", path, body) };
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${TOKEN}`,
+    // T-GW-02: PoP-signed write routes now require an application/json content
+    // type. A real signing client always sets it; mirror that here.
+    "content-type": "application/json",
+    ...popHeaders("POST", path, body),
+  };
   return {
     method: "POST",
     path,

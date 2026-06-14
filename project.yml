@@ -172,6 +172,8 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore
+        product: OpenBurnBarIrohFFI
+      - package: OpenBurnBarCore
         product: OpenBurnBarMedia
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
@@ -586,6 +588,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohFFI
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
       - package: OpenBurnBarCore

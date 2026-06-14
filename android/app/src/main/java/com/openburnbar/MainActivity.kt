@@ -79,11 +79,30 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        // T-AND-03: this Activity is exported + BROWSABLE, so any app or web link can hand
+        // it a `burnbar://...` VIEW intent. Validate/whitelist the host + dynamic segments
+        // before the nav host consumes the deep link; drop a hostile/malformed link rather
+        // than route it into a screen. Non-`burnbar` data and in-app (no data) intents pass
+        // through unchanged.
+        if (intent != null && Intent.ACTION_VIEW == intent.action) {
+            val data = intent.data
+            if (data != null && !isAllowedBurnBarDeepLink(data)) {
+                intent.data = null
+                return
+            }
+        }
         MainActivityIntentActions.stashPendingPromptFromIntent(intent)
         MainActivityE2EMissionActions.launchFromIntent(this, intent)
         MainActivityE2EHermesActions.launchFromIntent(this, intent)
         MainActivityE2EComputerUseActions.launchFromIntent(this, intent)
     }
+
+    private fun isAllowedBurnBarDeepLink(data: android.net.Uri): Boolean =
+        BurnBarDeepLinkValidator.isAllowed(
+            scheme = data.scheme,
+            host = data.host,
+            pathSegments = data.pathSegments.orEmpty(),
+        )
 
     companion object {
         const val EXTRA_ASSISTANT = "burnbar.assistant"

@@ -145,6 +145,7 @@ export {
   publishIrohPairingRecord,
   revokeIrohPairingRecord,
   publishPhoneControlAuthority,
+  publishIrohPeerNodeId,
   publishRelaySenderKey,
   publishAgentGrantAuthority,
   queueAgentCapabilityGrantRequest,

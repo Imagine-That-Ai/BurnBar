@@ -335,6 +335,14 @@ function requireFreshPublicationMillis(raw: unknown, name: string): number {
   return value;
 }
 
+function requireIrohNodeId(raw: unknown, name: string): string {
+  const value = boundedTrimmedString(raw, name, 128, true);
+  if (!/^(?:[A-Za-z0-9]{52}|[A-Fa-f0-9]{64})$/u.test(value)) {
+    throw new HttpsError("invalid-argument", `${name} must be a valid iroh NodeId.`);
+  }
+  return value.toLowerCase();
+}
+
 // F2 — hardware-bind the phone-control signing key. `ed25519` is the legacy
 // software CryptoKit key; `se-p256` is a non-exportable NIST P-256 key held in
 // the iOS Secure Enclave / Android StrongBox Keystore. An absent wire value is
@@ -1064,6 +1072,7 @@ export const bindAppCheckAttestation = onCall(
   {
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
+    invoker: "public",
     maxInstances: 100,
   },
   wrapCallableHandler("bindAppCheckAttestation", async (request: CallableRequest) => {
@@ -1875,6 +1884,65 @@ export const publishPhoneControlAuthority = onCallProduction(
       device_id: deviceId,
     });
     return { ok: true, connectionId, peerNodeId };
+  },
+);
+
+export const publishIrohPeerNodeId = onCallProduction(
+  "publishIrohPeerNodeId",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      deviceId?: unknown;
+      connectionId?: unknown;
+      irohPeerNodeId?: unknown;
+      publishedAtMillis?: unknown;
+      protocolVersion?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh peer node.");
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+
+    const deviceId = boundedFirestoreDocumentId(request.data.deviceId, "deviceId", 160);
+    await requireTrustedEscrowDevice(uid, deviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
+    const connectionId = boundedFirestoreDocumentId(request.data.connectionId, "connectionId", 160);
+    const irohPeerNodeId = requireIrohNodeId(request.data.irohPeerNodeId, "irohPeerNodeId");
+    const publishedAtMillis = requireFreshPublicationMillis(request.data.publishedAtMillis, "publishedAtMillis");
+    const protocolVersion = boundedInteger(request.data.protocolVersion ?? 1, "protocolVersion", 1, 100, true) ?? 1;
+
+    const pairing = await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).get();
+    if (!pairing.exists) {
+      throw new HttpsError("failed-precondition", "Iroh peer node binding must reference an existing iroh pairing.");
+    }
+
+    await db.doc(`users/${uid}/iroh_pairing/${connectionId}/iroh_controllers/${irohPeerNodeId}`).set(
+      {
+        id: irohPeerNodeId,
+        connectionId,
+        irohPeerNodeId,
+        deviceId,
+        publishedAtMillis,
+        protocolVersion,
+        publishedByDeviceId: deviceId,
+        schemaVersion: 1,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    logInfo({
+      event: "callable_info",
+      message: "iroh_peer_node_published",
+      connection_id: connectionId,
+      iroh_peer_node_id: irohPeerNodeId,
+      device_id: deviceId,
+    });
+    return { ok: true, connectionId, irohPeerNodeId };
   },
 );
 

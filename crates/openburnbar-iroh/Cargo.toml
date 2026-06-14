@@ -17,6 +17,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # Iroh is the QUIC + NAT-traversal stack. Pinning an exact minor for now so
 # the xcframework build is bit-stable; planned upgrade cycles will bump this
 # deliberately, validated against `OpenBurnBarIroh` Swift integration tests.
+#
+# T-TRN-07 — ACCEPTED RISK (release-candidate pin). iroh is pinned to a
+# release candidate (`=1.0.0-rc.0`) rather than a stable `1.x` line. We
+# reviewed bumping to a stable release and it is not currently possible:
+#   * No stable iroh 1.x exists yet — only `1.0.0-rc.{0,1}` are published.
+#   * `iroh-services` (below) is published ONLY at `=1.0.0-rc.0` and itself
+#     hard-pins `iroh = "=1.0.0-rc.0"`, so even bumping iroh to `rc.1` breaks
+#     resolution. `iroh-blobs 0.101.0` is wired to the same rc line.
+# Downgrading to an older stable `0.x` iroh would churn the entire lockfile
+# and split the iroh major line across iroh / iroh-blobs / iroh-services,
+# which (per the iroh-blobs note below) produces duplicate endpoint types the
+# UniFFI bridge cannot safely mix. We therefore ACCEPT the rc pin for now and
+# track the stable-1.x upgrade as a deliberate, integration-tested cutover.
+# Re-evaluate this pin whenever `iroh-services` ships a stable release. See
+# `docs/HERMES_MEDIA_TRANSPORT.md` and `security/threat-model` (T-TRN-07).
 iroh = "=1.0.0-rc.0"
 iroh-dns = "=1.0.0-rc.0"
 

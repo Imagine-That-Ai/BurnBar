@@ -81,6 +81,36 @@ public struct CloudVaultAADContext: Codable, Hashable, Sendable {
     }
 }
 
+/// Post-backfill cutover gate for the weaker v1 (global) AAD path.
+///
+/// **Why it exists.** v2 envelopes bind the ciphertext to the full
+/// `uid|collection|docID|field|schemaVersion|purpose` context
+/// (``CloudVaultAADContext/stringValue``). The legacy v1 path
+/// (``CloudVaultAADContext/legacyV1StringValue``) only binds
+/// `uid|collection|docID|field` — weaker domain separation that a backend able to
+/// move sealed blobs between schema-equivalent slots could exploit. Reads still
+/// accept v1 by default so a pre-backfill migration does not regress.
+///
+/// **Cutover.** Once the backfill has re-sealed every at-rest record to v2, an
+/// operator enables this flag and ``CloudVaultCrypto/aadData(matching:context:)``
+/// **refuses** any envelope still carrying the v1 AAD — removing the weaker path
+/// for good. Default **off** (accept v1) so it cannot brick pre-backfill reads; a
+/// `UserDefaults` override flips it without a code change, exactly like
+/// ``ControllerKeyPinEnforcementFlag``.
+public enum CloudVaultV1AADRejectionFlag {
+    public static let userDefaultsKey = "openburnbar.cloudVault.rejectLegacyV1AAD.enabled"
+
+    /// Off by default: reads still accept v1 until the backfill completes.
+    public nonisolated(unsafe) static var defaultEnabled = false
+
+    public static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
+        if defaults.object(forKey: userDefaultsKey) != nil {
+            return defaults.bool(forKey: userDefaultsKey)
+        }
+        return defaultEnabled
+    }
+}
+
 public struct CloudVaultSealedText: Codable, Hashable, Sendable {
     public let schemaVersion: Int?
     public let algorithm: String
@@ -1101,14 +1131,35 @@ public enum CloudVaultCrypto {
         return Data("\(sealedPayloadAADContext)|\(envelope.algorithm)|keyVersion=\(envelope.keyVersion)|vaultKeyID=\(envelope.vaultKeyID)".utf8)
     }
 
-    private static func aadData(matching envelopeAAD: String?, context: CloudVaultAADContext) throws -> Data {
+    private static func aadData(
+        matching envelopeAAD: String?,
+        context: CloudVaultAADContext,
+        rejectLegacyV1: Bool = CloudVaultV1AADRejectionFlag.isEnabled()
+    ) throws -> Data {
         if envelopeAAD == context.stringValue {
             return context.data
         }
         if envelopeAAD == context.legacyV1StringValue {
+            // Post-backfill cutover: once enabled, the weaker v1 (global) AAD
+            // domain-separation path is removed and any envelope still carrying it
+            // is refused (fail closed) rather than silently downgraded.
+            if rejectLegacyV1 {
+                throw CloudVaultCryptoError.invalidEnvelope
+            }
             return context.legacyV1Data
         }
         throw CloudVaultCryptoError.invalidEnvelope
+    }
+
+    /// Test seam over ``aadData(matching:context:rejectLegacyV1:)`` so the v1
+    /// accept/reject cutover is verifiable without mutating process-wide
+    /// `UserDefaults`. Never called from production paths.
+    internal static func resolveAADForTesting(
+        envelopeAAD: String?,
+        context: CloudVaultAADContext,
+        rejectLegacyV1: Bool
+    ) throws -> Data {
+        try aadData(matching: envelopeAAD, context: context, rejectLegacyV1: rejectLegacyV1)
     }
 
     private static func searchKey(from data: Data) throws -> SymmetricKey {

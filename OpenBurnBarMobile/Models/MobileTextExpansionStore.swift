@@ -44,8 +44,24 @@ final class MobileTextExpansionStore {
     /// already merged each addition into the shared snapshot for instant local use;
     /// this brings them into the app's source of truth and triggers an upload.
     private func ingestInbox() {
+        // T-IOS-06 — authenticate the keyboard → app inbox before trusting it.
+        // An inbox that fails its App-Group-keyed MAC is drained (to clear the
+        // unauthenticated blob) but never merged or auto-synced to the cloud.
+        if let inboxURL = TextExpansionInbox.inboxURL(),
+           FileManager.default.fileExists(atPath: inboxURL.path),
+           TextExpansionInboxIntegrity.isInboxAuthentic(at: inboxURL) == false {
+            _ = TextExpansionInbox.drain()
+            try? FileManager.default.removeItem(at: TextExpansionInboxIntegrity.macURL(for: inboxURL))
+            statusMessage = "Ignored unverified keyboard snippets."
+            return
+        }
+
         let pending = TextExpansionInbox.drain()
         guard pending.isEmpty == false else { return }
+        // The drained payload is authentic; clear the now-stale MAC sidecar.
+        if let inboxURL = TextExpansionInbox.inboxURL() {
+            try? FileManager.default.removeItem(at: TextExpansionInboxIntegrity.macURL(for: inboxURL))
+        }
 
         var byID = Dictionary(snippets.map { ($0.id, $0) }, uniquingKeysWith: { current, _ in current })
         for snippet in pending {
@@ -156,6 +172,8 @@ final class MobileTextExpansionStore {
         }
         do {
             try TextExpansionSnapshotStore.write(TextExpansionSnapshot(snippets: snippets.filter(\.isActive)), to: url)
+            // T-IOS-01 — harden the App Group snapshot file at rest.
+            AppGroupDataProtection.protect(url)
             statusMessage = "Saved"
             // Notify the keyboard extension to reload immediately
             Self.postSnippetUpdateNotification()
@@ -215,7 +233,13 @@ final class MobileTextExpansionStore {
         let existingSnapshot = try? await deviceRef.getDocument()
         let existing = existingSnapshot?.data()
         let existingTrust = existing?["trustState"] as? String
+        let storedFingerprint = existing?["publicKeyFingerprint"] as? String
+        let storedKeyVersion = existing?["keyVersion"] as? Int
+        let localIdentityMatchesStored = storedFingerprint == keypair.publicKeyFingerprint
+            && storedKeyVersion == keypair.keyVersion
+        let shouldPublishEscrowIdentity = existingSnapshot?.exists == false || localIdentityMatchesStored
         let sourceIsTrusted = existingTrust == EscrowDeviceTrustState.trusted.rawValue
+            && localIdentityMatchesStored
 
         try await userRef.collection("devices").document(deviceId).setData([
             "deviceId": deviceId,
@@ -227,21 +251,25 @@ final class MobileTextExpansionStore {
             "deviceId": deviceId,
             "deviceName": deviceName,
             "platform": UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS",
-            "publicKeyFingerprint": keypair.publicKeyFingerprint,
-            "keyVersion": keypair.keyVersion,
             "updatedAt": FieldValue.serverTimestamp()
         ]
+        if shouldPublishEscrowIdentity {
+            devicePayload["publicKeyFingerprint"] = keypair.publicKeyFingerprint
+            devicePayload["keyVersion"] = keypair.keyVersion
+        }
         if existingSnapshot?.exists == false {
             devicePayload["trustState"] = EscrowDeviceTrustState.pending.rawValue
         }
         try await deviceRef.setData(devicePayload, merge: true)
-        try await MobileEscrowPublicKeyPublisher.publishIfNeeded(
-            userRef: userRef,
-            deviceId: deviceId,
-            publicKeyData: keypair.publicKeyData,
-            publicKeyFingerprint: keypair.publicKeyFingerprint,
-            keyVersion: keypair.keyVersion
-        )
+        if shouldPublishEscrowIdentity {
+            try await MobileEscrowPublicKeyPublisher.publishIfNeeded(
+                userRef: userRef,
+                deviceId: deviceId,
+                publicKeyData: keypair.publicKeyData,
+                publicKeyFingerprint: keypair.publicKeyFingerprint,
+                keyVersion: keypair.keyVersion
+            )
+        }
         let signalIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
         try await MobileSignalIdentityPublicKeyPublisher.publishIfNeeded(
             userRef: userRef,

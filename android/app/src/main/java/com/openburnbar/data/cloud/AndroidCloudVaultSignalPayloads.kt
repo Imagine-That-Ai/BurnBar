@@ -125,25 +125,110 @@ object AndroidCloudVaultSignalPayloads {
     }
 
     /**
+     * Explicit per-user enrollment state of the trusted-sender set. Replaces the previous
+     * `trustedSenderPublicKeys.size > 1` readiness heuristic (T-AND-04 / T-CVS-02): a size-based
+     * guess could not tell "every trusted device has enrolled its Signal identity" apart from "a
+     * single peer happened to resolve" or "a transient Firestore read returned a short set", which
+     * on a transient failure left an unknown sender legacy-eligible (a downgrade window). This
+     * marker is computed deterministically from the escrow-device read and fails CLOSED when the
+     * read does not succeed.
+     */
+    enum class SenderSetEnrollment {
+        /** The escrow-device read succeeded and EVERY trusted peer device has published a Signal
+         *  identity that resolved into the set — the set is authoritative, so an unknown sender is
+         *  an attack and must fail closed. */
+        COMPLETE,
+
+        /** The read succeeded but at least one trusted peer device has not yet published its Signal
+         *  identity — a legitimate rollout gap, so an unknown sender stays legacy-eligible. */
+        INCOMPLETE,
+
+        /** The escrow-device read failed / was transient — we cannot prove the set is complete OR
+         *  trust it as incomplete, so callers FAIL CLOSED (treat as complete) rather than open a
+         *  downgrade window on a flaky read. */
+        UNAVAILABLE,
+    }
+
+    /**
+     * Resolved trusted-sender set plus its explicit [enrollment] marker. [senderSetComplete] is the
+     * fail-closed signal passed to [SignalAtRestFallbackPolicy.allowsLegacyAtRestFallback]: `true`
+     * for both COMPLETE (authoritative) and UNAVAILABLE (flaky read → fail closed), `false` only for
+     * a genuine INCOMPLETE rollout gap.
+     */
+    data class TrustedSenderSet(
+        val publicKeys: Map<String, ByteArray>,
+        val enrollment: SenderSetEnrollment,
+    ) {
+        val senderSetComplete: Boolean
+            get() = enrollment != SenderSetEnrollment.INCOMPLETE
+    }
+
+    /**
      * Best-effort PINNED trusted-sender public keys for READ-time sender-auth verification:
      * local identity + every trusted escrow device's published identity. Mirrors iOS
-     * `MobileCloudVaultSignalPayloads.trustedSenderPublicKeys`. Never blocks a read — if the full
-     * set cannot resolve it returns just the local identity, so cross-device envelopes from
-     * unresolved senders fall back to the legacy payload (a readiness gap, classified by
-     * [SignalAtRestFallbackPolicy] with `senderSetComplete = false`). After the readiness gate (all
-     * trusted devices published) this returns the full set, activating cross-device sender-auth.
+     * `MobileCloudVaultSignalPayloads.trustedSenderPublicKeys`. Retained for the seal path and any
+     * caller that only needs the key map; the READER path uses [resolveTrustedSenderSet] so it also
+     * gets the explicit, fail-closed [SenderSetEnrollment] marker instead of a size heuristic.
      */
     suspend fun trustedSenderPublicKeys(
         uid: String,
         firestore: FirebaseFirestore,
         localIdentity: AndroidSignalIdentityKeypair,
-    ): Map<String, ByteArray> {
+    ): Map<String, ByteArray> = resolveTrustedSenderSet(uid, firestore, localIdentity).publicKeys
+
+    /**
+     * Resolve the trusted-sender key map AND an explicit per-user [SenderSetEnrollment] marker.
+     *
+     * The local identity is always pinned. Then the trusted escrow devices are read; for each, its
+     * published Signal identity is resolved. The marker is:
+     *   * UNAVAILABLE — the escrow-device LIST read threw (transient/offline). Fail closed.
+     *   * INCOMPLETE — the list read succeeded but at least one trusted peer device could not be
+     *     resolved into a pinned identity (it has not published yet). Rollout gap → legacy-eligible.
+     *   * COMPLETE — the list read succeeded and every trusted peer device resolved. Authoritative.
+     *
+     * Crucially, a transient failure NO LONGER masquerades as a complete-but-small set (the old
+     * `size > 1` path treated any short result as not-complete → legacy-eligible); it now fails
+     * closed.
+     */
+    suspend fun resolveTrustedSenderSet(
+        uid: String,
+        firestore: FirebaseFirestore,
+        localIdentity: AndroidSignalIdentityKeypair,
+    ): TrustedSenderSet {
         val map = LinkedHashMap<String, ByteArray>()
         map[localIdentity.identityKeyId] = localIdentity.publicKeyData
-        runCatching { atRestRecipients(uid = uid, firestore = firestore, localIdentity = localIdentity) }
-            .getOrNull()
-            ?.forEach { recipient -> map[recipient.recipientIdentityKeyId] = recipient.publicKeyData }
-        return map
+
+        // Read the trusted escrow-device LIST first. A failure here is transient/offline — we cannot
+        // enumerate the peers at all, so completeness is unprovable ⇒ fail closed (UNAVAILABLE).
+        val trustedDevices =
+            runCatching {
+                firestore.collection("users").document(uid)
+                    .collection("escrow_devices").whereEqualTo("trustState", "trusted").get().await()
+            }.getOrElse { return TrustedSenderSet(map.toMap(), SenderSetEnrollment.UNAVAILABLE) }
+
+        // Resolve each trusted peer device's PINNED Signal identity individually. A device that
+        // cannot be resolved (no/invalid published identity yet) is a genuine rollout gap, NOT a
+        // transient failure, so it marks the set INCOMPLETE (legacy-eligible) without failing closed.
+        var allPeersResolved = true
+        for (deviceDoc in trustedDevices.documents) {
+            val verified =
+                runCatching {
+                    AndroidCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
+                        uid = uid,
+                        firestore = firestore,
+                        deviceDocument = deviceDoc,
+                        localIdentity = localIdentity,
+                    )
+                }.getOrElse {
+                    allPeersResolved = false
+                    null
+                } ?: continue
+            if (verified.signalIdentityKeyId == localIdentity.identityKeyId) continue
+            map[verified.signalIdentityKeyId] = verified.signalIdentityPublicKeyData
+        }
+
+        val enrollment = if (allPeersResolved) SenderSetEnrollment.COMPLETE else SenderSetEnrollment.INCOMPLETE
+        return TrustedSenderSet(map.toMap(), enrollment)
     }
 
     /**

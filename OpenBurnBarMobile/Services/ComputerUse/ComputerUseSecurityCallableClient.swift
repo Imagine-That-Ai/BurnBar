@@ -236,6 +236,29 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func publishIrohPeerNodeId(
+        deviceId: String,
+        connectionId: String,
+        irohPeerNodeId: String,
+        publishedAtMillis: Int64,
+        protocolVersion: Int = 1
+    ) async throws {
+        _ = try requireSignedInUser()
+        try await bindAppCheckAttestation()
+        let nonce = try await issueHighRiskActionNonce()
+        let result = try await functions.httpsCallable("publishIrohPeerNodeId").call([
+            "deviceId": deviceId,
+            "connectionId": connectionId,
+            "irohPeerNodeId": irohPeerNodeId,
+            "publishedAtMillis": publishedAtMillis,
+            "protocolVersion": protocolVersion,
+            "nonce": nonce
+        ])
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Iroh peer-node publication failed.")
+        }
+    }
+
     static func publishRelaySenderKey(
         deviceId: String,
         peerNodeId: String,

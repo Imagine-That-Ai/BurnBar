@@ -41,6 +41,27 @@ class AssistantChatHistoryStoreTest {
         assertEquals("t1", local.snapshot.threads.first().id)
     }
 
+    // T-CVS-01 — the per-document "must be Signal" marker lets a reader tell a stripped-envelope
+    // doc apart from a legitimately legacy-only doc and hard-fail-closed on the former.
+    @Test
+    fun `signal-required marker distinguishes stripped envelope from legacy-only`() {
+        // Legacy-only doc: no marker, no envelope -> NOT signal-required, NOT stripped (legacy-eligible).
+        val legacyOnly = mapOf<String, Any?>("sealedPayload" to mapOf("x" to 1))
+        assertFalse(AssistantChatHistoryStore.documentAssertsSignalRequired(legacyOnly))
+        assertFalse(AssistantChatHistoryStore.signalRequiredButEnvelopeStripped(legacyOnly))
+
+        // Properly Signal-sealed doc: marker + envelope -> signal-required, NOT stripped.
+        val sealed = mapOf<String, Any?>("signalRequired" to true, "signalEnvelope" to mapOf("e" to 1))
+        assertTrue(AssistantChatHistoryStore.documentAssertsSignalRequired(sealed))
+        assertFalse(AssistantChatHistoryStore.signalRequiredButEnvelopeStripped(sealed))
+
+        // ATTACK: marker present but the envelope was stripped, leaving only legacy AES-GCM ->
+        // must fail closed instead of silently decoding the unauthenticated legacy payload.
+        val stripped = mapOf<String, Any?>("signalRequired" to true, "sealedPayload" to mapOf("x" to 1))
+        assertTrue(AssistantChatHistoryStore.documentAssertsSignalRequired(stripped))
+        assertTrue(AssistantChatHistoryStore.signalRequiredButEnvelopeStripped(stripped))
+    }
+
     @Test
     fun `threads are filtered by runtime`() = runTest {
         val local = InMemoryLocalStore()

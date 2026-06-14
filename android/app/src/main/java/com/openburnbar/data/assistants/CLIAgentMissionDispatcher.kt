@@ -982,7 +982,12 @@ private fun DocumentSnapshot.openSignalMissionPayload(
     trustedSenderPublicKeys: Map<String, ByteArray>,
 ): AndroidMissionPrivatePayload? {
     if (get("signalEnvelope") == null || uid == null) return null
-    val senderSetComplete = trustedSenderPublicKeys.size > 1
+    // T-AND-04 / T-CVS-02: replace the `trustedSenderPublicKeys.size > 1` readiness heuristic with an
+    // explicit signal — once at-rest Signal sealing is ACTIVE for this domain, an unknown sender is a
+    // downgrade attempt regardless of set size and must fail closed; pre-activation we stay
+    // rollout-lenient (the legacy path still needs the E2EE vault key an attacker lacks).
+    val senderSetComplete =
+        runCatching { AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CLI_DOMAIN) }.getOrDefault(false)
     val result =
         runCatching {
             AndroidCloudVaultSignalPayloads.openSignalPayloadIfPresent(

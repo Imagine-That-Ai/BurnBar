@@ -112,6 +112,14 @@ tools/burnbar-mcp/.venv/
 # Files here stay on disk / in the private mirror but never enter the public tree.
 internal/
 
+# Confidential Cure53 threat-model + remediation package (attack maps, exploit
+# paths, adversarial refutations). Shared with auditors out-of-band only — must
+# NEVER enter the public tree. Same policy as internal/.
+/security/threat-model/
+
+# Local agent run logs.
+/.agent/runs/
+
 # Generated validation logs (keep JSON reports, skip raw test logs)
 .factory/validation/**/user-testing/*.log
 

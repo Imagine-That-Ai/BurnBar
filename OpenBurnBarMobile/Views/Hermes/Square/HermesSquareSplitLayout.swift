@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import OpenBurnBarCore
 import OpenBurnBarMedia
@@ -128,9 +129,13 @@ struct HermesSquareSplitLayout: View {
                 }
             }
             mercuryPeerSource.start()
+            consumePendingMercuryLive()
         }
         .task(id: AssistantPendingThread.shared.hermes) {
             consumePendingHermesThread()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: HermesSquarePendingThreadRoute.mercuryNotificationName)) { notification in
+            openPendingMercuryLive(notification)
         }
         .onDisappear {
             mercuryPeerSource.stop()
@@ -143,6 +148,29 @@ struct HermesSquareSplitLayout: View {
         selectedDetail = .thread(inboxID)
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
             sidebarMode = .history(.hermes)
+        }
+    }
+
+    @MainActor
+    private func consumePendingMercuryLive() {
+        openMercuryLive(connectionID: HermesSquarePendingThreadRoute.consumePendingMercuryConnectionID())
+    }
+
+    @MainActor
+    private func openPendingMercuryLive(_ notification: Notification) {
+        openMercuryLive(connectionID: HermesSquarePendingThreadRoute.mercuryConnectionID(from: notification))
+    }
+
+    @MainActor
+    private func openMercuryLive(connectionID rawConnectionID: String?) {
+        let trimmedConnectionID = rawConnectionID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let connectionID = (!trimmedConnectionID.isEmpty ? trimmedConnectionID : nil)
+            ?? mercuryPeerSource.peer?.connectionID
+            ?? hermesService.suggestedRelayConnection?.id
+            ?? "paired-mac:default"
+        selectedDetail = .mercuryLive(resolvedMercuryConnectionID(for: connectionID))
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            sidebarMode = .square
         }
     }
 
@@ -204,6 +232,9 @@ struct HermesSquareSplitLayout: View {
     private func ensureMercuryLive(connectionID: String) async {
         let resolvedID = resolvedMercuryConnectionID(for: connectionID)
         guard bootingMercuryConnectionID != resolvedID else { return }
+        #if DEBUG
+        NSLog("OpenBurnBarMercury split_ensure_mercury_live_start requestedConnectionID=\(connectionID) resolvedConnectionID=\(resolvedID)")
+        #endif
         bootingMercuryConnectionID = resolvedID
         mercuryBootError = nil
         defer { bootingMercuryConnectionID = nil }
@@ -227,14 +258,23 @@ struct HermesSquareSplitLayout: View {
         }
 
         guard let relay else {
+            #if DEBUG
+            NSLog("OpenBurnBarMercury split_ensure_mercury_live_no_relay requestedConnectionID=\(connectionID) resolvedConnectionID=\(resolvedID)")
+            #endif
             mercuryBootError = "No online Mac relay found. Open BurnBar on the Mac, enable Remote Relay, then refresh."
             return
         }
 
         do {
             try await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: relay.id)
+            #if DEBUG
+            NSLog("OpenBurnBarMercury split_ensure_mercury_live_started connectionID=\(relay.id)")
+            #endif
             mercuryBootError = nil
         } catch {
+            #if DEBUG
+            NSLog("OpenBurnBarMercury split_ensure_mercury_live_failed connectionID=\(relay.id) error=\(error.localizedDescription)")
+            #endif
             mercuryBootError = error.localizedDescription
         }
     }
@@ -1716,6 +1756,10 @@ struct MercuryLiveDetailView: View {
             guard isUnlocked else { return }
             await bootMercuryIfNeeded()
         }
+        .onChange(of: isUnlocked) { _, unlocked in
+            guard unlocked else { return }
+            Task { await bootMercuryIfNeeded() }
+        }
         .onChange(of: isBooting) { _, booting in
             guard isUnlocked, !booting else { return }
             refreshCoordinator()
@@ -1781,7 +1825,23 @@ struct MercuryLiveDetailView: View {
 
     private func bootMercuryIfNeeded(force: Bool = false) async {
         refreshCoordinator()
-        if coordinator == nil || force {
+        let shouldBoot: Bool
+        if force || coordinator == nil {
+            shouldBoot = true
+        } else {
+            switch coordinator?.phase {
+            case .idle, .reconnecting, .stopped, .failed:
+                shouldBoot = true
+            case .dialing, .live:
+                shouldBoot = false
+            case .none:
+                shouldBoot = true
+            }
+        }
+        #if DEBUG
+        NSLog("OpenBurnBarMercury split_boot_mercury_if_needed connectionID=\(connectionID) force=\(force) shouldBoot=\(shouldBoot) phase=\(String(describing: coordinator?.phase))")
+        #endif
+        if shouldBoot {
             await ensureMercuryLive(connectionID)
             refreshCoordinator()
         }

@@ -320,19 +320,22 @@ function runBridge() {
     const p = await ensurePage();
     switch (method) {
       case 'click': {
+        // T-AI-04: attach the live landed URL (finalURL) so the daemon can
+        // re-validate JS-driven navigation a click may have triggered
+        // (anti-rebind / SSRF). A non-navigating click reports the unchanged URL.
         if (params.selector) {
           await p.click(params.selector, { timeout, force: false });
-          return { kind: 'click', selector: params.selector };
+          return { kind: 'click', selector: params.selector, finalURL: p.url() };
         } else if (typeof params.positionX === 'number' && typeof params.positionY === 'number') {
           await p.mouse.click(params.positionX, params.positionY);
-          return { kind: 'click', position: [params.positionX, params.positionY] };
+          return { kind: 'click', position: [params.positionX, params.positionY], finalURL: p.url() };
         } else {
           throw new Error('click requires selector or position');
         }
       }
       case 'fill': {
         await p.fill(params.selector, params.text, { timeout });
-        return { kind: 'fill', selector: params.selector, charCount: (params.text || '').length };
+        return { kind: 'fill', selector: params.selector, charCount: (params.text || '').length, finalURL: p.url() };
       }
       case 'goto': {
         if (await targetBlocked(params.url, { allowData: true })) {
@@ -351,11 +354,12 @@ function runBridge() {
           ? `${params.modifiers.join('+')}+${params.key}`
           : params.key;
         await p.keyboard.press(combo);
-        return { kind: 'key', combo };
+        // T-AI-04: a keypress (e.g. Enter in an address bar / form) can navigate.
+        return { kind: 'key', combo, finalURL: p.url() };
       }
       case 'select': {
         await p.selectOption(params.selector, params.value);
-        return { kind: 'select', selector: params.selector, value: params.value };
+        return { kind: 'select', selector: params.selector, value: params.value, finalURL: p.url() };
       }
       case 'screenshot': {
         const buf = await p.screenshot({ fullPage: !!params.fullPage });

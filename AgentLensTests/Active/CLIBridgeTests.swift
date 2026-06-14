@@ -206,7 +206,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(args.contains("acceptEdits"))
     }
 
-    func test_cliBridge_claudeArguments_yoloGrantUsesDangerousBypass() {
+    func test_cliBridge_claudeArguments_yoloGrantRequiresFreshAuthForDangerousBypass() {
         let grant = AgentCapabilityGrant.sessionGrant(
             runtimeID: .claude,
             threadID: "thread-1",
@@ -217,6 +217,35 @@ final class CLIBridgeTests: XCTestCase {
         )
 
         let args = CLIBridge.claudeArguments(prompt: "test", capabilityGrant: grant)
+
+        XCTAssertFalse(args.contains("--dangerously-skip-permissions"))
+        XCTAssertEqual(value(after: "--permission-mode", in: args), "acceptEdits")
+
+        let freshAuthArgs = CLIBridge.claudeArguments(
+            prompt: "test",
+            capabilityGrant: grant,
+            hasFreshLocalAuthProof: true
+        )
+
+        XCTAssertTrue(freshAuthArgs.contains("--dangerously-skip-permissions"))
+        XCTAssertFalse(freshAuthArgs.contains("acceptEdits"))
+    }
+
+    func test_cliBridge_claudeArguments_freshAuthYoloGrantUsesDangerousBypass() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .claude,
+            threadID: "thread-1",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.claudeArguments(
+            prompt: "test",
+            capabilityGrant: grant,
+            hasFreshLocalAuthProof: true
+        )
 
         XCTAssertTrue(args.contains("--dangerously-skip-permissions"))
         XCTAssertFalse(args.contains("acceptEdits"))
@@ -272,7 +301,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(args.last, "test")
     }
 
-    func test_cliBridge_codexArguments_yoloGrantBypassesSandbox() {
+    func test_cliBridge_codexArguments_yoloGrantRequiresFreshAuthToBypassSandbox() {
         let grant = AgentCapabilityGrant.sessionGrant(
             runtimeID: .codex,
             threadID: "thread-1",
@@ -283,6 +312,37 @@ final class CLIBridgeTests: XCTestCase {
         )
 
         let args = CLIBridge.codexArguments(prompt: "test", capabilityGrant: grant)
+
+        XCTAssertFalse(args.contains("--dangerously-bypass-approvals-and-sandbox"))
+        XCTAssertEqual(value(after: "--sandbox", in: args), "workspace-write")
+        XCTAssertEqual(args.last, "test")
+
+        let freshAuthArgs = CLIBridge.codexArguments(
+            prompt: "test",
+            capabilityGrant: grant,
+            hasFreshLocalAuthProof: true
+        )
+
+        XCTAssertTrue(freshAuthArgs.contains("--dangerously-bypass-approvals-and-sandbox"))
+        XCTAssertNil(value(after: "--sandbox", in: freshAuthArgs))
+        XCTAssertEqual(freshAuthArgs.last, "test")
+    }
+
+    func test_cliBridge_codexArguments_freshAuthYoloGrantBypassesSandbox() {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .codex,
+            threadID: "thread-1",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 60
+        )
+
+        let args = CLIBridge.codexArguments(
+            prompt: "test",
+            capabilityGrant: grant,
+            hasFreshLocalAuthProof: true
+        )
 
         XCTAssertTrue(args.contains("--dangerously-bypass-approvals-and-sandbox"))
         XCTAssertNil(value(after: "--sandbox", in: args))

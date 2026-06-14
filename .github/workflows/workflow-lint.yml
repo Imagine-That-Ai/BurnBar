@@ -9,14 +9,18 @@ on:
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+      - ".github/CODEOWNERS"
       - "scripts/ci/verify-github-action-pins.mjs"
+      - "scripts/ci/verify-supply-chain-hardening.sh"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
+      - ".github/CODEOWNERS"
       - "scripts/ci/verify-github-action-pins.mjs"
+      - "scripts/ci/verify-supply-chain-hardening.sh"
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -44,3 +48,10 @@ jobs:
 
       - name: Verify GitHub Actions pins
         run: node scripts/ci/verify-github-action-pins.mjs
+
+      # Cure53 supply-chain / CI hardening invariants (T-SC-02..T-SC-10):
+      # asserts the fail-closed controls in the release/deploy/provenance
+      # workflows and CODEOWNERS are still present, so a future edit cannot
+      # silently re-open a fail-open path.
+      - name: Verify supply-chain hardening invariants
+        run: bash scripts/ci/verify-supply-chain-hardening.sh

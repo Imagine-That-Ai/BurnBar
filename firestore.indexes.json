@@ -423,6 +423,52 @@
       ]
     },
     {
+      "collectionGroup": "hermes_gateway_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "targetClientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sequence",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hermes_gateway_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "destinationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "targetClientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sequence",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hermes_gateway_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "destinationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sequence",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "session_logs",
       "queryScope": "COLLECTION",
       "fields": [
@@ -1825,6 +1871,24 @@
     {
       "collectionGroup": "hermes_gateway_device_sessions",
       "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "voip_outbound",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "fcm_outbound",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "agent_notification_events",
+      "fieldPath": "expireAt",
       "ttl": true,
       "indexes": []
     }

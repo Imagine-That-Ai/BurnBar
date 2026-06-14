@@ -30,10 +30,15 @@
 
     <!-- Keychain access group MUST share the AppIdentifierPrefix with the
          build's actual bundle identifier. The escrow key
-         in `iOSDeviceKeypair.swift` writes to Keychain via this group. -->
+         in `iOSDeviceKeypair.swift` writes to Keychain via this group.
+         The second group, `com.openburnbar.shared`, is shared with the keyboard
+         extension so both can read the App-Group-integrity HMAC key that
+         authenticates text-expansion snippets crossing keyboard↔app (T-IOS-06);
+         without it the app fails CLOSED and rejects keyboard snippets. -->
     <key>keychain-access-groups</key>
     <array>
         <string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+        <string>$(AppIdentifierPrefix)com.openburnbar.shared</string>
     </array>
 
     <!-- App Group for sharing widget data with the WidgetKit extension. -->

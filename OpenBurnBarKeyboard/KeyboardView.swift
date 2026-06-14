@@ -676,6 +676,21 @@ struct KeyboardView: View {
         )
         switch result {
         case .success:
+            // T-IOS-01 — harden the snapshot + inbox files the composer just
+            // wrote to the shared App Group container.
+            AppGroupDataProtection.protectContainer(
+                appGroupIdentifier: TextExpansionSnapshotStore.appGroupIdentifier
+            )
+            if let url = TextExpansionSnapshotStore.snapshotURL() {
+                AppGroupDataProtection.protect(url)
+            }
+            if let url = TextExpansionInbox.inboxURL() {
+                AppGroupDataProtection.protect(url)
+                // T-IOS-06 — sign the inbox so the app can authenticate it
+                // before auto-syncing keyboard-born snippets to the cloud.
+                TextExpansionInboxIntegrity.signInbox(at: url)
+                AppGroupDataProtection.protect(TextExpansionInboxIntegrity.macURL(for: url))
+            }
             onReload()
             withAnimation(.easeInOut(duration: 0.2)) {
                 isComposing = false

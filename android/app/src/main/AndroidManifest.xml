@@ -21,6 +21,17 @@
     <!-- Android 14: Picture-in-Picture is opt-in via this feature flag. -->
     <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
 
+    <!-- T-AND-03: signature-level custom permission guarding the app's own broadcast
+         receivers (notification direct-reply + media call control). `signature`
+         protection means only a component signed with the SAME certificate as this app
+         can hold it, so a third-party app on the device can never deliver a forged
+         broadcast (e.g. a spoofed agent reply or a fake call-accepted) to these
+         receivers. The app holds the permission via the <uses-permission> below. -->
+    <permission
+        android:name="com.openburnbar.permission.INTERNAL_BROADCAST"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.openburnbar.permission.INTERNAL_BROADCAST" />
+
     <queries>
         <!-- Hermes Square Phase D — RecognizerIntent.ACTION_RECOGNIZE_SPEECH
              requires the host app to declare it can resolve the speech-
@@ -258,9 +269,13 @@
             </intent-filter>
         </service>
 
+        <!-- T-AND-03: notification direct-reply receiver. Already non-exported; the
+             signature-level permission is defense-in-depth so even a same-UID or
+             future-exported path cannot deliver a forged reply broadcast. -->
         <receiver
             android:name=".services.media.AgentReplyNotificationReceiver"
-            android:exported="false" />
+            android:exported="false"
+            android:permission="com.openburnbar.permission.INTERNAL_BROADCAST" />
 
     </application>
 </manifest>

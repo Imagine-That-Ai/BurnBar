@@ -531,4 +531,149 @@ assert.match(connectPage, /googleProvider/);
 assert.match(connectPage, /appleProvider/);
 assert.match(connectPage, /new URLSearchParams\(window\.location\.search\)/);
 
+// ---------------------------------------------------------------------------
+// T-GW-02: PoP-signed write routes reject any non application/json content type
+// (defense-in-depth). The content-type guard runs BEFORE grant resolution, so
+// this drives the real dispatcher with no Firestore needed.
+// ---------------------------------------------------------------------------
+{
+  const { dispatchHermesGatewayRequest, legacyAttachmentContentTypeAllowed, assertSafeAttachmentContentType } =
+    await import("../lib/callables/hermesGateway.js");
+
+  function fakeRes() {
+    return {
+      statusCode: undefined,
+      body: undefined,
+      headers: {},
+      set(name, value) {
+        this.headers[name] = value;
+        return this;
+      },
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        return this;
+      },
+    };
+  }
+
+  function fakeReq({ method, path, contentType, body }) {
+    const headers = {};
+    if (contentType !== undefined) headers["content-type"] = contentType;
+    return {
+      method,
+      path,
+      url: path,
+      query: {},
+      body: body ?? {},
+      headers,
+      get(name) {
+        return headers[name.toLowerCase()];
+      },
+    };
+  }
+
+  const writeRoutes = ["/messages", "/typing", "/runtime", "/approvals", "/attachments/init", "/attachments/finalize"];
+  for (const path of writeRoutes) {
+    // form-encoded (simple-request) content type must be rejected with 415.
+    const res = fakeRes();
+    await dispatchHermesGatewayRequest(
+      fakeReq({ method: "POST", path, contentType: "application/x-www-form-urlencoded", body: {} }),
+      res,
+    );
+    assert.equal(res.statusCode, 415, `${path} must reject non-JSON content type`);
+    assert.equal(res.body.error, "unsupported_media_type", `${path} 415 error code`);
+
+    // text/plain is also rejected.
+    const res2 = fakeRes();
+    await dispatchHermesGatewayRequest(fakeReq({ method: "POST", path, contentType: "text/plain", body: {} }), res2);
+    assert.equal(res2.statusCode, 415, `${path} must reject text/plain`);
+
+    // A MISSING content type is treated as a violation (a real signing client sets it).
+    const res3 = fakeRes();
+    await dispatchHermesGatewayRequest(fakeReq({ method: "POST", path, contentType: undefined, body: {} }), res3);
+    assert.equal(res3.statusCode, 415, `${path} must reject a missing content type`);
+
+    // application/json (optionally with charset) passes the content-type gate and
+    // proceeds to auth, where it fails with 401 (no bearer token) — NOT 415.
+    const res4 = fakeRes();
+    await dispatchHermesGatewayRequest(
+      fakeReq({ method: "POST", path, contentType: "application/json; charset=utf-8", body: {} }),
+      res4,
+    );
+    assert.notEqual(res4.statusCode, 415, `${path} must accept application/json content type`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // T-ATT-07: legacy plaintext attachment content-type is an ALLOWLIST, not a
+  // deny-list — anything not explicitly known-inert is rejected (fail closed).
+  // ---------------------------------------------------------------------------
+  // Known-inert types are accepted.
+  for (const ok of ["application/pdf", "image/png", "image/jpeg", "text/plain", "audio/mpeg", "video/mp4"]) {
+    assert.equal(legacyAttachmentContentTypeAllowed(ok), true, `${ok} should be allowed`);
+  }
+  // Dangerous/active and unknown types are rejected (including ones a deny-list
+  // would have missed, e.g. wasm / xml variants / unknown novel types).
+  for (const bad of [
+    "text/html",
+    "image/svg+xml",
+    "application/javascript",
+    "application/wasm",
+    "application/xml",
+    "application/x-msdownload",
+    "application/x-totally-novel-type",
+    "",
+  ]) {
+    assert.equal(legacyAttachmentContentTypeAllowed(bad), false, `${bad || "(empty)"} should be rejected`);
+  }
+  // The throwing form rejects an unknown type.
+  assert.throws(() => assertSafeAttachmentContentType("application/x-sh"));
+}
+
+// ---------------------------------------------------------------------------
+// T-ATT-08: the attachment download signed URL forces a non-inline DOWNLOAD so a
+// malicious sealed blob cannot be rendered inline in the app origin.
+// ---------------------------------------------------------------------------
+{
+  const downloadBlock = source.slice(
+    source.indexOf("export async function handleHermesGatewayAttachmentDownloadUrl"),
+    source.indexOf("export async function handleHermesGatewayAttachmentDownloadUrl") + 4000,
+  );
+  assert.match(downloadBlock, /action:\s*"read"/, "download URL must be a read URL");
+  assert.match(
+    downloadBlock,
+    /responseType:\s*"application\/octet-stream"/,
+    "download URL must override responseType to octet-stream",
+  );
+  assert.match(
+    downloadBlock,
+    /responseDisposition:\s*`attachment;/,
+    "download URL must force attachment disposition",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// T-GW-05: the events read path enforces targeting as a Firestore query
+// constraint (where targetClientId in [null, clientId]) — not only in app code.
+// ---------------------------------------------------------------------------
+{
+  const eventsBlock = source.slice(
+    source.indexOf("async function handleEvents"),
+    source.indexOf("async function handleEvents") + 2600,
+  );
+  assert.match(
+    eventsBlock,
+    /\.where\(\s*"targetClientId"\s*,\s*"in"\s*,\s*targetIn\s*\)/,
+    "events query must constrain targetClientId via an in-clause",
+  );
+  assert.match(eventsBlock, /\[null,\s*grant\.client\.id\]/, "in-clause membership must be [null, clientId]");
+}
+
 console.log("Hermes Gateway contracts, exports, and rule invariants passed");

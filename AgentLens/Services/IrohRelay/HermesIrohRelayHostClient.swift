@@ -168,21 +168,25 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             )
         }
         #endif
+        var startupStage = "transport_start"
         do {
             let identity = try await newTransport.start()
             transport = newTransport
             publishedIdentity = identity
 
+            startupStage = "pairing_key_load"
             let pairingKeypair = try pairingKeyStore.keypair()
             // Publish the verifier key BEFORE the pairing record so iOS
             // never sees a freshly-published `iroh_pairing/*` doc without
             // the corresponding `iroh_pairing_keys/host` doc to verify it.
+            startupStage = "pairing_public_key_publish"
             try await publicKeyPublisher.publish(
                 uid: uid,
                 deviceId: accountManager.deviceId,
                 publicKeyBase64: pairingKeypair.publicKeyBase64
             )
             let publisher = IrohPairingPublisher(directory: directory)
+            startupStage = "pairing_record_publish"
             _ = try await publisher.publish(
                 uid: uid,
                 connectionId: connectionID,
@@ -229,6 +233,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             )
             return true
         } catch {
+            let errorClass = Self.publicErrorClass(error)
+            AppLogger.network.error(
+                "hermes_iroh_relay_start_failed_public stage=\(startupStage) errorClass=\(errorClass)"
+            )
             AppLogger.network.silentFailure("hermes_iroh_relay_start_failed", error: error)
             transport = nil
             return false
@@ -290,19 +298,29 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             do {
                 let stream = try await transport.accept(timeout: 30)
                 if !inboundPeerPolicy.allows(remotePeerNodeId: stream.remotePeerNodeId) {
-                    await auditLogger.record(
-                        event: .pairingRejected,
-                        uid: uid,
-                        connectionId: connectionID,
-                        transport: .irohDirect,
-                        rttMillis: nil,
-                        detail: [
-                            "reason": "inbound_peer_not_allowlisted",
-                            "remoteNodeId": stream.remotePeerNodeId ?? "unknown"
-                        ]
-                    )
-                    await stream.close()
-                    continue
+                    let refreshedPolicy = await inboundPeerPolicyLoader(uid, connectionID)
+                    inboundPeerPolicy = refreshedPolicy
+                    if !refreshedPolicy.allows(remotePeerNodeId: stream.remotePeerNodeId) {
+                        #if DEBUG
+                        NSLog("OpenBurnBarMercury host_inbound_peer_rejected connectionID=\(connectionID) remoteNodeId=\(stream.remotePeerNodeId ?? "unknown")")
+                        #endif
+                        await auditLogger.record(
+                            event: .pairingRejected,
+                            uid: uid,
+                            connectionId: connectionID,
+                            transport: .irohDirect,
+                            rttMillis: nil,
+                            detail: [
+                                "reason": "inbound_peer_not_allowlisted",
+                                "remoteNodeId": stream.remotePeerNodeId ?? "unknown"
+                            ]
+                        )
+                        await stream.close()
+                        continue
+                    }
+                    #if DEBUG
+                    NSLog("OpenBurnBarMercury host_inbound_peer_allowed_after_refresh connectionID=\(connectionID) remoteNodeId=\(stream.remotePeerNodeId ?? "unknown")")
+                    #endif
                 }
                 consecutiveAcceptFailures = 0
                 let handler = IrohRelayRequestHandler(

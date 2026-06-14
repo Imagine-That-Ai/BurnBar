@@ -2096,9 +2096,9 @@ struct HermesSettingsView: View {
     private func copyGatewayCommand(_ command: HermesGatewayWizardCommand) {
         copiedGatewayCommand = command
         HapticBus.primaryAction()
-        #if canImport(UIKit)
-        UIPasteboard.general.string = command.text
-        #endif
+        // T-IOS-05 — gateway commands embed the pairing token; copy with an
+        // expiration + local-only scope so the secret does not linger or sync.
+        SecurePasteboard.copy(command.text)
 
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_400_000_000)

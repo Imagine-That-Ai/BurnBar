@@ -97,6 +97,34 @@ jobs:
             --ignore RUSTSEC-2024-0436 \
             --ignore RUSTSEC-2024-0370
 
+  # T-SC-04: cargo-audit above covers RustSec advisories only. OSV-Scanner adds
+  # the OSV.dev cross-ecosystem advisory feed over the Rust Cargo.lock graphs
+  # that ship in the app (the JS/Python lockfiles are covered by
+  # security-pr.yml's osv-scanner job). Fails closed on any vulnerability
+  # OSV-Scanner finds in a pinned Rust dependency.
+  #
+  # NOTE (SwiftPM): OSV-Scanner v2.3.8 cannot extract the SwiftPM
+  # `Package.resolved` manifests ("could not determine extractor suitable to
+  # this file"), so the Swift dependency tree is not OSV-scanned here yet. The
+  # job name is retained for the required-check binding; re-add
+  # `--lockfile=…/Package.resolved` once a scanner version with a working
+  # SwiftPM extractor is pinned (tracked as the remaining half of T-SC-04).
+  osv-scanner-rust-swift:
+    name: OSV Scanner (Cargo.lock + SwiftPM Package.resolved)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      # Pinned to the same OSV-Scanner action ref security-pr.yml uses so the two
+      # OSV lanes resolve an identical scanner build.
+      - name: Run OSV-Scanner on Rust lockfiles
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --lockfile=crates/openburnbar-iroh/Cargo.lock
+            --lockfile=crates/burnbar-remote/Cargo.lock
+
   clippy-security:
     name: clippy security lints (${{ matrix.crate }})
     runs-on: ubuntu-latest

@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import OpenBurnBarCore
 #if DEBUG
@@ -185,6 +186,15 @@ struct RootTabView: View {
             let runtime = notification.userInfo?["runtime"] as? String
             if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
                 selection = .hermes
+            }
+            guard notification.userInfo?["openMercury"] as? Bool == true else { return }
+            let connectionID = notification.userInfo?["connectionID"] as? String
+            #if DEBUG
+            NSLog("OpenBurnBarMercury root_show_assistants_open_mercury connectionID=\(connectionID ?? "nil")")
+            #endif
+            Task { @MainActor in
+                await Task.yield()
+                HermesSquarePendingThreadRoute.openMercuryWithRetries(connectionID: connectionID)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in

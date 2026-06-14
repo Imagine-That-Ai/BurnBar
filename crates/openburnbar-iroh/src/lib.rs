@@ -12,10 +12,12 @@
 // lets us pin iroh, drift on our schedule, and keep the binding green for
 // macOS arm64 + iOS arm64 + iOS Simulator arm64/x86_64.
 
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 
+use iroh::endpoint::IncomingAddr;
 use iroh::{
     endpoint::presets, Endpoint, EndpointAddr, EndpointId, RelayMap, RelayMode, RelayUrl,
     SecretKey, TransportAddr,
@@ -23,7 +25,8 @@ use iroh::{
 use iroh_services::Client as IrohServicesClient;
 use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex, Semaphore};
+use tokio::task::JoinHandle;
 
 #[cfg(target_os = "android")]
 mod android_context;
@@ -33,7 +36,7 @@ mod datagrams;
 #[allow(unused_imports)]
 pub use blobs::{
     iroh_blobs_alpn, iroh_blobs_crate_version, parse_blob_ticket, BlobTicketBytes,
-    BlobTransferStats, IrohBlobNode,
+    BlobTransferStats, IrohBlobNode, OPENBURNBAR_MAX_BLOB_BYTES,
 };
 
 #[allow(unused_imports)]
@@ -47,6 +50,25 @@ pub const OPENBURNBAR_ALPN: &[u8] = b"openburnbar/1";
 pub const OPENBURNBAR_MAX_FRAME_BYTES: usize = 512 * 1024;
 const OPENBURNBAR_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(1);
 const OPENBURNBAR_MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+/// Inbound admission controls (T-TRN-06). The Mac host accepts connections
+/// from a small, paired set of devices; an unpaired or hostile peer that can
+/// reach the relay must not be able to exhaust handshake slots or spin the
+/// acceptor with a connect storm. These bounds are deliberately generous for
+/// the legitimate one-Mac/few-phones topology while capping the blast radius
+/// of a single source.
+///
+/// Maximum number of inbound QUIC handshakes allowed in flight at once across
+/// all sources. Each in-flight handshake holds a permit until the connection
+/// either fails or its bi-stream loop ends; a flood of half-open handshakes
+/// therefore cannot grow without bound.
+const OPENBURNBAR_MAX_CONCURRENT_INBOUND_HANDSHAKES: usize = 64;
+/// Sliding-window length for the per-source connection-rate limit.
+const OPENBURNBAR_INBOUND_RATE_WINDOW: Duration = Duration::from_secs(10);
+/// Maximum new connections a single source (IP for direct dials, NodeId for
+/// relayed dials) may start within one `OPENBURNBAR_INBOUND_RATE_WINDOW`.
+/// Beyond this the connection is refused early, before the handshake runs.
+const OPENBURNBAR_INBOUND_MAX_CONNECTIONS_PER_WINDOW: u32 = 30;
 const IROH_SERVICES_API_SECRET_ENV: &str = "IROH_SERVICES_API_SECRET";
 const OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME_ENV: &str = "OPENBURNBAR_IROH_SERVICES_ENDPOINT_NAME";
 const OPENBURNBAR_IROH_SERVICES_REQUIRED_ENV: &str = "OPENBURNBAR_IROH_SERVICES_REQUIRED";
@@ -229,6 +251,191 @@ impl IrohStream {
     }
 }
 
+/// Stable per-source key for inbound rate limiting (T-TRN-06). Direct dials
+/// are keyed by source IP (port-stripped so a NAT rebind doesn't reset the
+/// budget); relayed dials are keyed by the remote NodeId the relay attests,
+/// which is the only stable identity available before the handshake.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub(crate) enum InboundSource {
+    Ip(IpAddr),
+    Node(String),
+}
+
+impl InboundSource {
+    fn from_incoming_addr(addr: &IncomingAddr) -> Self {
+        match addr {
+            IncomingAddr::Ip(socket) => InboundSource::Ip(socket.ip()),
+            IncomingAddr::Relay { endpoint_id, .. } => InboundSource::Node(endpoint_id.to_string()),
+            IncomingAddr::Custom(custom) => InboundSource::Node(format!("{custom:?}")),
+            // `IncomingAddr` is `#[non_exhaustive]`; an unknown transport keys
+            // to its debug form so the rate limit still applies (fail closed).
+            other => InboundSource::Node(format!("{other:?}")),
+        }
+    }
+}
+
+/// Per-source sliding-window connection-rate limiter plus a global
+/// concurrent-handshake cap. Pure logic (the timestamp ring) is split out so
+/// the rate decision is unit-testable without a live endpoint; the semaphore
+/// enforces the concurrency cap in the async acceptor.
+pub(crate) struct InboundAdmission {
+    window: Duration,
+    max_per_window: u32,
+    recent: StdMutex<HashMap<InboundSource, Vec<Instant>>>,
+    handshake_slots: Arc<Semaphore>,
+    /// When non-empty, only these NodeIds may complete a handshake; every
+    /// other peer is rejected early. Empty means "no NodeId restriction" so
+    /// the existing Swift-side allowlist stays the source of truth until it
+    /// pushes a list down. Stored as base32 NodeId strings to match the
+    /// `IrohStream::remote_node_id` surface form.
+    allowlist: StdMutex<Option<std::collections::HashSet<String>>>,
+}
+
+impl InboundAdmission {
+    fn new(window: Duration, max_per_window: u32, max_concurrent_handshakes: usize) -> Self {
+        Self {
+            window,
+            max_per_window,
+            recent: StdMutex::new(HashMap::new()),
+            handshake_slots: Arc::new(Semaphore::new(max_concurrent_handshakes)),
+            allowlist: StdMutex::new(None),
+        }
+    }
+
+    /// Record one new connection attempt from `source` at `now` and report
+    /// whether it stays within budget. Evicts timestamps older than the
+    /// window so the map cannot grow without bound for a chatty source.
+    pub(crate) fn admit_at(&self, source: &InboundSource, now: Instant) -> bool {
+        let mut recent = match self.recent.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let window = self.window;
+        let timestamps = recent.entry(source.clone()).or_default();
+        timestamps.retain(|seen| now.duration_since(*seen) < window);
+        if timestamps.len() as u32 >= self.max_per_window {
+            return false;
+        }
+        timestamps.push(now);
+        true
+    }
+
+    fn admit(&self, source: &InboundSource) -> bool {
+        self.admit_at(source, Instant::now())
+    }
+
+    /// Replace the NodeId allowlist. An empty list clears the restriction.
+    fn set_allowlist(&self, node_ids: Vec<String>) {
+        let mut guard = match self.allowlist.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let cleaned: std::collections::HashSet<String> = node_ids
+            .into_iter()
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty())
+            .collect();
+        *guard = if cleaned.is_empty() {
+            None
+        } else {
+            Some(cleaned)
+        };
+    }
+
+    /// True if `node_id` is permitted. No configured allowlist means permit
+    /// all (the Swift allowlist still gates the stream downstream); once a
+    /// list is pushed down, only listed NodeIds pass — fail closed.
+    pub(crate) fn node_allowed(&self, node_id: &str) -> bool {
+        let guard = match self.allowlist.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        match guard.as_ref() {
+            None => true,
+            Some(set) => set.contains(node_id.trim()),
+        }
+    }
+}
+
+fn spawn_incoming_stream_acceptor(
+    endpoint: Endpoint,
+    runtime_handle: tokio::runtime::Handle,
+    stream_tx: mpsc::Sender<Arc<IrohStream>>,
+    admission: Arc<InboundAdmission>,
+) -> JoinHandle<()> {
+    let outer_runtime_handle = runtime_handle.clone();
+    runtime_handle.spawn(async move {
+        while let Some(incoming) = endpoint.accept().await {
+            // Per-source connection-rate limit (T-TRN-06): refuse the dial
+            // before spending a handshake on a source that is hammering us.
+            // `refuse()` sends a CONNECTION_REFUSED without running the
+            // handshake, so a connect storm costs us a map lookup, not a TLS
+            // negotiation or a spawned task.
+            let source = InboundSource::from_incoming_addr(&incoming.remote_addr());
+            if !admission.admit(&source) {
+                incoming.refuse();
+                continue;
+            }
+            // Relayed dials carry the peer NodeId before the handshake; reject
+            // a non-allowlisted peer here so it never even completes a
+            // handshake. Direct dials are re-checked after `incoming.await`
+            // below, where the NodeId first becomes known.
+            if let IncomingAddr::Relay { endpoint_id, .. } = incoming.remote_addr() {
+                if !admission.node_allowed(&endpoint_id.to_string()) {
+                    incoming.refuse();
+                    continue;
+                }
+            }
+
+            // Concurrent inbound-handshake cap (T-TRN-06): bound the number of
+            // half-open handshakes in flight. If every slot is busy we drop
+            // this dial (`ignore()` lets QUIC retransmit / time out) rather
+            // than queueing unbounded work.
+            let permit = match Arc::clone(&admission.handshake_slots).try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => {
+                    incoming.ignore();
+                    continue;
+                }
+            };
+
+            let connection_stream_tx = stream_tx.clone();
+            let stream_runtime_handle = outer_runtime_handle.clone();
+            let connection_admission = Arc::clone(&admission);
+            tokio::spawn(async move {
+                // Hold the handshake permit for the lifetime of this peer's
+                // accept loop so a peer that completes the handshake but never
+                // opens a stream still counts against the concurrency cap.
+                let _permit = permit;
+                let conn = match incoming.await {
+                    Ok(conn) => conn,
+                    Err(_) => return,
+                };
+                let remote_node_id = conn.remote_id().to_string();
+                // Early allowlist enforcement for direct dials: the NodeId is
+                // only knowable post-handshake here, so reject before draining
+                // any bi-stream into the queue. Fail closed.
+                if !connection_admission.node_allowed(&remote_node_id) {
+                    conn.close(0u32.into(), b"peer-not-allowlisted");
+                    return;
+                }
+                while let Ok((send, recv)) = conn.accept_bi().await {
+                    let stream = Arc::new(IrohStream {
+                        remote_node_id: remote_node_id.clone(),
+                        conn: Mutex::new(Some(conn.clone())),
+                        send: Mutex::new(Some(send)),
+                        recv: Mutex::new(Some(recv)),
+                        runtime_handle: stream_runtime_handle.clone(),
+                    });
+                    if connection_stream_tx.send(stream).await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    })
+}
+
 /// Wraps an `iroh::Endpoint` and exposes the eight-function surface the Swift
 /// `OpenBurnBarIrohEndpoint` actor calls into.
 #[derive(uniffi::Object)]
@@ -238,6 +445,13 @@ pub struct IrohEndpointHandle {
     runtime_handle: Mutex<Option<tokio::runtime::Handle>>,
     identity: Mutex<Option<IrohNodeIdentity>>,
     services_client: Mutex<Option<IrohServicesClient>>,
+    incoming_stream_rx: Mutex<Option<mpsc::Receiver<Arc<IrohStream>>>>,
+    incoming_accept_task: Mutex<Option<JoinHandle<()>>>,
+    /// Inbound admission controls (T-TRN-06): per-source rate limit,
+    /// concurrent-handshake cap, and optional NodeId allowlist. Lives on the
+    /// handle (not per-bootstrap) so a `set_inbound_allowlist` call survives a
+    /// re-bootstrap and the rate-limit state is shared across the handle.
+    inbound_admission: Arc<InboundAdmission>,
 }
 
 #[uniffi::export]
@@ -250,6 +464,13 @@ impl IrohEndpointHandle {
             runtime_handle: Mutex::new(None),
             identity: Mutex::new(None),
             services_client: Mutex::new(None),
+            incoming_stream_rx: Mutex::new(None),
+            incoming_accept_task: Mutex::new(None),
+            inbound_admission: Arc::new(InboundAdmission::new(
+                OPENBURNBAR_INBOUND_RATE_WINDOW,
+                OPENBURNBAR_INBOUND_MAX_CONNECTIONS_PER_WINDOW,
+                OPENBURNBAR_MAX_CONCURRENT_INBOUND_HANDSHAKES,
+            )),
         })
     }
 
@@ -342,12 +563,24 @@ impl IrohEndpointHandle {
             runtime.block_on(async { start_iroh_services_if_configured(&endpoint).await })?;
 
         let runtime_handle = runtime.handle().clone();
+        let (incoming_stream_tx, incoming_stream_rx) = mpsc::channel(128);
+        let incoming_accept_task = spawn_incoming_stream_acceptor(
+            endpoint.clone(),
+            runtime_handle.clone(),
+            incoming_stream_tx,
+            Arc::clone(&self.inbound_admission),
+        );
         block_on(async {
+            if let Some(previous_accept_task) = self.incoming_accept_task.lock().await.take() {
+                previous_accept_task.abort();
+            }
             *self.endpoint.lock().await = Some(endpoint);
             *self.runtime_handle.lock().await = Some(runtime_handle);
             *self.runtime.lock().await = Some(runtime);
             *self.identity.lock().await = Some(identity.clone());
             *self.services_client.lock().await = services_client;
+            *self.incoming_stream_rx.lock().await = Some(incoming_stream_rx);
+            *self.incoming_accept_task.lock().await = Some(incoming_accept_task);
             Ok::<_, IrohFfiError>(())
         })?;
 
@@ -363,6 +596,15 @@ impl IrohEndpointHandle {
                 .clone()
                 .ok_or(IrohFfiError::EndpointNotInitialized)
         })
+    }
+
+    /// Restrict inbound peers to the supplied base32 NodeIds (T-TRN-06).
+    /// Non-allowlisted peers are rejected in the acceptor before any stream
+    /// reaches `accept_one`. Passing an empty list clears the restriction and
+    /// defers to the Swift-side allowlist. Safe to call before or after
+    /// `bootstrap`; the admission state lives on the handle, not the endpoint.
+    pub fn set_inbound_allowlist(self: Arc<Self>, node_ids: Vec<String>) {
+        self.inbound_admission.set_allowlist(node_ids);
     }
 
     /// Dial a remote node by NodeId (base32 surface form) and open one
@@ -445,60 +687,54 @@ impl IrohEndpointHandle {
         })
     }
 
-    /// Block waiting for one inbound bidirectional stream. Returns once the
-    /// remote opens its first bi-stream after a successful ALPN handshake.
+    /// Block waiting for one inbound bidirectional stream.
+    ///
+    /// The endpoint owns a background acceptor that accepts each peer
+    /// connection once and then drains every bidirectional stream opened on
+    /// that connection into this queue. This matters because iroh may reuse an
+    /// existing QUIC connection for later Mercury streams; waiting on
+    /// `endpoint.accept()` for every stream would miss those reused streams and
+    /// make clients connect/disconnect in a loop.
     pub fn accept_one(
         self: Arc<Self>,
         timeout_seconds: u32,
     ) -> Result<Arc<IrohStream>, IrohFfiError> {
-        let (endpoint, runtime_handle) = block_on(async {
-            let endpoint = self
-                .endpoint
-                .lock()
-                .await
-                .clone()
-                .ok_or(IrohFfiError::EndpointNotInitialized)?;
+        let runtime_handle = block_on(async {
             let runtime_handle = self
                 .runtime_handle
                 .lock()
                 .await
                 .clone()
                 .ok_or(IrohFfiError::EndpointNotInitialized)?;
-            Ok::<_, IrohFfiError>((endpoint, runtime_handle))
+            if self.incoming_stream_rx.lock().await.is_none() {
+                return Err(IrohFfiError::EndpointNotInitialized);
+            }
+            Ok::<_, IrohFfiError>(runtime_handle)
         })?;
         let timeout = Duration::from_secs(timeout_seconds.max(1) as u64);
-        let stream_runtime_handle = runtime_handle.clone();
         runtime_handle.block_on(async move {
-            let (conn, send, recv, remote_node_id) = tokio::time::timeout(timeout, async move {
-                let incoming =
-                    endpoint
-                        .accept()
-                        .await
-                        .ok_or_else(|| IrohFfiError::AcceptFailed {
-                            detail: "iroh endpoint closed before accepting".into(),
-                        })?;
-                let conn = incoming.await.map_err(IrohFfiError::accept)?;
-                let remote_node_id = conn.remote_id().to_string();
-                let (send, recv) = conn.accept_bi().await.map_err(IrohFfiError::stream)?;
-                Ok::<_, IrohFfiError>((conn, send, recv, remote_node_id))
-            })
-            .await
-            .map_err(|_| IrohFfiError::AcceptFailed {
-                detail: "iroh accept timed out".into(),
-            })??;
-            Ok(Arc::new(IrohStream {
-                remote_node_id,
-                conn: Mutex::new(Some(conn)),
-                send: Mutex::new(Some(send)),
-                recv: Mutex::new(Some(recv)),
-                runtime_handle: stream_runtime_handle,
-            }))
+            let mut receiver_guard = self.incoming_stream_rx.lock().await;
+            let receiver = receiver_guard
+                .as_mut()
+                .ok_or(IrohFfiError::EndpointNotInitialized)?;
+            tokio::time::timeout(timeout, receiver.recv())
+                .await
+                .map_err(|_| IrohFfiError::AcceptFailed {
+                    detail: "iroh accept timed out".into(),
+                })?
+                .ok_or_else(|| IrohFfiError::AcceptFailed {
+                    detail: "iroh endpoint closed before accepting".into(),
+                })
         })
     }
 
     /// Cleanly close the endpoint. After shutdown the handle is unusable.
     pub fn shutdown(self: Arc<Self>) -> Result<(), IrohFfiError> {
         let endpoint_opt = block_on(async {
+            if let Some(accept_task) = self.incoming_accept_task.lock().await.take() {
+                accept_task.abort();
+            }
+            let _ = self.incoming_stream_rx.lock().await.take();
             let endpoint = self.endpoint.lock().await.take();
             let runtime = self.runtime.lock().await.take();
             let _ = self.runtime_handle.lock().await.take();
@@ -669,5 +905,86 @@ mod tests {
             }
             other => panic!("expected StreamFailed, got {other:?}"),
         }
+    }
+
+    fn ip_source(last_octet: u8) -> InboundSource {
+        InboundSource::Ip(IpAddr::from([10, 0, 0, last_octet]))
+    }
+
+    #[test]
+    fn inbound_rate_limit_refuses_a_single_source_connect_storm() {
+        let admission = InboundAdmission::new(Duration::from_secs(10), 3, 64);
+        let source = ip_source(7);
+        let now = Instant::now();
+
+        // The first `max_per_window` attempts inside the window are admitted.
+        assert!(admission.admit_at(&source, now));
+        assert!(admission.admit_at(&source, now));
+        assert!(admission.admit_at(&source, now));
+        // The next attempt in the same window is refused.
+        assert!(!admission.admit_at(&source, now));
+        assert!(!admission.admit_at(&source, now + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn inbound_rate_limit_is_per_source_and_recovers_after_window() {
+        let admission = InboundAdmission::new(Duration::from_secs(10), 2, 64);
+        let attacker = ip_source(1);
+        let paired = ip_source(2);
+        let now = Instant::now();
+
+        assert!(admission.admit_at(&attacker, now));
+        assert!(admission.admit_at(&attacker, now));
+        assert!(!admission.admit_at(&attacker, now));
+        // A different source has its own independent budget.
+        assert!(admission.admit_at(&paired, now));
+        assert!(admission.admit_at(&paired, now));
+        // Once the window has fully elapsed, the attacker's budget refills.
+        let later = now + Duration::from_secs(11);
+        assert!(admission.admit_at(&attacker, later));
+    }
+
+    #[test]
+    fn inbound_rate_limit_keys_relay_dials_by_node_id() {
+        let admission = InboundAdmission::new(Duration::from_secs(10), 1, 64);
+        let node_a = InboundSource::Node("node-a".into());
+        let node_b = InboundSource::Node("node-b".into());
+        let now = Instant::now();
+
+        assert!(admission.admit_at(&node_a, now));
+        assert!(!admission.admit_at(&node_a, now));
+        // A distinct relayed NodeId is not penalized by node-a's storm.
+        assert!(admission.admit_at(&node_b, now));
+    }
+
+    #[test]
+    fn concurrent_handshake_cap_blocks_when_slots_are_exhausted() {
+        let admission = InboundAdmission::new(Duration::from_secs(10), 1000, 2);
+        // Two permits available, then exhausted.
+        let p1 = admission.handshake_slots.try_acquire().unwrap();
+        let p2 = admission.handshake_slots.try_acquire().unwrap();
+        assert!(admission.handshake_slots.try_acquire().is_err());
+        // Releasing one permit frees a slot for the next handshake.
+        drop(p1);
+        assert!(admission.handshake_slots.try_acquire().is_ok());
+        drop(p2);
+    }
+
+    #[test]
+    fn allowlist_empty_permits_all_then_restricts_once_set() {
+        let admission = InboundAdmission::new(Duration::from_secs(10), 1000, 64);
+        // No list configured → permit all (Swift allowlist still gates downstream).
+        assert!(admission.node_allowed("any-peer"));
+
+        admission.set_allowlist(vec!["  paired-peer  ".into(), String::new()]);
+        // Trimmed, non-empty entries are honored; whitespace-only entries dropped.
+        assert!(admission.node_allowed("paired-peer"));
+        assert!(admission.node_allowed("  paired-peer "));
+        // A peer not on the list is rejected early — fail closed.
+        assert!(!admission.node_allowed("hostile-peer"));
+
+        // Clearing the list restores permit-all.
+        admission.set_allowlist(vec![]);
+        assert!(admission.node_allowed("hostile-peer"));
     }
 }

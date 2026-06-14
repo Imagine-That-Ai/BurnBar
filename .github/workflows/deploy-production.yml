@@ -75,12 +75,38 @@ jobs:
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
-      - name: Install and build Functions
+      # T-SC-07: run the predeploy build + verifiers UNPRIVILEGED, before any
+      # GCP credential is present on the runner. The firebase.json functions
+      # `predeploy` hook is `npm --prefix "$RESOURCE_DIR" run build`, which (via
+      # the functions `prebuild`) executes arbitrary build scripts
+      # (build-signal-envelope-contracts.sh, build-entitlements.sh) and copies
+      # certs. If that hook ran during `firebase deploy`, that arbitrary build
+      # would execute with the deploy service-account credential already in the
+      # environment. Building here — and fingerprinting the compiled output —
+      # lets the privileged deploy step skip the predeploy hook entirely and
+      # assert the as-built bytes were not mutated after auth.
+      - name: Build Functions and verifiers (unprivileged, pre-auth)
         run: |
+          set -euo pipefail
           npm ci --prefix functions
           npm run build --prefix functions
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
+
+          # Fail closed: the compiled output the privileged deploy will ship must
+          # exist now, before credentials are introduced.
+          if [[ ! -d functions/lib ]]; then
+            echo "::error::functions/lib missing after unprivileged build — refusing to proceed."
+            exit 1
+          fi
+          # Fingerprint the as-built tree so the privileged step can prove the
+          # bytes it deploys are exactly the ones built without credentials.
+          find functions/lib -type f -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | sha256sum \
+            | awk '{print $1}' > "$RUNNER_TEMP/functions-lib.sha256"
+          echo "Pre-auth functions/lib fingerprint: $(cat "$RUNNER_TEMP/functions-lib.sha256")"
 
       - name: BurnBar product release preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py
@@ -168,7 +194,40 @@ jobs:
           } > "$ENV_FILE"
           export FUNCTION_VERSION="$TAG"
 
-          firebase_args=(--only functions --project burnbar --non-interactive --force)
+          # T-SC-07: the functions were already built UNPRIVILEGED, before auth.
+          # Prove the compiled output was not mutated after the credential was
+          # introduced, then deploy with a config whose functions `predeploy`
+          # hook is STRIPPED so `firebase deploy` does NOT re-run the arbitrary
+          # build (build-signal-envelope-contracts.sh / build-entitlements.sh /
+          # cert copy) with the deploy service-account credential present.
+          if [[ ! -f "$RUNNER_TEMP/functions-lib.sha256" ]]; then
+            echo "::error::Missing pre-auth functions/lib fingerprint — the unprivileged build step did not run."
+            exit 1
+          fi
+          POST_AUTH_FINGERPRINT="$(
+            find functions/lib -type f -print0 \
+              | sort -z \
+              | xargs -0 sha256sum \
+              | sha256sum \
+              | awk '{print $1}'
+          )"
+          if [[ "$POST_AUTH_FINGERPRINT" != "$(cat "$RUNNER_TEMP/functions-lib.sha256")" ]]; then
+            echo "::error::functions/lib changed after GCP auth — refusing to deploy a build produced with credentials present."
+            exit 1
+          fi
+
+          # Generate a deploy-time firebase config with the functions predeploy
+          # hook removed (jq drops .functions.predeploy). All other config —
+          # firestore, hosting, the functions source/runtime — is preserved
+          # verbatim. The build already ran pre-auth, so the predeploy is a
+          # no-op we deliberately remove rather than re-run under credentials.
+          DEPLOY_CONFIG="$RUNNER_TEMP/firebase.deploy.json"
+          jq 'if (.functions | type) == "array"
+                then .functions |= map(del(.predeploy))
+                else (.functions.predeploy) |= empty end' \
+            firebase.json > "$DEPLOY_CONFIG"
+
+          firebase_args=(--only functions --project burnbar --non-interactive --force --config "$DEPLOY_CONFIG")
           if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
             echo "Using legacy FIREBASE_TOKEN authentication. Prefer GCP_SA_KEY or workload credentials."
             firebase_args+=(--token "$FIREBASE_TOKEN")

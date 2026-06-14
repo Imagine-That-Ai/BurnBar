@@ -211,6 +211,9 @@ struct HermesSquareRoot: View {
             squareBackground
             squareContent
         }
+        // T-IOS-03 — chat transcripts can contain sensitive prompts/replies;
+        // mask the surface from the app-switcher snapshot and screen recording.
+        .sensitiveContentPrivacyGuard()
         .navigationTitle("Agents")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -239,9 +242,13 @@ struct HermesSquareRoot: View {
             }
             mercuryPeerSource.start()
             syncMercuryPeer(mercuryPeerSource.peer)
+            consumePendingMercuryLive()
         }
         .task(id: AssistantPendingThread.shared.hermes) {
             consumePendingHermesThread()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: HermesSquarePendingThreadRoute.mercuryNotificationName)) { notification in
+            openPendingMercuryLive(notification)
         }
         .onChange(of: inbox.items) { _, _ in
             Task { await reindexSearch() }
@@ -1235,6 +1242,26 @@ struct HermesSquareRoot: View {
         setNavTarget(.thread(inboxID))
     }
 
+    @MainActor
+    private func consumePendingMercuryLive() {
+        openMercuryLive(connectionID: HermesSquarePendingThreadRoute.consumePendingMercuryConnectionID())
+    }
+
+    @MainActor
+    private func openPendingMercuryLive(_ notification: Notification) {
+        openMercuryLive(connectionID: HermesSquarePendingThreadRoute.mercuryConnectionID(from: notification))
+    }
+
+    @MainActor
+    private func openMercuryLive(connectionID rawConnectionID: String?) {
+        let trimmedConnectionID = rawConnectionID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let connectionID = (!trimmedConnectionID.isEmpty ? trimmedConnectionID : nil)
+            ?? mercuryPeerSource.peer?.connectionID
+            ?? hermesService.suggestedRelayConnection?.id
+            ?? "paired-mac:default"
+        setNavTarget(.mercuryLive(resolvedMercuryConnectionID(for: connectionID)))
+    }
+
     private func ensureMercuryLive(connectionID: String) async {
         guard bootingMercuryConnectionID != connectionID else { return }
         #if DEBUG
@@ -1414,6 +1441,10 @@ struct HermesSquareRoot: View {
 }
 
 enum HermesSquarePendingThreadRoute {
+    static let mercuryNotificationName = Notification.Name("OpenHermesMercuryLive")
+    private static let mercuryConnectionIDKey = "connectionID"
+    @MainActor private static var pendingMercuryConnectionID: String?
+
     static func hermesInboxID(for threadID: String?) -> String? {
         guard let trimmed = threadID?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty
@@ -1424,6 +1455,48 @@ enum HermesSquarePendingThreadRoute {
     @MainActor
     static func consumeHermesInboxID() -> String? {
         hermesInboxID(for: AssistantPendingThread.shared.consume(.hermes))
+    }
+
+    @MainActor
+    static func openMercury(connectionID: String?) {
+        let resolved = normalizedMercuryConnectionID(connectionID)
+        pendingMercuryConnectionID = resolved
+        NotificationCenter.default.post(
+            name: mercuryNotificationName,
+            object: nil,
+            userInfo: [mercuryConnectionIDKey: resolved]
+        )
+    }
+
+    @MainActor
+    static func openMercuryWithRetries(connectionID: String?) {
+        let resolved = normalizedMercuryConnectionID(connectionID)
+        pendingMercuryConnectionID = resolved
+        Task { @MainActor in
+            for delay in [UInt64(0), 400_000_000, 800_000_000, 1_300_000_000, 2_500_000_000] {
+                if delay > 0 {
+                    try? await Task.sleep(nanoseconds: delay)
+                }
+                openMercury(connectionID: resolved)
+            }
+        }
+    }
+
+    @MainActor
+    static func consumePendingMercuryConnectionID() -> String? {
+        defer { pendingMercuryConnectionID = nil }
+        return pendingMercuryConnectionID
+    }
+
+    @MainActor
+    static func mercuryConnectionID(from notification: Notification) -> String? {
+        let fromNotification = notification.userInfo?[mercuryConnectionIDKey] as? String
+        return normalizedMercuryConnectionID(fromNotification ?? pendingMercuryConnectionID)
+    }
+
+    private static func normalizedMercuryConnectionID(_ connectionID: String?) -> String {
+        let trimmed = connectionID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "paired-mac:default" : trimmed
     }
 }
 

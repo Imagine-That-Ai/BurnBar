@@ -45,19 +45,51 @@ private struct HermesGatewayKeychainPrivateKeyStorage: HermesGatewayPrivateKeySt
     }
 
     func saveKeyData(_ data: Data, tag: Data, label: String) throws {
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
             kSecAttrLabel as String: label
         ]
-        SecItemDelete(query as CFDictionary)
+        // T-CVS-03 — gate the at-rest gateway relay + ratchet signing/identity
+        // keys with biometry when the device supports it AND the gate is enabled
+        // (mirrors the ComputerUse SE+biometry posture). These keys still need
+        // `rawRepresentation` for ECDH / ratchet derivation, so a non-extractable
+        // Secure Enclave key would require a redesign and is the Deferred SE
+        // portion of T-CVS-03; the `kSecAccessControl` access-control hardening is
+        // what lands here. Falls back to the device-only accessibility class when
+        // the access object cannot be built so the silent seal/open path keeps
+        // working — never a weaker-than-before posture.
+        if let access = Self.gatewayKeyAccessControl() {
+            query[kSecAttrAccessControl as String] = access
+        } else {
+            query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        }
+        SecItemDelete([
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: tag
+        ] as CFDictionary)
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
             throw HermesGatewayRelayKeypairError.keychainError(status: Int(status))
         }
+    }
+
+    /// T-CVS-03 — biometry-gated access-control object for the gateway keys, or
+    /// `nil` when the gate is off / the OS refuses the flags (no enrolled
+    /// biometric), in which case the caller uses the device-only accessibility
+    /// class. `.biometryCurrentSet` invalidates the item if the enrolled biometric
+    /// set changes, matching `PhoneControlSigningKeyStore`.
+    private static func gatewayKeyAccessControl() -> SecAccessControl? {
+        guard EscrowKeychainBiometryPolicy.isEnabled() else { return nil }
+        var error: Unmanaged<CFError>?
+        return SecAccessControlCreateWithFlags(
+            kCFAllocatorDefault,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            [.biometryCurrentSet],
+            &error
+        )
     }
 }
 

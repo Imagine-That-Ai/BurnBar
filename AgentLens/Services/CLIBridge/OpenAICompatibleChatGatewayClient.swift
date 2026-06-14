@@ -27,6 +27,25 @@ final class AgentToolBroker: @unchecked Sendable {
     typealias PrivilegedActionApprover = @Sendable (_ toolName: String, _ summary: String) async -> Bool
     private let privilegedActionApprover: PrivilegedActionApprover?
 
+    /// T-TOOL-02(b) / T-AI-07: fresh local-auth re-authorization for the
+    /// unrestricted (YOLO) shell path. Returns `true` when the operator re-proved
+    /// presence (Touch ID / device-owner auth). When `nil` the unrestricted shell
+    /// FAILS CLOSED at every re-auth checkpoint — an obeyed prompt injection
+    /// cannot run unbounded shell because it can never satisfy the gate.
+    typealias UnrestrictedShellReauthorizer = @Sendable (_ summary: String) async -> Bool
+    private let unrestrictedShellReauthorizer: UnrestrictedShellReauthorizer?
+
+    /// How many unrestricted-shell actions may run between re-auth proofs.
+    static let unrestrictedShellReauthInterval = 5
+
+    /// Cadence tracker for the unrestricted-shell re-auth window. Guarded by
+    /// `reauthLock` because the broker is `@unchecked Sendable` and the tool loop
+    /// may dispatch concurrently.
+    private let reauthLock = NSLock()
+    private var unrestrictedShellCadence = AgentReauthCadence(
+        interval: AgentToolBroker.unrestrictedShellReauthInterval
+    )
+
     /// Broker tools that perform privileged side effects (shell exec, writes,
     /// exfiltration-capable export). Each requires explicit per-action approval
     /// in every grant mode except `.trusted` (YOLO), which already required a
@@ -67,6 +86,7 @@ final class AgentToolBroker: @unchecked Sendable {
         self.workspaceURL = Self.canonicalFileURL(workspaceURL)
         self.grantStillActive = grantStillActive
         self.privilegedActionApprover = nil
+        self.unrestrictedShellReauthorizer = nil
         self.computerUseRuntimeController = computerUseRuntimeController
     }
 
@@ -75,12 +95,14 @@ final class AgentToolBroker: @unchecked Sendable {
         workspaceURL: URL,
         computerUseRuntimeController: ComputerUseRuntimeController? = nil,
         grantStillActive: (@Sendable () async -> Bool)? = nil,
-        privilegedActionApprover: PrivilegedActionApprover?
+        privilegedActionApprover: PrivilegedActionApprover?,
+        unrestrictedShellReauthorizer: UnrestrictedShellReauthorizer? = nil
     ) {
         self.grant = grant
         self.workspaceURL = Self.canonicalFileURL(workspaceURL)
         self.grantStillActive = grantStillActive
         self.privilegedActionApprover = privilegedActionApprover
+        self.unrestrictedShellReauthorizer = unrestrictedShellReauthorizer
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         self.computerUseRuntimeController = computerUseRuntimeController
         #endif
@@ -95,20 +117,31 @@ final class AgentToolBroker: @unchecked Sendable {
         self.workspaceURL = Self.canonicalFileURL(workspaceURL)
         self.grantStillActive = grantStillActive
         self.privilegedActionApprover = nil
+        self.unrestrictedShellReauthorizer = nil
     }
 
     init(
         grant: AgentCapabilityGrant,
         workspaceURL: URL,
         grantStillActive: (@Sendable () async -> Bool)? = nil,
-        privilegedActionApprover: PrivilegedActionApprover?
+        privilegedActionApprover: PrivilegedActionApprover?,
+        unrestrictedShellReauthorizer: UnrestrictedShellReauthorizer? = nil
     ) {
         self.grant = grant
         self.workspaceURL = Self.canonicalFileURL(workspaceURL)
         self.grantStillActive = grantStillActive
         self.privilegedActionApprover = privilegedActionApprover
+        self.unrestrictedShellReauthorizer = unrestrictedShellReauthorizer
     }
     #endif
+
+    /// T-TOOL-02(b): whether the next unrestricted-shell action needs a fresh
+    /// local-auth re-authorization right now (exposed for testing the cadence).
+    var unrestrictedShellRequiresReauthNow: Bool {
+        reauthLock.lock()
+        defer { reauthLock.unlock() }
+        return unrestrictedShellCadence.requiresReauthBeforeNextAction
+    }
 
     var openAITools: [[String: Any]] {
         AgentDesktopToolDefinitions.openAITools(for: grant)
@@ -364,6 +397,24 @@ final class AgentToolBroker: @unchecked Sendable {
         ], detail: command)
     }
 
+    private func needsUnrestrictedShellReauth() -> Bool {
+        reauthLock.lock()
+        defer { reauthLock.unlock() }
+        return unrestrictedShellCadence.requiresReauthBeforeNextAction
+    }
+
+    private func recordUnrestrictedShellReauth() {
+        reauthLock.lock()
+        defer { reauthLock.unlock() }
+        unrestrictedShellCadence.recordReauth()
+    }
+
+    private func recordUnrestrictedShellAction() {
+        reauthLock.lock()
+        defer { reauthLock.unlock() }
+        unrestrictedShellCadence.recordAction()
+    }
+
     private func runShellUnrestricted(arguments: [String: Any]) async throws -> AgentToolExecutionPayload {
         guard grant.trustMode == .trusted, grant.capabilities.contains(.shellUnrestricted) else {
             return denied(name: "shell_run_unrestricted", reason: "unrestricted shell requires YOLO trusted mode")
@@ -371,14 +422,35 @@ final class AgentToolBroker: @unchecked Sendable {
         let command = try requiredString("command", in: arguments)
         let requestedTimeout = (arguments["timeoutSeconds"] as? Int) ?? 30
         let timeout = max(1, min(requestedTimeout, 120))
-        // F3: unrestricted shell under YOLO runs unsandboxed at full user privilege
-        // and skips the per-action approver by design. It is the single highest
-        // agent-execution risk surface (a prompt injection the model obeys can run
-        // arbitrary commands). We cannot block it without defeating YOLO's purpose,
-        // but we ALWAYS leave a forensic record: a command hash (never the plaintext,
-        // which may contain secrets), grant id, and runtime. This gives post-incident
-        // attribution and is the audit-trail half of the F3 control; a per-N-action
-        // re-auth UX is the tracked follow-up.
+
+        // T-TOOL-02(b) / T-AI-07: per-N-action re-authorization. Even under YOLO,
+        // the unrestricted shell may only run `unrestrictedShellReauthInterval`
+        // commands before the operator must re-prove presence with a fresh local
+        // auth. This bounds an obeyed prompt injection: it cannot run unbounded
+        // shell because each re-auth checkpoint requires a human. We fail CLOSED
+        // when no re-authorizer is wired or the proof is declined.
+        if needsUnrestrictedShellReauth() {
+            guard let reauthorizer = unrestrictedShellReauthorizer else {
+                return denied(
+                    name: "shell_run_unrestricted",
+                    reason: "unrestricted shell requires periodic re-authorization but no local-auth is available"
+                )
+            }
+            let summary = "Re-authorize unrestricted shell (YOLO) — next command: \(command.prefix(120))"
+            let proven = await reauthorizer(String(summary))
+            guard proven else {
+                return denied(name: "shell_run_unrestricted", reason: "re-authorization declined")
+            }
+            recordUnrestrictedShellReauth()
+        }
+        recordUnrestrictedShellAction()
+
+        // F3: unrestricted shell under YOLO runs unsandboxed at full user privilege.
+        // It is the single highest agent-execution risk surface (a prompt injection
+        // the model obeys can run arbitrary commands). The per-N-action re-auth gate
+        // above bounds the blast radius; we ALSO ALWAYS leave a forensic record: a
+        // command hash (never the plaintext, which may contain secrets), grant id,
+        // and runtime, for post-incident attribution.
         let auditLine = "shell_run_unrestricted dispatched"
             + " grant=\(self.grant.grantID)"
             + " runtime=\(self.grant.runtimeID.rawValue)"
@@ -527,8 +599,12 @@ final class AgentToolBroker: @unchecked Sendable {
     }
 
     private static func shouldWrapUntrustedComputerUseResult(toolName: String) -> Bool {
-        toolName == BurnBarToolKind.browserExtract.rawValue
-            || toolName == BurnBarToolKind.macInspectAccessibility.rawValue
+        // T-AI-01: default-deny. Every content-returning computer-use result is
+        // wrapped unless the tool is on the tiny control-only allow-list. This
+        // replaces the prior 2-tool allowlist (browser extract + AX inspect),
+        // which failed open for any new content-returning tool (screenshot OCR,
+        // clipboard, file reads, shell stdout/stderr).
+        UntrustedToolOutputPolicy.shouldWrap(toolName: toolName)
     }
 
     private static func wrappedUntrustedComputerUseResult(_ result: Any, toolName: String) -> [String: Any] {
@@ -641,23 +717,51 @@ final class AgentToolBroker: @unchecked Sendable {
         )
     }
 
+    /// Read roots a restricted shell legitimately needs for dev tooling to run
+    /// (interpreters, compilers, system libraries, shell startup). T-TOOL-10:
+    /// the read policy is a **default-deny allow-list** — only these roots (plus
+    /// the workspace) are readable; everything else, including the rest of the
+    /// home directory, is denied. This is strictly tighter than the prior
+    /// curated deny-list, which read-allowed everything except an enumerated set
+    /// of secret stores (so any new secret location leaked by default).
+    static let restrictedShellReadAllowlistRoots: [String] = [
+        // Executables, shared libraries, the dyld shared cache, and OS roots that
+        // any spawned interpreter/compiler must read to even start.
+        "/usr", "/bin", "/sbin", "/System", "/Library", "/private/var",
+        "/private/etc", "/etc", "/opt", "/dev", "/var", "/tmp", "/private/tmp",
+        "/Applications", "/Network/Library",
+        // dyld shared cache + cryptex mounts on modern macOS so dynamic linking
+        // works under default-deny read.
+        "/System/Cryptexes", "/System/Volumes", "/cores"
+    ]
+
+    /// Home-relative read roots dev tooling needs (toolchains, language version
+    /// managers, package caches). Everything else under home is denied.
+    static let restrictedShellHomeReadAllowlistSubpaths: [String] = [
+        "/.rustup", "/.cargo/bin", "/.cargo/registry", "/.rbenv", "/.rbenv",
+        "/.pyenv", "/.nvm", "/.nodenv", "/.asdf", "/.local/share/mise",
+        "/.swiftpm", "/.cache", "/Library/Developer", "/.gradle/caches",
+        "/.m2/repository", "/.npm", "/.bun/bin", "/.deno", "/go/pkg",
+        "/.zshenv", "/.zprofile", "/.zshrc", "/.profile", "/.bashrc", "/.bash_profile"
+    ]
+
     /// Seatbelt profile for the **restricted** agent shell (`shell_run`).
     ///
-    /// A prior version was `(allow default)` with only an out-of-workspace
-    /// *write* deny. That left intact the exact two primitives a prompt-injection
-    /// payload needs to turn an active shell grant into data exfiltration / RCE:
-    /// unrestricted outbound **network** (the exfil channel) and **reads** of
-    /// every secret store on disk (`~/.ssh`, Messages, Keychains, browser
-    /// profiles, …). This profile removes both while keeping ordinary local dev
-    /// tooling working:
+    /// Hardening layers (T-TOOL-10 + prior F3/F9):
     ///   * `(deny network*)` — no outbound/inbound network from the restricted
     ///     shell, so a `curl … | sh` / `… | curl -d @-` exfil cannot reach the
     ///     wire. Network-dependent work belongs in the trusted (`shell_run_
     ///     unrestricted`) path the operator explicitly opts into.
     ///   * writes stay confined to the workspace (unchanged guarantee).
-    ///   * reads of well-known credential / private-data stores are denied.
+    ///   * **reads are default-DENY** with an explicit allow-list of the system
+    ///     roots + home toolchain subpaths dev tooling needs, plus the workspace.
+    ///     This inverts the prior deny-list (which leaked any not-yet-enumerated
+    ///     secret) into a fail-closed allow-list. Known credential/private-data
+    ///     stores remain explicitly denied as belt-and-suspenders in case a
+    ///     secret lives under an allow-listed root.
     /// Seatbelt evaluates the first matching operation rule here, so narrow
-    /// denies and workspace/device write allows must appear before the catch-all
+    /// denies must appear before the broader read allow-list, which in turn
+    /// appears before the terminal `(deny file-read*)` and the non-file
     /// `(allow default)`.
     static func restrictedShellSandboxProfile(
         workspacePath: String,
@@ -700,7 +804,6 @@ final class AgentToolBroker: @unchecked Sendable {
         var lines: [String] = [
             "(version 1)",
             "(deny network*)",
-            "(allow file-read* (subpath \"\(ws)\"))",
             "(allow file-write* (subpath \"\(ws)\"))"
         ]
         // Re-allow only the null/stdio device nodes so ordinary redirects keep
@@ -713,12 +816,37 @@ final class AgentToolBroker: @unchecked Sendable {
             lines.append("(allow file-write* (literal \"\(device)\"))")
         }
         lines.append("(allow file-write* (subpath \"/dev/fd\"))")
+
+        // SECRET DENIES FIRST (first-match precedence): these win over any
+        // broader read allow that follows, so a secret living under an
+        // allow-listed root (e.g. ~/Library/Keychains under the /Library home
+        // subpath) is still denied. Belt-and-suspenders under default-deny read.
         for path in secretSubpaths {
             lines.append("(deny file-read* (subpath \"\(escapeSandboxProfileString(path))\"))")
         }
         for path in secretLiterals {
             lines.append("(deny file-read* (literal \"\(escapeSandboxProfileString(path))\"))")
         }
+
+        // T-TOOL-10: READ ALLOW-LIST. Only the workspace, the enumerated system
+        // roots, and the home toolchain subpaths are readable. Anything not
+        // matched here falls through to the terminal `(deny file-read*)`.
+        lines.append("(allow file-read* (subpath \"\(ws)\"))")
+        for root in restrictedShellReadAllowlistRoots {
+            lines.append("(allow file-read* (subpath \"\(escapeSandboxProfileString(root))\"))")
+        }
+        for subpath in restrictedShellHomeReadAllowlistSubpaths {
+            let homeSubpath = canonicalHomePath + subpath
+            lines.append("(allow file-read* (subpath \"\(escapeSandboxProfileString(homeSubpath))\"))")
+        }
+        // Root metadata stat of the home dir itself (so `cd ~`, `pwd` work) —
+        // a literal allow does not grant reads of children, only the node.
+        lines.append("(allow file-read-metadata (literal \"\(escapeSandboxProfileString(canonicalHomePath))\"))")
+
+        // Terminal read default-deny: any read not explicitly allowed above is
+        // refused. This is the fail-closed inversion of the old deny-list.
+        lines.append("(deny file-read*)")
+
         lines.append("(deny file-write* (require-not (subpath \"\(ws)\")))")
         lines.append("(allow default)")
         return lines.joined(separator: "\n")
@@ -1025,6 +1153,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
+            Self.applyNoRetentionHeaders(to: &request)
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
             let (bytes, response) = try await session.bytes(for: request)
@@ -1126,6 +1255,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                 if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
                     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 }
+                Self.applyNoRetentionHeaders(to: &request)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
                 let (data, response) = try await session.data(for: request)
@@ -1165,7 +1295,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                     messages.append([
                         "role": "tool",
                         "tool_call_id": call.id,
-                        "content": result.content
+                        "content": wrappedToolResultContent(toolName: call.name, content: result.content)
                     ])
                 }
 
@@ -1232,6 +1362,23 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         return message["content"] as? String
     }
 
+    /// T-AI-01 + T-AI-06: every tool result re-entering the model context is
+    /// default-deny wrapped as untrusted data and secret-scrubbed first. This is
+    /// the single chokepoint for the in-process tool loop, so file reads, shell
+    /// stdout/stderr, clipboard, browser screenshot OCR — and any unknown future
+    /// tool — are all treated as data, never instructions, and never leak a
+    /// credential value back to the provider.
+    static func wrappedToolResultContent(toolName: String, content: String) -> String {
+        let scrubbed = AgentSecretScrubber.scrub(content)
+        guard UntrustedToolOutputPolicy.shouldWrap(toolName: toolName) else {
+            return scrubbed
+        }
+        return LLMSafeContent.wrapUntrusted(
+            scrubbed,
+            provenance: "tool_result:\(toolName)"
+        )
+    }
+
     private static func summarizeToolArguments(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -1260,6 +1407,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        Self.applyNoRetentionHeaders(to: &request)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
@@ -1373,7 +1521,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                 attachmentBytes: msgBytes
             )
         }
-        return HermesAttachmentEncoder.encodeMessages(
+        let encoded = HermesAttachmentEncoder.encodeMessages(
             systemPrompt: systemPrompt,
             messages: encoderMessages,
             capabilities: capabilities,
@@ -1382,5 +1530,36 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
                 return workspaceURL.appendingPathComponent(att.workspaceRelativePath).path
             }
         )
+        // T-AI-06: content-level secret scrubbing before any prompt reaches a model
+        // provider. Redacts high-confidence credential shapes (API keys, AWS keys,
+        // GitHub tokens, PEM private keys, bearer/JWT) from outbound message text.
+        return encoded.map { scrubMessageContent($0) }
+    }
+
+    /// T-AI-06: redacts secrets from a single OpenAI-compatible message's textual
+    /// content, including the multimodal `content: [parts]` `text` parts. Non-text
+    /// parts (image data) are left untouched.
+    static func scrubMessageContent(_ message: [String: Any]) -> [String: Any] {
+        var scrubbed = message
+        if let text = message["content"] as? String {
+            scrubbed["content"] = AgentSecretScrubber.scrub(text)
+        } else if let parts = message["content"] as? [[String: Any]] {
+            scrubbed["content"] = parts.map { part -> [String: Any] in
+                var p = part
+                if let text = part["text"] as? String {
+                    p["text"] = AgentSecretScrubber.scrub(text)
+                }
+                return p
+            }
+        }
+        return scrubbed
+    }
+
+    /// T-AI-06: asserts no-retention / no-train intent to cooperating providers.
+    /// Unknown headers are ignored harmlessly by non-cooperating gateways.
+    static func applyNoRetentionHeaders(to request: inout URLRequest) {
+        for (key, value) in AgentProviderRetentionPolicy.noRetentionHeaders {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
     }
 }

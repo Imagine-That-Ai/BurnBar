@@ -112,6 +112,7 @@ enum GatewayEventSealer {
         targetClient: HermesGatewayClientRecord?,
         uid: String,
         pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore(),
+        versionFloorStore: HermesGatewayVersionFloorStore = HermesGatewayVersionFloorStore(),
         kind: String? = nil,
         extraSealedFields: [String: Any] = [:]
     ) throws {
@@ -119,6 +120,19 @@ enum GatewayEventSealer {
             throw FunctionsError.gatewayTargetMissingRelayKey
         }
         try validateExtraSealedFields(extraSealedFields)
+
+        // T-CRY-01 — record any v3 capability the doc advertises as a high-water
+        // *before* picking a version, so a relay that drops the v3 advertisement
+        // on a later poll cannot make us seal a v2 frame for a peer that already
+        // proved v3. The floor only ratchets up here; the seal-side enforcement
+        // below refuses any version below it.
+        if targetClient.supportsRelayEnvelopeVersions.contains(HermesRelayCrypto.gatewayRelayKeyVersionV3) {
+            versionFloorStore.raiseFloorIfObserved(
+                HermesRelayCrypto.gatewayRelayKeyVersionV3,
+                uid: uid,
+                clientId: targetClient.id
+            )
+        }
 
         if targetClient.canRatchetToAgent {
             try sealGatewayEventRatchetPayload(
@@ -196,7 +210,19 @@ enum GatewayEventSealer {
             "payloadCiphertext": payloadCiphertext,
             "senderPublicKey": keypair.relayPublicKeyBase64
         ]
-        if targetClient.preferredRelayEnvelopeVersionForSeal == HermesRelayCrypto.gatewayRelayKeyVersionV3 {
+        let sealVersion = targetClient.preferredRelayEnvelopeVersionForSeal
+        // T-CRY-01 — enforce the pinned version floor: once v3 was observed for
+        // this peer, refuse to seal a v2 frame. `verifyAndPin` ratchets the floor
+        // up on first use and fails closed on a Keychain error, exactly like the
+        // agent-key pin. The server controls `preferredRelayEnvelopeVersionForSeal`,
+        // so the phone holds the floor.
+        guard versionFloorStore
+            .verifyAndPin(candidateVersion: sealVersion, uid: uid, clientId: targetClient.id)
+            .allows
+        else {
+            throw FunctionsError.gatewayEnvelopeVersionDowngrade
+        }
+        if sealVersion == HermesRelayCrypto.gatewayRelayKeyVersionV3 {
             let wrap = try HermesRelayCrypto.sealKeyV3(
                 key,
                 recipientPublicKeyBase64: relayPublicKey,

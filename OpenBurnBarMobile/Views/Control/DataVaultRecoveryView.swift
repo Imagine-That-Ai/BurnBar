@@ -35,6 +35,9 @@ struct DataVaultRecoveryView: View {
         }
         .navigationTitle("Recovery")
         .navigationBarTitleDisplayMode(.inline)
+        // T-IOS-03 — recovery keys are among the most sensitive screens; mask
+        // them from the app-switcher snapshot and screen recording.
+        .sensitiveContentPrivacyGuard()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
         }

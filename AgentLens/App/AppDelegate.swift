@@ -76,6 +76,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // rotation when it is an eligible survivor.
     private var cloudVaultRotationPickupObserver: NSObjectProtocol?
     private var postRevokeCloudVaultRotationPickupObserver: NSObjectProtocol?
+    // T-PTR-02 — "came online" trigger. The foreground/activate observer above
+    // does not re-fire when the app is already foregrounded and merely
+    // reconnects to the cloud (network returns / sign-in completes). This
+    // observer runs the pickup the moment a remote replica pull starts, so a
+    // surviving Mac completes a pending rotation requirement on reconnect too.
+    private var cloudOnlineCloudVaultRotationPickupObserver: NSObjectProtocol?
     private var lastCloudVaultRotationPickupAt: TimeInterval = 0
     /// Foreground passes within this window of the last attempt are coalesced so
     /// rapid activate/deactivate cycles don't spam the server callable.
@@ -143,6 +149,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 Task { @MainActor in self?.pickUpPendingCloudVaultRotations(force: true) }
             }
         }
+        // T-PTR-02 — finish a pending rotation when the Mac reconnects to the
+        // cloud (a surviving trusted device coming online) even if it was already
+        // foregrounded. Debounced so it coalesces with the activate pass.
+        if cloudOnlineCloudVaultRotationPickupObserver == nil {
+            cloudOnlineCloudVaultRotationPickupObserver = NotificationCenter.default.addObserver(
+                forName: .openBurnBarCloudSyncDidComeOnline,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.pickUpPendingCloudVaultRotations(force: false) }
+            }
+        }
     }
 
     /// Fire-and-forget RR-5 Cloud Vault rotation pickup. Non-fatal on any error
@@ -170,6 +188,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             "eligible": String(result.eligibleRequirementIds.count),
                             "completed": String(result.completedRequirementIds.count),
                             "failed": String(result.failedRequirements.count)
+                        ]
+                    )
+                }
+                // T-PTR-02 — surface the cross-platform gap. Only the Mac
+                // survivor runs this pickup: iOS and Android CANNOT perform the
+                // Cloud Vault key rotation (they have no document/storage rewrap
+                // worker and the rotate callable is gated to a desktop survivor).
+                // If a requirement is eligible for this Mac but no Mac is ever
+                // online, the requirement stays pending and the revoked device's
+                // cached key is not retired. Emit a one-time observable signal so
+                // that gap is visible in telemetry / the wiki rather than silent;
+                // the durable fix (a server-side rotation or a mobile survivor
+                // path) is tracked as a product decision below.
+                if !result.eligibleRequirementIds.isEmpty {
+                    AppLogger.sync.notice(
+                        "cloud_vault_rotation_pickup_mac_only",
+                        metadata: [
+                            "note": "iOS/Android cannot complete Cloud Vault rotation; pending requirements need a Mac survivor online"
                         ]
                     )
                 }
@@ -1139,6 +1175,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let observer = postRevokeCloudVaultRotationPickupObserver {
             NotificationCenter.default.removeObserver(observer)
             postRevokeCloudVaultRotationPickupObserver = nil
+        }
+        if let observer = cloudOnlineCloudVaultRotationPickupObserver {
+            NotificationCenter.default.removeObserver(observer)
+            cloudOnlineCloudVaultRotationPickupObserver = nil
         }
     }
 }

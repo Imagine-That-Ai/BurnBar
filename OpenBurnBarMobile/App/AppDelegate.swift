@@ -57,6 +57,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             // No DSN configured — crash reporting remains disabled silently.
             return
         }
+        // T-PRV-03 — consent gate. Crash reporting only runs when the user has
+        // not opted out. Default-on matches the existing internal-build posture,
+        // but the explicit key lets a privacy-conscious user disable it.
+        guard MobileCrashReportingConsent.isEnabled() else {
+            return
+        }
         SentrySDK.start { options in
             options.dsn = dsn
             options.environment = "mobile"
@@ -64,6 +70,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             options.releaseName = "openburnbar-mobile@\(version)"
             options.tracesSampleRate = 0
             options.enableAutoSessionTracking = true
+            // T-PRV-03 — never attach PII (IP, username, email) to events.
+            options.sendDefaultPii = false
+            // T-PRV-03 — scrub event payloads + breadcrumbs of any user content
+            // (prompts, vault data, tokens, file paths) before they leave the
+            // device. Returning nil drops the breadcrumb entirely.
+            options.beforeSend = { event in
+                MobileSentryScrubber.scrub(event)
+            }
+            options.beforeBreadcrumb = { breadcrumb in
+                MobileSentryScrubber.scrub(breadcrumb)
+            }
             #if DEBUG
             options.debug = false
             #endif

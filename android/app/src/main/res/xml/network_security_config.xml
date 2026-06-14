@@ -1,42 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  OpenBurnBar Android network security policy (security remediation H-7).
+  OpenBurnBar Android network security policy (security remediation H-7 + T-AND-02).
 
-  Background: the app previously set a blanket `android:usesCleartextTraffic="true"`
-  on <application>, which permits cleartext (HTTP) to ANY host. The app already
-  scopes cleartext at the application layer — `HermesProtocol.validatedBaseURL`
-  only allows http:// for localhost and RFC1918 LAN hosts (10/8, 172.16/12,
-  192.168/16) and rejects plain HTTP to public hosts — but the OS-level flag
-  left no defense-in-depth if that check is ever bypassed (an SDK, an image
-  loader, a future code path).
+  Background: the app previously set a blanket `android:usesCleartextTraffic="true"`,
+  then a base-config that still permitted cleartext to ANY non-deny-listed host. The
+  app already scopes cleartext at the application layer — `HermesProtocol.validatedBaseURL`
+  only allows http:// for localhost and RFC1918 LAN hosts (10/8, 172.16/12, 192.168/16)
+  and rejects plain HTTP to public hosts — but the OS-level default left no
+  defense-in-depth if that check is ever bypassed (an SDK, an image loader, a future
+  code path), so a typo/injection could still exfiltrate over HTTP to an arbitrary host.
 
-  Android's Network Security Config cannot express RFC1918 CIDR ranges in a
-  <domain-config> (it matches hostnames / IP literals, not subnets), so we
-  CANNOT scope cleartext to "LAN only" here without breaking the deliberate
-  LAN-direct gateway feature. Instead we:
+  T-AND-02 — DEFAULT-DENY cleartext. The base config now refuses cleartext (HTTPS only),
+  so an arbitrary, non-allow-listed host can NEVER be reached over plain HTTP regardless
+  of app-layer logic. Cleartext is re-permitted ONLY for the specific hosts that truly
+  need it:
 
-    1. Keep the base config cleartext-permitted so LAN-direct (http://192.168.x.x,
-       http://localhost) keeps working — the app-layer validatedBaseURL remains
-       the gate that refuses plain HTTP to public hosts.
-    2. HARD-DENY cleartext for the security-critical backend hosts (Firebase /
-       Google APIs / Cloud Functions), so backend traffic can NEVER fall back to
-       HTTP even if some code path tries. These hosts are always HTTPS, so this
-       cannot break a legitimate flow — it only closes a downgrade vector.
+    * Loopback (`localhost`, `127.0.0.1`) and the Android-emulator host alias
+      (`10.0.2.2`) — these are static literals an NSC `<domain>` can name exactly, and
+      they carry the local-runtime Hermes / Ollama / Pi endpoints the app talks to over
+      HTTP by design. Traffic here never leaves the device (loopback) or the emulator
+      NAT, so cleartext is not a downgrade risk.
 
-  Recommendation (tracked separately): migrate LAN-direct gateway connections to
-  TLS (or route them through the authenticated relay) so the base config can be
-  flipped to cleartext-denied and the LAN exception removed entirely.
+  Dynamic RFC1918 LAN-direct (http://192.168.x.x, http://10.x.x.x, http://172.16-31.x.x):
+  Android's Network Security Config matches hostnames / IP literals, NOT CIDR subnets, so
+  the full RFC1918 ranges cannot be enumerated as `<domain>` entries. Rather than re-open
+  cleartext to "any host" to cover them, LAN-direct cleartext is confined to the DEBUG
+  source set's override of this file (`app/src/debug/res/xml/network_security_config.xml`,
+  which re-permits cleartext in the base config). RELEASE builds use THIS file and
+  therefore default-deny cleartext for every host except the static loopback/emulator
+  allow-list above; the app-layer `validatedBaseURL` remains the gate, but the OS now
+  fails closed too.
+
+  Recommendation (tracked separately): migrate LAN-direct gateway connections to TLS
+  (or route them through the authenticated relay) so even debug builds need no cleartext.
 -->
 <network-security-config>
-    <!-- Base: permit cleartext (required for the RFC1918 LAN-direct feature;
-         see validatedBaseURL). Public-host HTTP is still refused in app code. -->
-    <base-config cleartextTrafficPermitted="true">
+    <!-- DEFAULT-DENY: no cleartext to arbitrary hosts. HTTPS only unless a host below
+         is explicitly allow-listed. -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
 
-    <!-- Backend / control-plane hosts: TLS only, no cleartext, ever. -->
+    <!-- Static loopback / emulator hosts that legitimately serve the local-runtime
+         Hermes/Ollama/Pi endpoints over HTTP. These never reach the network, so
+         cleartext here is not a downgrade vector. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+
+    <!-- Backend / control-plane hosts: TLS only, no cleartext, ever. Redundant under the
+         default-deny base, but kept explicit so a future base-config edit cannot silently
+         re-expose these security-critical hosts to an HTTP downgrade. -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">googleapis.com</domain>
         <domain includeSubdomains="true">firebaseio.com</domain>

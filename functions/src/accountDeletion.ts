@@ -33,6 +33,13 @@ export interface DeleteUserAccountOptions extends AccountDeletionOptions {
 
 const BATCH_LIMIT = 400;
 
+/**
+ * Root (non-`users/{uid}`) collections that carry per-document `uid` ownership
+ * and therefore are not reached by the `users/{uid}` subtree walk. Account erase
+ * must delete the caller's documents in each (GDPR Art.17).
+ */
+export const ROOT_COLLECTIONS_KEYED_BY_UID = ["voip_outbound", "fcm_outbound"] as const;
+
 export function userWorkspaceID(uid: string): string {
   return `workspace-${uid}`;
 }
@@ -111,6 +118,19 @@ export async function eraseUserCloudData(
 
   await deleteDocumentTree(db.doc(`users/${uid}`), batcher);
   await deleteDocumentTree(db.doc(`workspaces/${userWorkspaceID(uid)}`), batcher);
+
+  // GDPR Art.17: the VoIP / FCM push fan-out queues live in ROOT collections
+  // (not under users/{uid}), each carrying the owning `uid` field. The
+  // user-subtree walk above never reaches them, so erase them explicitly by
+  // owner. They are TTL-bounded (T-PRV-02) but a deletion request must purge
+  // them immediately rather than waiting for the TTL sweep.
+  for (const rootCollection of ROOT_COLLECTIONS_KEYED_BY_UID) {
+    const docs = await db.collection(rootCollection).where("uid", "==", uid).get();
+    for (const doc of docs.docs) {
+      await batcher.delete(doc.ref);
+    }
+  }
+
   await batcher.flush();
 
   // Purge the user's Cloud Storage objects too — sealed session-log bodies,

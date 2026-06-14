@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -35,6 +36,15 @@ final class iOSFileTransferService: ObservableObject {
         case fetchFailed(String)
         case dispatchUnavailable
         case settingDisabled
+        /// T-ATT-02/03 — the authoritative media gate refused the inbound transfer.
+        case admissionDenied(String)
+        /// T-ATT-06 — seal-at-rest could not run (no session key, or sealing
+        /// failed). The plaintext blob is deleted and the transfer is refused
+        /// rather than left as plaintext in the inbox.
+        case sealAtRestUnavailable
+        /// T-ATT-04 — the sender-bound manifest MAC did not verify; a relay may
+        /// have tampered with the advertised manifest.
+        case manifestUnverified
 
         var errorDescription: String? {
             switch self {
@@ -50,6 +60,12 @@ final class iOSFileTransferService: ObservableObject {
                 return "No active iroh stream is available."
             case .settingDisabled:
                 return "media_blob_transfer_enabled is off."
+            case .admissionDenied(let reason):
+                return "media admission denied: \(reason)"
+            case .sealAtRestUnavailable:
+                return "This file could not be secured on this device, so it was not kept."
+            case .manifestUnverified:
+                return "This file could not be verified as coming from your paired device."
             }
         }
     }
@@ -87,6 +103,30 @@ final class iOSFileTransferService: ObservableObject {
 
     private let service: MediaFileTransferService?
     private let settingsProvider: @MainActor () -> Bool
+    /// T-ATT-02/03 — authoritative inbound media admission gate (entitlement +
+    /// daily cap + kill switch + concurrency), mirroring `MacFileTransferService`.
+    /// The advertised manifest size feeds the per-day byte cap so a transfer that
+    /// would blow the budget is refused with a denial ack rather than fetched
+    /// first. Defaults to `AlwaysAllowMediaCapabilityGate` for dev/loopback.
+    private let capabilityGate: any MediaCapabilityGate
+    /// T-ATT-06 — when a media-seal session key exists for the receiving
+    /// connection, received blob bytes are sealed at rest (AES-256-GCM,
+    /// manifest-bound AAD) instead of landing as plaintext in the inbox. Unlike
+    /// the Mac path's "keep quarantine-only" fallback, iOS FAILS CLOSED when this
+    /// returns nil: the plaintext is deleted and the transfer refused, because an
+    /// iOS sandbox inbox has no quarantine xattr backstop.
+    private let frameSealKeyProvider: @MainActor (_ uid: String, _ connectionID: String) -> SymmetricKey?
+    /// T-ATT-04 — supplies the expected sender-bound MAC over
+    /// `(blobHash,filename,mime,size)` for an inbound manifest, or nil when no MAC
+    /// was advertised. When present it MUST verify under the media-seal key
+    /// (`MercuryManifestMAC`) or the transfer is refused. nil-by-default keeps
+    /// pre-MAC peers working until the wire carrier ships (Deferred portion).
+    private let manifestMACProvider: @MainActor (_ frame: HermesRealtimeRelayFrame) -> String?
+    private let frameSealAEAD = MediaFrameAEAD()
+    /// T-ATT-06 rollout gate: when true (default), a received blob with no seal
+    /// key is refused+deleted. A `UserDefaults` override lets QA exercise the
+    /// legacy keep-plaintext path during migration.
+    private let sealAtRestRequired: Bool
     /// Long-lived media control stream owners, keyed by Hermes connection.
     /// Set via `attachControlStream(_:connectionID:)` once iOS auth +
     /// Hermes connection reach an authenticated state. Optional so tests
@@ -104,10 +144,18 @@ final class iOSFileTransferService: ObservableObject {
 
     init(
         service: MediaFileTransferService?,
-        settingsProvider: @escaping @MainActor () -> Bool
+        settingsProvider: @escaping @MainActor () -> Bool,
+        capabilityGate: any MediaCapabilityGate = AlwaysAllowMediaCapabilityGate(),
+        frameSealKeyProvider: @escaping @MainActor (_ uid: String, _ connectionID: String) -> SymmetricKey? = { _, _ in nil },
+        manifestMACProvider: @escaping @MainActor (_ frame: HermesRealtimeRelayFrame) -> String? = { _ in nil },
+        sealAtRestRequired: Bool = MercuryInboxSecurityPolicy.sealAtRestRequired()
     ) {
         self.service = service
         self.settingsProvider = settingsProvider
+        self.capabilityGate = capabilityGate
+        self.frameSealKeyProvider = frameSealKeyProvider
+        self.manifestMACProvider = manifestMACProvider
+        self.sealAtRestRequired = sealAtRestRequired
     }
 
     func attachControlStream(_ coordinator: MediaControlStreamCoordinator, connectionID: String) {
@@ -146,6 +194,47 @@ final class iOSFileTransferService: ObservableObject {
             return
         }
 
+        // T-ATT-02/03 — admit the inbound transfer through the authoritative gate
+        // BEFORE touching the blob backend, exactly as `MacFileTransferService`
+        // does. The advertised size feeds the per-day byte cap so a transfer that
+        // would blow the budget is refused with a denial ack instead of fetched
+        // first and charged after.
+        let admission = await capabilityGate.check(
+            feature: .fileTransfer,
+            sessionDurationLimitSeconds: nil,
+            sessionByteBudget: manifest.size
+        )
+        if case .denied(let denyReason) = admission {
+            lastError = .admissionDenied(denyReason.rawValue)
+            await sendAck(
+                manifest: manifest,
+                frame: frame,
+                status: .rejected,
+                reason: "media admission denied: \(denyReason.rawValue)",
+                ackSender: ackSender
+            )
+            return
+        }
+
+        // T-ATT-04 — verify the sender-bound MAC over (blobHash,filename,mime,size)
+        // when one was advertised. A missing MAC is tolerated for pre-MAC peers
+        // (the wire carrier is the Deferred portion); a PRESENT-but-invalid MAC is
+        // refused fail-closed, because that means the manifest was tampered with.
+        if let expectedMAC = manifestMACProvider(frame) {
+            guard let sealKey = frameSealKeyProvider(frame.uid, frame.connectionId),
+                  MercuryManifestMAC.verify(expectedTagBase64: expectedMAC, manifest: manifest, key: sealKey) else {
+                lastError = .manifestUnverified
+                await sendAck(
+                    manifest: manifest,
+                    frame: frame,
+                    status: .rejected,
+                    reason: "manifest signature unverified",
+                    ackSender: ackSender
+                )
+                return
+            }
+        }
+
         inFlightCount += 1
         defer { inFlightCount -= 1 }
 
@@ -158,6 +247,15 @@ final class iOSFileTransferService: ObservableObject {
                 ticketText: ticket,
                 manifest: manifest
             )
+            // T-ATT-06 — seal the received bytes at rest under the media session
+            // key. iOS FAILS CLOSED: if no key is available (and the policy
+            // requires sealing), the plaintext is deleted and the transfer
+            // refused, rather than left as plaintext in the sandbox inbox.
+            try sealReceivedFileAtRest(at: destination, frame: frame, manifest: manifest)
+            // T-ATT-02 — harden the at-rest file: complete data protection (key
+            // evicted when the device locks) and exclude from iCloud/iTunes
+            // backups so the inbox blob never leaves the device.
+            try Self.applyInboundFileProtection(to: destination)
             lastReceivedAttachment = ReceivedAttachment(
                 id: manifest.manifestId,
                 manifest: manifest,
@@ -179,6 +277,10 @@ final class iOSFileTransferService: ObservableObject {
                 didResume: stats.didResume,
                 localURL: destination
             ))
+        } catch let failure as Failure {
+            status = .rejected
+            reason = failure.errorDescription
+            lastError = failure
         } catch let serviceError as MediaFileTransferService.ServiceError {
             status = .rejected
             reason = String(describing: serviceError)
@@ -205,6 +307,112 @@ final class iOSFileTransferService: ObservableObject {
             )
         )
         try? await ackSender(ackFrame)
+    }
+
+    /// Send a `media.blob.ack` for a manifest. Used by the denial/refusal paths so
+    /// the peer sees the same shape it would for a fetch failure, rather than a
+    /// silently dropped advertise.
+    private func sendAck(
+        manifest: HermesRealtimeRelayAttachmentManifest,
+        frame: HermesRealtimeRelayFrame,
+        status: HermesRealtimeRelayMediaAck.Status,
+        reason: String?,
+        ackSender: AdvertiseSender
+    ) async {
+        let ack = HermesRealtimeRelayMediaAck(
+            manifestId: manifest.manifestId,
+            status: status,
+            reason: reason
+        )
+        let ackFrame = HermesRealtimeRelayFrame(
+            type: .mediaBlobAck,
+            uid: frame.uid,
+            connectionId: frame.connectionId,
+            requestId: manifest.manifestId,
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: MediaStreamClass.blobAdvertise.rawValue,
+                ack: ack
+            )
+        )
+        try? await ackSender(ackFrame)
+    }
+
+    /// T-ATT-06 — seal the freshly-fetched plaintext blob in place with its
+    /// `MediaFrameAEAD` (OBMFA1) envelope under the media session key. Unlike the
+    /// Mac path (which keeps quarantine-only plaintext when no key exists), iOS
+    /// FAILS CLOSED: when no key is available and the policy requires sealing, the
+    /// plaintext is deleted and the transfer refused, so the sandbox inbox never
+    /// holds an unsealed blob. The write goes through a sibling temp file + atomic
+    /// replace so a crash mid-seal never leaves a truncated file.
+    private func sealReceivedFileAtRest(
+        at url: URL,
+        frame: HermesRealtimeRelayFrame,
+        manifest: HermesRealtimeRelayAttachmentManifest
+    ) throws {
+        guard let sealKey = frameSealKeyProvider(frame.uid, frame.connectionId) else {
+            guard sealAtRestRequired else { return }
+            // No key and sealing required — refuse and remove the plaintext.
+            try? FileManager.default.removeItem(at: url)
+            throw Failure.sealAtRestUnavailable
+        }
+        let plaintext: Data
+        do {
+            plaintext = try Data(contentsOf: url)
+        } catch {
+            throw Failure.sealAtRestUnavailable
+        }
+        // Already sealed (idempotent re-fetch) — leave it.
+        guard !MediaFrameAEAD.isSealedEnvelope(plaintext) else { return }
+        let sealed: Data
+        do {
+            sealed = try frameSealAEAD.seal(
+                plaintext: plaintext,
+                key: sealKey,
+                streamClass: MediaStreamClass.blob.rawValue,
+                kind: 0,
+                gopID: Self.atRestGopID(for: manifest),
+                frameIndex: 0
+            )
+        } catch {
+            // Sealing failed — never keep the plaintext.
+            try? FileManager.default.removeItem(at: url)
+            throw Failure.sealAtRestUnavailable
+        }
+        let tempURL = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).obmfa1-tmp")
+        do {
+            try sealed.write(to: tempURL, options: [.atomic, .completeFileProtection])
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            try? FileManager.default.removeItem(at: url)
+            throw Failure.sealAtRestUnavailable
+        }
+    }
+
+    /// Stable 32-bit AAD discriminator derived from the manifest id so the at-rest
+    /// seal is bound to this exact transfer (mirrors `MacFileTransferService`).
+    static func atRestGopID(for manifest: HermesRealtimeRelayAttachmentManifest) -> UInt32 {
+        var hash: UInt32 = 2_166_136_261 // FNV-1a offset basis
+        for byte in manifest.manifestId.utf8 {
+            hash = (hash ^ UInt32(byte)) &* 16_777_619
+        }
+        return hash
+    }
+
+    /// T-ATT-02 — apply `FileProtectionType.complete` and exclude the file from
+    /// backups. Complete protection evicts the file's key when the device locks;
+    /// excluding from backup keeps the inbox blob from leaving the device via
+    /// iCloud/iTunes. Both are best-effort hardening on top of the at-rest seal.
+    private static func applyInboundFileProtection(to url: URL) throws {
+        try FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.complete],
+            ofItemAtPath: url.path
+        )
+        var mutableURL = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try mutableURL.setResourceValues(values)
     }
 
     /// Publish a file from iOS and emit a `media.blob.advertise` frame
@@ -289,5 +497,23 @@ final class iOSFileTransferService: ObservableObject {
         ))
 
         return publish.manifest
+    }
+}
+
+/// T-ATT-06 — rollout gate for fail-closed seal-at-rest of received Mercury
+/// blobs. Default **on**: a received file with no media-seal session key is
+/// refused and deleted rather than kept as plaintext in the sandbox inbox. A
+/// `UserDefaults` override lets QA / emergency rollback exercise the legacy
+/// keep-plaintext path without a code change.
+enum MercuryInboxSecurityPolicy {
+    static let userDefaultsKey = "openburnbar.mercuryInbox.sealAtRestRequired.enabled"
+
+    nonisolated(unsafe) static var defaultEnabled = true
+
+    static func sealAtRestRequired(defaults: UserDefaults = .standard) -> Bool {
+        if defaults.object(forKey: userDefaultsKey) != nil {
+            return defaults.bool(forKey: userDefaultsKey)
+        }
+        return defaultEnabled
     }
 }

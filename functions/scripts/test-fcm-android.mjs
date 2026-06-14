@@ -7,7 +7,65 @@ const {
   pushAndroidFcm,
   sweepStuckFcmPushes,
 } = await import("../lib/fcmAndroidSender.js");
-const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voipPush.js");
+const {
+  macHasActiveMediaEntitlement,
+  resolveFanOut,
+  ephemeralCallCorrelationId,
+  buildVoipApnsPayload,
+  buildFcmCallPayload,
+  GENERIC_CALLER_DISPLAY_NAME,
+  VOIP_OUTBOUND_TTL_MS,
+} = await import("../lib/voipPush.js");
+
+// ---------------------------------------------------------------------------
+// T-PRV-01: push payloads carry NO cleartext displayName and NO stable
+// correlators (connection_id / paired_device_id) that a cross-service push
+// processor could read or use to link a device across sessions.
+// ---------------------------------------------------------------------------
+{
+  const correlationId = ephemeralCallCorrelationId();
+  const apns = buildVoipApnsPayload({ callId: "call-9", isVideo: true, correlationId });
+  const fcm = buildFcmCallPayload({ callId: "call-9", isVideo: false, correlationId });
+
+  const apnsLeaf = JSON.stringify(apns).toLowerCase();
+  const fcmLeaf = JSON.stringify(fcm).toLowerCase();
+  for (const leaked of ["displayname", "connection_id", "connectionid", "paired_device_id", "paireddeviceid"]) {
+    assert.ok(!apnsLeaf.includes(leaked), `apns payload must not contain ${leaked}`);
+    assert.ok(!fcmLeaf.includes(leaked), `fcm payload must not contain ${leaked}`);
+  }
+  // Generic caller label only; no real name.
+  assert.equal(fcm.caller_name, GENERIC_CALLER_DISPLAY_NAME);
+  assert.equal(fcm.caller_name, "Incoming call");
+  // Ephemeral correlator is carried, not a stable connection id.
+  assert.equal(fcm.correlation_id, correlationId);
+  assert.equal(apns.correlationId, correlationId);
+  // Opaque per-call session id the device already holds is still routed.
+  assert.equal(apns.callId, "call-9");
+  assert.equal(fcm.call_id, "call-9");
+  assert.equal(apns.aps["content-available"], 1);
+  assert.equal(fcm.feature, "voiceCall");
+  assert.equal(buildFcmCallPayload({ callId: "c", isVideo: true, correlationId }).feature, "videoCall");
+}
+
+// ---------------------------------------------------------------------------
+// T-PRV-07: per-push correlation id rotates (never a stable cross-session id)
+// ---------------------------------------------------------------------------
+{
+  const a = ephemeralCallCorrelationId();
+  const b = ephemeralCallCorrelationId();
+  assert.notEqual(a, b);
+  // UUID v4 shape — opaque, not derived from any device/connection identifier.
+  assert.match(a, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+}
+
+// ---------------------------------------------------------------------------
+// T-PRV-02: VoIP/FCM outbound TTL is a positive, bounded duration
+// ---------------------------------------------------------------------------
+{
+  assert.equal(typeof VOIP_OUTBOUND_TTL_MS, "number");
+  assert.ok(VOIP_OUTBOUND_TTL_MS > 0);
+  assert.equal(VOIP_OUTBOUND_TTL_MS, 24 * 60 * 60 * 1000);
+}
 
 // ---------------------------------------------------------------------------
 // pushAndroidFcm — happy path

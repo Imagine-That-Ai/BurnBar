@@ -1,5 +1,12 @@
 name: computer-use-loopback-test
 
+# Least-privilege default: this lane only checks out the tree and runs
+# build/test/smoke jobs — it never needs a write token. Pinning
+# `contents: read` at the top level keeps the no-write-token guarantee
+# file-local instead of inheriting the repository/org default.
+permissions:
+  contents: read
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]

@@ -581,7 +581,9 @@ struct NestHubSettingsCard: View {
                             .stroke(MobileTheme.border, lineWidth: 0.5)
                     )
                 Button("Copy") {
-                    UIPasteboard.general.string = curlSnippet
+                    // T-IOS-05 — the curl snippet embeds the voice-refresh URL;
+                    // copy with an expiration + local-only scope.
+                    SecurePasteboard.copy(curlSnippet)
                     copyMessage = "Command copied."
                 }
                 .buttonStyle(.bordered)

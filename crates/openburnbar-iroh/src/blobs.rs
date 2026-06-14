@@ -38,6 +38,44 @@ use tokio_stream::StreamExt;
 
 use crate::{block_on, IrohFfiError, IrohNodeIdentity};
 
+/// Hard streaming ceiling for a single inbound blob fetch. A malicious or
+/// buggy sender can advertise a ticket whose backing content is far larger
+/// than the `media.blob.advertise` manifest claims; without a ceiling the
+/// receiver streams unbounded bytes to disk and a single peer can disk-fill
+/// the device (T-ATT-01). 2 GiB comfortably covers every Mercury Phase 1
+/// media payload (the largest sanctioned transfer is a short screen capture)
+/// while bounding the blast radius of a lying/oversized advertisement.
+///
+/// The streaming loop aborts the moment cumulative bytes cross this line, and
+/// a post-fetch assertion re-checks the exported file, so neither the
+/// in-flight stream nor a resumed partial can exceed the ceiling. Fail closed:
+/// the transfer errors rather than truncating to a partial file.
+pub const OPENBURNBAR_MAX_BLOB_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// True once cumulative downloaded `bytes` have crossed `ceiling`. Pulled out
+/// as a pure function so the streaming-abort decision is unit-testable without
+/// standing up an endpoint or moving real bytes over the network.
+pub(crate) fn blob_byte_ceiling_exceeded(bytes: u64, ceiling: u64) -> bool {
+    bytes > ceiling
+}
+
+/// Post-fetch guard: the exported file must not exceed `ceiling`. Returns an
+/// error (never a truncated success) so a lying manifest that slips an
+/// oversize blob past the streaming abort still fails closed at export time.
+pub(crate) fn assert_blob_within_ceiling(
+    bytes_total: u64,
+    ceiling: u64,
+) -> Result<(), IrohFfiError> {
+    if bytes_total > ceiling {
+        return Err(IrohFfiError::StreamFailed {
+            detail: format!(
+                "blob too large: {bytes_total} bytes exceeds ceiling of {ceiling} bytes"
+            ),
+        });
+    }
+    Ok(())
+}
+
 /// Validated wrapper around an iroh-blobs `BlobTicket` text form. Carried
 /// as a base32 string on the wire so the Swift side can pass it through
 /// the existing JSON envelope without binary escaping.
@@ -265,11 +303,28 @@ impl IrohBlobNode {
                 .map_err(|err| IrohFfiError::StreamFailed {
                     detail: format!("blob download stream: {err}"),
                 })?;
+            // Streaming byte ceiling (T-ATT-01): iroh-blobs emits a cumulative
+            // `Progress(total)` as bytes arrive. Abort the moment the running
+            // total crosses the hard ceiling so an oversized blob behind a
+            // lying manifest cannot disk-fill the receiver — we stop pulling
+            // bytes instead of streaming the whole file and rejecting it after.
             while let Some(item) = progress.next().await {
-                if let iroh_blobs::api::downloader::DownloadProgressItem::Error(err) = item {
-                    return Err(IrohFfiError::StreamFailed {
-                        detail: format!("blob download: {err}"),
-                    });
+                match item {
+                    iroh_blobs::api::downloader::DownloadProgressItem::Error(err) => {
+                        return Err(IrohFfiError::StreamFailed {
+                            detail: format!("blob download: {err}"),
+                        });
+                    }
+                    iroh_blobs::api::downloader::DownloadProgressItem::Progress(downloaded) => {
+                        if blob_byte_ceiling_exceeded(downloaded, OPENBURNBAR_MAX_BLOB_BYTES) {
+                            return Err(IrohFfiError::StreamFailed {
+                                detail: format!(
+                                    "blob download aborted: {downloaded} bytes exceeds ceiling of {OPENBURNBAR_MAX_BLOB_BYTES} bytes"
+                                ),
+                            });
+                        }
+                    }
+                    _ => {}
                 }
             }
 
@@ -282,6 +337,11 @@ impl IrohBlobNode {
                 })?;
 
             let bytes_total = std::fs::metadata(&abs_dest).map(|m| m.len()).unwrap_or(0);
+            // Post-fetch assertion (T-ATT-01): re-check the exported file. The
+            // streaming loop bounds the in-flight stream, but a resumed partial
+            // or any path that bypasses `Progress` must not slip an oversize
+            // file past this point. Fail closed rather than return a partial.
+            assert_blob_within_ceiling(bytes_total, OPENBURNBAR_MAX_BLOB_BYTES)?;
             let duration_millis = crate::u64_saturating_from_u128(started.elapsed().as_millis());
 
             Ok(BlobTransferStats {
@@ -419,5 +479,56 @@ mod tests {
     #[test]
     fn iroh_blobs_crate_version_matches_cargo() {
         assert_eq!(iroh_blobs_crate_version(), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn blob_byte_ceiling_allows_up_to_and_at_the_ceiling() {
+        assert!(!blob_byte_ceiling_exceeded(0, OPENBURNBAR_MAX_BLOB_BYTES));
+        assert!(!blob_byte_ceiling_exceeded(
+            OPENBURNBAR_MAX_BLOB_BYTES - 1,
+            OPENBURNBAR_MAX_BLOB_BYTES
+        ));
+        // A blob exactly at the ceiling is permitted; only strictly larger
+        // payloads trip the abort.
+        assert!(!blob_byte_ceiling_exceeded(
+            OPENBURNBAR_MAX_BLOB_BYTES,
+            OPENBURNBAR_MAX_BLOB_BYTES
+        ));
+    }
+
+    #[test]
+    fn blob_byte_ceiling_aborts_once_oversize() {
+        assert!(blob_byte_ceiling_exceeded(
+            OPENBURNBAR_MAX_BLOB_BYTES + 1,
+            OPENBURNBAR_MAX_BLOB_BYTES
+        ));
+        // A wildly oversized advertisement (the disk-fill attack) trips it.
+        assert!(blob_byte_ceiling_exceeded(
+            u64::MAX,
+            OPENBURNBAR_MAX_BLOB_BYTES
+        ));
+        // The streaming loop checks the ceiling against a small bound too: an
+        // attacker advertising a 1-byte manifest cannot stream past it.
+        assert!(blob_byte_ceiling_exceeded(2, 1));
+    }
+
+    #[test]
+    fn assert_blob_within_ceiling_rejects_oversize_export() {
+        let ceiling = OPENBURNBAR_MAX_BLOB_BYTES;
+        assert!(assert_blob_within_ceiling(0, ceiling).is_ok());
+        assert!(assert_blob_within_ceiling(ceiling, ceiling).is_ok());
+
+        let err = match assert_blob_within_ceiling(ceiling + 1, ceiling) {
+            Ok(()) => panic!("oversize export must be rejected"),
+            Err(error) => error,
+        };
+        match err {
+            IrohFfiError::StreamFailed { detail } => {
+                assert!(detail.contains("blob too large"));
+                assert!(detail.contains(&(ceiling + 1).to_string()));
+                assert!(detail.contains(&ceiling.to_string()));
+            }
+            other => panic!("expected StreamFailed, got {other:?}"),
+        }
     }
 }

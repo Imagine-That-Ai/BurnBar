@@ -13,6 +13,13 @@ public actor BurnBarDaemonServer {
     /// Enforced in production (wired by `OpenBurnBarDaemonMain`); `.disabled` for
     /// in-process tests and unsigned developer builds.
     let peerAuthenticator: BurnBarDaemonPeerAuthenticator
+    /// T-DMN-01: per-operation capability attenuation. Every authenticated peer is
+    /// scoped to this set of capability groups; any RPC whose group is outside the
+    /// set is refused (fail closed) before dispatch, so a compromised first-party
+    /// peer cannot exercise full RPC/HID agency from a code-sign identity alone.
+    /// Defaults to `.full` for backward compatibility with the trusted controller
+    /// app; less-trusted session types pass an attenuated profile.
+    let capabilityProfile: BurnBarPeerCapabilityProfile
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -39,11 +46,13 @@ public actor BurnBarDaemonServer {
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
-        peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled
+        peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
+        capabilityProfile: BurnBarPeerCapabilityProfile = .full
     ) {
         self.configuration = configuration
         self.logger = logger
         self.peerAuthenticator = peerAuthenticator
+        self.capabilityProfile = capabilityProfile
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -395,6 +404,28 @@ public actor BurnBarDaemonServer {
                     id: incomingRequest.id,
                     code: BurnBarRPCErrorCode.methodNotFound,
                     message: "Unsupported OpenBurnBar RPC method '\(incomingRequest.method)'."
+                )
+            }
+
+            // T-DMN-01: per-operation capability attenuation. Refuse — fail closed
+            // — any method whose capability group is outside this peer's scoped
+            // profile, BEFORE the rate limiter or any handler runs. This bounds
+            // what an authenticated-but-compromised first-party peer may do.
+            guard capabilityProfile.permits(method) else {
+                BurnBarDaemonMetricsCounters.recordRPCError()
+                logger.warning(
+                    "rpc_request_capability_denied",
+                    metadata: [
+                        "request_id": incomingRequest.id,
+                        "method": incomingRequest.method,
+                        "capability": BurnBarRPCCapability.capability(for: method).rawValue,
+                        "peer_pid": peerPID.map(String.init) ?? "unknown"
+                    ]
+                )
+                return encodeErrorResponse(
+                    id: incomingRequest.id,
+                    code: BurnBarRPCErrorCode.unauthorized,
+                    message: "OpenBurnBar RPC method '\(incomingRequest.method)' is outside this peer's capability scope."
                 )
             }
 

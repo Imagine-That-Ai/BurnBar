@@ -47,6 +47,15 @@ struct MobileScreenPrivacyState: Equatable {
     }
 }
 
+/// What the guard is protecting, so the cover copy reads accurately. The Mac
+/// mirror is the original RR-14 surface; `sensitiveData` covers chat,
+/// provider-credential, and recovery-key screens (T-IOS-03) which leak through
+/// the same app-switcher-snapshot / screen-recording vectors.
+enum ScreenPrivacyPurpose: Equatable {
+    case macMirror
+    case sensitiveData
+}
+
 #if canImport(UIKit)
 import UIKit
 
@@ -62,12 +71,13 @@ import UIKit
 struct ScreenPrivacyGuardModifier: ViewModifier {
     @Environment(\.scenePhase) private var scenePhase
     @State private var state = MobileScreenPrivacyState()
+    var purpose: ScreenPrivacyPurpose = .macMirror
 
     func body(content: Content) -> some View {
         content
             .overlay {
                 if state.shouldMask {
-                    PrivacyCover(reason: state.maskReason)
+                    PrivacyCover(reason: state.maskReason, purpose: purpose)
                         .transition(.opacity)
                 }
             }
@@ -93,6 +103,7 @@ struct ScreenPrivacyGuardModifier: ViewModifier {
 /// can capture the mirrored Mac surface underneath.
 private struct PrivacyCover: View {
     let reason: MobileScreenPrivacyState.MaskReason?
+    var purpose: ScreenPrivacyPurpose = .macMirror
 
     var body: some View {
         ZStack {
@@ -138,11 +149,15 @@ private struct PrivacyCover: View {
     }
 
     private var detail: String {
-        switch reason {
-        case .screenCaptured:
+        switch (reason, purpose) {
+        case (.screenCaptured, .macMirror):
             return "The mirrored Mac screen is hidden while your screen is being recorded or mirrored."
-        case .backgrounded, .none:
+        case (.screenCaptured, .sensitiveData):
+            return "This content is hidden while your screen is being recorded or mirrored."
+        case (.backgrounded, .macMirror), (.none, .macMirror):
             return "The mirrored Mac screen stays private in the app switcher."
+        case (.backgrounded, .sensitiveData), (.none, .sensitiveData):
+            return "This content stays private in the app switcher."
         }
     }
 }
@@ -153,7 +168,15 @@ extension View {
     /// Mac so a recents snapshot or a screen recording never captures the Mac's
     /// terminal / desktop contents.
     func screenPrivacyGuard() -> some View {
-        modifier(ScreenPrivacyGuardModifier())
+        modifier(ScreenPrivacyGuardModifier(purpose: .macMirror))
+    }
+
+    /// T-IOS-03 — masks sensitive in-app content (chat, provider credentials,
+    /// recovery keys) for the app-switcher snapshot and during screen recording
+    /// / mirroring, reusing the same masking contract as the Mac-mirror guard
+    /// with copy that fits in-app data rather than the mirrored Mac surface.
+    func sensitiveContentPrivacyGuard() -> some View {
+        modifier(ScreenPrivacyGuardModifier(purpose: .sensitiveData))
     }
 }
 #endif
