@@ -2134,7 +2134,11 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
   const documentPath = "users/pro-user/cloud_search_documents/device_session";
   const chunkPath = "users/pro-user/cloud_search_chunks/device_session_0";
   const indexStatePath = "users/pro-user/cloud_search_index_state/device";
-  const wrapperPath = "users/pro-user/cloud_vault_key_wrappers/wrapper";
+  // T-PTR-06: the wrapper doc ID must be the deterministic
+  // `<vaultKeyID>_<targetDeviceId>_<keyVersion>` composite. wrapperPayload below
+  // uses vaultKeyID=TEST_VAULT_KEY_ID, targetDeviceId="device", keyVersion=1.
+  const wrapperPath = `users/pro-user/cloud_vault_key_wrappers/${TEST_VAULT_KEY_ID}_device_1`;
+  const wrapperMismatchedIdPath = "users/pro-user/cloud_vault_key_wrappers/wrapper";
   const bodyHash = "a".repeat(64);
   const contentHash = "b".repeat(64);
   const storagePath = `users/pro-user/session_logs/device_session/bodies/${bodyHash}.json.aesgcm`;
@@ -2428,6 +2432,12 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
 
   await assertSucceeds(
     setDoc(doc(db, wrapperPath), wrapperPayload)
+  );
+  // T-PTR-06: the same trusted-device payload under a NON-deterministic doc ID is
+  // rejected — a stolen-session owner cannot mint extra same-generation wrappers
+  // under arbitrary doc IDs.
+  await assertFails(
+    setDoc(doc(db, wrapperMismatchedIdPath), wrapperPayload)
   );
   await assertFails(deleteDoc(doc(db, wrapperPath)));
 });
