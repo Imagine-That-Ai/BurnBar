@@ -1180,11 +1180,11 @@ final class HermesRelayHostService {
         "relay-\(safeIdentifier(deviceID))"
     }
 
-    private static let iso8601: ISO8601DateFormatter = {
+    private static var iso8601: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
     private static let iso8601NoFraction = ISO8601DateFormatter()
 

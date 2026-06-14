@@ -52,8 +52,10 @@ protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
 
 // MARK: - Live Implementations
 
+// AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase `Firestore` handle
+// (override for tests); the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 /// Thin wrapper around real Firebase Firestore SDK.
-final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, Sendable {
+final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
     private let firestoreOverride: Firestore?
 
     init(firestore: Firestore? = nil) {

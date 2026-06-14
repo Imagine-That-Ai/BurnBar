@@ -443,7 +443,7 @@ final class HermesConversationStateStore {
             "llm_response",
             "final_answer"
         ]
-        return snapshot.events.reversed().compactMap { event in
+        return snapshot.events.reversed().compactMap { event -> String? in
             guard responsePhases.contains(event.phase) || responseKinds.contains(event.kind) else {
                 return nil
             }

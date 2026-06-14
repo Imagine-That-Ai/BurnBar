@@ -15,11 +15,11 @@ final class RetrievalHealthService {
     }
 
     private let dataStore: DataStore
-    private let nowProvider: () -> Date
+    private let nowProvider: @Sendable () -> Date
 
     private(set) var lastSnapshotError: String?
 
-    init(dataStore: DataStore, nowProvider: @escaping () -> Date = Date.init) {
+    init(dataStore: DataStore, nowProvider: @escaping @Sendable () -> Date = Date.init) {
         self.dataStore = dataStore
         self.nowProvider = nowProvider
     }

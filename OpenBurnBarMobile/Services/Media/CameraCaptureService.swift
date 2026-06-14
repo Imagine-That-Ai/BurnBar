@@ -101,7 +101,10 @@ extension CameraCaptureService: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 }
 
-private struct SendableSampleBuffer: Sendable {
+// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
+// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
+// shared concurrently. sendable-allowlist: apple-media-buffer
+private struct SendableSampleBuffer: @unchecked Sendable {
     let value: CMSampleBuffer
 
     init(_ value: CMSampleBuffer) {

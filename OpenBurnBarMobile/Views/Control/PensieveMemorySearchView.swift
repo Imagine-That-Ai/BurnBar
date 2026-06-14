@@ -238,7 +238,7 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
     init(limit: Int = 20) { self.limit = limit }
 
     func search(query: String) async throws -> [PensieveMemoryHit] {
-        guard let uid = await AuthRepository.shared.currentUser?.uid else {
+        guard let uid = await AuthRepository.shared.currentUserUID else {
             throw DataVaultError.notSignedIn
         }
         let vaultKey = try CloudVaultKeyStore().getOrCreateKey(uid: uid)

@@ -81,17 +81,20 @@ final class FirestoreRepository {
 
     // MARK: - Firestore → JSON Bridge
 
+    // `static` (not an instance method) so it is reachable from nonisolated
+    // callers without touching the `@MainActor` `shared` singleton; the logic is
+    // pure (no instance state), so this is a behavior-preserving move.
     /// Recursively converts Firestore-native types into JSON-serializable
     /// equivalents so `JSONSerialization.data(withJSONObject:)` does not throw.
     ///
     /// - `Timestamp`/`Date` → `timeIntervalSinceReferenceDate` Double
     /// - ISO 8601 date strings (e.g. `computedAt`, `fetchedAt`) → Double
     /// - Nested dicts/arrays → recursively sanitized
-    nonisolated func sanitizeForJSON(_ value: Any) -> Any {
+    nonisolated static func sanitizeForJSON(_ value: Any) -> Any {
         sanitizeForJSON(value, preservingStringValues: false)
     }
 
-    nonisolated private func sanitizeForJSON(_ value: Any, preservingStringValues: Bool) -> Any {
+    nonisolated private static func sanitizeForJSON(_ value: Any, preservingStringValues: Bool) -> Any {
         switch value {
         case let ts as Timestamp:
             return ts.dateValue().timeIntervalSinceReferenceDate
@@ -209,7 +212,7 @@ final class FirestoreRepository {
         if enriched["deviceId"] != nil && enriched["sourceDeviceId"] == nil {
             enriched["sourceDeviceId"] = enriched["deviceId"]
         }
-        let sanitized = sanitizeForJSON(enriched) as? [String: Any] ?? enriched
+        let sanitized = Self.sanitizeForJSON(enriched) as? [String: Any] ?? enriched
         guard let jsonData = try? JSONSerialization.data(withJSONObject: sanitized) else {
             logger.warning("Failed to serialize Firestore data for document \(docID, privacy: .public): \(String(describing: T.self), privacy: .public)")
             return nil
@@ -443,7 +446,7 @@ final class FirestoreRepository {
                 return nil
             }
         }
-        let sanitized = sanitizeForJSON(enriched) as? [String: Any] ?? enriched
+        let sanitized = Self.sanitizeForJSON(enriched) as? [String: Any] ?? enriched
         guard let jsonData = try? JSONSerialization.data(withJSONObject: sanitized) else {
             logger.warning("Failed to serialize rollup data for document \(docID)")
             return nil
@@ -1086,17 +1089,17 @@ final class FirestoreRepository {
         )
     }
 
-    private static let entitlementIsoFormatter: ISO8601DateFormatter = {
+    private static var entitlementIsoFormatter: ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
-    }()
+    }
 
-    private static let entitlementIsoFallbackFormatter: ISO8601DateFormatter = {
+    private static var entitlementIsoFallbackFormatter: ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f
-    }()
+    }
 
     private static func dateFromEntitlementField(_ raw: Any?) -> Date? {
         if let ts = raw as? Timestamp { return ts.dateValue() }

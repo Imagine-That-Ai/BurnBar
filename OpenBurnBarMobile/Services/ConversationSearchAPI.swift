@@ -159,7 +159,7 @@ final class ConversationSearchAPI: ConversationSearchServicing {
               let rawHits = dict["hits"] else {
             throw FunctionsError.decodingFailed
         }
-        let sanitized = FirestoreRepository.shared.sanitizeForJSON(rawHits)
+        let sanitized = FirestoreRepository.sanitizeForJSON(rawHits)
         let data = try JSONSerialization.data(withJSONObject: sanitized)
         return try JSONDecoder().decode([StreamSearchHit].self, from: data)
     }
@@ -179,7 +179,7 @@ final class ConversationSearchAPI: ConversationSearchServicing {
               let rawHits = dict["hits"] else {
             throw FunctionsError.decodingFailed
         }
-        let sanitized = FirestoreRepository.shared.sanitizeForJSON(rawHits)
+        let sanitized = FirestoreRepository.sanitizeForJSON(rawHits)
         let data = try JSONSerialization.data(withJSONObject: sanitized)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -229,7 +229,7 @@ final class ConversationSearchAPI: ConversationSearchServicing {
         guard let dict = raw as? [String: Any] else {
             throw FunctionsError.decodingFailed
         }
-        let sanitized = FirestoreRepository.shared.sanitizeForJSON(dict)
+        let sanitized = FirestoreRepository.sanitizeForJSON(dict)
         let data = try JSONSerialization.data(withJSONObject: sanitized)
         return try JSONDecoder().decode(ConversationQueryResponse.self, from: data)
     }

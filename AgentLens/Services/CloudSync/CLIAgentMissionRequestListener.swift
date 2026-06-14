@@ -2825,8 +2825,8 @@ final class AgentHarnessImportJobListener {
     private let dataStore: DataStore
     private let cloudSyncService: CloudSyncService?
     private let deviceTrustChecker: CLIAgentMissionDeviceTrustChecking
-    private let firestoreProvider: () -> Firestore
-    private let parserFactory: (AgentProvider) -> (any LogParser)?
+    private let firestoreProvider: @Sendable () -> Firestore
+    private let parserFactory: @Sendable (AgentProvider) -> (any LogParser)?
     private let logger = Logger(subsystem: "com.openburnbar.app", category: "AgentHarnessImportJobListener")
 
     private var listener: ListenerRegistration?
@@ -2840,8 +2840,8 @@ final class AgentHarnessImportJobListener {
         dataStore: DataStore,
         cloudSyncService: CloudSyncService?,
         deviceTrustChecker: CLIAgentMissionDeviceTrustChecking = LiveCLIAgentMissionDeviceTrustChecker(),
-        firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() },
-        parserFactory: @escaping (AgentProvider) -> (any LogParser)? = { ParserRegistry.defaultParsers()[$0] }
+        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+        parserFactory: @escaping @Sendable (AgentProvider) -> (any LogParser)? = { ParserRegistry.defaultParsers()[$0] }
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager

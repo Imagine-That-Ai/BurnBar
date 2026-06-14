@@ -16,6 +16,7 @@ import OpenBurnBarMedia
 ///
 /// Idempotent: document IDs are deterministic, so re-uploading the same row is a no-op.
 @Observable
+@MainActor
 final class CloudSyncService {
     private enum SyncBackoffPolicy {
         static let permissionDeniedCooldown: TimeInterval = 10 * 60
