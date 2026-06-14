@@ -47,7 +47,7 @@ enum SettingsDeepLinkRouting {
 ///    was supplied.
 @Observable
 @MainActor
-final class SettingsRouter: Sendable {
+final class SettingsRouter {
 
     /// Current search query. Empty string means "no search active".
     var query: String = ""

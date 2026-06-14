@@ -11,12 +11,12 @@ import OpenBurnBarCore
 // project-name AEAD open. Android's counterpart lives in
 // `android/.../data/firebase/LiveUsageAccumulator.kt`.
 
+// AUDIT(@unchecked Sendable): untyped Firestore [String: Any]? payload across one
+// confined decode hop. sendable-allowlist: firestore-any-payload
 /// One snapshot-listener delta, captured on Firestore's callback thread and
 /// consumed on the listener's serial decode queue. The `[String: Any]`
 /// payload comes straight from `QueryDocumentSnapshot.data()` and crosses
 /// exactly one hop onto the confining queue, hence `@unchecked Sendable`.
-// AUDIT(@unchecked Sendable): untyped Firestore [String: Any]? payload across one
-// confined decode hop. sendable-allowlist: firestore-any-payload
 struct LiveUsageDocumentChange: @unchecked Sendable {
     enum Kind: Sendable {
         case upsert
