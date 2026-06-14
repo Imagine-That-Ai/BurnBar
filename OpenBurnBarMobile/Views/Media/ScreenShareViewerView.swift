@@ -4218,7 +4218,7 @@ enum ScreenShareStreamStateOverlayPolicy {
 }
 
 private struct VolumeButtonScrollBridge: UIViewRepresentable {
-    let onVolumeStep: @MainActor (Double) -> Void
+    let onVolumeStep: @MainActor @Sendable (Double) -> Void
 
     func makeUIView(context: Context) -> MPVolumeView {
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -4236,40 +4236,26 @@ private struct VolumeButtonScrollBridge: UIViewRepresentable {
         Coordinator()
     }
 
-    final class Coordinator: NSObject, @unchecked Sendable {
-        var onVolumeStep: (@MainActor (Double) -> Void)?
+    @MainActor
+    final class Coordinator: NSObject {
+        var onVolumeStep: (@MainActor @Sendable (Double) -> Void)?
         private var observation: NSKeyValueObservation?
         private var lastVolume: Float = AVAudioSession.sharedInstance().outputVolume
 
-        func start(onVolumeStep: @escaping @MainActor (Double) -> Void) {
+        func start(onVolumeStep: @escaping @MainActor @Sendable (Double) -> Void) {
             self.onVolumeStep = onVolumeStep
             lastVolume = AVAudioSession.sharedInstance().outputVolume
             observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, change in
-                guard let self, let newValue = change.newValue else { return }
-                let delta = newValue - self.lastVolume
-                self.lastVolume = newValue
-                guard abs(delta) > 0.001 else { return }
-                let callback = SendableVolumeStepCallback(self.onVolumeStep)
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        callback.call(delta > 0 ? -0.28 : 0.28)
-                    }
+                guard let newValue = change.newValue else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let delta = newValue - self.lastVolume
+                    self.lastVolume = newValue
+                    guard abs(delta) > 0.001 else { return }
+                    self.onVolumeStep?(delta > 0 ? -0.28 : 0.28)
                 }
             }
         }
-    }
-}
-
-private struct SendableVolumeStepCallback: @unchecked Sendable {
-    private let callback: (@MainActor (Double) -> Void)?
-
-    init(_ callback: (@MainActor (Double) -> Void)?) {
-        self.callback = callback
-    }
-
-    @MainActor
-    func call(_ value: Double) {
-        callback?(value)
     }
 }
 

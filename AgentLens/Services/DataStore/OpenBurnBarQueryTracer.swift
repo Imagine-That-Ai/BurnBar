@@ -39,6 +39,7 @@
 
 import Foundation
 import GRDB
+import OpenBurnBarCore
 import os.log
 
 // MARK: - Query Tracer
@@ -48,16 +49,19 @@ import os.log
 /// Configure via `configure(in:)` before opening a `DatabaseQueue` or
 /// `DatabasePool`. Asserting and analysing captured queries is safe to call
 /// from any thread after database access completes.
-public final class OpenBurnBarQueryTracer: @unchecked Sendable {
+public final class OpenBurnBarQueryTracer: Sendable {
 
     public static let shared = OpenBurnBarQueryTracer()
 
     // MARK: - Private state
 
-    private let lock = NSLock()
-    private var _isEnabled = false
-    private var _queryLog: [TracedQuery] = []
-    private var _queryThreshold = 10
+    private struct State: Sendable {
+        var isEnabled = false
+        var queryLog: [TracedQuery] = []
+        var queryThreshold = 10
+    }
+
+    private let state = Locked(State())
 
     private let log = OSLog(subsystem: "com.openburnbar", category: "GRDB.Tracer")
 
@@ -68,12 +72,12 @@ public final class OpenBurnBarQueryTracer: @unchecked Sendable {
     /// Maximum queries to the same table within a traced block before emitting
     /// an N+1 warning. Default: 10 (conservative for existing code).
     public var queryThreshold: Int {
-        get { lock.withLock { _queryThreshold } }
-        set { lock.withLock { _queryThreshold = newValue } }
+        get { state.read().queryThreshold }
+        set { state.withLock { $0.queryThreshold = newValue } }
     }
 
     public var isEnabled: Bool {
-        lock.withLock { _isEnabled }
+        state.read().isEnabled
     }
 
     // MARK: - GRDB Configuration
@@ -91,7 +95,7 @@ public final class OpenBurnBarQueryTracer: @unchecked Sendable {
     public func configure(in configuration: inout Configuration) {
         let tracer = self
         configuration.prepareDatabase { db in
-            tracer.lock.withLock { tracer._isEnabled = true }
+            tracer.state.withLock { $0.isEnabled = true }
             db.trace(options: .statement) { event in
                 guard tracer.isEnabled else { return }
                 switch event {
@@ -116,10 +120,10 @@ public final class OpenBurnBarQueryTracer: @unchecked Sendable {
 
     private func record(sql: String) {
         let query = TracedQuery(sql: sql.trimmingCharacters(in: .whitespacesAndNewlines))
-        lock.withLock {
-            _queryLog.append(query)
-            if _queryLog.count > Self.maxRetainedQueries {
-                _queryLog.removeFirst(Self.maxRetainedQueries / 2)
+        state.withLock {
+            $0.queryLog.append(query)
+            if $0.queryLog.count > Self.maxRetainedQueries {
+                $0.queryLog.removeFirst(Self.maxRetainedQueries / 2)
             }
         }
         os_log(.debug, log: log, "[GRDB] %{public}@", query.sql)
@@ -129,17 +133,17 @@ public final class OpenBurnBarQueryTracer: @unchecked Sendable {
 
     /// Resets the query log. Call before the operation under test.
     public func resetLog() {
-        lock.withLock { _queryLog = [] }
+        state.withLock { $0.queryLog = [] }
     }
 
     /// All queries recorded since the last `resetLog()`.
     public var queryLog: [TracedQuery] {
-        lock.withLock { _queryLog }
+        state.read().queryLog
     }
 
     /// Total number of queries recorded since the last `resetLog()`.
     public var queryCount: Int {
-        lock.withLock { _queryLog.count }
+        state.read().queryLog.count
     }
 
     // MARK: - N+1 Analysis
@@ -147,7 +151,9 @@ public final class OpenBurnBarQueryTracer: @unchecked Sendable {
     /// Returns tables queried more than `queryThreshold` times —
     /// the classic sign of an N+1 problem.
     public func detectNPlusOne() -> [NPlusOneViolation] {
-        let queries = lock.withLock { _queryLog }
+        let snapshot = state.read()
+        let queries = snapshot.queryLog
+        let threshold = snapshot.queryThreshold
         var tableCounts: [String: Int] = [:]
 
         for query in queries {
@@ -157,7 +163,7 @@ public final class OpenBurnBarQueryTracer: @unchecked Sendable {
         }
 
         return tableCounts.compactMap { table, count in
-            count > queryThreshold ? NPlusOneViolation(table: table, queryCount: count) : nil
+            count > threshold ? NPlusOneViolation(table: table, queryCount: count) : nil
         }.sorted { $0.queryCount > $1.queryCount }
     }
 
