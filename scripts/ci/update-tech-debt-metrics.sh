@@ -37,36 +37,6 @@ count_swift_glob_lines() {
   echo "${total}"
 }
 
-count_rg() {
-  local pattern="$1"
-  shift
-  python3 - "${pattern}" "$@" <<'PY'
-import pathlib
-import re
-import sys
-
-pattern = re.compile(sys.argv[1])
-total = 0
-
-def swift_files(root: pathlib.Path):
-    if root.is_file() and root.suffix == ".swift":
-        yield root
-    elif root.is_dir():
-        yield from root.rglob("*.swift")
-
-for raw in sys.argv[2:]:
-    for path in swift_files(pathlib.Path(raw)):
-        try:
-            for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                if pattern.search(line):
-                    total += 1
-        except OSError:
-            pass
-
-print(total)
-PY
-}
-
 count_swift_files_containing() {
   local needle="$1"
   shift
@@ -109,7 +79,7 @@ usage_agg_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/UsageAggre
 projection_lines="$(count_swift_glob_lines "${repo_root}/AgentLens/Services/ProjectionPipeline/"*.swift)"
 top_four_total=$((cloud_sync_lines + search_lines + usage_agg_lines + projection_lines))
 
-task_detached_services="$(count_rg 'Task\.detached' "${repo_root}/AgentLens/Services")"
+task_detached_services="$(python3 "${repo_root}/tools/concurrency-debt/count-task-detached.py" --repo-root "${repo_root}" --path AgentLens/Services --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).taskDetached.total))")"
 
 swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services")"
 
