@@ -29,6 +29,34 @@ const CLOUD_PRO_PRODUCT_IDS = new Set([
   "com.openburnbar.proMax.bundle.monthly",
 ]);
 
+export const PUSH_DISPLAY_NAME_MAX_CHARS = 40;
+
+export function sanitizePushDisplayName(raw: string): string {
+  // Replace control characters, zero-width space/formatting characters with a space
+  let s = raw.replace(/[\u0000-\u001f\u200b-\u200d\u202a-\u202e\ufeff]/gu, " ");
+  // Collapse multiple spaces to a single space
+  s = s.replace(/\s+/gu, " ");
+  // Trim leading and trailing spaces
+  s = s.trim();
+  
+  const chars = Array.from(s);
+  if (chars.length > PUSH_DISPLAY_NAME_MAX_CHARS) {
+    return chars.slice(0, PUSH_DISPLAY_NAME_MAX_CHARS).join("");
+  }
+  return s;
+}
+
+export function pushCallerInitial(name: string): string {
+  const chars = Array.from(name.trim());
+  return chars.length > 0 ? chars[0].toUpperCase() : "";
+}
+
+function isValidRoutingId(id: string, maxLen = 160): boolean {
+  if (id.length > maxLen) return false;
+  if (/[\u0000-\u001f\u202a-\u202e]/u.test(id)) return false;
+  return true;
+}
+
 export interface TriggerRequest {
   callId: string;
   connectionId: string;
@@ -46,11 +74,16 @@ export function parseTriggerRequest(raw: unknown): TriggerRequest | undefined {
   const pairedDeviceId = stringField(raw, "pairedDeviceId");
   const displayName = stringField(raw, "displayName");
   if (!callId || !connectionId || !pairedDeviceId || !displayName) return undefined;
+
+  if (!isValidRoutingId(callId) || !isValidRoutingId(connectionId) || !isValidRoutingId(pairedDeviceId)) {
+    return undefined;
+  }
+
   return {
     callId,
     connectionId,
     pairedDeviceId,
-    displayName,
+    displayName: sanitizePushDisplayName(displayName),
     isVideo: raw.isVideo === true,
     voipDeviceToken: stringField(raw, "voipDeviceToken"),
     androidDeviceId: stringField(raw, "androidDeviceId"),
